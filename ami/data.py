@@ -7,6 +7,7 @@ class MsgTypes(Enum):
     Transition = 0
     Occurrence = 1
     Datagram = 2
+    Graph = 3
 
 class DataTypes(Enum):
     Unknown = -1

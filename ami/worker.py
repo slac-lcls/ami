@@ -103,6 +103,8 @@ class Worker(object):
                         self.graph.revert()
 
                     self.new_graph_available = False
+                if new_graph is not None:
+                    self.store.message(MsgTypes.Graph, new_graph)
                 self.store.send(msg)
                 self.store.put("heartbeat", True)
             elif msg.mtype == MsgTypes.Datagram:
@@ -128,12 +130,12 @@ class Worker(object):
 
 
 class NodeCollector(Collector):
-    def __init__(self, node, num_workers, collector_addr, upstream_addr):
+    def __init__(self, node, num_workers, collector_addr, downstream_addr):
         super(__class__, self).__init__(collector_addr)
         self.node = node
         self.counts = { MsgTypes.Transition: 0, MsgTypes.Occurrence: 0 }
         self.num_workers = num_workers
-        self.upstream = ResultStore(upstream_addr, self.ctx)
+        self.store = ResultStore(downstream_addr, self.ctx)
 
     def process_msg(self, msg):
         if msg.mtype == MsgTypes.Transition:
@@ -141,19 +143,20 @@ class NodeCollector(Collector):
             if self.counts[MsgTypes.Transition] == self.num_workers:
                 if msg.payload.ttype == Transitions.Allocate:
                     for name, dtype in msg.payload.payload:
-                        self.upstream.create(name, dtype)
-                self.upstream.send(msg)
+                        self.store.create(name, dtype)
+                self.store.send(msg)
                 self.counts[MsgTypes.Transition] = 0
         elif msg.mtype == MsgTypes.Occurrence:
             self.counts[MsgTypes.Occurrence] += 1
             if self.counts[MsgTypes.Occurrence] == self.num_workers:
                 if msg.payload == Occurrences.Heartbeat:
-                    self.upstream.collect()
-                self.upstream.send(msg)
+                    self.store.collect()
+                self.store.send(msg)
                 self.counts[MsgTypes.Occurrence] = 0
         elif msg.mtype == MsgTypes.Datagram:
-            self.upstream.put_dgram(msg.payload)
-
+            self.store.put_dgram(msg.payload)
+        elif msg.mtype == MsgTypes.Graph:
+            self.strategies = Graph.extract_collection_strategies(msg.payload)
 
 def run_worker(num, source, collector_addr, graph_addr):
 

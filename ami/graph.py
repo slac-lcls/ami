@@ -102,6 +102,14 @@ class Graph(object):
 
         return r
 
+    @staticmethod
+    def extract_collection_strategies(graph):
+        strategies = {}
+        for op in graph:
+             for name, strat in op['outputs']:
+                strategies[name] = strat
+        return strategies
+
     def configure(self, sources):
         self.operations = []
         # loop over operations in the correct order
