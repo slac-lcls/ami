@@ -29,6 +29,28 @@ that when you want to run all parts of ami on a single node:
 
 # Status/To-do
 
+5/24/18
+
+next week:
+* collection strategy
+  * collector event builder
+* python language issues:
+  * string substitution
+  * which vars get into store, and how?
+  * need store.put, either for pickN, or for all vars?
+  
+EB thoughts:
+* most cross-time patterns feel straightforward (e.g. stripchart can time-align on the most recent HB)
+* pickN cross-time pattern feels tricky (see below)
+* timeout in units of HB
+* late stuff thrown away
+* pickN EB
+  * fuzzy
+  * throws away "used" data
+* only need to EB the HBs
+* need buffering in the store (add level to store dict)
+* don't worry about hung nodes (could consider extra "redundant" send for pickN pattern for robustness)
+
 5/17/18
 
 next week:
