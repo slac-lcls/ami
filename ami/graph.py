@@ -105,8 +105,8 @@ class Graph(object):
     @staticmethod
     def extract_collection_strategies(graph):
         strategies = {}
-        for op in graph:
-             for name, strat in op['outputs']:
+        for op in graph.values():
+            for name, strat in op['outputs']:
                 strategies[name] = strat
         return strategies
 
@@ -123,7 +123,7 @@ class Graph(object):
                 auto_put = True
                 if 'auto_put' in self.cfg[op]:
                     auto_put = self.cfg[op]['auto_put']
-                if auto_put: 
+                if auto_put:
                     store_put_list = ['store.put("%s", %s)'%(output, output) for output, _ in self.cfg[op]['outputs']]
                     store_put = '\n' + '; '.join(store_put_list)
 
@@ -168,7 +168,7 @@ class Graph(object):
                     exec(code, glb, loc)
             except Exception as exp:
                 raise GraphRuntimeError("exception encounterd running operation %s on the graph: %s"%(op, exp))
-        
+
     def update(self, new_cfg):
         self.cfg_old = self.cfg
         self.cfg = new_cfg
