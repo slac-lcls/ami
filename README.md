@@ -27,6 +27,9 @@ You should see an interactive QT window. There is also a convenience launcher
 that when you want to run all parts of ami on a single node:
 ```ami-local -n 3 static://examples/worker.json```
 
+To load a graph, add this flag to ami-local:
+```-l examples/basic.ami``` 
+
 # Status/To-do
 
 5/24/18
