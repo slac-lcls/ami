@@ -7,6 +7,7 @@ import tempfile
 import argparse
 import multiprocessing as mp
 
+from ami.comm import Ports
 from ami.manager import run_manager
 from ami.worker import run_worker, run_collector
 from ami.client import run_client
@@ -30,17 +31,40 @@ def main():
     )
 
     parser.add_argument(
+        '-t',
+        '--tcp',
+        action='store_true',
+        help='use tcp instead of ipc for communication'
+    )
+
+    parser.add_argument(
+        '-p',
+        '--port',
+        type=int,
+        default=Ports.Comm,
+        help='starting port when using tcp for communication (default: %d)'%Ports.Comm
+    )
+
+    parser.add_argument(
         'source',
         metavar='SOURCE',
         help='data source configuration (exampes: static://test.json, psana://exp=xcsdaq13:run=14)'
     )
 
     args = parser.parse_args()
-    ipcdir = tempfile.mkdtemp()
-    collector_addr = "ipc://%s/node_collector"%ipcdir
-    finalcol_addr = "ipc://%s/collector"%ipcdir
-    graph_addr = "ipc://%s/graph"%ipcdir
-    comm_addr = "ipc://%s/comm"%ipcdir
+    ipcdir = None
+    if args.tcp:
+        host = "127.0.0.1"
+        collector_addr = "tcp://%s:%d"%(host, args.port)
+        finalcol_addr = "tcp://%s:%d"%(host, args.port+1)
+        graph_addr = "tcp://%s:%d"%(host, args.port+2)
+        comm_addr = "tcp://%s:%d"%(host, args.port+3)
+    else:
+        ipcdir = tempfile.mkdtemp()
+        collector_addr = "ipc://%s/node_collector"%ipcdir
+        finalcol_addr = "ipc://%s/collector"%ipcdir
+        graph_addr = "ipc://%s/graph"%ipcdir
+        comm_addr = "ipc://%s/comm"%ipcdir
 
     procs = []
     failed_proc = False
