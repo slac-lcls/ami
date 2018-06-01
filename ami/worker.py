@@ -12,28 +12,6 @@ from ami.graph import Graph, GraphConfigError, GraphRuntimeError
 from ami.comm import Ports, Collector, ResultStore
 from ami.data import MsgTypes, DataTypes, Transitions, Occurrences, Message, Datagram, Transition, StaticSource
 
-
-class Request(object):
-    def __init__(self, store, name, number):
-        self.name = name
-        self.number = number
-        self.progress = 0
-        self.store = store
-        self.sum = None
-    def update(self):
-        data = self.store.get(self.name)
-        if data is None: return False
-        if self.sum is None:
-            self.sum = data
-        else:
-            self.sum += data
-        self.progress +=1
-        if self.progress==self.number:
-            self.store.put(self.name+'_avg_'+str(self.number),self.sum)
-            return True
-        return False
-
-  
 class Worker(object):
     def __init__(self, idnum, src, collector_addr, graph_addr):
 
@@ -58,6 +36,8 @@ class Worker(object):
         self.graph_comm.connect(graph_addr)
         self.requests = []
 
+        self.hb_received = False
+
     def run(self):
         sources = []
         partition = self.src.partition()
@@ -70,6 +50,8 @@ class Worker(object):
         for msg in self.src.events():
             # check to see if the graph has been reconfigured after update
             if msg.mtype == MsgTypes.Occurrence and msg.payload == Occurrences.Heartbeat:
+                self.store.put('hb_count', msg.hb_count)
+                self.hb_received = True
                 new_graph = None
                 while True:
                     try:
@@ -109,7 +91,8 @@ class Worker(object):
                 # clear old values from the store
                 #self.store.clear()
                 for dgram in msg.payload:
-                    self.store.put_dgram(dgram)
+                    if self.hb_received:
+                        self.store.put(dgram.name, dgram.data)
 
                 try:
                     self.graph.execute()
@@ -151,7 +134,7 @@ class NodeCollector(Collector):
                 self.store.send(msg)
                 self.counts[MsgTypes.Occurrence] = 0
         elif msg.mtype == MsgTypes.Datagram:
-            self.store.put_dgram(msg.payload)
+            self.store.put(msg.payload.name, msg.payload.data)
         elif msg.mtype == MsgTypes.Graph:
             self.strategies = Graph.extract_collection_strategies(msg.payload)
 

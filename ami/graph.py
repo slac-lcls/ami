@@ -157,7 +157,7 @@ class Graph(object):
             # check if all inputs have new data
             ready = True
             for inp in self.cfg[op]['inputs']:
-                if not self.store.is_updated(inp): # and required? do we still want that
+                if not self.store.is_ready(inp): # and required? do we still want that
                     ready = False
             try:
                 if ready:

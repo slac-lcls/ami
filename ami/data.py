@@ -81,12 +81,16 @@ class StaticSource(object):
 
     def events(self):
         count = 0
-        emit = False
+        hb_count = 0
+        emit_hb = False
         time.sleep(self.init_time)
         while True:
-            if emit:
-                emit = False
-                yield Message(MsgTypes.Occurrence, Occurrences.Heartbeat)
+            if emit_hb:
+                emit_hb = False
+                msg = Message(MsgTypes.Occurrence, Occurrences.Heartbeat)
+                hb_count += 1
+                msg.hb_count = hb_count
+                yield msg
             else:
                 event = []
                 for name, config in self.config.items():
@@ -97,7 +101,7 @@ class StaticSource(object):
                     else:
                         print("DataSrc: %s has unknown type %s", name, config['dtype'])
                 count += 1
-                emit = (count % self.heartbeat == 0)
+                emit_hb = (count % self.heartbeat == 0)
                 yield Message(MsgTypes.Datagram, event)
             time.sleep(self.interval)
         

@@ -51,8 +51,11 @@ class ResultStore(object):
             self._store[name] = Datagram(name, datatype)
             self._updated[name] = False
 
-    def is_updated(self, name):
-        return self._updated[name]
+    def is_ready(self, name):
+        if name in self._store.keys():
+            return self._updated[name]
+        else:
+            return False
 
     def get_dgram(self, name):
         return self._store[name]
@@ -67,22 +70,19 @@ class ResultStore(object):
     def get(self, name):
         return self._store[name].data
 
-    def put_dgram(self, dgram):
-        self.put(dgram.name, dgram.data)
-
     def put(self, name, data):
         datatype = DataTypes.get_type(data)
         if name in self._store:
             if datatype == self._store[name].dtype or self._store[name].dtype == DataTypes.Unset:
                 self._store[name].dtype = datatype
                 self._store[name].data = data
-                self._updated[name] = True
             else:
                 raise TypeError("type of new result (%s) differs from existing"
                                 " (%s)"%(datatype, self._store[name].dtype))
         else:
             self._store[name] = Datagram(name, datatype, data)
-            self._updated[name] = True
+
+        self._updated[name] = True
 
     def clear(self):
         self._store = {}
