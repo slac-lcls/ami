@@ -38,7 +38,7 @@ def main():
     args = parser.parse_args()
     ipcdir = tempfile.mkdtemp()
     collector_addr = "ipc://%s/node_collector"%ipcdir
-    upstream_addr = "ipc://%s/collector"%ipcdir
+    finalcol_addr = "ipc://%s/collector"%ipcdir
     graph_addr = "ipc://%s/graph"%ipcdir
     comm_addr = "ipc://%s/comm"%ipcdir
 
@@ -66,7 +66,7 @@ def main():
         collector_proc = mp.Process(
             name='nodecol-n0',
             target=run_collector,
-            args=(0, args.num_workers, collector_addr, upstream_addr)
+            args=(0, args.num_workers, collector_addr, finalcol_addr)
         )
         collector_proc.daemon = True
         collector_proc.start()
@@ -75,7 +75,7 @@ def main():
         manager_proc = mp.Process(
             name='manager',
             target=run_manager,
-            args=(collector_addr, graph_addr, comm_addr)
+            args=(finalcol_addr, graph_addr, comm_addr)
         )
         manager_proc.daemon = True
         manager_proc.start()
