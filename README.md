@@ -32,6 +32,12 @@ To load a graph, add this flag to ami-local:
 
 # Status/To-do
 
+5/31/18
+* eb
+  * maybe have separate event builders and stores for heart-beat and event-count based data 
+* python
+  * make library of routines with parameters (not jinja string replacement)
+
 5/24/18
 
 next week:
