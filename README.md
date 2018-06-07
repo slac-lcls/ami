@@ -32,6 +32,12 @@ To load a graph, add this flag to ami-local:
 
 # Status/To-do
 
+6/7/18
+* thoughts from alan:
+  * eliminate hb in favor of timestamps?
+  * hb-rate operations go in the client?
+  * have library of vetted building-block code that we call in any order
+
 5/31/18
 * eb
   * maybe have separate event builders and stores for heart-beat and event-count based data 
