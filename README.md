@@ -37,6 +37,10 @@ To load a graph, add this flag to ami-local:
   * eliminate hb in favor of timestamps?
   * hb-rate operations go in the client?
   * have library of vetted building-block code that we call in any order
+* Event building
+  * Currently the messages sent to the collector include the id of where they came from and what heartbeat they are for
+  * Use the heartbeat count to store the contributions using the collection strategy in from the graph
+  * We will also have a table of eb_id completions to keep track of which workers have sent their data for a heartbeat
 
 5/31/18
 * eb
