@@ -10,7 +10,7 @@ import argparse
 import multiprocessing as mp
 from ami.graph import Graph, GraphConfigError, GraphRuntimeError
 from ami.comm import Ports, Collector, ResultStore
-from ami.data import MsgTypes, DataTypes, Transitions, Occurrences, Message, Datagram, Transition, StaticSource
+from ami.data import MsgTypes, Transitions, Message, Transition, StaticSource
 
 class Worker(object):
     def __init__(self, idnum, src, collector_addr, graph_addr):
@@ -27,21 +27,17 @@ class Worker(object):
         self.ctx = zmq.Context()
         self.store = ResultStore(collector_addr, self.ctx)
 
-        # >>> NON PYTHONBACKEND
         self.graph = Graph(self.store)
 
         self.graph_comm = self.ctx.socket(zmq.SUB)
-        #self.graph_comm.setsockopt_string(zmq.SUBSCRIBE, "graph")
-        self.graph_comm.setsockopt_string(zmq.SUBSCRIBE, "")
+        self.graph_comm.setsockopt_string(zmq.SUBSCRIBE, "graph")
         self.graph_comm.connect(graph_addr)
         self.requests = []
-
-        self.hb_received = False
 
     def run(self):
         sources = []
         partition = self.src.partition()
-        self.store.message(MsgTypes.Transition, 
+        self.store.message(MsgTypes.Transition,
                            Transition(Transitions.Allocate, partition))
         for name, dtype in partition:
             self.store.create(name, dtype)
@@ -49,9 +45,8 @@ class Worker(object):
 
         for msg in self.src.events():
             # check to see if the graph has been reconfigured after update
-            if msg.mtype == MsgTypes.Occurrence and msg.payload == Occurrences.Heartbeat:
-                self.store.put('hb_count', msg.hb_count)
-                self.hb_received = True
+            if msg.mtype == MsgTypes.Heartbeat:
+                self.store.collect(self.idnum, msg.payload)
                 new_graph = None
                 while True:
                     try:
@@ -59,22 +54,15 @@ class Worker(object):
                         payload = self.graph_comm.recv_pyobj()
                         if topic == "graph":
                             new_graph = payload
-                        elif topic == "request":
-                            self.requests.append(Request(self.store,*payload))
                         else:
                             print("worker%d: No handler for received topic: %s"%(self.idnum, topic))
                     except zmq.Again:
                         break
                 if new_graph is not None:
 
-                    # >>> NON PYTHONBACKEND
                     self.graph.update(new_graph)
 
                     print("worker%d: Received new configuration"%self.idnum)
-
-
-                    # >>> NON PYTHONBACKEND
-                    # >>> TODO figure out how to check graph
                     try:
                         self.graph.configure(sources)
                         print("worker%d: Configuration complete"%self.idnum)
@@ -86,25 +74,17 @@ class Worker(object):
                     self.new_graph_available = False
                 if new_graph is not None:
                     self.store.message(MsgTypes.Graph, new_graph)
-                self.store.send(msg)
             elif msg.mtype == MsgTypes.Datagram:
                 # clear old values from the store
                 #self.store.clear()
                 for dgram in msg.payload:
-                    if self.hb_received:
-                        self.store.put(dgram.name, dgram.data)
+                    self.store.put(dgram.name, dgram.data)
 
                 try:
                     self.graph.execute()
                 except GraphRuntimeError as graph_err:
                     print("worker%s: Failure encountered executing graph:"%self.idnum, graph_err)
                     return 1
-
-                self.store.collect()
-                for r in self.requests:
-                    if (r.update()):
-                        self.requests.remove(r)
-                        print(self.store.get('cspad_avg_3').shape)
             else:
                 self.store.send(msg)
 
@@ -113,7 +93,7 @@ class NodeCollector(Collector):
     def __init__(self, node, num_workers, collector_addr, downstream_addr):
         super(__class__, self).__init__(collector_addr)
         self.node = node
-        self.counts = { MsgTypes.Transition: 0, MsgTypes.Occurrence: 0 }
+        self.counts = { MsgTypes.Transition: 0, MsgTypes.Heartbeat: 0 }
         self.num_workers = num_workers
         self.store = ResultStore(downstream_addr, self.ctx)
 
@@ -126,13 +106,11 @@ class NodeCollector(Collector):
                         self.store.create(name, dtype)
                 self.store.send(msg)
                 self.counts[MsgTypes.Transition] = 0
-        elif msg.mtype == MsgTypes.Occurrence:
-            self.counts[MsgTypes.Occurrence] += 1
-            if self.counts[MsgTypes.Occurrence] == self.num_workers:
-                if msg.payload == Occurrences.Heartbeat:
-                    self.store.collect()
-                self.store.send(msg)
-                self.counts[MsgTypes.Occurrence] = 0
+        elif msg.mtype == MsgTypes.Heartbeat:
+            self.counts[MsgTypes.Heartbeat] += 1
+            if self.counts[MsgTypes.Heartbeat] == self.num_workers:
+                self.store.collect(self.node, msg.payload)
+                self.counts[MsgTypes.Heartbeat] = 0
         elif msg.mtype == MsgTypes.Datagram:
             self.store.put(msg.payload.name, msg.payload.data)
         elif msg.mtype == MsgTypes.Graph:
@@ -155,8 +133,8 @@ def run_worker(num, source, collector_addr, graph_addr):
 
         src = StaticSource(num, 
                            src_cfg['interval'], 
-                           src_cfg['heartbeat'], 
-                           src_cfg["init_time"], 
+                           src_cfg["init_time"],
+                           src_cfg['heartbeat'],
                            src_cfg['config'])
     else:
         print("worker%03d: unknown data source type:"%num, source[0])

@@ -5,7 +5,7 @@ import zmq
 import threading
 from enum import IntEnum
 
-from ami.data import MsgTypes, Message, DataTypes, Datagram
+from ami.data import MsgTypes, Message, CollectorMessage, DataTypes, Datagram
 
 
 class Ports(IntEnum):
@@ -14,35 +14,13 @@ class Ports(IntEnum):
     Collector = 5557
 
 
-class ResultStore(object):
+class Store(object):
     """
-    This class is a AMI /graph node that collects results
-    from a single process and has the ability to send them
-    to another (via zeromq). The sending end point is typically
-    a Collector object.
+    This class is a key value that for holding Datagrams
     """
 
-    def __init__(self, addr, ctx=None):
+    def __init__(self):
         self._store = {}
-        self._updated = {}
-        if ctx is None:
-            self.ctx = zmq.Context()
-        else:
-            self.ctx = ctx
-        self.collector = self.ctx.socket(zmq.PUSH)
-        self.collector.connect(addr)
-
-    def collect(self):
-        for name, result in self._store.items():
-            if self._updated[name]:
-                self.message(MsgTypes.Datagram, result)
-                self._updated[name] = False
-
-    def send(self, msg):
-        self.collector.send_pyobj(msg)
-
-    def message(self, mtype, payload):
-        self.send(Message(mtype, payload))
 
     def create(self, name, datatype=DataTypes.Unset):
         if name in self._store:
@@ -50,12 +28,6 @@ class ResultStore(object):
         else:
             self._store[name] = Datagram(name, datatype)
             self._updated[name] = False
-
-    def is_ready(self, name):
-        if name in self._store.keys():
-            return self._updated[name]
-        else:
-            return False
 
     def get_dgram(self, name):
         return self._store[name]
@@ -86,6 +58,58 @@ class ResultStore(object):
 
     def clear(self):
         self._store = {}
+
+
+class ResultStore(Store):
+    """
+    This class is a AMI /graph node that collects results
+    from a single process and has the ability to send them
+    to another (via zeromq). The sending end point is typically
+    a Collector object.
+    """
+
+    def __init__(self, addr, ctx=None):
+        super(__class__, self).__init__()
+        self._updated = {}
+        if ctx is None:
+            self.ctx = zmq.Context()
+        else:
+            self.ctx = ctx
+        self.collector = self.ctx.socket(zmq.PUSH)
+        self.collector.connect(addr)
+
+    def collect(self, eb_id, heartbeat):
+        for name, result in self._store.items():
+            if self._updated[name]:
+                self.send(CollectorMessage(MsgTypes.Datagram, eb_id, heartbeat, result))
+                self._updated[name] = False
+        self.send(CollectorMessage(MsgTypes.Heartbeat, eb_id, heartbeat, None))
+
+    def send(self, msg):
+        self.collector.send_pyobj(msg)
+
+    def message(self, mtype, payload):
+        msg = Message(mtype, payload)
+        self.send(msg)
+
+    def is_ready(self, name):
+        if name in self._store.keys():
+            return self._updated[name]
+        else:
+            return False
+
+class EventBuilder(object):
+
+    def __init__(self, depth, addr, ctx=None):
+        self.depth = depth
+        # using a dict because it is random access instead of a sequential list
+        self.pending = {}
+        #for _ in range(depth):
+        #    self.pending.append(ResultStore(addr, ctx))
+
+    
+
+    
 
 
 class Collector(abc.ABC):

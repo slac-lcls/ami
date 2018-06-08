@@ -5,7 +5,7 @@ from enum import Enum
 
 class MsgTypes(Enum):
     Transition = 0
-    Occurrence = 1
+    Heartbeat = 1
     Datagram = 2
     Graph = 3
 
@@ -34,10 +34,6 @@ class Transitions(Enum):
     Enable = 2
     Disable = 3
 
-class Occurrences(Enum):
-    Heartbeat = 0
-    User = 1
-
 class Transition(object):
     def __init__(self, ttype, payload):
         self.ttype = ttype
@@ -50,15 +46,7 @@ class Datagram(object):
     def __init__(self, name, dtype, data=None):
         self.name = name
         self.dtype = dtype
-        self.__data = data
-
-    @property
-    def data(self):
-        return self.__data
-
-    @data.setter
-    def data(self, data):
-        self.__data = data
+        self.data = data
 
     def __str__(self):
         return "Datagram:\n dtype: %s\n data: %s"%(self.dtype, self.data)
@@ -68,9 +56,16 @@ class Message(object):
         self.mtype = mtype
         self.payload = payload
 
+class CollectorMessage(Message):
+    def __init__(self, mtype, eb_id, hb_count, payload):
+        super(__class__, self).__init__(mtype, payload)
+        self.eb_id = eb_id
+        self.hb_count = hb_count
+
 class StaticSource(object):
     def __init__(self, idnum, interval, init_time, heartbeat, config):
         np.random.seed([idnum])
+        self.idnum = idnum
         self.interval = interval
         self.heartbeat = heartbeat
         self.init_time = init_time
@@ -87,9 +82,8 @@ class StaticSource(object):
         while True:
             if emit_hb:
                 emit_hb = False
-                msg = Message(MsgTypes.Occurrence, Occurrences.Heartbeat)
+                msg = Message(MsgTypes.Heartbeat, hb_count)
                 hb_count += 1
-                msg.hb_count = hb_count
                 yield msg
             else:
                 event = []
