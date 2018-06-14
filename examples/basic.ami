@@ -2,7 +2,7 @@
     "sumall": {
         "setup": "counter=0",
         "outputs": [
-            ["cspad_sum", null]
+            ["cspad_sum", "Pick1"]
         ],
         "imports": [
             [
@@ -20,7 +20,7 @@
         "setup": "counter=0;sum2=None",
         "auto_put": false,
         "outputs": [
-            ["sum2", "Reduce"]
+            ["sum2", "Average"]
         ],
         "imports": [
             [
@@ -28,7 +28,7 @@
                 "np"
             ]
         ],
-        "code": "if counter < 2:\n\tif sum2 is None:\n\t\tsum2=np.copy(cspad)\n\telse:\n\t\tsum2 += cspad\n\tcounter += 1\n\tif counter == 2:\n\t\tstore.put('sum2', sum2)\n\t\tcounter=0\n\t\tsum2=None",
+        "code": "if counter < 2:\n\tif sum2 is None:\n\t\tsum2=np.copy(cspad)\n\telse:\n\t\tsum2 += cspad\n\tcounter += 1\n\tif counter == 2:\n\t\tstore.put('sum2', sum2, 2)\n\t\tcounter=0\n\t\tsum2=None",
         "inputs": [
             "cspad",
             "cspad_roi"
@@ -39,7 +39,7 @@
             "cspad_roi"
         ],
         "outputs": [
-            ["cspad_projection", null]
+            ["cspad_projection", "Pick1"]
         ],
         "code": "cspad_projection = cspad_roi.sum(axis=1)"
     },
@@ -48,7 +48,7 @@
             "cspad"
         ],
         "outputs": [
-            ["cspad_roi", null]
+            ["cspad_roi", "Sum"]
         ],
         "imports": [
             [

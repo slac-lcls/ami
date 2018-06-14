@@ -28,6 +28,11 @@ class DataTypes(Enum):
         else:
             return DataTypes.Scalar
 
+class Strategies(Enum):
+    Sum = "Sum"
+    Avg = "Average"
+    Pick1  = "Pick1"
+
 class Transitions(Enum):
     Allocate = 0
     Configure = 1
@@ -43,24 +48,25 @@ class Transition(object):
         return "Transition:\n type: %s\n data: %s"%(self.ttype, self.payload)
 
 class Datagram(object):
-    def __init__(self, name, dtype, data=None):
+    def __init__(self, name, dtype, data=None, weight=0):
         self.name = name
         self.dtype = dtype
         self.data = data
+        self.weight = weight
 
     def __str__(self):
         return "Datagram:\n dtype: %s\n data: %s"%(self.dtype, self.data)
 
 class Message(object):
-    def __init__(self, mtype, payload):
+    def __init__(self, mtype, identity, payload):
         self.mtype = mtype
+        self.identity = identity
         self.payload = payload
 
 class CollectorMessage(Message):
-    def __init__(self, mtype, eb_id, hb_count, payload):
-        super(__class__, self).__init__(mtype, payload)
-        self.eb_id = eb_id
-        self.hb_count = hb_count
+    def __init__(self, mtype, identity, heartbeat, payload):
+        super(__class__, self).__init__(mtype, identity, payload)
+        self.heartbeat = heartbeat
 
 class StaticSource(object):
     def __init__(self, idnum, interval, init_time, heartbeat, config):
@@ -82,7 +88,7 @@ class StaticSource(object):
         while True:
             if emit_hb:
                 emit_hb = False
-                msg = Message(MsgTypes.Heartbeat, hb_count)
+                msg = Message(MsgTypes.Heartbeat, self.idnum, hb_count)
                 hb_count += 1
                 yield msg
             else:
@@ -96,6 +102,6 @@ class StaticSource(object):
                         print("DataSrc: %s has unknown type %s", name, config['dtype'])
                 count += 1
                 emit_hb = (count % self.heartbeat == 0)
-                yield Message(MsgTypes.Datagram, event)
+                yield Message(MsgTypes.Datagram, self.idnum, event)
             time.sleep(self.interval)
         

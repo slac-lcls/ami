@@ -9,8 +9,8 @@ import tempfile
 import argparse
 import multiprocessing as mp
 from ami.graph import Graph, GraphConfigError, GraphRuntimeError
-from ami.comm import Ports, Collector, ResultStore
-from ami.data import MsgTypes, Transitions, Message, Transition, StaticSource
+from ami.comm import Ports, Collector, ResultStore, EventBuilder
+from ami.data import MsgTypes, Transitions, Message, Transition, StaticSource, Strategies
 
 class Worker(object):
     def __init__(self, idnum, src, collector_addr, graph_addr):
@@ -38,6 +38,7 @@ class Worker(object):
         sources = []
         partition = self.src.partition()
         self.store.message(MsgTypes.Transition,
+                           self.idnum, 
                            Transition(Transitions.Allocate, partition))
         for name, dtype in partition:
             self.store.create(name, dtype)
@@ -73,7 +74,7 @@ class Worker(object):
 
                     self.new_graph_available = False
                 if new_graph is not None:
-                    self.store.message(MsgTypes.Graph, new_graph)
+                    self.store.message(MsgTypes.Graph, self.idnum, new_graph)
             elif msg.mtype == MsgTypes.Datagram:
                 # clear old values from the store
                 #self.store.clear()
@@ -93,26 +94,32 @@ class NodeCollector(Collector):
     def __init__(self, node, num_workers, collector_addr, downstream_addr):
         super(__class__, self).__init__(collector_addr)
         self.node = node
-        self.counts = { MsgTypes.Transition: 0, MsgTypes.Heartbeat: 0 }
         self.num_workers = num_workers
-        self.store = ResultStore(downstream_addr, self.ctx)
+        self.store = EventBuilder(self.num_workers, 10, downstream_addr, self.ctx)
+        self.strategies = {}
 
     def process_msg(self, msg):
         if msg.mtype == MsgTypes.Transition:
-            self.counts[MsgTypes.Transition] += 1
-            if self.counts[MsgTypes.Transition] == self.num_workers:
-                if msg.payload.ttype == Transitions.Allocate:
-                    for name, dtype in msg.payload.payload:
-                        self.store.create(name, dtype)
+            self.store.transition(msg.identity, msg.payload.ttype)
+            if self.store.transition_ready(msg.payload.ttype):
                 self.store.send(msg)
-                self.counts[MsgTypes.Transition] = 0
         elif msg.mtype == MsgTypes.Heartbeat:
-            self.counts[MsgTypes.Heartbeat] += 1
-            if self.counts[MsgTypes.Heartbeat] == self.num_workers:
-                self.store.collect(self.node, msg.payload)
-                self.counts[MsgTypes.Heartbeat] = 0
+            self.store.heartbeat(msg.identity, msg.payload)
+            if self.store.heartbeat_ready(msg.payload):
+                self.store.complete(self.node, msg.payload)
         elif msg.mtype == MsgTypes.Datagram:
-            self.store.put(msg.payload.name, msg.payload.data)
+            if msg.payload.name in self.strategies:
+                if self.strategies[msg.payload.name] == Strategies.Sum.value:
+                    self.store.sum(msg.heartbeat, msg.identity, msg.payload.name, msg.payload.data, 0)
+                elif self.strategies[msg.payload.name] == Strategies.Avg.value:
+                    self.store.sum(msg.heartbeat, msg.identity, msg.payload.name, msg.payload.data, msg.payload.weight)
+                elif self.strategies[msg.payload.name] == Strategies.Pick1.value:
+                    self.store.put(msg.heartbeat, msg.identity, msg.payload.name, msg.payload.data)
+                else:
+                    print("node_collector%d: Unknown collector strategy - %s"%(self.node, self.strategies[msg.payload.name]))
+            else:
+                # We assume Pick1 for the stuff that comes from the raw data
+                self.store.put(msg.heartbeat, msg.identity, msg.payload.name, msg.payload.data)
         elif msg.mtype == MsgTypes.Graph:
             self.strategies = Graph.extract_collection_strategies(msg.payload)
 

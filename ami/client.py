@@ -13,7 +13,7 @@ from PyQt5.QtCore import pyqtSlot, QTimer, QRect
 
 import pyqtgraph as pg
 
-from ami.data import DataTypes
+from ami.data import DataTypes, Strategies
 from ami.comm import Ports
 from ami.graph import Graph
 
@@ -136,7 +136,7 @@ class AreaDetWidget(pg.ImageView):
         roi = Graph.build_node(
             "{0:s}_roi = pg.affineSlice({0:s}, config['shape'], config['origin'], config['vector'], config['axes'])".format(self.topic),
             self.topic,
-            "%s_roi"%self.topic,
+            [("%s_roi"%self.topic, Strategies.Pick1)],
             config=config,
             imports=[('pyqtgraph', 'pg')],
         )
@@ -194,7 +194,7 @@ class Calculator(QWidget):
         graph[self.nameBox.text()] = Graph.build_node(
             "%s = %s"%(self.nameBox.text(), self.codeBox.text()),
             self.parse_inputs(),
-            self.nameBox.text(),
+            [(self.nameBox.text(), Strategies.Pick1)],
             imports=self.parse_imports()
         )
         self.comm.update(graph)

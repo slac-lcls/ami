@@ -47,7 +47,11 @@ class Manager(Collector):
         if matched:
             if matched.group('name') in self.feature_store:
                 self.comm.send_string('ok', zmq.SNDMORE)
-                self.comm.send_pyobj(self.feature_store[matched.group('name')].data)
+                feature_data = self.feature_store[matched.group('name')]
+                if feature_data.weight:
+                    self.comm.send_pyobj(feature_data.data/feature_data.weight)
+                else:
+                    self.comm.send_pyobj(feature_data.data)
             else:
                 self.comm.send_string('error')
             return True
