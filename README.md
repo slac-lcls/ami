@@ -1,6 +1,16 @@
 # ami
 The LCLS-II online graphical analysis monitoring package.
 
+## Download, configure, install
+
+## Running
+
+## Design Documentation
+Design documentation is available [here](doc/toplevel.md)
+
+## Testing
+Test information is available [here](doc/testing.md)
+
 # Requirements
 * Python 3.5+
 * ipython

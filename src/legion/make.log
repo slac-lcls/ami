@@ -1,0 +1,7 @@
+g++ -o toplevel.cc.o -c toplevel.cc -std=c++11 -DUSE_DISK  -march=native -DUSE_LIBDL -DUSE_ZLIB -DDEBUG_REALM -DDEBUG_LEGION -ggdb  -DCOMPILE_TIME_MIN_LEVEL=LEVEL_DEBUG	 -Wall -Wno-strict-overflow -I../third_party/json/include -I/home/aheirich/Documents/SLAC/AMI2/crossmount/legion/runtime -I/home/aheirich/Documents/SLAC/AMI2/crossmount/legion/runtime/mappers
+toplevel.cc: In static member function ‘static void TopLevelTask::persistLogicalRegion(Legion::Context, Legion::Runtime*, Legion::LogicalRegion, std::vector<unsigned int>, std::vector<unsigned int>)’:
+toplevel.cc:242:30: error: ‘checkpointFile’ was not declared in this scope
+   attachLauncher.attach_file(checkpointFile, shadowFields, LEGION_FILE_CREATE);
+                              ^
+/home/aheirich/Documents/SLAC/AMI2/crossmount/legion/runtime/runtime.mk:614: recipe for target 'toplevel.cc.o' failed
+make: *** [toplevel.cc.o] Error 1
