@@ -1,11 +1,14 @@
 import importlib
 import collections
 
+
 class GraphConfigError(Exception):
     pass
 
+
 class GraphRuntimeError(Exception):
     pass
+
 
 class Graph(object):
     def __init__(self, store, cfg=None):
@@ -25,14 +28,14 @@ class Graph(object):
         cfg = {"code": code}
         # make inputs into list if not
         if not isinstance(inputs, str) and isinstance(inputs, collections.Sequence):
-            cfg["inputs"]= inputs
+            cfg["inputs"] = inputs
         else:
-            cfg["inputs"]= [inputs]
+            cfg["inputs"] = [inputs]
         # make outputs into list if not
         if not isinstance(outputs, str) and isinstance(outputs, collections.Sequence):
-            cfg["outputs"]= outputs
+            cfg["outputs"] = outputs
         else:
-            cfg["outputs"]= [outputs]
+            cfg["outputs"] = [outputs]
         # add config if passed in - these are constants to be used executed code
         if config is not None:
             cfg["config"] = config
@@ -81,7 +84,7 @@ class Graph(object):
         """
 
         # this just makes sure there are no duplicate dependencies
-        d = dict( (k, set(dependencies[k])) for k in dependencies )
+        d = dict((k, set(dependencies[k])) for k in dependencies)
 
         # output list
         r = []
@@ -113,7 +116,8 @@ class Graph(object):
     def configure(self, sources):
         self.operations = []
         # loop over operations in the correct order
-        for op in Graph.resolve_dependencies(Graph.generate_tree(self.cfg)): # should we throw an error if there are dups in the cfg?
+        # should we throw an error if there are dups in the cfg?
+        for op in Graph.resolve_dependencies(Graph.generate_tree(self.cfg)):
             # this takes care of "base" data (e.g. given by the DAQ)
             if op in sources:
                 continue
@@ -124,11 +128,11 @@ class Graph(object):
                 if 'auto_put' in self.cfg[op]:
                     auto_put = self.cfg[op]['auto_put']
                 if auto_put:
-                    store_put_list = ['store.put("%s", %s)'%(output, output) for output, _ in self.cfg[op]['outputs']]
+                    store_put_list = ['store.put("%s", %s)' % (output, output) for output, _ in self.cfg[op]['outputs']]
                     store_put = '\n' + '; '.join(store_put_list)
 
                 # generate the global namespace for the execution of the graph operation
-                glb = {} #{"np" : np} # TODO be smarter :)
+                glb = {}  # {"np" : np} # TODO be smarter :)
                 loc = {}
                 if 'imports' in self.cfg[op]:
                     for import_info in self.cfg[op]['imports']:
@@ -145,7 +149,7 @@ class Graph(object):
 
                 self.operations.append((op, compile(self.cfg[op]['code'] + store_put, '<string>', 'exec'), glb, loc))
             except Exception as exp:
-                raise GraphConfigError("exception encounterd adding operation %s to the graph: %s"%(op, exp))
+                raise GraphConfigError("exception encounterd adding operation %s to the graph: %s" % (op, exp))
         self.sources = sources
 
     def revert(self):
@@ -157,7 +161,7 @@ class Graph(object):
             # check if all inputs have new data
             ready = True
             for inp in self.cfg[op]['inputs']:
-                if not self.store.is_ready(inp): # and required? do we still want that
+                if not self.store.is_ready(inp):  # and required? do we still want that
                     ready = False
             try:
                 if ready:
@@ -167,7 +171,7 @@ class Graph(object):
                     # exec compiled code
                     exec(code, glb, loc)
             except Exception as exp:
-                raise GraphRuntimeError("exception encounterd running operation %s on the graph: %s"%(op, exp))
+                raise GraphRuntimeError("exception encounterd running operation %s on the graph: %s" % (op, exp))
 
     def update(self, new_cfg):
         self.cfg_old = self.cfg
