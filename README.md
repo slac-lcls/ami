@@ -146,7 +146,7 @@ evaluating arbitrary math expressions
              
 backend
 -------
-* where should we do e.g. stripchart caching?
+* where should we do e.g. stripchart caching????
 * DOCSTRINGS
 * integration with EPICS
 * should we use MPI? NO
