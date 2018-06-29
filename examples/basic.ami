@@ -20,7 +20,7 @@
         "setup": "counter=0;sum2=None",
         "auto_put": false,
         "outputs": [
-            ["sum2", "Average"]
+            ["sum2", "Average:2"]
         ],
         "imports": [
             [

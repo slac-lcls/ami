@@ -8,7 +8,7 @@ import tempfile
 import argparse
 import multiprocessing as mp
 from ami.graph import Graph, GraphConfigError, GraphRuntimeError
-from ami.comm import Ports, Collector, ResultStore, EventBuilder
+from ami.comm import Ports, Collector, ResultStore, EventBuilder, PickNBuilder
 from ami.data import MsgTypes, Transitions, Transition, StaticSource, Strategies
 
 
@@ -110,7 +110,10 @@ class NodeCollector(Collector):
         self.num_workers = num_workers
         self.store = EventBuilder(
             self.num_workers, 10, downstream_addr, self.ctx)
+        self.pickers = {}
         self.strategies = {}
+
+        self.downstream_addr = downstream_addr
 
     def process_msg(self, msg):
         if msg.mtype == MsgTypes.Transition:
@@ -143,6 +146,10 @@ class NodeCollector(Collector):
                         msg.identity,
                         msg.payload.name,
                         msg.payload.data)
+                elif self.strategies[msg.payload.name] == "Average:2":
+                    if msg.payload.name not in self.pickers:
+                        self.pickers[msg.payload.name] = PickNBuilder(self.num_workers, self.downstream_addr, self.ctx)
+                    self.pickers[msg.payload.name].put(msg.payload)
                 else:
                     print("node_collector%d: Unknown collector strategy - %s" %
                           (self.node, self.strategies[msg.payload.name]))

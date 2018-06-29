@@ -120,6 +120,24 @@ class ResultStore(Store, ZmqHandler):
         self.send(Message(MsgTypes.Heartbeat, identity, heartbeat))
 
 
+class PickNBuilder(ZmqHandler):
+    def __init__(self, num_contribs, addr, ctx=None):
+        super(__class__, self).__init__(addr, ctx)
+        self.num_contribs = num_contribs
+        self.count = 0
+        self.dgram = None
+
+    def put(self, dgram):
+        if self.dgram is None:
+            self.dgram = dgram
+        else:
+            self.dgram.data += dgram.data
+        self.count += 1
+        if self.count == self.num_contribs:
+            self.send(Message(MsgTypes.Datagram, 0, self.dgram))
+            self.count = 0
+
+
 class EventBuilder(ZmqHandler):
 
     def __init__(self, num_contribs, depth, addr, ctx=None):
