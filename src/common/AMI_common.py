@@ -16,7 +16,7 @@ class Graph(object):
   
   def __init__(self, name):
     self.name = name
-    self.elements = []
+    self.exports = []
   
   def serialize(self):
     filename = "controlStore_" + self.__class__.__name__ + ".dat"
@@ -28,9 +28,9 @@ class Graph(object):
     print(filename)
     return pickle.load(open(filename, "rb"))
   
-  def add(self, element):
-    self.elements.append(element)
-  
+  def export(self, element):
+    self.exports.append(element)
+    
   def broadcast(self):
     self.serialize()
 

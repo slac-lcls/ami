@@ -10,6 +10,11 @@ Implement file and live data sources, basic worker and reducers, storage, and a 
 Test data flow using canned data from a file data source.
 Test throughput and scaling using a live data source.
 
+### "pick-N" and display intervals
+
+Using artifical data and a file data source verify correctness of the pick-N pattern and reduction by display intervals.
+Artifical data should recreate  realistic conditions like missing xtc fields.
+
 
 ### Multiple client graph modification
 

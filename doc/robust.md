@@ -5,6 +5,11 @@ The system is robust to failures in components or cluster nodes, and recovers au
 All component behavior is based on state.
 Components write volatile state to the control store whenever it changes.
 This must be done atomically before acting on the state change.
+"Atomic" means the change has to propagate throughout the store.
+
+#### issue
+How can we ensure that atomic writes propagate everywhere without making the writer process wait for confirmation?
+In the event of a crash if the writes have not propagated then restart will be incorrect.
 
 Assume the stores are resilient and always available.
 When a component starts up it checks the control store to see if it previously crashed.
@@ -22,6 +27,6 @@ On worker nodes this means data sources, workers, and local reducers.
 On client nodes this means client processes.
 And other nodes support the graph manager.
 
-Robustness Monitors also monitor each other.
+Robustness Monitors also monitor each other, connected into a ring with each process monitoring its neighbor to the right.
 They can restart each other across nodes using ssh.
 This cross-checking ensures that the components will not go down except in the case of a catastrophic system failure.

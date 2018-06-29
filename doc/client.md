@@ -1,5 +1,5 @@
 # Clients
-Client processes interact identically with the Legion and Generic Designs.
+Client processes interact identically with the Redis and Legion Designs.
 
 ## GUI client
 
@@ -10,7 +10,8 @@ Scripted testing using Qt/Script.
 
 ## Web Browser Client
 Using JavaScript visualization D3.js, [lexicon](lexicon.md).
-Using skulpt in-browser python environment.
+Browser clients will connect to a web server using https and JSON.
+The web server will support Epics and will talk to the backend.
 
 ## Device client
 

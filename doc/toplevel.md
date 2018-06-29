@@ -3,11 +3,8 @@
 AMI2 is a distributed visualization system for use with LCLS-II Free Electron Laser.
 It is a rewrite of the previous AMI package.
 
-There are two designs:
-a [Legion based design](legion_design.md)
-and a [Redis based design](redis_design.md).
-The reason for two designs is that Legion is currently an experimental open source programming platform without
-a guarantee of long term support.
+The first implementation will be a  [Redis based design](redis_design.md).
+After this we will consider a [Legion based design](legion_design.md)
 The Redis design will incorporate existing stable open source software packages where appropriate.
 The designs differ only in the back-end data processing pipeline.
 [Clients](client.md) interact with the rest of the system through communication protocols and

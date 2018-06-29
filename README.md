@@ -5,6 +5,9 @@ The LCLS-II online graphical analysis monitoring package.
 
 ## Running
 
+## User documebntation
+User documentation is available [her](doc/userdoc.md)
+
 ## Design Documentation
 Design documentation is available [here](doc/toplevel.md)
 
