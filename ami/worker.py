@@ -146,7 +146,7 @@ class NodeCollector(Collector):
                         msg.identity,
                         msg.payload.name,
                         msg.payload.data)
-                elif self.strategies[msg.payload.name] == "Average:2":
+                elif self.strategies[msg.payload.name] == "AverageN":
                     if msg.payload.name not in self.pickers:
                         self.pickers[msg.payload.name] = PickNBuilder(self.num_workers, self.downstream_addr, self.ctx)
                     self.pickers[msg.payload.name].put(msg.payload)
