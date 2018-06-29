@@ -42,7 +42,15 @@ def main():
         '--port',
         type=int,
         default=Ports.Comm,
-        help='starting port when using tcp for communication (default: %d)'%Ports.Comm
+        help='starting port when using tcp for communication (default: %d)' % Ports.Comm
+    )
+
+    parser.add_argument(
+        '-b',
+        '--heartbeat',
+        type=int,
+        default=10,
+        help='the heartbeat period (default: 10)'
     )
 
     parser.add_argument(
@@ -55,16 +63,16 @@ def main():
     ipcdir = None
     if args.tcp:
         host = "127.0.0.1"
-        collector_addr = "tcp://%s:%d"%(host, args.port)
-        finalcol_addr = "tcp://%s:%d"%(host, args.port+1)
-        graph_addr = "tcp://%s:%d"%(host, args.port+2)
-        comm_addr = "tcp://%s:%d"%(host, args.port+3)
+        collector_addr = "tcp://%s:%d" % (host, args.port)
+        finalcol_addr = "tcp://%s:%d" % (host, args.port+1)
+        graph_addr = "tcp://%s:%d" % (host, args.port+2)
+        comm_addr = "tcp://%s:%d" % (host, args.port+3)
     else:
         ipcdir = tempfile.mkdtemp()
-        collector_addr = "ipc://%s/node_collector"%ipcdir
-        finalcol_addr = "ipc://%s/collector"%ipcdir
-        graph_addr = "ipc://%s/graph"%ipcdir
-        comm_addr = "ipc://%s/comm"%ipcdir
+        collector_addr = "ipc://%s/node_collector" % ipcdir
+        finalcol_addr = "ipc://%s/collector" % ipcdir
+        graph_addr = "ipc://%s/graph" % ipcdir
+        comm_addr = "ipc://%s/comm" % ipcdir
 
     procs = []
     failed_proc = False
@@ -79,9 +87,9 @@ def main():
 
         for i in range(args.num_workers):
             proc = mp.Process(
-                name='worker%03d-n0'%i,
+                name='worker%03d-n0' % i,
                 target=run_worker,
-                args=(i, src_cfg, collector_addr, graph_addr)
+                args=(i, args.num_workers, args.heartbeat, src_cfg, collector_addr, graph_addr)
             )
             proc.daemon = True
             proc.start()
@@ -118,17 +126,16 @@ def main():
             proc.terminate()
             proc.join()
             if proc.exitcode == 0 or proc.exitcode == -signal.SIGTERM:
-                print('%s exited successfully'%proc.name)
+                print('%s exited successfully' % proc.name)
             else:
                 failed_proc = True
-                print('%s exited with non-zero status code: %d'%(proc.name, proc.exitcode))
+                print('%s exited with non-zero status code: %d' % (proc.name, proc.exitcode))
 
         # return a non-zero status code if any workerss died
         if client_proc.exitcode != 0:
             return client_proc.exitcode
         elif failed_proc:
             return 1
-
 
     except KeyboardInterrupt:
         print("Worker killed by user...")

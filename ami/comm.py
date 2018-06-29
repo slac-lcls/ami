@@ -1,8 +1,5 @@
-
-import sys
 import abc
 import zmq
-import threading
 from enum import IntEnum
 
 from ami.data import MsgTypes, Message, CollectorMessage, DataTypes, Datagram
@@ -25,7 +22,7 @@ class Store(object):
 
     def create(self, name, datatype=DataTypes.Unset):
         if name in self._store:
-            raise ValueError("result named %s already exists in ResultStore"%name)
+            raise ValueError("result named %s already exists in ResultStore" % name)
         else:
             self._store[name] = Datagram(name, datatype)
             self._updated[name] = False
@@ -52,7 +49,7 @@ class Store(object):
                 self._store[name].weight = weight
             else:
                 raise TypeError("type of new result (%s) differs from existing"
-                                " (%s)"%(datatype, self._store[name].dtype))
+                                " (%s)" % (datatype, self._store[name].dtype))
         else:
             self._store[name] = Datagram(name, datatype, data, weight)
 
@@ -67,7 +64,7 @@ class Store(object):
                 self._store[name].weight += weight
             else:
                 raise TypeError("type of new result (%s) differs from existing"
-                                " (%s)"%(datatype, self._store[name].dtype))
+                                " (%s)" % (datatype, self._store[name].dtype))
         else:
             self.put(name, data, weight)
 
@@ -123,6 +120,24 @@ class ResultStore(Store, ZmqHandler):
         self.send(Message(MsgTypes.Heartbeat, identity, heartbeat))
 
 
+class PickNBuilder(ZmqHandler):
+    def __init__(self, num_contribs, addr, ctx=None):
+        super(__class__, self).__init__(addr, ctx)
+        self.num_contribs = num_contribs
+        self.count = 0
+        self.dgram = None
+
+    def put(self, dgram):
+        if self.dgram is None:
+            self.dgram = dgram
+        else:
+            self.dgram.data += dgram.data
+        self.count += 1
+        if self.count == self.num_contribs:
+            self.send(Message(MsgTypes.Datagram, 0, self.dgram))
+            self.count = 0
+
+
 class EventBuilder(ZmqHandler):
 
     def __init__(self, num_contribs, depth, addr, ctx=None):
@@ -159,12 +174,12 @@ class EventBuilder(ZmqHandler):
     def transition(self, eb_id, eb_key):
         if eb_key not in self.transitions:
             self.transitions[eb_key] = 0
-        self.transitions[eb_key] |= (1<<eb_id)
+        self.transitions[eb_key] |= (1 << eb_id)
 
     def heartbeat(self, eb_id, eb_key):
         if eb_key not in self.contribs:
             self.contribs[eb_key] = 0
-        self.contribs[eb_key] |= (1<<eb_id)
+        self.contribs[eb_key] |= (1 << eb_id)
 
     def get(self, eb_key, name):
         return self.pending[eb_key].get(name)
@@ -172,12 +187,12 @@ class EventBuilder(ZmqHandler):
     def transition_ready(self, eb_key):
         if eb_key not in self.transitions:
             return False
-        return ((1<<self.num_contribs) - 1) == self.transitions[eb_key]
+        return ((1 << self.num_contribs) - 1) == self.transitions[eb_key]
 
     def heartbeat_ready(self, eb_key):
         if eb_key not in self.contribs:
             return False
-        return ((1<<self.num_contribs) - 1) == self.contribs[eb_key]
+        return ((1 << self.num_contribs) - 1) == self.contribs[eb_key]
 
 
 class Collector(abc.ABC):

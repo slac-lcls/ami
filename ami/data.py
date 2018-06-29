@@ -9,6 +9,7 @@ class MsgTypes(Enum):
     Datagram = 2
     Graph = 3
 
+
 class DataTypes(Enum):
     Unknown = -1
     Unset = 0
@@ -28,10 +29,12 @@ class DataTypes(Enum):
         else:
             return DataTypes.Scalar
 
+
 class Strategies(Enum):
     Sum = "Sum"
     Avg = "Average"
-    Pick1  = "Pick1"
+    Pick1 = "Pick1"
+
 
 class Transitions(Enum):
     Allocate = 0
@@ -39,13 +42,15 @@ class Transitions(Enum):
     Enable = 2
     Disable = 3
 
+
 class Transition(object):
     def __init__(self, ttype, payload):
         self.ttype = ttype
         self.payload = payload
 
     def __str__(self):
-        return "Transition:\n type: %s\n data: %s"%(self.ttype, self.payload)
+        return "Transition:\n type: %s\n data: %s" % (self.ttype, self.payload)
+
 
 class Datagram(object):
     def __init__(self, name, dtype, data=None, weight=0):
@@ -55,7 +60,8 @@ class Datagram(object):
         self.weight = weight
 
     def __str__(self):
-        return "Datagram:\n dtype: %s\n data: %s"%(self.dtype, self.data)
+        return "Datagram:\n dtype: %s\n data: %s" % (self.dtype, self.data)
+
 
 class Message(object):
     def __init__(self, mtype, identity, payload):
@@ -63,45 +69,51 @@ class Message(object):
         self.identity = identity
         self.payload = payload
 
+
 class CollectorMessage(Message):
     def __init__(self, mtype, identity, heartbeat, payload):
         super(__class__, self).__init__(mtype, identity, payload)
         self.heartbeat = heartbeat
 
+
 class StaticSource(object):
-    def __init__(self, idnum, interval, init_time, heartbeat, config):
+    def __init__(self, idnum, num_workers, interval, init_time, config):
         np.random.seed([idnum])
         self.idnum = idnum
+        self.num_workers = num_workers
         self.interval = interval
-        self.heartbeat = heartbeat
         self.init_time = init_time
         self.config = config
 
     def partition(self):
-        return [ (key, getattr(DataTypes, value['dtype'])) for key, value in self.config.items() ]
+        return [(key, getattr(DataTypes, value['dtype'])) for key, value in self.config.items()]
 
     def events(self):
         count = 0
-        hb_count = 0
-        emit_hb = False
         time.sleep(self.init_time)
         while True:
-            if emit_hb:
-                emit_hb = False
-                msg = Message(MsgTypes.Heartbeat, self.idnum, hb_count)
-                hb_count += 1
-                yield msg
-            else:
-                event = []
-                for name, config in self.config.items():
-                    if config['dtype'] == 'Scalar':
-                        event.append(Datagram(name, getattr(DataTypes, config['dtype']), config['range'][0] + (config['range'][1] - config['range'][0]) * np.random.rand(1)[0]))
-                    elif config['dtype'] == 'Waveform' or config['dtype'] == 'Image':
-                        event.append(Datagram(name, getattr(DataTypes, config['dtype']), np.random.normal(config['pedestal'], config['width'], config['shape'])))
-                    else:
-                        print("DataSrc: %s has unknown type %s", name, config['dtype'])
-                count += 1
-                emit_hb = (count % self.heartbeat == 0)
-                yield Message(MsgTypes.Datagram, self.idnum, event)
+            event = []
+            for name, config in self.config.items():
+                if config['dtype'] == 'Scalar':
+                    event.append(
+                        Datagram(
+                            name,
+                            getattr(DataTypes, config['dtype']),
+                            config['range'][0] + (config['range'][1] - config['range'][0]) * np.random.rand(1)[0]
+                        )
+                    )
+                elif config['dtype'] == 'Waveform' or config['dtype'] == 'Image':
+                    event.append(
+                        Datagram(
+                            name,
+                            getattr(DataTypes, config['dtype']),
+                            np.random.normal(config['pedestal'], config['width'], config['shape'])
+                        )
+                    )
+                else:
+                    print("DataSrc: %s has unknown type %s", name, config['dtype'])
+            count += 1
+            msg = Message(MsgTypes.Datagram, self.idnum, event)
+            msg.timestamp = self.num_workers * count + self.idnum
+            yield msg
             time.sleep(self.interval)
-        

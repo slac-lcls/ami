@@ -10,7 +10,7 @@ class Manager(Collector):
     """
     An AMI graph Manager is the control point for an
     active "tree" of workers. It is the final collection
-    point for all results, broadcasts those results to 
+    point for all results, broadcasts those results to
     clients (e.g. plots/GUIs), and handles requests for
     configuration changes to the graph.
     """
@@ -49,7 +49,8 @@ class Manager(Collector):
                 self.comm.send_string('ok', zmq.SNDMORE)
                 feature_data = self.feature_store[matched.group('name')]
                 if feature_data.weight:
-                    self.comm.send_pyobj(feature_data.data/feature_data.weight)
+                    self.comm.send_pyobj(
+                        feature_data.data / feature_data.weight)
                 else:
                     self.comm.send_pyobj(feature_data.data)
             else:
@@ -88,12 +89,13 @@ class Manager(Collector):
                 # about double collectors, instead of going directly
                 # to the workers
                 splitrequest = request.split(':')
-                self.graph_comm.send_pyobj([splitrequest[1],int(splitrequest[2])])
+                self.graph_comm.send_pyobj(
+                    [splitrequest[1], int(splitrequest[2])])
             else:
                 self.comm.send_string('error')
 
     def recv_graph(self):
-        return self.comm.recv_pyobj() # zmq for now, could be EPICS in future?
+        return self.comm.recv_pyobj()  # zmq for now, could be EPICS in future?
 
     def apply_graph(self):
         print("manager: sending requested graph...")
@@ -127,7 +129,7 @@ def main():
         '--port',
         type=int,
         default=Ports.Comm,
-        help='port for GUI-Manager communication (default: %d)'%Ports.Comm
+        help='port for GUI-Manager communication (default: %d)' % Ports.Comm
     )
 
     parser.add_argument(
@@ -135,7 +137,7 @@ def main():
         '--graph',
         type=int,
         default=Ports.Graph,
-        help='port for graph communication (default: %d)'%Ports.Graph
+        help='port for graph communication (default: %d)' % Ports.Graph
     )
 
     parser.add_argument(
@@ -143,14 +145,14 @@ def main():
         '--collector',
         type=int,
         default=Ports.Collector,
-        help='port for final collector (default: %d)'%Ports.Collector
+        help='port for final collector (default: %d)' % Ports.Collector
     )
 
     args = parser.parse_args()
 
-    collector_addr = "tcp://%s:%d"%(args.host, args.collector)
-    graph_addr = "tcp://%s:%d"%(args.host, args.graph)
-    comm_addr = "tcp://%s:%d"%(args.host, args.port)
+    collector_addr = "tcp://%s:%d" % (args.host, args.collector)
+    graph_addr = "tcp://%s:%d" % (args.host, args.graph)
+    comm_addr = "tcp://%s:%d" % (args.host, args.port)
 
     try:
         return run_manager(collector_addr, graph_addr, comm_addr)

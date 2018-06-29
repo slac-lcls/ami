@@ -45,6 +45,17 @@ To load a graph, add this flag to ami-local:
 
 # Status/To-do
 
+6/28/18
+possible projects going forward:
+* cleanup setup.py
+* for pickN: worker should only sum-2 per HB, even if get 4 in a HB
+* integrate psana
+* HB-builder timeouts
+* graph-python management (big project)
+* use redis for collectors
+* pydm
+* p4p
+
 6/7/18
 * thoughts from alan:
   * eliminate hb in favor of timestamps?

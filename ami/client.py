@@ -1,14 +1,15 @@
 import re
 import zmq
 import sys
-import time
 import json
 import argparse
-import threading
 import numpy as np
 import multiprocessing as mp
 
-from PyQt5.QtWidgets import *
+from PyQt5.QtWidgets import QWidget, QHBoxLayout, QFileDialog, \
+                            QApplication, QMainWindow, QPushButton, \
+                            QLabel, QListWidgetItem, QLineEdit, \
+                            QVBoxLayout, QListWidget, QLCDNumber
 from PyQt5.QtCore import pyqtSlot, QTimer, QRect
 
 import pyqtgraph as pg
@@ -21,7 +22,7 @@ from ami.graph import Graph
 class CommunicationHandler(object):
 
     def __init__(self, addr):
-        self.ctx  = zmq.Context()
+        self.ctx = zmq.Context()
         self.addr = addr
         self.sock = self.ctx.socket(zmq.REQ)
         self.sock.connect(self.addr)
@@ -64,12 +65,12 @@ class ScalarWidget(QLCDNumber):
 
     @pyqtSlot()
     def get_scalar(self):
-        self.comm_handler.sock.send_string("feature:%s"%self.topic)
+        self.comm_handler.sock.send_string("feature:%s" % self.topic)
         reply = self.comm_handler.sock.recv_string()
         if reply == 'ok':
             self.scalar_updated(self.comm_handler.sock.recv_pyobj())
         else:
-            print("failed to fetch %s from manager!"%self.topic)
+            print("failed to fetch %s from manager!" % self.topic)
 
     def scalar_updated(self, data):
         self.display(data)
@@ -88,18 +89,19 @@ class WaveformWidget(pg.GraphicsLayoutWidget):
 
     @pyqtSlot()
     def get_waveform(self):
-        self.comm_handler.sock.send_string("feature:%s"%self.topic)
+        self.comm_handler.sock.send_string("feature:%s" % self.topic)
         reply = self.comm_handler.sock.recv_string()
         if reply == 'ok':
             self.waveform_updated(self.comm_handler.sock.recv_pyobj())
         else:
-            print("failed to fetch %s from manager!"%self.topic)
+            print("failed to fetch %s from manager!" % self.topic)
 
     def waveform_updated(self, data):
         if self.plot is None:
             self.plot = self.plot_view.plot(np.arange(data.size), data)
         else:
             self.plot.setData(y=data)
+
 
 class AreaDetWidget(pg.ImageView):
     def __init__(self, topic, addr, parent=None):
@@ -110,39 +112,42 @@ class AreaDetWidget(pg.ImageView):
         self.timer.timeout.connect(self.get_image)
         self.timer.start(1000)
         self.roi.sigRegionChangeFinished.connect(self.roi_updated)
-    
+
     @pyqtSlot()
     def get_image(self):
-        self.comm_handler.sock.send_string("feature:%s"%self.topic)
+        self.comm_handler.sock.send_string("feature:%s" % self.topic)
         reply = self.comm_handler.sock.recv_string()
         if reply == 'ok':
             self.image_updated(self.comm_handler.sock.recv_pyobj())
         else:
-            print("failed to fetch %s from manager!"%self.topic)
+            print("failed to fetch %s from manager!" % self.topic)
 
     def image_updated(self, data):
         self.setImage(data)
 
-    #@pyqtSlot(pg.ROI)
+    # @pyqtSlot(pg.ROI)
     def roi_updated(self, roi):
         graph = self.comm_handler.graph
-        shape, vector, origin = roi.getAffineSliceParams(self.image, self.getImageItem())
+        shape, vector, origin = roi.getAffineSliceParams(
+            self.image, self.getImageItem())
         config = {
             "shape": shape,
             "vector": vector,
             "origin": origin,
-            "axes": (0,1),
+            "axes": (0, 1),
         }
         roi = Graph.build_node(
-            "{0:s}_roi = pg.affineSlice({0:s}, config['shape'], config['origin'], config['vector'], config['axes'])".format(self.topic),
+            "{0:s}_roi = pg.affineSlice({0:s}, "
+            "config['shape'], config['origin'], "
+            "config['vector'], config['axes'])".format(self.topic),
             self.topic,
-            [("%s_roi"%self.topic, Strategies.Pick1)],
+            [("%s_roi" % self.topic, Strategies.Pick1)],
             config=config,
             imports=[('pyqtgraph', 'pg')],
         )
-        graph["%s_roi"%self.topic] = roi
+        graph["%s_roi" % self.topic] = roi
         self.comm_handler.update(graph)
-        
+
 
 class Calculator(QWidget):
     def __init__(self, comm, parent=None):
@@ -150,7 +155,7 @@ class Calculator(QWidget):
         self.setWindowTitle("Calculator")
         self.comm = comm
         self.move(280, 80)
-        self.resize(280,40)
+        self.resize(280, 40)
         self.field_parse = re.compile("\s+")
 
         self.nameLabel = QLabel('Name:', self)
@@ -184,7 +189,8 @@ class Calculator(QWidget):
 
     def parse_imports(self):
         if self.importsBox.text():
-            return [(imp, imp) for imp in self.field_parse.split(self.importsBox.text())]
+            return [(imp, imp)
+                    for imp in self.field_parse.split(self.importsBox.text())]
         else:
             return None
 
@@ -192,15 +198,16 @@ class Calculator(QWidget):
     def on_click(self):
         graph = self.comm.graph
         graph[self.nameBox.text()] = Graph.build_node(
-            "%s = %s"%(self.nameBox.text(), self.codeBox.text()),
+            "%s = %s" % (self.nameBox.text(), self.codeBox.text()),
             self.parse_inputs(),
             [(self.nameBox.text(), Strategies.Pick1)],
             imports=self.parse_imports()
         )
         self.comm.update(graph)
 
+
 class DetectorList(QListWidget):
-    
+
     def __init__(self, queue, comm_handler, parent=None):
         super(__class__, self).__init__(parent)
         self.queue = queue
@@ -241,8 +248,8 @@ class DetectorList(QListWidget):
             self._spawn_window('AreaDetector', item.text())
             print('create area detector window for:', item.text())
             # cpo/weninc test of "request" pattern for AMI
-            #self.comm_handler.sock.send_string("reqimages:%s:3"%item.text())
-            #reply = self.comm_handler.sock.recv_string()
+            # self.comm_handler.sock.send_string("reqimages:%s:3"%item.text())
+            # reply = self.comm_handler.sock.recv_string()
 
         elif self.features[item.text()] == DataTypes.Waveform:
             self._spawn_window('WaveformDetector', item.text())
@@ -296,26 +303,40 @@ class AmiGui(QWidget):
 
     @pyqtSlot()
     def load(self):
-        load_file = QFileDialog.getOpenFileName(self, "Open file", "", "AMI Autosave files (*.ami);;All Files (*)")
+        load_file = QFileDialog.getOpenFileName(
+            self, "Open file", "", "AMI Autosave files (*.ami);;All Files (*)")
         if load_file[0]:
             try:
                 with open(load_file[0], 'r') as cnf:
                     self.amilist.load(json.load(cnf))
             except OSError as os_exp:
-                print("ami-client: problem opening saved graph configuration file:", os_exp)
+                print(
+                    "ami-client: problem opening saved graph configuration file:",
+                    os_exp)
             except json.decoder.JSONDecodeError as json_exp:
-                print("ami-client: problem parsing saved graph configuration file (%s):"%load_file[0], json_exp)
+                print(
+                    "ami-client: problem parsing saved graph configuration file (%s):" %
+                    load_file[0], json_exp)
 
     @pyqtSlot()
     def save(self):
-        save_file = QFileDialog.getSaveFileName(self,"Save file", "autosave.ami", "AMI Autosave files (*.ami);;All Files (*)")
+        save_file = QFileDialog.getSaveFileName(
+            self, "Save file", "autosave.ami", "AMI Autosave files (*.ami);;All Files (*)")
         if save_file[0]:
-            print("ami-client: saving graph configuration to file (%s)"%save_file[0])
+            print(
+                "ami-client: saving graph configuration to file (%s)" %
+                save_file[0])
             try:
                 with open(save_file[0], 'w') as cnf:
-                    json.dump(self.comm_handler.graph, cnf, indent=4, sort_keys=True)
+                    json.dump(
+                        self.comm_handler.graph,
+                        cnf,
+                        indent=4,
+                        sort_keys=True)
             except OSError as os_exp:
-                print("ami-client: problem opening saved graph configuration file:", os_exp)
+                print(
+                    "ami-client: problem opening saved graph configuration file:",
+                    os_exp)
 
     @pyqtSlot()
     def reset(self):
@@ -344,7 +365,6 @@ def run_main_window(queue, addr, ami_save):
 
 def run_widget(queue, window_type, topic, addr):
 
-    ctx = zmq.Context()
     app = QApplication(sys.argv)
     win = QMainWindow()
 
@@ -374,15 +394,20 @@ def run_client(addr, load):
             with open(load, 'r') as cnf:
                 saved_cfg = json.load(cnf)
         except OSError as os_exp:
-            print("ami-client: problem opening saved graph configuration file:", os_exp)
+            print(
+                "ami-client: problem opening saved graph configuration file:",
+                os_exp)
             return 1
         except json.decoder.JSONDecodeError as json_exp:
-            print("ami-client: problem parsing saved graph configuration file (%s):"%load, json_exp)
+            print(
+                "ami-client: problem parsing saved graph configuration file (%s):" %
+                load, json_exp)
             return 1
 
-
     queue = mp.Queue()
-    list_proc = mp.Process(target=run_main_window, args=(queue, addr, saved_cfg))
+    list_proc = mp.Process(
+        target=run_main_window, args=(
+            queue, addr, saved_cfg))
     list_proc.start()
     widget_procs = []
 
@@ -390,9 +415,11 @@ def run_client(addr, load):
         window_type, topic = queue.get()
         if window_type == 'exit':
             print("received exit signal - exiting!")
-            break;
+            break
         print("opening new widget:", window_type, topic)
-        proc = mp.Process(target=run_widget, args=(queue, window_type, topic, addr))
+        proc = mp.Process(
+            target=run_widget, args=(
+                queue, window_type, topic, addr))
         proc.start()
         widget_procs.append(proc)
 
@@ -412,7 +439,7 @@ def main():
         '--port',
         type=int,
         default=Ports.Comm,
-        help='port for manager/client (GUI) communication (default: %d)'%Ports.Comm
+        help='port for manager/client (GUI) communication (default: %d)' % Ports.Comm
     )
 
     parser.add_argument(
@@ -422,7 +449,7 @@ def main():
     )
 
     args = parser.parse_args()
-    addr = "tcp://%s:%d"%(args.host, args.port)
+    addr = "tcp://%s:%d" % (args.host, args.port)
 
     try:
         return run_client(addr, args.load)

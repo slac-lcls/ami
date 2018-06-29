@@ -13,6 +13,7 @@ def get_version(pkg):
     version = m.group(1).strip('\'\"')
     return version
 
+
 setup(
     name='ami',
     version=get_version('ami'),
