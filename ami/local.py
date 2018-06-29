@@ -46,6 +46,14 @@ def main():
     )
 
     parser.add_argument(
+        '-b',
+        '--heartbeat',
+        type=int,
+        default=10,
+        help='the heartbeat period (default: 10)'
+    )
+
+    parser.add_argument(
         'source',
         metavar='SOURCE',
         help='data source configuration (exampes: static://test.json, psana://exp=xcsdaq13:run=14)'
@@ -81,7 +89,7 @@ def main():
             proc = mp.Process(
                 name='worker%03d-n0' % i,
                 target=run_worker,
-                args=(i, src_cfg, collector_addr, graph_addr)
+                args=(i, args.num_workers, args.heartbeat, src_cfg, collector_addr, graph_addr)
             )
             proc.daemon = True
             proc.start()

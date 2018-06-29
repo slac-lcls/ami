@@ -77,11 +77,11 @@ class CollectorMessage(Message):
 
 
 class StaticSource(object):
-    def __init__(self, idnum, interval, init_time, heartbeat, config):
+    def __init__(self, idnum, num_workers, interval, init_time, config):
         np.random.seed([idnum])
         self.idnum = idnum
+        self.num_workers = num_workers
         self.interval = interval
-        self.heartbeat = heartbeat
         self.init_time = init_time
         self.config = config
 
@@ -90,37 +90,30 @@ class StaticSource(object):
 
     def events(self):
         count = 0
-        hb_count = 0
-        emit_hb = False
         time.sleep(self.init_time)
         while True:
-            if emit_hb:
-                emit_hb = False
-                msg = Message(MsgTypes.Heartbeat, self.idnum, hb_count)
-                hb_count += 1
-                yield msg
-            else:
-                event = []
-                for name, config in self.config.items():
-                    if config['dtype'] == 'Scalar':
-                        event.append(
-                            Datagram(
-                                name,
-                                getattr(DataTypes, config['dtype']),
-                                config['range'][0] + (config['range'][1] - config['range'][0]) * np.random.rand(1)[0]
-                            )
+            event = []
+            for name, config in self.config.items():
+                if config['dtype'] == 'Scalar':
+                    event.append(
+                        Datagram(
+                            name,
+                            getattr(DataTypes, config['dtype']),
+                            config['range'][0] + (config['range'][1] - config['range'][0]) * np.random.rand(1)[0]
                         )
-                    elif config['dtype'] == 'Waveform' or config['dtype'] == 'Image':
-                        event.append(
-                            Datagram(
-                                name,
-                                getattr(DataTypes, config['dtype']),
-                                np.random.normal(config['pedestal'], config['width'], config['shape'])
-                            )
+                    )
+                elif config['dtype'] == 'Waveform' or config['dtype'] == 'Image':
+                    event.append(
+                        Datagram(
+                            name,
+                            getattr(DataTypes, config['dtype']),
+                            np.random.normal(config['pedestal'], config['width'], config['shape'])
                         )
-                    else:
-                        print("DataSrc: %s has unknown type %s", name, config['dtype'])
-                count += 1
-                emit_hb = (count % self.heartbeat == 0)
-                yield Message(MsgTypes.Datagram, self.idnum, event)
+                    )
+                else:
+                    print("DataSrc: %s has unknown type %s", name, config['dtype'])
+            count += 1
+            msg = Message(MsgTypes.Datagram, self.idnum, event)
+            msg.timestamp = self.num_workers * count + self.idnum
+            yield msg
             time.sleep(self.interval)
