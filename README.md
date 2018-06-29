@@ -44,6 +44,7 @@ To load a graph, add this flag to ami-local:
 
 6/28/18
 possible projects going forward:
+* cleanup setup.py
 * for pickN: worker should only sum-2 per HB, even if get 4 in a HB
 * integrate psana
 * HB-builder timeouts
