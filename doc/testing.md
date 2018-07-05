@@ -10,16 +10,18 @@ Implement file and live data sources, basic worker and reducers, storage, and a 
 Test data flow using canned data from a file data source.
 Test throughput and scaling using a live data source.
 
+### Multiple client graph modification
+
+Implement GraphManager and a multi-client test client.
+Test dynamically changing the ROI of a 2D data source.
+This client incorporates scripting and logging capability.
+
 ### "pick-N" and display intervals
 
 Using artifical data and a file data source verify correctness of the pick-N pattern and reduction by display intervals.
 Artifical data should recreate  realistic conditions like missing xtc fields.
+Test change-over between pick-M and display intervals multiple times, by sending graph modifications to the GraphManager.
 
-
-### Multiple client graph modification
-
-Implement GraphManager and a multi-client test client.
-This client incorporates scripting and logging capability.
 
 ### Fail over
 

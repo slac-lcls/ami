@@ -17,7 +17,7 @@ Please see Figure 1: system data flow.
 
 Frames of event data enter the system through a Data Source.
 At SLAC the SharedMemoryDataSource receives XTC events from the Data Acquisition system delivered by RDMA.
-A FileDataSource drives the system in offline mode.
+The Data Acquisition system can also drive the system in offline mode.
 The system can be extended with new data sources (e.g. xyzDataSource).
 
 A resilient distributed in-memory storage system (E.g. Redis, Legion) is used for the control and data planes.
