@@ -107,6 +107,9 @@ The Experimental Physics and Industrial Control System (EPICS) is a DOE labs pro
 The [Robustness Monitor](robust.md) monitors the state of the system and restarts failed component.
 
 
+### Common libraries
+[This page](libraries.md) describes some source libraries that are shared across components.
+
 ## Issues
 
 ### configuration changes
