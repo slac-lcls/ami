@@ -21,7 +21,7 @@ The Data Acquisition system can also drive the system in offline mode.
 The system can be extended with new data sources (e.g. xyzDataSource).
 
 A resilient distributed in-memory storage system (E.g. Redis, Legion) is used for the control and data planes.
-Event data resides in a local store within a node.
+Intermediate computational results reside in a local store.
 Computational results and control signals reside in global stores.
 Component heartbeats are monitored and failed components are automatically restarted.
 Every component stores its volatile state in the resilient stores so it can reload that state when it restarts.
