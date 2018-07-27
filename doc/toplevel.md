@@ -12,6 +12,8 @@ are oblivious to the difference between the two backends.
 
 [Testing](testing.md) is described here.
 
+[Project management](project_management.md) is described here.
+
 ## Data flow
 Please see Figure 1: system data flow.
 
