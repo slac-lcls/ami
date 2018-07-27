@@ -1,5 +1,6 @@
 build
 install
+.pytest_cache/
 *.pyc
 *.egg-info/
 *~

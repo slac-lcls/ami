@@ -45,6 +45,12 @@ To load a graph, add this flag to ami-local:
 
 # Status/To-do
 
+7/27/18
+* get more familiar with REDIS (local, global, control)
+* read real XTC
+* look at flink
+* writeup complex XPP example with normalized background with definable time-window
+
 6/28/18
 possible projects going forward:
 * cleanup setup.py
