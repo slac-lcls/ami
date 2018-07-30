@@ -22,3 +22,7 @@ def displayResult():
 
 def submitGraphToManager(graph):
   graph.serialize()
+
+
+def Result(name):
+  return { 'meanIntensity' : 1 }

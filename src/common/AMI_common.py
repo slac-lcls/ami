@@ -11,28 +11,48 @@ import math
 ### graphs
 ###
 
+def printGraph(graph):
+  for node in graph._nodes:
+    arguments = node._arguments()
+    args = ''
+    if '_args' in dir(node): args = node._args
+    print node._name, '\t', node, '\t', arguments, args
+    for argument in arguments:
+      print '\t\t', argument, '\t', eval('node.' + argument)
+
 
 class Graph(object):
   
   def __init__(self, name):
-    self.name = name
-    self.exports = []
+    self._name = name
+    self._nodes = []
   
   def serialize(self):
     filename = "controlStore_" + self.__class__.__name__ + ".dat"
-    print(filename)
+    print('writing to', filename)
     pickle.dump(self, open(filename, "wb"))
   
   def deserialize(self):
     filename = "controlStore_" + self.__class__.__name__ + ".dat"
-    print(filename)
+    print('reading from', filename)
     return pickle.load(open(filename, "rb"))
   
   def export(self, element):
-    self.exports.append(element)
-    
+    self._nodes.append(element)
+  
+  def import_(self, name):
+    result = Import(name)
+    self._nodes.append(result)
+    return result
+  
   def broadcast(self):
     self.serialize()
+
+  def iff(self, lambdaExpression, *args, **kwargs):
+    self._nodes.append(If(lambdaExpression, *args, **kwargs))
+
+  def endif(self, *args, **kwargs):
+    self._nodes.append(Endif(*args, **kwargs))
 
 
 
@@ -47,71 +67,76 @@ class Graph(object):
 class GraphElement(object):
   
   def __init__(self, *args, **kwargs):
-    self.name = args[0]
-    self.dimensions = []
+    self._name = args[0]
+    print 'GraphElement name =', self._name
+    self._dimensions = []
     #
-    self.ROI = []
-    self.filter = None
-    self.mean = False
-    self.sum = False
-    self.standardDeviation = False
-    self.channel = None
+    self._ROI = []
+    self._filter = None
+    self._mean = False
+    self._sum = False
+    self._standardDeviation = False
+    self._channel = None
     #
     if kwargs is not None:
       for key, value in kwargs.iteritems():
-        eval('self.' + key + ' = ' + value)
-    self.data = self.allocateData()
+        exec('self._' + str(key) + ' = ' + str(value))
+    self._data = self._allocateData()
+        
+  def _arguments(self):
+    result = []
+    for arg in dir(self):
+      if arg[0] != '_': result.append(arg)
+    return result
 
-  def allocateData(self):
-    return numpy.zeros(self.shape())
+  def _allocateData(self):
+    return numpy.zeros(self._shape())
   
-  def getData(self):
+  def _getData(self):
     pass#TODO
   
-  def defaultROI(self):
+  def _defaultROI(self):
     return [0]
   
-  def shape(self):
-    return (1)
+  def _shape(self):
+    return [1]
 
-  def setROI(self, roi):
-    self.ROI.append(roi)
+  def _setROI(self, roi):
+    self._ROI.append(roi)
+    return self
 
-  def setFilter(self, filter):
-    self.filter = filter
+  def _setFilter(self, filter):
+    self._filter = filter
 
-  def setMean(self):
-    self.mean = True
+  def _setMean(self):
+    self._mean = True
 
-  def setSum(self):
-    self.sum = True
+  def _setSum(self):
+    self._sum = True
 
-  def setStandardDeviation(self):
-    self.standardDeviation = True
-    self.sumSquaredDifferences = self.allocateData()
-# standard deviation is sqrt( sumSquaredDifferences / (count-1) )
+  def _setStandardDeviation(self):
+    self._standardDeviation = True
+    self._sumSquaredDifferences = self._allocateData()
 
-  def setChannel(self, channel):
-    self.channel = channel
+  def _setChannel(self, channel):
+    self._channel = channel
 
-  def initializeComputation(self):
-    self.allocateData()
+  def _resultName(self, prefix, roiIndex):
+    return self._name + '.' + prefix + '.a' + str(roiIndex)
   
-  def resultName(self, prefix, roiIndex):
-    return self.name + '.' + prefix + '.' + str(roiIndex)
-  
-  def sumInROI(self, roi, data):
-    sum = self.allocateData()
-    if len(roi) > 1:
-      for i in range(roi[0], roi[2] + 1):
-        for j in range(roi[1], roi[3] + 1):
-          sum = sum + data[i][j]
+  def _sumInROI(self, roi, data):
+    sum = self._allocateData()
+    if len(roi) == 2:
+      sum = numpy.cumsum(self._data[int(roi[0]) : int(roi[1])])
+      return sum
+    if len(roi) == 4:
+      sum = numpy.cumsum(self._data[int(roi[0]) : int(roi[1]), int(roi[2]) : int(roi[3])])
       return sum
     else:
       return data
 
-  def standardDeviationInROI(self, roi, data, mean, numPoints):
-    sumSquaredDifferences = self.allocateData()
+  def _standardDeviationInROI(self, roi, data, mean, numPoints):
+    sumSquaredDifferences = self._allocateData()
     for i in range(roi[0], roi[2]):
       for j in range(roi[1], roi[3]):
         difference = data[i][j] - mean
@@ -119,97 +144,166 @@ class GraphElement(object):
     return math.sqrt(sumSquaredDifferences / (numPoints - 1))
 
 
-# TODO execute user specified worker computation here? do we need it?
-  def computation(self, data, roi, roiIndex):
+  def _doMap(self, data, roi, roiIndex):
     result = {}
-    if self.sum or self.mean or self.standardDeviation:
-      sum = self.sumInROI(roi, data)
-      if self.sum:
-        result[self.resultName('sum', roiIndex)] = sum
+    if self._sum or self._mean or self._standardDeviation:
+      sum = self._sumInROI(roi, data)
+      if self._sum:
+        result[self._resultName('sum', roiIndex)] = sum
       numPoints = 1
-      if len(roi) > 1:
+      if len(roi) == 2:
+        numPoints = roi[1] - roi[0] + 1
+        mean = sum / numPoints
+      if len(roi) == 4:
         numPoints = ((roi[2] - roi[0] + 1) * (roi[3] - roi[1] + 1))
         mean = sum / numPoints
       else:
         mean = sum
-      if self.mean:
-        result[self.resultName('mean', roiIndex)] = mean
-      if self.standardDeviation:
-        result[self.resultName('standardDeviation', roiIndex)] = self.standardDeviationInROI(roi, data, mean, numPoints)
+      if self._mean:
+        result[self._resultName('mean', roiIndex)] = mean
+      if self._standardDeviation:
+        result[self._resultName('standardDeviation', roiIndex)] = self._standardDeviationInROI(roi, data, mean, numPoints)
     else:
-      result = { self.name : data }
+      result = { self._name : data }
     return result
 
 
-  def executeComputation(self, telemetryFrame):
-    data = telemetryFrame[self.name]
-    if self.filter is not None:
-      if self.filter(data) is False:
+  def _map(self, telemetryFrame):
+    data = telemetryFrame[self._name]
+    if self._filter is not None:
+      if self._filter(data) is False:
         return {}
     result = {}
     index = 0
-    for roi in self.ROI:
-      result.update(self.computation(data, roi, index))
+    for roi in self._ROI:
+      result.update(self._doMap(data, roi, index))
       index = index + 1
-    if len(self.ROI) > 0:
+    if len(self._ROI) > 0:
       return result
-    return self.computation(data, self.defaultROI(), 0)
+    return self._doMap(data, self._defaultROI(), 0)
 
     
+  def _initializeMap(self):
+    self._data = self._allocateData()
 
-  def finalizeComputation(self):
+  def _terminateMap(self):
+    pass
+
+  def _reduce(self):
+    pass # tbd
+
+
+
+class Endif(GraphElement):
+  
+  def __init__(self, *args, **kwargs):
+    super(Endif, self).__init__('endif', *args, **kwargs)
+    if args is not None: self._args = args
+    if kwargs is not None:
+      for key, value in kwargs.iteritems():
+        exec('self.' + str(key) + ' = ' + str(value))
+
+  def _initializeMap(self):
+    pass
+
+  def _map(self, telemetryFrame):
+    pass
+
+  def _terminateMap(self):
+    pass
+
+  def _reduce(self):
+    pass
+
+class If(GraphElement):
+  
+  def __init__(self, lambdaExpression, *args, **kwargs):
+    super(If, self).__init__('iff ' + lambdaExpression, *args, **kwargs)
+    self._lambdaExpression = lambdaExpression
+    if args is not None: self._args = args
+    if kwargs is not None:
+      for key, value in kwargs.iteritems():
+        exec('self.' + str(key) + ' = ' + str(value))
+
+  def _initializeMap(self):
+    print self._lambdaExpression, self._args
+
+  def _map(self, telemetryFrame):
+    pass
+  
+  def _terminateMap(self):
+    pass
+  
+  def _reduce(self):
     pass
 
 
+class Import(GraphElement):
+
+  def __init__(self, name, *args, **kwargs):
+    super(Import, self).__init__('import ' + name, *args, **kwargs)
+
+  def _get(self, name):
+    return None
+
+  def _initializeMap(self):
+    print self._name
+  
+  def _map(self, telemetryFrame):
+    pass
+  
+  def _terminateMap(self):
+    pass
+  
+  def _reduce(self):
+    pass
 
 
 class Tensor(GraphElement):
   
   def __init__(self, *args, **kwargs):
-    super(Tensor, self).__init__(args[0], kwargs)
+    super(Tensor, self).__init__(args[0], **kwargs)
 
 class Tensor0D(Tensor):
   
   def __init__(self, *args, **kwargs):
-    super(Tensor0D, self).__init__(args[0], kwargs)
+    super(Tensor0D, self).__init__(args[0], **kwargs)
 
 class Point(Tensor0D):
   
   def __init__(self, *args, **kwargs):
-    super(Point, self).__init__(args[0], kwargs)
+    super(Point, self).__init__(args[0], **kwargs)
 
 class Tensor1D(Tensor):
   
   def __init__(self, *args, **kwargs):
-    super(Tensor1D, self).__init__(args[0], kwargs)
+    super(Tensor1D, self).__init__(args[0], **kwargs)
 
-  def shape(self):
-    return (self.dimensions[0])
+  def _shape(self):
+    return self._dimensions[0]
 
 class Vector(Tensor1D):
   
   def __init__(self, *args, **kwargs):
-    super(Vector, self).__init__(args[0], kwargs)
+    super(Vector, self).__init__(args[0], **kwargs)
 
 class Tensor2D(Tensor):
   
   def __init__(self, *args, **kwargs):
-    super(Tensor2D, self).__init__(args[0], kwargs)
+    super(Tensor2D, self).__init__(args[0], **kwargs)
   
-  def shape(self):
-    return (self.dimensions[0], self.dimensions[1])
+  def _shape(self):
+    return self._dimensions
 
 class VectorField1D(Tensor1D):
   
   def __init__(self, *args, **kwargs):
-    super(VectorField1D, self).__init__(args[0], kwargs)
-    self.dataTypeIs(VectorDataPoint())
+    super(VectorField1D, self).__init__(args[0], **kwargs)
 
 class VectorField2D(Tensor2D):
   
   def __init__(self, *args, **kwargs):
-    super(VectorField2D, self).__init__(args[0], kwargs)
-    self.dataTypeIs(VectorDataPoint())
+    super(VectorField2D, self).__init__(args[0], **kwargs)
 
 
 ###
@@ -225,13 +319,13 @@ class Sensor(object):
 class Image(Tensor2D):
   
   def __init__(self, *args, **kwargs):
-    super(Image, self).__init__(args[0], kwargs)
+    super(Image, self).__init__(args[0], **kwargs)
 
 class CSPAD(Image, Sensor):
   
   def __init__(self, *args, **kwargs):
-    Image.__init__(self, args[0], kwargs)
-    Sensor.__init__(self, args[0], kwargs)
+    Image.__init__(self, args[0], **kwargs)
+    Sensor.__init__(self, args[0], **kwargs)
 
 
 
