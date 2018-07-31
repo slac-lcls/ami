@@ -10,10 +10,11 @@ import userDefined
 def simpleWorkerGraph():
   graph = AMI.Graph('simple_worker_graph')
   image = AMI.CSPAD('cspad0', dimensions = [ 1024, 1024 ]) # name of XTC field
-  shape = image.shape()
+  shape = image._shape()
   roi = [ shape[0] * .1, shape[1] * .1, shape[0] * .9, shape[1]* .9 ]
-  image.setROI(roi).setSum() # set an inset ROI with a sum
+  image._setROI(roi)._setSum() # set an inset ROI with a sum
   graph.export(image)
+  graph.export(AMI.Point('timestamp')) # export XTC field to the Result store
   return graph
 
 
@@ -55,7 +56,8 @@ def workerGraph():
 
 
 
-graph = workerGraph()
+#graph = workerGraph()
+graph = simpleWorkerGraph()
 AMI.submitGraphToManager(graph) # pickle the graph and send to GraphManager
 
 

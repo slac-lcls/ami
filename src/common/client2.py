@@ -13,11 +13,3 @@ def normalizedWeighted(x, normalize, weight):
 if(True):
   data = AMI.displayResult() # get the current frame of subscribed data
   print data
-  x = data['timestamp']
-  y = normalizedWeighted(data['field0.mean.a0'], data['normalizeField'], data['weightField'])
-  print x, y
-  userObject = data['userObject0']
-  userObject2 = data['userObject2']
-  print userObject, userObject2
-  image = data['cspad0.mean.a0']
-  print image
