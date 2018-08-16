@@ -1,23 +1,14 @@
-# proposal
-# - user clicks, selects function and inputs (from store and raw data)
-#   produces python code of function calls and if-statements with no
-#   indenting. code is exec'd by worker/collector.
-
-# worker code
-# import ...
-# tmp_dict = function1(input1, ...)
-# store.update(tmp_dict)
-# if (las_on) exec('first_if_file.py',store)
-# tmp_dict = function2(input2, ...)
-# store.update(tmp_dict)
-# send_to_redis(store)
+# user clicks, selects function and inputs (from store and raw data)
+# generates python code of function calls and if-statements with no
+# indenting.  generated python is exec'd by worker/collector.
+# functions return dicts that are added to the store.  namespacing in
+# the store is important: this example uses function/store names.
 
 # to do: example of "reduce"
 
 def user_click(exec_file,input,alg):
     exec_file.write('tmp='+alg+'("'+input+'",store)'+'\n')
     exec_file.write('store.update(tmp)'+'\n')
-
 
 def user_click_if(exec_file,condition,exec_file_if):
     fname = exec_file_if.name
