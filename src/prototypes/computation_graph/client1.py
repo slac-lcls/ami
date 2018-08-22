@@ -56,8 +56,8 @@ def workerGraph():
 
 
 
-#graph = workerGraph()
-graph = simpleWorkerGraph()
+graph = workerGraph()
+#graph = simpleWorkerGraph()
 AMI.submitGraphToManager(graph) # pickle the graph and send to GraphManager
 
 
