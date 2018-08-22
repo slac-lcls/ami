@@ -41,9 +41,16 @@ that when you want to run all parts of ami on a single node:
 ```ami-local -n 3 static://examples/worker.json```
 
 To load a graph, add this flag to ami-local:
-```-l examples/basic.ami``` 
+```-l examples/basic.ami```
+
+To use psana a working release need to be added to the python path
 
 # Status/To-do
+
+8/9/18
+* get more familiar with REDIS
+* add automatic detector name list with psana
+* settle on graph approach
 
 7/27/18
 * get more familiar with REDIS (local, global, control)

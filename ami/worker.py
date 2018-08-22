@@ -9,7 +9,7 @@ import argparse
 import multiprocessing as mp
 from ami.graph import Graph, GraphConfigError, GraphRuntimeError
 from ami.comm import Ports, Collector, ResultStore, EventBuilder, PickNBuilder
-from ami.data import MsgTypes, Transitions, Transition, StaticSource, Strategies
+from ami.data import MsgTypes, Transitions, Transition, StaticSource, PsanaSource, Strategies
 
 
 class Worker(object):
@@ -184,6 +184,24 @@ def run_worker(num, num_workers, hb_period, source, collector_addr, graph_addr):
             return 1
 
         src = StaticSource(num,
+                           num_workers,
+                           src_cfg['interval'],
+                           src_cfg["init_time"],
+                           src_cfg['config'])
+    elif source[0] == 'psana':
+        try:
+            with open(source[1], 'r') as cnf:
+                src_cfg = json.load(cnf)
+        except OSError as os_exp:
+            print("worker%03d: problem opening json file:" % num, os_exp)
+            return 1
+        except json.decoder.JSONDecodeError as json_exp:
+            print(
+                "worker%03d: problem parsing json file (%s):" %
+                (num, source[1]), json_exp)
+            return 1
+
+        src = PsanaSource(num,
                            num_workers,
                            src_cfg['interval'],
                            src_cfg["init_time"],

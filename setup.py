@@ -27,7 +27,6 @@ setup(
     install_requires=[
         'pyzmq',
         'numpy',
-        'ipython',
     ],
     entry_points={
         'console_scripts': [

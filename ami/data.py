@@ -1,4 +1,5 @@
 import time
+import psana
 import numpy as np
 from enum import Enum
 
@@ -74,6 +75,33 @@ class CollectorMessage(Message):
     def __init__(self, mtype, identity, heartbeat, payload):
         super(__class__, self).__init__(mtype, identity, payload)
         self.heartbeat = heartbeat
+
+
+class PsanaSource(object):
+    def __init__(self, idnum, num_workers, interval, init_time, config):
+        self.idnum = idnum
+        self.num_workers = num_workers
+        self.interval = interval
+        self.init_time = init_time
+        self.config = config
+
+    def partition(self):
+        return []
+
+    def events(self):
+        timestamp = 0
+        time.sleep(self.init_time)
+        while True:
+            event = []
+            self.ds = psana.DataSource(self.config['filename'])
+            for evt in self.ds.events():
+                for dgram in evt.dgrams:
+                    timestamp = dgram.seq.timestamp()
+                    event.append(Datagram("xppcspad", DataTypes.Waveform, dgram.xppcspad.raw.arrayRaw))
+                    msg = Message(MsgTypes.Datagram, self.idnum, event)
+                    msg.timestamp = timestamp
+                    yield msg
+                    time.sleep(self.interval)
 
 
 class StaticSource(object):
