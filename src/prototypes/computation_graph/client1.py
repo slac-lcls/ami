@@ -9,55 +9,31 @@ import userDefined
 
 def simpleWorkerGraph():
   graph = AMI.Graph('simple_worker_graph')
-  image = AMI.CSPAD('cspad0', dimensions = [ 1024, 1024 ]) # name of XTC field
-  shape = image._shape()
-  roi = [ shape[0] * .1, shape[1] * .1, shape[0] * .9, shape[1]* .9 ]
-  image._setROI(roi)._setSum() # set an inset ROI with a sum
-  graph.export(image)
+  image = AMI.CSPAD('cspad0') # name of XTC field
+  roi = str(int(image.shape[0] * .1)) + ':' + str(int(image.shape[0] * .9)) + ',' + str(int(image.shape[1] * .1)) + ':' + str(int(image.shape[1]* .9))
+  subimage = image._map('roi', roi)
+  graph.export(subimage._map('sum'))
   graph.export(AMI.Point('timestamp')) # export XTC field to the Result store
   return graph
 
 
-
-def workerGraph():
-  graph = AMI.Graph('workerGraph_Env_one_scalar') # create an empty graph
-  
-  # Env data source, plot mean v time, normalize by, weight by
-  dataPoint = AMI.Point('field0') # 'field0' matches an XTC field name
-  dataPoint._setMean() # compute the mean of this field
-  graph.export(dataPoint) # export to the Result store
-  graph.export(AMI.Point('normalizeField')) # export XTC field to the Result store
-  graph.export(AMI.Point('weightField')) # export XTC field to the Result store
-  graph.export(AMI.Point('timestamp')) # export XTC field to the Result store
-  
-  # 1D array with recirculated datum
-  graph.iff('field0 > 0', dataPoint)
-  sourceVector = AMI.Vector('intensityVector', dimensions = [ 10 ]) # 'intensityVector' is an XTC field
-  userObject = userDefined.object('userObject0', sourceVector) # a custom user object
-  graph.export(userObject) # export to the Result store, must support computation and reduction
-  userObject0 = graph.import_('userObject0')
-  meanIntensity = userObject0._get('meanIntensity')
-  userObject2 = userDefined.object2('userObject2', sourceVector, dataPoint, meanIntensity)
-  graph.export(userObject2) # export to the Result store
-  
-  # 2D cspad with ROI computation
-  graph.iff('meanIntensity > 1', meanIntensity)
-  image = AMI.CSPAD('cspad0', dimensions = [ 1024, 1024 ] ) # 'cspad0' is an XTC field, 2D image
-  shape = image._shape() # get dimensions
-  roi = [ shape[0] * .1, shape[1] * .1, shape[0] * .9, shape[1]* .9 ]
-  image._setROI(roi) # set an inset ROI
-  image._setMean() # compute the mean in the ROI
-  graph.export(image) # export to Result store
-  
-  graph.endif()
-  graph.endif()
-  
+def complexWorkerGraph():
+  graph = AMI.Graph("first_milestone")
+  image = AMI.CSPAD('cspad0')
+  calibratedImage = image.map('calibrate')
+  peak = calibratedImage.map('peakfind')
+  laser = AMI.Point('laser')
+  graph.If('$1', laser)
+  # bin laser-on by x,y,t
+  # bin laser-off by x,y
+  # take sidebands and interpolate to subtract in signal region (both laser on/off)
+  # project laser on/off along y (now have x,t)
+  # subtract laser-off from laser-on cube in each time bin
+  graph.Endif()
   return graph
 
 
-
-graph = workerGraph()
-#graph = simpleWorkerGraph()
+graph = simpleWorkerGraph()
 AMI.submitGraphToManager(graph) # pickle the graph and send to GraphManager
 
 

@@ -5,7 +5,9 @@
 import numpy
 import pickle
 import math
+import types
 
+import mapFunctions
 
 ###
 ### graphs
@@ -16,9 +18,15 @@ def printGraph(graph):
     arguments = node._arguments()
     args = ''
     if '_args' in dir(node): args = node._args
-    print node._name, '\t', node, '\t', arguments, args
+    print( node._name, '\t', node, '\t', arguments, args)
     for argument in arguments:
-      print '\t\t', argument, '\t', eval('node.' + argument)
+      print( '\t\t', argument, '\t', eval('node.' + argument))
+
+
+class FunctionObject:
+
+  def __init__(self):
+    pass
 
 
 class Graph(object):
@@ -26,6 +34,7 @@ class Graph(object):
   def __init__(self, name):
     self._name = name
     self._nodes = []
+    self.importMaps()
   
   def serialize(self):
     filename = "controlStore_" + self.__class__.__name__ + ".dat"
@@ -47,16 +56,26 @@ class Graph(object):
   
   def broadcast(self):
     self.serialize()
+  
+  def importMaps(self):
+    self.mapFunctions = FunctionObject()
+    for functionName in dir(mapFunctions):
+      if not functionName.startswith('_'):
+        root = 'self.mapFunctions.' + functionName
+        statement = root + ' = types.MethodType( mapFunctions.' + functionName + ', self.mapFunctions)'
+        exec(statement)
 
-  def iff(self, lambdaExpression, *args, **kwargs):
+  def If(self, lambdaExpression, *args, **kwargs):
     self._nodes.append(If(lambdaExpression, *args, **kwargs))
-
-  def endif(self, *args, **kwargs):
+  
+  def Elseif(self, lambdaExpression, *args, **kwargs):
+    self._nodes.append(Elseif(lambdaExpression, *args, **kwargs))
+  
+  def Else(self, lambdaExpression, *args, **kwargs):
+    self._nodes.append(Else(lambdaExpression, *args, **kwargs))
+  
+  def Endif(self, *args, **kwargs):
     self._nodes.append(Endif(*args, **kwargs))
-
-
-
-
 
 
 
@@ -64,156 +83,88 @@ class Graph(object):
 ### graph elements
 ###
 
+
 class GraphElement(object):
   
   def __init__(self, *args, **kwargs):
     self._name = args[0]
-    print 'GraphElement name =', self._name
-    self._dimensions = []
-    #
-    self._ROI = []
-    self._filter = None
-    self._mean = False
-    self._sum = False
-    self._standardDeviation = False
-    self._channel = None
-    #
+    print('GraphElement name =', self._name)
+    self._maps = []
+    self._reductions = []
+    self.shape = [1]
     if kwargs is not None:
-      for key, value in kwargs.iteritems():
+      for key, value in kwargs.items():
         exec('self._' + str(key) + ' = ' + str(value))
-    self._data = self._allocateData()
-        
+  
+  def _domap(self, telemetryFrame):
+    result = {}
+    for f in _maps:
+      mapResult = eval('self.' + f)
+      result.update(mapResult)
+    return result
+
+  def _doreduce(self):
+    result = {}
+    for f in _reductions:
+      reduceResult = eval('self.' + f)
+      result.update(reduceResult)
+    return result
+
   def _arguments(self):
     result = []
     for arg in dir(self):
       if arg[0] != '_': result.append(arg)
     return result
-
-  def _allocateData(self):
-    return numpy.zeros(self._shape())
   
-  def _getData(self):
-    pass#TODO
-  
-  def _defaultROI(self):
-    return [0]
-  
-  def _shape(self):
-    return [1]
-
-  def _setROI(self, roi):
-    self._ROI.append(roi)
-    return self
-
-  def _setFilter(self, filter):
-    self._filter = filter
-
-  def _setMean(self):
-    self._mean = True
-
-  def _setSum(self):
-    self._sum = True
-
-  def _setStandardDeviation(self):
-    self._standardDeviation = True
-    self._sumSquaredDifferences = self._allocateData()
-
-  def _setChannel(self, channel):
-    self._channel = channel
-
-  def _resultName(self, prefix, roiIndex):
-    return self._name + '.' + prefix + '.a' + str(roiIndex)
-  
-  def _sumInROI(self, roi, data):
-    sum = self._allocateData()
-    if len(roi) == 2:
-      sum = numpy.cumsum(self._data[int(roi[0]) : int(roi[1])])
-      return sum
-    if len(roi) == 4:
-      sum = numpy.cumsum(self._data[int(roi[0]) : int(roi[1]), int(roi[2]) : int(roi[3])])
-      return sum
+  def _verifyAggregateArgumentType(self, argument):
+    if argument.__class__.__name__ == 'dict':
+      for key in argument.items():
+        if not self._verifySimpleArgumentType(argument[key]):
+          return False
+      return True
     else:
-      return data
+      for a in argument:
+        if not self._verifySimpleArgumentType(a):
+          return False
+      return True
 
-  def _standardDeviationInROI(self, roi, data, mean, numPoints):
-    sumSquaredDifferences = self._allocateData()
-    for i in range(roi[0], roi[2]):
-      for j in range(roi[1], roi[3]):
-        difference = data[i][j] - mean
-        sumSquaredDifferences = sumSquaredDifferences + difference * difference
-    return math.sqrt(sumSquaredDifferences / (numPoints - 1))
+  def _verifySimpleArgumentType(self, argument):
+    print('verify', argument, argument.__class__)
+    if issubclass(argument.__class__, GraphElement):
+      return True
+    baseTypes = [ 'int', 'str', 'float', 'complex' ]
+    if argument.__class__.__name__ in baseTypes:
+      return True
+    aggregateTypes = [ 'dict', 'list', 'tuple' ]
+    if argument.__class__.__name__ in aggregateTypes:
+      return self._verifyAggregateArgumentType(self, argument)
+    return False
 
+  def _verifyArguments(self, functionName, arguments):
+    for arg in arguments:
+      if not self._verifySimpleArgumentType(arg):
+        badcall = self._name + '.' + functionName + ' passes invalid argument ' + str(arg)
+        raise ValueError( badcall )
 
-  def _doMap(self, data, roi, roiIndex):
-    result = {}
-    if self._sum or self._mean or self._standardDeviation:
-      sum = self._sumInROI(roi, data)
-      if self._sum:
-        result[self._resultName('sum', roiIndex)] = sum
-      numPoints = 1
-      if len(roi) == 2:
-        numPoints = roi[1] - roi[0] + 1
-        mean = sum / numPoints
-      if len(roi) == 4:
-        numPoints = ((roi[2] - roi[0] + 1) * (roi[3] - roi[1] + 1))
-        mean = sum / numPoints
-      else:
-        mean = sum
-      if self._mean:
-        result[self._resultName('mean', roiIndex)] = mean
-      if self._standardDeviation:
-        result[self._resultName('standardDeviation', roiIndex)] = self._standardDeviationInROI(roi, data, mean, numPoints)
-    else:
-      result = { self._name : data }
-    return result
-
-
-  def _map(self, telemetryFrame):
-    data = telemetryFrame[self._name]
-    if self._filter is not None:
-      if self._filter(data) is False:
-        return {}
-    result = {}
-    index = 0
-    for roi in self._ROI:
-      result.update(self._doMap(data, roi, index))
-      index = index + 1
-    if len(self._ROI) > 0:
-      return result
-    return self._doMap(data, self._defaultROI(), 0)
-
-    
-  def _initializeMap(self):
-    self._data = self._allocateData()
-
-  def _terminateMap(self):
-    pass
-
-  def _reduce(self):
-    pass # tbd
+  def _map(self, *args):
+    functionName = args[0]
+    arguments = args[1:]
+    self._verifyArguments(functionName, arguments)
+    call = 'self.mapFunctions.' + functionName + '('
+    for arg in arguments:
+      call = call + str(arg) + ','
+    call = call + ')'
+    self._maps.append(call)
+    return MappedGraphElement(self)
 
 
+class MappedGraphElement(GraphElement):
 
-class Endif(GraphElement):
-  
-  def __init__(self, *args, **kwargs):
-    super(Endif, self).__init__('endif', *args, **kwargs)
-    if args is not None: self._args = args
-    if kwargs is not None:
-      for key, value in kwargs.iteritems():
-        exec('self.' + str(key) + ' = ' + str(value))
+  def __init__(self, predecessor, *args, **kwargs):
+    super(MappedGraphElement, self).__init__(predecessor._name, *args, **kwargs)
+    self.predecessor = predecessor
 
-  def _initializeMap(self):
-    pass
 
-  def _map(self, telemetryFrame):
-    pass
-
-  def _terminateMap(self):
-    pass
-
-  def _reduce(self):
-    pass
 
 class If(GraphElement):
   
@@ -225,17 +176,36 @@ class If(GraphElement):
       for key, value in kwargs.iteritems():
         exec('self.' + str(key) + ' = ' + str(value))
 
-  def _initializeMap(self):
-    print self._lambdaExpression, self._args
 
-  def _map(self, telemetryFrame):
-    pass
+class Else(GraphElement):
   
-  def _terminateMap(self):
-    pass
+  def __init__(self, *args, **kwargs):
+    super(Endif, self).__init__('else', *args, **kwargs)
+    if args is not None: self._args = args
+    if kwargs is not None:
+      for key, value in kwargs.iteritems():
+        exec('self.' + str(key) + ' = ' + str(value))
+
+
+class Elseif(GraphElement):
   
-  def _reduce(self):
-    pass
+  def __init__(self, lambdaExpression, *args, **kwargs):
+    super(Endif, self).__init__('elseif ' + lambdaExpression, *args, **kwargs)
+    if args is not None: self._args = args
+    if kwargs is not None:
+      for key, value in kwargs.iteritems():
+        exec('self.' + str(key) + ' = ' + str(value))
+
+
+class Endif(GraphElement):
+  
+  def __init__(self, *args, **kwargs):
+    super(Endif, self).__init__('endif', *args, **kwargs)
+    if args is not None: self._args = args
+    if kwargs is not None:
+      for key, value in kwargs.iteritems():
+        exec('self.' + str(key) + ' = ' + str(value))
+
 
 
 class Import(GraphElement):
@@ -246,17 +216,6 @@ class Import(GraphElement):
   def _get(self, name):
     return None
 
-  def _initializeMap(self):
-    print self._name
-  
-  def _map(self, telemetryFrame):
-    pass
-  
-  def _terminateMap(self):
-    pass
-  
-  def _reduce(self):
-    pass
 
 
 class Tensor(GraphElement):
@@ -279,8 +238,6 @@ class Tensor1D(Tensor):
   def __init__(self, *args, **kwargs):
     super(Tensor1D, self).__init__(args[0], **kwargs)
 
-  def _shape(self):
-    return self._dimensions[0]
 
 class Vector(Tensor1D):
   
@@ -291,9 +248,6 @@ class Tensor2D(Tensor):
   
   def __init__(self, *args, **kwargs):
     super(Tensor2D, self).__init__(args[0], **kwargs)
-  
-  def _shape(self):
-    return self._dimensions
 
 class VectorField1D(Tensor1D):
   
@@ -326,6 +280,7 @@ class CSPAD(Image, Sensor):
   def __init__(self, *args, **kwargs):
     Image.__init__(self, args[0], **kwargs)
     Sensor.__init__(self, args[0], **kwargs)
+    self.shape = [ 1024, 1024 ] # todo get from XTC schema
 
 
 
