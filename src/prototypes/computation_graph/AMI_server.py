@@ -13,7 +13,9 @@ def workerGraph():
   return graph
 
 def ingestTelemetryFrame():
-  return { "timestamp" : 0, "field0" : 1, "normalizeField" : 2, "weightField" : 3, "cspad0" : { np.zeros((1024, 1024) }, "userObject0" : { 0 }, "userObject2" : { 2 } }
+  cspad0 = CSPAD('cspad0')
+  cspad0._allocateData()
+  return { "timestamp" : 0, "field0" : 1, "normalizeField" : 2, "weightField" : 3, "cspad0" : cspad0, "userObject0" : { 0 }, "userObject2" : { 2 } }
 
 def submitResultToCollector(result):
   filename = "resultStore.dat"

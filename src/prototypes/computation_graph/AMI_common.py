@@ -13,14 +13,38 @@ import mapFunctions
 ### graphs
 ###
 
+def printArgument(node, argument, indent):
+  indentation = ' ' * indent
+  if isinstance(eval('node.' + argument), GraphElement):
+    print(indentation + argument, '\t', eval('node.' + argument), '\t', eval('node.' + argument)._localFields())
+    if argument == 'predecessor' and 'predecessor' in dir(eval('node.' + argument)):
+      print(indentation + '\tpoints to ' + str(eval('node.' + argument).predecessor))
+  else:
+    print(indentation + argument, '\t', eval('node.' + argument))
+  if eval('node.' + argument + '.__class__.__name__').endswith('MappedGraphElement'):
+    if(eval('node.' + argument)._maps is not None):
+      print(indentation + '_maps', eval('node.' + argument)._maps)
+      print(indentation + '_mapFunctions', eval('node.' + argument)._importedMaps())
+    printGraphNode(eval('node.' + argument + '.predecessor'), indent + 4)
+
+
+def printGraphNode(node, indent):
+  indentation = ' ' * indent
+  arguments = node._localFields()
+  args = ''
+  if '_args' in dir(node): args = node._args
+  print(indentation + node._name, '\t', node, '\t', arguments, args)
+  if node._maps is not None:
+    print(indentation + '_maps', node._maps)
+    print(indentation + '_mapFunctions', node._importedMaps())
+  for argument in arguments:
+    printArgument(node, argument, indent + 16)
+
+
 def printGraph(graph):
   for node in graph._nodes:
-    arguments = node._arguments()
-    args = ''
-    if '_args' in dir(node): args = node._args
-    print( node._name, '\t', node, '\t', arguments, args)
-    for argument in arguments:
-      print( '\t\t', argument, '\t', eval('node.' + argument))
+    printGraphNode(node, 0)
+    
 
 
 class FunctionObject:
@@ -34,18 +58,28 @@ class Graph(object):
   def __init__(self, name):
     self._name = name
     self._nodes = []
-    self.importMaps()
-  
+
   def serialize(self):
     filename = "controlStore_" + self.__class__.__name__ + ".dat"
     print('writing to', filename)
+    self._removeDynamicMethods()
     pickle.dump(self, open(filename, "wb"))
   
+  def _removeDynamicMethods(self):
+    for node in self._nodes:
+      node._removeDynamicMethods()
+
   def deserialize(self):
     filename = "controlStore_" + self.__class__.__name__ + ".dat"
     print('reading from', filename)
-    return pickle.load(open(filename, "rb"))
-  
+    result = pickle.load(open(filename, "rb"))
+    self._restoreDynamicMethods(result)
+    return result
+
+  def _restoreDynamicMethods(self, graph):
+    for node in graph._nodes:
+      node._restoreDynamicMethods()
+
   def export(self, element):
     self._nodes.append(element)
   
@@ -57,26 +91,37 @@ class Graph(object):
   def broadcast(self):
     self.serialize()
   
-  def importMaps(self):
-    self.mapFunctions = FunctionObject()
-    for functionName in dir(mapFunctions):
-      if not functionName.startswith('_'):
-        root = 'self.mapFunctions.' + functionName
-        statement = root + ' = types.MethodType( mapFunctions.' + functionName + ', self.mapFunctions)'
-        exec(statement)
+  def _domap(self, telemetryFrame):
+    result = {}
+    for node in self._nodes:
+      returnValue = node._domap(telemetryFrame)
+      if returnValue is not None:
+        result.update(returnValue)
+    return result
 
-  def If(self, lambdaExpression, *args, **kwargs):
+  def _If(self, lambdaExpression, *args, **kwargs):
     self._nodes.append(If(lambdaExpression, *args, **kwargs))
   
-  def Elseif(self, lambdaExpression, *args, **kwargs):
+  def _Elseif(self, lambdaExpression, *args, **kwargs):
     self._nodes.append(Elseif(lambdaExpression, *args, **kwargs))
   
-  def Else(self, lambdaExpression, *args, **kwargs):
+  def _Else(self, lambdaExpression, *args, **kwargs):
     self._nodes.append(Else(lambdaExpression, *args, **kwargs))
   
-  def Endif(self, *args, **kwargs):
+  def _Endif(self, *args, **kwargs):
     self._nodes.append(Endif(*args, **kwargs))
 
+###
+### top level functions for use by map and reduce functions
+###
+
+
+def getDataObject(node):
+  print('getDataObject', node)
+  printGraphNode(node, 0)
+  if not isinstance(node, MappedGraphElement):
+    return node
+  return getDataObject(node.predecessor)
 
 
 ###
@@ -88,29 +133,54 @@ class GraphElement(object):
   
   def __init__(self, *args, **kwargs):
     self._name = args[0]
-    print('GraphElement name =', self._name)
-    self._maps = []
-    self._reductions = []
+    self._maps = None
+    self._mapFunctions = FunctionObject()
+    self._reductions = None
     self.shape = [1]
+    self.origin = [0]
     if kwargs is not None:
       for key, value in kwargs.items():
         exec('self._' + str(key) + ' = ' + str(value))
-  
+
+  def _mapSequence(self, node):
+    if node.__class__.__name__.endswith('MappedGraphElement'):
+      return self._mapSequence(node.predecessor) + [ (node, node._maps) ]
+    if node._maps is not None:
+      return [ (node, node._maps) ]
+    return [ (node, None) ]
+
+  def _doMapSequence(self, sequence):
+    (baseObject, dummy) = sequence[0]
+    print('baseObject', baseObject, baseObject._importedMaps())
+    xIndex = 0
+    for (node, map) in sequence[1:]:
+      print('node', node, 'map', map)
+      printGraphNode(node, 2)
+      xIndex = xIndex + 1
+      statement = 'x' + str(xIndex) + ' = ' + map
+      print(statement)
+      exec(statement)
+    return eval('x' + str(xIndex))
+
+  def _transferTelemetry(self, telemetryFrame):
+    value = telemetryFrame[self._name]
+    if value is not None and self._ingestTelemetry is not None:
+      self._ingestTelemetry(value)
+
   def _domap(self, telemetryFrame):
-    result = {}
-    for f in _maps:
-      mapResult = eval('self.' + f)
-      result.update(mapResult)
+    if self._maps is None:
+      return {}
+    if not self.__class__.__name__.endswith('MappedGraphElement'):
+      self._transferTelemetry(telemetryFrame)
+    mapSequence = self._mapSequence(self)
+    print('mapSequence', mapSequence)
+    result = { self._name : self._doMapSequence(mapSequence) }
     return result
 
   def _doreduce(self):
-    result = {}
-    for f in _reductions:
-      reduceResult = eval('self.' + f)
-      result.update(reduceResult)
-    return result
+    pass
 
-  def _arguments(self):
+  def _localFields(self):
     result = []
     for arg in dir(self):
       if arg[0] != '_': result.append(arg)
@@ -129,7 +199,6 @@ class GraphElement(object):
       return True
 
   def _verifySimpleArgumentType(self, argument):
-    print('verify', argument, argument.__class__)
     if issubclass(argument.__class__, GraphElement):
       return True
     baseTypes = [ 'int', 'str', 'float', 'complex' ]
@@ -137,7 +206,7 @@ class GraphElement(object):
       return True
     aggregateTypes = [ 'dict', 'list', 'tuple' ]
     if argument.__class__.__name__ in aggregateTypes:
-      return self._verifyAggregateArgumentType(self, argument)
+      return self._verifyAggregateArgumentType(argument)
     return False
 
   def _verifyArguments(self, functionName, arguments):
@@ -146,16 +215,38 @@ class GraphElement(object):
         badcall = self._name + '.' + functionName + ' passes invalid argument ' + str(arg)
         raise ValueError( badcall )
 
+  def _addDynamicMethod(self, functionName):
+    root = 'self._mapFunctions.' + functionName
+    statement = root + ' = types.MethodType(mapFunctions.' + functionName + ', self._mapFunctions)'
+    exec(statement)
+    self._mapFunctions._baseObject = self
+  
+  def _restoreDynamicMethods(self):
+    self._mapFunctions = FunctionObject()
+    for functionName in self._mapFunctionNames:
+      self._addDynamicMethod(functionName)
+    if self.__class__.__name__.endswith('MappedGraphElement'):
+      self.predecessor._restoreDynamicMethods()
+
+  def _removeDynamicMethods(self):
+    self._mapFunctionNames = self._importedMaps()
+    self._mapFunctions = None
+    if self.__class__.__name__.endswith('MappedGraphElement'):
+      self.predecessor._removeDynamicMethods()
+
+  def _importedMaps(self):
+    result = [ arg for arg in dir(self._mapFunctions) if arg[0] != '_' ]
+    return result
+
   def _map(self, *args):
     functionName = args[0]
     arguments = args[1:]
     self._verifyArguments(functionName, arguments)
-    call = 'self.mapFunctions.' + functionName + '('
-    for arg in arguments:
-      call = call + str(arg) + ','
-    call = call + ')'
-    self._maps.append(call)
-    return MappedGraphElement(self)
+    result = MappedGraphElement(self)
+    call = 'node._mapFunctions.' + functionName + '(' + ','.join([str(arg) for arg in arguments]) + ')[' + "'" + functionName + "'" + ']'
+    result._maps = call
+    result._addDynamicMethod(functionName)
+    return result
 
 
 class MappedGraphElement(GraphElement):
@@ -281,7 +372,13 @@ class CSPAD(Image, Sensor):
     Image.__init__(self, args[0], **kwargs)
     Sensor.__init__(self, args[0], **kwargs)
     self.shape = [ 1024, 1024 ] # todo get from XTC schema
+    self.origin = [ 0, 0 ]
+    self._allocateData()
 
+  def _ingestTelemetry(self, value):
+    self.data = value.data
 
+  def _allocateData(self):
+    self.data = numpy.zeros(self.shape)
 
 
