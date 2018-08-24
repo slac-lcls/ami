@@ -202,10 +202,10 @@ def run_worker(num, num_workers, hb_period, source, collector_addr, graph_addr):
             return 1
 
         src = PsanaSource(num,
-                           num_workers,
-                           src_cfg['interval'],
-                           src_cfg["init_time"],
-                           src_cfg['config'])
+                          num_workers,
+                          src_cfg['interval'],
+                          src_cfg["init_time"],
+                          src_cfg['config'])
     else:
         print("worker%03d: unknown data source type:" % num, source[0])
         return 1
