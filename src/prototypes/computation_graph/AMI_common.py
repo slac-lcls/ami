@@ -13,18 +13,24 @@ import mapFunctions
 ### graphs
 ###
 
+def getDataObject(node):
+  if not isinstance(node, MappedDataElement):
+    return node
+  return getDataObject(node.predecessor)
+
+
 def printArgument(node, argument, indent):
   indentation = ' ' * indent
-  if isinstance(eval('node.' + argument), GraphElement):
+  if isinstance(eval('node.' + argument), DataElement):
     print(indentation + argument, '\t', eval('node.' + argument), '\t', eval('node.' + argument)._localFields())
     if argument == 'predecessor' and 'predecessor' in dir(eval('node.' + argument)):
       print(indentation + '\tpoints to ' + str(eval('node.' + argument).predecessor))
   else:
     print(indentation + argument, '\t', eval('node.' + argument))
-  if eval('node.' + argument + '.__class__.__name__').endswith('MappedGraphElement'):
-    if(eval('node.' + argument)._maps is not None):
-      print(indentation + '_maps', eval('node.' + argument)._maps)
-      print(indentation + '_mapFunctions', eval('node.' + argument)._importedMaps())
+  if isinstance(eval('node.' + argument), 'MappedDataElement'):
+    if(eval('node.' + argument)._mapInvocation is not None):
+      print(indentation + '_mapInvocation', eval('node.' + argument)._mapInvocation)
+      print(indentation + '__map', eval('node.' + argument).__map)
     printGraphNode(eval('node.' + argument + '.predecessor'), indent + 4)
 
 
@@ -34,9 +40,9 @@ def printGraphNode(node, indent):
   args = ''
   if '_args' in dir(node): args = node._args
   print(indentation + node._name, '\t', node, '\t', arguments, args)
-  if node._maps is not None:
-    print(indentation + '_maps', node._maps)
-    print(indentation + '_mapFunctions', node._importedMaps())
+  if node._mapInvocation is not None:
+    print(indentation + '_mapInvocation', node._mapInvocation)
+    print(indentation + '__map', node.__map)
   for argument in arguments:
     printArgument(node, argument, indent + 16)
 
@@ -46,11 +52,6 @@ def printGraph(graph):
     printGraphNode(node, 0)
     
 
-
-class FunctionObject:
-
-  def __init__(self):
-    pass
 
 
 class Graph(object):
@@ -94,9 +95,12 @@ class Graph(object):
   def _domap(self, telemetryFrame):
     result = {}
     for node in self._nodes:
-      returnValue = node._domap(telemetryFrame)
-      if returnValue is not None:
-        result.update(returnValue)
+      if isinstance(node, DataElement):
+        returnValue = node._domap(telemetryFrame)
+        if returnValue is not None:
+          result.update(returnValue)
+      elif isinstance(node, GraphControlFlow):
+        pass # TODO
     return result
 
   def _If(self, lambdaExpression, *args, **kwargs):
@@ -111,53 +115,40 @@ class Graph(object):
   def _Endif(self, *args, **kwargs):
     self._nodes.append(Endif(*args, **kwargs))
 
-###
-### top level functions for use by map and reduce functions
-###
 
 
-def getDataObject(node):
-  print('getDataObject', node)
-  printGraphNode(node, 0)
-  if not isinstance(node, MappedGraphElement):
-    return node
-  return getDataObject(node.predecessor)
 
 
 ###
-### graph elements
+### data elements
 ###
 
 
-class GraphElement(object):
+class DataElement(object):
   
   def __init__(self, *args, **kwargs):
     self._name = args[0]
-    self._maps = None
-    self._mapFunctions = FunctionObject()
-    self._reductions = None
+    self._mapInvocation = None
+    self.__map = None
+    self._mapFunctionName = None
     self.shape = [1]
     self.origin = [0]
     if kwargs is not None:
       for key, value in kwargs.items():
-        exec('self._' + str(key) + ' = ' + str(value))
+        exec('self.' + str(key) + ' = ' + str(value))
 
   def _mapSequence(self, node):
-    if node.__class__.__name__.endswith('MappedGraphElement'):
-      return self._mapSequence(node.predecessor) + [ (node, node._maps) ]
-    if node._maps is not None:
-      return [ (node, node._maps) ]
+    if isinstance(node, MappedDataElement):
+      return self._mapSequence(node.predecessor) + [ (node, node._mapInvocation) ]
+    if node._mapInvocation is not None:
+      return [ (node, node._mapInvocation) ]
     return [ (node, None) ]
 
   def _doMapSequence(self, sequence):
-    (baseObject, dummy) = sequence[0]
-    print('baseObject', baseObject, baseObject._importedMaps())
     xIndex = 0
-    for (node, map) in sequence[1:]:
-      print('node', node, 'map', map)
-      printGraphNode(node, 2)
+    for (node, mapInvocation) in sequence[1:]:
       xIndex = xIndex + 1
-      statement = 'x' + str(xIndex) + ' = ' + map
+      statement = 'x' + str(xIndex) + ' = ' + mapInvocation
       print(statement)
       exec(statement)
     return eval('x' + str(xIndex))
@@ -168,26 +159,21 @@ class GraphElement(object):
       self._ingestTelemetry(value)
 
   def _domap(self, telemetryFrame):
-    if self._maps is None:
+    if self._mapInvocation is None:
       return {}
-    if not self.__class__.__name__.endswith('MappedGraphElement'):
+    if not isinstance(self, MappedDataElement):
       self._transferTelemetry(telemetryFrame)
     mapSequence = self._mapSequence(self)
-    print('mapSequence', mapSequence)
-    result = { self._name : self._doMapSequence(mapSequence) }
-    return result
+    return { self._name : self._doMapSequence(mapSequence) }
 
   def _doreduce(self):
     pass
 
   def _localFields(self):
-    result = []
-    for arg in dir(self):
-      if arg[0] != '_': result.append(arg)
-    return result
-  
+    return [arg for arg in dir(self) if arg[0] != '_']
+
   def _verifyAggregateArgumentType(self, argument):
-    if argument.__class__.__name__ == 'dict':
+    if isinstance(argument, dict):
       for key in argument.items():
         if not self._verifySimpleArgumentType(argument[key]):
           return False
@@ -199,7 +185,7 @@ class GraphElement(object):
       return True
 
   def _verifySimpleArgumentType(self, argument):
-    if issubclass(argument.__class__, GraphElement):
+    if isinstance(argument, DataElement):
       return True
     baseTypes = [ 'int', 'str', 'float', 'complex' ]
     if argument.__class__.__name__ in baseTypes:
@@ -216,48 +202,50 @@ class GraphElement(object):
         raise ValueError( badcall )
 
   def _addDynamicMethod(self, functionName):
-    root = 'self._mapFunctions.' + functionName
-    statement = root + ' = types.MethodType(mapFunctions.' + functionName + ', self._mapFunctions)'
+    statement = 'self.__map = types.MethodType(mapFunctions.' + functionName + ', self)'
     exec(statement)
-    self._mapFunctions._baseObject = self
+    self._mapFunctionName = functionName
   
   def _restoreDynamicMethods(self):
-    self._mapFunctions = FunctionObject()
-    for functionName in self._mapFunctionNames:
-      self._addDynamicMethod(functionName)
-    if self.__class__.__name__.endswith('MappedGraphElement'):
+    self._addDynamicMethod(self._mapFunctionName)
+    if isinstance(self, MappedDataElement):
       self.predecessor._restoreDynamicMethods()
 
   def _removeDynamicMethods(self):
-    self._mapFunctionNames = self._importedMaps()
-    self._mapFunctions = None
-    if self.__class__.__name__.endswith('MappedGraphElement'):
+    self._mapFunctionName = None
+    self.__map = None
+    if isinstance(self, MappedDataElement):
       self.predecessor._removeDynamicMethods()
-
-  def _importedMaps(self):
-    result = [ arg for arg in dir(self._mapFunctions) if arg[0] != '_' ]
-    return result
 
   def _map(self, *args):
     functionName = args[0]
     arguments = args[1:]
     self._verifyArguments(functionName, arguments)
-    result = MappedGraphElement(self)
-    call = 'node._mapFunctions.' + functionName + '(' + ','.join([str(arg) for arg in arguments]) + ')[' + "'" + functionName + "'" + ']'
-    result._maps = call
+    result = MappedDataElement(self)
+    call = 'self.__map' + '(' + ','.join([str(arg) for arg in arguments]) + ')[' + "'" + functionName + "'" + ']'
+    result._mapInvocation = call
     result._addDynamicMethod(functionName)
     return result
 
 
-class MappedGraphElement(GraphElement):
+class MappedDataElement(DataElement):
 
   def __init__(self, predecessor, *args, **kwargs):
-    super(MappedGraphElement, self).__init__(predecessor._name, *args, **kwargs)
+    super(MappedDataElement, self).__init__(predecessor._name, *args, **kwargs)
     self.predecessor = predecessor
 
 
+###
+### control flow
+###
 
-class If(GraphElement):
+
+class GraphControlFlow(object):
+
+  def __init__(self):
+    pass
+
+class If(GraphControlFlow):
   
   def __init__(self, lambdaExpression, *args, **kwargs):
     super(If, self).__init__('iff ' + lambdaExpression, *args, **kwargs)
@@ -268,7 +256,7 @@ class If(GraphElement):
         exec('self.' + str(key) + ' = ' + str(value))
 
 
-class Else(GraphElement):
+class Else(GraphControlFlow):
   
   def __init__(self, *args, **kwargs):
     super(Endif, self).__init__('else', *args, **kwargs)
@@ -278,7 +266,7 @@ class Else(GraphElement):
         exec('self.' + str(key) + ' = ' + str(value))
 
 
-class Elseif(GraphElement):
+class Elseif(GraphControlFlow):
   
   def __init__(self, lambdaExpression, *args, **kwargs):
     super(Endif, self).__init__('elseif ' + lambdaExpression, *args, **kwargs)
@@ -288,7 +276,7 @@ class Elseif(GraphElement):
         exec('self.' + str(key) + ' = ' + str(value))
 
 
-class Endif(GraphElement):
+class Endif(GraphControlFlow):
   
   def __init__(self, *args, **kwargs):
     super(Endif, self).__init__('endif', *args, **kwargs)
@@ -298,87 +286,11 @@ class Endif(GraphElement):
         exec('self.' + str(key) + ' = ' + str(value))
 
 
+###
+### data recirculation
+###
 
-class Import(GraphElement):
+class Import(object):
 
   def __init__(self, name, *args, **kwargs):
-    super(Import, self).__init__('import ' + name, *args, **kwargs)
-
-  def _get(self, name):
-    return None
-
-
-
-class Tensor(GraphElement):
-  
-  def __init__(self, *args, **kwargs):
-    super(Tensor, self).__init__(args[0], **kwargs)
-
-class Tensor0D(Tensor):
-  
-  def __init__(self, *args, **kwargs):
-    super(Tensor0D, self).__init__(args[0], **kwargs)
-
-class Point(Tensor0D):
-  
-  def __init__(self, *args, **kwargs):
-    super(Point, self).__init__(args[0], **kwargs)
-
-class Tensor1D(Tensor):
-  
-  def __init__(self, *args, **kwargs):
-    super(Tensor1D, self).__init__(args[0], **kwargs)
-
-
-class Vector(Tensor1D):
-  
-  def __init__(self, *args, **kwargs):
-    super(Vector, self).__init__(args[0], **kwargs)
-
-class Tensor2D(Tensor):
-  
-  def __init__(self, *args, **kwargs):
-    super(Tensor2D, self).__init__(args[0], **kwargs)
-
-class VectorField1D(Tensor1D):
-  
-  def __init__(self, *args, **kwargs):
-    super(VectorField1D, self).__init__(args[0], **kwargs)
-
-class VectorField2D(Tensor2D):
-  
-  def __init__(self, *args, **kwargs):
-    super(VectorField2D, self).__init__(args[0], **kwargs)
-
-
-###
-### sensors
-###
-
-class Sensor(object):
-
-  def __init__(self, *args, **kwargs):
     pass
-
-
-class Image(Tensor2D):
-  
-  def __init__(self, *args, **kwargs):
-    super(Image, self).__init__(args[0], **kwargs)
-
-class CSPAD(Image, Sensor):
-  
-  def __init__(self, *args, **kwargs):
-    Image.__init__(self, args[0], **kwargs)
-    Sensor.__init__(self, args[0], **kwargs)
-    self.shape = [ 1024, 1024 ] # todo get from XTC schema
-    self.origin = [ 0, 0 ]
-    self._allocateData()
-
-  def _ingestTelemetry(self, value):
-    self.data = value.data
-
-  def _allocateData(self):
-    self.data = numpy.zeros(self.shape)
-
-

@@ -9,21 +9,21 @@ import userDefined
 
 def simpleWorkerGraph():
   graph = AMI.Graph('simple_worker_graph')
-  image = AMI.CSPAD('cspad0') # name of XTC field
+  image = AMI.DataElement('cspad0', origin=[0,0], shape=[1024,1024])
   roi = [ (int(image.shape[0] * .1)), (int(image.shape[0] * .9)), (int(image.shape[1] * .1)), (int(image.shape[1]* .9)) ]
   subimage = image._map('roi', roi)
   graph.export(subimage._map('sum', ))
 #  graph.export(image._map('roi', roi)._map('mean'))
-  graph.export(AMI.Point('timestamp')) # export XTC field to the Result store
+  graph.export(AMI.DataElement('timestamp')) # export XTC field to the Result store
   return graph
 
 
 def complexWorkerGraph():
   graph = AMI.Graph("first_milestone")
-  image = AMI.CSPAD('cspad0')
+  image = AMI.DataElement('cspad0', origin=[0,0], shape=[1024,1024])
   calibratedImage = image._map('calibrate')
-  peak = calibratedImage._map('peakfind')
-  laser = AMI.Point('laser')
+  peaks = calibratedImage._map('peakfind')
+  laser = AMI.DataElement('laser')
   graph._If('$1', laser)
   # bin laser-on by x,y,t
   # bin laser-off by x,y
