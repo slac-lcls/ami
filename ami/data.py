@@ -1,5 +1,8 @@
 import time
-import psana
+try:
+    import psana
+except ImportError:
+    psana = None
 import numpy as np
 from enum import Enum
 
@@ -93,6 +96,9 @@ class PsanaSource(object):
         time.sleep(self.init_time)
         while True:
             event = []
+            if psana is None:
+                print("psana is not available!")
+                break
             self.ds = psana.DataSource(self.config['filename'])
             for evt in self.ds.events():
                 for dgram in evt.dgrams:
