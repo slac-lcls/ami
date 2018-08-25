@@ -138,6 +138,7 @@ class DataElement(object):
     if kwargs is not None:
       for key, value in kwargs.items():
         exec('self.' + str(key) + ' = ' + str(value))
+    self.data = numpy.zeros(self.shape)
 
   def _mapSequence(self, node):
     if isinstance(node, MappedDataElement):
