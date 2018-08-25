@@ -13,8 +13,7 @@ def workerGraph():
   return graph
 
 def ingestTelemetryFrame():
-  cspad0 = CSPAD('cspad0')
-  cspad0._allocateData()
+  cspad0 = DataElement('cspad0', origin=[0,0], shape=[1024,1024])
   return { "timestamp" : 0, "field0" : 1, "normalizeField" : 2, "weightField" : 3, "cspad0" : cspad0, "userObject0" : { 0 }, "userObject2" : { 2 } }
 
 def submitResultToCollector(result):

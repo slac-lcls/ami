@@ -7,8 +7,8 @@ import numpy
 
 def sum(self):
   print('in sum()')
-  dataObject = AMI.getDataObject(self._baseObject)
-  if not 'data' in dir(self) or self.data is None:
+  dataObject = AMI.getDataObject(self)
+  if self.data is None:
     self.data = dataObject.data
   else:
     self.data = numpy.add(self.data, dataObject.data)
@@ -17,15 +17,14 @@ def sum(self):
 
 def roi(self, value):
   print('in roi(' + str(value) + ')')
-  print('self', self)
-  print('self', self)
   self.shape = [ value[1] - value[0], value[3] - value[2] ]
   self.origin = [ value[0], value[2] ]
   string = str(value[0]) + ':' + str(value[1]) + ',' + str(value[2]) + ':' + str(value[3])
-  dataObject = AMI.getDataObject(self._baseObject)
+  dataObject = AMI.getDataObject(self)
   print('getDataObject returned', dataObject)
   AMI.printGraphNode(dataObject, 1)
-  self.data = eval('dataObject.data[' + string + '].copy')
+  if dataObject.data is not None:
+    self.data = eval('dataObject.data[' + string + '].copy')
   return { 'roi' : self }
 
 
@@ -33,10 +32,17 @@ def std(self):
   return { 'std' : np.std(self.data) }
 
 
+# mean map is the same as sum
+# mean reduce is the division
+
 def mean(self):
   print('in mean()')
-  s = self.sum()['sum']
-  return { 'mean' : s / self.data.size() }
+  dataObject = AMI.getDataObject(self)
+  if self.data is None:
+    self.data = dataObject.data
+  else:
+    self.data = numpy.add(self.data, dataObject.data)
+  return { 'mean' : self.data }
 
 
 def calibrate(self, image):

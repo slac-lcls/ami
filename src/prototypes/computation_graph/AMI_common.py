@@ -27,10 +27,11 @@ def printArgument(node, argument, indent):
       print(indentation + '\tpoints to ' + str(eval('node.' + argument).predecessor))
   else:
     print(indentation + argument, '\t', eval('node.' + argument))
-  if isinstance(eval('node.' + argument), 'MappedDataElement'):
+  if isinstance(eval('node.' + argument), MappedDataElement):
     if(eval('node.' + argument)._mapInvocation is not None):
       print(indentation + '_mapInvocation', eval('node.' + argument)._mapInvocation)
-      print(indentation + '__map', eval('node.' + argument).__map)
+    if eval('node.' + argument)._mapFunctionName is not None:
+      print(indentation + '_mapFunctionName', eval('node.' + argument)._mapFunctionName)
     printGraphNode(eval('node.' + argument + '.predecessor'), indent + 4)
 
 
@@ -42,7 +43,8 @@ def printGraphNode(node, indent):
   print(indentation + node._name, '\t', node, '\t', arguments, args)
   if node._mapInvocation is not None:
     print(indentation + '_mapInvocation', node._mapInvocation)
-    print(indentation + '__map', node.__map)
+  if node._mapFunctionName is not None:
+    print(indentation + '_mapFunctionName', node._mapFunctionName)
   for argument in arguments:
     printArgument(node, argument, indent + 16)
 
@@ -103,16 +105,16 @@ class Graph(object):
         pass # TODO
     return result
 
-  def _If(self, lambdaExpression, *args, **kwargs):
+  def If(self, lambdaExpression, *args, **kwargs):
     self._nodes.append(If(lambdaExpression, *args, **kwargs))
   
-  def _Elseif(self, lambdaExpression, *args, **kwargs):
+  def Elseif(self, lambdaExpression, *args, **kwargs):
     self._nodes.append(Elseif(lambdaExpression, *args, **kwargs))
   
-  def _Else(self, lambdaExpression, *args, **kwargs):
+  def Else(self, lambdaExpression, *args, **kwargs):
     self._nodes.append(Else(lambdaExpression, *args, **kwargs))
   
-  def _Endif(self, *args, **kwargs):
+  def Endif(self, *args, **kwargs):
     self._nodes.append(Endif(*args, **kwargs))
 
 
@@ -129,8 +131,8 @@ class DataElement(object):
   def __init__(self, *args, **kwargs):
     self._name = args[0]
     self._mapInvocation = None
-    self.__map = None
     self._mapFunctionName = None
+    self.data = None
     self.shape = [1]
     self.origin = [0]
     if kwargs is not None:
@@ -187,7 +189,7 @@ class DataElement(object):
   def _verifySimpleArgumentType(self, argument):
     if isinstance(argument, DataElement):
       return True
-    baseTypes = [ 'int', 'str', 'float', 'complex' ]
+    baseTypes = [ 'int', 'str', 'float', 'complex', 'function' ]
     if argument.__class__.__name__ in baseTypes:
       return True
     aggregateTypes = [ 'dict', 'list', 'tuple' ]
@@ -202,27 +204,35 @@ class DataElement(object):
         raise ValueError( badcall )
 
   def _addDynamicMethod(self, functionName):
-    statement = 'self.__map = types.MethodType(mapFunctions.' + functionName + ', self)'
+    statement = 'self.' + functionName + ' = types.MethodType(mapFunctions.' + functionName + ', self)'
+    print(statement)
     exec(statement)
     self._mapFunctionName = functionName
   
   def _restoreDynamicMethods(self):
-    self._addDynamicMethod(self._mapFunctionName)
+    if self._mapFunctionName is not None:
+      self._addDynamicMethod(self._mapFunctionName)
     if isinstance(self, MappedDataElement):
       self.predecessor._restoreDynamicMethods()
 
   def _removeDynamicMethods(self):
-    self._mapFunctionName = None
-    self.__map = None
+    if self._mapFunctionName is not None and eval('self.' + self._mapFunctionName) is not None:
+      exec('self.' + self._mapFunctionName + ' = None')
     if isinstance(self, MappedDataElement):
       self.predecessor._removeDynamicMethods()
 
+  def _argumentString(self, arg):
+    if arg.__class__.__name__ == 'function':
+      return str(arg(self))
+    else:
+      return str(arg)
+  
   def _map(self, *args):
     functionName = args[0]
     arguments = args[1:]
     self._verifyArguments(functionName, arguments)
     result = MappedDataElement(self)
-    call = 'self.__map' + '(' + ','.join([str(arg) for arg in arguments]) + ')[' + "'" + functionName + "'" + ']'
+    call = 'node.' + functionName + '(' + ','.join([self._argumentString(arg) for arg in arguments]) + ')[' + "'" + functionName + "'" + ']'
     result._mapInvocation = call
     result._addDynamicMethod(functionName)
     return result
