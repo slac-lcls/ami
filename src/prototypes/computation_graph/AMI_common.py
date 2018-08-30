@@ -98,7 +98,7 @@ class Graph(object):
     result = {}
     for node in self._nodes:
       if isinstance(node, DataElement):
-        returnValue = node._domap()
+        returnValue = node._doMap()
         if returnValue is not None:
           result.update(returnValue)
       elif isinstance(node, GraphControlFlow):
