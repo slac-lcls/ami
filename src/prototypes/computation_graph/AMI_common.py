@@ -94,7 +94,7 @@ class Graph(object):
   def broadcast(self):
     self.serialize()
   
-  def _domap(self):
+  def _doMap(self):
     result = {}
     for node in self._nodes:
       if isinstance(node, DataElement):
