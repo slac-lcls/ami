@@ -94,11 +94,11 @@ class Graph(object):
   def broadcast(self):
     self.serialize()
   
-  def _domap(self, telemetryFrame):
+  def _domap(self):
     result = {}
     for node in self._nodes:
       if isinstance(node, DataElement):
-        returnValue = node._domap(telemetryFrame)
+        returnValue = node._domap()
         if returnValue is not None:
           result.update(returnValue)
       elif isinstance(node, GraphControlFlow):
@@ -156,16 +156,9 @@ class DataElement(object):
       exec(statement)
     return eval('x' + str(xIndex))
 
-  def _transferTelemetry(self, telemetryFrame):
-    value = telemetryFrame[self._name]
-    if value is not None and self._ingestTelemetry is not None:
-      self._ingestTelemetry(value)
-
-  def _domap(self, telemetryFrame):
+  def _domap(self):
     if self._mapInvocation is None:
       return {}
-    if not isinstance(self, MappedDataElement):
-      self._transferTelemetry(telemetryFrame)
     mapSequence = self._mapSequence(self)
     return { self._name : self._doMapSequence(mapSequence) }
 
