@@ -28,8 +28,8 @@ def printArgument(node, argument, indent):
   else:
     print(indentation + argument, '\t', eval('node.' + argument))
   if isinstance(eval('node.' + argument), MappedDataElement):
-    if(eval('node.' + argument)._mapInvocation is not None):
-      print(indentation + '_mapInvocation', eval('node.' + argument)._mapInvocation)
+    if(eval('node.' + argument).arguments is not None):
+      print(indentation + 'arguments', eval('node.' + argument).arguments)
     if eval('node.' + argument)._mapFunctionName is not None:
       print(indentation + '_mapFunctionName', eval('node.' + argument)._mapFunctionName)
     printGraphNode(eval('node.' + argument + '.predecessor'), indent + 4)
@@ -41,8 +41,8 @@ def printGraphNode(node, indent):
   args = ''
   if '_args' in dir(node): args = node._args
   print(indentation + node._name, '\t', node, '\t', arguments, args)
-  if node._mapInvocation is not None:
-    print(indentation + '_mapInvocation', node._mapInvocation)
+  if node.arguments is not None:
+    print(indentation + 'arguments', node.arguments)
   if node._mapFunctionName is not None:
     print(indentation + '_mapFunctionName', node._mapFunctionName)
   for argument in arguments:
@@ -130,7 +130,6 @@ class DataElement(object):
   
   def __init__(self, *args, **kwargs):
     self._name = args[0]
-    self._mapInvocation = None
     self._mapFunctionName = None
     self.data = numpy.zeros((1, 1))
     if kwargs is not None:
@@ -144,16 +143,17 @@ class DataElement(object):
 
   def _mapSequence(self, node):
     if isinstance(node, MappedDataElement):
-      return self._mapSequence(node.predecessor) + [ (node, node._mapInvocation) ]
-    if node._mapInvocation is not None:
-      return [ (node, node._mapInvocation) ]
+      return self._mapSequence(node.predecessor) + [ (node, node._arguments) ]
+    if node._arguments is not None:
+      return [ (node, node._arguments) ]
     return [ (node, None) ]
 
   def _doMapSequence(self, sequence):
     xIndex = 0
-    for (node, mapInvocation) in sequence[1:]:
+    for (node, arguments) in sequence[1:]:
       xIndex = xIndex + 1
-      statement = 'x' + str(xIndex) + ' = ' + mapInvocation
+      call = 'node.' + functionName + '(' + ','.join([self._argumentString(arg) for arg in arguments]) + ')[' + "'" + functionName + "'" + ']'
+      statement = 'x' + str(xIndex) + ' = ' + call
       print(statement)
       exec(statement)
     return eval('x' + str(xIndex))
@@ -228,8 +228,7 @@ class DataElement(object):
     arguments = args[1:]
     self._verifyArguments(functionName, arguments)
     result = MappedDataElement(self)
-    call = 'node.' + functionName + '(' + ','.join([self._argumentString(arg) for arg in arguments]) + ')[' + "'" + functionName + "'" + ']'
-    result._mapInvocation = call
+    result._arguments = arguments
     result._addDynamicMethod(functionName)
     return result
 
