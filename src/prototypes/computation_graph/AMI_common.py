@@ -132,7 +132,7 @@ class DataElement(object):
     self._name = args[0]
     self._mapInvocation = None
     self._mapFunctionName = None
-    self.data = None
+    self.data = numpy.zeros((1))
     if kwargs is not None:
       for key, value in kwargs.items():
         exec('self.' + str(key) + ' = ' + str(value))
