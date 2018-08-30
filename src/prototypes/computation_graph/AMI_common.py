@@ -138,7 +138,9 @@ class DataElement(object):
         exec('self.' + str(key) + ' = ' + str(value))
 
   def _dataIs(self, data):
+    print('_dataIs', data)
     self.data = data
+    print('self.data.shape', self.data.shape)
 
   def _mapSequence(self, node):
     if isinstance(node, MappedDataElement):
