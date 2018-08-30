@@ -133,12 +133,12 @@ class DataElement(object):
     self._mapInvocation = None
     self._mapFunctionName = None
     self.data = None
-    self.shape = [1]
-    self.origin = [0]
     if kwargs is not None:
       for key, value in kwargs.items():
         exec('self.' + str(key) + ' = ' + str(value))
-    self.data = numpy.zeros(self.shape)
+
+  def _dataIs(data):
+    self.data = data
 
   def _mapSequence(self, node):
     if isinstance(node, MappedDataElement):

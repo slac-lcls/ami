@@ -20,8 +20,6 @@ def sum(self):
 
 def roi(self, value):
   print('in roi(' + str(value) + ')')
-  self.shape = [ value[1] - value[0], value[3] - value[2] ]
-  self.origin = [ value[0], value[2] ]
   string = str(value[0]) + ':' + str(value[1]) + ',' + str(value[2]) + ':' + str(value[3])
   dataObject = AMI.getDataObject(self)
   print('getDataObject returned', dataObject)

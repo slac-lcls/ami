@@ -9,7 +9,7 @@ import userDefined
 
 def simpleWorkerGraph():
   graph = AMI.Graph('simple_worker_graph')
-  image = AMI.DataElement('cspad0', origin=[0,0], shape=[1024,1024])
+  image = AMI.DataElement('xppcspad')
   roiLambda = lambda image: [ (int(image.shape[0] * .1)), (int(image.shape[0] * .9)), (int(image.shape[1] * .1)), (int(image.shape[1]* .9)) ]
   subimage = image._map('roi', roiLambda)
   graph.export(subimage._map('sum', ))
