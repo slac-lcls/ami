@@ -156,7 +156,7 @@ class DataElement(object):
       exec(statement)
     return eval('x' + str(xIndex))
 
-  def _domap(self):
+  def _doMap(self):
     if self._mapInvocation is None:
       return {}
     mapSequence = self._mapSequence(self)
