@@ -2,6 +2,9 @@
 # mapFunctions.py
 #
 
+## these functions cannot call each other
+
+
 import AMI_common as AMI
 import numpy
 
@@ -29,7 +32,8 @@ def roi(self, value):
 
 
 def std(self):
-  return { 'std' : np.std(self.data) }
+  dataObject = AMI.getDataObject(self)
+  return { 'std' : np.std(dataObject.data) }
 
 
 # mean map is the same as sum
@@ -51,6 +55,6 @@ def calibrate(self, image):
 
 
 def peakfind(self, image):
-  result = [ 0, 0 ] # call peakfinder here
+  result = [ [0, 0] ] # call peakfinder here
   return { 'peakfind' : result }
 
