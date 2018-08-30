@@ -21,10 +21,12 @@ that process's data. A proposed prefix is HOSTNAME:PROCESS_TYPE:ID. This schema 
 ## Data Types
 
 The following python types will be stored in redis:
+
 * Bool
 * Numpy arrays
 * Critical state objects
 * Computation graphs
+ 
 
 In order to store numpy arrays, critical state objects, and computation graphs they must first be converted into binary strings via pickling.
 
@@ -45,3 +47,11 @@ to perform redis operations all at once.
 Proposal: Wrap redis-py-cluster and implement the MutableMapping abstract base class interface. Syntactically this will allow for interactaction 
 with redis through the normal python dictionary interface. Additionally, integrate support for redis-collections when its clear that the type being stored
 directly maps to a redis type.
+
+Ex:
+```python
+
+redis = RedisWrapper("127.0.0.1", 30001, "localhost:WORKER:1")
+redis['key'] = val
+
+```
