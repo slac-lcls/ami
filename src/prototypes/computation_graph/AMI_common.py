@@ -137,7 +137,7 @@ class DataElement(object):
       for key, value in kwargs.items():
         exec('self.' + str(key) + ' = ' + str(value))
 
-  def _dataIs(data):
+  def _dataIs(self, data):
     self.data = data
 
   def _mapSequence(self, node):
