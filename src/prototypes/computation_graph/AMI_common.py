@@ -6,6 +6,7 @@ import numpy
 import pickle
 import math
 import types
+import dill
 
 import mapFunctions
 
@@ -65,23 +66,23 @@ class Graph(object):
   def serialize(self):
     filename = "controlStore_" + self.__class__.__name__ + ".dat"
     print('writing to', filename)
-    self._removeDynamicMethodsAndLambdas()
-    pickle.dump(self, open(filename, "wb"))
+    self._removeDynamicMethods()
+    dill.dump(self, open(filename, "wb"))
   
-  def _removeDynamicMethodsAndLambdas(self):
+  def _removeDynamicMethods(self):
     for node in self._nodes:
-      node._removeDynamicMethodsAndLambdas()
+      node._removeDynamicMethods()
 
   def deserialize(self):
     filename = "controlStore_" + self.__class__.__name__ + ".dat"
     print('reading from', filename)
-    result = pickle.load(open(filename, "rb"))
-    self._restoreDynamicMethodsAndLambdas(result)
+    result = dill.load(open(filename, "rb"))
+    self._restoreDynamicMethods(result)
     return result
 
-  def _restoreDynamicMethodsAndLambdas(self, graph):
+  def _restoreDynamicMethods(self, graph):
     for node in graph._nodes:
-      node._restoreDynamicMethodsAndLambdas()
+      node._restoreDynamicMethods()
 
   def export(self, element):
     self._nodes.append(element)
@@ -209,36 +210,18 @@ class DataElement(object):
     exec(statement)
     self._mapFunctionName = functionName
   
-  def _restoreDynamicMethodsAndLambdas(self):
+  def _restoreDynamicMethods(self):
     if self._mapFunctionName is not None:
       self._addDynamicMethod(self._mapFunctionName)
     if isinstance(self, MappedDataElement):
-      self.predecessor._restoreDynamicMethodsAndLambdas()
-      newMapArguments = []
-      for argument in self._mapArguments:
-        if isinstance(argument, str) and argument.startswith('lambda'):
-          print("the argument we are restoring:", argument)
-          newMapArguments.append(eval(argument))
-          print('restoring argument', argument)
-        else:
-          newMapArguments.append(argument)
-      self._mapArguments = newMapArguments
+      self.predecessor._restoreDynamicMethods()
 
 
-  def _removeDynamicMethodsAndLambdas(self):
+  def _removeDynamicMethods(self):
     if self._mapFunctionName is not None and eval('self.' + self._mapFunctionName) is not None:
       exec('self.' + self._mapFunctionName + ' = None')
     if isinstance(self, MappedDataElement):
-      self.predecessor._removeDynamicMethodsAndLambdas()
-      if self._mapArguments is not None:
-        newMapArguments = []
-        for argument in self._mapArguments:
-          if isinstance(argument, types.FunctionType):
-            newMapArguments.append(str(argument))
-            print('saving lambda', str(argument))
-          else:
-            newMapArguments.append(argument)
-        self._mapArguments = newMapArguments
+      self.predecessor._removeDynamicMethods()
 
   def _argumentString(self, arg):
     if arg.__class__.__name__ == 'function':
