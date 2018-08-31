@@ -220,6 +220,8 @@ class DataElement(object):
           print("the argument we are restoring:", argument)
           newMapArguments.append(eval(argument))
           print('restoring argument', argument)
+        else:
+          newMapArguments.append(argument)
       self._mapArguments = newMapArguments
 
 
@@ -234,6 +236,8 @@ class DataElement(object):
           if isinstance(argument, types.FunctionType):
             newMapArguments.append(str(argument))
             print('saving lambda', str(argument))
+          else:
+            newMapArguments.append(argument)
         self._mapArguments = newMapArguments
 
   def _argumentString(self, arg):
