@@ -5,19 +5,22 @@
 import AMI_server as AMI
 
 
+print('read work graph')
 graph = AMI.workerGraph()
+print('reset work graph')
+graph._doReset()
 
 nextSampleTime = 0
 samplingInterval = 100
 
 
 if True:
-  telemetryFrame = AMI.ingestTelemetryFrame()
-  print('execute telemetry frame', telemetryFrame)
-  result = graph._domap(telemetryFrame)
+  print('map worker graph')
+  result = graph._doMap()
   print( 'execution result=', result)
-  timestamp = telemetryFrame['timestamp']
+  timestamp = 0
   if timestamp >= nextSampleTime:
-    AMI.submitResultToCollector(result)
+    print('reduce worker graph')
+    graph._doReduce()
     nextSampleTime = timestamp + samplingInterval
 

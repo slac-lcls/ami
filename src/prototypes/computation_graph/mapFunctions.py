@@ -2,57 +2,59 @@
 # mapFunctions.py
 #
 
-## these functions cannot call each other
-
-
 import AMI_common as AMI
 import numpy
 
 def sum(self):
   print('in sum()')
-  dataObject = AMI.getDataObject(self)
-  if self.data is None:
-    self.data = dataObject.data
+  if not hasattr(self, 'accumulatorSum') or self.accumulatorSum is None:
+    self.accumulatorSum = self.data
   else:
-    self.data = numpy.add(self.data, dataObject.data)
-  return { 'sum' : self.data }
+    self.accumulatorSum = numpy.add(self.accumulatorSum, self.data)
+  self.result = self.accumulatorSum
+  return self
+
+def sum_(self):
+  print("in sum_ reset")
+  self.accumulatorSum = None
+  self.result = None
+  return self
+
+def mean(self):
+  print('in mean()')
+  if not hasattr(self, 'accumulatorMean') or self.accumulatorMean is None:
+    self.accumulatorMean = self.data
+    self.samplesMean = 1
+  else:
+    self.accumulatorMean = numpy.add(self.accumulatorMean, self.data)
+    self.samplesMean = self.samplesMean + 1
+  self.result = (self.accumulatorMean, self.samplesMean)
+  return self
+
+def mean_(self):
+  print("in mean_ reset")
+  self.accumulatorMean = None
+  self.result = None
+  return self
 
 
 def roi(self, value):
   print('in roi(' + str(value) + ')')
   string = str(value[0]) + ':' + str(value[1]) + ',' + str(value[2]) + ':' + str(value[3])
-  dataObject = AMI.getDataObject(self)
-  print('getDataObject returned', dataObject)
-  AMI.printGraphNode(dataObject, 1)
-  if dataObject.data is not None:
-    self.data = eval('dataObject.data[' + string + '].copy')
-  return { 'roi' : self }
-
-
-def std(self):
-  dataObject = AMI.getDataObject(self)
-  return { 'std' : np.std(dataObject.data) }
-
-
-# mean map is the same as sum
-# mean reduce is the division
-
-def mean(self):
-  print('in mean()')
-  dataObject = AMI.getDataObject(self)
-  if self.data is None:
-    self.data = dataObject.data
-  else:
-    self.data = numpy.add(self.data, dataObject.data)
-  return { 'mean' : self.data }
+  if self.data is not None:
+    expression = 'self.data[' + string + '].copy()'
+    self.result = eval(expression)
+  return self
 
 
 def calibrate(self, image):
-  result = image # call calibration code here
-  return { 'calibrate' : result }
+  self.calibratedImage = image # call calibration code here
+  self.result = self.calibratedImage
+  return self
 
 
 def peakfind(self, image):
-  result = [ [0, 0] ] # call peakfinder here
-  return { 'peakfind' : result }
+  self.peaks = [ [ 0, 0 ] ]
+  self.result = self.peaks
+  return self
 

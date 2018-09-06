@@ -4,23 +4,26 @@
 # Env data source, plot mean v time, normalize by, weight by
 #
 
+import numpy
 import AMI_client as AMI
 import userDefined
 
 def simpleWorkerGraph():
   graph = AMI.Graph('simple_worker_graph')
   image = AMI.DataElement('xppcspad')
+  image._dataIs(numpy.zeros((1024, 1024)))
   roiLambda = lambda image: [ (int(image.data.shape[0] * .1)), (int(image.data.shape[0] * .9)), (int(image.data.shape[1] * .1)), (int(image.data.shape[1]* .9)) ]
+  print("computed roi should be", roiLambda(image))
   subimage = image._map('roi', roiLambda)
-  graph.export(subimage._map('sum', ))
-  graph.export(image._map('roi', roiLambda)._map('mean'))
-  graph.export(AMI.DataElement('timestamp')) # export XTC field to the Result store
+  meanSubimage = subimage._map('mean')
+  graph.addNode(meanSubimage)
+  graph.addNode(meanSubimage._reduce('mean'))
+  graph.addNode(AMI.DataElement('timestamp')) # addNode XTC field to the Result store
   return graph
-
 
 def complexWorkerGraph():
   graph = AMI.Graph("first_milestone")
-  image = AMI.DataElement('cspad0', origin=[0,0], shape=[1024,1024])
+  image = AMI.DataElement('xppcspad')
   calibratedImage = image._map('calibrate')
   peaks = calibratedImage._map('peakfind')
   laser = AMI.DataElement('laser')

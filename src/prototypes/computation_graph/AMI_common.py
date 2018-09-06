@@ -9,51 +9,12 @@ import types
 import dill
 
 import mapFunctions
+import reduceFunctions
 
 ###
 ### graphs
 ###
 
-def getDataObject(node):
-  if not isinstance(node, MappedDataElement):
-    return node
-  return getDataObject(node.predecessor)
-
-
-def printArgument(node, argument, indent):
-  indentation = ' ' * indent
-  if isinstance(eval('node.' + argument), DataElement):
-    print(indentation + argument, '\t', eval('node.' + argument), '\t', eval('node.' + argument)._localFields())
-    if argument == 'predecessor' and 'predecessor' in dir(eval('node.' + argument)):
-      print(indentation + '\tpoints to ' + str(eval('node.' + argument).predecessor))
-  else:
-    print(indentation + argument, '\t', eval('node.' + argument))
-  if isinstance(eval('node.' + argument), MappedDataElement):
-    if(eval('node.' + argument)._mapArguments is not None):
-      print(indentation + '_mapArguments', eval('node.' + argument)._mapArguments)
-    if eval('node.' + argument)._mapFunctionName is not None:
-      print(indentation + '_mapFunctionName', eval('node.' + argument)._mapFunctionName)
-    printGraphNode(eval('node.' + argument + '.predecessor'), indent + 4)
-
-
-def printGraphNode(node, indent):
-  indentation = ' ' * indent
-  arguments = node._localFields()
-  args = ''
-  if '_args' in dir(node): args = node._args
-  print(indentation + node._name, '\t', node, '\t', arguments, args)
-  if node._mapArguments is not None:
-    print(indentation + '_mapArguments', node._mapArguments)
-  if node._mapFunctionName is not None:
-    print(indentation + '_mapFunctionName', node._mapFunctionName)
-  for argument in arguments:
-    printArgument(node, argument, indent + 16)
-
-
-def printGraph(graph):
-  for node in graph._nodes:
-    printGraphNode(node, 0)
-    
 
 
 
@@ -71,7 +32,11 @@ class Graph(object):
   
   def _removeDynamicMethods(self):
     for node in self._nodes:
-      node._removeDynamicMethods()
+      if isinstance(node, ComputedDataElement):
+        if node._isMap:
+          node._removeDynamicMethods('mapFunctions')
+        else:
+          node._removeDynamicMethods('reduceFunctions')
 
   def deserialize(self):
     filename = "controlStore_" + self.__class__.__name__ + ".dat"
@@ -82,9 +47,13 @@ class Graph(object):
 
   def _restoreDynamicMethods(self, graph):
     for node in graph._nodes:
-      node._restoreDynamicMethods()
+      if isinstance(node, ComputedDataElement):
+        if node._isMap:
+          node._restoreDynamicMethods('mapFunctions')
+        else:
+          node._restoreDynamicMethods('reduceFunctions')
 
-  def export(self, element):
+  def addNode(self, element):
     self._nodes.append(element)
   
   def import_(self, name):
@@ -95,17 +64,26 @@ class Graph(object):
   def broadcast(self):
     self.serialize()
   
-  def _doMap(self):
-    result = {}
+  def _doComputation(self, reset=False, map=False, reduce=False):
+    result = []
     for node in self._nodes:
       if isinstance(node, DataElement):
-        returnValue = node._doMap()
+        returnValue = node._doComputation(reset, map, reduce)
         if returnValue is not None:
-          result.update(returnValue)
+          result.append(returnValue)
       elif isinstance(node, GraphControlFlow):
         pass # TODO
     return result
+  
+  def _doReset(self):
+    self._doComputation(reset=True)
+        
+  def _doMap(self):
+    self._doComputation(map=True)
 
+  def _doReduce(self):
+    self._doComputation(reduce=True)
+  
   def If(self, lambdaExpression, *args, **kwargs):
     self._nodes.append(If(lambdaExpression, *args, **kwargs))
   
@@ -122,6 +100,8 @@ class Graph(object):
 
 
 
+
+
 ###
 ### data elements
 ###
@@ -131,46 +111,89 @@ class DataElement(object):
   
   def __init__(self, *args, **kwargs):
     self._name = args[0]
-    self._mapFunctionName = None
-    self._mapArguments = None
-    self.data = numpy.zeros((1, 1))
+    self._computedFunctionName = None
+    self._computedArguments = None
+    self.data = None
     if kwargs is not None:
       for key, value in kwargs.items():
         exec('self.' + str(key) + ' = ' + str(value))
 
   def _dataIs(self, data):
-    print('_dataIs', data)
     self.data = data
-    print('self.data.shape', self.data.shape)
 
-  def _mapSequence(self, node):
-    if isinstance(node, MappedDataElement):
-      return self._mapSequence(node.predecessor) + [ (node, node._mapArguments) ]
-    if node._mapArguments is not None:
-      return [ (node, node._mapArguments) ]
-    return [ (node, None) ]
+  def _computedSequence(self, node):
+    if isinstance(node, ComputedDataElement):
+      (priorSequence, priorIsMap) = self._computedSequence(node.predecessor)
+      return (priorSequence + [ (node, node._computedArguments) ], node._isMap and priorIsMap)
+    if node._computedArguments is not None:
+      return ([ (node, node._computedArguments) ], node._isMap and priorIsMap)
+    return ([ (node, None) ], True)
+
+  def _doResetSequence(self, sequence):
+    for (node, arguments) in sequence[1:]:
+      functionName = node._computedFunctionName
+      functionName = functionName + '_'
+      if hasattr(node, functionName) and callable(eval('node.' + functionName)):
+        call = 'node.' + functionName + '(' + ','.join([self._argumentString(arg) for arg in arguments]) + ')'
+        print(call)
+        exec(call)
 
   def _doMapSequence(self, sequence):
     xIndex = 0
-    for (node, mapArguments) in sequence[1:]:
-      print(node, mapArguments)
+    x0 = sequence[0][0]
+    lastElement = 'x0'
+    for (node, arguments) in sequence[1:]:
       xIndex = xIndex + 1
-      functionName = mapArguments[0]
-      call = 'node.' + functionName + '(' + ','.join([self._argumentString(arg) for arg in mapArguments[1:]]) + ')[' + "'" + functionName + "'" + ']'
-      statement = 'x' + str(xIndex) + ' = ' + call
-      print(statement)
-      exec(statement)
-    return eval('x' + str(xIndex))
+      nextElement = 'x' + str(xIndex)
+      if hasattr(eval(lastElement), 'result'):
+        operand = lastElement + '.result'
+      else:
+        operand = lastElement + '.data'
+      node._dataIs(eval(operand))
+      functionName = node._computedFunctionName
+      if functionName is not None:
+        call = 'node.' + functionName + '(' + ','.join([self._argumentString(arg) for arg in arguments]) + ')'
+        statement = nextElement + ' = ' + call
+        print(statement)
+        exec(statement)
+        lastElement = nextElement
+    return eval(nextElement)
 
-  def _doMap(self):
-    if self._mapArguments is None:
+  def _doReduceSequence(self, sequence):
+    xIndex = 0
+    x0 = sequence[0][0]
+    lastElement = 'x0'
+    for (node, arguments) in sequence[1:]:
+      xIndex = xIndex + 1
+      nextElement = 'x' + str(xIndex)
+      if not node._isMap:
+        if hasattr(eval(lastElement), 'result'):
+          operand = lastElement + '.result'
+        else:
+          operand = lastElement + '.data'
+        node._dataIs(eval(operand))
+      functionName = node._computedFunctionName
+      if functionName is not None:
+        if not node._isMap:
+          call = 'node.' + functionName + '(' + ','.join([self._argumentString(arg) for arg in arguments]) + ')'
+        else:
+          call = 'node'
+        statement = nextElement + ' = ' + call
+        print(statement)
+        exec(statement)
+        lastElement = nextElement
+    return eval(nextElement)
+
+  def _doComputation(self, reset, map, reduce):
+    if self._computedArguments is None:
       return {}
-    mapSequence = self._mapSequence(self)
-    print(mapSequence)
-    return { self._name : self._doMapSequence(mapSequence) }
-
-  def _doreduce(self):
-    pass
+    (sequence, isMap) = self._computedSequence(self)
+    if reset:
+      return self._doResetSequence(sequence)
+    elif (map and isMap):
+      return self._doMapSequence(sequence)
+    elif not (map or isMap):
+      return self._doReduceSequence(sequence)
 
   def _localFields(self):
     return [arg for arg in dir(self) if arg[0] != '_']
@@ -204,46 +227,67 @@ class DataElement(object):
         badcall = self._name + '.' + functionName + ' passes invalid argument ' + str(arg)
         raise ValueError( badcall )
 
-  def _addDynamicMethod(self, functionName):
-    statement = 'self.' + functionName + ' = types.MethodType(mapFunctions.' + functionName + ', self)'
-    print(statement)
+  def _addDynamicMethod(self, functionName, functionImport):
+    statement = 'self.' + functionName + ' = types.MethodType(' + functionImport + '.' + functionName + ', self)'
     exec(statement)
-    self._mapFunctionName = functionName
   
-  def _restoreDynamicMethods(self):
-    if self._mapFunctionName is not None:
-      self._addDynamicMethod(self._mapFunctionName)
-    if isinstance(self, MappedDataElement):
-      self.predecessor._restoreDynamicMethods()
+  def _restoreDynamicMethods(self, functionImport):
+    if not isinstance(self, ComputedDataElement) or not hasattr(self, '_isMap'):
+      return
+    if self._isMap and functionImport != 'mapFunctions':
+      return
+    if not self._isMap and functionImport != 'reduceFunctions':
+      return
+    for functionName in eval('dir(' + functionImport + ')'):
+      if functionName[0] != '_' and callable(eval(functionImport + '.' + functionName)):
+        self._addDynamicMethod(functionName, functionImport)
+    if isinstance(self, ComputedDataElement):
+      self.predecessor._restoreDynamicMethods(functionImport)
 
-
-  def _removeDynamicMethods(self):
-    if self._mapFunctionName is not None and eval('self.' + self._mapFunctionName) is not None:
-      exec('self.' + self._mapFunctionName + ' = None')
-    if isinstance(self, MappedDataElement):
-      self.predecessor._removeDynamicMethods()
+  def _removeDynamicMethods(self, functionImport):
+    for functionName in eval('dir(' + functionImport + ')'):
+      if functionName[0] != '_' and callable(eval(functionImport + '.' + functionName)):
+        exec('self.' + functionName + ' = None')
+    if isinstance(self, ComputedDataElement):
+      self.predecessor._removeDynamicMethods(functionImport)
 
   def _argumentString(self, arg):
     if arg.__class__.__name__ == 'function':
       return str(arg(self))
     else:
       return str(arg)
-  
+
+  def _compute(self, functionName, arguments, functionImport):
+    self._verifyArguments(functionName, arguments)
+    result = ComputedDataElement(self)
+    result._computedArguments = arguments
+    result._addDynamicMethod(functionName, functionImport)
+    result._computedFunctionName = functionName
+    return result
+
   def _map(self, *args):
     functionName = args[0]
     arguments = args[1:]
-    self._verifyArguments(functionName, arguments)
-    result = MappedDataElement(self)
-    result._mapArguments = args
-    result._addDynamicMethod(functionName)
+    result = self._compute(functionName, arguments, 'mapFunctions')
+    result._isMap = True
+    return result
+
+  def _reduce(self, *args):
+    functionName = args[0]
+    arguments = args[1:]
+    result = self._compute(functionName, arguments, 'reduceFunctions')
+    result._isMap = False
     return result
 
 
-class MappedDataElement(DataElement):
+
+class ComputedDataElement(DataElement):
 
   def __init__(self, predecessor, *args, **kwargs):
-    super(MappedDataElement, self).__init__(predecessor._name, *args, **kwargs)
+    super(ComputedDataElement, self).__init__(predecessor._name, *args, **kwargs)
     self.predecessor = predecessor
+    self._isMap = None
+    self.data = predecessor.data
 
 
 ###
@@ -305,3 +349,51 @@ class Import(object):
 
   def __init__(self, name, *args, **kwargs):
     pass
+
+
+###
+### print graph
+###
+
+def printArgument(node, argument, indent):
+  indentation = ' ' * indent
+  if isinstance(eval('node.' + argument), DataElement):
+    print(indentation + argument, '\t', eval('node.' + argument), '\t', eval('node.' + argument)._localFields())
+    if argument == 'predecessor' and 'predecessor' in dir(eval('node.' + argument)):
+      print(indentation + '\tpoints to ' + str(eval('node.' + argument).predecessor))
+  else:
+    print(indentation + argument, '\t', eval('node.' + argument))
+  if isinstance(eval('node.' + argument), ComputedDataElement):
+    if(eval('node.' + argument)._computedArguments is not None):
+      print(indentation + '_computedArguments', eval('node.' + argument)._computedArguments)
+    if eval('node.' + argument)._computedFunctionName is not None:
+      if eval('node.' + argument)._isMap:
+        computationType = 'map'
+      else:
+        computationType = 'reduce'
+      print(indentation + computationType, eval('node.' + argument)._computedFunctionName)
+    printGraphNode(eval('node.' + argument + '.predecessor'), indent + 4)
+
+
+def printGraphNode(node, indent):
+  indentation = ' ' * indent
+  arguments = node._localFields()
+  args = ''
+  if '_args' in dir(node): args = node._args
+  print(indentation + node._name, '\t', node, '\t', arguments, args)
+  if node._computedArguments is not None:
+    print(indentation + '_computedArguments', node._computedArguments)
+  if node._computedFunctionName is not None:
+    if node._isMap:
+      computationType = 'map'
+    else:
+      computationType = 'reduce'
+    print(indentation + computationType, node._computedFunctionName)
+  for argument in arguments:
+    printArgument(node, argument, indent + 16)
+
+
+def printGraph(graph):
+  for node in graph._nodes:
+    printGraphNode(node, 0)
+
