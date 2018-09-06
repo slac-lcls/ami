@@ -73,16 +73,20 @@ class Graph(object):
           result.append(returnValue)
       elif isinstance(node, GraphControlFlow):
         pass # TODO
+    print('graph._doComputation returns', result)
+    for node in result:
+      if isinstance(node, DataElement):
+        printGraphNode(node, 0)
     return result
   
   def _doReset(self):
-    self._doComputation(reset=True)
+    return self._doComputation(reset=True)
         
   def _doMap(self):
-    self._doComputation(map=True)
+    return self._doComputation(map=True)
 
   def _doReduce(self):
-    self._doComputation(reduce=True)
+    return self._doComputation(reduce=True)
   
   def If(self, lambdaExpression, *args, **kwargs):
     self._nodes.append(If(lambdaExpression, *args, **kwargs))
