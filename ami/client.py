@@ -141,7 +141,7 @@ class AreaDetWidget(pg.ImageView):
             "config['shape'], config['origin'], "
             "config['vector'], config['axes'])".format(self.topic),
             self.topic,
-            [("%s_roi" % self.topic, Strategies.Pick1)],
+            [("%s_roi" % self.topic, Strategies.Pick1.value)],
             config=config,
             imports=[('pyqtgraph', 'pg')],
         )
@@ -200,7 +200,7 @@ class Calculator(QWidget):
         graph[self.nameBox.text()] = Graph.build_node(
             "%s = %s" % (self.nameBox.text(), self.codeBox.text()),
             self.parse_inputs(),
-            [(self.nameBox.text(), Strategies.Pick1)],
+            [(self.nameBox.text(), Strategies.Pick1.value)],
             imports=self.parse_imports()
         )
         self.comm.update(graph)
