@@ -6,10 +6,9 @@ import json
 import shutil
 import tempfile
 import argparse
-import multiprocessing as mp
 from ami.graph import Graph, GraphConfigError, GraphRuntimeError
-from ami.comm import Ports, Collector, ResultStore, EventBuilder, PickNBuilder
-from ami.data import MsgTypes, Transitions, Transition, StaticSource, PsanaSource, Strategies
+from ami.comm import Ports, ResultStore
+from ami.data import MsgTypes, Transitions, Transition, StaticSource, PsanaSource
 
 
 class Worker(object):
@@ -103,67 +102,6 @@ class Worker(object):
                 self.store.send(msg)
 
 
-class NodeCollector(Collector):
-    def __init__(self, node, num_workers, collector_addr, downstream_addr):
-        super(__class__, self).__init__(collector_addr)
-        self.node = node
-        self.num_workers = num_workers
-        self.store = EventBuilder(
-            self.num_workers, 10, downstream_addr, self.ctx)
-        self.pickers = {}
-        self.strategies = {}
-
-        self.downstream_addr = downstream_addr
-
-    def process_msg(self, msg):
-        if msg.mtype == MsgTypes.Transition:
-            self.store.transition(msg.identity, msg.payload.ttype)
-            if self.store.transition_ready(msg.payload.ttype):
-                self.store.send(msg)
-        elif msg.mtype == MsgTypes.Heartbeat:
-            self.store.heartbeat(msg.identity, msg.payload)
-            if self.store.heartbeat_ready(msg.payload):
-                self.store.complete(self.node, msg.payload)
-        elif msg.mtype == MsgTypes.Datagram:
-            if msg.payload.name in self.strategies:
-                if self.strategies[msg.payload.name] == Strategies.Sum.value:
-                    self.store.sum(
-                        msg.heartbeat,
-                        msg.identity,
-                        msg.payload.name,
-                        msg.payload.data,
-                        0)
-                elif self.strategies[msg.payload.name] == Strategies.Avg.value:
-                    self.store.sum(
-                        msg.heartbeat,
-                        msg.identity,
-                        msg.payload.name,
-                        msg.payload.data,
-                        msg.payload.weight)
-                elif self.strategies[msg.payload.name] == Strategies.Pick1.value:
-                    self.store.put(
-                        msg.heartbeat,
-                        msg.identity,
-                        msg.payload.name,
-                        msg.payload.data)
-                elif self.strategies[msg.payload.name] == "AverageN":
-                    if msg.payload.name not in self.pickers:
-                        self.pickers[msg.payload.name] = PickNBuilder(self.num_workers, self.downstream_addr, self.ctx)
-                    self.pickers[msg.payload.name].put(msg.payload)
-                else:
-                    print("node_collector%d: Unknown collector strategy - %s" %
-                          (self.node, self.strategies[msg.payload.name]))
-            else:
-                # We assume Pick1 for the stuff that comes from the raw data
-                self.store.put(
-                    msg.heartbeat,
-                    msg.identity,
-                    msg.payload.name,
-                    msg.payload.data)
-        elif msg.mtype == MsgTypes.Graph:
-            self.strategies = Graph.extract_collection_strategies(msg.payload)
-
-
 def run_worker(num, num_workers, hb_period, source, collector_addr, graph_addr):
 
     print(
@@ -211,16 +149,6 @@ def run_worker(num, num_workers, hb_period, source, collector_addr, graph_addr):
         return 1
     worker = Worker(num, hb_period, src, collector_addr, graph_addr)
     return worker.run()
-
-
-def run_collector(node_num, num_workers, collector_addr, upstream_addr):
-    print('Starting collector on node # %d' % node_num)
-    collector = NodeCollector(
-        node_num,
-        num_workers,
-        collector_addr,
-        upstream_addr)
-    return collector.run()
 
 
 def main():
@@ -290,11 +218,7 @@ def main():
     args = parser.parse_args()
     ipcdir = tempfile.mkdtemp()
     collector_addr = "ipc://%s/node_collector" % ipcdir
-    upstream_addr = "tcp://%s:%d" % (args.host, args.collector)
     graph_addr = "tcp://%s:%d" % (args.host, args.graph)
-
-    procs = []
-    failed_worker = False
 
     try:
         src_url_match = re.match('(?P<prot>.*)://(?P<body>.*)', args.source)
@@ -304,42 +228,7 @@ def main():
             print("Invalid data source config string:", args.source)
             return 1
 
-        for i in range(args.num_workers):
-            proc = mp.Process(
-                name='worker%03d-n%03d' % (i, args.node_num),
-                target=run_worker,
-                args=(i, args.num_workers, args.heartbeat, src_cfg, collector_addr, graph_addr)
-            )
-            proc.daemon = True
-            proc.start()
-            procs.append(proc)
-
-        collector_proc = mp.Process(
-            name='manager-n%03d' % args.node_num,
-            target=run_collector,
-            args=(
-                args.node_num,
-                args.num_workers,
-                collector_addr,
-                upstream_addr)
-        )
-        collector_proc.daemon = True
-        collector_proc.start()
-        procs.append(collector_proc)
-
-        for proc in procs:
-            proc.join()
-            if proc.exitcode == 0:
-                print('%s exited successfully' % proc.name)
-            else:
-                failed_worker = True
-                print(
-                    '%s exited with non-zero status code: %d' %
-                    (proc.name, proc.exitcode))
-
-        # return a non-zero status code if any workerss died
-        if failed_worker:
-            return 1
+        run_worker(args.node_num, args.num_workers, args.heartbeat, src_cfg, collector_addr, graph_addr)
 
         return 0
     except KeyboardInterrupt:
