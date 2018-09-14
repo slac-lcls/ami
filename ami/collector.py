@@ -1,7 +1,5 @@
-import os
+#!/usr/bin/env python
 import sys
-import shutil
-import tempfile
 import argparse
 from ami.graph import Graph
 from ami.comm import Ports, Collector, EventBuilder, PickNBuilder
@@ -90,19 +88,11 @@ def main():
     )
 
     parser.add_argument(
-        '-p',
-        '--port',
-        type=int,
-        default=Ports.Comm,
-        help='port for GUI-Manager communication (default: %d)' % Ports.Comm
-    )
-
-    parser.add_argument(
         '-c',
         '--collector',
         type=int,
-        default=Ports.Collector,
-        help='port for final collector (default: %d)' % Ports.Collector
+        default=Ports.FinalCollector,
+        help='port for final collector (default: %d)' % Ports.FinalCollector
     )
 
     parser.add_argument(
@@ -122,8 +112,7 @@ def main():
     )
 
     args = parser.parse_args()
-    ipcdir = tempfile.mkdtemp()
-    collector_addr = "ipc://%s/node_collector" % ipcdir
+    collector_addr = "tcp://127.0.0.1:%d" % (Ports.NodeCollector)
     upstream_addr = "tcp://%s:%d" % (args.host, args.collector)
 
     try:
@@ -133,9 +122,6 @@ def main():
     except KeyboardInterrupt:
         print("Worker killed by user...")
         return 0
-    finally:
-        if ipcdir is not None and os.path.exists(ipcdir):
-            shutil.rmtree(ipcdir)
 
 
 if __name__ == '__main__':

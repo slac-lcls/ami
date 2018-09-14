@@ -1,3 +1,4 @@
+#!/usr/bin/env python
 import re
 import sys
 import zmq
@@ -27,8 +28,10 @@ class Manager(Collector):
         self.comm = self.ctx.socket(zmq.REP)
         self.comm.bind(comm_addr)
         self.register(self.comm, self.client_request)
-        self.graph_comm = self.ctx.socket(zmq.PUB)
+        self.graph_comm = self.ctx.socket(zmq.XPUB)
+        self.graph_comm.setsockopt(zmq.XPUB_VERBOSE, True)
         self.graph_comm.bind(graph_addr)
+        self.register(self.graph_comm, self.graph_request)
 
     def process_msg(self, msg):
         if msg.mtype == MsgTypes.Datagram:
@@ -108,6 +111,13 @@ class Manager(Collector):
         print("manager: sending of graph completed")
         return True
 
+    def graph_request(self):
+        request = self.graph_comm.recv_string()
+
+        if request == "\x01graph":
+            self.graph_comm.send_string("graph", zmq.SNDMORE)
+            self.graph_comm.send_pyobj(self.graph)
+
 
 def run_manager(collector_addr, graph_addr, comm_addr):
     manager = Manager(collector_addr, graph_addr, comm_addr)
@@ -144,8 +154,8 @@ def main():
         '-c',
         '--collector',
         type=int,
-        default=Ports.Collector,
-        help='port for final collector (default: %d)' % Ports.Collector
+        default=Ports.FinalCollector,
+        help='port for final collector (default: %d)' % Ports.FinalCollector
     )
 
     args = parser.parse_args()

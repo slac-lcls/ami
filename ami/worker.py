@@ -1,10 +1,8 @@
+#!/usr/bin/env python
 import re
-import os
 import sys
 import zmq
 import json
-import shutil
-import tempfile
 import argparse
 from ami.graph import Graph, GraphConfigError, GraphRuntimeError
 from ami.comm import Ports, ResultStore
@@ -68,7 +66,6 @@ class Worker(object):
                         except zmq.Again:
                             break
                     if new_graph is not None:
-
                         self.graph.update(new_graph)
 
                         print("worker%d: Received new configuration" % self.idnum)
@@ -162,14 +159,6 @@ def main():
     )
 
     parser.add_argument(
-        '-p',
-        '--port',
-        type=int,
-        default=Ports.Comm,
-        help='port for GUI-Manager communication (default: %d)' % Ports.Comm
-    )
-
-    parser.add_argument(
         '-g',
         '--graph',
         type=int,
@@ -181,8 +170,8 @@ def main():
         '-c',
         '--collector',
         type=int,
-        default=Ports.Collector,
-        help='port for final collector (default: %d)' % Ports.Collector
+        default=Ports.NodeCollector,
+        help='port for node collector (default: %d)' % Ports.NodeCollector
     )
 
     parser.add_argument(
@@ -216,8 +205,7 @@ def main():
     )
 
     args = parser.parse_args()
-    ipcdir = tempfile.mkdtemp()
-    collector_addr = "ipc://%s/node_collector" % ipcdir
+    collector_addr = "tcp://localhost:%d" % args.collector
     graph_addr = "tcp://%s:%d" % (args.host, args.graph)
 
     try:
@@ -234,9 +222,6 @@ def main():
     except KeyboardInterrupt:
         print("Worker killed by user...")
         return 0
-    finally:
-        if ipcdir is not None and os.path.exists(ipcdir):
-            shutil.rmtree(ipcdir)
 
 
 if __name__ == '__main__':

@@ -8,7 +8,8 @@ from ami.data import MsgTypes, Message, CollectorMessage, DataTypes, Datagram
 class Ports(IntEnum):
     Comm = 5555
     Graph = 5556
-    Collector = 5557
+    NodeCollector = 5557
+    FinalCollector = 5558
 
 
 class Store(object):
