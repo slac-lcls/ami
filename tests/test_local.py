@@ -19,6 +19,7 @@ from ami.manager import run_manager
 from ami.worker import run_worker
 from ami.collector import run_collector
 
+
 class AmiTBase(object):
 
     def setup(self):
