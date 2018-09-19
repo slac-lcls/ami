@@ -6,7 +6,7 @@ import AMI_common as AMI
 import numpy
 
 def mean(self, *args):
-  print('in mean globalCollector', self, self.data, self.operand)
+  print('in mean globalCollector', self.data, self.operand)
   (data, samples) = self.data
   if data is None:
     (data, samples) = self.operand
@@ -19,6 +19,7 @@ def mean(self, *args):
       data = data + data1
       samples = samples + samples1
   self.data = (data / samples, samples)
+  print(self.data)
   return self
 
 def mean_(self):

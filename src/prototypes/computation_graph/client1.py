@@ -19,7 +19,7 @@ def simpleWorkerGraph():
   graph.If('1 < 2')
   graph.addNode(meanSubimage._localCollector('mean')._globalCollector('mean'))
   image2 = AMI.DataElement('xppcspad')
-  image2._dataIs(numpy.ones((512, 512)))
+  image2._dataIs(7 * numpy.ones((512, 512)))
   graph.addNode(image2._worker('mean')._localCollector('mean')._globalCollector('mean'))
   graph.Endif()
   graph.addNode(AMI.DataElement('timestamp'))
