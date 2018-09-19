@@ -11,21 +11,25 @@ import userDefined
 def simpleWorkerGraph():
   graph = AMI.Graph('simple_worker_graph')
   image = AMI.DataElement('xppcspad')
-  image._dataIs(numpy.zeros((1024, 1024)))
-  roiLambda = lambda image: [ (int(image.data.shape[0] * .1)), (int(image.data.shape[0] * .9)), (int(image.data.shape[1] * .1)), (int(image.data.shape[1]* .9)) ]
-  print("computed roi should be", roiLambda(image))
-  subimage = image._map('roi', roiLambda)
-  meanSubimage = subimage._map('mean')
+  image._dataIs(numpy.ones((1024, 1024)))
+  roiLambda = lambda image: [ (int(image.operand.shape[0] * .1)), (int(image.operand.shape[0] * .9)), (int(image.operand.shape[1] * .1)), (int(image.operand.shape[1]* .9)) ]
+  subimage = image._worker('roi', roiLambda)
+  meanSubimage = subimage._worker('mean')
   graph.addNode(meanSubimage)
-  graph.addNode(meanSubimage._reduce('mean'))
-  graph.addNode(AMI.DataElement('timestamp')) # addNode XTC field to the Result store
+  graph.If('1 < 2')
+  graph.addNode(meanSubimage._localCollector('mean')._globalCollector('mean'))
+  image2 = AMI.DataElement('xppcspad')
+  image2._dataIs(numpy.ones((512, 512)))
+  graph.addNode(image2._worker('mean')._localCollector('mean')._globalCollector('mean'))
+  graph.Endif()
+  graph.addNode(AMI.DataElement('timestamp'))
   return graph
 
 def complexWorkerGraph():
   graph = AMI.Graph("first_milestone")
   image = AMI.DataElement('xppcspad')
-  calibratedImage = image._map('calibrate')
-  peaks = calibratedImage._map('peakfind')
+  calibratedImage = image._worker('calibrate')
+  peaks = calibratedImage._worker('peakfind')
   laser = AMI.DataElement('laser')
   graph.If(lambda: laser)
   # bin laser-on by x,y,t
