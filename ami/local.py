@@ -9,7 +9,8 @@ import multiprocessing as mp
 
 from ami.comm import Ports
 from ami.manager import run_manager
-from ami.worker import run_worker, run_collector
+from ami.worker import run_worker
+from ami.collector import run_collector
 from ami.client import run_client
 
 
