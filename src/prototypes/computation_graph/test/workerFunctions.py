@@ -5,7 +5,7 @@
 import AMI_common as AMI
 import numpy
 
-def mean(self):
+def mean(self, *args):
   print('in mean()', self, self.data)
   (data, samples) = self.data
   if samples == 0:
@@ -13,9 +13,13 @@ def mean(self):
   else:
     self.data = ( data + self.operands[0], samples + 1 )
   print('mean result', self.data)
-  return self
+  if len(args) > 0:
+    if self.data[1] >= args[0]:
+      return self
+  else:
+    return self
 
-def mean_(self):
+def mean_(self, *args):
   print("in mean_ worker reset", self)
   self.data = ( None, 0 )
   return self

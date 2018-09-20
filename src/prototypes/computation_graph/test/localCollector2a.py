@@ -6,10 +6,10 @@ import AMI_server as AMI
 
 print('read work graph')
 graph1 = AMI.workerGraph()
-graph1._receiveWorkerData('worker1.dat')
+graph1._receiveWorkerData('worker1a.dat')
 
 graph2 = AMI.workerGraph()
-graph2._receiveWorkerData('worker2.dat')
+graph2._receiveWorkerData('worker1b.dat')
 
 result = graph1._doLocalCollector(graph2)
 print('localCollector 2a result is', result)

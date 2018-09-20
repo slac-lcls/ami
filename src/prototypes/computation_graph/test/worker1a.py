@@ -1,5 +1,5 @@
 #
-# worker2.py
+# worker1a.py
 #
 
 import AMI_server as AMI
@@ -9,8 +9,6 @@ graph = AMI.workerGraph()
 
 result = graph._doWorker()
 result = graph._doWorker()
-result = graph._doWorker()
-print('worker 2 result is', result)
+print('worker 1a result is', result)
 
-graph._transmitWorkerData('worker2.dat')
-
+graph._transmitWorkerData('worker1a.dat')

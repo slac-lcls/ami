@@ -6,7 +6,7 @@ import AMI_server as AMI
 
 print('read work graph')
 graph = AMI.workerGraph()
-graph._receiveWorkerData('worker1.dat')
+graph._receiveWorkerData('worker1a.dat')
 
 result = graph._doLocalCollector()
 print('localCollector result is', result)
