@@ -13,11 +13,15 @@ import re
 import signal
 import tempfile
 import multiprocessing as mp
+import json
+import time
+import numpy as np
 
 from ami.comm import Ports
 from ami.manager import run_manager
 from ami.worker import run_worker
 from ami.collector import run_collector
+from ami.client import CommunicationHandler
 
 
 class AmiTBase(object):
@@ -28,7 +32,7 @@ class AmiTBase(object):
         ipcdir = None
         source = 'static://examples/worker.json'
         num_workers = 2
-        heartbeat = 10
+        heartbeat = 3
         if tcp:
             host = "127.0.0.1"
             collector_addr = "tcp://%s:%d" % (host, port)
@@ -79,6 +83,8 @@ class AmiTBase(object):
         manager_proc.start()
         self.procs.append(manager_proc)
 
+        self.comm_handler = CommunicationHandler(comm_addr)
+
         return 0
 
     def teardown(self):
@@ -94,11 +100,32 @@ class AmiTBase(object):
 
         return 0
 
+    def get_feature(self, feat):
+
+        self.comm_handler.sock.send_string("feature:%s" % feat)
+        reply = self.comm_handler.sock.recv_string()
+
+        if reply == 'ok':
+            feature = self.comm_handler.sock.recv_pyobj()
+            return feature
+
 
 class TestAMI(AmiTBase):
 
     def test1(self):
         # do test
+        with open('examples/basic.ami', 'r') as cnf:
+            graph = json.load(cnf)
+            self.comm_handler.update(graph)
+
+        time.sleep(10)
+
+        cspad_sum = self.get_feature('cspad_sum')
+        assert cspad_sum == 366149.0
+
+        sum2 = self.get_feature('sum2')
+        assert np.array_equal(sum2, np.ones((512, 512))*13)
+
         return
 
     def test2(self):
