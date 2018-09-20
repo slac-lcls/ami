@@ -12,7 +12,7 @@ def simpleWorkerGraph():
   graph = AMI.Graph('simple_worker_graph')
   image = AMI.DataElement('xppcspad')
   image._dataIs(numpy.ones((1024, 1024)))
-  roiLambda = lambda image: [ (int(image.operand.shape[0] * .1)), (int(image.operand.shape[0] * .9)), (int(image.operand.shape[1] * .1)), (int(image.operand.shape[1]* .9)) ]
+  roiLambda = lambda image: [ (int(image.operands[0].shape[0] * .1)), (int(image.operands[0].shape[0] * .9)), (int(image.operands[0].shape[1] * .1)), (int(image.operands[0].shape[1]* .9)) ]
   subimage = image._worker('roi', roiLambda)
   meanSubimage = subimage._worker('mean')
   graph.addNode(meanSubimage)

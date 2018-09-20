@@ -62,43 +62,44 @@ class Graph(object):
   def broadcast(self):
     self.serialize()
   
-  def _doComputationNode(self, node, computeOrder):
+  def _doComputationNode(self, node, computeOrder, i, args):
     if computeOrder == _WORKER_ORDER:
-      return node._doComputation(_DATA_ORDER, _WORKER_ORDER)
+      return node._doComputation(_DATA_ORDER, _WORKER_ORDER, i, args)
     elif computeOrder == _LOCAL_COLLECTOR_ORDER:
-      return node._doComputation(_LOCAL_COLLECTOR_ORDER, _LOCAL_COLLECTOR_ORDER)
+      return node._doComputation(_LOCAL_COLLECTOR_ORDER, _LOCAL_COLLECTOR_ORDER, i, args)
     elif computeOrder == _GLOBAL_COLLECTOR_ORDER:
-      return node._doComputation(_GLOBAL_COLLECTOR_ORDER, _GLOBAL_COLLECTOR_ORDER)
+      return node._doComputation(_GLOBAL_COLLECTOR_ORDER, _GLOBAL_COLLECTOR_ORDER, i , args)
 
   def _doControlNode(self, node):
     return None
   
-  def _doComputation(self, computeOrder):
+  def _doComputation(self, computeOrder, args):
     result = []
     for node in self._nodes:
       node._clearComputation()
-    for node in self._nodes:
+    for i in range(len(self._nodes)):
+      node = self._nodes[i]
       if computeOrder == _DATA_ORDER:
         returnValue = node._doReset()
       elif isinstance(node, ComputedDataElement):
-        returnValue = self._doComputationNode(node, computeOrder)
+        returnValue = self._doComputationNode(node, computeOrder, i, args)
       elif isinstance(node, GraphControlFlow):
         returnValue = self._doControlNode(node)
       if returnValue is not None:
         result.append(returnValue)
     return result
   
-  def _doReset(self):
-    return self._doComputation(_DATA_ORDER)
+  def _doReset(self, *args):
+    return self._doComputation(_DATA_ORDER, args)
         
-  def _doWorker(self):
-    return self._doComputation(_WORKER_ORDER)
+  def _doWorker(self, *args):
+    return self._doComputation(_WORKER_ORDER, args)
 
-  def _doLocalCollector(self):
-    return self._doComputation(_LOCAL_COLLECTOR_ORDER)
+  def _doLocalCollector(self, *args):
+    return self._doComputation(_LOCAL_COLLECTOR_ORDER, args)
   
-  def _doGlobalCollector(self):
-    return self._doComputation(_GLOBAL_COLLECTOR_ORDER)
+  def _doGlobalCollector(self, *args):
+    return self._doComputation(_GLOBAL_COLLECTOR_ORDER, args)
   
   def If(self, lambdaExpression, *args, **kwargs):
     self._nodes.append(If(lambdaExpression, *args, **kwargs))
@@ -194,7 +195,7 @@ class DataElement(object):
     if hasattr(self, 'predecessor') and self.predecessor is not None:
       self.predecessor._clearComputation()
 
-  def _compute(self, lastElement, computeOrderMin, computeOrderMax, called):
+  def _compute(self, lastElement, computeOrderMin, computeOrderMax, called, peerSequences, index):
     self._computed = True
     called = self._inRange(computeOrderMin, computeOrderMax)
     return self, called
@@ -295,7 +296,7 @@ class ComputedDataElement(DataElement):
     super(ComputedDataElement, self).__init__(predecessor._name, *args, **kwargs)
     self.predecessor = predecessor
     self.data = None
-    self._operand = None
+    self._operands = None
 
   def _transmitData(self, outfile, computeOrder):
     if self._computeOrder == computeOrder:
@@ -323,28 +324,44 @@ class ComputedDataElement(DataElement):
       return eval(call), True
     return None, called
 
-  def _compute(self, lastElement, computeOrderMin, computeOrderMax, called):
+  def _marshallOperands(self, lastElement, peerSequences, index):
+    result = []
+    if lastElement is None:
+      result.append(self.data)
+    else:
+      result.append(lastElement.data)
+    for sequence in peerSequences:
+      node = sequence[index]
+      if hasattr(node, 'predecessor'):
+        node = node.predecessor
+      result.append(node.data)
+    self.operands = result
+
+  def _compute(self, lastElement, computeOrderMin, computeOrderMax, called, peerSequences, index):
     self._computed = True
     if self._inRange(computeOrderMin, computeOrderMax) and isinstance(self, ComputedDataElement):
-      if lastElement is None:
-        self.operand = self.data
-      else:
-        self.operand = lastElement.data
+      self._marshallOperands(lastElement, peerSequences, index)
       lastElement, called = self._call(called)
     else:
       lastElement = self
     return lastElement, called
 
+  def _invertPeerSequences(self, nodeIndex, args):
+    result = []
+    for graph in args:
+      node = graph._nodes[nodeIndex]
+      result.append(node._invertSequence())
+    return result
 
-  def _doComputation(self, computeOrderMin, computeOrderMax):
+  def _doComputation(self, computeOrderMin, computeOrderMax, nodeIndex, args):
     sequence = self._invertSequence()
-    print(sequence)##########
+    peerSequences = self._invertPeerSequences(nodeIndex, args)
     lastElement = None
     called = False
     for i in range(len(sequence)):
       node = sequence[i]
       if not node._computed:
-        lastElement, called = node._compute(lastElement, computeOrderMin, computeOrderMax, called)
+        lastElement, called = node._compute(lastElement, computeOrderMin, computeOrderMax, called, peerSequences, i)
       else:
         lastElement = node
     if called:
