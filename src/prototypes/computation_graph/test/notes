@@ -9,4 +9,4 @@ client1.py, worker1a.py, worker1b.py, worker1c.py, localCollector2a.py, localCol
 
 to test pick-n design pattern
 
-client3.py, worker3a.py, worker3b.py, worker3c.py, localCollector3.py, globalCollector3.py
+client3.py, worker3a.py, worker3b.py, localCollector3.py, globalCollector3.py
