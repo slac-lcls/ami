@@ -6,7 +6,7 @@ import AMI_common as AMI
 import numpy
 
 
-def mean(self):
+def mean(self, *args):
   print('in mean localCollector', self.data, self.operands)
   (data, samples) = self.data
   for operand in self.operands:
@@ -19,9 +19,13 @@ def mean(self):
       samples = samples + samples1
   self.data = (data, samples)
   print(self.data)
-  return self
+  if len(args) > 0:
+    if self.data[1] >= args[0]:
+      return self
+  else:
+    return self
 
-def mean_(self):
+def mean_(self, *args):
   print("in mean_ localCollector reset", self)
   self.data = ( None, 0 )
   return self

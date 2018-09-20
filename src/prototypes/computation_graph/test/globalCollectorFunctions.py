@@ -18,9 +18,13 @@ def mean(self, *args):
       samples = samples + samples1
   self.data = (data / samples, 1)
   print(self.data)
-  return self
+  if len(args) > 0:
+    if self.data[1] >= args[0]:
+      return self
+  else:
+    return self
 
-def mean_(self):
+def mean_(self, *args):
   print("in mean_ globalCollector reset", self)
   self.data = ( None, 0 )
   return self
