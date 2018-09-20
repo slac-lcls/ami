@@ -5,5 +5,5 @@ client1.py, worker1.py, localCollector1.py, globalCollector1.py
 
 to test multiple workers, with single collectors
 
-client1.py, worker1.py, worker2.py, worker3.py, localCollector2.py, globalCollector1.py
+client1.py, worker1.py, worker2.py, worker3.py, localCollector2a.py, localCollector2b.py globalCollector2.py
 

@@ -1,16 +1,19 @@
 #
-# globalCollector1.py
+# globalCollector2.py
 #
 
 import AMI_server as AMI
 
 print('read work graph')
-graph = AMI.workerGraph()
-graph._receiveLocalCollectorData('localCollector2.dat')
+graph1 = AMI.workerGraph()
+graph1._receiveLocalCollectorData('localCollector2a.dat')
 
-result = graph._doGlobalCollector()
+graph2 = AMI.workerGraph()
+graph2._receiveLocalCollectorData('localCollector2b.dat')
+
+result = graph1._doGlobalCollector(graph2)
 print('globalCollector result is', result)
 
-graph._transmitGlobalCollectorData('globalCollector2.dat')
+graph1._transmitGlobalCollectorData('globalCollector2.dat')
 
 
