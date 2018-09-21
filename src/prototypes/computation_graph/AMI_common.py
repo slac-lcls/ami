@@ -259,15 +259,19 @@ class DataElement(object):
     exec(statement)
 
   def _restoreDynamicMethods(self):
-    for functionName in dir(operators):
-      if functionName[0] != '_' and callable(eval('operators.' + functionName)):
-        self._addDynamicMethod(functionName)
+    if self._computedFunctionName is not None:
+      self._addDynamicMethod(self._computedFunctionName)
+      initializerFunctionName = self._computedFunctionName + '_'
+      if hasattr(operators, initializerFunctionName):
+        self._addDynamicMethod(initializerFunctionName)
     if isinstance(self, ComputedDataElement):        self.predecessor._restoreDynamicMethods()
   
   def _removeDynamicMethods(self):
-    for functionName in dir(operators):
-      if functionName[0] != '_' and callable(eval('operators.' + functionName)):
-        exec('self.' + functionName + ' = None')
+    if self._computedFunctionName is not None:
+      exec('self.' + self._computedFunctionName + ' = None')
+      initializerFunctionName = self._computedFunctionName + '_'
+      if hasattr(self, initializerFunctionName):
+        exec('self.' + initializerFunctionName + ' = None')
     if isinstance(self, ComputedDataElement):        self.predecessor._removeDynamicMethods()
 
   def _argumentString(self, arg):
