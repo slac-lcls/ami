@@ -14,13 +14,13 @@ def simpleWorkerGraph():
   image._dataIs(numpy.ones((1024, 1024)))
   roiLambda = lambda image: [ (int(image.operands[0].shape[0] * .1)), (int(image.operands[0].shape[0] * .9)), (int(image.operands[0].shape[1] * .1)), (int(image.operands[0].shape[1]* .9)) ]
   subimage = image._worker('roi', roiLambda)
-  meanSubimage = subimage._worker('mean')
+  meanSubimage = subimage._worker('sum')
   graph.addNode(meanSubimage)
   graph.If('1 < 2')
-  graph.addNode(meanSubimage._localCollector('mean')._globalCollector('mean'))
+  graph.addNode(meanSubimage._localCollector('sum')._globalCollector('sum')._globalCollector('divide'))
   image2 = AMI.DataElement('xppcspad')
   image2._dataIs(7 * numpy.ones((512, 512)))
-  graph.addNode(image2._worker('mean')._localCollector('mean')._globalCollector('mean'))
+  graph.addNode(image2._worker('sum')._localCollector('sum')._globalCollector('sum'))
   graph.Endif()
   graph.addNode(AMI.DataElement('timestamp'))
   return graph

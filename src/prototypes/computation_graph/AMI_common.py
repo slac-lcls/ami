@@ -8,9 +8,8 @@ import math
 import types
 import dill
 
-import workerFunctions
-import localCollectorFunctions
-import globalCollectorFunctions
+import operators
+
 
 ###
 ### graphs
@@ -20,6 +19,8 @@ _DATA_ORDER = 0
 _WORKER_ORDER = 1
 _LOCAL_COLLECTOR_ORDER = 2
 _GLOBAL_COLLECTOR_ORDER = 3
+
+_TRACE_COMPUTATION = True
 
 
 class Graph(object):
@@ -90,6 +91,7 @@ class Graph(object):
     return result
   
   def _doReset(self, *args):
+    if _TRACE_COMPUTATION: print('graph._doReset', self._name)
     return self._doComputation(_DATA_ORDER, args)
         
   def _doWorker(self, *args):
@@ -163,7 +165,7 @@ class DataElement(object):
     self._computedArguments = None
     self.data = None
     self._computeOrder = _DATA_ORDER
-    self._computed = False
+    self._processed = False
     if kwargs is not None:
       for key, value in kwargs.items():
         exec('self.' + str(key) + ' = ' + str(value))
@@ -179,6 +181,7 @@ class DataElement(object):
         functionName = functionName + '_'
         if hasattr(node, functionName) and callable(eval('node.' + functionName)):
           call = 'node.' + functionName + '(' + ','.join([self._argumentString(arg) for arg in self._computedArguments]) + ')'
+          if _TRACE_COMPUTATION: print(call)
           exec(call)
       if hasattr(node, 'predecessor'):
         node = node.predecessor
@@ -191,12 +194,12 @@ class DataElement(object):
     return [ self ]
 
   def _clearComputation(self):
-    self._computed = False
+    self._processed = False
     if hasattr(self, 'predecessor') and self.predecessor is not None:
       self.predecessor._clearComputation()
 
   def _compute(self, lastElement, computeOrderMin, computeOrderMax, called, peerSequences, index):
-    self._computed = True
+    self._processed = True
     called = self._inRange(computeOrderMin, computeOrderMax)
     return self, called
 
@@ -241,24 +244,32 @@ class DataElement(object):
         badcall = self._name + '.' + functionName + ' passes invalid argument ' + str(arg)
         raise ValueError( badcall )
 
-  def _addDynamicMethod(self, functionName, functionImport):
-    statement = 'self.' + functionName + ' = types.MethodType(' + functionImport + '.' + functionName + ', self)'
+  def _verifyKeywordArguments(self, keywordArguments):
+    arguments = ()
+    print('keywordArguments', keywordArguments)
+    for (lhs, rhs) in keywordArguments.items():
+      if not self._verifySimpleArgumentType(rhs):
+        badcall = self._name + '.' + functionName + ' passes invalid argument ' + str(rhs)
+        raise ValueError( badcall )
+      else:
+        arguments = arguments + (str(lhs) + '=' + str(rhs), )
+    return arguments
+
+  def _addDynamicMethod(self, functionName):
+    statement = 'self.' + functionName + ' = types.MethodType(operators.' + functionName + ', self)'
     exec(statement)
+
+  def _restoreDynamicMethods(self):
+    for functionName in dir(operators):
+      if functionName[0] != '_' and callable(eval('operators.' + functionName)):
+        self._addDynamicMethod(functionName)
+    if isinstance(self, ComputedDataElement):        self.predecessor._restoreDynamicMethods()
   
-  def _restoreDynamicMethodsOfOneType(self, functionImport, clazz):
-    if isinstance(self, clazz):
-      for functionName in eval('dir(' + functionImport + ')'):
-        if functionName[0] != '_' and callable(eval(functionImport + '.' + functionName)):
-          self._addDynamicMethod(functionName, functionImport)
-    if isinstance(self, ComputedDataElement):        self.predecessor._restoreDynamicMethodsOfOneType(functionImport, clazz)
-
-  def _removeDynamicMethodsOfOneType(self, functionImport, clazz):
-    if isinstance(self, clazz):
-      for functionName in eval('dir(' + functionImport + ')'):
-        if functionName[0] != '_' and callable(eval(functionImport + '.' + functionName)):
-          exec('self.' + functionName + ' = None')
-    if isinstance(self, ComputedDataElement):        self.predecessor._removeDynamicMethodsOfOneType(functionImport, clazz)
-
+  def _removeDynamicMethods(self):
+    for functionName in dir(operators):
+      if functionName[0] != '_' and callable(eval('operators.' + functionName)):
+        exec('self.' + functionName + ' = None')
+    if isinstance(self, ComputedDataElement):        self.predecessor._removeDynamicMethods()
 
   def _argumentString(self, arg):
     if arg.__class__.__name__ == 'function':
@@ -266,25 +277,28 @@ class DataElement(object):
     else:
       return str(arg)
 
-  def _operation(self, result, args, functionImport):
+  def _operation(self, result, args, kwargs):
     functionName = args[0]
     arguments = args[1:]
     self._verifyArguments(functionName, arguments)
-    result._computedArguments = arguments
-    result._addDynamicMethod(functionName, functionImport)
+    keywordArguments = self._verifyKeywordArguments(kwargs)
+    print(arguments)
+    print(keywordArguments)
+    result._computedArguments = arguments + keywordArguments
+    result._addDynamicMethod(functionName)
     result._computedFunctionName = functionName
     return result
 
-  def _worker(self, *args):
-    result = self._operation(WorkerOperation(self), args, 'workerFunctions')
+  def _worker(self, *args, **kwargs):
+    result = self._operation(WorkerOperation(self), args, kwargs)
     return result
 
-  def _localCollector(self, *args):
-    result = self._operation(LocalCollectorOperation(self), args, 'localCollectorFunctions')
+  def _localCollector(self, *args, **kwargs):
+    result = self._operation(LocalCollectorOperation(self), args, kwargs)
     return result
 
-  def _globalCollector(self, *args):
-    result = self._operation(GlobalCollectorOperation(self), args, 'globalCollectorFunctions')
+  def _globalCollector(self, *args, **kwargs):
+    result = self._operation(GlobalCollectorOperation(self), args, kwargs)
     return result
 
 
@@ -319,8 +333,10 @@ class ComputedDataElement(DataElement):
     return offset
 
   def _call(self, called):
+    if _TRACE_COMPUTATION: print('_call', self)
     if self._computedFunctionName is not None and callable(eval('self.' + self._computedFunctionName)):
       call = 'self.' + self._computedFunctionName + '(' + ','.join([self._argumentString(arg) for arg in self._computedArguments]) + ')'
+      if _TRACE_COMPUTATION: print(call)
       return eval(call), True
     return None, called
 
@@ -338,12 +354,10 @@ class ComputedDataElement(DataElement):
     self.operands = result
 
   def _compute(self, lastElement, computeOrderMin, computeOrderMax, called, peerSequences, index):
-    self._computed = True
-    if self._inRange(computeOrderMin, computeOrderMax) and isinstance(self, ComputedDataElement):
-      self._marshallOperands(lastElement, peerSequences, index)
-      lastElement, called = self._call(called)
-    else:
-      lastElement = self
+    if _TRACE_COMPUTATION: print('_compute', self, lastElement)
+    self._processed = True
+    self._marshallOperands(lastElement, peerSequences, index)
+    lastElement, called = self._call(called)
     return lastElement, called
 
   def _invertPeerSequences(self, nodeIndex, args):
@@ -355,27 +369,19 @@ class ComputedDataElement(DataElement):
 
   def _doComputation(self, computeOrderMin, computeOrderMax, nodeIndex, args):
     sequence = self._invertSequence()
+    if _TRACE_COMPUTATION: print('_doComputation, sequence', sequence)
     peerSequences = self._invertPeerSequences(nodeIndex, args)
     lastElement = None
     called = False
     for i in range(len(sequence)):
       node = sequence[i]
-      if not node._computed:
+      if not node._processed and node._inRange(computeOrderMin, computeOrderMax) and isinstance(node, ComputedDataElement):
         lastElement, called = node._compute(lastElement, computeOrderMin, computeOrderMax, called, peerSequences, i)
       else:
         lastElement = node
     if called:
       return lastElement
 
-  def _removeDynamicMethods(self):
-    self._removeDynamicMethodsOfOneType('workerFunctions', WorkerOperation)
-    self._removeDynamicMethodsOfOneType('localCollectorFunctions', LocalCollectorOperation)
-    self._removeDynamicMethodsOfOneType('globalCollectorFunctions', GlobalCollectorOperation)
-
-  def _restoreDynamicMethods(self):
-    self._restoreDynamicMethodsOfOneType('workerFunctions', WorkerOperation)
-    self._restoreDynamicMethodsOfOneType('localCollectorFunctions', LocalCollectorOperation)
-    self._restoreDynamicMethodsOfOneType('globalCollectorFunctions', GlobalCollectorOperation)
 
 
 class WorkerOperation(ComputedDataElement):

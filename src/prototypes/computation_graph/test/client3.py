@@ -12,7 +12,7 @@ def pickNGraph():
   graph = AMI.Graph('simple_worker_graph')
   image = AMI.DataElement('xppcspad')
   image._dataIs(numpy.ones((1024, 1024)))
-  meanImage = image._worker('mean', 10)._localCollector('mean')._globalCollector('mean')
+  meanImage = image._worker('sum', pickN=10)._localCollector('sum')._globalCollector('sum')._globalCollector('divide')
   graph.addNode(meanImage)
   return graph
 

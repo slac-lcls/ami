@@ -33,8 +33,11 @@ test3:	$(BASE) client3.py worker3a.py worker3b.py localCollector3.py globalColle
 
 verify: $(LOG)
 	@if [[ -e $(LOG).golden ]] ; then \
-		export e=`diff $(LOG) $(LOG).golden | wc -l` ; \
-		if [[ "${e}" != "0" ]] ; then \
+		rm -f .tmp ; \
+		diff $(LOG) $(LOG).golden > .tmp ; \
+		export e=`wc -l .tmp` ; \
+		echo 'num diffs' $e ; \
+		if [[ "$e" != "0 .tmp" ]] ; then \
 			echo Found ${e} different lines in log file compared to golden log ; \
 		else \
 			echo Verification passed. ; \
