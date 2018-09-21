@@ -14,7 +14,6 @@ import signal
 import tempfile
 import multiprocessing as mp
 import json
-import time
 import numpy as np
 
 from ami.comm import Ports
@@ -58,15 +57,6 @@ class AmiTBase(object):
         args = [(i, self.num_workers, heartbeat, src_cfg, collector_addr, graph_addr) for i in range(self.num_workers)]
         self.pool = mp.Pool(self.num_workers)
         self.workers = self.pool.starmap_async(run_worker, args)
-        #for i in range(self.num_workers):
-        #    proc = mp.Process(
-        #        name='worker%03d-n0' % i,
-        #        target=run_worker,
-        #        args=(i, self.num_workers, heartbeat, src_cfg, collector_addr, graph_addr)
-        #    )
-        #    proc.daemon = True
-        #    proc.start()
-        #    self.procs.append(proc)
 
         collector_proc = mp.Process(
             name='nodecol-n0',

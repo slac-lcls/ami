@@ -1,6 +1,7 @@
 from ami.graph import Graph
 from ami.comm import Store
 
+
 class TestGraph:
     def setup(self):
         self.store = Store()
@@ -21,5 +22,5 @@ class TestGraph:
         self.graph.update(new_graph)
         self.graph.configure(["fake"])
         self.graph.execute()
-        
+
         assert self.store.get("fake2") == 10
