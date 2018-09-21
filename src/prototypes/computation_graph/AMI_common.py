@@ -20,7 +20,7 @@ _WORKER_ORDER = 1
 _LOCAL_COLLECTOR_ORDER = 2
 _GLOBAL_COLLECTOR_ORDER = 3
 
-_TRACE_COMPUTATION = True
+_TRACE_COMPUTATION = False
 
 
 class Graph(object):
@@ -246,7 +246,6 @@ class DataElement(object):
 
   def _verifyKeywordArguments(self, keywordArguments):
     arguments = ()
-    print('keywordArguments', keywordArguments)
     for (lhs, rhs) in keywordArguments.items():
       if not self._verifySimpleArgumentType(rhs):
         badcall = self._name + '.' + functionName + ' passes invalid argument ' + str(rhs)
@@ -282,8 +281,6 @@ class DataElement(object):
     arguments = args[1:]
     self._verifyArguments(functionName, arguments)
     keywordArguments = self._verifyKeywordArguments(kwargs)
-    print(arguments)
-    print(keywordArguments)
     result._computedArguments = arguments + keywordArguments
     result._addDynamicMethod(functionName)
     result._computedFunctionName = functionName

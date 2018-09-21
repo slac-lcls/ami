@@ -32,9 +32,12 @@ def sum_(self, *args, **kwargs):
 
 
 def divide(self, *args, **kwargs):
+  print('in divide', self, self.data)
   (data, samples) = self.operands[0]
   data = data / samples
   self.data = (data, 1)
+  print('divide result', self.data)
+  return self
 
 
 def roi(self, value, *args, **kwargs):

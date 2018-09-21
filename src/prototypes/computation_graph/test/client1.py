@@ -17,7 +17,7 @@ def simpleWorkerGraph():
   meanSubimage = subimage._worker('sum')
   graph.addNode(meanSubimage)
   graph.If('1 < 2')
-  graph.addNode(meanSubimage._localCollector('sum')._globalCollector('sum')._globalCollector('divide'))
+  graph.addNode(meanSubimage._localCollector('sum')._globalCollector('divide'))
   image2 = AMI.DataElement('xppcspad')
   image2._dataIs(7 * numpy.ones((512, 512)))
   graph.addNode(image2._worker('sum')._localCollector('sum')._globalCollector('sum'))
