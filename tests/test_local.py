@@ -27,11 +27,11 @@ from ami.client import CommunicationHandler
 class AmiTBase(object):
 
     def setup(self):
+        self.num_workers = 2
         port = Ports.Comm
         tcp = False
         ipcdir = None
         source = 'static://examples/worker.json'
-        num_workers = 2
         heartbeat = 3
         if tcp:
             host = "127.0.0.1"
@@ -55,20 +55,23 @@ class AmiTBase(object):
             print("Invalid data source config string:", source)
             return 1
 
-        for i in range(num_workers):
-            proc = mp.Process(
-                name='worker%03d-n0' % i,
-                target=run_worker,
-                args=(i, num_workers, heartbeat, src_cfg, collector_addr, graph_addr)
-            )
-            proc.daemon = True
-            proc.start()
-            self.procs.append(proc)
+        args = [(i, self.num_workers, heartbeat, src_cfg, collector_addr, graph_addr) for i in range(self.num_workers)]
+        self.pool = mp.Pool(self.num_workers)
+        self.workers = self.pool.starmap_async(run_worker, args)
+        #for i in range(self.num_workers):
+        #    proc = mp.Process(
+        #        name='worker%03d-n0' % i,
+        #        target=run_worker,
+        #        args=(i, self.num_workers, heartbeat, src_cfg, collector_addr, graph_addr)
+        #    )
+        #    proc.daemon = True
+        #    proc.start()
+        #    self.procs.append(proc)
 
         collector_proc = mp.Process(
             name='nodecol-n0',
             target=run_collector,
-            args=(0, num_workers, collector_addr, finalcol_addr)
+            args=(0, self.num_workers, collector_addr, finalcol_addr)
         )
         collector_proc.daemon = True
         collector_proc.start()
@@ -88,6 +91,9 @@ class AmiTBase(object):
         return 0
 
     def teardown(self):
+
+        self.pool.terminate()
+        self.pool.join()
 
         for proc in self.procs:
             proc.terminate()
@@ -118,7 +124,7 @@ class TestAMI(AmiTBase):
             graph = json.load(cnf)
             self.comm_handler.update(graph)
 
-        time.sleep(10)
+        self.workers.wait(timeout=10)
 
         cspad_sum = self.get_feature('cspad_sum')
         assert cspad_sum == 366149.0
