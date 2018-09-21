@@ -27,8 +27,9 @@ If you use the setup.py included to set this up you should now have two console
 scripts available on your path: `ami-worker` and `ami-manager`. Several example
 configuration files are included in the examples directory.
 
-To run ami with three workers run the following in lcls2/ami:
+To run ami with three workers run the following in lcls2/ami (for either psanasource or staticsource):
 ```ami-worker -n 3 static://examples/worker.json```
+```ami-worker -n 3 psana://examples/psana.json```
 
 Then start the manager:
 ```ami-manager```

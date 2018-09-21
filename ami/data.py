@@ -87,9 +87,25 @@ class PsanaSource(object):
         self.interval = src_cfg['interval']
         self.init_time = src_cfg['init_time']
         self.config = src_cfg['config']
+        self.ds = psana.DataSource(self.config['filename'])
 
     def partition(self):
-        return []
+        dets = []
+        for run in self.ds.runs():
+            for dg in self.ds._configs:
+                for name in dg.software.__dict__:
+                    dettype = getattr(dg.software, name).dettype
+                    # FIXME: should create a Detector object here, and check if it's a 1D
+                    # or 2D detector (for the raw data)
+                    if dettype == 'hsd':
+                        datatype = DataTypes.Waveform
+                    elif dettype == 'cspad':
+                        # FIXME: this should be a 2D array
+                        datatype = DataTypes.Waveform
+                    else:
+                        raise ValueError('unknown detector type: '+dettype)
+                    dets.append((name, datatype))
+        return dets
 
     def events(self):
         timestamp = 0
@@ -99,7 +115,6 @@ class PsanaSource(object):
             if psana is None:
                 print("psana is not available!")
                 break
-            self.ds = psana.DataSource(self.config['filename'])
             for evt in self.ds.events():
                 for dgram in evt.dgrams:
                     timestamp = dgram.seq.timestamp()
