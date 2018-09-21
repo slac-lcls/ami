@@ -6,7 +6,7 @@ import json
 import argparse
 from ami.graph import Graph, GraphConfigError, GraphRuntimeError
 from ami.comm import Ports, ResultStore
-from ami.data import MsgTypes, Transitions, Transition, StaticSource, PsanaSource
+from ami.data import MsgTypes, Transitions, Transition, RandomSource, StaticSource, PsanaSource
 
 
 class Worker(object):
@@ -105,42 +105,30 @@ def run_worker(num, num_workers, hb_period, source, collector_addr, graph_addr):
         'Starting worker # %d, sending to collector at %s' %
         (num, collector_addr))
 
-    if source[0] == 'static':
-        try:
-            with open(source[1], 'r') as cnf:
-                src_cfg = json.load(cnf)
-        except OSError as os_exp:
-            print("worker%03d: problem opening json file:" % num, os_exp)
-            return 1
-        except json.decoder.JSONDecodeError as json_exp:
-            print(
-                "worker%03d: problem parsing json file (%s):" %
-                (num, source[1]), json_exp)
-            return 1
+    try:
+        with open(source[1], 'r') as cnf:
+            src_cfg = json.load(cnf)
+    except OSError as os_exp:
+        print("worker%03d: problem opening json file:" % num, os_exp)
+        return 1
+    except json.decoder.JSONDecodeError as json_exp:
+        print(
+            "worker%03d: problem parsing json file (%s):" %
+            (num, source[1]), json_exp)
+        return 1
 
+    if source[0] == 'static':
         src = StaticSource(num,
                            num_workers,
-                           src_cfg['interval'],
-                           src_cfg["init_time"],
-                           src_cfg['config'])
+                           src_cfg)
+    elif source[0] == 'random':
+        src = RandomSource(num,
+                           num_workers,
+                           src_cfg)
     elif source[0] == 'psana':
-        try:
-            with open(source[1], 'r') as cnf:
-                src_cfg = json.load(cnf)
-        except OSError as os_exp:
-            print("worker%03d: problem opening json file:" % num, os_exp)
-            return 1
-        except json.decoder.JSONDecodeError as json_exp:
-            print(
-                "worker%03d: problem parsing json file (%s):" %
-                (num, source[1]), json_exp)
-            return 1
-
         src = PsanaSource(num,
                           num_workers,
-                          src_cfg['interval'],
-                          src_cfg["init_time"],
-                          src_cfg['config'])
+                          src_cfg)
     else:
         print("worker%03d: unknown data source type:" % num, source[0])
         return 1
@@ -201,7 +189,7 @@ def main():
     parser.add_argument(
         'source',
         metavar='SOURCE',
-        help='data source configuration (exampes: static://test.json, psana://exp=xcsdaq13:run=14)'
+        help='data source configuration (exampes: static://test.json, random://test.json, psana://exp=xcsdaq13:run=14)'
     )
 
     args = parser.parse_args()

@@ -81,15 +81,31 @@ class CollectorMessage(Message):
 
 
 class PsanaSource(object):
-    def __init__(self, idnum, num_workers, interval, init_time, config):
+    def __init__(self, idnum, num_workers, src_cfg):
         self.idnum = idnum
         self.num_workers = num_workers
-        self.interval = interval
-        self.init_time = init_time
-        self.config = config
+        self.interval = src_cfg['interval']
+        self.init_time = src_cfg['init_time']
+        self.config = src_cfg['config']
+        self.ds = psana.DataSource(self.config['filename'])
 
     def partition(self):
-        return []
+        dets = []
+        for run in self.ds.runs():
+            for dg in self.ds._configs:
+                for name in dg.software.__dict__:
+                    dettype = getattr(dg.software, name).dettype
+                    # FIXME: should create a Detector object here, and check if it's a 1D
+                    # or 2D detector (for the raw data)
+                    if dettype == 'hsd':
+                        datatype = DataTypes.Waveform
+                    elif dettype == 'cspad':
+                        # FIXME: this should be a 2D array
+                        datatype = DataTypes.Waveform
+                    else:
+                        raise ValueError('unknown detector type: '+dettype)
+                    dets.append((name, datatype))
+        return dets
 
     def events(self):
         timestamp = 0
@@ -99,7 +115,6 @@ class PsanaSource(object):
             if psana is None:
                 print("psana is not available!")
                 break
-            self.ds = psana.DataSource(self.config['filename'])
             for evt in self.ds.events():
                 for dgram in evt.dgrams:
                     timestamp = dgram.seq.timestamp()
@@ -110,14 +125,14 @@ class PsanaSource(object):
                     time.sleep(self.interval)
 
 
-class StaticSource(object):
-    def __init__(self, idnum, num_workers, interval, init_time, config):
+class RandomSource(object):
+    def __init__(self, idnum, num_workers, src_cfg):
         np.random.seed([idnum])
         self.idnum = idnum
         self.num_workers = num_workers
-        self.interval = interval
-        self.init_time = init_time
-        self.config = config
+        self.interval = src_cfg['interval']
+        self.init_time = src_cfg['init_time']
+        self.config = src_cfg['config']
 
     def partition(self):
         return [(key, getattr(DataTypes, value['dtype'])) for key, value in self.config.items()]
@@ -150,4 +165,52 @@ class StaticSource(object):
             msg = Message(MsgTypes.Datagram, self.idnum, event)
             msg.timestamp = self.num_workers * count + self.idnum
             yield msg
+            time.sleep(self.interval)
+
+
+class StaticSource(object):
+    def __init__(self, idnum, num_workers, src_cfg):
+        self.idnum = idnum
+        self.num_workers = num_workers
+        self.interval = src_cfg['interval']
+        self.init_time = src_cfg['init_time']
+        self.config = src_cfg['config']
+        self.bound = np.inf
+
+        if 'bound' in src_cfg:
+            self.bound = src_cfg['bound']
+
+    def partition(self):
+        return [(key, getattr(DataTypes, value['dtype'])) for key, value in self.config.items()]
+
+    def events(self):
+        count = 0
+        time.sleep(self.init_time)
+        while True:
+            event = []
+            for name, config in self.config.items():
+                if config['dtype'] == 'Scalar':
+                    event.append(
+                        Datagram(
+                            name,
+                            getattr(DataTypes, config['dtype']),
+                            1
+                        )
+                    )
+                elif config['dtype'] == 'Waveform' or config['dtype'] == 'Image':
+                    event.append(
+                        Datagram(
+                            name,
+                            getattr(DataTypes, config['dtype']),
+                            np.ones(config['shape'])
+                        )
+                    )
+                else:
+                    print("DataSrc: %s has unknown type %s", name, config['dtype'])
+            count += 1
+            msg = Message(MsgTypes.Datagram, self.idnum, event)
+            msg.timestamp = self.num_workers * count + self.idnum
+            yield msg
+            if count >= self.bound:
+                break
             time.sleep(self.interval)
