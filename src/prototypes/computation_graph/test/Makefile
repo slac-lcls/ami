@@ -1,4 +1,4 @@
-SHELL := /bin/bash
+SHELL:=/bin/bash
 all:  test1 test2 test3
 
 BASE=../AMI_client.py ../AMI_server.py ../AMI_common.py
@@ -33,16 +33,16 @@ test3:	$(BASE) client3.py worker3a.py worker3b.py localCollector3.py globalColle
 
 verify: $(LOG)
 	@if [[ -e $(LOG).golden ]] ; then \
-		rm -f .tmp ; \
-		diff $(LOG) $(LOG).golden > .tmp ; \
-		export e=`wc -l .tmp` ; \
-		echo 'num diffs' $e ; \
-		if [[ "$e" != "0 .tmp" ]] ; then \
-			echo Found ${e} different lines in log file compared to golden log ; \
+		rm -f .tmp1 .tmp2 ; \
+		python3 symbologize.py < $(LOG) > .tmp1 ; \
+		diff .tmp1 $(LOG).golden > .tmp2 ; \
+		if [[ "`wc -l .tmp2`" == "0 .tmp2" ]]; then \
+			echo Verification succeeded. ; \
 		else \
-			echo Verification passed. ; \
-		fi \
+			echo VERIFICATION FAILED, DIFFERENCES  ; \
+			wc -l .tmp2 ; \
+		fi ; \
 	else \
-		cp $(LOG) $(LOG).golden ; \
+		python3 symbologize.py < $(LOG) > $(LOG).golden ; \
 		echo Saving golden log $(LOG).golden ; \
 	fi
