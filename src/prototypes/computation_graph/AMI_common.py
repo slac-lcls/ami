@@ -288,6 +288,7 @@ class DataElement(object):
     result._computedArguments = arguments + keywordArguments
     result._addDynamicMethod(functionName)
     result._computedFunctionName = functionName
+    result._invertedSequence = result._invertSequence()
     return result
 
   def _worker(self, *args, **kwargs):
@@ -341,43 +342,36 @@ class ComputedDataElement(DataElement):
       return eval(call), True
     return None, called
 
-  def _marshallOperands(self, lastElement, peerSequences, index):
+  def _marshallOperands(self, lastElement, args, nodeIndex, index):
     result = []
     if lastElement is None:
       result.append(self.data)
     else:
       result.append(lastElement.data)
-    for sequence in peerSequences:
+    for graph in args:
+      sequence = graph._nodes[nodeIndex]._invertedSequence
       node = sequence[index]
       if hasattr(node, 'predecessor'):
         node = node.predecessor
       result.append(node.data)
     self.operands = result
 
-  def _compute(self, lastElement, computeOrderMin, computeOrderMax, called, peerSequences, index):
+  def _compute(self, lastElement, computeOrderMin, computeOrderMax, called, args, nodeIndex, index):
     if _TRACE_COMPUTATION: print('_compute', self, lastElement)
     self._processed = True
-    self._marshallOperands(lastElement, peerSequences, index)
+    self._marshallOperands(lastElement, args, nodeIndex, index)
     lastElement, called = self._call(called)
     return lastElement, called
 
-  def _invertPeerSequences(self, nodeIndex, args):
-    result = []
-    for graph in args:
-      node = graph._nodes[nodeIndex]
-      result.append(node._invertSequence())
-    return result
-
   def _doComputation(self, computeOrderMin, computeOrderMax, nodeIndex, args):
-    sequence = self._invertSequence()
+    sequence = self._invertedSequence
     if _TRACE_COMPUTATION: print('_doComputation, sequence', sequence)
-    peerSequences = self._invertPeerSequences(nodeIndex, args)
     lastElement = None
     called = False
     for i in range(len(sequence)):
       node = sequence[i]
       if not node._processed and node._inRange(computeOrderMin, computeOrderMax) and isinstance(node, ComputedDataElement):
-        lastElement, called = node._compute(lastElement, computeOrderMin, computeOrderMax, called, peerSequences, i)
+        lastElement, called = node._compute(lastElement, computeOrderMin, computeOrderMax, called, args, nodeIndex, i)
       else:
         lastElement = node
     if called:
