@@ -1,0 +1,4 @@
+
+1. functions are stateless.  so accumulators have to be passed in and out.
+
+
