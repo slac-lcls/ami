@@ -1,5 +1,5 @@
 #
-# symbologizeLog
+# symbologize [<wordfilePath>]
 #
 # converts a log file that contains lines like this
 # xppcspad    <AMI_common.WorkerOperation object at 0x7f7b3f231fd0>
@@ -9,13 +9,18 @@
 # where each hex address is converted to a word from a dictionary.
 # The conversion is consistent throughout the log file.
 #
-# The dictionary is taken from /usr/share/dict/american-english.
-# On Ubuntu install the package wamerican-large
+# The default wordfile is /usr/share/dict/american-english.
+# On Ubuntu this is installed by the package wamerican-large.
 #
 
 import sys
 
-wordlist = open('/usr/share/dict/american-english', 'r').readlines()
+if len(sys.argv) > 1:
+  wordfile = sys.argv[1]
+else:
+  wordfile = '/usr/share/dict/american-english'
+
+wordlist = open(wordfile, 'r').readlines()
 
 addressDict = {}
 for line in sys.stdin.readlines():
@@ -29,5 +34,6 @@ for line in sys.stdin.readlines():
     wordIndex = addressDict[hexAddress]
     line = line.strip().replace(hexAddress, wordlist[wordIndex].strip())
   print(line.strip())
+  assert(len(wordlist) >= len(addressDict))
 
 
