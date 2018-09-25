@@ -21,6 +21,7 @@ dill.dump(workerGraph, open('workerGraph1.dat', 'wb'))
 
 localCollectorGraph = graphkit.compose(name='localCollectorGraph1')(
     graphkit.operation(name='sum_op', needs=['imageSumsIn'], provides=['imageSumsSumOut'])(o.sumMultiple),
+    graphkit.operation(name='countsum_op', needs=['countersIn'], provides=['countersSumOut'])(o.sumMultiple),
     graphkit.operation(name='timestamp_passthrough', needs=['timestampIn'], provides=['timestampOut'])(o.identity)
 )
 
@@ -29,6 +30,7 @@ dill.dump(localCollectorGraph, open('localCollectorGraph1.dat', 'wb'))
 
 globalCollectorGraph = graphkit.compose(name='globalCollectorGraph1')(
     graphkit.operation(name='sum_op', needs=['imageSumsIn'], provides=['imageSumsSumOut'])(o.sumMultiple),
+    graphkit.operation(name='divide_op', needs=['imageSumsSumOut', 'countersSumIn'], provides=['imageMeanOut'])(o.divide),
     graphkit.operation(name='timestamp_passthrough', needs=['timestampIn'], provides=['timestampOut'])(o.identity)
 )
 

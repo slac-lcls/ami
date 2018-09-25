@@ -20,9 +20,10 @@ while timestamp < 100:
 
     localCollectorInput = {}
     localCollectorInput['imageSumsIn'] = [ workerOutput1['reducedImageSumOut'] ]
+    localCollectorInput['countersIn'] = [ workerOutput1['counterOut'] ]
     localCollectorInput['timestampIn'] = workerOutput1['timestampOut']
 
-    out = localCollectorGraph(localCollectorInput, outputs=['imageSumsSumOut', 'timestampOut'])
+    out = localCollectorGraph(localCollectorInput, outputs=['imageSumsSumOut', 'countersSumOut', 'timestampOut'])
     print(out)
     outputFileName = 'localCollector1.' + str(out['timestampOut']) + '.dat'
     dill.dump(out, open(outputFileName, 'wb'))
