@@ -1,4 +1,5 @@
 from graphkit import compose, operation, If, Else
+import collections
 
 
 class Graph():
@@ -6,47 +7,82 @@ class Graph():
     def __init__(self, name):
         self.name = name
         self.steps = []
+        # { (condition_needs): {'filter_on': []}, 'filter_off': []}
+        self.conditionals = collections.defaultdict(dict)
 
-    def add(self, *args):
-        self.steps.extend(args)
+    def add(self, op):
+        if isinstance(op, Filter):
+            branch = self.conditionals[tuple(op.condition_needs)]
+            if 'filter_on' not in branch:
+                branch['filter_on'] = []
+
+            if 'filter_off' not in branch:
+                branch['filter_off'] = []
+
+        self.steps.append(op)
+
         return self
 
     def compile(self):
-        ops = []
+        graph = []
+        ops = graph
 
         for op in self.steps:
-
             # TODO Coloring
             if isinstance(op, Map):
+                if op.condition_needs is None:
+                    ops = graph
                 ops.append(operation(name=op.name, needs=op.inputs, provides=op.outputs)(op.func))
             elif isinstance(op, ReduceByKey):
                 ops.append(operation(name=op.name, needs=op.inputs, provides=op.outputs)(op.func))
             elif isinstance(op, FilterOn):
-                subgraph = op.compile()
-                if_op = If(name=op.name, needs=subgraph.needs, provides=subgraph.provides,
-                           condition_needs=op.condition_needs, condition=op.condition)(subgraph)
-                ops.append(if_op)
+                branch = self.conditionals[tuple(op.condition_needs)]
+                branch['if'] = {'name': op.name, 'condition_needs': op.condition_needs,
+                                'condition': op.condition}
+                ops = branch['filter_on']
             elif isinstance(op, FilterOff):
-                subgraph = op.compile()
-                else_op = Else(name=op.name, needs=subgraph.needs, provides=subgraph.provides)(subgraph)
-                ops.append(else_op)
+                branch = self.conditionals[tuple(op.condition_needs)]
+                branch['else'] = {'name': op.name}
+                ops = branch['filter_off']
 
-        return compose(name=self.name)(*ops)
+        for key, branches in self.conditionals.items():
+            if_args = branches['if']
+            subgraph = compose(name=if_args['name'])(*branches['filter_on'])
+            if_args['needs'] = subgraph.needs
+            if_args['provides'] = subgraph.provides
+
+            graph.append(If(**if_args)(subgraph))
+
+            else_args = branches['else']
+            subgraph = compose(name=else_args['name'])(*branches['filter_off'])
+            else_args['needs'] = subgraph.needs
+            else_args['provides'] = subgraph.provides
+
+            graph.append(Else(**else_args)(subgraph))
+
+        return compose(name=self.name, merge=True)(*graph)
 
 
 class Transformation():
 
-    def __init__(self, name, inputs, outputs, func):
+    def __init__(self, name, inputs, outputs, func, condition_needs=None):
         self.name = name
         self.inputs = inputs
         self.outputs = outputs
         self.func = func
+        self.condition_needs = condition_needs
 
 
 class Map(Transformation):
 
-    def __init__(self, name, inputs, outputs, func):
-        super(Map, self).__init__(name, inputs, outputs, func)
+    def __init__(self, **kwargs):
+        super(Map, self).__init__(**kwargs)
+
+
+class ReduceByKey(Transformation):
+
+    def __init__(self, **kwargs):
+        super(ReduceByKey, self).__init__(**kwargs)
 
 
 class Filter(Graph):
@@ -69,23 +105,19 @@ class FilterOff(Filter):
         super(FilterOff, self).__init__(name, condition_needs)
 
 
-class ReduceByKey(Transformation):
-
-    def __init__(self, name, inputs, outputs, func):
-        super(ReduceByKey, self).__init__(name, inputs, outputs, func)
-
-
 if __name__ == '__main__':
-    import numpy as np
-    graph = Graph('complex')
-    graph.add(Map('Roi', ['cspad'], ['roi'], lambda cspad: cspad[:100, :100]))
-    graph.add(Map('Sum', ['roi'], ['sum'], np.sum))
-    graph.add(FilterOn('FilterOn', ['laser']).add(
-        ReduceByKey('Binning On', ['delta_t', 'sum'], ['signal'], lambda acc, n: acc+n)
-    ))
-    graph.add(FilterOff('FilterOff', ['laser']).add(
-        ReduceByKey('Binning Off', ['delta_t', 'sum'], ['reference'], lambda acc, n: acc+n)
-    ))
+    from operator import mul
+    graph = Graph(name='graph')
+    graph.add(Map(name='mul1', inputs=['a', 'b'], outputs=['ab'], func=mul))
+
+    graph.add(FilterOn(name='FilterOn', condition_needs=['i']))
+    graph.add(Map(name='add', inputs=['ab'], outputs=['c'], condition_needs=['i'], func=lambda ab: ab + 2))
+    graph.add(Map(name='sub2', inputs=['c'], outputs=['d'], condition_needs=['i'], func=lambda c: c - 2))
+
+    graph.add(FilterOff(name='FilterOff', condition_needs=['i']))
+    graph.add(Map(name='sub', inputs=['ab'], outputs=['c'], condition_needs=['i'], func=lambda ab: ab - 1))
+    graph.add(Map(name='add2', inputs=['c'], outputs=['d'], condition_needs=['i'], func=lambda c: c + 1))
+
+    graph.add(Map(name='div', inputs=['d'], outputs=['e'], func=lambda d: d/2))
 
     graph = graph.compile()
-    graph.plot(filename='complex.png')
