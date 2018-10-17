@@ -9,6 +9,12 @@ class Graph():
         self.steps = []
         # { (condition_needs): {'filter_on': []}, 'filter_off': []}
         self.conditionals = collections.defaultdict(dict)
+        self.graph = None
+
+    def __call__(self, *args, **kwargs):
+        if self.graph is None:
+            self.graph = self.compile()
+        return self.graph(*args, **kwargs)
 
     def add(self, op):
         if isinstance(op, Filter):
@@ -23,18 +29,29 @@ class Graph():
 
         return self
 
+    def remove(self, op):
+        pass
+
+    def reset(self):
+        for node in self.steps:
+            if hasattr(node, 'reset'):
+                node.reset()
+
     def compile(self):
         graph = []
         ops = graph
+        color = 'worker'
 
         for op in self.steps:
-            # TODO Coloring
             if isinstance(op, Map):
                 if op.condition_needs is None:
                     ops = graph
-                ops.append(operation(name=op.name, needs=op.inputs, provides=op.outputs)(op.func))
+                ops.append(operation(name=op.name, needs=op.inputs, provides=op.outputs, color=color)(op.func))
             elif isinstance(op, ReduceByKey):
-                ops.append(operation(name=op.name, needs=op.inputs, provides=op.outputs)(op.func))
+                color = 'localCollector'
+                ops.append(operation(name=op.name, needs=op.inputs, provides=op.outputs, color=color)(op.func))
+            elif isinstance(op, Accumulator):
+                ops.append(operation(name=op.name, needs=op.inputs, provides=op.outputs, color=color)(op))
             elif isinstance(op, FilterOn):
                 branch = self.conditionals[tuple(op.condition_needs)]
                 branch['if'] = {'name': op.name, 'condition_needs': op.condition_needs,
@@ -51,16 +68,16 @@ class Graph():
             if_args['needs'] = subgraph.needs
             if_args['provides'] = subgraph.provides
 
-            graph.append(If(**if_args)(subgraph))
+            graph.append(If(**if_args)(*branches['filter_on']))
 
             else_args = branches['else']
             subgraph = compose(name=else_args['name'])(*branches['filter_off'])
             else_args['needs'] = subgraph.needs
             else_args['provides'] = subgraph.provides
 
-            graph.append(Else(**else_args)(subgraph))
+            graph.append(Else(**else_args)(*branches['filter_off']))
 
-        return compose(name=self.name, merge=True)(*graph)
+        return compose(name=self.name)(*graph)
 
 
 class Transformation():
@@ -105,6 +122,25 @@ class FilterOff(Filter):
         super(FilterOff, self).__init__(name, condition_needs)
 
 
+class Accumulator(Transformation):
+
+    def __init__(self, name, inputs, outputs, func, reduction=None):
+        super(Accumulator, self).__init__(name, inputs, outputs, func)
+        if reduction:
+            assert hasattr(reduction, '__call__'), 'reduction is not callable'
+        self.reduction = reduction
+        self.res = []
+
+    def __call__(self, *args, **kwargs):
+        self.res.append(self.func(*args, **kwargs))
+        if self.reduction:
+            return self.reduction(self.res)
+        return self.res
+
+    def reset(self):
+        self.res = []
+
+
 if __name__ == '__main__':
     from operator import mul
     graph = Graph(name='graph')
@@ -119,5 +155,9 @@ if __name__ == '__main__':
     graph.add(Map(name='add2', inputs=['c'], outputs=['d'], condition_needs=['i'], func=lambda c: c + 1))
 
     graph.add(Map(name='div', inputs=['d'], outputs=['e'], func=lambda d: d/2))
+    graph.add(Accumulator(name='acc', inputs=['e'], outputs=['f'], func=lambda a: a, reduction=sum))
 
-    graph = graph.compile()
+    print(graph({'a': 1, 'b': 1, 'i': True}, color='worker'))
+    print(graph({'a': 1, 'b': 1, 'i': True}, color='worker'))
+    graph.reset()
+    print(graph({'a': 1, 'b': 1, 'i': True}, color='worker'))
