@@ -1,5 +1,6 @@
 from graphkit import compose, operation, If, Else
 import collections
+import operator
 
 
 class Graph():
@@ -34,7 +35,7 @@ class Graph():
 
     def reset(self):
         for node in self.steps:
-            if hasattr(node, 'reset'):
+            if isinstance(node, StatefulTransformation):
                 node.reset()
 
     def compile(self):
@@ -49,7 +50,7 @@ class Graph():
                 ops.append(operation(name=op.name, needs=op.inputs, provides=op.outputs, color=color)(op.func))
             elif isinstance(op, ReduceByKey):
                 color = 'localCollector'
-                ops.append(operation(name=op.name, needs=op.inputs, provides=op.outputs, color=color)(op.func))
+                ops.append(operation(name=op.name, needs=op.inputs, provides=op.outputs, color=color)(op))
             elif isinstance(op, Accumulator):
                 ops.append(operation(name=op.name, needs=op.inputs, provides=op.outputs, color=color)(op))
             elif isinstance(op, FilterOn):
@@ -96,16 +97,10 @@ class Map(Transformation):
         super(Map, self).__init__(**kwargs)
 
 
-class ReduceByKey(Transformation):
-
-    def __init__(self, **kwargs):
-        super(ReduceByKey, self).__init__(**kwargs)
-
-
-class Filter(Graph):
+class Filter():
 
     def __init__(self, name, condition_needs, condition=None):
-        super(Filter, self).__init__(name)
+        self.name = name
         self.condition_needs = condition_needs
         self.condition = condition
 
@@ -122,42 +117,49 @@ class FilterOff(Filter):
         super(FilterOff, self).__init__(name, condition_needs)
 
 
-class Accumulator(Transformation):
+class StatefulTransformation(Transformation):
 
-    def __init__(self, name, inputs, outputs, func, reduction=None):
-        super(Accumulator, self).__init__(name, inputs, outputs, func)
+    def __init__(self, name, inputs, outputs, func, condition_needs=None, reduction=None):
+        super(StatefulTransformation, self).__init__(name, inputs, outputs, func, condition_needs)
         if reduction:
             assert hasattr(reduction, '__call__'), 'reduction is not callable'
         self.reduction = reduction
+
+    def reset(self):
+        raise NotImplementedError
+
+
+class ReduceByKey(Transformation):
+
+    def __init__(self, name, inputs, outputs, func=lambda *args: args, condition_needs=None, reduction=operator.add):
+        self.reduction = reduction
+        super(ReduceByKey, self).__init__(name, inputs, outputs, func, condition_needs)
+
+    def __call__(self, *args, **kwargs):
+        f = map(self.func, args)
+        res = {}
+
+        for r in f:
+            for k, v in r[0].items():
+                if k in res:
+                    res[k] = self.reduction(res[k], v)
+                else:
+                    res[k] = v
+        return res
+
+
+class Accumulator(StatefulTransformation):
+
+    def __init__(self, name, inputs, outputs, func=lambda a: a, condition_needs=None, reduction=None):
+        super(Accumulator, self).__init__(name, inputs, outputs, func, condition_needs, reduction)
         self.res = []
 
     def __call__(self, *args, **kwargs):
         self.res.append(self.func(*args, **kwargs))
+
         if self.reduction:
             return self.reduction(self.res)
         return self.res
 
     def reset(self):
         self.res = []
-
-
-if __name__ == '__main__':
-    from operator import mul
-    graph = Graph(name='graph')
-    graph.add(Map(name='mul1', inputs=['a', 'b'], outputs=['ab'], func=mul))
-
-    graph.add(FilterOn(name='FilterOn', condition_needs=['i']))
-    graph.add(Map(name='add', inputs=['ab'], outputs=['c'], condition_needs=['i'], func=lambda ab: ab + 2))
-    graph.add(Map(name='sub2', inputs=['c'], outputs=['d'], condition_needs=['i'], func=lambda c: c - 2))
-
-    graph.add(FilterOff(name='FilterOff', condition_needs=['i']))
-    graph.add(Map(name='sub', inputs=['ab'], outputs=['c'], condition_needs=['i'], func=lambda ab: ab - 1))
-    graph.add(Map(name='add2', inputs=['c'], outputs=['d'], condition_needs=['i'], func=lambda c: c + 1))
-
-    graph.add(Map(name='div', inputs=['d'], outputs=['e'], func=lambda d: d/2))
-    graph.add(Accumulator(name='acc', inputs=['e'], outputs=['f'], func=lambda a: a, reduction=sum))
-
-    print(graph({'a': 1, 'b': 1, 'i': True}, color='worker'))
-    print(graph({'a': 1, 'b': 1, 'i': True}, color='worker'))
-    graph.reset()
-    print(graph({'a': 1, 'b': 1, 'i': True}, color='worker'))
