@@ -8,9 +8,18 @@ class Graph():
     def __init__(self, name):
         self.name = name
         self.steps = []
-        # { (condition_needs): {'filter_on': []}, 'filter_off': []}
-        self.conditionals = collections.defaultdict(dict)
         self.graph = None
+
+        # { (condition_needs): {'filter_on': {'ops': [], 'outputs': set()},
+        #                       'filter_off': {'ops': [], 'outputs': set()}}},
+        self.branches = collections.defaultdict(dict)
+
+        # by default there are no condition needs until we do a filter,
+        # we store this as default and remove one level of dictionaries
+        # ie self.branches['default'] = {'ops': [], 'outputs': set()}
+        branch = self.branches['default']
+        branch['ops'] = []
+        branch['outputs'] = set()
 
     def __call__(self, *args, **kwargs):
         if self.graph is None:
@@ -19,19 +28,19 @@ class Graph():
 
     def add(self, op):
         if isinstance(op, Filter):
-            branch = self.conditionals[tuple(op.condition_needs)]
+            branch = self.branches[tuple(op.condition_needs)]
             if 'filter_on' not in branch:
-                branch['filter_on'] = []
+                branch['filter_on'] = {'ops': [], 'outputs': set(), 'if': {}}
 
             if 'filter_off' not in branch:
-                branch['filter_off'] = []
+                branch['filter_off'] = {'ops': [], 'outputs': set(), 'else': {}}
 
         self.steps.append(op)
 
         return self
 
     def remove(self, op):
-        pass
+        self.graph = None
 
     def reset(self):
         for node in self.steps:
@@ -39,14 +48,30 @@ class Graph():
                 node.reset()
 
     def compile(self):
-        graph = []
-        ops = graph
+        branch = self.branches['default']
+        ops = branch['ops']
         color = 'worker'
+        filter_on = None
+        filter_off = None
 
         for op in self.steps:
+
+            if hasattr(op, 'inputs'):
+                op_inputs = set(op.inputs)
+
+                for need, brnch in self.branches.items():
+                    if need == 'default':
+                        continue
+
+                    if op_inputs.issubset(brnch['filter_on']['outputs']) and \
+                       op_inputs.issubset(brnch['filter_off']['outputs']):
+                        branch = self.branches['default']
+                        ops = branch['ops']
+                        filter_on = None
+                        filter_off = None
+                        break
+
             if isinstance(op, Map):
-                if op.condition_needs is None:
-                    ops = graph
                 ops.append(operation(name=op.name, needs=op.inputs, provides=op.outputs, color=color)(op.func))
             elif isinstance(op, ReduceByKey):
                 color = 'localCollector'
@@ -54,29 +79,43 @@ class Graph():
             elif isinstance(op, Accumulator):
                 ops.append(operation(name=op.name, needs=op.inputs, provides=op.outputs, color=color)(op))
             elif isinstance(op, FilterOn):
-                branch = self.conditionals[tuple(op.condition_needs)]
-                branch['if'] = {'name': op.name, 'condition_needs': op.condition_needs,
-                                'condition': op.condition}
-                ops = branch['filter_on']
+                branch = self.branches[tuple(op.condition_needs)]
+                filter_on = branch['filter_on']
+                filter_on['if'] = {'name': op.name, 'condition_needs': op.condition_needs,
+                                   'condition': op.condition}
+                ops = filter_on['ops']
+                filter_off = None
             elif isinstance(op, FilterOff):
-                branch = self.conditionals[tuple(op.condition_needs)]
-                branch['else'] = {'name': op.name}
-                ops = branch['filter_off']
+                branch = self.branches[tuple(op.condition_needs)]
+                filter_off = branch['filter_off']
+                filter_off['else'] = {'name': op.name}
+                ops = filter_off['ops']
+                filter_on = None
 
-        for key, branches in self.conditionals.items():
-            if_args = branches['if']
-            subgraph = compose(name=if_args['name'])(*branches['filter_on'])
-            if_args['needs'] = subgraph.needs
-            if_args['provides'] = subgraph.provides
+            if hasattr(op, 'outputs'):
+                op_outputs = set(op.outputs)
+                if filter_on:
+                    filter_on['outputs'].update(op_outputs)
+                elif filter_off:
+                    filter_off['outputs'].update(op_outputs)
+                else:
+                    branch['outputs'].update(op_outputs)
 
-            graph.append(If(**if_args)(*branches['filter_on']))
+        default = self.branches.pop('default')
+        graph = default['ops']
+        for key, branches in self.branches.items():
+            if_args = branches['filter_on']['if']
+            if_args['needs'] = branches['filter_on']['ops'][0].needs
+            if_args['provides'] = branches['filter_on']['ops'][-1].provides
 
-            else_args = branches['else']
-            subgraph = compose(name=else_args['name'])(*branches['filter_off'])
-            else_args['needs'] = subgraph.needs
-            else_args['provides'] = subgraph.provides
+            graph.append(If(**if_args)(*branches['filter_on']['ops']))
 
-            graph.append(Else(**else_args)(*branches['filter_off']))
+            if branches['filter_off']['else']:
+                else_args = branches['filter_off']['else']
+                else_args['needs'] = branches['filter_off']['ops'][0].needs
+                else_args['provides'] = branches['filter_off']['ops'][-1].provides
+
+                graph.append(Else(**else_args)(*branches['filter_off']['ops']))
 
         return compose(name=self.name)(*graph)
 
@@ -129,23 +168,25 @@ class StatefulTransformation(Transformation):
         raise NotImplementedError
 
 
-class ReduceByKey(Transformation):
+class ReduceByKey(StatefulTransformation):
 
     def __init__(self, name, inputs, outputs, func=lambda *args: args, condition_needs=None, reduction=operator.add):
-        self.reduction = reduction
-        super(ReduceByKey, self).__init__(name, inputs, outputs, func, condition_needs)
+        super(ReduceByKey, self).__init__(name, inputs, outputs, func, condition_needs, reduction)
+        self.res = {}
 
     def __call__(self, *args, **kwargs):
         f = map(self.func, args)
-        res = {}
 
         for r in f:
             for k, v in r[0].items():
-                if k in res:
-                    res[k] = self.reduction(res[k], v)
+                if k in self.res:
+                    self.res[k] = self.reduction(self.res[k], v)
                 else:
-                    res[k] = v
-        return res
+                    self.res[k] = v
+        return self.res.values()
+
+    def reset(self):
+        self.res = {}
 
 
 class Accumulator(StatefulTransformation):
