@@ -14,13 +14,6 @@ class Graph():
         #                       'filter_off': {'ops': [], 'outputs': set()}}},
         self.branches = collections.defaultdict(dict)
 
-        # by default there are no condition needs until we do a filter,
-        # we store this as default and remove one level of dictionaries
-        # ie self.branches['default'] = {'ops': [], 'outputs': set()}
-        branch = self.branches['default']
-        branch['ops'] = []
-        branch['outputs'] = set()
-
     def __call__(self, *args, **kwargs):
         if self.graph is None:
             self.graph = self.compile()
@@ -41,6 +34,7 @@ class Graph():
 
     def remove(self, op):
         self.graph = None
+        self.branches = collections.defaultdict(dict)
 
     def reset(self):
         for node in self.steps:
@@ -48,8 +42,13 @@ class Graph():
                 node.reset()
 
     def compile(self):
+        # by default there are no condition needs until we do a filter,
+        # we store this as default and remove one level of dictionaries
+        # ie self.branches['default'] = {'ops': [], 'outputs': set()}
         branch = self.branches['default']
+        branch['ops'] = []
         ops = branch['ops']
+        branch['outputs'] = set()
         color = 'worker'
         filter_on = None
         filter_off = None
@@ -74,7 +73,10 @@ class Graph():
             if isinstance(op, Map):
                 ops.append(operation(name=op.name, needs=op.inputs, provides=op.outputs, color=color)(op.func))
             elif isinstance(op, ReduceByKey):
-                color = 'localCollector'
+                if color == 'worker':
+                    color = 'localCollector'
+                elif color == 'localCollector':
+                    color = 'globalCollector'
                 ops.append(operation(name=op.name, needs=op.inputs, provides=op.outputs, color=color)(op))
             elif isinstance(op, Accumulator):
                 ops.append(operation(name=op.name, needs=op.inputs, provides=op.outputs, color=color)(op))
@@ -158,8 +160,8 @@ class FilterOff(Filter):
 
 class StatefulTransformation(Transformation):
 
-    def __init__(self, name, inputs, outputs, func, condition_needs=None, reduction=None):
-        super(StatefulTransformation, self).__init__(name, inputs, outputs, func, condition_needs)
+    def __init__(self, name, inputs, outputs, reduction=None):
+        super(StatefulTransformation, self).__init__(name, inputs, outputs, func=None)
         if reduction:
             assert hasattr(reduction, '__call__'), 'reduction is not callable'
         self.reduction = reduction
@@ -170,20 +172,21 @@ class StatefulTransformation(Transformation):
 
 class ReduceByKey(StatefulTransformation):
 
-    def __init__(self, name, inputs, outputs, func=lambda *args: args, condition_needs=None, reduction=operator.add):
-        super(ReduceByKey, self).__init__(name, inputs, outputs, func, condition_needs, reduction)
+    def __init__(self, name, inputs, outputs, reduction=operator.add):
+        super(ReduceByKey, self).__init__(name, inputs, outputs, reduction)
         self.res = {}
 
-    def __call__(self, *args, **kwargs):
-        f = map(self.func, args)
-
-        for r in f:
-            for k, v in r[0].items():
+    def __call__(self, args):
+        for r in args:
+            for k, v in r.items():
                 if k in self.res:
                     self.res[k] = self.reduction(self.res[k], v)
                 else:
                     self.res[k] = v
-        return self.res.values()
+        r = list(self.res.values())
+        if len(r) == 1:
+            return r[0]
+        return r
 
     def reset(self):
         self.res = {}
@@ -191,12 +194,12 @@ class ReduceByKey(StatefulTransformation):
 
 class Accumulator(StatefulTransformation):
 
-    def __init__(self, name, inputs, outputs, func=lambda a: a, condition_needs=None, reduction=None):
-        super(Accumulator, self).__init__(name, inputs, outputs, func, condition_needs, reduction)
+    def __init__(self, name, inputs, outputs, reduction=None):
+        super(Accumulator, self).__init__(name, inputs, outputs, reduction)
         self.res = []
 
     def __call__(self, *args, **kwargs):
-        self.res.append(self.func(*args, **kwargs))
+        self.res.extend(args)
 
         if self.reduction:
             return self.reduction(self.res)
