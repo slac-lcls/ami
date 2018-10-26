@@ -1,5 +1,6 @@
 import operator
 import networkx as nx
+import itertools as it
 
 
 class Graph():
@@ -7,6 +8,8 @@ class Graph():
     def __init__(self, name):
         self.name = name
         self.graph = nx.DiGraph()
+        self.global_operations = set()
+        self.filters = set()
 
     def add(self, op):
         for i in op.inputs:
@@ -18,8 +21,94 @@ class Graph():
         for i in op.condition_needs:
             self.graph.add_edge(i, op)
 
-    def compile(self):
-        pass
+    def color_nodes(self):
+        g = self.graph
+        inputs = [n for n, d in g.in_degree() if d == 0]
+        outputs = [n for n, d in g.out_degree() if d == 0]
+
+        self.global_operations = set()
+        self.filters = set()
+
+        sources_targets = list(it.product(inputs, outputs))
+        for s, t in sources_targets:
+            paths = list(nx.algorithms.all_simple_paths(g, s, t))
+            for nodes in paths:
+                reductions = filter(lambda node: isinstance(node, ReduceByKey), nodes)
+
+                for reduction in reductions:
+                    before = filter(lambda node: isinstance(node, ReduceByKey),
+                                    nx.algorithms.dag.ancestors(g, reduction))
+                    if list(before) == []:
+                        self.global_operations.add(reduction)
+
+                color = 'worker'
+                for node in nodes:
+                    if type(node) is str:
+                        continue
+
+                    if node not in self.global_operations:
+                        node.color.add(color)
+                    elif node in self.global_operations:
+                        node.color.add(color)
+                        color = 'localCollector'
+                        node.color.add(color)
+                        color = 'globalCollector'
+                        node.color.add(color)
+
+                filter_node = filter(lambda node: isinstance(node, Filter), nodes)
+                self.filters = self.filters.union(set(filter_node))
+
+    def expand_global_operations(self):
+        g = self.graph
+        for node in self.global_operation:
+            inputs = node.inputs
+            outputs = node.outputs
+            condition_needs = node.condition_needs
+
+            g.remove_node(node)
+
+            color_order = ['worker', 'localCollector', 'globalCollector']
+            worker_outputs = None
+            local_collector_outputs = None
+
+            for color in color_order:
+
+                if color == 'worker':
+                    worker_outputs = list(map(lambda o: o+'_worker', node.outputs))
+                    worker_node = ReduceByKey(name=node.name+'_worker', inputs=inputs, outputs=worker_outputs,
+                                              condition_needs=condition_needs)
+                    worker_node.color.add(color)
+                    for i in inputs:
+                        g.add_edge(i, worker_node)
+                    for o in worker_outputs:
+                        g.add_edge(worker_node, o)
+                    for n in condition_needs:
+                        g.add_edge(n, worker_node)
+
+                elif color == 'localCollector':
+                    local_collector_outputs = list(map(lambda o: o+'_localCollector', node.outputs))
+                    local_collector_node = ReduceByKey(name=node.name+'_localCollector', inputs=worker_outputs,
+                                                       outputs=local_collector_outputs)
+                    local_collector_node.color.add(color)
+                    for i in worker_outputs:
+                        g.add_edge(i, local_collector_node)
+                    for o in local_collector_outputs:
+                        g.add_edge(local_collector_node, o)
+
+                elif color == 'globalCollector':
+                    global_collector_node = ReduceByKey(name=node.name+'_globalCollector',
+                                                        inputs=local_collector_outputs,
+                                                        outputs=outputs)
+                    global_collector_node.color.add(color)
+                    for i in local_collector_outputs:
+                        g.add_edge(i, global_collector_node)
+                    for o in outputs:
+                        g.add_edge(global_collector_node, o)
+
+        def compile(self):
+
+            self.color_nodes()
+            self.expand_global_operations()
 
 
 class Transformation():
@@ -30,6 +119,7 @@ class Transformation():
         self.outputs = outputs
         self.func = func
         self.condition_needs = condition_needs
+        self.color = set()
 
     def __hash__(self):
         return hash(self.name)
@@ -37,6 +127,9 @@ class Transformation():
     def __eq__(self, other):
         return bool(self.name is not None and
                     self.name == getattr(other, 'name', None))
+
+    def __repr__(self):
+        return u"%s(name='%s')" % (self.__class__.__name__, self.name)
 
 
 class Map(Transformation):
@@ -53,6 +146,7 @@ class Filter():
         self.condition = condition
         self.inputs = []
         self.outputs = outputs
+        self.color = set()
 
 
 class FilterOn(Filter):
