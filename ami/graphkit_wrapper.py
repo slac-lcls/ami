@@ -49,9 +49,10 @@ class Graph():
         branch['ops'] = []
         ops = branch['ops']
         branch['outputs'] = set()
-        color = 'worker'
+        color = set()
         filter_on = None
         filter_off = None
+        color.add('worker')
 
         for op in self.steps:
 
@@ -73,10 +74,7 @@ class Graph():
             if isinstance(op, Map):
                 ops.append(operation(name=op.name, needs=op.inputs, provides=op.outputs, color=color)(op.func))
             elif isinstance(op, ReduceByKey):
-                if color == 'worker':
-                    color = 'localCollector'
-                elif color == 'localCollector':
-                    color = 'globalCollector'
+                color.add('localCollector')
                 ops.append(operation(name=op.name, needs=op.inputs, provides=op.outputs, color=color)(op))
             elif isinstance(op, Accumulator):
                 ops.append(operation(name=op.name, needs=op.inputs, provides=op.outputs, color=color)(op))
@@ -140,22 +138,23 @@ class Map(Transformation):
 
 class Filter():
 
-    def __init__(self, name, condition_needs, condition=None):
+    def __init__(self, name, condition_needs, outputs, condition=None):
         self.name = name
         self.condition_needs = condition_needs
         self.condition = condition
+        self.outputs = outputs
 
 
 class FilterOn(Filter):
 
-    def __init__(self, name, condition_needs, condition=lambda cond: cond is True):
-        super(FilterOn, self).__init__(name, condition_needs, condition)
+    def __init__(self, name, condition_needs, outputs, condition=lambda cond: cond is True):
+        super(FilterOn, self).__init__(name, condition_needs, outputs, condition)
 
 
 class FilterOff(Filter):
 
-    def __init__(self, name, condition_needs):
-        super(FilterOff, self).__init__(name, condition_needs)
+    def __init__(self, name, condition_needs, outputs):
+        super(FilterOff, self).__init__(name, condition_needs, outputs)
 
 
 class StatefulTransformation(Transformation):
