@@ -1,133 +1,194 @@
-from graphkit import compose, operation, If, Else
-import collections
 import operator
+import networkx as nx
+import itertools as it
+from graphkit import operation, If, Else, compose
 
 
 class Graph():
 
     def __init__(self, name):
         self.name = name
-        self.steps = []
-        self.graph = None
-
-        # { (condition_needs): {'filter_on': {'ops': [], 'outputs': set()},
-        #                       'filter_off': {'ops': [], 'outputs': set()}}},
-        self.branches = collections.defaultdict(dict)
-
-    def __call__(self, *args, **kwargs):
-        if self.graph is None:
-            self.graph = self.compile()
-        return self.graph(*args, **kwargs)
+        self.graph = nx.DiGraph()
+        self.graphkit = None
+        self.global_operations = set()
 
     def add(self, op):
-        if isinstance(op, Filter):
-            branch = self.branches[tuple(op.condition_needs)]
-            if 'filter_on' not in branch:
-                branch['filter_on'] = {'ops': [], 'outputs': set(), 'if': {}}
+        for i in op.inputs:
+            self.graph.add_edge(i, op)
 
-            if 'filter_off' not in branch:
-                branch['filter_off'] = {'ops': [], 'outputs': set(), 'else': {}}
+        for o in op.outputs:
+            self.graph.add_edge(op, o)
 
-        self.steps.append(op)
+        for i in op.condition_needs:
+            self.graph.add_edge(i, op)
 
-        return self
+    def color_nodes(self):
 
-    def remove(self, op):
-        self.graph = None
-        self.branches = collections.defaultdict(dict)
+        inputs = [n for n, d in self.graph.in_degree() if d == 0]
+        outputs = [n for n, d in self.graph.out_degree() if d == 0]
 
-    def reset(self):
-        for node in self.steps:
-            if isinstance(node, StatefulTransformation):
-                node.reset()
+        self.global_operations = set()
 
-    def compile(self):
-        # by default there are no condition needs until we do a filter,
-        # we store this as default and remove one level of dictionaries
-        # ie self.branches['default'] = {'ops': [], 'outputs': set()}
-        branch = self.branches['default']
-        branch['ops'] = []
-        ops = branch['ops']
-        branch['outputs'] = set()
-        color = set()
-        filter_on = None
-        filter_off = None
-        color.add('worker')
+        sources_targets = list(it.product(inputs, outputs))
+        for s, t in sources_targets:
+            paths = list(nx.algorithms.all_simple_paths(self.graph, s, t))
+            for nodes in paths:
+                reductions = filter(lambda node: isinstance(node, ReduceByKey), nodes)
 
-        for op in self.steps:
+                for reduction in reductions:
+                    before = filter(lambda node: isinstance(node, ReduceByKey),
+                                    nx.algorithms.dag.ancestors(self.graph, reduction))
+                    if list(before) == []:
+                        self.global_operations.add(reduction)
 
-            if hasattr(op, 'inputs'):
-                op_inputs = set(op.inputs)
-
-                for need, brnch in self.branches.items():
-                    if need == 'default':
+                color = 'worker'
+                for node in nodes:
+                    if type(node) is str:
                         continue
 
-                    if op_inputs.issubset(brnch['filter_on']['outputs']) and \
-                       op_inputs.issubset(brnch['filter_off']['outputs']):
-                        branch = self.branches['default']
-                        ops = branch['ops']
-                        filter_on = None
-                        filter_off = None
-                        break
+                    if node not in self.global_operations:
+                        node.color.add(color)
+                    elif node in self.global_operations:
+                        node.color.add(color)
+                        color = 'localCollector'
+                        node.color.add(color)
+                        color = 'globalCollector'
+                        node.color.add(color)
 
-            if isinstance(op, Map):
-                ops.append(operation(name=op.name, needs=op.inputs, provides=op.outputs, color=color)(op.func))
-            elif isinstance(op, ReduceByKey):
-                color.add('localCollector')
-                ops.append(operation(name=op.name, needs=op.inputs, provides=op.outputs, color=color)(op))
-            elif isinstance(op, Accumulator):
-                ops.append(operation(name=op.name, needs=op.inputs, provides=op.outputs, color=color)(op))
-            elif isinstance(op, FilterOn):
-                branch = self.branches[tuple(op.condition_needs)]
-                filter_on = branch['filter_on']
-                filter_on['if'] = {'name': op.name, 'condition_needs': op.condition_needs,
-                                   'condition': op.condition}
-                ops = filter_on['ops']
-                filter_off = None
-            elif isinstance(op, FilterOff):
-                branch = self.branches[tuple(op.condition_needs)]
-                filter_off = branch['filter_off']
-                filter_off['else'] = {'name': op.name}
-                ops = filter_off['ops']
-                filter_on = None
+    def expand_global_operations(self):
 
-            if hasattr(op, 'outputs'):
-                op_outputs = set(op.outputs)
-                if filter_on:
-                    filter_on['outputs'].update(op_outputs)
-                elif filter_off:
-                    filter_off['outputs'].update(op_outputs)
-                else:
-                    branch['outputs'].update(op_outputs)
+        for node in self.global_operations:
+            inputs = node.inputs
+            outputs = node.outputs
+            condition_needs = node.condition_needs
 
-        default = self.branches.pop('default')
-        graph = default['ops']
-        for key, branches in self.branches.items():
-            if_args = branches['filter_on']['if']
-            if_args['needs'] = branches['filter_on']['ops'][0].needs
-            if_args['provides'] = branches['filter_on']['ops'][-1].provides
+            self.graph.remove_node(node)
 
-            graph.append(If(**if_args)(*branches['filter_on']['ops']))
+            color_order = ['worker', 'localCollector', 'globalCollector']
+            worker_outputs = None
+            local_collector_outputs = None
 
-            if branches['filter_off']['else']:
-                else_args = branches['filter_off']['else']
-                else_args['needs'] = branches['filter_off']['ops'][0].needs
-                else_args['provides'] = branches['filter_off']['ops'][-1].provides
+            for color in color_order:
 
-                graph.append(Else(**else_args)(*branches['filter_off']['ops']))
+                if color == 'worker':
+                    worker_outputs = list(map(lambda o: o+'_worker', node.outputs))
+                    worker_node = ReduceByKey(name=node.name+'_worker', inputs=inputs, outputs=worker_outputs,
+                                              condition_needs=condition_needs)
+                    worker_node.color.add(color)
+                    for i in inputs:
+                        self.graph.add_edge(i, worker_node)
+                    for o in worker_outputs:
+                        self.graph.add_edge(worker_node, o)
+                    for n in condition_needs:
+                        self.graph.add_edge(n, worker_node)
 
-        return compose(name=self.name)(*graph)
+                elif color == 'localCollector':
+                    local_collector_outputs = list(map(lambda o: o+'_localCollector', node.outputs))
+                    local_collector_node = ReduceByKey(name=node.name+'_localCollector', inputs=worker_outputs,
+                                                       outputs=local_collector_outputs)
+                    local_collector_node.color.add(color)
+                    for i in worker_outputs:
+                        self.graph.add_edge(i, local_collector_node)
+                    for o in local_collector_outputs:
+                        self.graph.add_edge(local_collector_node, o)
+
+                elif color == 'globalCollector':
+                    global_collector_node = ReduceByKey(name=node.name+'_globalCollector',
+                                                        inputs=local_collector_outputs,
+                                                        outputs=outputs)
+                    global_collector_node.color.add(color)
+                    for i in local_collector_outputs:
+                        self.graph.add_edge(i, global_collector_node)
+                    for o in outputs:
+                        self.graph.add_edge(global_collector_node, o)
+
+    def generate_filter_node(self, seen, filter_node, nodes):
+        seen.update(nodes)
+        nodes.pop(0)
+        nodes.pop(0)
+        subgraph = self.graph.subgraph(nodes)
+        inputs = [n for n, d in subgraph.in_degree() if d == 0]
+        inputs = list(it.chain.from_iterable([i.inputs for i in inputs]))
+        outputs = [n for n, d in subgraph.out_degree() if d == 0]
+        nodes = list(filter(lambda node: type(node) is not str, nodes))
+        nodes = list(map(lambda node: node.to_operation(), nodes))
+
+        node = filter_node.to_operation()
+        node = node(name=filter_node.name,
+                    condition_needs=filter_node.condition_needs, condition=filter_node.condition,
+                    needs=inputs, provides=outputs)(*nodes)
+        return node
+
+    def compile(self):
+
+        self.color_nodes()
+        self.expand_global_operations()
+
+        seen = set()
+        branch_merge_candidates = [n for n, d in self.graph.in_degree() if d >= 2 and type(n) is str]
+        graph_filters = filter(lambda node: isinstance(node, Filter), self.graph.nodes)
+        outputs = [n for n, d in self.graph.out_degree() if d == 0]
+        body = []
+
+        filters_targets = list(it.product(graph_filters, branch_merge_candidates))
+        for f, t in filters_targets:
+            paths = list(nx.algorithms.all_simple_paths(self.graph, f, t))
+
+            for nodes in paths:
+                filter_node = self.generate_filter_node(seen, f, nodes)
+                body.append(filter_node)
+
+        filters_targets = list(it.product(graph_filters, outputs))
+        for f, t in filters_targets:
+            paths = list(nx.algorithms.all_simple_paths(self.graph, f, t))
+
+            for nodes in paths:
+                if any(map(lambda node: node in branch_merge_candidates, nodes)):
+                    continue
+                if seen.issuperset(nodes):
+                    continue
+
+                filter_node = self.generate_filter_node(seen, f, nodes)
+                body.append(filter_node)
+
+        for node in self.graph.nodes:
+            if node in seen:
+                continue
+            if type(node) is str:
+                continue
+            body.append(node.to_operation())
+
+        return compose(name=self.name)(*body)
+
+    def __call__(self, *args, **kwargs):
+        if self.graphkit is None:
+            self.graphkit = self.compile()
+
+        return self.graphkit(*args, **kwargs)
 
 
 class Transformation():
 
-    def __init__(self, name, inputs, outputs, func, condition_needs=None):
+    def __init__(self, name, inputs, outputs, func, condition_needs=[]):
         self.name = name
         self.inputs = inputs
         self.outputs = outputs
         self.func = func
         self.condition_needs = condition_needs
+        self.color = set()
+
+    def __hash__(self):
+        return hash(self.name)
+
+    def __eq__(self, other):
+        return bool(self.name is not None and
+                    self.name == getattr(other, 'name', None))
+
+    def __repr__(self):
+        return u"%s(name='%s')" % (self.__class__.__name__, self.name)
+
+    def to_operation(self):
+        return operation(name=self.name, needs=self.inputs, provides=self.outputs, color=self.color)(self.func)
 
 
 class Map(Transformation):
@@ -142,7 +203,9 @@ class Filter():
         self.name = name
         self.condition_needs = condition_needs
         self.condition = condition
+        self.inputs = []
         self.outputs = outputs
+        self.color = set()
 
 
 class FilterOn(Filter):
@@ -150,17 +213,25 @@ class FilterOn(Filter):
     def __init__(self, name, condition_needs, outputs, condition=lambda cond: cond is True):
         super(FilterOn, self).__init__(name, condition_needs, outputs, condition)
 
+    def to_operation(self):
+        return If
+
 
 class FilterOff(Filter):
 
     def __init__(self, name, condition_needs, outputs):
         super(FilterOff, self).__init__(name, condition_needs, outputs)
 
+    def to_operation(self):
+        return Else
+
 
 class StatefulTransformation(Transformation):
 
-    def __init__(self, name, inputs, outputs, reduction=None):
-        super(StatefulTransformation, self).__init__(name, inputs, outputs, func=None)
+    def __init__(self, name, inputs, outputs, condition_needs=[], reduction=None):
+        super(StatefulTransformation, self).__init__(name=name, inputs=inputs,
+                                                     outputs=outputs, func=None,
+                                                     condition_needs=condition_needs)
         if reduction:
             assert hasattr(reduction, '__call__'), 'reduction is not callable'
         self.reduction = reduction
@@ -168,11 +239,15 @@ class StatefulTransformation(Transformation):
     def reset(self):
         raise NotImplementedError
 
+    def to_operation(self):
+        return operation(name=self.name, needs=self.inputs, provides=self.outputs, color=self.color)(self)
+
 
 class ReduceByKey(StatefulTransformation):
 
-    def __init__(self, name, inputs, outputs, reduction=operator.add):
-        super(ReduceByKey, self).__init__(name, inputs, outputs, reduction)
+    def __init__(self, name, inputs, outputs, condition_needs=[], reduction=operator.add):
+        super(ReduceByKey, self).__init__(name=name, inputs=inputs, outputs=outputs,
+                                          condition_needs=condition_needs, reduction=reduction)
         self.res = {}
 
     def __call__(self, args):
@@ -193,8 +268,8 @@ class ReduceByKey(StatefulTransformation):
 
 class Accumulator(StatefulTransformation):
 
-    def __init__(self, name, inputs, outputs, reduction=None):
-        super(Accumulator, self).__init__(name, inputs, outputs, reduction)
+    def __init__(self, name, inputs, outputs, condition_needs, reduction=None):
+        super(Accumulator, self).__init__(name, inputs, outputs, condition_needs, reduction)
         self.res = []
 
     def __call__(self, *args, **kwargs):
