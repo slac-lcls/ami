@@ -74,7 +74,7 @@ class Graph():
                     worker_outputs = list(map(lambda o: o+'_worker', node.outputs))
                     worker_node = ReduceByKey(name=node.name+'_worker', inputs=inputs, outputs=worker_outputs,
                                               condition_needs=condition_needs)
-                    worker_node.color.add(color)
+                    worker_node.color = color
                     for i in inputs:
                         self.graph.add_edge(i, worker_node)
                     for o in worker_outputs:
@@ -86,7 +86,7 @@ class Graph():
                     local_collector_outputs = list(map(lambda o: o+'_localCollector', node.outputs))
                     local_collector_node = ReduceByKey(name=node.name+'_localCollector', inputs=worker_outputs,
                                                        outputs=local_collector_outputs)
-                    local_collector_node.color.add(color)
+                    local_collector_node.color = color
                     for i in worker_outputs:
                         self.graph.add_edge(i, local_collector_node)
                     for o in local_collector_outputs:
@@ -96,7 +96,7 @@ class Graph():
                     global_collector_node = ReduceByKey(name=node.name+'_globalCollector',
                                                         inputs=local_collector_outputs,
                                                         outputs=outputs)
-                    global_collector_node.color.add(color)
+                    global_collector_node.color = color
                     for i in local_collector_outputs:
                         self.graph.add_edge(i, global_collector_node)
                     for o in outputs:
@@ -164,7 +164,9 @@ class Graph():
         if self.graphkit is None:
             self.graphkit = self.compile()
 
-        return self.graphkit(*args, **kwargs)
+        result = self.graphkit(*args, **kwargs)
+        outputs = [n for n, d in self.graph.out_degree() if d == 0]
+        return {k: result[k] for k in outputs}
 
 
 class Transformation():
@@ -188,7 +190,9 @@ class Transformation():
         return u"%s(name='%s')" % (self.__class__.__name__, self.name)
 
     def to_operation(self):
-        return operation(name=self.name, needs=self.inputs, provides=self.outputs, color=self.color)(self.func)
+        assert len(self.color) == 1, 'too many colors'
+        color = list(self.color)[0]
+        return operation(name=self.name, needs=self.inputs, provides=self.outputs, color=color)(self.func)
 
 
 class Map(Transformation):
@@ -240,7 +244,9 @@ class StatefulTransformation(Transformation):
         raise NotImplementedError
 
     def to_operation(self):
-        return operation(name=self.name, needs=self.inputs, provides=self.outputs, color=self.color)(self)
+        assert len(self.color) == 1, 'too many colors'
+        color = list(self.color)[0]
+        return operation(name=self.name, needs=self.inputs, provides=self.outputs, color=color)(self)
 
 
 class ReduceByKey(StatefulTransformation):
