@@ -126,7 +126,7 @@ class Graph():
 
         seen = set()
         branch_merge_candidates = [n for n, d in self.graph.in_degree() if d >= 2 and type(n) is str]
-        graph_filters = filter(lambda node: isinstance(node, Filter), self.graph.nodes)
+        graph_filters = list(filter(lambda node: isinstance(node, Filter), self.graph.nodes))
         outputs = [n for n, d in self.graph.out_degree() if d == 0]
         body = []
 
@@ -244,9 +244,7 @@ class StatefulTransformation(Transformation):
         raise NotImplementedError
 
     def to_operation(self):
-        assert len(self.color) == 1, 'too many colors'
-        color = list(self.color)[0]
-        return operation(name=self.name, needs=self.inputs, provides=self.outputs, color=color)(self)
+        return operation(name=self.name, needs=self.inputs, provides=self.outputs, color=self.color)(self)
 
 
 class ReduceByKey(StatefulTransformation):

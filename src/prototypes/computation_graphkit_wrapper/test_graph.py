@@ -18,7 +18,8 @@ graph.add(FilterOff(name='FilterOff', condition_needs=['laser'], outputs=['laser
 graph.add(ReduceByKey(name='BinningOff', condition_needs=['laseroff'],
                       inputs=['delta_t', 'sum'], outputs=['reference']))
 
-args = {'cspad': np.identity(1024), 'laser': True}
+graph({'cspad': np.ones((200, 200)), 'laser': False, 'delta_t': 4})
+
 
 # graph = Graph(name='graph')
 # graph.add(Map(name='mul1', inputs=['a', 'b'], outputs=['ab'], func=lambda a, b: a*b))
