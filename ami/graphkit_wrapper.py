@@ -1,6 +1,7 @@
 import operator
 import networkx as nx
 import itertools as it
+import collections
 from graphkit import operation, If, Else, compose
 
 
@@ -11,6 +12,7 @@ class Graph():
         self.graph = nx.DiGraph()
         self.graphkit = None
         self.global_operations = set()
+        self.outputs = collections.defaultdict(set)
 
     def add(self, op):
         for i in op.inputs:
@@ -45,7 +47,6 @@ class Graph():
                 for node in nodes:
                     if type(node) is str:
                         continue
-
                     if node not in self.global_operations:
                         node.color.add(color)
                     elif node in self.global_operations:
@@ -56,6 +57,7 @@ class Graph():
                         node.color.add(color)
 
     def expand_global_operations(self):
+        self.outputs = collections.defaultdict(set)
 
         for node in self.global_operations:
             inputs = node.inputs
@@ -75,6 +77,7 @@ class Graph():
                     worker_node = ReduceByKey(name=node.name+'_worker', inputs=inputs, outputs=worker_outputs,
                                               condition_needs=condition_needs)
                     worker_node.color = color
+                    self.outputs[color].update(worker_outputs)
                     for i in inputs:
                         self.graph.add_edge(i, worker_node)
                     for o in worker_outputs:
@@ -87,6 +90,7 @@ class Graph():
                     local_collector_node = ReduceByKey(name=node.name+'_localCollector', inputs=worker_outputs,
                                                        outputs=local_collector_outputs)
                     local_collector_node.color = color
+                    self.outputs[color].update(local_collector_outputs)
                     for i in worker_outputs:
                         self.graph.add_edge(i, local_collector_node)
                     for o in local_collector_outputs:
@@ -158,15 +162,18 @@ class Graph():
                 continue
             body.append(node.to_operation())
 
+        self.outputs['globalCollector'].update(outputs)
+
         return compose(name=self.name)(*body)
 
     def __call__(self, *args, **kwargs):
         if self.graphkit is None:
             self.graphkit = self.compile()
-
+        color = kwargs.get('color', None)
+        assert color is not None
         result = self.graphkit(*args, **kwargs)
-        outputs = [n for n, d in self.graph.out_degree() if d == 0]
-        return {k: result[k] for k in outputs}
+        outputs = self.outputs[color]
+        return {k: result[k] for k in outputs if k in result}
 
 
 class Transformation():
@@ -254,17 +261,24 @@ class ReduceByKey(StatefulTransformation):
                                           condition_needs=condition_needs, reduction=reduction)
         self.res = {}
 
-    def __call__(self, args):
-        for r in args:
-            for k, v in r.items():
-                if k in self.res:
-                    self.res[k] = self.reduction(self.res[k], v)
-                else:
-                    self.res[k] = v
-        r = list(self.res.values())
-        if len(r) == 1:
-            return r[0]
-        return r
+    def __call__(self, *args, **kwargs):
+        if len(args) == 2:
+            k, v = args
+            if k in self.res:
+                self.res[k] = self.reduction(self.res[k], v)
+            else:
+                self.res[k] = v
+        else:
+            for r in args:
+                for k, v in r.items():
+                    if k in self.res:
+                        self.res[k] = self.reduction(self.res[k], v)
+                    else:
+                        self.res[k] = v
+            r = list(self.res.values())
+            if len(r) == 1:
+                return r[0]
+        return self.res
 
     def reset(self):
         self.res = {}
