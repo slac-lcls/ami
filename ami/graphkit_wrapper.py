@@ -24,6 +24,20 @@ class Graph():
         for i in op.condition_needs:
             self.graph.add_edge(i, op)
 
+    def remove(self, name):
+        for n in self.graph.nodes:
+            if type(n) is str:
+                continue
+            if n.name == name:
+                desc = nx.dag.descendants(self.graph, n)
+                self.graph.remove_nodes_from(desc)
+                self.graph.remove_node(n)
+                break
+
+    def reset(self):
+        nodes = filter(lambda node: isinstance(StatefulTransformation, node), self.graph.nodes)
+        map(lambda node: node.reset(), nodes)
+
     def color_nodes(self):
 
         inputs = [n for n, d in self.graph.in_degree() if d == 0]
