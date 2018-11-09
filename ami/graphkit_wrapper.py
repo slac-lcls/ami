@@ -235,7 +235,7 @@ class Filter():
 
 class FilterOn(Filter):
 
-    def __init__(self, name, condition_needs, outputs, condition=lambda cond: cond is True):
+    def __init__(self, name, condition_needs, outputs, condition=lambda cond: cond):
         super(FilterOn, self).__init__(name, condition_needs, outputs, condition)
 
     def to_operation(self):

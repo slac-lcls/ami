@@ -3,8 +3,8 @@ import re
 import sys
 import zmq
 import json
+import dill
 import argparse
-from ami.graph import Graph, GraphConfigError, GraphRuntimeError
 from ami.comm import Ports, ResultStore
 from ami.data import MsgTypes, Transitions, Transition, RandomSource, StaticSource, PsanaSource
 
@@ -21,14 +21,13 @@ class Worker(object):
         self.idnum = idnum
         self.src = src
         self.ctx = zmq.Context()
-        self.store = ResultStore(collector_addr, self.ctx)
 
-        self.graph = Graph(self.store)
+        self.store = ResultStore(collector_addr, self.ctx)
+        self.graph = None
 
         self.graph_comm = self.ctx.socket(zmq.SUB)
         self.graph_comm.setsockopt_string(zmq.SUBSCRIBE, "graph")
         self.graph_comm.connect(graph_addr)
-        self.requests = []
         self.last_timestamp = 0
         self.heartbeat_period = heartbeat_period
 
@@ -38,14 +37,10 @@ class Worker(object):
         return ret
 
     def run(self):
-        sources = []
         partition = self.src.partition()
         self.store.message(MsgTypes.Transition,
                            self.idnum,
                            Transition(Transitions.Allocate, partition))
-        for name in partition:
-            self.store.create(name)
-            sources.append(name)
 
         for msg in self.src.events():
             # check to see if the graph has been reconfigured after update
@@ -56,9 +51,9 @@ class Worker(object):
                     while True:
                         try:
                             topic = self.graph_comm.recv_string(flags=zmq.NOBLOCK)
-                            payload = self.graph_comm.recv_pyobj()
+                            payload = self.graph_comm.recv()
                             if topic == "graph":
-                                new_graph = payload
+                                new_graph = dill.loads(payload)
                             else:
                                 print(
                                     "worker%d: No handler for received topic: %s" %
@@ -66,31 +61,33 @@ class Worker(object):
                         except zmq.Again:
                             break
                     if new_graph is not None:
-                        self.graph.update(new_graph)
+                        self.graph = new_graph
 
-                        print("worker%d: Received new configuration" % self.idnum)
-                        try:
-                            self.graph.configure(sources)
-                            print("worker%d: Configuration complete" % self.idnum)
-                        except GraphConfigError as graph_err:
-                            print(
-                                "worker%d: Configuration failed reverting to previous config:" %
-                                self.idnum, graph_err)
+                        #print("worker%d: Received new configuration" % self.idnum)
+                        #try:
+                        #    self.graph.configure(sources)
+                        #    print("worker%d: Configuration complete" % self.idnum)
+                        #except GraphConfigError as graph_err:
+                        #    print(
+                        #        "worker%d: Configuration failed reverting to previous config:" %
+                        #        self.idnum, graph_err)
                             # if this fails we just die
-                            self.graph.revert()
+                        #    self.graph.revert()
 
                         self.new_graph_available = False
-                    if new_graph is not None:
-                        self.store.message(MsgTypes.Graph, self.idnum, new_graph)
+                    #if new_graph is not None:
+                    #    self.store.message(MsgTypes.Graph, self.idnum, new_graph)
 
                 # clear old values from the store
                 # self.store.clear()
-                for dgram in msg.payload:
-                    self.store.put(dgram.name, dgram.data)
+                #for dgram in msg.payload:
+                #    self.store.put(dgram.name, dgram.data)
+                data = { dgram.name: dgram.data for dgram in msg.payload }
 
                 try:
-                    self.graph.execute()
-                except GraphRuntimeError as graph_err:
+                    if self.graph is not None:
+                        self.store.update(self.graph(data, color='worker'))
+                except Exception as graph_err:
                     print(
                         "worker%s: Failure encountered executing graph:" %
                         self.idnum, graph_err)

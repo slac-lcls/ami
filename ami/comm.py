@@ -33,13 +33,18 @@ class Store(object):
 
     @property
     def namespace(self):
-        ns = {"store": self}
+        #ns = {"store": self}
+        ns = {}
         for k in self._store.keys():
             ns[k] = self._store[k].data
         return ns
 
     def get(self, name):
         return self._store[name].data
+
+    def update(self, updates):
+        for k, v in updates.items():
+            self.put(k,v)
 
     def put(self, name, data, weight=0):
         datatype = DataTypes.get_type(data)
@@ -116,8 +121,7 @@ class ResultStore(Store, ZmqHandler):
         ZmqHandler.__init__(self, addr, ctx)
 
     def collect(self, identity, heartbeat):
-        for name, result in self.ready_items(True):
-            self.send(CollectorMessage(MsgTypes.Datagram, identity, heartbeat, result))
+        self.send(CollectorMessage(MsgTypes.Datagram, identity, heartbeat, self.namespace))
         self.send(Message(MsgTypes.Heartbeat, identity, heartbeat))
 
 
@@ -150,13 +154,30 @@ class EventBuilder(ZmqHandler):
         self.transitions = {}
         self.pending = {}
         self.contribs = {}
+        self.graphs = {}
+
+    def set_graph(self, eb_key, graph):
+        self.graphs[eb_key] = graph
+
+    def graph(self, eb_key):
+        return self.graphs.get(eb_key)
 
     def complete(self, identity, eb_key):
         if eb_key in self.pending:
-            for name, result in self.pending[eb_key].ready_items(True):
-                self.send(CollectorMessage(MsgTypes.Datagram, identity, eb_key, result))
+            print(self.pending[eb_key].namespace)
+            self.send(CollectorMessage(MsgTypes.Datagram, identity, eb_key, self.pending[eb_key].namespace))
             del self.pending[eb_key]
             del self.contribs[eb_key]
+            print("completed heartbeat", eb_key)
+
+    def update(self, eb_key, eb_id, data):
+        if eb_key not in self.pending:
+            self.pending[eb_key] = Store()
+            self.contribs[eb_key] = 0
+        self.latest = eb_key
+        graph = self.graph(eb_key)
+        if graph is not None:
+            self.pending[eb_key].update(graph(data, color='localCollector'))
 
     def put(self, eb_key, eb_id, name, data):
         if eb_key not in self.pending:

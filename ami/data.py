@@ -138,11 +138,15 @@ class RandomSource(object):
             event = []
             for name, config in self.config.items():
                 if config['dtype'] == 'Scalar':
+                    if config.get('integer', False):
+                        value = int(config['range'][0] + (config['range'][1] - config['range'][0]) * np.random.rand(1)[0])
+                    else:
+                        value = config['range'][0] + (config['range'][1] - config['range'][0]) * np.random.rand(1)[0]
                     event.append(
                         Datagram(
                             name,
                             getattr(DataTypes, config['dtype']),
-                            config['range'][0] + (config['range'][1] - config['range'][0]) * np.random.rand(1)[0]
+                            value
                         )
                     )
                 elif config['dtype'] == 'Waveform' or config['dtype'] == 'Image':

@@ -1,5 +1,7 @@
 #!/usr/bin/env python
+import zmq
 import sys
+import dill
 import argparse
 from ami.graph import Graph
 from ami.comm import Ports, Collector, EventBuilder, PickNBuilder
@@ -7,7 +9,7 @@ from ami.data import MsgTypes, Strategies
 
 
 class NodeCollector(Collector):
-    def __init__(self, node, num_workers, collector_addr, downstream_addr):
+    def __init__(self, node, num_workers, collector_addr, downstream_addr, graph_addr):
         super(__class__, self).__init__(collector_addr)
         self.node = node
         self.num_workers = num_workers
@@ -18,6 +20,19 @@ class NodeCollector(Collector):
 
         self.downstream_addr = downstream_addr
 
+        self.graph = None
+        self.graph_comm = self.ctx.socket(zmq.SUB)
+        self.graph_comm.setsockopt_string(zmq.SUBSCRIBE, "graph")
+        self.graph_comm.connect(graph_addr)
+        self.register(self.graph_comm, self.recv_graph)
+
+    def recv_graph(self):
+        topic = self.graph_comm.recv_string()
+        if topic == 'graph':
+            self.graph = dill.loads(self.graph_comm.recv())
+        else:
+            print("invalid topic: %s"%topic)
+
     def process_msg(self, msg):
         if msg.mtype == MsgTypes.Transition:
             self.store.transition(msg.identity, msg.payload.ttype)
@@ -26,8 +41,14 @@ class NodeCollector(Collector):
         elif msg.mtype == MsgTypes.Heartbeat:
             self.store.heartbeat(msg.identity, msg.payload)
             if self.store.heartbeat_ready(msg.payload):
+                #print("completing heartbeat", msg.payload)
                 self.store.complete(self.node, msg.payload)
+                if self.graph is not None:
+                    self.store.set_graph(msg.payload+1, self.graph)
         elif msg.mtype == MsgTypes.Datagram:
+            #print(msg.payload)
+            self.store.update(msg.heartbeat, msg.identity, msg.payload)
+            """
             if msg.payload.name in self.strategies:
                 if self.strategies[msg.payload.name] == Strategies.Sum.value:
                     self.store.sum(
@@ -63,17 +84,16 @@ class NodeCollector(Collector):
                     msg.identity,
                     msg.payload.name,
                     msg.payload.data)
-        elif msg.mtype == MsgTypes.Graph:
-            self.strategies = Graph.extract_collection_strategies(msg.payload)
+        """
 
-
-def run_collector(node_num, num_workers, collector_addr, upstream_addr):
+def run_collector(node_num, num_workers, collector_addr, upstream_addr, graph_addr):
     print('Starting collector on node # %d' % node_num)
     collector = NodeCollector(
         node_num,
         num_workers,
         collector_addr,
-        upstream_addr)
+        upstream_addr,
+        graph_addr)
     return collector.run()
 
 
@@ -96,6 +116,14 @@ def main():
     )
 
     parser.add_argument(
+        '-g',
+        '--graph',
+        type=int,
+        default=Ports.Graph,
+        help='port for graph communication (default: %d)' % Ports.Graph
+    )
+
+    parser.add_argument(
         '-n',
         '--num-workers',
         type=int,
@@ -114,9 +142,10 @@ def main():
     args = parser.parse_args()
     collector_addr = "tcp://127.0.0.1:%d" % (Ports.NodeCollector)
     upstream_addr = "tcp://%s:%d" % (args.host, args.collector)
+    graph_addr = "tcp://%s:%d" % (args.host, args.graph)
 
     try:
-        run_collector(args.node_num, args.num_workers, collector_addr, upstream_addr)
+        run_collector(args.node_num, args.num_workers, collector_addr, upstream_addr, graph_addr)
 
         return 0
     except KeyboardInterrupt:
