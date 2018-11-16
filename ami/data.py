@@ -93,10 +93,10 @@ class PsanaSource(object):
         dets = []
         for run in self.ds.runs():
             detinfo = run.detinfo
-            for detname,det_xface_dict in detinfo.items():
+            for detname, det_xface_dict in detinfo.items():
                 # need this loop when we send the GUI det xfaces and attributes
-                #for det_xface_name,det_xface_attrs in det_xface_dict.items():
-                datatype = DataTypes.Waveform # FIXME: should only need this when we get an event
+                # for det_xface_name,det_xface_attrs in det_xface_dict.items():
+                datatype = DataTypes.Waveform  # FIXME: should only need this when we get an event
                 dets.append((detname, datatype))
         return dets
 
