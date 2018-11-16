@@ -1,8 +1,15 @@
 import abc
 import zmq
+import dill
 from enum import IntEnum
 
 from ami.data import MsgTypes, Message, CollectorMessage, DataTypes, Datagram
+
+
+class Colors:
+    Worker = "worker"
+    LocalCollector = "localCollector"
+    GlobalCollector = "globalCollector"
 
 
 class Ports(IntEnum):
@@ -10,9 +17,10 @@ class Ports(IntEnum):
     Graph = 5556
     NodeCollector = 5557
     FinalCollector = 5558
+    Results = 5559
 
 
-class Store(object):
+class Store:
     """
     This class is a key value that for holding Datagrams
     """
@@ -37,6 +45,13 @@ class Store(object):
         ns = {}
         for k in self._store.keys():
             ns[k] = self._store[k].data
+        return ns
+
+    @property
+    def types(self):
+        ns = {}
+        for k in self._store.keys():
+            ns[k] = self._store[k].dtype
         return ns
 
     def get(self, name):
@@ -122,7 +137,6 @@ class ResultStore(Store, ZmqHandler):
 
     def collect(self, identity, heartbeat):
         self.send(CollectorMessage(MsgTypes.Datagram, identity, heartbeat, self.namespace))
-        self.send(Message(MsgTypes.Heartbeat, identity, heartbeat))
 
 
 class PickNBuilder(ZmqHandler):
@@ -145,10 +159,11 @@ class PickNBuilder(ZmqHandler):
 
 class EventBuilder(ZmqHandler):
 
-    def __init__(self, num_contribs, depth, addr, ctx=None):
+    def __init__(self, num_contribs, depth, color, addr, ctx=None):
         super(__class__, self).__init__(addr, ctx)
         self.num_contribs = num_contribs
         self.depth = depth
+        self.color = color
         self.latest = None
         # using a dict because it is random access instead of a sequential list
         self.transitions = {}
@@ -157,14 +172,13 @@ class EventBuilder(ZmqHandler):
         self.graphs = {}
 
     def set_graph(self, eb_key, graph):
-        self.graphs[eb_key] = graph
+        self.graphs[eb_key] = dill.loads(graph)
 
     def graph(self, eb_key):
         return self.graphs.get(eb_key)
 
     def complete(self, identity, eb_key):
         if eb_key in self.pending:
-            print(self.pending[eb_key].namespace)
             self.send(CollectorMessage(MsgTypes.Datagram, identity, eb_key, self.pending[eb_key].namespace))
             del self.pending[eb_key]
             del self.contribs[eb_key]
@@ -177,7 +191,7 @@ class EventBuilder(ZmqHandler):
         self.latest = eb_key
         graph = self.graph(eb_key)
         if graph is not None:
-            self.pending[eb_key].update(graph(data, color='localCollector'))
+            self.pending[eb_key].update(graph(data, color=self.color))
 
     def put(self, eb_key, eb_id, name, data):
         if eb_key not in self.pending:

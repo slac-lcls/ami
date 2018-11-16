@@ -2,9 +2,11 @@
 import re
 import sys
 import zmq
+import dill
 import argparse
-from ami.comm import Ports, Collector
+from ami.comm import Ports, Collector, Store
 from ami.data import MsgTypes
+from ami.graphkit_wrapper import Graph
 
 
 class Manager(Collector):
@@ -16,14 +18,14 @@ class Manager(Collector):
     configuration changes to the graph.
     """
 
-    def __init__(self, collector_addr, graph_addr, comm_addr):
+    def __init__(self, results_addr, graph_addr, comm_addr):
         """
         protocol right now only tells you how to communicate with workers
         """
-        super(__class__, self).__init__(collector_addr)
-        self.feature_store = {}
+        super(__class__, self).__init__(results_addr)
+        self.feature_store = Store()
         self.feature_req = re.compile("feature:(?P<name>.*)")
-        self.graph = {}
+        self.graph = None
 
         self.comm = self.ctx.socket(zmq.REP)
         self.comm.bind(comm_addr)
@@ -35,27 +37,20 @@ class Manager(Collector):
 
     def process_msg(self, msg):
         if msg.mtype == MsgTypes.Datagram:
-            self.feature_store[msg.payload.name] = msg.payload
+            print(msg.payload)
+            self.feature_store.update(msg.payload)
         return
 
     @property
     def features(self):
-        dets = {}
-        for key, value in self.feature_store.items():
-            dets[key] = value.dtype
-        return dets
+        return self.feature_store.types
 
     def feature_request(self, request):
         matched = self.feature_req.match(request)
         if matched:
-            if matched.group('name') in self.feature_store:
+            if matched.group('name') in self.feature_store.namespace:
                 self.comm.send_string('ok', zmq.SNDMORE)
-                feature_data = self.feature_store[matched.group('name')]
-                if feature_data.weight:
-                    self.comm.send_pyobj(
-                        feature_data.data / feature_data.weight)
-                else:
-                    self.comm.send_pyobj(feature_data.data)
+                self.comm.send_pyobj(self.feature_store.get(matched.group('name')))
             else:
                 self.comm.send_string('error')
             return True
@@ -69,7 +64,7 @@ class Manager(Collector):
             if request == 'get_features':
                 self.comm.send_pyobj(self.features)
             elif request == 'clear_graph':
-                self.graph.clear()
+                self.graph = None
                 if self.apply_graph():
                     self.comm.send_string('ok')
                 else:
@@ -78,33 +73,27 @@ class Manager(Collector):
                 self.feature_store.clear()
                 self.comm.send_string('ok')
             elif request == 'get_graph':
-                self.comm.send_pyobj(self.graph)
+                self.send_graph()
             elif request == 'set_graph':
                 self.graph = self.recv_graph()
                 if self.apply_graph():
                     self.comm.send_string('ok')
                 else:
                     self.comm.send_string('error')
-            elif request.startswith('reqimage'):
-                self.comm.send_string('ok')
-                self.graph_comm.send_string('request', zmq.SNDMORE)
-                # FIXME: need to divide by number of workers here, and think
-                # about double collectors, instead of going directly
-                # to the workers
-                splitrequest = request.split(':')
-                self.graph_comm.send_pyobj(
-                    [splitrequest[1], int(splitrequest[2])])
             else:
                 self.comm.send_string('error')
 
+    def send_graph(self):
+        self.comm.send(dill.dumps(self.graph))
+
     def recv_graph(self):
-        return self.comm.recv_pyobj()  # zmq for now, could be EPICS in future?
+        return dill.loads(self.comm.recv())  # zmq for now, could be EPICS in future?
 
     def apply_graph(self):
         print("manager: sending requested graph...")
         try:
             self.graph_comm.send_string("graph", zmq.SNDMORE)
-            self.graph_comm.send_pyobj(self.graph)
+            self.graph_comm.send(dill.dumps(self.graph))
         except Exception as exp:
             print("manager: failed to send graph -", exp)
             return False
@@ -119,8 +108,8 @@ class Manager(Collector):
             self.graph_comm.send_pyobj(self.graph)
 
 
-def run_manager(collector_addr, graph_addr, comm_addr):
-    manager = Manager(collector_addr, graph_addr, comm_addr)
+def run_manager(results_addr, graph_addr, comm_addr):
+    manager = Manager(results_addr, graph_addr, comm_addr)
     return manager.run()
 
 
@@ -151,21 +140,21 @@ def main():
     )
 
     parser.add_argument(
-        '-c',
-        '--collector',
+        '-r',
+        '--results',
         type=int,
-        default=Ports.FinalCollector,
-        help='port for final collector (default: %d)' % Ports.FinalCollector
+        default=Ports.Results,
+        help='port for receiving results (default: %d)' % Ports.Results
     )
 
     args = parser.parse_args()
 
-    collector_addr = "tcp://%s:%d" % (args.host, args.collector)
+    results_addr = "tcp://%s:%d" % (args.host, args.results)
     graph_addr = "tcp://%s:%d" % (args.host, args.graph)
     comm_addr = "tcp://%s:%d" % (args.host, args.port)
 
     try:
-        return run_manager(collector_addr, graph_addr, comm_addr)
+        return run_manager(results_addr, graph_addr, comm_addr)
     except KeyboardInterrupt:
         print("Manager killed by user...")
         return 0

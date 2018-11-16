@@ -32,7 +32,8 @@ setup(
         'console_scripts': [
             'ami-worker = ami.worker:main',
             'ami-manager = ami.manager:main',
-            'ami-collector = ami.collector:main',
+            'ami-node = ami.collector:node_main',
+            'ami-global = ami.collector:global_main',
             'ami-client = ami.client:main',
             'ami-local = ami.local:main',
         ]

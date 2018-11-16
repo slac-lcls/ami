@@ -134,7 +134,7 @@ def run_worker(num, num_workers, hb_period, source, collector_addr, graph_addr):
 
 
 def main():
-    parser = argparse.ArgumentParser(description='AMII Worker/Collector App')
+    parser = argparse.ArgumentParser(description='AMII Worker App')
 
     parser.add_argument(
         '-H',

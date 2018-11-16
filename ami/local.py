@@ -10,7 +10,7 @@ import multiprocessing as mp
 from ami.comm import Ports
 from ami.manager import run_manager
 from ami.worker import run_worker
-from ami.collector import run_collector
+from ami.collector import run_node_collector, run_global_collector
 from ami.client import run_client
 
 
@@ -65,15 +65,17 @@ def main():
     if args.tcp:
         host = "127.0.0.1"
         collector_addr = "tcp://%s:%d" % (host, args.port)
-        finalcol_addr = "tcp://%s:%d" % (host, args.port+1)
+        globalcol_addr = "tcp://%s:%d" % (host, args.port+1)
         graph_addr = "tcp://%s:%d" % (host, args.port+2)
         comm_addr = "tcp://%s:%d" % (host, args.port+3)
+        results_addr = "tcp://%s:%d" % (host, args.port+4)
     else:
         ipcdir = tempfile.mkdtemp()
         collector_addr = "ipc://%s/node_collector" % ipcdir
-        finalcol_addr = "ipc://%s/collector" % ipcdir
+        globalcol_addr = "ipc://%s/collector" % ipcdir
         graph_addr = "ipc://%s/graph" % ipcdir
         comm_addr = "ipc://%s/comm" % ipcdir
+        results_addr = "ipc://%s/results" % ipcdir
 
     procs = []
     failed_proc = False
@@ -98,17 +100,26 @@ def main():
 
         collector_proc = mp.Process(
             name='nodecol-n0',
-            target=run_collector,
-            args=(0, args.num_workers, collector_addr, finalcol_addr)
+            target=run_node_collector,
+            args=(0, args.num_workers, collector_addr, globalcol_addr, graph_addr)
         )
         collector_proc.daemon = True
         collector_proc.start()
         procs.append(collector_proc)
 
+        globalcol_proc = mp.Process(
+            name='globalcol',
+            target=run_global_collector,
+            args=(0, 1, globalcol_addr, results_addr, graph_addr)
+        )
+        globalcol_proc.daemon = True
+        globalcol_proc.start()
+        procs.append(globalcol_proc)
+
         manager_proc = mp.Process(
             name='manager',
             target=run_manager,
-            args=(finalcol_addr, graph_addr, comm_addr)
+            args=(results_addr, graph_addr, comm_addr)
         )
         manager_proc.daemon = True
         manager_proc.start()

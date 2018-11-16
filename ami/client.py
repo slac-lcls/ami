@@ -2,6 +2,7 @@
 import re
 import zmq
 import sys
+import dill
 import json
 import argparse
 import numpy as np
@@ -48,7 +49,7 @@ class CommunicationHandler(object):
 
     def update(self, graph):
         self.sock.send_string('set_graph', zmq.SNDMORE)
-        self.sock.send_pyobj(graph)
+        self.sock.send(dill.dumps(graph))
         return self.sock.recv_string() == 'ok'
 
 
@@ -308,8 +309,8 @@ class AmiGui(QWidget):
             self, "Open file", "", "AMI Autosave files (*.ami);;All Files (*)")
         if load_file[0]:
             try:
-                with open(load_file[0], 'r') as cnf:
-                    self.amilist.load(json.load(cnf))
+                with open(load_file[0], 'rb') as cnf:
+                    self.amilist.load(dill.load(cnf))
             except OSError as os_exp:
                 print(
                     "ami-client: problem opening saved graph configuration file:",
