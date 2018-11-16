@@ -92,19 +92,12 @@ class PsanaSource(object):
     def partition(self):
         dets = []
         for run in self.ds.runs():
-            for dg in self.ds._configs:
-                for name in dg.software.__dict__:
-                    dettype = getattr(dg.software, name).dettype
-                    # FIXME: should create a Detector object here, and check if it's a 1D
-                    # or 2D detector (for the raw data)
-                    if dettype == 'hsd':
-                        datatype = DataTypes.Waveform
-                    elif dettype == 'cspad':
-                        # FIXME: this should be a 2D array
-                        datatype = DataTypes.Waveform
-                    else:
-                        raise ValueError('unknown detector type: '+dettype)
-                    dets.append((name, datatype))
+            detinfo = run.detinfo
+            for detname,det_xface_dict in detinfo.items():
+                # need this loop when we send the GUI det xfaces and attributes
+                #for det_xface_name,det_xface_attrs in det_xface_dict.items():
+                datatype = DataTypes.Waveform # FIXME: should only need this when we get an event
+                dets.append((detname, datatype))
         return dets
 
     def events(self):
@@ -116,9 +109,9 @@ class PsanaSource(object):
                 print("psana is not available!")
                 break
             for evt in self.ds.events():
-                for dgram in evt.dgrams:
+                for dgram in evt._dgrams:
                     timestamp = dgram.seq.timestamp()
-                    event.append(Datagram("xppcspad", DataTypes.Waveform, dgram.xppcspad.raw.arrayRaw))
+                    event.append(Datagram("xppcspad", DataTypes.Waveform, evt.xppcspad.raw.raw))
                     msg = Message(MsgTypes.Datagram, self.idnum, event)
                     msg.timestamp = timestamp
                     yield msg
