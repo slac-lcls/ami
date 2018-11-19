@@ -12,17 +12,22 @@ class Graph():
         self.graph = nx.DiGraph()
         self.graphkit = None
         self.global_operations = set()
+        self.inputs = collections.defaultdict(set)
         self.outputs = collections.defaultdict(set)
 
-    def add(self, op):
-        for i in op.inputs:
-            self.graph.add_edge(i, op)
+    def add(self, ops):
+        if type(ops) is not list:
+            ops = [ops]
 
-        for o in op.outputs:
-            self.graph.add_edge(op, o)
+        for op in ops:
+            for i in op.inputs:
+                self.graph.add_edge(i, op)
 
-        for i in op.condition_needs:
-            self.graph.add_edge(i, op)
+            for o in op.outputs:
+                self.graph.add_edge(op, o)
+
+            for i in op.condition_needs:
+                self.graph.add_edge(i, op)
 
     def remove(self, name):
         for n in self.graph.nodes:
@@ -72,6 +77,8 @@ class Graph():
 
     def expand_global_operations(self):
         self.outputs = collections.defaultdict(set)
+        inputs = [n for n, d in self.graph.in_degree() if d == 0]
+        self.inputs['worker'].update(inputs)
 
         for node in self.global_operations:
             inputs = node.inputs
@@ -89,7 +96,7 @@ class Graph():
                 if color == 'worker':
                     worker_outputs = list(map(lambda o: o+'_worker', node.outputs))
                     worker_node = ReduceByKey(name=node.name+'_worker', inputs=inputs, outputs=worker_outputs,
-                                              condition_needs=condition_needs)
+                                              condition_needs=condition_needs, reduction=node.reduction)
                     worker_node.color = color
                     self.outputs[color].update(worker_outputs)
                     for i in inputs:
@@ -100,9 +107,10 @@ class Graph():
                         self.graph.add_edge(n, worker_node)
 
                 elif color == 'localCollector':
+                    self.inputs[color].update(worker_outputs)
                     local_collector_outputs = list(map(lambda o: o+'_localCollector', node.outputs))
                     local_collector_node = ReduceByKey(name=node.name+'_localCollector', inputs=worker_outputs,
-                                                       outputs=local_collector_outputs)
+                                                       outputs=local_collector_outputs, reduction=node.reduction)
                     local_collector_node.color = color
                     self.outputs[color].update(local_collector_outputs)
                     for i in worker_outputs:
@@ -111,9 +119,10 @@ class Graph():
                         self.graph.add_edge(local_collector_node, o)
 
                 elif color == 'globalCollector':
+                    self.inputs[color].update(local_collector_outputs)
                     global_collector_node = ReduceByKey(name=node.name+'_globalCollector',
                                                         inputs=local_collector_outputs,
-                                                        outputs=outputs)
+                                                        outputs=outputs, reduction=node.reduction)
                     global_collector_node.color = color
                     for i in local_collector_outputs:
                         self.graph.add_edge(i, global_collector_node)
@@ -138,7 +147,6 @@ class Graph():
         return node
 
     def compile(self):
-
         self.color_nodes()
         self.expand_global_operations()
 
@@ -289,9 +297,6 @@ class ReduceByKey(StatefulTransformation):
                         self.res[k] = self.reduction(self.res[k], v)
                     else:
                         self.res[k] = v
-            r = list(self.res.values())
-            if len(r) == 1:
-                return r[0]
         return self.res
 
     def reset(self):
@@ -313,3 +318,53 @@ class Accumulator(StatefulTransformation):
 
     def reset(self):
         self.res = []
+
+
+class PickN(StatefulTransformation):
+
+    def __init__(self, name, inputs, outputs, N=1, condition_needs=[]):
+        super(PickN, self).__init__(name, inputs, outputs, condition_needs)
+        self.N = N
+        self.idx = 0
+        self.res = [None]*self.N
+        self.reset = False
+
+    def __call__(self, *args, **kwargs):
+        if self.reset:
+            self.res = [None]*self.N
+            self.reset = False
+
+        self.res[self.idx] = args
+        self.idx = (self.idx + 1) % self.N
+
+        if self.res.count(None) == 0:
+            self.reset = True
+            return self.res
+
+    def reset(self):
+        pass
+
+
+def Binning(name="", inputs=[], outputs=[], condition_needs=[]):
+    assert len(inputs) == 2
+    assert len(outputs) == 1
+
+    k, v = inputs
+    outputs = outputs[0]
+    map_outputs = [outputs+'_count']
+    reduce_outputs = [outputs+'_reduce']
+
+    def mean(d):
+        res = {}
+        for k, v in d.items():
+            res[k] = v[0]/v[1]
+        return res
+
+    nodes = [
+        Map(name=name+'_map', inputs=[v], outputs=map_outputs, condition_needs=condition_needs, func=lambda a: (a, 1)),
+        ReduceByKey(name=name+'_reduce', inputs=[k]+map_outputs, outputs=reduce_outputs,
+                    reduction=lambda cv, v: (cv[0]+v[0], cv[1]+v[1])),
+        Map(name=name+'_mean', inputs=reduce_outputs, outputs=[outputs], func=mean)
+    ]
+
+    return nodes
