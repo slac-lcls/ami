@@ -364,7 +364,7 @@ class PickN(StatefulTransformation):
             self.res[self.idx] = arg
             self.idx = (self.idx + 1) % self.N
 
-        if self.res.count(None) == 0:
+        if not any(x is None for x in self.res):
             self.reset = True
             return self.res
 
