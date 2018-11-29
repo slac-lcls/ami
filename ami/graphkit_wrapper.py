@@ -2,6 +2,7 @@ import operator
 import networkx as nx
 import itertools as it
 import collections
+import sys
 from graphkit import operation, If, Else, compose
 
 
@@ -54,10 +55,10 @@ class Graph():
         for s, t in sources_targets:
             paths = list(nx.algorithms.all_simple_paths(self.graph, s, t))
             for nodes in paths:
-                reductions = filter(lambda node: isinstance(node, ReduceByKey), nodes)
+                reductions = filter(lambda node: getattr(node, 'is_global_operation', False), nodes)
 
                 for reduction in reductions:
-                    before = filter(lambda node: isinstance(node, ReduceByKey),
+                    before = filter(lambda node: getattr(node, 'is_global_operation', False),
                                     nx.algorithms.dag.ancestors(self.graph, reduction))
                     if list(before) == []:
                         self.global_operations.add(reduction)
@@ -75,7 +76,7 @@ class Graph():
                         color = 'globalCollector'
                         node.color.add(color)
 
-    def expand_global_operations(self):
+    def expand_global_operations(self, num_workers, num_local_collectors):
         self.outputs = collections.defaultdict(set)
         inputs = [n for n, d in self.graph.in_degree() if d == 0]
         self.inputs['worker'].update(inputs)
@@ -86,6 +87,7 @@ class Graph():
             condition_needs = node.condition_needs
 
             self.graph.remove_node(node)
+            NewNode = getattr(sys.modules[__name__], node.__class__.__name__)
 
             color_order = ['worker', 'localCollector', 'globalCollector']
             worker_outputs = None
@@ -95,8 +97,13 @@ class Graph():
 
                 if color == 'worker':
                     worker_outputs = list(map(lambda o: o+'_worker', node.outputs))
-                    worker_node = ReduceByKey(name=node.name+'_worker', inputs=inputs, outputs=worker_outputs,
-                                              condition_needs=condition_needs, reduction=node.reduction)
+
+                    worker_N = 1
+                    if hasattr(node, 'N'):
+                        worker_N = max(node.N // num_workers, 1)
+
+                    worker_node = NewNode(name=node.name+'_worker', inputs=inputs, outputs=worker_outputs,
+                                          condition_needs=condition_needs, reduction=node.reduction, N=worker_N)
                     worker_node.color = color
                     self.outputs[color].update(worker_outputs)
                     for i in inputs:
@@ -109,8 +116,14 @@ class Graph():
                 elif color == 'localCollector':
                     self.inputs[color].update(worker_outputs)
                     local_collector_outputs = list(map(lambda o: o+'_localCollector', node.outputs))
-                    local_collector_node = ReduceByKey(name=node.name+'_localCollector', inputs=worker_outputs,
-                                                       outputs=local_collector_outputs, reduction=node.reduction)
+
+                    local_collector_N = 1
+                    if hasattr(node, 'N'):
+                        local_collector_N = max(node.N // num_local_collectors, 1)
+
+                    local_collector_node = NewNode(name=node.name+'_localCollector', inputs=worker_outputs,
+                                                   outputs=local_collector_outputs, reduction=node.reduction,
+                                                   N=local_collector_N)
                     local_collector_node.color = color
                     self.outputs[color].update(local_collector_outputs)
                     for i in worker_outputs:
@@ -120,9 +133,13 @@ class Graph():
 
                 elif color == 'globalCollector':
                     self.inputs[color].update(local_collector_outputs)
-                    global_collector_node = ReduceByKey(name=node.name+'_globalCollector',
-                                                        inputs=local_collector_outputs,
-                                                        outputs=outputs, reduction=node.reduction)
+
+                    N = getattr(node, 'N', 1)
+                    N = max((N // num_workers)*num_workers, 1)
+
+                    global_collector_node = NewNode(name=node.name+'_globalCollector',
+                                                    inputs=local_collector_outputs,
+                                                    outputs=outputs, reduction=node.reduction, N=N)
                     global_collector_node.color = color
                     for i in local_collector_outputs:
                         self.graph.add_edge(i, global_collector_node)
@@ -146,9 +163,9 @@ class Graph():
                     needs=inputs, provides=outputs)(*nodes)
         return node
 
-    def compile(self):
+    def compile(self, num_workers=1, num_local_collectors=1):
         self.color_nodes()
-        self.expand_global_operations()
+        self.expand_global_operations(num_workers, num_local_collectors)
 
         seen = set()
         branch_merge_candidates = [n for n, d in self.graph.in_degree() if d >= 2 and type(n) is str]
@@ -186,11 +203,11 @@ class Graph():
 
         self.outputs['globalCollector'].update(outputs)
 
-        return compose(name=self.name)(*body)
+        self.graphkit = compose(name=self.name)(*body)
 
     def __call__(self, *args, **kwargs):
-        if self.graphkit is None:
-            self.graphkit = self.compile()
+        assert self.graphkit is not None, "call compile first"
+
         color = kwargs.get('color', None)
         assert color is not None
         result = self.graphkit(*args, **kwargs)
@@ -200,13 +217,14 @@ class Graph():
 
 class Transformation():
 
-    def __init__(self, name, inputs, outputs, func, condition_needs=[]):
-        self.name = name
-        self.inputs = inputs
-        self.outputs = outputs
-        self.func = func
-        self.condition_needs = condition_needs
+    def __init__(self, **kwargs):
+        self.name = kwargs['name']
+        self.inputs = kwargs['inputs']
+        self.outputs = kwargs['outputs']
+        self.func = kwargs['func']
+        self.condition_needs = kwargs.get('condition_needs', [])
         self.color = set()
+        self.is_global_operation = False
 
     def __hash__(self):
         return hash(self.name)
@@ -261,10 +279,12 @@ class FilterOff(Filter):
 
 class StatefulTransformation(Transformation):
 
-    def __init__(self, name, inputs, outputs, condition_needs=[], reduction=None):
-        super(StatefulTransformation, self).__init__(name=name, inputs=inputs,
-                                                     outputs=outputs, func=None,
-                                                     condition_needs=condition_needs)
+    def __init__(self, **kwargs):
+        reduction = kwargs.pop('reduction', None)
+
+        kwargs.setdefault('func', None)
+        super(StatefulTransformation, self).__init__(**kwargs)
+
         if reduction:
             assert hasattr(reduction, '__call__'), 'reduction is not callable'
         self.reduction = reduction
@@ -278,10 +298,11 @@ class StatefulTransformation(Transformation):
 
 class ReduceByKey(StatefulTransformation):
 
-    def __init__(self, name, inputs, outputs, condition_needs=[], reduction=operator.add):
-        super(ReduceByKey, self).__init__(name=name, inputs=inputs, outputs=outputs,
-                                          condition_needs=condition_needs, reduction=reduction)
+    def __init__(self, **kwargs):
+        kwargs.setdefault('reduction', operator.add)
+        super(ReduceByKey, self).__init__(**kwargs)
         self.res = {}
+        self.is_global_operation = True
 
     def __call__(self, *args, **kwargs):
         if len(args) == 2:
@@ -305,8 +326,8 @@ class ReduceByKey(StatefulTransformation):
 
 class Accumulator(StatefulTransformation):
 
-    def __init__(self, name, inputs, outputs, condition_needs, reduction=None):
-        super(Accumulator, self).__init__(name, inputs, outputs, condition_needs, reduction)
+    def __init__(self, **kwargs):
+        super(Accumulator, self).__init__(**kwargs)
         self.res = []
 
     def __call__(self, *args, **kwargs):
@@ -322,20 +343,26 @@ class Accumulator(StatefulTransformation):
 
 class PickN(StatefulTransformation):
 
-    def __init__(self, name, inputs, outputs, N=1, condition_needs=[]):
-        super(PickN, self).__init__(name, inputs, outputs, condition_needs)
+    def __init__(self, **kwargs):
+        N = kwargs.pop('N', 1)
+        super(PickN, self).__init__(**kwargs)
         self.N = N
         self.idx = 0
         self.res = [None]*self.N
         self.reset = False
+        self.is_global_operation = True
 
-    def __call__(self, *args, **kwargs):
+    def __call__(self, args):
         if self.reset:
             self.res = [None]*self.N
             self.reset = False
 
-        self.res[self.idx] = args
-        self.idx = (self.idx + 1) % self.N
+        if type(args) is not list:
+            args = [args]
+
+        for arg in args:
+            self.res[self.idx] = arg
+            self.idx = (self.idx + 1) % self.N
 
         if self.res.count(None) == 0:
             self.reset = True
