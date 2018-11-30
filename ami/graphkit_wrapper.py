@@ -77,7 +77,6 @@ class Graph():
                         node.color.add(color)
 
     def expand_global_operations(self, num_workers, num_local_collectors):
-        self.outputs = collections.defaultdict(set)
         inputs = [n for n, d in self.graph.in_degree() if d == 0]
         self.inputs['worker'].update(inputs)
 
@@ -164,6 +163,9 @@ class Graph():
         return node
 
     def compile(self, num_workers=1, num_local_collectors=1):
+        self.inputs = collections.defaultdict(set)
+        self.outputs = collections.defaultdict(set)
+
         self.color_nodes()
         self.expand_global_operations(num_workers, num_local_collectors)
 
@@ -202,17 +204,40 @@ class Graph():
             body.append(node.to_operation())
 
         self.outputs['globalCollector'].update(outputs)
+        self.find_inputs()
 
         self.graphkit = compose(name=self.name)(*body)
+
+    def find_inputs(self):
+        graph_filters = list(filter(lambda node: isinstance(node, Filter), self.graph.nodes))
+        # {"branch": {"worker": set(), "localCollector": set(), "globalCollector": set()}}
+        inputs = collections.defaultdict(lambda: collections.defaultdict(set))
+
+        for color, color_inputs in self.inputs.items():
+            sources_targets = list(it.product(graph_filters, color_inputs))
+
+            for s, t in sources_targets:
+                paths = list(nx.algorithms.all_simple_paths(self.graph, s, t))
+
+                if paths:
+                    inputs[s.name][color].add(t)
+
+        inputs[None]['worker'].update([n for n, d in self.graph.in_degree() if d == 0 and type(n) is str])
+
+        self.inputs = inputs
 
     def __call__(self, *args, **kwargs):
         assert self.graphkit is not None, "call compile first"
 
         color = kwargs.get('color', None)
         assert color is not None
-        result = self.graphkit(*args, **kwargs)
-        outputs = self.outputs[color]
-        return {k: result[k] for k in outputs if k in result}
+        keys = args[0].keys()
+
+        for branch, colors_inputs in self.inputs.items():
+            if colors_inputs[color] and all(i in keys for i in colors_inputs[color]):
+                result = self.graphkit(*args, **kwargs)
+                outputs = self.outputs[color]
+                return {k: result[k] for k in outputs if k in result}
 
 
 class Transformation():
@@ -366,7 +391,10 @@ class PickN(StatefulTransformation):
 
         if not any(x is None for x in self.res):
             self.reset = True
-            return self.res
+            if self.N > 1:
+                return self.res
+            elif self.N == 1:
+                return self.res[0]
 
     def reset(self):
         pass
