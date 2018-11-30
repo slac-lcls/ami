@@ -43,8 +43,8 @@ class Worker(object):
         self.store.message(MsgTypes.Transition,
                            self.idnum,
                            Transition(Transitions.Allocate, partition))
-        for name, dtype in partition:
-            self.store.create(name, dtype)
+        for name in partition:
+            self.store.create(name)
             sources.append(name)
 
         for msg in self.src.events():

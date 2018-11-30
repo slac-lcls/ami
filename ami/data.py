@@ -96,8 +96,7 @@ class PsanaSource(object):
             for detname, det_xface_dict in detinfo.items():
                 # need this loop when we send the GUI det xfaces and attributes
                 # for det_xface_name,det_xface_attrs in det_xface_dict.items():
-                datatype = DataTypes.Waveform  # FIXME: should only need this when we get an event
-                dets.append((detname, datatype))
+                dets.append(detname)
         return dets
 
     def events(self):
@@ -108,9 +107,11 @@ class PsanaSource(object):
             if psana is None:
                 print("psana is not available!")
                 break
-            for evt in self.ds.events():
+            for nevt,evt in enumerate(self.ds.events()):
                 for dgram in evt._dgrams:
-                    timestamp = dgram.seq.timestamp()
+                    # FIXME: when we move to real timestamps we should use this line
+                    #timestamp = dgram.seq.timestamp()
+                    timestamp = nevt
                     event.append(Datagram("xppcspad", DataTypes.Waveform, evt.xppcspad.raw.raw))
                     msg = Message(MsgTypes.Datagram, self.idnum, event)
                     msg.timestamp = timestamp
