@@ -2,9 +2,8 @@
 import zmq
 import sys
 import argparse
-from ami.graph import Graph
-from ami.comm import Ports, Colors, Collector, EventBuilder, PickNBuilder
-from ami.data import MsgTypes, Strategies
+from ami.comm import Ports, Colors, Collector, EventBuilder
+from ami.data import MsgTypes
 
 
 class GraphCollector(Collector):
@@ -30,7 +29,7 @@ class GraphCollector(Collector):
         if topic == 'graph':
             self.graph = self.graph_comm.recv()
         else:
-            print("invalid topic: %s"%topic)
+            print("invalid topic: %s" % topic)
 
     def process_msg(self, msg):
         if msg.mtype == MsgTypes.Transition:

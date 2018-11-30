@@ -20,6 +20,7 @@ class DataTypes(Enum):
     Scalar = 1
     Waveform = 2
     Image = 3
+    List = 4
 
     @staticmethod
     def get_type(data):
@@ -30,6 +31,8 @@ class DataTypes(Enum):
                 return DataTypes.Image
             else:
                 return DataTypes.Unknown
+        elif isinstance(data, list):
+            return DataTypes.List
         else:
             return DataTypes.Scalar
 
@@ -57,11 +60,10 @@ class Transition(object):
 
 
 class Datagram(object):
-    def __init__(self, name, dtype, data=None, weight=0):
+    def __init__(self, name, dtype, data=None):
         self.name = name
         self.dtype = dtype
         self.data = data
-        self.weight = weight
 
     def __str__(self):
         return "Datagram:\n dtype: %s\n data: %s" % (self.dtype, self.data)
@@ -139,7 +141,9 @@ class RandomSource(object):
             for name, config in self.config.items():
                 if config['dtype'] == 'Scalar':
                     if config.get('integer', False):
-                        value = int(config['range'][0] + (config['range'][1] - config['range'][0]) * np.random.rand(1)[0])
+                        value = int(
+                            config['range'][0] + (config['range'][1] - config['range'][0]) * np.random.rand(1)[0]
+                        )
                     else:
                         value = config['range'][0] + (config['range'][1] - config['range'][0]) * np.random.rand(1)[0]
                     event.append(

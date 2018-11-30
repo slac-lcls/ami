@@ -41,7 +41,6 @@ class Store:
 
     @property
     def namespace(self):
-        #ns = {"store": self}
         ns = {}
         for k in self._store.keys():
             ns[k] = self._store[k].data
@@ -58,36 +57,35 @@ class Store:
         return self._store[name].data
 
     def update(self, updates):
-        for k, v in updates.items():
-            self.put(k,v)
+        if updates is not None:
+            for k, v in updates.items():
+                self.put(k, v)
 
-    def put(self, name, data, weight=0):
+    def put(self, name, data):
         datatype = DataTypes.get_type(data)
         if name in self._store:
             if datatype == self._store[name].dtype or self._store[name].dtype == DataTypes.Unset:
                 self._store[name].dtype = datatype
                 self._store[name].data = data
-                self._store[name].weight = weight
             else:
                 raise TypeError("type of new result (%s) differs from existing"
                                 " (%s)" % (datatype, self._store[name].dtype))
         else:
-            self._store[name] = Datagram(name, datatype, data, weight)
+            self._store[name] = Datagram(name, datatype, data)
 
         self._updated[name] = True
 
-    def sum(self, name, data, weight):
+    def sum(self, name, data):
         datatype = DataTypes.get_type(data)
         if name in self._store:
             if datatype == self._store[name].dtype or self._store[name].dtype == DataTypes.Unset:
                 self._store[name].dtype = datatype
                 self._store[name].data += data
-                self._store[name].weight += weight
             else:
                 raise TypeError("type of new result (%s) differs from existing"
                                 " (%s)" % (datatype, self._store[name].dtype))
         else:
-            self.put(name, data, weight)
+            self.put(name, data)
 
     def clear(self):
         self._store = {}
@@ -200,12 +198,12 @@ class EventBuilder(ZmqHandler):
         self.latest = eb_key
         self.pending[eb_key].put(name, data)
 
-    def sum(self, eb_key, eb_id, name, data, weight):
+    def sum(self, eb_key, eb_id, name, data):
         if eb_key not in self.pending:
             self.pending[eb_key] = Store()
             self.contribs[eb_key] = 0
         self.latest = eb_key
-        self.pending[eb_key].sum(name, data, weight)
+        self.pending[eb_key].sum(name, data)
 
     def transition(self, eb_id, eb_key):
         if eb_key not in self.transitions:

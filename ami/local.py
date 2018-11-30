@@ -119,7 +119,7 @@ def main():
         manager_proc = mp.Process(
             name='manager',
             target=run_manager,
-            args=(results_addr, graph_addr, comm_addr)
+            args=(args.num_workers, 1, results_addr, graph_addr, comm_addr)
         )
         manager_proc.daemon = True
         manager_proc.start()

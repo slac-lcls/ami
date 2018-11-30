@@ -158,7 +158,7 @@ class Calculator(QWidget):
         self.comm = comm
         self.move(280, 80)
         self.resize(280, 40)
-        self.field_parse = re.compile("\s+")
+        self.field_parse = re.compile(r"\s+")
 
         self.nameLabel = QLabel('Name:', self)
         self.nameBox = QLineEdit(self)

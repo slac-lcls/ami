@@ -5,8 +5,8 @@ import zmq
 import dill
 import argparse
 from ami.comm import Ports, Collector, Store
-from ami.data import MsgTypes
-from ami.graphkit_wrapper import Graph
+from ami.data import MsgTypes, Transitions
+from ami.graphkit_wrapper import Graph, PickN
 
 
 class Manager(Collector):
@@ -18,11 +18,13 @@ class Manager(Collector):
     configuration changes to the graph.
     """
 
-    def __init__(self, results_addr, graph_addr, comm_addr):
+    def __init__(self, num_workers, num_nodes, results_addr, graph_addr, comm_addr):
         """
         protocol right now only tells you how to communicate with workers
         """
         super(__class__, self).__init__(results_addr)
+        self.num_workers = num_workers
+        self.num_nodes = num_nodes
         self.feature_store = Store()
         self.feature_req = re.compile("feature:(?P<name>.*)")
         self.graph = None
@@ -37,8 +39,14 @@ class Manager(Collector):
 
     def process_msg(self, msg):
         if msg.mtype == MsgTypes.Datagram:
-            print(msg.payload)
             self.feature_store.update(msg.payload)
+        elif (msg.mtype == MsgTypes.Transition) and (msg.payload.ttype == Transitions.Allocate):
+            if self.graph is None:
+                self.graph = Graph(name='graph')
+            for name, _ in msg.payload.payload:
+                self.graph.add(PickN(name='autoPick1_%s' % name, inputs=[name], outputs=["auto_%s" % name]))
+            self.graph.compile(num_workers=self.num_workers, num_local_collectors=self.num_nodes)
+            self.apply_graph()
         return
 
     @property
@@ -76,6 +84,7 @@ class Manager(Collector):
                 self.send_graph()
             elif request == 'set_graph':
                 self.graph = self.recv_graph()
+                self.graph.compile(num_workers=self.num_workers, num_local_collectors=self.num_nodes)
                 if self.apply_graph():
                     self.comm.send_string('ok')
                 else:
@@ -105,11 +114,11 @@ class Manager(Collector):
 
         if request == "\x01graph":
             self.graph_comm.send_string("graph", zmq.SNDMORE)
-            self.graph_comm.send_pyobj(self.graph)
+            self.graph_comm.send(dill.dumps(self.graph))
 
 
-def run_manager(results_addr, graph_addr, comm_addr):
-    manager = Manager(results_addr, graph_addr, comm_addr)
+def run_manager(num_workers, num_nodes, results_addr, graph_addr, comm_addr):
+    manager = Manager(num_workers, num_nodes, results_addr, graph_addr, comm_addr)
     return manager.run()
 
 
@@ -129,6 +138,22 @@ def main():
         type=int,
         default=Ports.Comm,
         help='port for GUI-Manager communication (default: %d)' % Ports.Comm
+    )
+
+    parser.add_argument(
+        '-n',
+        '--num-workers',
+        type=int,
+        default=1,
+        help='number of worker processes (default: 1)'
+    )
+
+    parser.add_argument(
+        '-N',
+        '--num-nodes',
+        type=int,
+        default=1,
+        help='number of nodes (a.k.a local collector processes) (default: 1)'
     )
 
     parser.add_argument(
@@ -154,7 +179,7 @@ def main():
     comm_addr = "tcp://%s:%d" % (args.host, args.port)
 
     try:
-        return run_manager(results_addr, graph_addr, comm_addr)
+        return run_manager(args.num_workers, args.num_nodes, results_addr, graph_addr, comm_addr)
     except KeyboardInterrupt:
         print("Manager killed by user...")
         return 0

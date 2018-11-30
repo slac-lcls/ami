@@ -63,6 +63,7 @@ class Worker(object):
                     if new_graph is not None:
                         self.graph = new_graph
 
+                        """
                         #print("worker%d: Received new configuration" % self.idnum)
                         #try:
                         #    self.graph.configure(sources)
@@ -73,16 +74,11 @@ class Worker(object):
                         #        self.idnum, graph_err)
                             # if this fails we just die
                         #    self.graph.revert()
+                        """
 
                         self.new_graph_available = False
-                    #if new_graph is not None:
-                    #    self.store.message(MsgTypes.Graph, self.idnum, new_graph)
 
-                # clear old values from the store
-                # self.store.clear()
-                #for dgram in msg.payload:
-                #    self.store.put(dgram.name, dgram.data)
-                data = { dgram.name: dgram.data for dgram in msg.payload }
+                data = {dgram.name: dgram.data for dgram in msg.payload}
 
                 try:
                     if self.graph is not None:
