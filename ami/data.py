@@ -107,10 +107,10 @@ class PsanaSource(object):
             if psana is None:
                 print("psana is not available!")
                 break
-            for nevt,evt in enumerate(self.ds.events()):
+            for nevt, evt in enumerate(self.ds.events()):
                 for dgram in evt._dgrams:
                     # FIXME: when we move to real timestamps we should use this line
-                    #timestamp = dgram.seq.timestamp()
+                    # timestamp = dgram.seq.timestamp()
                     timestamp = nevt
                     event.append(Datagram("xppcspad", DataTypes.Waveform, evt.xppcspad.raw.raw))
                     msg = Message(MsgTypes.Datagram, self.idnum, event)
