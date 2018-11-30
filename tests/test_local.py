@@ -13,8 +13,8 @@ import re
 import signal
 import tempfile
 import multiprocessing as mp
-import json
-import numpy as np
+# import json
+# import numpy as np
 
 from ami.comm import Ports
 from ami.manager import run_manager
