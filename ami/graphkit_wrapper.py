@@ -212,6 +212,7 @@ class Graph():
         graph_filters = list(filter(lambda node: isinstance(node, Filter), self.graph.nodes))
         # {"branch": {"worker": set(), "localCollector": set(), "globalCollector": set()}}
         inputs = collections.defaultdict(lambda: collections.defaultdict(set))
+        seen = set()
 
         for color, color_inputs in self.inputs.items():
             sources_targets = list(it.product(graph_filters, color_inputs))
@@ -221,8 +222,11 @@ class Graph():
 
                 if paths:
                     inputs[s.name][color].add(t)
+                    seen.add(t)
 
-        inputs[None]['worker'].update([n for n, d in self.graph.in_degree() if d == 0 and type(n) is str])
+            for i in color_inputs:
+                if i not in seen:
+                    inputs[None][color].add(i)
 
         self.inputs = inputs
 
