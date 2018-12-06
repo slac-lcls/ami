@@ -35,7 +35,7 @@ class GraphCollector(Collector):
         if msg.mtype == MsgTypes.Transition:
             self.store.transition(msg.identity, msg.payload.ttype)
             if self.store.transition_ready(msg.payload.ttype):
-                self.store.send(msg)
+                self.store.message(msg.mtype, self.node, msg.payload)
         elif msg.mtype == MsgTypes.Datagram:
             self.store.update(msg.heartbeat, msg.identity, msg.payload)
             self.store.heartbeat(msg.identity, msg.heartbeat)
