@@ -41,12 +41,13 @@ class Manager(Collector):
         if msg.mtype == MsgTypes.Datagram:
             self.feature_store.update(msg.payload)
         elif (msg.mtype == MsgTypes.Transition) and (msg.payload.ttype == Transitions.Allocate):
-            if self.graph is None:
+            """if self.graph is None:
                 self.graph = Graph(name='graph')
             for name in msg.payload.payload:
                 self.graph.add(PickN(name='autoPick1_%s' % name, inputs=[name], outputs=["auto_%s" % name]))
             #self.graph.compile(num_workers=self.num_workers, num_local_collectors=self.num_nodes)
-            self.apply_graph()
+            self.apply_graph()"""
+            pass
         return
 
     @property
@@ -69,46 +70,48 @@ class Manager(Collector):
         request = self.comm.recv_string()
         # check if it is a feature request
         if not self.feature_request(request):
-            if request == 'get_features':
-                self.comm.send_pyobj(self.features)
-            elif request == 'clear_graph':
-                self.graph = None
-                if self.apply_graph():
-                    self.comm.send_string('ok')
-                else:
-                    self.comm.send_string('error')
-            elif request == 'reset_features':
-                self.feature_store.clear()
-                self.comm.send_string('ok')
-            elif request == 'get_graph':
-                self.send_graph()
-            elif request == 'set_graph':
-                self.graph = self.recv_graph()
-                self.graph.compile(num_workers=self.num_workers, num_local_collectors=self.num_nodes)
-                if self.apply_graph():
-                    self.comm.send_string('ok')
-                else:
-                    self.comm.send_string('error')
-            else:
-                self.comm.send_string('error')
+            getattr(self, "cmd_%s" % request, self.cmd_unknown)()
 
-    def send_graph(self):
+    def cmd_unknown(self):
+        self.comm.send_string('error')
+
+    def cmd_get_features(self):
+        self.comm.send_pyobj(self.features)
+
+    def cmd_clear_graph(self):
+        self.graph = None
+        self.publish_graph("graph", dill.dumps(self.graph))
+
+    def cmd_reset_features(self):
+        self.feature_store.clear()
+        self.comm.send_string('ok')
+
+    def cmd_get_graph(self):
         self.comm.send(dill.dumps(self.graph))
 
-    def recv_graph(self):
-        return dill.loads(self.comm.recv())  # zmq for now, could be EPICS in future?
+    def cmd_add_graph(self):
+        raw_add = self.comm.recv()
+        if self.graph is None:
+            self.graph = Graph("manager_graph")
+        self.graph.add(dill.loads(raw_add))
+        self.publish_graph("add", raw_add)
 
-    def apply_graph(self):
+    def cmd_set_graph(self):
+        raw_graph = self.comm.recv()
+        self.graph = dill.loads(raw_graph)
+        self.publish_graph("graph", raw_graph)
+
+    def publish_graph(self, topic, graph):
         print("manager: sending requested graph...")
         try:
-            self.graph_comm.send_string("graph", zmq.SNDMORE)
+            self.graph_comm.send_string(topic, zmq.SNDMORE)
             self.graph_comm.send_pyobj((self.num_workers, self.num_nodes), zmq.SNDMORE)
-            self.graph_comm.send(dill.dumps(self.graph))
+            self.graph_comm.send(graph)
+            print("manager: sending of graph completed")
+            self.comm.send_string('ok')
         except Exception as exp:
             print("manager: failed to send graph -", exp)
-            return False
-        print("manager: sending of graph completed")
-        return True
+            self.comm.send_string('error')
 
     def graph_request(self):
         request = self.graph_comm.recv_string()

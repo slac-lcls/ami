@@ -182,7 +182,7 @@ class EventBuilder(ZmqHandler):
             self.send(CollectorMessage(MsgTypes.Datagram, identity, eb_key, self.pending[eb_key].namespace))
             del self.pending[eb_key]
             del self.contribs[eb_key]
-            print("completed heartbeat", eb_key)
+            #print("completed heartbeat", eb_key)
 
     def update(self, eb_key, eb_id, data):
         if eb_key not in self.pending:

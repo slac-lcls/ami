@@ -5,6 +5,7 @@ import zmq
 import json
 import dill
 import argparse
+from ami.graphkit_wrapper import Graph
 from ami.comm import Ports, ResultStore
 from ami.data import MsgTypes, Transitions, Transition, RandomSource, StaticSource, PsanaSource
 
@@ -26,7 +27,7 @@ class Worker(object):
         self.graph = None
 
         self.graph_comm = self.ctx.socket(zmq.SUB)
-        self.graph_comm.setsockopt_string(zmq.SUBSCRIBE, "graph")
+        self.graph_comm.setsockopt_string(zmq.SUBSCRIBE, "")
         self.graph_comm.connect(graph_addr)
         self.last_timestamp = 0
         self.heartbeat_period = heartbeat_period
@@ -57,6 +58,13 @@ class Worker(object):
                                 new_graph = dill.loads(payload)
                                 if new_graph is not None:
                                     new_graph.compile(num_workers=num_work, num_local_collectors=num_col)
+                            elif topic == "add":
+                                print("add seen")
+                                add_update = dill.loads(payload)
+                                if self.graph is None:
+                                    self.graph = Graph("worker_graph")
+                                self.graph.add(add_update)
+                                self.graph.compile(num_workers=num_work, num_local_collectors=num_col)
                             else:
                                 print(
                                     "worker%d: No handler for received topic: %s" %

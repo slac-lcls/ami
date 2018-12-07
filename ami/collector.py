@@ -1,7 +1,9 @@
 #!/usr/bin/env python
 import zmq
 import sys
+import dill
 import argparse
+from ami.graphkit_wrapper import Graph
 from ami.comm import Ports, Colors, Collector, EventBuilder
 from ami.data import MsgTypes
 
@@ -22,7 +24,7 @@ class GraphCollector(Collector):
         self.graph_nwork = None
         self.graph_ncol = None
         self.graph_comm = self.ctx.socket(zmq.SUB)
-        self.graph_comm.setsockopt_string(zmq.SUBSCRIBE, "graph")
+        self.graph_comm.setsockopt_string(zmq.SUBSCRIBE, "")
         self.graph_comm.connect(graph_addr)
         self.register(self.graph_comm, self.recv_graph)
 
@@ -31,6 +33,14 @@ class GraphCollector(Collector):
         self.graph_nwork, self.graph_ncol = self.graph_comm.recv_pyobj()
         if topic == 'graph':
             self.graph = self.graph_comm.recv()
+        elif topic == "add":
+            add_update = dill.loads(self.graph_comm.recv())
+            if self.graph is None:
+                new_graph = Graph("collector_graph")
+            else:
+                new_graph = dill.loads(self.graph)
+            new_graph.add(add_update)
+            self.graph = dill.dumps(new_graph)
         else:
             print("invalid topic: %s" % topic)
 
