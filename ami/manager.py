@@ -43,7 +43,7 @@ class Manager(Collector):
         elif (msg.mtype == MsgTypes.Transition) and (msg.payload.ttype == Transitions.Allocate):
             if self.graph is None:
                 self.graph = Graph(name='graph')
-            for name, _ in msg.payload.payload:
+            for name in msg.payload.payload:
                 self.graph.add(PickN(name='autoPick1_%s' % name, inputs=[name], outputs=["auto_%s" % name]))
             self.graph.compile(num_workers=self.num_workers, num_local_collectors=self.num_nodes)
             self.apply_graph()
@@ -102,6 +102,7 @@ class Manager(Collector):
         print("manager: sending requested graph...")
         try:
             self.graph_comm.send_string("graph", zmq.SNDMORE)
+            #self.graph_comm.
             self.graph_comm.send(dill.dumps(self.graph))
         except Exception as exp:
             print("manager: failed to send graph -", exp)

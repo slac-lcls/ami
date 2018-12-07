@@ -131,7 +131,7 @@ class RandomSource(object):
         self.config = src_cfg['config']
 
     def partition(self):
-        return [(key, getattr(DataTypes, value['dtype'])) for key, value in self.config.items()]
+        return list(self.config.keys())
 
     def events(self):
         count = 0
@@ -171,7 +171,7 @@ class StaticSource(object):
             self.bound = src_cfg['bound']
 
     def partition(self):
-        return [(key, getattr(DataTypes, value['dtype'])) for key, value in self.config.items()]
+        return list(self.config.keys())
 
     def events(self):
         count = 0
