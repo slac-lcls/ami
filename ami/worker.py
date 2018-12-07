@@ -51,9 +51,12 @@ class Worker(object):
                     while True:
                         try:
                             topic = self.graph_comm.recv_string(flags=zmq.NOBLOCK)
+                            num_work, num_col = self.graph_comm.recv_pyobj()
                             payload = self.graph_comm.recv()
                             if topic == "graph":
                                 new_graph = dill.loads(payload)
+                                if new_graph is not None:
+                                    new_graph.compile(num_workers=num_work, num_local_collectors=num_col)
                             else:
                                 print(
                                     "worker%d: No handler for received topic: %s" %
@@ -78,11 +81,9 @@ class Worker(object):
 
                         self.new_graph_available = False
 
-                data = {dgram.name: dgram.data for dgram in msg.payload}
-
                 try:
                     if self.graph is not None:
-                        self.store.update(self.graph(data, color='worker'))
+                        self.store.update(self.graph(msg.payload, color='worker'))
                 except Exception as graph_err:
                     print(
                         "worker%s: Failure encountered executing graph:" %

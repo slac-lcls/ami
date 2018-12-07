@@ -19,6 +19,8 @@ class GraphCollector(Collector):
         self.downstream_addr = downstream_addr
 
         self.graph = None
+        self.graph_nwork = None
+        self.graph_ncol = None
         self.graph_comm = self.ctx.socket(zmq.SUB)
         self.graph_comm.setsockopt_string(zmq.SUBSCRIBE, "graph")
         self.graph_comm.connect(graph_addr)
@@ -26,6 +28,7 @@ class GraphCollector(Collector):
 
     def recv_graph(self):
         topic = self.graph_comm.recv_string()
+        self.graph_nwork, self.graph_ncol = self.graph_comm.recv_pyobj()
         if topic == 'graph':
             self.graph = self.graph_comm.recv()
         else:
@@ -35,14 +38,14 @@ class GraphCollector(Collector):
         if msg.mtype == MsgTypes.Transition:
             self.store.transition(msg.identity, msg.payload.ttype)
             if self.store.transition_ready(msg.payload.ttype):
-                self.store.send(msg)
+                self.store.message(msg.mtype, self.node, msg.payload)
         elif msg.mtype == MsgTypes.Datagram:
             self.store.update(msg.heartbeat, msg.identity, msg.payload)
             self.store.heartbeat(msg.identity, msg.heartbeat)
             if self.store.heartbeat_ready(msg.heartbeat):
                 self.store.complete(self.node, msg.heartbeat)
                 if self.graph is not None:
-                    self.store.set_graph(msg.heartbeat+1, self.graph)
+                    self.store.set_graph(msg.heartbeat+1, self.graph_nwork, self.graph_ncol, self.graph)
 
 
 def run_collector(node_num, num_contribs, color, collector_addr, upstream_addr, graph_addr):

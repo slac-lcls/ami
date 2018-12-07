@@ -18,7 +18,6 @@ import pyqtgraph as pg
 
 from ami.data import DataTypes, Strategies
 from ami.comm import Ports
-from ami.graph import Graph
 
 
 class CommunicationHandler(object):

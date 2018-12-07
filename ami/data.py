@@ -131,13 +131,13 @@ class RandomSource(object):
         self.config = src_cfg['config']
 
     def partition(self):
-        return [(key, getattr(DataTypes, value['dtype'])) for key, value in self.config.items()]
+        return list(self.config.keys())
 
     def events(self):
         count = 0
         time.sleep(self.init_time)
         while True:
-            event = []
+            event = {}
             for name, config in self.config.items():
                 if config['dtype'] == 'Scalar':
                     if config.get('integer', False):
@@ -146,21 +146,9 @@ class RandomSource(object):
                         )
                     else:
                         value = config['range'][0] + (config['range'][1] - config['range'][0]) * np.random.rand(1)[0]
-                    event.append(
-                        Datagram(
-                            name,
-                            getattr(DataTypes, config['dtype']),
-                            value
-                        )
-                    )
+                    event[name] = value
                 elif config['dtype'] == 'Waveform' or config['dtype'] == 'Image':
-                    event.append(
-                        Datagram(
-                            name,
-                            getattr(DataTypes, config['dtype']),
-                            np.random.normal(config['pedestal'], config['width'], config['shape'])
-                        )
-                    )
+                    event[name] = np.random.normal(config['pedestal'], config['width'], config['shape'])
                 else:
                     print("DataSrc: %s has unknown type %s", name, config['dtype'])
             count += 1
@@ -183,7 +171,7 @@ class StaticSource(object):
             self.bound = src_cfg['bound']
 
     def partition(self):
-        return [(key, getattr(DataTypes, value['dtype'])) for key, value in self.config.items()]
+        return list(self.config.keys())
 
     def events(self):
         count = 0

@@ -169,8 +169,10 @@ class EventBuilder(ZmqHandler):
         self.contribs = {}
         self.graphs = {}
 
-    def set_graph(self, eb_key, graph):
+    def set_graph(self, eb_key, nwork, ncol, graph):
         self.graphs[eb_key] = dill.loads(graph)
+        if self.graphs[eb_key] is not None:
+            self.graphs[eb_key].compile(num_workers=nwork, num_local_collectors=ncol)
 
     def graph(self, eb_key):
         return self.graphs.get(eb_key)
