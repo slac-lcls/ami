@@ -6,7 +6,7 @@ import dill
 import argparse
 from ami.comm import Ports, Collector, Store
 from ami.data import MsgTypes, Transitions
-from ami.graphkit_wrapper import Graph, PickN
+from ami.graphkit_wrapper import Graph
 
 
 class Manager(Collector):

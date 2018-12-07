@@ -3,7 +3,6 @@ import zmq
 import sys
 import dill
 import argparse
-from ami.graphkit_wrapper import Graph
 from ami.comm import Ports, Colors, Collector, EventBuilder
 from ami.data import MsgTypes
 

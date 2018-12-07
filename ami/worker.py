@@ -5,7 +5,6 @@ import zmq
 import json
 import dill
 import argparse
-from ami.graphkit_wrapper import Graph
 from ami.comm import Ports, ResultStore
 from ami.data import MsgTypes, Transitions, Transition, RandomSource, StaticSource, PsanaSource
 
