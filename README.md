@@ -38,6 +38,14 @@ To use psana a working release need to be added to the python path
 
 # Status/To-do
 
+6 DEC 18
+CPO/TJL:
+
+Think about:
+1. "." interface versus dictionaries
+2. missing data (none? hasattr? in keys()?)
+3. det xface attributes not appearing until event
+
 29 NOV 18
 CPO/TJL : we have been thinking about how to intialize the graph with data from psana (shmem or xtc).
 
