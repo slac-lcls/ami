@@ -35,12 +35,12 @@ class GraphCollector(Collector):
             self.graph = self.graph_comm.recv()
         elif topic == "add":
             add_update = dill.loads(self.graph_comm.recv())
-            if self.graph is None:
-                new_graph = Graph("collector_graph")
+            if self.graph is not None:
+                updated_graph = dill.loads(self.graph)
+                updated_graph.add(add_update)
+                self.graph = dill.dumps(updated_graph)
             else:
-                new_graph = dill.loads(self.graph)
-            new_graph.add(add_update)
-            self.graph = dill.dumps(new_graph)
+                print("Add requested on empty graph")
         else:
             print("invalid topic: %s" % topic)
 

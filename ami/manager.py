@@ -93,8 +93,11 @@ class Manager(Collector):
         raw_add = self.comm.recv()
         if self.graph is None:
             self.graph = Graph("manager_graph")
-        self.graph.add(dill.loads(raw_add))
-        self.publish_graph("add", raw_add)
+            self.graph.add(dill.loads(raw_add))
+            self.publish_graph("graph", dill.dumps(self.graph))
+        else:
+            self.graph.add(dill.loads(raw_add))
+            self.publish_graph("add", raw_add)
 
     def cmd_set_graph(self):
         raw_graph = self.comm.recv()
