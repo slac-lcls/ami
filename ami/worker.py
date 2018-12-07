@@ -78,11 +78,9 @@ class Worker(object):
 
                         self.new_graph_available = False
 
-                data = {dgram.name: dgram.data for dgram in msg.payload}
-
                 try:
                     if self.graph is not None:
-                        self.store.update(self.graph(data, color='worker'))
+                        self.store.update(self.graph(msg.payload, color='worker'))
                 except Exception as graph_err:
                     print(
                         "worker%s: Failure encountered executing graph:" %
