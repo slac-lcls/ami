@@ -30,6 +30,8 @@ class Graph():
             for i in op.condition_needs:
                 self.graph.add_edge(i, op)
 
+        self.graphkit = None
+
     def remove(self, name):
         for n in self.graph.nodes:
             if type(n) is str:
@@ -39,6 +41,8 @@ class Graph():
                 self.graph.remove_nodes_from(desc)
                 self.graph.remove_node(n)
                 break
+
+        self.graphkit = None
 
     def reset(self):
         nodes = filter(lambda node: isinstance(StatefulTransformation, node), self.graph.nodes)
