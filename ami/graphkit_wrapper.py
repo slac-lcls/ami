@@ -68,13 +68,10 @@ class Graph():
                     if type(node) is str:
                         continue
                     if node not in self.global_operations:
-                        node.color.add(color)
+                        node.color = color
                     elif node in self.global_operations:
-                        node.color.add(color)
-                        color = 'localCollector'
-                        node.color.add(color)
                         color = 'globalCollector'
-                        node.color.add(color)
+                        node.color = color
 
     def expand_global_operations(self, num_workers, num_local_collectors):
         inputs = [n for n, d in self.graph.in_degree() if d == 0]
@@ -91,7 +88,6 @@ class Graph():
             color_order = ['worker', 'localCollector', 'globalCollector']
             worker_outputs = None
             local_collector_outputs = None
-
             for color in color_order:
 
                 if color == 'worker':
@@ -155,7 +151,6 @@ class Graph():
         outputs = [n for n, d in subgraph.out_degree() if d == 0]
         nodes = list(filter(lambda node: type(node) is not str, nodes))
         nodes = list(map(lambda node: node.to_operation(), nodes))
-
         node = filter_node.to_operation()
         node = node(name=filter_node.name,
                     condition_needs=filter_node.condition_needs, condition=filter_node.condition,
@@ -252,7 +247,7 @@ class Transformation():
         self.outputs = kwargs['outputs']
         self.func = kwargs['func']
         self.condition_needs = kwargs.get('condition_needs', [])
-        self.color = set()
+        self.color = ""
         self.is_global_operation = False
 
     def __hash__(self):
@@ -266,9 +261,7 @@ class Transformation():
         return u"%s(name='%s')" % (self.__class__.__name__, self.name)
 
     def to_operation(self):
-        assert len(self.color) == 1, 'too many colors'
-        color = list(self.color)[0]
-        return operation(name=self.name, needs=self.inputs, provides=self.outputs, color=color)(self.func)
+        return operation(name=self.name, needs=self.inputs, provides=self.outputs, color=self.color)(self.func)
 
 
 class Map(Transformation):
@@ -285,7 +278,7 @@ class Filter():
         self.condition = condition
         self.inputs = []
         self.outputs = outputs
-        self.color = set()
+        self.color = ""
 
 
 class FilterOn(Filter):
