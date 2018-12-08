@@ -16,6 +16,7 @@ from PyQt5.QtCore import pyqtSlot, QTimer, QRect
 
 import pyqtgraph as pg
 
+from ami.graphkit_wrapper import PickN
 from ami.data import DataTypes, Strategies
 from ami.comm import Ports
 
@@ -37,6 +38,18 @@ class CommunicationHandler(object):
     def features(self):
         self.sock.send_string('get_features')
         return self.sock.recv_pyobj()
+
+    @property
+    def types(self):
+        self.sock.send_string('get_types')
+        return self.sock.recv_pyobj()
+
+    def add(self, func, *args, **kwargs):
+        edit = func(*args, **kwargs)
+        self.sock.send_string('add_graph', zmq.SNDMORE)
+        self.sock.send(dill.dumps(edit))
+        return self.sock.recv_string() == 'ok'
+        #PickN(name='autoPick1_%s' % name, inputs=[name], outputs=["auto_%s" % name])
 
     def clear(self):
         self.sock.send_string('clear_graph')
@@ -213,7 +226,8 @@ class DetectorList(QListWidget):
         super(__class__, self).__init__(parent)
         self.queue = queue
         self.comm_handler = comm_handler
-        self.features = {}
+        self.features = []
+        self.types = {}
         self.timer = QTimer()
         self.calc_id = "calculator"
         self.calc = None
@@ -229,44 +243,48 @@ class DetectorList(QListWidget):
     def get_features(self):
         # detectors = dict, maps name --> type
         self.features = self.comm_handler.features
+        self.types = self.comm_handler.types
         self.clear()
         self.addItem(self.calc_id)
-        for k in self.features.keys():
-            self.addItem(k)
+        for k in self.features:
+            if not k.startswith("_"):
+                self.addItem(k)
         return
 
     @pyqtSlot(QListWidgetItem)
     def item_clicked(self, item):
 
-        # WHERE does this enumerated list of detector types come from?
+        name = item.text()
+        topic = '_auto_%s' % name
 
-        if item.text() == self.calc_id:
+        if name == self.calc_id:
             if self.calc is None:
                 print('create calculator widget')
                 self.calc = Calculator(self.comm_handler)
             self.calc.show()
-        elif self.features[item.text()] == DataTypes.Image:
-            self._spawn_window('AreaDetector', item.text())
-            print('create area detector window for:', item.text())
-            # cpo/weninc test of "request" pattern for AMI
-            # self.comm_handler.sock.send_string("reqimages:%s:3"%item.text())
-            # reply = self.comm_handler.sock.recv_string()
+        if topic in self.types:
+            if self.types[topic] == DataTypes.Image:
+                self._spawn_window('AreaDetector',name, topic)
+                print('create area detector window for:', name)
 
-        elif self.features[item.text()] == DataTypes.Waveform:
-            self._spawn_window('WaveformDetector', item.text())
-            print('create waveform window for:', item.text())
+            elif self.types[topic] == DataTypes.Waveform:
+                self._spawn_window('WaveformDetector', name, topic)
+                print('create waveform window for:', name)
 
-        elif self.features[item.text()] == DataTypes.Scalar:
-            self._spawn_window('ScalarDetector', item.text())
-            print('create waveform window for:', item.text())
-
+            elif self.types[topic] == DataTypes.Scalar:
+                self._spawn_window('ScalarDetector', name, topic)
+                print('create waveform window for:', name)
+            else:
+                print('Type %s not valid' % self.types[topic])
         else:
-            print('Type %s not valid' % self.features[item.text()])
+            self.comm_handler.add(PickN,name='%s_pick1' % name,
+                                  inputs=[name],
+                                  outputs=[topic])
 
         return
 
-    def _spawn_window(self, window_type, topic):
-        self.queue.put((window_type, topic))
+    def _spawn_window(self, window_type, name, topic):
+        self.queue.put((window_type, name, topic))
 
 
 class AmiGui(QWidget):
@@ -359,12 +377,12 @@ def run_main_window(queue, addr, ami_save):
     retval = app.exec_()
 
     # send exit signal to master process
-    queue.put(("exit", None))
+    queue.put(("exit", None, None))
 
     return retval
 
 
-def run_widget(queue, window_type, topic, addr):
+def run_widget(queue, window_type, name, topic, addr):
 
     app = QApplication(sys.argv)
     win = QMainWindow()
@@ -382,7 +400,7 @@ def run_widget(queue, window_type, topic, addr):
         raise ValueError('%s not valid window_type' % window_type)
 
     win.setCentralWidget(widget)
-    win.setWindowTitle(topic)
+    win.setWindowTitle(name)
     win.show()
 
     return app.exec_()
@@ -413,14 +431,14 @@ def run_client(addr, load):
     widget_procs = []
 
     while True:
-        window_type, topic = queue.get()
+        window_type, name, topic = queue.get()
         if window_type == 'exit':
             print("received exit signal - exiting!")
             break
-        print("opening new widget:", window_type, topic)
+        print("opening new widget:", window_type, name, topic)
         proc = mp.Process(
             target=run_widget, args=(
-                queue, window_type, topic, addr))
+                queue, window_type, name, topic, addr))
         proc.start()
         widget_procs.append(proc)
 

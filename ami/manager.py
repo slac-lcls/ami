@@ -5,7 +5,7 @@ import zmq
 import dill
 import argparse
 from ami.comm import Ports, Collector, Store
-from ami.data import MsgTypes, Transitions
+from ami.data import MsgTypes, DataTypes, Transitions
 from ami.graphkit_wrapper import Graph
 
 
@@ -25,6 +25,7 @@ class Manager(Collector):
         super(__class__, self).__init__(results_addr)
         self.num_workers = num_workers
         self.num_nodes = num_nodes
+        self.partition = []
         self.feature_store = Store()
         self.feature_req = re.compile("feature:(?P<name>.*)")
         self.graph = None
@@ -41,17 +42,18 @@ class Manager(Collector):
         if msg.mtype == MsgTypes.Datagram:
             self.feature_store.update(msg.payload)
         elif (msg.mtype == MsgTypes.Transition) and (msg.payload.ttype == Transitions.Allocate):
-            """if self.graph is None:
-                self.graph = Graph(name='graph')
-            for name in msg.payload.payload:
-                self.graph.add(PickN(name='autoPick1_%s' % name, inputs=[name], outputs=["auto_%s" % name]))
-            #self.graph.compile(num_workers=self.num_workers, num_local_collectors=self.num_nodes)
-            self.apply_graph()"""
-            pass
+            self.partition = msg.payload.payload
         return
 
     @property
     def features(self):
+        feature_set = set(self.partition)
+        if self.graph is not None:
+            feature_set.update(self.graph.outputs['globalCollector'])
+        return feature_set
+
+    @property
+    def types(self):
         return self.feature_store.types
 
     def feature_request(self, request):
@@ -72,11 +74,17 @@ class Manager(Collector):
         if not self.feature_request(request):
             getattr(self, "cmd_%s" % request, self.cmd_unknown)()
 
+    def compile_graph(self):
+        self.graph.compile(num_workers=self.num_workers, num_local_collectors=self.num_nodes)
+
     def cmd_unknown(self):
         self.comm.send_string('error')
 
     def cmd_get_features(self):
         self.comm.send_pyobj(self.features)
+
+    def cmd_get_types(self):
+        self.comm.send_pyobj(self.types)
 
     def cmd_clear_graph(self):
         self.graph = None
@@ -98,11 +106,13 @@ class Manager(Collector):
         else:
             self.graph.add(dill.loads(raw_add))
             self.publish_graph("add", raw_add)
+        self.compile_graph()
 
     def cmd_set_graph(self):
         raw_graph = self.comm.recv()
         self.graph = dill.loads(raw_graph)
         self.publish_graph("graph", raw_graph)
+        self.compile_graph()
 
     def publish_graph(self, topic, graph):
         print("manager: sending requested graph...")
