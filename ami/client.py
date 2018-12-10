@@ -5,6 +5,7 @@ import sys
 import dill
 import json
 import argparse
+import threading
 import numpy as np
 import multiprocessing as mp
 
@@ -17,7 +18,7 @@ from PyQt5.QtCore import pyqtSlot, QTimer, QRect
 import pyqtgraph as pg
 
 from ami.graphkit_wrapper import PickN
-from ami.data import DataTypes, Strategies
+from ami.data import DataTypes
 from ami.comm import Ports
 
 
@@ -44,12 +45,14 @@ class CommunicationHandler(object):
         self.sock.send_string('get_types')
         return self.sock.recv_pyobj()
 
-    def add(self, func, *args, **kwargs):
-        edit = func(*args, **kwargs)
-        self.sock.send_string('add_graph', zmq.SNDMORE)
-        self.sock.send(dill.dumps(edit))
+    def edit(self, cmd, node):
+        self.sock.send_string('%s_graph' % cmd, zmq.SNDMORE)
+        self.sock.send(dill.dumps(node))
         return self.sock.recv_string() == 'ok'
-        #PickN(name='autoPick1_%s' % name, inputs=[name], outputs=["auto_%s" % name])
+
+    def pickN(self, name, inputs, outputs):
+        node = PickN(name=name, inputs=inputs, outputs=outputs)
+        return self.edit("add", node)
 
     def clear(self):
         self.sock.send_string('clear_graph')
@@ -141,7 +144,9 @@ class AreaDetWidget(pg.ImageView):
 
     # @pyqtSlot(pg.ROI)
     def roi_updated(self, roi):
-        graph = self.comm_handler.graph
+        pass
+        # TODO - fix
+        """graph = self.comm_handler.graph
         shape, vector, origin = roi.getAffineSliceParams(
             self.image, self.getImageItem())
         config = {
@@ -160,7 +165,7 @@ class AreaDetWidget(pg.ImageView):
             imports=[('pyqtgraph', 'pg')],
         )
         graph["%s_roi" % self.topic] = roi
-        self.comm_handler.update(graph)
+        self.comm_handler.update(graph)"""
 
 
 class Calculator(QWidget):
@@ -210,14 +215,16 @@ class Calculator(QWidget):
 
     @pyqtSlot()
     def on_click(self):
-        graph = self.comm.graph
+        pass
+        # TODO FIX
+        """graph = self.comm.graph
         graph[self.nameBox.text()] = Graph.build_node(
             "%s = %s" % (self.nameBox.text(), self.codeBox.text()),
             self.parse_inputs(),
             [(self.nameBox.text(), Strategies.Pick1.value)],
             imports=self.parse_imports()
         )
-        self.comm.update(graph)
+        self.comm.update(graph)"""
 
 
 class DetectorList(QListWidget):
@@ -227,6 +234,8 @@ class DetectorList(QListWidget):
         self.queue = queue
         self.comm_handler = comm_handler
         self.features = []
+        self.pending = {}
+        self.pending_lock = threading.Lock()
         self.types = {}
         self.timer = QTimer()
         self.calc_id = "calculator"
@@ -239,6 +248,19 @@ class DetectorList(QListWidget):
     def load(self, graph_cfg):
         self.comm_handler.update(graph_cfg)
 
+    def spawn_window(self, data_type, name, topic):
+        if data_type == DataTypes.Image:
+            self._spawn_window('AreaDetector', name, topic)
+            print('create area detector window for:', name)
+        elif data_type == DataTypes.Waveform:
+            self._spawn_window('WaveformDetector', name, topic)
+            print('create waveform window for:', name)
+        elif data_type == DataTypes.Scalar:
+            self._spawn_window('ScalarDetector', name, topic)
+            print('create waveform window for:', name)
+        else:
+            print('Type %s not valid' % self.types[topic])
+
     @pyqtSlot()
     def get_features(self):
         # detectors = dict, maps name --> type
@@ -249,6 +271,15 @@ class DetectorList(QListWidget):
         for k in self.features:
             if not k.startswith("_"):
                 self.addItem(k)
+        with self.pending_lock:
+            done = []
+            for topic, name in self.pending.items():
+                if topic in self.types:
+                    self.spawn_window(self.types[topic], name, topic)
+                    # append to list of done entries to delete after iterating
+                    done.append(topic)
+            for key in done:
+                del self.pending[key]
         return
 
     @pyqtSlot(QListWidgetItem)
@@ -263,23 +294,13 @@ class DetectorList(QListWidget):
                 self.calc = Calculator(self.comm_handler)
             self.calc.show()
         if topic in self.types:
-            if self.types[topic] == DataTypes.Image:
-                self._spawn_window('AreaDetector',name, topic)
-                print('create area detector window for:', name)
-
-            elif self.types[topic] == DataTypes.Waveform:
-                self._spawn_window('WaveformDetector', name, topic)
-                print('create waveform window for:', name)
-
-            elif self.types[topic] == DataTypes.Scalar:
-                self._spawn_window('ScalarDetector', name, topic)
-                print('create waveform window for:', name)
-            else:
-                print('Type %s not valid' % self.types[topic])
+            self.spawn_window(self.types[topic], name, topic)
         else:
-            self.comm_handler.add(PickN,name='%s_pick1' % name,
-                                  inputs=[name],
-                                  outputs=[topic])
+            with self.pending_lock:
+                self.pending[topic] = name
+            self.comm_handler.pickN(name='%s_pick1' % name,
+                                    inputs=[name],
+                                    outputs=[topic])
 
         return
 

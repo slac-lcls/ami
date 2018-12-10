@@ -37,12 +37,6 @@ class DataTypes(Enum):
             return DataTypes.Scalar
 
 
-class Strategies(Enum):
-    Sum = "Sum"
-    Avg = "Average"
-    Pick1 = "Pick1"
-
-
 class Transitions(Enum):
     Allocate = 0
     Configure = 1

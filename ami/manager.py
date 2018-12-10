@@ -5,7 +5,7 @@ import zmq
 import dill
 import argparse
 from ami.comm import Ports, Collector, Store
-from ami.data import MsgTypes, DataTypes, Transitions
+from ami.data import MsgTypes, Transitions
 from ami.graphkit_wrapper import Graph
 
 
