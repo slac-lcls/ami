@@ -5,6 +5,7 @@ import sys
 import dill
 import json
 import argparse
+import importlib
 import threading
 import numpy as np
 import multiprocessing as mp
@@ -17,7 +18,7 @@ from PyQt5.QtCore import pyqtSlot, QTimer, QRect
 
 import pyqtgraph as pg
 
-from ami.graphkit_wrapper import PickN
+from ami.graphkit_wrapper import Map, PickN
 from ami.data import DataTypes
 from ami.comm import Ports
 
@@ -69,8 +70,9 @@ class CommunicationHandler(object):
 
 
 class ScalarWidget(QLCDNumber):
-    def __init__(self, topic, addr, parent=None):
+    def __init__(self, name, topic, addr, parent=None):
         super(__class__, self).__init__(parent)
+        self.name = name
         self.topic = topic
         self.timer = QTimer()
         self.setGeometry(QRect(320, 180, 191, 81))
@@ -94,8 +96,9 @@ class ScalarWidget(QLCDNumber):
 
 
 class WaveformWidget(pg.GraphicsLayoutWidget):
-    def __init__(self, topic, addr, parent=None):
+    def __init__(self, name, topic, addr, parent=None):
         super(__class__, self).__init__(parent)
+        self.name = name
         self.topic = topic
         self.timer = QTimer()
         self.comm_handler = CommunicationHandler(addr)
@@ -121,8 +124,9 @@ class WaveformWidget(pg.GraphicsLayoutWidget):
 
 
 class AreaDetWidget(pg.ImageView):
-    def __init__(self, topic, addr, parent=None):
+    def __init__(self, name, topic, addr, parent=None):
         super(AreaDetWidget, self).__init__(parent)
+        self.name = name
         self.topic = topic
         self.comm_handler = CommunicationHandler(addr)
         self.timer = QTimer()
@@ -144,28 +148,13 @@ class AreaDetWidget(pg.ImageView):
 
     # @pyqtSlot(pg.ROI)
     def roi_updated(self, roi):
-        pass
-        # TODO - fix
-        """graph = self.comm_handler.graph
-        shape, vector, origin = roi.getAffineSliceParams(
-            self.image, self.getImageItem())
-        config = {
-            "shape": shape,
-            "vector": vector,
-            "origin": origin,
-            "axes": (0, 1),
-        }
-        roi = Graph.build_node(
-            "{0:s}_roi = pg.affineSlice({0:s}, "
-            "config['shape'], config['origin'], "
-            "config['vector'], config['axes'])".format(self.topic),
-            self.topic,
-            [("%s_roi" % self.topic, Strategies.Pick1.value)],
-            config=config,
-            imports=[('pyqtgraph', 'pg')],
-        )
-        graph["%s_roi" % self.topic] = roi
-        self.comm_handler.update(graph)"""
+        shape, vector, origin = roi.getAffineSliceParams(self.image, self.getImageItem())
+
+        def roi_func(image):
+            return pg.affineSlice(image, shape, origin, vector, (0, 1))
+
+        roi_map = Map(name="map_%s_roi" % self.name, inputs=[self.name], outputs=["%s_roi" % self.name], func=roi_func)
+        self.comm_handler.edit("add", roi_map)
 
 
 class Calculator(QWidget):
@@ -211,20 +200,27 @@ class Calculator(QWidget):
             return [(imp, imp)
                     for imp in self.field_parse.split(self.importsBox.text())]
         else:
-            return None
+            return []
 
     @pyqtSlot()
     def on_click(self):
-        pass
-        # TODO FIX
-        """graph = self.comm.graph
-        graph[self.nameBox.text()] = Graph.build_node(
-            "%s = %s" % (self.nameBox.text(), self.codeBox.text()),
-            self.parse_inputs(),
-            [(self.nameBox.text(), Strategies.Pick1.value)],
-            imports=self.parse_imports()
-        )
-        self.comm.update(graph)"""
+        name = self.nameBox.text()
+        inputs = self.parse_inputs()
+        imports = self.parse_imports()
+        code = self.codeBox.text()
+
+        def calc_func(*args):
+            loc = {}
+            glb = {name: importlib.import_module(imp) for imp, name in imports}
+            for k, v in zip(inputs, args):
+                loc[k] = v
+            return eval(code, glb, loc)
+
+        calc_map = Map(name="map_%s_calc" % name,
+                       inputs=inputs,
+                       outputs=[name],
+                       func=calc_func)
+        self.comm.edit("add", calc_map)
 
 
 class DetectorList(QListWidget):
@@ -293,14 +289,18 @@ class DetectorList(QListWidget):
                 print('create calculator widget')
                 self.calc = Calculator(self.comm_handler)
             self.calc.show()
-        if topic in self.types:
+        elif topic in self.types:
             self.spawn_window(self.types[topic], name, topic)
         else:
+            request_pickn = False
             with self.pending_lock:
-                self.pending[topic] = name
-            self.comm_handler.pickN(name='%s_pick1' % name,
-                                    inputs=[name],
-                                    outputs=[topic])
+                if topic not in self.pending:
+                    self.pending[topic] = name
+                    request_pickn = True
+            if request_pickn:
+                self.comm_handler.pickN(name='%s_pick1' % name,
+                                        inputs=[name],
+                                        outputs=[topic])
 
         return
 
@@ -353,10 +353,10 @@ class AmiGui(QWidget):
                 print(
                     "ami-client: problem opening saved graph configuration file:",
                     os_exp)
-            except json.decoder.JSONDecodeError as json_exp:
+            except dill.UnpicklingError as dill_exp:
                 print(
                     "ami-client: problem parsing saved graph configuration file (%s):" %
-                    load_file[0], json_exp)
+                    load_file[0], dill_exp)
 
     @pyqtSlot()
     def save(self):
@@ -367,12 +367,8 @@ class AmiGui(QWidget):
                 "ami-client: saving graph configuration to file (%s)" %
                 save_file[0])
             try:
-                with open(save_file[0], 'w') as cnf:
-                    json.dump(
-                        self.comm_handler.graph,
-                        cnf,
-                        indent=4,
-                        sort_keys=True)
+                with open(save_file[0], 'wb') as cnf:
+                    dill.dump(self.comm_handler.graph, cnf)
             except OSError as os_exp:
                 print(
                     "ami-client: problem opening saved graph configuration file:",
@@ -409,13 +405,13 @@ def run_widget(queue, window_type, name, topic, addr):
     win = QMainWindow()
 
     if window_type == 'AreaDetector':
-        widget = AreaDetWidget(topic, addr, win)
+        widget = AreaDetWidget(name, topic, addr, win)
 
     elif window_type == 'WaveformDetector':
-        widget = WaveformWidget(topic, addr, win)
+        widget = WaveformWidget(name, topic, addr, win)
 
     elif window_type == 'ScalarDetector':
-        widget = ScalarWidget(topic, addr, win)
+        widget = ScalarWidget(name, topic, addr, win)
 
     else:
         raise ValueError('%s not valid window_type' % window_type)
