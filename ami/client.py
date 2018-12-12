@@ -165,6 +165,7 @@ class Calculator(QWidget):
         self.move(280, 80)
         self.resize(280, 40)
         self.field_parse = re.compile(r"\s+")
+        self.alias_parse = re.compile(r"(?P<import>\w+),(?P<alias>\w+)")
 
         self.nameLabel = QLabel('Name:', self)
         self.nameBox = QLineEdit(self)
@@ -196,11 +197,15 @@ class Calculator(QWidget):
             return []
 
     def parse_imports(self):
+        imports = []
         if self.importsBox.text():
-            return [(imp, imp)
-                    for imp in self.field_parse.split(self.importsBox.text())]
-        else:
-            return []
+            for imp in self.field_parse.split(self.importsBox.text()):
+                match = self.alias_parse.match(imp)
+                if match:
+                    imports.append((match.group("import"), match.group("alias")))
+                else:
+                    imports.append((imp, imp))
+        return imports
 
     @pyqtSlot()
     def on_click(self):
