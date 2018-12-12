@@ -265,7 +265,7 @@ class DetectorList(QListWidget):
     @pyqtSlot()
     def get_features(self):
         # detectors = dict, maps name --> type
-        self.features = self.comm_handler.features
+        self.features = sorted(self.comm_handler.features)
         self.types = self.comm_handler.types
         self.clear()
         self.addItem(self.calc_id)
