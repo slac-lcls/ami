@@ -13,8 +13,10 @@ class Graph():
         self.graph = nx.DiGraph()
         self.graphkit = None
         self.global_operations = set()
+        self.expanded_global_operations = set()
         self.inputs = collections.defaultdict(set)
         self.outputs = collections.defaultdict(set)
+        self.flattened_inputs = collections.defaultdict(set)
 
     def add(self, ops):
         if type(ops) is not list:
@@ -49,37 +51,42 @@ class Graph():
         map(lambda node: node.reset(), nodes)
 
     def color_nodes(self):
-
+        """
+        Generate all paths from inputs to outputs, for each path look for nodes which have the is_global_operation
+        attribute set to True. If in a given path for which we've found a node global operation node there is no
+        other node with is_global_operation true preceeds it then we mark that node for expansion.
+        """
         inputs = [n for n, d in self.graph.in_degree() if d == 0]
         outputs = [n for n, d in self.graph.out_degree() if d == 0]
 
         self.global_operations = set()
-
         sources_targets = list(it.product(inputs, outputs))
         for s, t in sources_targets:
             paths = list(nx.algorithms.all_simple_paths(self.graph, s, t))
             for nodes in paths:
-                reductions = filter(lambda node: getattr(node, 'is_global_operation', False), nodes)
+                reductions = list(filter(lambda node: getattr(node, 'is_global_operation', False), nodes))
 
                 for reduction in reductions:
-                    before = filter(lambda node: getattr(node, 'is_global_operation', False),
-                                    nx.algorithms.dag.ancestors(self.graph, reduction))
-                    if list(before) == []:
+                    if reduction in self.expanded_global_operations:
+                        continue
+                    before = list(filter(lambda node: getattr(node, 'is_global_operation', False),
+                                         nx.algorithms.dag.ancestors(self.graph, reduction)))
+                    if before == []:
                         self.global_operations.add(reduction)
 
                 color = 'worker'
                 for node in nodes:
                     if type(node) is str:
                         continue
-                    if node not in self.global_operations:
-                        node.color = color
-                    elif node in self.global_operations:
+
+                    if node in self.global_operations or node in self.expanded_global_operations:
                         color = 'globalCollector'
+                    if node.color == "":
                         node.color = color
 
     def expand_global_operations(self, num_workers, num_local_collectors):
         inputs = [n for n, d in self.graph.in_degree() if d == 0]
-        self.inputs['worker'].update(inputs)
+        self.flattened_inputs['worker'].update(inputs)
 
         for node in self.global_operations:
             inputs = node.inputs
@@ -104,6 +111,7 @@ class Graph():
                     worker_node = NewNode(name=node.name+'_worker', inputs=inputs, outputs=worker_outputs,
                                           condition_needs=condition_needs, reduction=node.reduction, N=worker_N)
                     worker_node.color = color
+                    worker_node.is_global_operation = False
                     self.outputs[color].update(worker_outputs)
                     for i in inputs:
                         self.graph.add_edge(i, worker_node)
@@ -113,7 +121,7 @@ class Graph():
                         self.graph.add_edge(n, worker_node)
 
                 elif color == 'localCollector':
-                    self.inputs[color].update(worker_outputs)
+                    self.flattened_inputs[color].update(worker_outputs)
                     local_collector_outputs = list(map(lambda o: o+'_localCollector', node.outputs))
 
                     local_collector_N = 1
@@ -124,6 +132,7 @@ class Graph():
                                                    outputs=local_collector_outputs, reduction=node.reduction,
                                                    N=local_collector_N)
                     local_collector_node.color = color
+                    local_collector_node.is_global_operation = False
                     self.outputs[color].update(local_collector_outputs)
                     for i in worker_outputs:
                         self.graph.add_edge(i, local_collector_node)
@@ -131,7 +140,7 @@ class Graph():
                         self.graph.add_edge(local_collector_node, o)
 
                 elif color == 'globalCollector':
-                    self.inputs[color].update(local_collector_outputs)
+                    self.flattened_inputs[color].update(local_collector_outputs)
 
                     N = getattr(node, 'N', 1)
                     N = max((N // num_workers)*num_workers, 1)
@@ -140,6 +149,7 @@ class Graph():
                                                     inputs=local_collector_outputs,
                                                     outputs=outputs, reduction=node.reduction, N=N)
                     global_collector_node.color = color
+                    self.expanded_global_operations.add(global_collector_node)
                     for i in local_collector_outputs:
                         self.graph.add_edge(i, global_collector_node)
                     for o in outputs:
@@ -163,8 +173,6 @@ class Graph():
 
     def compile(self, num_workers=1, num_local_collectors=1):
         self.inputs = collections.defaultdict(set)
-        self.outputs = collections.defaultdict(set)
-
         self.color_nodes()
         self.expand_global_operations(num_workers, num_local_collectors)
 
@@ -213,7 +221,7 @@ class Graph():
         inputs = collections.defaultdict(lambda: collections.defaultdict(set))
         seen = set()
 
-        for color, color_inputs in self.inputs.items():
+        for color, color_inputs in self.flattened_inputs.items():
             sources_targets = list(it.product(graph_filters, color_inputs))
 
             for s, t in sources_targets:
