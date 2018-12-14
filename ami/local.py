@@ -12,6 +12,7 @@ from ami.manager import run_manager
 from ami.worker import run_worker
 from ami.collector import run_node_collector, run_global_collector
 from ami.client import run_client
+from ami.console import run_console
 
 
 def main():
@@ -52,6 +53,13 @@ def main():
         type=int,
         default=10,
         help='the heartbeat period (default: 10)'
+    )
+
+    parser.add_argument(
+        '-c',
+        '--headless',
+        action='store_true',
+        help='run in a headless mode (no GUI)'
     )
 
     parser.add_argument(
@@ -125,14 +133,17 @@ def main():
         manager_proc.start()
         procs.append(manager_proc)
 
-        client_proc = mp.Process(
-            name='client',
-            target=run_client,
-            args=(comm_addr, args.load)
-        )
-        client_proc.daemon = False
-        client_proc.start()
-        client_proc.join()
+        if args.headless:
+            run_console(comm_addr, args.load)
+        else:
+            client_proc = mp.Process(
+                name='client',
+                target=run_client,
+                args=(comm_addr, args.load)
+            )
+            client_proc.daemon = False
+            client_proc.start()
+            client_proc.join()
 
         for proc in procs:
             proc.terminate()
@@ -144,7 +155,7 @@ def main():
                 print('%s exited with non-zero status code: %d' % (proc.name, proc.exitcode))
 
         # return a non-zero status code if any workerss died
-        if client_proc.exitcode != 0:
+        if not args.headless and client_proc.exitcode != 0:
             return client_proc.exitcode
         elif failed_proc:
             return 1
