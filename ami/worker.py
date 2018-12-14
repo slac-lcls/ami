@@ -72,20 +72,6 @@ class Worker(object):
                             break
                     if new_graph is not None:
                         self.graph = new_graph
-
-                        """
-                        #print("worker%d: Received new configuration" % self.idnum)
-                        #try:
-                        #    self.graph.configure(sources)
-                        #    print("worker%d: Configuration complete" % self.idnum)
-                        #except GraphConfigError as graph_err:
-                        #    print(
-                        #        "worker%d: Configuration failed reverting to previous config:" %
-                        #        self.idnum, graph_err)
-                            # if this fails we just die
-                        #    self.graph.revert()
-                        """
-
                         self.new_graph_available = False
 
                 try:
