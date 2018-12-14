@@ -20,7 +20,7 @@ from ami.comm import Ports
 from ami.manager import run_manager
 from ami.worker import run_worker
 from ami.collector import run_collector
-from ami.client import CommunicationHandler
+from ami.comm import GraphCommHandler
 
 
 class AmiTBase(object):
@@ -76,7 +76,7 @@ class AmiTBase(object):
         manager_proc.start()
         self.procs.append(manager_proc)
 
-        self.comm_handler = CommunicationHandler(comm_addr)
+        self.comm_handler = GraphCommHandler(comm_addr)
 
         return 0
 
