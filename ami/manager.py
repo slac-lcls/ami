@@ -49,7 +49,7 @@ class Manager(Collector):
     def features(self):
         feature_set = set(self.partition)
         if self.graph is not None:
-            feature_set.update(self.graph.outputs['globalCollector'])
+            feature_set.update(self.graph.names)
         return feature_set
 
     @property
@@ -107,6 +107,17 @@ class Manager(Collector):
             self.graph.add(dill.loads(raw_add))
             self.publish_graph("add", raw_add)
         self.compile_graph()
+
+    def cmd_del_graph(self):
+        name = self.comm.recv_string()
+        if self.graph is not None:
+            self.graph.remove(name)
+        # Check if the resulting graph is non-empty
+        if self.graph:
+            self.compile_graph()
+        else:
+            # if the graph is empty remove it
+            self.graph = None
 
     def cmd_set_graph(self):
         raw_graph = self.comm.recv()

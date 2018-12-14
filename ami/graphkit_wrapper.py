@@ -14,9 +14,32 @@ class Graph():
         self.graphkit = None
         self.global_operations = set()
         self.expanded_global_operations = set()
+        self.children_of_global_operations = {}
         self.inputs = collections.defaultdict(set)
         self.outputs = collections.defaultdict(set)
         self.flattened_inputs = collections.defaultdict(set)
+
+    def __bool__(self):
+        return self.graph.size != 0
+
+    def name_is_valid(self, name):
+        """
+        Returns true is the name passed is a valid user-defined name for inputs
+        and outputs in the graph.
+
+        In other words this checks if the name collides with one the graph may
+        generate internally.
+        """
+        return not name.endswith(('_worker', '_localCollector', '_globalCollector'))
+
+    @property
+    def names(self):
+        """
+        Returns a list of all user defined names in the graph that can be used
+        as inputs for nodes. Internally generated names are exclued from this
+        list!
+        """
+        return [node for node in self.graph.nodes if isinstance(node, str) and self.name_is_valid(node)]
 
     def add(self, ops):
         if type(ops) is not list:
@@ -43,6 +66,12 @@ class Graph():
                 self.graph.remove_nodes_from(desc)
                 self.graph.remove_node(n)
                 break
+        if name in self.children_of_global_operations:
+            for child in self.children_of_global_operations[name]:
+                self.remove(child.name)
+                if child in self.expanded_global_operations:
+                    self.expanded_global_operations.remove(child)
+            del self.children_of_global_operations[name]
 
         self.graphkit = None
 
@@ -92,6 +121,7 @@ class Graph():
             inputs = node.inputs
             outputs = node.outputs
             condition_needs = node.condition_needs
+            self.children_of_global_operations[node.name] = set()
 
             self.graph.remove_node(node)
             NewNode = getattr(sys.modules[__name__], node.__class__.__name__)
@@ -112,6 +142,7 @@ class Graph():
                                           condition_needs=condition_needs, reduction=node.reduction, N=worker_N)
                     worker_node.color = color
                     worker_node.is_global_operation = False
+                    self.children_of_global_operations[node.name].add(worker_node)
                     self.outputs[color].update(worker_outputs)
                     for i in inputs:
                         self.graph.add_edge(i, worker_node)
@@ -133,6 +164,7 @@ class Graph():
                                                    N=local_collector_N)
                     local_collector_node.color = color
                     local_collector_node.is_global_operation = False
+                    self.children_of_global_operations[node.name].add(local_collector_node)
                     self.outputs[color].update(local_collector_outputs)
                     for i in worker_outputs:
                         self.graph.add_edge(i, local_collector_node)
@@ -149,6 +181,7 @@ class Graph():
                                                     inputs=local_collector_outputs,
                                                     outputs=outputs, reduction=node.reduction, N=N)
                     global_collector_node.color = color
+                    self.children_of_global_operations[node.name].add(global_collector_node)
                     self.expanded_global_operations.add(global_collector_node)
                     for i in local_collector_outputs:
                         self.graph.add_edge(i, global_collector_node)
