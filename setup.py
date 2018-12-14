@@ -35,6 +35,7 @@ setup(
             'ami-node = ami.collector:node_main',
             'ami-global = ami.collector:global_main',
             'ami-client = ami.client:main',
+            'ami-console = ami.console:main',
             'ami-local = ami.local:main',
         ]
     },

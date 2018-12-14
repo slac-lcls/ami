@@ -3,6 +3,7 @@ import zmq
 import dill
 from enum import IntEnum
 
+from ami.graphkit_wrapper import Map, PickN
 from ami.data import MsgTypes, Message, CollectorMessage, DataTypes, Datagram
 
 
@@ -276,3 +277,53 @@ class Collector(abc.ABC):
                     self.process_msg(msg)
                 elif sock in self.handlers:
                     self.handlers[sock]()
+
+
+class GraphCommHandler(object):
+
+    def __init__(self, addr):
+        self.ctx = zmq.Context()
+        self.addr = addr
+        self.sock = self.ctx.socket(zmq.REQ)
+        self.sock.connect(self.addr)
+
+    @property
+    def graph(self):
+        self.sock.send_string('get_graph')
+        return self.sock.recv_pyobj()
+
+    @property
+    def features(self):
+        self.sock.send_string('get_features')
+        return self.sock.recv_pyobj()
+
+    @property
+    def types(self):
+        self.sock.send_string('get_types')
+        return self.sock.recv_pyobj()
+
+    def edit(self, cmd, node):
+        self.sock.send_string('%s_graph' % cmd, zmq.SNDMORE)
+        self.sock.send(dill.dumps(node))
+        return self.sock.recv_string() == 'ok'
+
+    def pickN(self, name, inputs, outputs, N=1):
+        node = PickN(name=name, inputs=inputs, outputs=outputs, N=N)
+        return self.edit("add", node)
+
+    def map(self, name, inputs, outputs, func):
+        node = Map(name=name, inputs=inputs, outputs=outputs, func=func)
+        return self.edit("add", node)
+
+    def clear(self):
+        self.sock.send_string('clear_graph')
+        return self.sock.recv_string() == 'ok'
+
+    def reset(self):
+        self.sock.send_string('reset_features')
+        return self.sock.recv_string() == 'ok'
+
+    def update(self, graph):
+        self.sock.send_string('set_graph', zmq.SNDMORE)
+        self.sock.send(dill.dumps(graph))
+        return self.sock.recv_string() == 'ok'

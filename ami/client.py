@@ -1,9 +1,7 @@
 #!/usr/bin/env python
 import re
-import zmq
 import sys
 import dill
-import json
 import argparse
 import importlib
 import threading
@@ -18,55 +16,8 @@ from PyQt5.QtCore import pyqtSlot, QTimer, QRect
 
 import pyqtgraph as pg
 
-from ami.graphkit_wrapper import Map, PickN
 from ami.data import DataTypes
-from ami.comm import Ports
-
-
-class CommunicationHandler(object):
-
-    def __init__(self, addr):
-        self.ctx = zmq.Context()
-        self.addr = addr
-        self.sock = self.ctx.socket(zmq.REQ)
-        self.sock.connect(self.addr)
-
-    @property
-    def graph(self):
-        self.sock.send_string('get_graph')
-        return self.sock.recv_pyobj()
-
-    @property
-    def features(self):
-        self.sock.send_string('get_features')
-        return self.sock.recv_pyobj()
-
-    @property
-    def types(self):
-        self.sock.send_string('get_types')
-        return self.sock.recv_pyobj()
-
-    def edit(self, cmd, node):
-        self.sock.send_string('%s_graph' % cmd, zmq.SNDMORE)
-        self.sock.send(dill.dumps(node))
-        return self.sock.recv_string() == 'ok'
-
-    def pickN(self, name, inputs, outputs):
-        node = PickN(name=name, inputs=inputs, outputs=outputs)
-        return self.edit("add", node)
-
-    def clear(self):
-        self.sock.send_string('clear_graph')
-        return self.sock.recv_string() == 'ok'
-
-    def reset(self):
-        self.sock.send_string('reset_features')
-        return self.sock.recv_string() == 'ok'
-
-    def update(self, graph):
-        self.sock.send_string('set_graph', zmq.SNDMORE)
-        self.sock.send(dill.dumps(graph))
-        return self.sock.recv_string() == 'ok'
+from ami.comm import Ports, GraphCommHandler
 
 
 class ScalarWidget(QLCDNumber):
@@ -78,7 +29,7 @@ class ScalarWidget(QLCDNumber):
         self.setGeometry(QRect(320, 180, 191, 81))
         self.setDigitCount(10)
         self.setObjectName(topic)
-        self.comm_handler = CommunicationHandler(addr)
+        self.comm_handler = GraphCommHandler(addr)
         self.timer.timeout.connect(self.get_scalar)
         self.timer.start(1000)
 
@@ -101,7 +52,7 @@ class WaveformWidget(pg.GraphicsLayoutWidget):
         self.name = name
         self.topic = topic
         self.timer = QTimer()
-        self.comm_handler = CommunicationHandler(addr)
+        self.comm_handler = GraphCommHandler(addr)
         self.plot_view = self.addPlot()
         self.plot = None
         self.timer.timeout.connect(self.get_waveform)
@@ -128,7 +79,7 @@ class AreaDetWidget(pg.ImageView):
         super(AreaDetWidget, self).__init__(parent)
         self.name = name
         self.topic = topic
-        self.comm_handler = CommunicationHandler(addr)
+        self.comm_handler = GraphCommHandler(addr)
         self.timer = QTimer()
         self.timer.timeout.connect(self.get_image)
         self.timer.start(1000)
@@ -153,8 +104,10 @@ class AreaDetWidget(pg.ImageView):
         def roi_func(image):
             return pg.affineSlice(image, shape, origin, vector, (0, 1))
 
-        roi_map = Map(name="map_%s_roi" % self.name, inputs=[self.name], outputs=["%s_roi" % self.name], func=roi_func)
-        self.comm_handler.edit("add", roi_map)
+        self.comm_handler.map("map_%s_roi" % self.name,
+                              inputs=[self.name],
+                              outputs=["%s_roi" % self.name],
+                              func=roi_func)
 
 
 class Calculator(QWidget):
@@ -221,11 +174,10 @@ class Calculator(QWidget):
                 loc[k] = v
             return eval(code, glb, loc)
 
-        calc_map = Map(name="map_%s_calc" % name,
-                       inputs=inputs,
-                       outputs=[name],
-                       func=calc_func)
-        self.comm.edit("add", calc_map)
+        self.comm.map(name="map_%s_calc" % name,
+                      inputs=inputs,
+                      outputs=[name],
+                      func=calc_func)
 
 
 class DetectorList(QListWidget):
@@ -287,7 +239,11 @@ class DetectorList(QListWidget):
     def item_clicked(self, item):
 
         name = item.text()
-        topic = '_auto_%s' % name
+        # Check if there is already data for the feature in the result store
+        if name in self.types:
+            topic = name
+        else:
+            topic = '_auto_%s' % name
 
         if name == self.calc_id:
             if self.calc is None:
@@ -317,7 +273,7 @@ class AmiGui(QWidget):
     def __init__(self, queue, addr, ami_save, parent=None):
         super(__class__, self).__init__(parent)
         self.setWindowTitle("AMI Client")
-        self.comm_handler = CommunicationHandler(addr)
+        self.comm_handler = GraphCommHandler(addr)
 
         self.setupLabel = QLabel('Setup:', self)
         self.save_button = QPushButton('Save', self)
@@ -432,17 +388,17 @@ def run_client(addr, load):
     saved_cfg = None
     if load is not None:
         try:
-            with open(load, 'r') as cnf:
-                saved_cfg = json.load(cnf)
+            with open(load, 'rb') as cnf:
+                saved_cfg = dill.load(cnf)
         except OSError as os_exp:
             print(
                 "ami-client: problem opening saved graph configuration file:",
                 os_exp)
             return 1
-        except json.decoder.JSONDecodeError as json_exp:
+        except dill.UnpicklingError as dill_exp:
             print(
                 "ami-client: problem parsing saved graph configuration file (%s):" %
-                load, json_exp)
+                load, dill_exp)
             return 1
 
     queue = mp.Queue()
