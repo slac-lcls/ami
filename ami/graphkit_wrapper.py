@@ -47,8 +47,8 @@ class Graph():
         self.graphkit = None
 
     def reset(self):
-        nodes = filter(lambda node: isinstance(StatefulTransformation, node), self.graph.nodes)
-        map(lambda node: node.reset(), nodes)
+        nodes = list(filter(lambda node: isinstance(node, StatefulTransformation), self.graph.nodes))
+        list(map(lambda node: node.reset(), nodes))
 
     def color_nodes(self):
         """
@@ -383,13 +383,13 @@ class PickN(StatefulTransformation):
         self.N = N
         self.idx = 0
         self.res = [None]*self.N
-        self.reset = False
+        self.clear = False
         self.is_global_operation = True
 
     def __call__(self, args):
-        if self.reset:
+        if self.clear:
             self.res = [None]*self.N
-            self.reset = False
+            self.clear = False
 
         if type(args) is not list:
             args = [args]
@@ -399,14 +399,14 @@ class PickN(StatefulTransformation):
             self.idx = (self.idx + 1) % self.N
 
         if not any(x is None for x in self.res):
-            self.reset = True
+            self.clear = True
             if self.N > 1:
                 return self.res
             elif self.N == 1:
                 return self.res[0]
 
     def reset(self):
-        pass
+        self.res = [None]*self.N
 
 
 def Binning(name="", inputs=[], outputs=[], condition_needs=[]):
