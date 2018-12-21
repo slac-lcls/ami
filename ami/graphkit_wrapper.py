@@ -3,7 +3,7 @@ import networkx as nx
 import itertools as it
 import collections
 import sys
-from graphkit import operation, If, Else, compose
+from networkfox import operation, If, Else, compose
 
 
 class Graph():
