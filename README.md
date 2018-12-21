@@ -47,6 +47,7 @@ Bigger Projects:
 - display "reference counting" for automated graph-remove
 - graph mgr improvements
 - external-data (including collector) to worker feedback. probably EPICS.  (e.g. for background subtraction)
+- complex data types (e.g. peaks/times from hsd fex)
 
 6 DEC 18
 CPO/TJL:
