@@ -101,7 +101,9 @@ class Source(abc.ABC):
 class PsanaSource(Source):
     def __init__(self, idnum, num_workers, src_cfg):
         super(__class__, self).__init__(idnum, num_workers, src_cfg)
-        self.ds = psana.DataSource(self.config['filename'])
+        self.delimiter = ":"
+        if psana is not None:
+            self.ds = psana.DataSource(self.config['filename'])
 
     def partition(self):
         dets = []
@@ -110,7 +112,7 @@ class PsanaSource(Source):
             for (detname, det_xface_name), det_attr_list in detinfo.items():
                 # need this loop when we send the GUI det xfaces and attributes
                 # for det_xface_name,det_xface_attrs in det_xface_dict.items():
-                dets += ["%s:%s:%s" % (detname, det_xface_name, attr) for attr in det_attr_list]
+                dets += [self.delimiter.join((detname, det_xface_name, attr)) for attr in det_attr_list]
         return dets
 
     def events(self):
@@ -126,7 +128,7 @@ class PsanaSource(Source):
                 # timestamp = evt.seq.timestamp()
                 for name in self.requested_names:
                     obj = evt
-                    for token in name.split(":"):
+                    for token in name.split(self.delimiter):
                         obj = getattr(obj, token)
                     event[name] = obj
                 msg = Message(MsgTypes.Datagram, self.idnum, event)
