@@ -1,3 +1,4 @@
+import abc
 import time
 try:
     import psana
@@ -76,7 +77,7 @@ class CollectorMessage(Message):
         self.heartbeat = heartbeat
 
 
-class PsanaSource(object):
+class Source(abc.ABC):
     def __init__(self, idnum, num_workers, src_cfg):
         self.idnum = idnum
         self.num_workers = num_workers
@@ -84,10 +85,23 @@ class PsanaSource(object):
         self.init_time = src_cfg['init_time']
         self.config = src_cfg['config']
         self.requested_names = []
-        self.ds = psana.DataSource(self.config['filename'])
 
     def request(self, names):
         self.requested_names = names
+
+    @abc.abstractmethod
+    def partition(self):
+        pass
+
+    @abc.abstractmethod
+    def events(self):
+        pass
+
+
+class PsanaSource(Source):
+    def __init__(self, idnum, num_workers, src_cfg):
+        super(__class__, self).__init__(idnum, num_workers, src_cfg)
+        self.ds = psana.DataSource(self.config['filename'])
 
     def partition(self):
         dets = []
@@ -122,17 +136,10 @@ class PsanaSource(object):
                 time.sleep(self.interval)
 
 
-class RandomSource(object):
+class RandomSource(Source):
     def __init__(self, idnum, num_workers, src_cfg):
+        super(__class__, self).__init__(idnum, num_workers, src_cfg)
         np.random.seed([idnum])
-        self.idnum = idnum
-        self.num_workers = num_workers
-        self.interval = src_cfg['interval']
-        self.init_time = src_cfg['init_time']
-        self.config = src_cfg['config']
-
-    def request(self, names):
-        pass
 
     def partition(self):
         return list(self.config.keys())
@@ -143,18 +150,19 @@ class RandomSource(object):
         while True:
             event = {}
             for name, config in self.config.items():
-                if config['dtype'] == 'Scalar':
-                    if config.get('integer', False):
-                        value = int(
-                            config['range'][0] + (config['range'][1] - config['range'][0]) * np.random.rand(1)[0]
-                        )
+                if name in self.requested_names:
+                    if config['dtype'] == 'Scalar':
+                        if config.get('integer', False):
+                            value = int(
+                                config['range'][0] + (config['range'][1] - config['range'][0]) * np.random.rand(1)[0]
+                            )
+                        else:
+                            value = config['range'][0] + (config['range'][1] - config['range'][0]) * np.random.rand(1)[0]
+                        event[name] = value
+                    elif config['dtype'] == 'Waveform' or config['dtype'] == 'Image':
+                        event[name] = np.random.normal(config['pedestal'], config['width'], config['shape'])
                     else:
-                        value = config['range'][0] + (config['range'][1] - config['range'][0]) * np.random.rand(1)[0]
-                    event[name] = value
-                elif config['dtype'] == 'Waveform' or config['dtype'] == 'Image':
-                    event[name] = np.random.normal(config['pedestal'], config['width'], config['shape'])
-                else:
-                    print("DataSrc: %s has unknown type %s", name, config['dtype'])
+                        print("DataSrc: %s has unknown type %s", name, config['dtype'])
             count += 1
             msg = Message(MsgTypes.Datagram, self.idnum, event)
             msg.timestamp = self.num_workers * count + self.idnum
@@ -162,20 +170,13 @@ class RandomSource(object):
             time.sleep(self.interval)
 
 
-class StaticSource(object):
+class StaticSource(Source):
     def __init__(self, idnum, num_workers, src_cfg):
-        self.idnum = idnum
-        self.num_workers = num_workers
-        self.interval = src_cfg['interval']
-        self.init_time = src_cfg['init_time']
-        self.config = src_cfg['config']
+        super(__class__, self).__init__(idnum, num_workers, src_cfg)
         self.bound = np.inf
 
         if 'bound' in src_cfg:
             self.bound = src_cfg['bound']
-
-    def requests(self, name):
-        pass
 
     def partition(self):
         return list(self.config.keys())
@@ -186,24 +187,25 @@ class StaticSource(object):
         while True:
             event = []
             for name, config in self.config.items():
-                if config['dtype'] == 'Scalar':
-                    event.append(
-                        Datagram(
-                            name,
-                            getattr(DataTypes, config['dtype']),
-                            1
+                if name in self.requested_names:
+                    if config['dtype'] == 'Scalar':
+                        event.append(
+                            Datagram(
+                                name,
+                                getattr(DataTypes, config['dtype']),
+                                1
+                            )
                         )
-                    )
-                elif config['dtype'] == 'Waveform' or config['dtype'] == 'Image':
-                    event.append(
-                        Datagram(
-                            name,
-                            getattr(DataTypes, config['dtype']),
-                            np.ones(config['shape'])
+                    elif config['dtype'] == 'Waveform' or config['dtype'] == 'Image':
+                        event.append(
+                            Datagram(
+                                name,
+                                getattr(DataTypes, config['dtype']),
+                                np.ones(config['shape'])
+                            )
                         )
-                    )
-                else:
-                    print("DataSrc: %s has unknown type %s", name, config['dtype'])
+                    else:
+                        print("DataSrc: %s has unknown type %s", name, config['dtype'])
             count += 1
             msg = Message(MsgTypes.Datagram, self.idnum, event)
             msg.timestamp = self.num_workers * count + self.idnum
