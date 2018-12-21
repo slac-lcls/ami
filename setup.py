@@ -25,8 +25,12 @@ setup(
     package_dir={'ami.examples': 'examples'},
     packages=['ami', 'ami.examples'],
     install_requires=[
+        'dill',
         'pyzmq',
         'numpy',
+        'pyqtgraph',
+        'networkfox',
+        'ipython',
     ],
     entry_points={
         'console_scripts': [
