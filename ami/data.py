@@ -83,36 +83,43 @@ class PsanaSource(object):
         self.interval = src_cfg['interval']
         self.init_time = src_cfg['init_time']
         self.config = src_cfg['config']
+        self.requested_names = []
         self.ds = psana.DataSource(self.config['filename'])
+
+    def request(self, names):
+        self.requested_names = names
 
     def partition(self):
         dets = []
         for run in self.ds.runs():
             detinfo = run.detinfo
-            for detname, det_xface_dict in detinfo.items():
+            for (detname, det_xface_name), det_attr_list in detinfo.items():
                 # need this loop when we send the GUI det xfaces and attributes
                 # for det_xface_name,det_xface_attrs in det_xface_dict.items():
-                dets.append(detname)
+                dets += ["%s:%s:%s" % (detname, det_xface_name, attr) for attr in det_attr_list]
         return dets
 
     def events(self):
         timestamp = 0
         time.sleep(self.init_time)
         while True:
-            event = []
+            event = {}
             if psana is None:
                 print("psana is not available!")
                 break
             for nevt, evt in enumerate(self.ds.events()):
-                for dgram in evt._dgrams:
-                    # FIXME: when we move to real timestamps we should use this line
-                    # timestamp = dgram.seq.timestamp()
-                    timestamp = nevt
-                    event.append(Datagram("xppcspad", DataTypes.Waveform, evt.xppcspad.raw.raw))
-                    msg = Message(MsgTypes.Datagram, self.idnum, event)
-                    msg.timestamp = timestamp
-                    yield msg
-                    time.sleep(self.interval)
+                # FIXME: when we move to real timestamps we should use this line
+                # timestamp = evt.seq.timestamp()
+                timestamp = nevt
+                for name in self.requested_names:
+                    obj = evt
+                    for token in name.split(":"):
+                        obj = getattr(obj, token)
+                    event[name] = obj
+                msg = Message(MsgTypes.Datagram, self.idnum, event)
+                msg.timestamp = timestamp
+                yield msg
+                time.sleep(self.interval)
 
 
 class RandomSource(object):
@@ -123,6 +130,9 @@ class RandomSource(object):
         self.interval = src_cfg['interval']
         self.init_time = src_cfg['init_time']
         self.config = src_cfg['config']
+
+    def request(self, names):
+        pass
 
     def partition(self):
         return list(self.config.keys())
@@ -163,6 +173,9 @@ class StaticSource(object):
 
         if 'bound' in src_cfg:
             self.bound = src_cfg['bound']
+
+    def requests(self, name):
+        pass
 
     def partition(self):
         return list(self.config.keys())

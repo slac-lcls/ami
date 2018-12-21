@@ -57,11 +57,13 @@ class Worker(object):
                                 new_graph = dill.loads(payload)
                                 if new_graph is not None:
                                     new_graph.compile(num_workers=num_work, num_local_collectors=num_col)
+                                    self.src.request(new_graph.inputs[None]['worker'])
                             elif topic == "add":
                                 add_update = dill.loads(payload)
                                 if self.graph is not None:
                                     self.graph.add(add_update)
                                     self.graph.compile(num_workers=num_work, num_local_collectors=num_col)
+                                    self.src.request(self.graph.inputs[None]['worker'])
                                 else:
                                     print("worker%d: Add requested on empty graph" % self.idnum)
                             else:

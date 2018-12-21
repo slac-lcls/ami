@@ -2,6 +2,6 @@
     "interval": 1,
     "init_time": 0.5,
     "config": {
-        "filename": "/reg/neh/home/cpo/git/lcls2/psana/psana/tests/data.xtc"
+        "filename": "data.xtc"
     }
 }
