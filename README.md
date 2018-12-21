@@ -6,12 +6,6 @@ The LCLS-II online graphical analysis monitoring package.
 [Design documentation](doc/toplevel.md)
 [Test information](doc/testing.md)
 
-# Requirements
-* Python 3.5+
-* ipython
-* pyzmq
-* numpy
-
 # Examples
 If you use the setup.py included to set this up you should now have two console
 scripts available on your path: `ami-worker` and `ami-manager`. Several example
@@ -37,6 +31,22 @@ To load a graph, add this flag to ami-local:
 To use psana a working release need to be added to the python path
 
 # Status/To-do
+
+20 DEC 18:
+Bigger Projects:
+- python message logging
+- performance testing
+- switch to shmem
+- startup synchronization issues (e.g. order)
+- pydm
+- pvaccess
+- functionality (e.g. Clemens' complex example)
+- finalize det_xface
+- preserve data hierarchy in the partition() call?
+- collector improvements (e.g. timeouts)
+- display "reference counting" for automated graph-remove
+- graph mgr improvements
+- external-data (including collector) to worker feedback. probably EPICS.  (e.g. for background subtraction)
 
 6 DEC 18
 CPO/TJL:
