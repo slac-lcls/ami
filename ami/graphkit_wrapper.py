@@ -41,6 +41,14 @@ class Graph():
         """
         return [node for node in self.graph.nodes if isinstance(node, str) and self.name_is_valid(node)]
 
+    @property
+    def sources(self):
+        """
+        Returns a list of all input data sources needed by the worker to process
+        the full graph.
+        """
+        return [name for name in self.inputs[None]['worker'] if self.name_is_valid(name)]
+
     def add(self, ops):
         if type(ops) is not list:
             ops = [ops]
