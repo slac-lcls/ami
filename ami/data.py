@@ -104,6 +104,8 @@ class PsanaSource(Source):
         self.delimiter = ":"
         if psana is not None:
             self.ds = psana.DataSource(self.config['filename'])
+        else:
+            raise NotImplementedError("psana is not available!")
 
     def partition(self):
         dets = []
@@ -120,9 +122,6 @@ class PsanaSource(Source):
         time.sleep(self.init_time)
         while True:
             event = {}
-            if psana is None:
-                print("psana is not available!")
-                break
             for evt in self.ds.events():
                 # FIXME: when we move to real timestamps we should use this line
                 # timestamp = evt.seq.timestamp()
