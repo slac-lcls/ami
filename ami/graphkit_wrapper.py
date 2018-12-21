@@ -270,6 +270,10 @@ class Graph():
 
         self.inputs = inputs
 
+    def plot(self, filename=""):
+        assert self.graphkit is not None, "call compile first"
+        self.graphkit.plot(filename)
+
     def __call__(self, *args, **kwargs):
         assert self.graphkit is not None, "call compile first"
 
