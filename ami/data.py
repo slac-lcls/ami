@@ -107,10 +107,9 @@ class PsanaSource(object):
             if psana is None:
                 print("psana is not available!")
                 break
-            for nevt, evt in enumerate(self.ds.events()):
+            for evt in self.ds.events():
                 # FIXME: when we move to real timestamps we should use this line
                 # timestamp = evt.seq.timestamp()
-                timestamp = nevt
                 for name in self.requested_names:
                     obj = evt
                     for token in name.split(":"):
@@ -118,6 +117,7 @@ class PsanaSource(object):
                     event[name] = obj
                 msg = Message(MsgTypes.Datagram, self.idnum, event)
                 msg.timestamp = timestamp
+                timestamp += 1
                 yield msg
                 time.sleep(self.interval)
 
