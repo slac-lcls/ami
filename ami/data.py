@@ -152,13 +152,11 @@ class RandomSource(Source):
             for name, config in self.config.items():
                 if name in self.requested_names:
                     if config['dtype'] == 'Scalar':
+                        value = config['range'][0] + (config['range'][1] - config['range'][0]) * np.random.rand(1)[0]
                         if config.get('integer', False):
-                            value = int(
-                                config['range'][0] + (config['range'][1] - config['range'][0]) * np.random.rand(1)[0]
-                            )
+                            event[name] = int(value)
                         else:
-                            value = config['range'][0] + (config['range'][1] - config['range'][0]) * np.random.rand(1)[0]
-                        event[name] = value
+                            event[name] = value
                     elif config['dtype'] == 'Waveform' or config['dtype'] == 'Image':
                         event[name] = np.random.normal(config['pedestal'], config['width'], config['shape'])
                     else:
