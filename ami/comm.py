@@ -315,6 +315,12 @@ class GraphCommHandler(object):
         self.sock.send_string('get_types')
         return self.sock.recv_pyobj()
 
+    def get_feature(self, name):
+        self.sock.send_string("feature:%s" % name)
+        reply = self.sock.recv_string()
+        if reply == 'ok':
+            return self.sock.recv_pyobj()
+
     def edit(self, cmd, node):
         self.sock.send_string('%s_graph' % cmd, zmq.SNDMORE)
         self.sock.send(dill.dumps(node))

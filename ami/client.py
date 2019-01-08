@@ -40,10 +40,9 @@ class ScalarWidget(QLCDNumber):
 
     @pyqtSlot()
     def get_scalar(self):
-        self.comm_handler.sock.send_string("feature:%s" % self.topic)
-        reply = self.comm_handler.sock.recv_string()
-        if reply == 'ok':
-            self.scalar_updated(self.comm_handler.sock.recv_pyobj())
+        reply = self.comm_handler.get_feature(self.topic)
+        if reply is not None:
+            self.scalar_updated(reply)
         else:
             logger.warn("failed to fetch %s from manager!", self.topic)
 
@@ -65,10 +64,9 @@ class WaveformWidget(pg.GraphicsLayoutWidget):
 
     @pyqtSlot()
     def get_waveform(self):
-        self.comm_handler.sock.send_string("feature:%s" % self.topic)
-        reply = self.comm_handler.sock.recv_string()
-        if reply == 'ok':
-            self.waveform_updated(self.comm_handler.sock.recv_pyobj())
+        reply = self.comm_handler.get_feature(self.topic)
+        if reply is not None:
+            self.waveform_updated(reply)
         else:
             logger.warn("failed to fetch %s from manager!", self.topic)
 
@@ -92,10 +90,9 @@ class AreaDetWidget(pg.ImageView):
 
     @pyqtSlot()
     def get_image(self):
-        self.comm_handler.sock.send_string("feature:%s" % self.topic)
-        reply = self.comm_handler.sock.recv_string()
-        if reply == 'ok':
-            self.image_updated(self.comm_handler.sock.recv_pyobj())
+        reply = self.comm_handler.get_feature(self.topic)
+        if reply is not None:
+            self.image_updated(reply)
         else:
             logger.warn("failed to fetch %s from manager!", self.topic)
 
