@@ -80,7 +80,7 @@ class Worker(object):
                     if self.graph is not None:
                         self.store.update(self.graph(msg.payload, color='worker'))
                 except Exception as graph_err:
-                    logger.critical("worker%s: Failure encountered executing graph:", self.idnum, graph_err)
+                    logger.exception("worker%s: Failure encountered executing graph:", self.idnum)
                     return 1
             else:
                 self.store.send(msg)
