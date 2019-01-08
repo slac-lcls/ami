@@ -1,9 +1,14 @@
 import sys
 import dill
+import logging
 import IPython
 import argparse
 
+from ami import LogConfig
 from ami.comm import Ports, GraphCommHandler
+
+
+logger = logging.getLogger(__name__)
 
 
 def run_console(addr, load):
@@ -14,13 +19,9 @@ def run_console(addr, load):
             with open(load, 'rb') as cnf:
                 amicli.update(dill.load(cnf))
         except OSError as os_exp:
-                print(
-                    "ami-console: problem opening saved graph configuration file:",
-                    os_exp)
+                logger.exception("ami-console: problem opening saved graph configuration file:")
         except dill.UnpicklingError as dill_exp:
-                print(
-                    "ami-console: problem parsing saved graph configuration file (%s):" %
-                    load, dill_exp)
+                logger.exception("ami-console: problem parsing saved graph configuration file (%s):", load)
 
     IPython.embed(banner1='AMII Interactive Shell Client',
                   banner2=" - using manager at %s\n - use 'amicli?' for help\n" % addr)
@@ -50,13 +51,33 @@ def main():
         help='saved AMII configuration to load'
     )
 
+    parser.add_argument(
+        '--log-level',
+        default=LogConfig.Level,
+        help='the logging level of the application (default %s)' % LogConfig.Level
+    )
+
+    parser.add_argument(
+        '--log-file',
+        help='an optional file to write the log output to'
+    )
+
     args = parser.parse_args()
     addr = "tcp://%s:%d" % (args.host, args.port)
+
+    log_handlers = [logging.StreamHandler()]
+    if args.log_file is not None:
+        file_fmt = logging.Formatter(LogConfig.Format)
+        file_handler = logging.FileHandler(args.log_file)
+        file_handler.setFormatter(file_fmt)
+        log_handlers.append(file_handler)
+    log_level = getattr(logging, args.log_level.upper(), logging.INFO)
+    logging.basicConfig(format=LogConfig.BasicFormat, level=log_level, handlers=log_handlers)
 
     try:
         return run_console(addr, args.load)
     except KeyboardInterrupt:
-        print("Client killed by user...")
+        logger.info("Client killed by user...")
         return 0
 
 

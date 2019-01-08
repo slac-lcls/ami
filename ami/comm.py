@@ -1,10 +1,14 @@
 import abc
 import zmq
 import dill
+import logging
 from enum import IntEnum
 
 from ami.graphkit_wrapper import Map, PickN
 from ami.data import MsgTypes, Message, CollectorMessage, DataTypes, Datagram
+
+
+logger = logging.getLogger(__name__)
 
 
 class Colors:
@@ -26,7 +30,8 @@ class Store:
     This class is a key value that for holding Datagrams
     """
 
-    def __init__(self):
+    def __init__(self, version=0):
+        self.version = version
         self._updated = {}
         self._store = {}
 
@@ -135,7 +140,7 @@ class ResultStore(Store, ZmqHandler):
         ZmqHandler.__init__(self, addr, ctx)
 
     def collect(self, identity, heartbeat):
-        self.send(CollectorMessage(MsgTypes.Datagram, identity, heartbeat, self.namespace))
+        self.send(CollectorMessage(MsgTypes.Datagram, identity, heartbeat, self.version, self.namespace))
 
 
 class PickNBuilder(ZmqHandler):
@@ -170,29 +175,37 @@ class EventBuilder(ZmqHandler):
         self.contribs = {}
         self.graphs = {}
 
-    def set_graph(self, eb_key, nwork, ncol, graph):
-        self.graphs[eb_key] = dill.loads(graph)
-        if self.graphs[eb_key] is not None:
-            self.graphs[eb_key].compile(num_workers=nwork, num_local_collectors=ncol)
+    def set_graph(self, ver_key, nwork, ncol, graph):
+        self.graphs[ver_key] = dill.loads(graph)
+        if self.graphs[ver_key] is not None:
+            self.graphs[ver_key].compile(num_workers=nwork, num_local_collectors=ncol)
 
-    def graph(self, eb_key):
-        return self.graphs.get(eb_key)
+    def graph(self, ver_key):
+        return self.graphs.get(ver_key)
 
     def complete(self, identity, eb_key):
         if eb_key in self.pending:
-            self.send(CollectorMessage(MsgTypes.Datagram, identity, eb_key, self.pending[eb_key].namespace))
+            self.send(CollectorMessage(MsgTypes.Datagram,
+                                       identity,
+                                       eb_key,
+                                       self.pending[eb_key].version,
+                                       self.pending[eb_key].namespace))
             del self.pending[eb_key]
             del self.contribs[eb_key]
-            # print("completed heartbeat", eb_key)
+            logger.debug("completed heartbeat %s", eb_key)
 
-    def update(self, eb_key, eb_id, data):
+    def update(self, eb_key, eb_id, ver_key, data):
         if eb_key not in self.pending:
-            self.pending[eb_key] = Store()
+            self.pending[eb_key] = Store(version=ver_key)
             self.contribs[eb_key] = 0
         self.latest = eb_key
-        graph = self.graph(eb_key)
-        if graph is not None:
-            self.pending[eb_key].update(graph(data, color=self.color))
+        if ver_key != self.pending[eb_key].version:
+            logger.error("Graph version mismatch: heartbeat %s from id %s has version %s when %s was expected",
+                         eb_key, eb_id, ver_key, self.pending[eb_key].version)
+        else:
+            graph = self.graph(ver_key)
+            if graph is not None:
+                self.pending[eb_key].update(graph(data, color=self.color))
 
     def put(self, eb_key, eb_id, name, data):
         if eb_key not in self.pending:

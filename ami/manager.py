@@ -3,10 +3,15 @@ import re
 import sys
 import zmq
 import dill
+import logging
 import argparse
+from ami import LogConfig
 from ami.comm import Ports, Collector, Store
 from ami.data import MsgTypes, Transitions
 from ami.graphkit_wrapper import Graph
+
+
+logger = logging.getLogger(__name__)
 
 
 class Manager(Collector):
@@ -29,6 +34,7 @@ class Manager(Collector):
         self.feature_store = Store()
         self.feature_req = re.compile("feature:(?P<name>.*)")
         self.graph = None
+        self.version = 0
 
         self.comm = self.ctx.socket(zmq.REP)
         self.comm.bind(comm_addr)
@@ -126,15 +132,16 @@ class Manager(Collector):
         self.compile_graph()
 
     def publish_graph(self, topic, graph):
-        print("manager: sending requested graph...")
+        logger.info("manager: sending requested graph...")
         try:
+            self.version += 1
             self.graph_comm.send_string(topic, zmq.SNDMORE)
-            self.graph_comm.send_pyobj((self.num_workers, self.num_nodes), zmq.SNDMORE)
+            self.graph_comm.send_pyobj((self.num_workers, self.num_nodes, self.version), zmq.SNDMORE)
             self.graph_comm.send(graph)
-            print("manager: sending of graph completed")
+            logger.info("manager: sending of graph completed")
             self.comm.send_string('ok')
         except Exception as exp:
-            print("manager: failed to send graph -", exp)
+            logger.exception("manager: failed to send graph -")
             self.comm.send_string('error')
 
     def graph_request(self):
@@ -142,7 +149,7 @@ class Manager(Collector):
 
         if request == "\x01graph":
             self.graph_comm.send_string("graph", zmq.SNDMORE)
-            self.graph_comm.send_pyobj((self.num_workers, self.num_nodes), zmq.SNDMORE)
+            self.graph_comm.send_pyobj((self.num_workers, self.num_nodes, self.version), zmq.SNDMORE)
             self.graph_comm.send(dill.dumps(self.graph))
 
 
@@ -201,16 +208,33 @@ def main():
         help='port for receiving results (default: %d)' % Ports.Results
     )
 
+    parser.add_argument(
+        '--log-level',
+        default=LogConfig.Level,
+        help='the logging level of the application (default %s)' % LogConfig.Level
+    )
+
+    parser.add_argument(
+        '--log-file',
+        help='an optional file to write the log output to'
+    )
+
     args = parser.parse_args()
 
     results_addr = "tcp://%s:%d" % (args.host, args.results)
     graph_addr = "tcp://%s:%d" % (args.host, args.graph)
     comm_addr = "tcp://%s:%d" % (args.host, args.port)
 
+    log_handlers = [logging.StreamHandler()]
+    if args.log_file is not None:
+        log_handlers.append(logging.FileHandler(args.log_file))
+    log_level = getattr(logging, args.log_level.upper(), logging.INFO)
+    logging.basicConfig(format=LogConfig.Format, level=log_level, handlers=log_handlers)
+
     try:
         return run_manager(args.num_workers, args.num_nodes, results_addr, graph_addr, comm_addr)
     except KeyboardInterrupt:
-        print("Manager killed by user...")
+        logger.info("Manager killed by user...")
         return 0
 
 

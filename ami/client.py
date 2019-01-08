@@ -2,6 +2,7 @@
 import re
 import sys
 import dill
+import logging
 import argparse
 import importlib
 import threading
@@ -16,8 +17,12 @@ from PyQt5.QtCore import pyqtSlot, QTimer, QRect
 
 import pyqtgraph as pg
 
+from ami import LogConfig
 from ami.data import DataTypes
 from ami.comm import Ports, GraphCommHandler
+
+
+logger = logging.getLogger(__name__)
 
 
 class ScalarWidget(QLCDNumber):
@@ -40,7 +45,7 @@ class ScalarWidget(QLCDNumber):
         if reply == 'ok':
             self.scalar_updated(self.comm_handler.sock.recv_pyobj())
         else:
-            print("failed to fetch %s from manager!" % self.topic)
+            logger.warn("failed to fetch %s from manager!", self.topic)
 
     def scalar_updated(self, data):
         self.display(data)
@@ -65,7 +70,7 @@ class WaveformWidget(pg.GraphicsLayoutWidget):
         if reply == 'ok':
             self.waveform_updated(self.comm_handler.sock.recv_pyobj())
         else:
-            print("failed to fetch %s from manager!" % self.topic)
+            logger.warn("failed to fetch %s from manager!", self.topic)
 
     def waveform_updated(self, data):
         if self.plot is None:
@@ -92,7 +97,7 @@ class AreaDetWidget(pg.ImageView):
         if reply == 'ok':
             self.image_updated(self.comm_handler.sock.recv_pyobj())
         else:
-            print("failed to fetch %s from manager!" % self.topic)
+            logger.warn("failed to fetch %s from manager!", self.topic)
 
     def image_updated(self, data):
         self.setImage(data)
@@ -204,15 +209,15 @@ class DetectorList(QListWidget):
     def spawn_window(self, data_type, name, topic):
         if data_type == DataTypes.Image:
             self._spawn_window('AreaDetector', name, topic)
-            print('create area detector window for:', name)
+            logger.info('create area detector window for: %s', name)
         elif data_type == DataTypes.Waveform:
             self._spawn_window('WaveformDetector', name, topic)
-            print('create waveform window for:', name)
+            logger.info('create waveform window for: %s', name)
         elif data_type == DataTypes.Scalar:
             self._spawn_window('ScalarDetector', name, topic)
-            print('create waveform window for:', name)
+            logger.info('create waveform window for: %s', name)
         else:
-            print('Type %s not valid' % self.types[topic])
+            logger.error('Type %s not valid', self.types[topic])
 
     @pyqtSlot()
     def get_features(self):
@@ -247,7 +252,7 @@ class DetectorList(QListWidget):
 
         if name == self.calc_id:
             if self.calc is None:
-                print('create calculator widget')
+                logger.info('create calculator widget')
                 self.calc = Calculator(self.comm_handler)
             self.calc.show()
         elif topic in self.types:
@@ -311,39 +316,31 @@ class AmiGui(QWidget):
                 with open(load_file[0], 'rb') as cnf:
                     self.amilist.load(dill.load(cnf))
             except OSError as os_exp:
-                print(
-                    "ami-client: problem opening saved graph configuration file:",
-                    os_exp)
+                logger.exception("ami-client: problem opening saved graph configuration file:")
             except dill.UnpicklingError as dill_exp:
-                print(
-                    "ami-client: problem parsing saved graph configuration file (%s):" %
-                    load_file[0], dill_exp)
+                logger.exception("ami-client: problem parsing saved graph configuration file (%s):", load_file[0])
 
     @pyqtSlot()
     def save(self):
         save_file = QFileDialog.getSaveFileName(
             self, "Save file", "autosave.ami", "AMI Autosave files (*.ami);;All Files (*)")
         if save_file[0]:
-            print(
-                "ami-client: saving graph configuration to file (%s)" %
-                save_file[0])
+            logger.info("ami-client: saving graph configuration to file (%s)", save_file[0])
             try:
                 with open(save_file[0], 'wb') as cnf:
                     dill.dump(self.comm_handler.graph, cnf)
             except OSError as os_exp:
-                print(
-                    "ami-client: problem opening saved graph configuration file:",
-                    os_exp)
+                logger.exception("ami-client: problem opening saved graph configuration file:")
 
     @pyqtSlot()
     def reset(self):
         if not self.comm_handler.reset():
-            print("ami-client: unable to reset feature store of the manager!")
+            logger.error("ami-client: unable to reset feature store of the manager!")
 
     @pyqtSlot()
     def clear(self):
         if not self.comm_handler.clear():
-            print("ami-client: unable to clear the graph configuration of the manager!")
+            logger.error("ami-client: unable to clear the graph configuration of the manager!")
 
 
 def run_main_window(queue, addr, ami_save):
@@ -391,14 +388,10 @@ def run_client(addr, load):
             with open(load, 'rb') as cnf:
                 saved_cfg = dill.load(cnf)
         except OSError as os_exp:
-            print(
-                "ami-client: problem opening saved graph configuration file:",
-                os_exp)
+            logger.exception("ami-client: problem opening saved graph configuration file:")
             return 1
         except dill.UnpicklingError as dill_exp:
-            print(
-                "ami-client: problem parsing saved graph configuration file (%s):" %
-                load, dill_exp)
+            logger.exception("ami-client: problem parsing saved graph configuration file (%s):", load)
             return 1
 
     queue = mp.Queue()
@@ -411,9 +404,9 @@ def run_client(addr, load):
     while True:
         window_type, name, topic = queue.get()
         if window_type == 'exit':
-            print("received exit signal - exiting!")
+            logger.info("received exit signal - exiting!")
             break
-        print("opening new widget:", window_type, name, topic)
+        logger.debug("opening new widget: %s %s %s", window_type, name, topic)
         proc = mp.Process(
             target=run_widget, args=(
                 queue, window_type, name, topic, addr))
@@ -445,13 +438,30 @@ def main():
         help='saved AMII configuration to load'
     )
 
+    parser.add_argument(
+        '--log-level',
+        default=LogConfig.Level,
+        help='the logging level of the application (default %s)' % LogConfig.Level
+    )
+
+    parser.add_argument(
+        '--log-file',
+        help='an optional file to write the log output to'
+    )
+
     args = parser.parse_args()
     addr = "tcp://%s:%d" % (args.host, args.port)
+
+    log_handlers = [logging.StreamHandler()]
+    if args.log_file is not None:
+        log_handlers.append(logging.FileHandler(args.log_file))
+    log_level = getattr(logging, args.log_level.upper(), logging.INFO)
+    logging.basicConfig(format=LogConfig.Format, level=log_level, handlers=log_handlers)
 
     try:
         return run_client(addr, args.load)
     except KeyboardInterrupt:
-        print("Client killed by user...")
+        logger.info("Client killed by user...")
         return 0
 
 

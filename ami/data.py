@@ -1,11 +1,15 @@
 import abc
 import time
+import logging
 try:
     import psana
 except ImportError:
     psana = None
 import numpy as np
 from enum import Enum
+
+
+logger = logging.getLogger(__name__)
 
 
 class MsgTypes(Enum):
@@ -72,9 +76,10 @@ class Message(object):
 
 
 class CollectorMessage(Message):
-    def __init__(self, mtype, identity, heartbeat, payload):
+    def __init__(self, mtype, identity, heartbeat, version, payload):
         super(__class__, self).__init__(mtype, identity, payload)
         self.heartbeat = heartbeat
+        self.version = version
 
 
 class Source(abc.ABC):
@@ -161,7 +166,7 @@ class RandomSource(Source):
                     elif config['dtype'] == 'Waveform' or config['dtype'] == 'Image':
                         event[name] = np.random.normal(config['pedestal'], config['width'], config['shape'])
                     else:
-                        print("DataSrc: %s has unknown type %s", name, config['dtype'])
+                        logger.warn("DataSrc: %s has unknown type %s", name, config['dtype'])
             count += 1
             msg = Message(MsgTypes.Datagram, self.idnum, event)
             msg.timestamp = self.num_workers * count + self.idnum
@@ -204,7 +209,7 @@ class StaticSource(Source):
                             )
                         )
                     else:
-                        print("DataSrc: %s has unknown type %s", name, config['dtype'])
+                        logger.warn("DataSrc: %s has unknown type %s", name, config['dtype'])
             count += 1
             msg = Message(MsgTypes.Datagram, self.idnum, event)
             msg.timestamp = self.num_workers * count + self.idnum

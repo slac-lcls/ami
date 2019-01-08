@@ -3,16 +3,21 @@ import re
 import sys
 import shutil
 import signal
+import logging
 import tempfile
 import argparse
 import multiprocessing as mp
 
+from ami import LogConfig
 from ami.comm import Ports
 from ami.manager import run_manager
 from ami.worker import run_worker
 from ami.collector import run_node_collector, run_global_collector
 from ami.client import run_client
 from ami.console import run_console
+
+
+logger = logging.getLogger(__name__)
 
 
 def main():
@@ -63,6 +68,17 @@ def main():
     )
 
     parser.add_argument(
+        '--log-level',
+        default=LogConfig.Level,
+        help='the logging level of the application (default %s)' % LogConfig.Level
+    )
+
+    parser.add_argument(
+        '--log-file',
+        help='an optional file to write the log output to'
+    )
+
+    parser.add_argument(
         'source',
         metavar='SOURCE',
         help='data source configuration (exampes: static://test.json, psana://exp=xcsdaq13:run=14)'
@@ -88,12 +104,21 @@ def main():
     procs = []
     failed_proc = False
 
+    log_handlers = [logging.StreamHandler()]
+    if args.headless:
+        console_fmt = logging.Formatter(LogConfig.BasicFormat)
+        log_handlers[0].setFormatter(console_fmt)
+    if args.log_file is not None:
+        log_handlers.append(logging.FileHandler(args.log_file))
+    log_level = getattr(logging, args.log_level.upper(), logging.INFO)
+    logging.basicConfig(format=LogConfig.FullFormat, level=log_level, handlers=log_handlers)
+
     try:
         src_url_match = re.match('(?P<prot>.*)://(?P<body>.*)', args.source)
         if src_url_match:
             src_cfg = src_url_match.groups()
         else:
-            print("Invalid data source config string:", args.source)
+            logger.critical("Invalid data source config string: %s", args.source)
             return 1
 
         for i in range(args.num_workers):
@@ -149,10 +174,10 @@ def main():
             proc.terminate()
             proc.join()
             if proc.exitcode == 0 or proc.exitcode == -signal.SIGTERM:
-                print('%s exited successfully' % proc.name)
+                logger.info('%s exited successfully', proc.name)
             else:
                 failed_proc = True
-                print('%s exited with non-zero status code: %d' % (proc.name, proc.exitcode))
+                logger.error('%s exited with non-zero status code: %d', proc.name, proc.exitcode)
 
         # return a non-zero status code if any workerss died
         if not args.headless and client_proc.exitcode != 0:
@@ -161,7 +186,7 @@ def main():
             return 1
 
     except KeyboardInterrupt:
-        print("Worker killed by user...")
+        logger.info("Worker killed by user...")
         return 0
     finally:
         if ipcdir is not None and os.path.exists(ipcdir):

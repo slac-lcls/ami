@@ -4,9 +4,14 @@ import sys
 import zmq
 import json
 import dill
+import logging
 import argparse
+from ami import LogConfig
 from ami.comm import Ports, ResultStore
 from ami.data import MsgTypes, Transitions, Transition, RandomSource, StaticSource, PsanaSource
+
+
+logger = logging.getLogger(__name__)
 
 
 class Worker(object):
@@ -47,42 +52,35 @@ class Worker(object):
             if msg.mtype == MsgTypes.Datagram:
                 if self.check_heartbeat_boundary(msg.timestamp):
                     self.store.collect(self.idnum, msg.timestamp//self.heartbeat_period)
-                    new_graph = None
                     while True:
                         try:
                             topic = self.graph_comm.recv_string(flags=zmq.NOBLOCK)
-                            num_work, num_col = self.graph_comm.recv_pyobj()
+                            num_work, num_col, version = self.graph_comm.recv_pyobj()
                             payload = self.graph_comm.recv()
                             if topic == "graph":
-                                new_graph = dill.loads(payload)
-                                if new_graph is not None:
-                                    new_graph.compile(num_workers=num_work, num_local_collectors=num_col)
-                                    self.src.request(new_graph.sources)
+                                self.graph = dill.loads(payload)
+                                if self.graph is not None:
+                                    self.graph.compile(num_workers=num_work, num_local_collectors=num_col)
+                                    self.src.request(self.graph.sources)
+                                    self.store.version = version
                             elif topic == "add":
                                 add_update = dill.loads(payload)
                                 if self.graph is not None:
                                     self.graph.add(add_update)
                                     self.graph.compile(num_workers=num_work, num_local_collectors=num_col)
                                     self.src.request(self.graph.sources)
+                                    self.store.version = version
                                 else:
-                                    print("worker%d: Add requested on empty graph" % self.idnum)
+                                    logger.error("worker%d: Add requested on empty graph", self.idnum)
                             else:
-                                print(
-                                    "worker%d: No handler for received topic: %s" %
-                                    (self.idnum, topic))
+                                logger.warn("worker%d: No handler for received topic: %s", self.idnum, topic)
                         except zmq.Again:
                             break
-                    if new_graph is not None:
-                        self.graph = new_graph
-                        self.new_graph_available = False
-
                 try:
                     if self.graph is not None:
                         self.store.update(self.graph(msg.payload, color='worker'))
                 except Exception as graph_err:
-                    print(
-                        "worker%s: Failure encountered executing graph:" %
-                        self.idnum, graph_err)
+                    logger.critical("worker%s: Failure encountered executing graph:", self.idnum, graph_err)
                     return 1
             else:
                 self.store.send(msg)
@@ -90,20 +88,16 @@ class Worker(object):
 
 def run_worker(num, num_workers, hb_period, source, collector_addr, graph_addr):
 
-    print(
-        'Starting worker # %d, sending to collector at %s' %
-        (num, collector_addr))
+    logger.info('Starting worker # %d, sending to collector at %s', num, collector_addr)
 
     try:
         with open(source[1], 'r') as cnf:
             src_cfg = json.load(cnf)
     except OSError as os_exp:
-        print("worker%03d: problem opening json file:" % num, os_exp)
+        logger.exception("worker%03d: problem opening json file:", num)
         return 1
     except json.decoder.JSONDecodeError as json_exp:
-        print(
-            "worker%03d: problem parsing json file (%s):" %
-            (num, source[1]), json_exp)
+        logger.exception("worker%03d: problem parsing json file (%s):", num, source[1])
         return 1
 
     if source[0] == 'static':
@@ -119,7 +113,7 @@ def run_worker(num, num_workers, hb_period, source, collector_addr, graph_addr):
                           num_workers,
                           src_cfg)
     else:
-        print("worker%03d: unknown data source type:" % num, source[0])
+        logger.critical("worker%03d: unknown data source type: %s", num, source[0])
         return 1
     worker = Worker(num, hb_period, src, collector_addr, graph_addr)
     return worker.run()
@@ -176,6 +170,17 @@ def main():
     )
 
     parser.add_argument(
+        '--log-level',
+        default=LogConfig.Level,
+        help='the logging level of the application (default %s)' % LogConfig.Level
+    )
+
+    parser.add_argument(
+        '--log-file',
+        help='an optional file to write the log output to'
+    )
+
+    parser.add_argument(
         'source',
         metavar='SOURCE',
         help='data source configuration (exampes: static://test.json, random://test.json, psana://exp=xcsdaq13:run=14)'
@@ -185,19 +190,25 @@ def main():
     collector_addr = "tcp://localhost:%d" % args.collector
     graph_addr = "tcp://%s:%d" % (args.host, args.graph)
 
+    log_handlers = [logging.StreamHandler()]
+    if args.log_file is not None:
+        log_handlers.append(logging.FileHandler(args.log_file))
+    log_level = getattr(logging, args.log_level.upper(), logging.INFO)
+    logging.basicConfig(format=LogConfig.Format, level=log_level, handlers=log_handlers)
+
     try:
         src_url_match = re.match('(?P<prot>.*)://(?P<body>.*)', args.source)
         if src_url_match:
             src_cfg = src_url_match.groups()
         else:
-            print("Invalid data source config string:", args.source)
+            logger.critical("Invalid data source config string: %s", args.source)
             return 1
 
         run_worker(args.node_num, args.num_workers, args.heartbeat, src_cfg, collector_addr, graph_addr)
 
         return 0
     except KeyboardInterrupt:
-        print("Worker killed by user...")
+        logger.info("Worker killed by user...")
         return 0
 
 

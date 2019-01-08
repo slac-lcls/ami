@@ -2,9 +2,14 @@
 import zmq
 import sys
 import dill
+import logging
 import argparse
+from ami import LogConfig
 from ami.comm import Ports, Colors, Collector, EventBuilder
 from ami.data import MsgTypes
+
+
+logger = logging.getLogger(__name__)
 
 
 class GraphCollector(Collector):
@@ -20,8 +25,6 @@ class GraphCollector(Collector):
         self.downstream_addr = downstream_addr
 
         self.graph = None
-        self.graph_nwork = None
-        self.graph_ncol = None
         self.graph_comm = self.ctx.socket(zmq.SUB)
         self.graph_comm.setsockopt_string(zmq.SUBSCRIBE, "")
         self.graph_comm.connect(graph_addr)
@@ -29,19 +32,21 @@ class GraphCollector(Collector):
 
     def recv_graph(self):
         topic = self.graph_comm.recv_string()
-        self.graph_nwork, self.graph_ncol = self.graph_comm.recv_pyobj()
+        nwork, ncol, version = self.graph_comm.recv_pyobj()
         if topic == 'graph':
             self.graph = self.graph_comm.recv()
+            self.store.set_graph(version, nwork, ncol, self.graph)
         elif topic == "add":
             add_update = dill.loads(self.graph_comm.recv())
             if self.graph is not None:
                 updated_graph = dill.loads(self.graph)
                 updated_graph.add(add_update)
                 self.graph = dill.dumps(updated_graph)
+                self.store.set_graph(version, nwork, ncol, self.graph)
             else:
-                print("Add requested on empty graph")
+                logger.error("Add requested on empty graph")
         else:
-            print("invalid topic: %s" % topic)
+            logger.warn("invalid topic: %s", topic)
 
     def process_msg(self, msg):
         if msg.mtype == MsgTypes.Transition:
@@ -49,16 +54,14 @@ class GraphCollector(Collector):
             if self.store.transition_ready(msg.payload.ttype):
                 self.store.message(msg.mtype, self.node, msg.payload)
         elif msg.mtype == MsgTypes.Datagram:
-            self.store.update(msg.heartbeat, msg.identity, msg.payload)
+            self.store.update(msg.heartbeat, msg.identity, msg.version, msg.payload)
             self.store.heartbeat(msg.identity, msg.heartbeat)
             if self.store.heartbeat_ready(msg.heartbeat):
                 self.store.complete(self.node, msg.heartbeat)
-                if self.graph is not None:
-                    self.store.set_graph(msg.heartbeat+1, self.graph_nwork, self.graph_ncol, self.graph)
 
 
 def run_collector(node_num, num_contribs, color, collector_addr, upstream_addr, graph_addr):
-    print('Starting collector on node # %d' % node_num)
+    logger.info('Starting collector on node # %d', node_num)
     collector = GraphCollector(
         node_num,
         num_contribs,
@@ -127,17 +130,34 @@ def main(color, upstream_port, downstream_port):
         help='node identification number (default: 0)'
     )
 
+    parser.add_argument(
+        '--log-level',
+        default=LogConfig.Level,
+        help='the logging level of the application (default %s)' % LogConfig.Level
+    )
+
+    parser.add_argument(
+        '--log-file',
+        help='an optional file to write the log output to'
+    )
+
     args = parser.parse_args()
     collector_addr = "tcp://*:%d" % (args.collector)
     downstream_addr = "tcp://%s:%d" % (args.host, args.downstream)
     graph_addr = "tcp://%s:%d" % (args.host, args.graph)
+
+    log_handlers = [logging.StreamHandler()]
+    if args.log_file is not None:
+        log_handlers.append(logging.FileHandler(args.log_file))
+    log_level = getattr(logging, args.log_level.upper(), logging.INFO)
+    logging.basicConfig(format=LogConfig.Format, level=log_level, handlers=log_handlers)
 
     try:
         run_collector(args.node_num, args.num_contribs, color, collector_addr, downstream_addr, graph_addr)
 
         return 0
     except KeyboardInterrupt:
-        print("Worker killed by user...")
+        logger.info("Worker killed by user...")
         return 0
 
 
