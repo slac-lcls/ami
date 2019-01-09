@@ -303,7 +303,7 @@ class GraphCommHandler(object):
     @property
     def graph(self):
         self.sock.send_string('get_graph')
-        return self.sock.recv_pyobj()
+        return dill.loads(self.sock.recv())
 
     @property
     def features(self):
@@ -346,3 +346,21 @@ class GraphCommHandler(object):
         self.sock.send_string('set_graph', zmq.SNDMORE)
         self.sock.send(dill.dumps(graph))
         return self.sock.recv_string() == 'ok'
+
+    def save(self, filename):
+        if filename:
+            try:
+                with open(filename, 'wb') as cnf:
+                    dill.dump(self.graph, cnf)
+            except OSError as os_exp:
+                logger.exception("Problem opening saved graph configuration file:")
+
+    def load(self, filename):
+        if filename:
+            try:
+                with open(filename, 'rb') as cnf:
+                    self.update(dill.load(cnf))
+            except OSError as os_exp:
+                    logger.exception("Problem opening saved graph configuration file:")
+            except dill.UnpicklingError as dill_exp:
+                    logger.exception("Problem parsing saved graph configuration file (%s):", filename)

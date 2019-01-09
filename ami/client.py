@@ -200,9 +200,6 @@ class DetectorList(QListWidget):
         self.itemClicked.connect(self.item_clicked)
         return
 
-    def load(self, graph_cfg):
-        self.comm_handler.update(graph_cfg)
-
     def spawn_window(self, data_type, name, topic):
         if data_type == DataTypes.Image:
             self._spawn_window('AreaDetector', name, topic)
@@ -289,7 +286,7 @@ class AmiGui(QWidget):
         self.dataLabel = QLabel('Data:', self)
         self.amilist = DetectorList(queue, self.comm_handler)
         if ami_save is not None:
-            self.amilist.load(ami_save)
+            self.comm_handler.update(ami_save)
 
         self.setup = QWidget(self)
         self.setup_layout = QHBoxLayout(self.setup)
@@ -309,35 +306,26 @@ class AmiGui(QWidget):
         load_file = QFileDialog.getOpenFileName(
             self, "Open file", "", "AMI Autosave files (*.ami);;All Files (*)")
         if load_file[0]:
-            try:
-                with open(load_file[0], 'rb') as cnf:
-                    self.amilist.load(dill.load(cnf))
-            except OSError as os_exp:
-                logger.exception("ami-client: problem opening saved graph configuration file:")
-            except dill.UnpicklingError as dill_exp:
-                logger.exception("ami-client: problem parsing saved graph configuration file (%s):", load_file[0])
+            logger.info("Loading graph configuration from file (%s)", load_file[0])
+            self.comm_handler.load(load_file[0])
 
     @pyqtSlot()
     def save(self):
         save_file = QFileDialog.getSaveFileName(
             self, "Save file", "autosave.ami", "AMI Autosave files (*.ami);;All Files (*)")
         if save_file[0]:
-            logger.info("ami-client: saving graph configuration to file (%s)", save_file[0])
-            try:
-                with open(save_file[0], 'wb') as cnf:
-                    dill.dump(self.comm_handler.graph, cnf)
-            except OSError as os_exp:
-                logger.exception("ami-client: problem opening saved graph configuration file:")
+            logger.info("Saving graph configuration to file (%s)", save_file[0])
+            self.comm_handler.save(save_file[0])
 
     @pyqtSlot()
     def reset(self):
         if not self.comm_handler.reset():
-            logger.error("ami-client: unable to reset feature store of the manager!")
+            logger.error("Unable to reset feature store of the manager!")
 
     @pyqtSlot()
     def clear(self):
         if not self.comm_handler.clear():
-            logger.error("ami-client: unable to clear the graph configuration of the manager!")
+            logger.error("Unable to clear the graph configuration of the manager!")
 
 
 def run_main_window(queue, addr, ami_save):
