@@ -1,30 +1,30 @@
 import sys
-import dill
 import logging
 import IPython
 import argparse
 
+from traitlets.config.loader import Config
 from ami import LogConfig
-from ami.comm import Ports, GraphCommHandler
+from ami.comm import Ports
 
 
 logger = logging.getLogger(__name__)
 
 
 def run_console(addr, load):
-    amicli = GraphCommHandler(addr)
-
+    banners = {
+        'banner1': 'AMII Interactive Shell Client',
+        'banner2': " - using manager at %s\n - use 'amicli?' for help\n" % addr,
+    }
+    exec_lines = [
+        'from ami.comm import GraphCommHandler',
+        'amicli = GraphCommHandler("%s")' % addr,
+    ]
     if load is not None:
-        try:
-            with open(load, 'rb') as cnf:
-                amicli.update(dill.load(cnf))
-        except OSError as os_exp:
-                logger.exception("ami-console: problem opening saved graph configuration file:")
-        except dill.UnpicklingError as dill_exp:
-                logger.exception("ami-console: problem parsing saved graph configuration file (%s):", load)
+        exec_lines.append('amicli.load("%s")' % load)
 
-    IPython.embed(banner1='AMII Interactive Shell Client',
-                  banner2=" - using manager at %s\n - use 'amicli?' for help\n" % addr)
+    IPython.start_ipython(argv=[], config=Config(TerminalInteractiveShell=banners,
+                                                 InteractiveShellApp={'exec_lines': exec_lines}))
 
 
 def main():
