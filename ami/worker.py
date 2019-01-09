@@ -7,7 +7,7 @@ import dill
 import logging
 import argparse
 from ami import LogConfig
-from ami.comm import Ports, ResultStore
+from ami.comm import Ports, Colors, ResultStore
 from ami.data import MsgTypes, Transitions, Transition, RandomSource, StaticSource, PsanaSource
 
 
@@ -52,6 +52,8 @@ class Worker(object):
             if msg.mtype == MsgTypes.Datagram:
                 if self.check_heartbeat_boundary(msg.timestamp):
                     self.store.collect(self.idnum, msg.timestamp//self.heartbeat_period)
+                    # clear the data from the store after collecting
+                    self.store.clear()
                     while True:
                         try:
                             topic = self.graph_comm.recv_string(flags=zmq.NOBLOCK)
@@ -78,7 +80,7 @@ class Worker(object):
                             break
                 try:
                     if self.graph is not None:
-                        self.store.update(self.graph(msg.payload, color='worker'))
+                        self.store.update(self.graph(msg.payload, color=Colors.Worker))
                 except Exception as graph_err:
                     logger.exception("worker%s: Failure encountered executing graph:", self.idnum)
                     return 1
