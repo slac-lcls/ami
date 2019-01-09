@@ -147,7 +147,7 @@ class Manager(Collector):
     def graph_request(self):
         request = self.graph_comm.recv_string()
 
-        if request == "\x01graph":
+        if request == "\x01":
             self.graph_comm.send_string("graph", zmq.SNDMORE)
             self.graph_comm.send_pyobj((self.num_workers, self.num_nodes, self.version), zmq.SNDMORE)
             self.graph_comm.send(dill.dumps(self.graph))
