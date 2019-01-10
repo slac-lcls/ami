@@ -85,6 +85,24 @@ class Graph():
 
         self.graphkit = None
 
+    def replace(self, new_node, old_name):
+        old_node = None
+        for n in self.graph.nodes:
+            if type(n) is str:
+                continue
+            if n.name == old_name:
+                old_node = n
+                break
+
+        assert old_node is not None, "Invalid name."
+        assert set(old_node.inputs) == set(new_node.inputs), "Inputs must match."
+        assert set(old_node.outputs) == set(old_node.outputs), "Outputs must match."
+
+        self.graph.remove_node(old_node)
+        self.add(new_node)
+
+        self.graphkit = None
+
     def reset(self):
         nodes = list(filter(lambda node: isinstance(node, StatefulTransformation), self.graph.nodes))
         list(map(lambda node: node.reset(), nodes))
