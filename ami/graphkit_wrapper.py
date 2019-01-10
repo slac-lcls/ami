@@ -49,7 +49,13 @@ class Graph():
         """
         return [name for name in self.inputs[None]['worker'] if self.name_is_valid(name)]
 
-    def add(self, ops):
+    def add(self, op):
+        try:
+            self.insert(op)
+        except AssertionError:
+            self.replace(op)
+
+    def insert(self, ops):
         if type(ops) is not list:
             ops = [ops]
 
@@ -85,16 +91,16 @@ class Graph():
 
         self.graphkit = None
 
-    def replace(self, new_node, old_name):
+    def replace(self, new_node):
         old_node = None
         for n in self.graph.nodes:
             if type(n) is str:
                 continue
-            if n.name == old_name:
+            if n.name == new_node.name:
                 old_node = n
                 break
 
-        assert old_node is not None, "Invalid name."
+        assert old_node is not None, "Invalid name: %s" % new_node.name
         assert set(old_node.inputs) == set(new_node.inputs), "Inputs must match."
         assert set(old_node.outputs) == set(old_node.outputs), "Outputs must match."
 
