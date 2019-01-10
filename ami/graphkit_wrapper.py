@@ -20,7 +20,7 @@ class Graph():
         self.flattened_inputs = collections.defaultdict(set)
 
     def __bool__(self):
-        return self.graph.size != 0
+        return self.graph.size() != 0
 
     def name_is_valid(self, name):
         """
