@@ -45,6 +45,18 @@ class GraphCollector(Collector):
                 self.store.set_graph(version, nwork, ncol, self.graph)
             else:
                 logger.error("Add requested on empty graph")
+        elif topic == "del":
+            name = dill.loads(self.graph_comm.recv())
+            if self.graph is not None:
+                updated_graph = dill.loads(self.graph)
+                updated_graph.remove(name)
+                # check if the resulting graph is empty
+                if not updated_graph:
+                    updated_graph = None
+                self.graph = dill.dumps(updated_graph)
+                self.store.set_graph(version, nwork, ncol, self.graph)
+            else:
+                logger.error("Delete requested on empty graph")
         else:
             logger.warn("invalid topic: %s", topic)
 

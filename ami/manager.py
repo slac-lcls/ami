@@ -115,21 +115,27 @@ class Manager(Collector):
         self.compile_graph()
 
     def cmd_del_graph(self):
-        name = self.comm.recv_string()
+        name = self.comm.recv()
         if self.graph is not None:
-            self.graph.remove(name)
-        # Check if the resulting graph is non-empty
-        if self.graph:
-            self.compile_graph()
-        else:
-            # if the graph is empty remove it
-            self.graph = None
+            self.graph.remove(dill.loads(name))
+            # Check if the resulting graph is non-empty
+            if self.graph:
+                self.compile_graph()
+            else:
+                # if the graph is empty remove it
+                self.graph = None
+        self.publish_graph("del", name)
 
     def cmd_set_graph(self):
         raw_graph = self.comm.recv()
         self.graph = dill.loads(raw_graph)
+        # Check if the graph is non-empty
+        if self.graph:
+            self.compile_graph()
+        else:
+            self.graph = None
+            raw_graph = dill.dumps(self.graph)
         self.publish_graph("graph", raw_graph)
-        self.compile_graph()
 
     def publish_graph(self, topic, graph):
         logger.info("manager: sending requested graph...")

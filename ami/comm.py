@@ -334,6 +334,9 @@ class GraphCommHandler(object):
         node = Map(name=name, inputs=inputs, outputs=outputs, func=func)
         return self.edit("add", node)
 
+    def remove(self, name):
+        return self.edit("del", name)
+
     def clear(self):
         self.sock.send_string('clear_graph')
         return self.sock.recv_string() == 'ok'

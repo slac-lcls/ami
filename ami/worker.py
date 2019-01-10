@@ -74,6 +74,20 @@ class Worker(object):
                                     self.store.version = version
                                 else:
                                     logger.error("worker%d: Add requested on empty graph", self.idnum)
+                            elif topic == "del":
+                                name = dill.loads(payload)
+                                if self.graph is not None:
+                                    self.graph.remove(name)
+                                    # check if the resulting graph is empty or not
+                                    if self.graph:
+                                        self.graph.compile(num_workers=num_work, num_local_collectors=num_col)
+                                        self.src.request(self.graph.sources)
+                                    else:
+                                        self.graph = None
+                                        self.src.request([])
+                                    self.store.version = version
+                                else:
+                                    logger.error("worker%d: Delete requested on empty graph", self.idnum)
                             else:
                                 logger.warn("worker%d: No handler for received topic: %s", self.idnum, topic)
                         except zmq.Again:
