@@ -54,6 +54,8 @@ class Graph():
             ops = [ops]
 
         for op in ops:
+            assert op not in self.graph.nodes(), "Operation may only be added once"
+
             for i in op.inputs:
                 self.graph.add_edge(i, op)
 
