@@ -32,7 +32,6 @@ class Store:
 
     def __init__(self, version=0):
         self.version = version
-        self._updated = {}
         self._store = {}
 
     def create(self, name, datatype=DataTypes.Unset):
@@ -40,7 +39,6 @@ class Store:
             raise ValueError("result named %s already exists in ResultStore" % name)
         else:
             self._store[name] = Datagram(name, datatype)
-            self._updated[name] = False
 
     def get_dgram(self, name):
         return self._store[name]
@@ -69,17 +67,16 @@ class Store:
 
     def put(self, name, data):
         datatype = DataTypes.get_type(data)
-        if name in self._store:
-            if datatype == self._store[name].dtype or self._store[name].dtype == DataTypes.Unset:
-                self._store[name].dtype = datatype
-                self._store[name].data = data
+        if datatype is not DataTypes.Unset:
+            if name in self._store:
+                if datatype == self._store[name].dtype or self._store[name].dtype == DataTypes.Unset:
+                    self._store[name].dtype = datatype
+                    self._store[name].data = data
+                else:
+                    raise TypeError("type of new result (%s) differs from existing"
+                                    " (%s)" % (datatype, self._store[name].dtype))
             else:
-                raise TypeError("type of new result (%s) differs from existing"
-                                " (%s)" % (datatype, self._store[name].dtype))
-        else:
-            self._store[name] = Datagram(name, datatype, data)
-
-        self._updated[name] = True
+                self._store[name] = Datagram(name, datatype, data)
 
     def sum(self, name, data):
         datatype = DataTypes.get_type(data)
@@ -95,19 +92,6 @@ class Store:
 
     def clear(self):
         self._store = {}
-
-    def ready_items(self, clear=False):
-        for name, result in self._store.items():
-            if self._updated[name]:
-                if clear:
-                    self._updated[name] = False
-                yield name, result
-
-    def is_ready(self, name):
-        if name in self._store.keys():
-            return self._updated[name]
-        else:
-            return False
 
 
 class ZmqHandler(object):
@@ -141,24 +125,6 @@ class ResultStore(Store, ZmqHandler):
 
     def collect(self, identity, heartbeat):
         self.send(CollectorMessage(MsgTypes.Datagram, identity, heartbeat, self.version, self.namespace))
-
-
-class PickNBuilder(ZmqHandler):
-    def __init__(self, num_contribs, addr, ctx=None):
-        super(__class__, self).__init__(addr, ctx)
-        self.num_contribs = num_contribs
-        self.count = 0
-        self.dgram = None
-
-    def put(self, dgram):
-        if self.dgram is None:
-            self.dgram = dgram
-        else:
-            self.dgram.data += dgram.data
-        self.count += 1
-        if self.count == self.num_contribs:
-            self.send(Message(MsgTypes.Datagram, 0, self.dgram))
-            self.count = 0
 
 
 class EventBuilder(ZmqHandler):

@@ -54,6 +54,8 @@ class Worker(object):
                     self.store.collect(self.idnum, msg.timestamp//self.heartbeat_period)
                     # clear the data from the store after collecting
                     self.store.clear()
+                    # reset the graph after finishing the heartbeat
+                    #self.graph.reset()
                     while True:
                         try:
                             topic = self.graph_comm.recv_string(flags=zmq.NOBLOCK)

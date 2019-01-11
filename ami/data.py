@@ -29,7 +29,9 @@ class DataTypes(Enum):
 
     @staticmethod
     def get_type(data):
-        if isinstance(data, np.ndarray):
+        if data is None:
+            return DataTypes.Unset
+        elif isinstance(data, np.ndarray):
             if data.ndim == 1:
                 return DataTypes.Waveform
             elif data.ndim == 2:
