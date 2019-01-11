@@ -146,7 +146,7 @@ class Manager(Collector):
             self.graph_comm.send(graph)
             logger.info("manager: sending of graph completed")
             self.comm.send_string('ok')
-        except Exception as exp:
+        except Exception:
             logger.exception("manager: failed to send graph -")
             self.comm.send_string('error')
 

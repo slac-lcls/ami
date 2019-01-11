@@ -321,7 +321,7 @@ class GraphCommHandler(object):
             try:
                 with open(filename, 'wb') as cnf:
                     dill.dump(self.graph, cnf)
-            except OSError as os_exp:
+            except OSError:
                 logger.exception("Problem opening saved graph configuration file:")
 
     def load(self, filename):
@@ -329,7 +329,7 @@ class GraphCommHandler(object):
             try:
                 with open(filename, 'rb') as cnf:
                     self.update(dill.load(cnf))
-            except OSError as os_exp:
+            except OSError:
                     logger.exception("Problem opening saved graph configuration file:")
-            except dill.UnpicklingError as dill_exp:
+            except dill.UnpicklingError:
                     logger.exception("Problem parsing saved graph configuration file (%s):", filename)
