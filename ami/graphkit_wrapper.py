@@ -61,8 +61,7 @@ class Graph():
 
         for op in ops:
             assert op not in self.graph.nodes(), "Operation may only be added once %s" % op.name
-            if op.name in self.children_of_global_operations:
-                raise KeyError("Operation not found.")
+            assert op.name not in self.children_of_global_operations, "Operation may only be added once %s" % op.name
 
             for i in op.inputs:
                 self.graph.add_edge(i, op)
@@ -94,20 +93,41 @@ class Graph():
         self.graphkit = None
 
     def replace(self, new_node):
-        old_node = None
-        for n in self.graph.nodes:
-            if type(n) is str:
-                continue
-            if n.name == new_node.name:
-                old_node = n
-                break
+        if new_node.name in self.children_of_global_operations:
+            descendants = set()
+            ancestors = set()
+            for child in self.children_of_global_operations[new_node.name]:
+                if child.name == '%s_worker' % new_node.name:
+                    descendants.add(child)
+                    descendants.update(nx.dag.descendants(self.graph, child))
+                    assert set(child.inputs) == set(new_node.inputs), "Inputs must match."
+                if child.name == '%s_globalCollector' % new_node.name:
+                    ancestors.add(child)
+                    ancestors.update(nx.dag.ancestors(self.graph, child))
+                    assert set(child.outputs) == set(new_node.outputs), "Outputs must match."
+            nodes_to_remove = descendants.intersection(ancestors)
 
-        assert old_node is not None, "Old node not found: %s" % new_node.name
-        assert set(old_node.inputs) == set(new_node.inputs), "Inputs must match."
-        assert set(old_node.outputs) == set(new_node.outputs), "Outputs must match."
+            self.graph.remove_nodes_from(nodes_to_remove)
+            for node in nodes_to_remove:
+                if node in self.expanded_global_operations:
+                    self.expanded_global_operations.remove(node)
+            del self.children_of_global_operations[new_node.name]
+        else:
+            old_node = None
+            for n in self.graph.nodes:
+                if type(n) is str:
+                    continue
+                if n.name == new_node.name:
+                    old_node = n
+                    break
 
-        self.graph.remove_node(old_node)
-        self.add(new_node)
+            assert old_node is not None, "Old node not found: %s" % new_node.name
+            assert set(old_node.inputs) == set(new_node.inputs), "Inputs must match."
+            assert set(old_node.outputs) == set(new_node.outputs), "Outputs must match."
+
+            self.graph.remove_node(old_node)
+
+        self.insert(new_node)
 
         self.graphkit = None
 
