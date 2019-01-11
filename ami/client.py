@@ -372,10 +372,10 @@ def run_client(addr, load):
         try:
             with open(load, 'rb') as cnf:
                 saved_cfg = dill.load(cnf)
-        except OSError as os_exp:
+        except OSError:
             logger.exception("ami-client: problem opening saved graph configuration file:")
             return 1
-        except dill.UnpicklingError as dill_exp:
+        except dill.UnpicklingError:
             logger.exception("ami-client: problem parsing saved graph configuration file (%s):", load)
             return 1
 

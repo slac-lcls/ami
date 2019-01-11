@@ -95,7 +95,7 @@ class Worker(object):
                 try:
                     if self.graph is not None:
                         self.store.update(self.graph(msg.payload, color=Colors.Worker))
-                except Exception as graph_err:
+                except Exception:
                     logger.exception("worker%s: Failure encountered executing graph:", self.idnum)
                     return 1
             else:
@@ -109,10 +109,10 @@ def run_worker(num, num_workers, hb_period, source, collector_addr, graph_addr):
     try:
         with open(source[1], 'r') as cnf:
             src_cfg = json.load(cnf)
-    except OSError as os_exp:
+    except OSError:
         logger.exception("worker%03d: problem opening json file:", num)
         return 1
-    except json.decoder.JSONDecodeError as json_exp:
+    except json.decoder.JSONDecodeError:
         logger.exception("worker%03d: problem parsing json file (%s):", num, source[1])
         return 1
 
