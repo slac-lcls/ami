@@ -60,7 +60,9 @@ class Graph():
             ops = [ops]
 
         for op in ops:
-            assert op not in self.graph.nodes(), "Operation may only be added once"
+            assert op not in self.graph.nodes(), "Operation may only be added once %s" % op.name
+            if op.name in self.children_of_global_operations:
+                raise KeyError("Operation not found.")
 
             for i in op.inputs:
                 self.graph.add_edge(i, op)
@@ -100,9 +102,9 @@ class Graph():
                 old_node = n
                 break
 
-        assert old_node is not None, "Invalid name: %s" % new_node.name
+        assert old_node is not None, "Old node not found: %s" % new_node.name
         assert set(old_node.inputs) == set(new_node.inputs), "Inputs must match."
-        assert set(old_node.outputs) == set(old_node.outputs), "Outputs must match."
+        assert set(old_node.outputs) == set(new_node.outputs), "Outputs must match."
 
         self.graph.remove_node(old_node)
         self.add(new_node)
