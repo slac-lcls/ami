@@ -37,12 +37,20 @@ def main():
         help='hostname of the AMII Manager (default: localhost)'
     )
 
-    parser.add_argument(
+    addr_group = parser.add_mutually_exclusive_group()
+
+    addr_group.add_argument(
         '-p',
         '--port',
         type=int,
         default=Ports.Comm,
         help='port for manager/client (SHELL) communication (default: %d)' % Ports.Comm
+    )
+
+    addr_group.add_argument(
+        '-i',
+        '--ipc',
+        help='directory containing the ipc file descriptor for manager/client (SHELL) communication'
     )
 
     parser.add_argument(
@@ -63,7 +71,10 @@ def main():
     )
 
     args = parser.parse_args()
-    addr = "tcp://%s:%d" % (args.host, args.port)
+    if args.ipc is not None:
+        addr = "ipc://%s/comm" % args.ipc
+    else:
+        addr = "tcp://%s:%d" % (args.host, args.port)
 
     log_handlers = [logging.StreamHandler()]
     if args.log_file is not None:
