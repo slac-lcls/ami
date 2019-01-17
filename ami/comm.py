@@ -261,36 +261,43 @@ class Collector(abc.ABC):
 class GraphCommHandler(object):
 
     def __init__(self, addr):
-        self.ctx = zmq.Context()
-        self.addr = addr
-        self.sock = self.ctx.socket(zmq.REQ)
-        self.sock.connect(self.addr)
+        self._ctx = zmq.Context()
+        self._addr = addr
+        self._sock = self._ctx.socket(zmq.REQ)
+        self._sock.connect(self._addr)
+
+    def auto(self, name):
+        return '_auto_%s' % name
 
     @property
     def graph(self):
-        self.sock.send_string('get_graph')
-        return dill.loads(self.sock.recv())
+        self._sock.send_string('get_graph')
+        return dill.loads(self._sock.recv())
 
     @property
     def features(self):
-        self.sock.send_string('get_features')
-        return self.sock.recv_pyobj()
+        self._sock.send_string('get_features')
+        return self._sock.recv_pyobj()
 
     @property
-    def types(self):
-        self.sock.send_string('get_types')
-        return self.sock.recv_pyobj()
+    def names(self):
+        self._sock.send_string('get_names')
+        return self._sock.recv_pyobj()
 
-    def get_feature(self, name):
-        self.sock.send_string("feature:%s" % name)
-        reply = self.sock.recv_string()
+    def fetch(self, name):
+        self._sock.send_string("fetch:%s" % name)
+        reply = self._sock.recv_string()
         if reply == 'ok':
-            return self.sock.recv_pyobj()
+            return self._sock.recv_pyobj()
 
     def edit(self, cmd, node):
-        self.sock.send_string('%s_graph' % cmd, zmq.SNDMORE)
-        self.sock.send(dill.dumps(node))
-        return self.sock.recv_string() == 'ok'
+        self._sock.send_string('%s_graph' % cmd, zmq.SNDMORE)
+        self._sock.send(dill.dumps(node))
+        return self._sock.recv_string() == 'ok'
+
+    def view(self, name):
+        view_name = self.auto(name)
+        return self.pickN('%s_view' % view_name, [name], [view_name])
 
     def pickN(self, name, inputs, outputs, N=1):
         node = PickN(name=name, inputs=inputs, outputs=outputs, N=N)
@@ -304,17 +311,17 @@ class GraphCommHandler(object):
         return self.edit("del", name)
 
     def clear(self):
-        self.sock.send_string('clear_graph')
-        return self.sock.recv_string() == 'ok'
+        self._sock.send_string('clear_graph')
+        return self._sock.recv_string() == 'ok'
 
     def reset(self):
-        self.sock.send_string('reset_features')
-        return self.sock.recv_string() == 'ok'
+        self._sock.send_string('reset_features')
+        return self._sock.recv_string() == 'ok'
 
     def update(self, graph):
-        self.sock.send_string('set_graph', zmq.SNDMORE)
-        self.sock.send(dill.dumps(graph))
-        return self.sock.recv_string() == 'ok'
+        self._sock.send_string('set_graph', zmq.SNDMORE)
+        self._sock.send(dill.dumps(graph))
+        return self._sock.recv_string() == 'ok'
 
     def save(self, filename):
         if filename:

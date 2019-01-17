@@ -40,7 +40,7 @@ class ScalarWidget(QLCDNumber):
 
     @pyqtSlot()
     def get_scalar(self):
-        reply = self.comm_handler.get_feature(self.topic)
+        reply = self.comm_handler.fetch(self.topic)
         if reply is not None:
             self.scalar_updated(reply)
         else:
@@ -64,7 +64,7 @@ class WaveformWidget(pg.GraphicsLayoutWidget):
 
     @pyqtSlot()
     def get_waveform(self):
-        reply = self.comm_handler.get_feature(self.topic)
+        reply = self.comm_handler.fetch(self.topic)
         if reply is not None:
             self.waveform_updated(reply)
         else:
@@ -90,7 +90,7 @@ class AreaDetWidget(pg.ImageView):
 
     @pyqtSlot()
     def get_image(self):
-        reply = self.comm_handler.get_feature(self.topic)
+        reply = self.comm_handler.fetch(self.topic)
         if reply is not None:
             self.image_updated(reply)
         else:
@@ -188,14 +188,14 @@ class DetectorList(QListWidget):
         super(__class__, self).__init__(parent)
         self.queue = queue
         self.comm_handler = comm_handler
-        self.features = []
+        self.names = []
         self.pending = {}
         self.pending_lock = threading.Lock()
-        self.types = {}
+        self.features = {}
         self.timer = QTimer()
         self.calc_id = "calculator"
         self.calc = None
-        self.timer.timeout.connect(self.get_features)
+        self.timer.timeout.connect(self.get_names)
         self.timer.start(1000)
         self.itemClicked.connect(self.item_clicked)
         return
@@ -211,23 +211,23 @@ class DetectorList(QListWidget):
             self._spawn_window('ScalarDetector', name, topic)
             logger.info('create waveform window for: %s', name)
         else:
-            logger.error('Type %s not valid', self.types[topic])
+            logger.error('Feature type %s is not supported', self.features[topic])
 
     @pyqtSlot()
-    def get_features(self):
+    def get_names(self):
         # detectors = dict, maps name --> type
-        self.features = sorted(self.comm_handler.features)
-        self.types = self.comm_handler.types
+        self.names = sorted(self.comm_handler.names)
+        self.features = self.comm_handler.features
         self.clear()
         self.addItem(self.calc_id)
-        for k in self.features:
+        for k in self.names:
             if not k.startswith("_"):
                 self.addItem(k)
         with self.pending_lock:
             done = []
             for topic, name in self.pending.items():
-                if topic in self.types:
-                    self.spawn_window(self.types[topic], name, topic)
+                if topic in self.features:
+                    self.spawn_window(self.features[topic], name, topic)
                     # append to list of done entries to delete after iterating
                     done.append(topic)
             for key in done:
@@ -239,30 +239,26 @@ class DetectorList(QListWidget):
 
         name = item.text()
         # Check if there is already data for the feature in the result store
-        if name in self.types:
+        if name in self.features:
             topic = name
         else:
-            topic = '_auto_%s' % name
+            topic = self.comm_handler.auto(name)
 
         if name == self.calc_id:
             if self.calc is None:
                 logger.info('create calculator widget')
                 self.calc = Calculator(self.comm_handler)
             self.calc.show()
-        elif topic in self.types:
-            self.spawn_window(self.types[topic], name, topic)
+        elif topic in self.features:
+            self.spawn_window(self.features[topic], name, topic)
         else:
-            request_pickn = False
+            request_view = False
             with self.pending_lock:
                 if topic not in self.pending:
                     self.pending[topic] = name
-                    request_pickn = True
-            if request_pickn:
-                self.comm_handler.pickN(name='%s_pick1' % name,
-                                        inputs=[name],
-                                        outputs=[topic])
-
-        return
+                    request_view = True
+            if request_view:
+                self.comm_handler.view(name)
 
     def _spawn_window(self, window_type, name, topic):
         self.queue.put((window_type, name, topic))

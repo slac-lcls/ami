@@ -1,4 +1,5 @@
 import sys
+import glob
 import logging
 import IPython
 import argparse
@@ -49,8 +50,14 @@ def main():
 
     addr_group.add_argument(
         '-i',
-        '--ipc',
+        '--ipc-dir',
         help='directory containing the ipc file descriptor for manager/client (SHELL) communication'
+    )
+
+    addr_group.add_argument(
+        '--ipc',
+        action='store_true',
+        help='attempt to search for ipc file descriptors for manager/client (SHELL) communication'
     )
 
     parser.add_argument(
@@ -71,10 +78,6 @@ def main():
     )
 
     args = parser.parse_args()
-    if args.ipc is not None:
-        addr = "ipc://%s/comm" % args.ipc
-    else:
-        addr = "tcp://%s:%d" % (args.host, args.port)
 
     log_handlers = [logging.StreamHandler()]
     if args.log_file is not None:
@@ -84,6 +87,33 @@ def main():
         log_handlers.append(file_handler)
     log_level = getattr(logging, args.log_level.upper(), logging.INFO)
     logging.basicConfig(format=LogConfig.BasicFormat, level=log_level, handlers=log_handlers)
+
+    if args.ipc:
+        ipc_list = glob.glob('/tmp/*/comm')
+        if ipc_list:
+            if len(ipc_list) == 1:
+                addr = "ipc://%s" % ipc_list[0]
+            else:
+                prompt = "Found %d ipc file descriptors:\n" % len(ipc_list)
+                for i, ipc_name in enumerate(ipc_list):
+                    prompt += " %d - %s\n" % (i, ipc_name)
+                prompt += " %d - Quit\n\nPlease choose one: " % len(ipc_list)
+                choice = input(prompt)
+                try:
+                    addr = "ipc://%s" % ipc_list[int(choice)]
+                except ValueError:
+                    logger.critical("Invalid option '%s' chosen!", choice)
+                    return 1
+                except IndexError:
+                    logger.debug("Option chosen is outside range of ipc list - assume quit!")
+                    return 0
+        else:
+            logger.critical("No manager ipc file descriptors found!")
+            return 1
+    elif args.ipc_addr is not None:
+        addr = "ipc://%s/comm" % args.ipc_addr
+    else:
+        addr = "tcp://%s:%d" % (args.host, args.port)
 
     try:
         return run_console(addr, args.load)

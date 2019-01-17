@@ -32,7 +32,7 @@ class Manager(Collector):
         self.num_nodes = num_nodes
         self.partition = []
         self.feature_store = Store()
-        self.feature_req = re.compile("feature:(?P<name>.*)")
+        self.feature_req = re.compile("fetch:(?P<name>.*)")
         self.graph = None
         self.version = 0
 
@@ -52,14 +52,14 @@ class Manager(Collector):
         return
 
     @property
-    def features(self):
-        feature_set = set(self.partition)
+    def names(self):
+        name_set = set(self.partition)
         if self.graph is not None:
-            feature_set.update(self.graph.names)
-        return feature_set
+            name_set.update(self.graph.names)
+        return name_set
 
     @property
-    def types(self):
+    def features(self):
         return self.feature_store.types
 
     def feature_request(self, request):
@@ -89,8 +89,8 @@ class Manager(Collector):
     def cmd_get_features(self):
         self.comm.send_pyobj(self.features)
 
-    def cmd_get_types(self):
-        self.comm.send_pyobj(self.types)
+    def cmd_get_names(self):
+        self.comm.send_pyobj(self.names)
 
     def cmd_clear_graph(self):
         self.graph = None
