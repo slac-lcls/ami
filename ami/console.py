@@ -34,8 +34,8 @@ def main():
     parser.add_argument(
         '-H',
         '--host',
-        default='localhost',
-        help='hostname of the AMII Manager (default: localhost)'
+        default='127.0.0.1',
+        help='hostname of the AMII Manager (default: 127.0.0.1)'
     )
 
     addr_group = parser.add_mutually_exclusive_group()
@@ -110,7 +110,7 @@ def main():
         else:
             logger.critical("No manager ipc file descriptors found!")
             return 1
-    elif args.ipc_addr is not None:
+    elif args.ipc_dir is not None:
         addr = "ipc://%s/comm" % args.ipc_addr
     else:
         addr = "tcp://%s:%d" % (args.host, args.port)

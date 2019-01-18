@@ -9,7 +9,7 @@ import argparse
 import multiprocessing as mp
 
 from ami import LogConfig
-from ami.comm import Ports
+from ami.comm import Ports, GraphCommHandler
 from ami.manager import run_manager
 from ami.worker import run_worker
 from ami.collector import run_node_collector, run_global_collector
@@ -20,7 +20,7 @@ from ami.console import run_console
 logger = logging.getLogger(__name__)
 
 
-def main():
+def build_parser():
     parser = argparse.ArgumentParser(description='AMII Single Node App')
 
     parser.add_argument(
@@ -62,9 +62,15 @@ def main():
 
     parser.add_argument(
         '-c',
+        '--console',
+        action='store_true',
+        help='run in a console mode (no GUI)'
+    )
+
+    parser.add_argument(
         '--headless',
         action='store_true',
-        help='run in a headless mode (no GUI)'
+        help='run in a headless mode (no GUI) can only interact over zmq'
     )
 
     parser.add_argument(
@@ -84,7 +90,11 @@ def main():
         help='data source configuration (exampes: static://test.json, psana://exp=xcsdaq13:run=14)'
     )
 
-    args = parser.parse_args()
+    return parser
+
+
+def run_ami(args, queue=mp.Queue()):
+
     ipcdir = None
     if args.tcp:
         host = "127.0.0.1"
@@ -105,7 +115,7 @@ def main():
     failed_proc = False
 
     log_handlers = [logging.StreamHandler()]
-    if args.headless:
+    if args.headless or args.console:
         console_fmt = logging.Formatter(LogConfig.BasicFormat)
         log_handlers[0].setFormatter(console_fmt)
     if args.log_file is not None:
@@ -158,8 +168,14 @@ def main():
         manager_proc.start()
         procs.append(manager_proc)
 
-        if args.headless:
+        if args.console:
             run_console(comm_addr, args.load)
+        elif args.headless:
+            if args.load:
+                comm_handler = GraphCommHandler(comm_addr)
+                comm_handler.load(args.load)
+            while queue.empty():
+                pass
         else:
             client_proc = mp.Process(
                 name='client',
@@ -180,7 +196,7 @@ def main():
                 logger.error('%s exited with non-zero status code: %d', proc.name, proc.exitcode)
 
         # return a non-zero status code if any workerss died
-        if not args.headless and client_proc.exitcode != 0:
+        if not (args.console or args.headless) and client_proc.exitcode != 0:
             return client_proc.exitcode
         elif failed_proc:
             return 1
@@ -191,6 +207,12 @@ def main():
     finally:
         if ipcdir is not None and os.path.exists(ipcdir):
             shutil.rmtree(ipcdir)
+
+
+def main():
+    parser = build_parser()
+    args = parser.parse_args()
+    run_ami(args)
 
 
 if __name__ == '__main__':
