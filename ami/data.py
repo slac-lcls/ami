@@ -191,25 +191,13 @@ class StaticSource(Source):
         count = 0
         time.sleep(self.init_time)
         while True:
-            event = []
+            event = {}
             for name, config in self.config.items():
                 if name in self.requested_names:
                     if config['dtype'] == 'Scalar':
-                        event.append(
-                            Datagram(
-                                name,
-                                getattr(DataTypes, config['dtype']),
-                                1
-                            )
-                        )
+                        event[name] = 1
                     elif config['dtype'] == 'Waveform' or config['dtype'] == 'Image':
-                        event.append(
-                            Datagram(
-                                name,
-                                getattr(DataTypes, config['dtype']),
-                                np.ones(config['shape'])
-                            )
-                        )
+                        event[name] = np.ones(config['shape'])
                     else:
                         logger.warn("DataSrc: %s has unknown type %s", name, config['dtype'])
             count += 1
