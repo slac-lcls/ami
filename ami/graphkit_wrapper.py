@@ -17,7 +17,6 @@ class Graph():
         self.children_of_global_operations = {}
         self.inputs = collections.defaultdict(set)
         self.outputs = collections.defaultdict(set)
-        self.flattened_inputs = collections.defaultdict(set)
 
     def __bool__(self):
         return self.graph.size() != 0
@@ -47,7 +46,7 @@ class Graph():
         Returns a list of all input data sources needed by the worker to process
         the full graph.
         """
-        return [name for name in self.inputs[None]['worker'] if self.name_is_valid(name)]
+        return [name for name in self.inputs['worker'] if self.name_is_valid(name)]
 
     def add(self, op):
         try:
@@ -171,7 +170,7 @@ class Graph():
 
     def expand_global_operations(self, num_workers, num_local_collectors):
         inputs = [n for n, d in self.graph.in_degree() if d == 0]
-        self.flattened_inputs['worker'].update(inputs)
+        self.inputs['worker'].update(inputs)
 
         for node in self.global_operations:
             inputs = node.inputs
@@ -208,7 +207,7 @@ class Graph():
                         self.graph.add_edge(n, worker_node)
 
                 elif color == 'localCollector':
-                    self.flattened_inputs[color].update(worker_outputs)
+                    self.inputs[color].update(worker_outputs)
                     local_collector_outputs = list(map(lambda o: o+'_localCollector', node.outputs))
 
                     local_collector_N = 1
@@ -228,7 +227,7 @@ class Graph():
                         self.graph.add_edge(local_collector_node, o)
 
                 elif color == 'globalCollector':
-                    self.flattened_inputs[color].update(local_collector_outputs)
+                    self.inputs[color].update(local_collector_outputs)
 
                     N = getattr(node, 'N', 1)
                     N = max((N // num_workers)*num_workers, 1)
@@ -300,31 +299,8 @@ class Graph():
             body.append(node.to_operation())
 
         self.outputs['globalCollector'].update(outputs)
-        self.find_inputs()
 
         self.graphkit = compose(name=self.name)(*body)
-
-    def find_inputs(self):
-        graph_filters = list(filter(lambda node: isinstance(node, Filter), self.graph.nodes))
-        # {"branch": {"worker": set(), "localCollector": set(), "globalCollector": set()}}
-        inputs = collections.defaultdict(lambda: collections.defaultdict(set))
-        seen = set()
-
-        for color, color_inputs in self.flattened_inputs.items():
-            sources_targets = list(it.product(graph_filters, color_inputs))
-
-            for s, t in sources_targets:
-                paths = list(nx.algorithms.all_simple_paths(self.graph, s, t))
-
-                if paths:
-                    inputs[s.name][color].add(t)
-                    seen.add(t)
-
-            for i in color_inputs:
-                if i not in seen:
-                    inputs[None][color].add(i)
-
-        self.inputs = inputs
 
     def plot(self, filename=""):
         assert self.graphkit is not None, "call compile first"
@@ -335,13 +311,10 @@ class Graph():
 
         color = kwargs.get('color', None)
         assert color is not None
-        keys = args[0].keys()
 
-        for branch, colors_inputs in self.inputs.items():
-            if colors_inputs[color] and all(i in keys for i in colors_inputs[color]):
-                result = self.graphkit(*args, **kwargs)
-                outputs = self.outputs[color]
-                return {k: result[k] for k in outputs if k in result}
+        result = self.graphkit(*args, **kwargs)
+        outputs = self.outputs[color]
+        return {k: result[k] for k in outputs if k in result}
 
 
 class Transformation():
