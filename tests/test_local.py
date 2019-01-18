@@ -11,6 +11,7 @@ To use:
 import signal
 import multiprocessing as mp
 import pytest
+import time
 import os
 
 from ami.comm import Ports, GraphCommHandler
@@ -50,7 +51,10 @@ class TestAMI(object):
     def test_complex_graph(self, start_ami):
         comm_handler, root_dir = start_ami
         comm_handler.load(os.path.join(root_dir, 'tests', 'complex_graph.dill'))
+        start = time.time()
         while comm_handler.graphVersion != comm_handler.featuresVersion:
-            pass
+            end = time.time()
+            if end - start > 10:
+                break
         sig = comm_handler.fetch('signal')
         assert sig == {1: 10000.0}
