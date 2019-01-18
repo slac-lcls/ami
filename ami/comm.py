@@ -141,6 +141,18 @@ class EventBuilder(ZmqHandler):
         self.contribs = {}
         self.graphs = {}
 
+    def prune(self, prune_key=None):
+        if prune_key is None:
+            depth = self.depth
+        else:
+            depth = self.latest - prune_key
+        if len(self.pending) > depth:
+            logger.debug("prune")
+            for eb_key in sorted(self.pending.keys(), reverse=True)[depth:]:
+                logger.debug("pruned %d", eb_key)
+                del self.pending[eb_key]
+                del self.contribs[eb_key]
+
     def set_graph(self, ver_key, nwork, ncol, graph):
         self.graphs[ver_key] = dill.loads(graph)
         if self.graphs[ver_key] is not None:
@@ -282,6 +294,21 @@ class GraphCommHandler(object):
     @property
     def names(self):
         self._sock.send_string('get_names')
+        return self._sock.recv_pyobj()
+
+    @property
+    def versions(self):
+        self._sock.send_string('get_versions')
+        return self._sock.recv_pyobj()
+
+    @property
+    def graphVersion(self):
+        self._sock.send_string('get_graph_version')
+        return self._sock.recv_pyobj()
+
+    @property
+    def featuresVersion(self):
+        self._sock.send_string('get_features_version')
         return self._sock.recv_pyobj()
 
     def fetch(self, name):

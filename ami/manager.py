@@ -47,6 +47,7 @@ class Manager(Collector):
     def process_msg(self, msg):
         if msg.mtype == MsgTypes.Datagram:
             self.feature_store.update(msg.payload)
+            self.feature_store.version = msg.version
         elif (msg.mtype == MsgTypes.Transition) and (msg.payload.ttype == Transitions.Allocate):
             self.partition = msg.payload.payload
         return
@@ -85,6 +86,15 @@ class Manager(Collector):
 
     def cmd_unknown(self):
         self.comm.send_string('error')
+
+    def cmd_get_versions(self):
+        self.comm.send_pyobj((self.version, self.feature_store.version))
+
+    def cmd_get_graph_version(self):
+        self.comm.send_pyobj(self.version)
+
+    def cmd_get_features_version(self):
+        self.comm.send_pyobj(self.feature_store.version)
 
     def cmd_get_features(self):
         self.comm.send_pyobj(self.features)
