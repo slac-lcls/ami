@@ -70,8 +70,11 @@ class GraphCollector(Collector):
             self.store.heartbeat(msg.identity, msg.heartbeat)
             if self.store.heartbeat_ready(msg.heartbeat):
                 self.store.complete(self.node, msg.heartbeat)
-            # prune old entries from the event builder
-            self.store.prune()
+                # prune entries older than the current heartbeat
+                self.store.prune(msg.heartbeat)
+            else:
+                # prune older entries from the event builder
+                self.store.prune()
 
 
 def run_collector(node_num, num_contribs, color, collector_addr, upstream_addr, graph_addr):

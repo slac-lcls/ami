@@ -154,10 +154,10 @@ class Manager(Collector):
             self.graph_comm.send_string(topic, zmq.SNDMORE)
             self.graph_comm.send_pyobj((self.num_workers, self.num_nodes, self.version), zmq.SNDMORE)
             self.graph_comm.send(graph)
-            logger.info("manager: sending of graph completed")
+            logger.info("manager: sending of graph (v%d) completed", self.version)
             self.comm.send_string('ok')
         except Exception:
-            logger.exception("manager: failed to send graph -")
+            logger.exception("manager: failed to send graph (v%d) -", self.version)
             self.comm.send_string('error')
 
     def graph_request(self):

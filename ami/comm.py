@@ -78,18 +78,6 @@ class Store:
             else:
                 self._store[name] = Datagram(name, datatype, data)
 
-    def sum(self, name, data):
-        datatype = DataTypes.get_type(data)
-        if name in self._store:
-            if datatype == self._store[name].dtype or self._store[name].dtype == DataTypes.Unset:
-                self._store[name].dtype = datatype
-                self._store[name].data += data
-            else:
-                raise TypeError("type of new result (%s) differs from existing"
-                                " (%s)" % (datatype, self._store[name].dtype))
-        else:
-            self.put(name, data)
-
     def clear(self):
         self._store = {}
 
@@ -134,7 +122,7 @@ class EventBuilder(ZmqHandler):
         self.num_contribs = num_contribs
         self.depth = depth
         self.color = color
-        self.latest = None
+        self.latest = 0
         # using a dict because it is random access instead of a sequential list
         self.transitions = {}
         self.pending = {}
@@ -147,19 +135,29 @@ class EventBuilder(ZmqHandler):
         else:
             depth = self.latest - prune_key
         if len(self.pending) > depth:
-            logger.debug("prune")
             for eb_key in sorted(self.pending.keys(), reverse=True)[depth:]:
-                logger.debug("pruned %d", eb_key)
+                logger.debug("Pruned uncompleted heartbeat %d", eb_key)
                 del self.pending[eb_key]
                 del self.contribs[eb_key]
+
+    def active_graphs(self):
+        active = set()
+        for store in self.pending.values():
+            active.add(store.version)
+        return active
+
+    def clear_graphs(self):
+        active = self.active_graphs()
+        for ver_key in sorted(self.graphs.keys(), reverse=True)[self.depth:]:
+            if ver_key not in active:
+                logger.debug("Pruned old graph (v%d)", ver_key)
+                del self.graphs[ver_key]
 
     def set_graph(self, ver_key, nwork, ncol, graph):
         self.graphs[ver_key] = dill.loads(graph)
         if self.graphs[ver_key] is not None:
             self.graphs[ver_key].compile(num_workers=nwork, num_local_collectors=ncol)
-
-    def graph(self, ver_key):
-        return self.graphs.get(ver_key)
+        self.clear_graphs()
 
     def complete(self, identity, eb_key):
         if eb_key in self.pending:
@@ -170,34 +168,21 @@ class EventBuilder(ZmqHandler):
                                        self.pending[eb_key].namespace))
             del self.pending[eb_key]
             del self.contribs[eb_key]
-            logger.debug("completed heartbeat %s", eb_key)
+            logger.debug("Completed heartbeat %s", eb_key)
 
     def update(self, eb_key, eb_id, ver_key, data):
         if eb_key not in self.pending:
             self.pending[eb_key] = Store(version=ver_key)
             self.contribs[eb_key] = 0
-        self.latest = eb_key
+        if eb_key > self.latest:
+            self.latest = eb_key
         if ver_key != self.pending[eb_key].version:
             logger.error("Graph version mismatch: heartbeat %s from id %s has version %s when %s was expected",
                          eb_key, eb_id, ver_key, self.pending[eb_key].version)
         else:
-            graph = self.graph(ver_key)
+            graph = self.graphs.get(ver_key)
             if graph is not None:
                 self.pending[eb_key].update(graph(data, color=self.color))
-
-    def put(self, eb_key, eb_id, name, data):
-        if eb_key not in self.pending:
-            self.pending[eb_key] = Store()
-            self.contribs[eb_key] = 0
-        self.latest = eb_key
-        self.pending[eb_key].put(name, data)
-
-    def sum(self, eb_key, eb_id, name, data):
-        if eb_key not in self.pending:
-            self.pending[eb_key] = Store()
-            self.contribs[eb_key] = 0
-        self.latest = eb_key
-        self.pending[eb_key].sum(name, data)
 
     def transition(self, eb_id, eb_key):
         if eb_key not in self.transitions:
