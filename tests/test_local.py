@@ -21,7 +21,8 @@ from ami.local import build_parser, run_ami
 @pytest.fixture(scope='class')
 def start_ami(pytestconfig):
     parser = build_parser()
-    args = parser.parse_args(["-n", "1", '-t', '--headless', 'static://%s' % os.path.join(pytestconfig.rootdir, 'tests', 'worker_test.json') ])
+    args = parser.parse_args(["-n", "1", '-t', '--headless',
+                              'static://%s' % os.path.join(pytestconfig.rootdir, 'tests', 'worker_test.json')])
 
     queue = mp.Queue()
     ami = mp.Process(name='ami',
