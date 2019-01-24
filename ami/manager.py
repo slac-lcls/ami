@@ -23,7 +23,7 @@ class Manager(Collector):
     configuration changes to the graph.
     """
 
-    def __init__(self, num_workers, num_nodes, results_addr, graph_addr, comm_addr):
+    def __init__(self, num_workers, num_nodes, results_addr, graph_addr, comm_addr, export_addr=None):
         """
         protocol right now only tells you how to communicate with workers
         """
@@ -35,6 +35,12 @@ class Manager(Collector):
         self.feature_req = re.compile("fetch:(?P<name>.*)")
         self.graph = None
         self.version = 0
+
+        if export_addr is None:
+            self.export = None
+        else:
+            self.export = self.ctx.socket(zmq.PUB)
+            self.export.bind(export_addr)
 
         self.comm = self.ctx.socket(zmq.REP)
         self.comm.bind(comm_addr)
@@ -48,9 +54,15 @@ class Manager(Collector):
         if msg.mtype == MsgTypes.Datagram:
             self.feature_store.update(msg.payload)
             self.feature_store.version = msg.version
+            # export the collector data to epics
+            self.export_data(msg.payload)
+            if self.export is not None:
+                self.export.send_string('data', zmq.SNDMORE)
+                self.export.send_pyobj(msg.payload)
         elif (msg.mtype == MsgTypes.Transition) and (msg.payload.ttype == Transitions.Allocate):
             self.partition = msg.payload.payload
-        return
+            # export the partition info to epics
+            self.export_graph()
 
     @property
     def names(self):
@@ -154,6 +166,7 @@ class Manager(Collector):
             self.graph_comm.send_string(topic, zmq.SNDMORE)
             self.graph_comm.send_pyobj((self.num_workers, self.num_nodes, self.version), zmq.SNDMORE)
             self.graph_comm.send(graph)
+            self.export_graph()
             logger.info("manager: sending of graph (v%d) completed", self.version)
             self.comm.send_string('ok')
         except Exception:
@@ -168,9 +181,25 @@ class Manager(Collector):
             self.graph_comm.send_pyobj((self.num_workers, self.num_nodes, self.version), zmq.SNDMORE)
             self.graph_comm.send(dill.dumps(self.graph))
 
+    def export_graph(self):
+        if self.export is not None:
+            data = {
+                'names': self.names,
+                'version': self.version,
+                'store': self.feature_store.version,
+                'dill': dill.dumps(self.graph)
+            }
+            self.export.send_string('graph', zmq.SNDMORE)
+            self.export.send_pyobj(data)
 
-def run_manager(num_workers, num_nodes, results_addr, graph_addr, comm_addr):
-    manager = Manager(num_workers, num_nodes, results_addr, graph_addr, comm_addr)
+    def export_data(self, data):
+        if self.export is not None:
+            self.export.send_string('data', zmq.SNDMORE)
+            self.export.send_pyobj(data)
+
+
+def run_manager(num_workers, num_nodes, results_addr, graph_addr, comm_addr, export_addr=None):
+    manager = Manager(num_workers, num_nodes, results_addr, graph_addr, comm_addr, export_addr)
     return manager.run()
 
 
@@ -217,11 +246,26 @@ def main():
     )
 
     parser.add_argument(
+        '-e',
+        '--export',
+        type=int,
+        default=Ports.Export,
+        help='port for sending data to the export service (default: %d)' % Ports.Export
+    )
+
+    parser.add_argument(
         '-r',
         '--results',
         type=int,
         default=Ports.Results,
         help='port for receiving results (default: %d)' % Ports.Results
+    )
+
+    parser.add_argument(
+        '-E',
+        '--enable-export',
+        action='store_true',
+        help='enable the data export service'
     )
 
     parser.add_argument(
@@ -240,6 +284,8 @@ def main():
     results_addr = "tcp://%s:%d" % (args.host, args.results)
     graph_addr = "tcp://%s:%d" % (args.host, args.graph)
     comm_addr = "tcp://%s:%d" % (args.host, args.port)
+    if args.enable_export:
+        export_addr = "tcp://%s:%d" % (args.host, args.export)
 
     log_handlers = [logging.StreamHandler()]
     if args.log_file is not None:
@@ -248,7 +294,7 @@ def main():
     logging.basicConfig(format=LogConfig.Format, level=log_level, handlers=log_handlers)
 
     try:
-        return run_manager(args.num_workers, args.num_nodes, results_addr, graph_addr, comm_addr)
+        return run_manager(args.num_workers, args.num_nodes, results_addr, graph_addr, comm_addr, export_addr)
     except KeyboardInterrupt:
         logger.info("Manager killed by user...")
         return 0

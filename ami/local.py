@@ -15,6 +15,7 @@ from ami.worker import run_worker
 from ami.collector import run_node_collector, run_global_collector
 from ami.client import run_client
 from ami.console import run_console
+from ami.export import run_export
 
 
 logger = logging.getLogger(__name__)
@@ -35,6 +36,19 @@ def build_parser():
         '-l',
         '--load',
         help='saved AMII configuration to load'
+    )
+
+    parser.add_argument(
+        '-e',
+        '--export',
+        help='the base name to use for data export (e.g. the base of all the PV names)'
+    )
+
+    parser.add_argument(
+        '-a',
+        '--aggregate',
+        action='store_true',
+        help='aggregates graph and store related variables into structured data when exporting'
     )
 
     parser.add_argument(
@@ -96,6 +110,7 @@ def build_parser():
 def run_ami(args, queue=mp.Queue()):
 
     ipcdir = None
+    export_addr = None
     if args.tcp:
         host = "127.0.0.1"
         collector_addr = "tcp://%s:%d" % (host, args.port)
@@ -103,6 +118,8 @@ def run_ami(args, queue=mp.Queue()):
         graph_addr = "tcp://%s:%d" % (host, args.port+2)
         comm_addr = "tcp://%s:%d" % (host, args.port+3)
         results_addr = "tcp://%s:%d" % (host, args.port+4)
+        if args.export is not None:
+            export_addr = "tcp://%s:%d" % (host, args.port+5)
     else:
         ipcdir = tempfile.mkdtemp()
         collector_addr = "ipc://%s/node_collector" % ipcdir
@@ -110,6 +127,8 @@ def run_ami(args, queue=mp.Queue()):
         graph_addr = "ipc://%s/graph" % ipcdir
         comm_addr = "ipc://%s/comm" % ipcdir
         results_addr = "ipc://%s/results" % ipcdir
+        if args.export is not None:
+            export_addr = "ipc://%s/export" % ipcdir
 
     procs = []
     failed_proc = False
@@ -162,11 +181,21 @@ def run_ami(args, queue=mp.Queue()):
         manager_proc = mp.Process(
             name='manager',
             target=run_manager,
-            args=(args.num_workers, 1, results_addr, graph_addr, comm_addr)
+            args=(args.num_workers, 1, results_addr, graph_addr, comm_addr, export_addr)
         )
         manager_proc.daemon = True
         manager_proc.start()
         procs.append(manager_proc)
+
+        if args.export:
+            export_proc = mp.Process(
+                name='export',
+                target=run_export,
+                args=(args.export, comm_addr, export_addr, args.aggregate)
+            )
+            export_proc.daemon = True
+            export_proc.start()
+            procs.append(export_proc)
 
         if args.console:
             run_console(comm_addr, args.load)
