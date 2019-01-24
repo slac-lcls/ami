@@ -49,6 +49,7 @@ Bigger Projects:
 - external-data (including collector) to worker feedback. probably EPICS.  (e.g. for background subtraction)
 - complex data types (e.g. peaks/times from hsd fex)
 - check gessner issue OK
+- peakfinder
 
 6 DEC 18
 CPO/TJL:
