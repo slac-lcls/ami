@@ -50,6 +50,7 @@ Bigger Projects:
 - complex data types (e.g. peaks/times from hsd fex)
 - check gessner issue OK
 - peakfinder
+- make complex example work from gui
 
 6 DEC 18
 CPO/TJL:
