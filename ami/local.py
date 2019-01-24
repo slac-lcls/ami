@@ -15,7 +15,10 @@ from ami.worker import run_worker
 from ami.collector import run_node_collector, run_global_collector
 from ami.client import run_client
 from ami.console import run_console
-from ami.export import run_export
+try:
+    from ami.export import run_export
+except ImportError:
+    run_export = None
 
 
 logger = logging.getLogger(__name__)
@@ -188,6 +191,9 @@ def run_ami(args, queue=mp.Queue()):
         procs.append(manager_proc)
 
         if args.export:
+            if run_export is None:
+                logger.critical("Export module is not available: p4p needs to be installed to use the export feature!")
+                return 1
             export_proc = mp.Process(
                 name='export',
                 target=run_export,
