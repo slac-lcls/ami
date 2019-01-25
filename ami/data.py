@@ -131,40 +131,64 @@ class Source(abc.ABC):
 
 
 class PsanaSource(Source):
+
     def __init__(self, idnum, num_workers, src_cfg):
         super(__class__, self).__init__(idnum, num_workers, src_cfg)
         self.delimiter = ":"
-        self.dets = []
+        self.xtcdata_names = []
         if psana is not None:
             self.ds = psana.DataSource(self.config['filename'])
         else:
             raise NotImplementedError("psana is not available!")
 
+
     def partition(self):
-        return self.dets
+        return self.xtcdata_names
+
+
+    def _update_xtcdata_names(self, run):
+        detinfo = run.detinfo
+        self.xtcdata_names = []
+        for (detname, det_xface_name), det_attr_list in detinfo.items():
+            self.xtcdata_names += [self.delimiter.join((detname, det_xface_name, attr)) for attr in det_attr_list]
+        return
+    
 
     def events(self):
+
         timestamp = 0
         time.sleep(self.init_time)
+
         while True:
             event = {}
             for run in self.ds.runs():
-                dets = []
-                detinfo = run.detinfo
-                for (detname, det_xface_name), det_attr_list in detinfo.items():
-                    # need this loop when we send the GUI det xfaces and attributes
-                    # for det_xface_name,det_xface_attrs in det_xface_dict.items():
-                    dets += [self.delimiter.join((detname, det_xface_name, attr)) for attr in det_attr_list]
-                self.dets = dets
-                yield Message(MsgTypes.Transition, self.idnum, Transition(Transitions.Configure, None))
+                self._update_xtcdata_names(run) 
+                self.detectors = {} # psana Detector object cache
+                yield Message(MsgTypes.Transition,
+                              self.idnum,
+                              Transition(Transitions.Configure, None))
+
                 for evt in self.ds.events():
                     # FIXME: when we move to real timestamps we should use this line
                     # timestamp = evt.seq.timestamp()
+
                     for name in self.requested_names:
-                        obj = evt
-                        for token in name.split(self.delimiter):
+
+                        # each name is like "detname:drp_class_name:attrN"
+                        namesplit = name.split(':')
+                        detname = namesplit[0]
+
+                        # if this is the first time we request a detector,
+                        # make & cache the psana Detector object
+                        if detname not in self.detectors:
+                            self.detectors[detname] = run.Detector(detname)
+
+                        # loop to the bottom level of the Det obj and get data
+                        obj = self.detectors[detname]
+                        for token in namesplit[1:]:
                             obj = getattr(obj, token)
-                        event[name] = obj
+                        event[name] = obj(evt)
+
                     msg = Message(MsgTypes.Datagram, self.idnum, event)
                     msg.timestamp = timestamp
                     timestamp += 1

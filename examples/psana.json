@@ -2,6 +2,6 @@
     "interval": 0.1,
     "init_time": 0.5,
     "config": {
-        "filename": "data.xtc"
+        "filename": "data.xtc2"
     }
 }
