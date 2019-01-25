@@ -263,6 +263,13 @@ class GraphCommHandler(object):
         self._addr = addr
         self._sock = self._ctx.socket(zmq.REQ)
         self._sock.connect(self._addr)
+        self._expand_keys = ['inputs', 'outputs']
+
+    def _make_node(self, node, **kwargs):
+        for key in self._expand_keys:
+            if key in kwargs and not isinstance(kwargs[key], list):
+                kwargs[key] = [kwargs[key]]
+        return node(**kwargs)
 
     def auto(self, name):
         return '_auto_%s' % name
@@ -310,14 +317,14 @@ class GraphCommHandler(object):
 
     def view(self, name):
         view_name = self.auto(name)
-        return self.pickN('%s_view' % view_name, [name], [view_name])
+        return self.pickN('%s_view' % view_name, name, view_name)
 
     def pickN(self, name, inputs, outputs, N=1):
-        node = PickN(name=name, inputs=inputs, outputs=outputs, N=N)
+        node = self._make_node(PickN, name=name, inputs=inputs, outputs=outputs, N=N)
         return self.edit("add", node)
 
     def map(self, name, inputs, outputs, func):
-        node = Map(name=name, inputs=inputs, outputs=outputs, func=func)
+        node = self._make_node(Map, name=name, inputs=inputs, outputs=outputs, func=func)
         return self.edit("add", node)
 
     def remove(self, name):
