@@ -1,4 +1,5 @@
-from ami.graphkit_wrapper import Graph, PickN
+from ami.graphkit_wrapper import Graph
+from ami.graph_nodes import PickN
 
 
 class TestPickN:

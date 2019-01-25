@@ -1,14 +1,18 @@
-import operator
 import networkx as nx
 import itertools as it
 import collections
-import sys
-from networkfox import operation, If, Else, compose
+from networkfox import compose
+import ami.graph_nodes
 
 
 class Graph():
 
     def __init__(self, name):
+        """
+        Args:
+            name (str): Name of graph
+        """
+
         self.name = name
         self.graph = nx.DiGraph()
         self.graphkit = None
@@ -21,9 +25,9 @@ class Graph():
     def __bool__(self):
         return self.graph.size() != 0
 
-    def name_is_valid(self, name):
+    def _name_is_valid(self, name):
         """
-        Returns true is the name passed is a valid user-defined name for inputs
+        Returns true if the name passed is a valid user-defined name for inputs
         and outputs in the graph.
 
         In other words this checks if the name collides with one the graph may
@@ -38,7 +42,7 @@ class Graph():
         as inputs for nodes. Internally generated names are exclued from this
         list!
         """
-        return [node for node in self.graph.nodes if isinstance(node, str) and self.name_is_valid(node)]
+        return [node for node in self.graph.nodes if isinstance(node, str) and self._name_is_valid(node)]
 
     @property
     def sources(self):
@@ -46,15 +50,34 @@ class Graph():
         Returns a list of all input data sources needed by the worker to process
         the full graph.
         """
-        return [name for name in self.inputs['worker'] if self.name_is_valid(name)]
+        return [name for name in self.inputs['worker'] if self._name_is_valid(name)]
 
     def add(self, op):
+        """
+        Add an operation to the graph. If the node already exists in the graph try to replace it if the new node's
+        inputs and outputs match the old one's.
+
+        Args:
+            op (Transformation): Operation node to add to graph.
+        """
+
         try:
             self.insert(op)
         except AssertionError:
             self.replace(op)
 
     def insert(self, ops):
+        """
+        Insert operations into the graph. If an operation already exists in the graph this function raises an
+        AssertionError.
+
+        Args:
+            ops (list or Transformation): Operation to insert into graph
+
+        Raises:
+            AssertionError: if an operation already exists in the graph
+        """
+
         if type(ops) is not list:
             ops = [ops]
 
@@ -74,6 +97,13 @@ class Graph():
         self.graphkit = None
 
     def remove(self, name):
+        """
+        Recursively removes a node and its descendants from the graph.
+
+        Args:
+            name (str): Name of node to remove from graph.
+        """
+
         for n in self.graph.nodes:
             if type(n) is str:
                 continue
@@ -92,6 +122,17 @@ class Graph():
         self.graphkit = None
 
     def replace(self, new_node):
+        """
+        Replace a node in the graph. Inputs and outputs of new_node must match the existing node in the graph otherwise
+        an AssertionError will be raised.
+
+        Args:
+            new_node (Transformation): New node to replace existing node with.
+
+        Raises:
+            AssertionError: if inputs and outputs of new_node do not match existing node.
+        """
+
         if new_node.name in self.children_of_global_operations:
             descendants = set()
             ancestors = set()
@@ -131,14 +172,17 @@ class Graph():
         self.graphkit = None
 
     def reset(self):
-        nodes = list(filter(lambda node: isinstance(node, StatefulTransformation), self.graph.nodes))
+        """
+        Resets the state of all StatefulTransmation nodes in the graph.
+        """
+        nodes = list(filter(lambda node: isinstance(node, ami.graph_nodes.StatefulTransformation), self.graph.nodes))
         list(map(lambda node: node.reset(), nodes))
 
-    def color_nodes(self):
+    def _color_nodes(self):
         """
-        Generate all paths from inputs to outputs, for each path look for nodes which have the is_global_operation
-        attribute set to True. If in a given path for which we've found a node global operation node there is no
-        other node with is_global_operation true preceeds it then we mark that node for expansion.
+        Generate all paths from inputs to outputs, for each path look for nodes which have the ``is_global_operation``
+        attribute set to True. If in a given path for which we've found a global operation node there is no
+        other node with ``is_global_operation`` true which preceeds it then we mark that node for expansion.
         """
         inputs = [n for n, d in self.graph.in_degree() if d == 0]
         outputs = [n for n, d in self.graph.out_degree() if d == 0]
@@ -168,7 +212,17 @@ class Graph():
                     if node.color == "":
                         node.color = color
 
-    def expand_global_operations(self, num_workers, num_local_collectors):
+    def _expand_global_operations(self, num_workers, num_local_collectors):
+        """
+        Expand the nodes found in color_nodes into three nodes which execute on the worker, local collector, and
+        global collector respectively. The number of workers and number of local collectors must be known in order to
+        properly expand PickN operations.
+
+        Args:
+            num_workers (int): Total number of workers.
+            num_local_collectors (int): Total number of local collectors.
+        """
+
         inputs = [n for n, d in self.graph.in_degree() if d == 0]
         self.inputs['worker'].update(inputs)
 
@@ -179,7 +233,7 @@ class Graph():
             self.children_of_global_operations[node.name] = set()
 
             self.graph.remove_node(node)
-            NewNode = getattr(sys.modules[__name__], node.__class__.__name__)
+            NewNode = getattr(ami.graph_nodes, node.__class__.__name__)
 
             color_order = ['worker', 'localCollector', 'globalCollector']
             worker_outputs = None
@@ -243,7 +297,18 @@ class Graph():
                     for o in outputs:
                         self.graph.add_edge(global_collector_node, o)
 
-    def generate_filter_node(self, seen, filter_node, nodes):
+    def _generate_filter_node(self, seen, filter_node, nodes):
+        """
+        Convert a Filter node to appropriate networkfox if/else node.
+
+        Args:
+            seen (set): Set of nodes that have already been converted.
+            filter_node (Filter): Node to convert to networkfox if/else node.
+            nodes (list): Nodes which will make up subgraph contained in networkfox if/else node.
+
+        Returns:
+            node: networkfox if/else node.
+        """
         seen.update(nodes)
         nodes.pop(0)
         nodes.pop(0)
@@ -260,22 +325,36 @@ class Graph():
         return node
 
     def compile(self, num_workers=1, num_local_collectors=1):
+        """
+        Convert an AMI graph to a networkfox graph. This function must be called after any function which modifies the
+        graph, ie add, insert, remove, or replace.
+
+        This is done by coloring nodes, expanding global operations, and replacing filter nodes with the appropriate
+        networkfox equivalents.
+
+        Args:
+            num_workers (int): Total number of workers.
+            num_local_collectors (int): Total number of local collectors.
+        """
         self.inputs = collections.defaultdict(set)
-        self.color_nodes()
-        self.expand_global_operations(num_workers, num_local_collectors)
+        self._color_nodes()
+        self._expand_global_operations(num_workers, num_local_collectors)
 
         seen = set()
         branch_merge_candidates = [n for n, d in self.graph.in_degree() if d >= 2 and type(n) is str]
-        graph_filters = list(filter(lambda node: isinstance(node, Filter), self.graph.nodes))
+        graph_filters = list(filter(lambda node: isinstance(node, ami.graph_nodes.Filter), self.graph.nodes))
         outputs = [n for n, d in self.graph.out_degree() if d == 0]
         body = []
+
+        # There are two cases that need to be handled when converting filter nodes.
+        # Filters which merge two branches of the graph and filters which don't merge branches.
 
         filters_targets = list(it.product(graph_filters, branch_merge_candidates))
         for f, t in filters_targets:
             paths = list(nx.algorithms.all_simple_paths(self.graph, f, t))
 
             for nodes in paths:
-                filter_node = self.generate_filter_node(seen, f, nodes)
+                filter_node = self._generate_filter_node(seen, f, nodes)
                 body.append(filter_node)
 
         filters_targets = list(it.product(graph_filters, outputs))
@@ -288,7 +367,7 @@ class Graph():
                 if seen.issuperset(nodes):
                     continue
 
-                filter_node = self.generate_filter_node(seen, f, nodes)
+                filter_node = self._generate_filter_node(seen, f, nodes)
                 body.append(filter_node)
 
         for node in self.graph.nodes:
@@ -302,11 +381,32 @@ class Graph():
 
         self.graphkit = compose(name=self.name)(*body)
 
-    def plot(self, filename=""):
+    def plot(self, filename=None):
+        """
+        Generate plot of the graph.
+
+        See networkfox documentation for options.
+
+        Args:
+            filename (str): Name of file to save plot to.
+
+        Raises:
+            AssertionError: if compile() has not been called first
+        """
         assert self.graphkit is not None, "call compile first"
+
         self.graphkit.plot(filename)
 
     def __call__(self, *args, **kwargs):
+        """
+        Executes the graph. The dictionary returned by this function will only contain entries for
+        the keys in self.outputs for the given color.
+
+        :param args: args[0] should be dictionary of arguments required to execute graph nodes.
+        :param kwargs: Should contain a key called color with a valid color, either worker, localCollector,
+                       or globalCollector.
+        :raises AssertionError: if compile() has not been falled first or if color is None.
+        """
         assert self.graphkit is not None, "call compile first"
 
         color = kwargs.get('color', None)
@@ -315,186 +415,3 @@ class Graph():
         result = self.graphkit(*args, **kwargs)
         outputs = self.outputs[color]
         return {k: result[k] for k in outputs if k in result}
-
-
-class Transformation():
-
-    def __init__(self, **kwargs):
-        self.name = kwargs['name']
-        self.inputs = kwargs['inputs']
-        self.outputs = kwargs['outputs']
-        self.func = kwargs['func']
-        self.condition_needs = kwargs.get('condition_needs', [])
-        self.color = ""
-        self.is_global_operation = False
-
-    def __hash__(self):
-        return hash(self.name)
-
-    def __eq__(self, other):
-        return bool(self.name is not None and
-                    self.name == getattr(other, 'name', None))
-
-    def __repr__(self):
-        return u"%s(name='%s')" % (self.__class__.__name__, self.name)
-
-    def to_operation(self):
-        return operation(name=self.name, needs=self.inputs, provides=self.outputs, color=self.color)(self.func)
-
-
-class Map(Transformation):
-
-    def __init__(self, **kwargs):
-        super(Map, self).__init__(**kwargs)
-
-
-class Filter():
-
-    def __init__(self, name, condition_needs, outputs, condition=None):
-        self.name = name
-        self.condition_needs = condition_needs
-        self.condition = condition
-        self.inputs = []
-        self.outputs = outputs
-        self.color = ""
-
-
-class FilterOn(Filter):
-
-    def __init__(self, name, condition_needs, outputs, condition=lambda cond: cond):
-        super(FilterOn, self).__init__(name, condition_needs, outputs, condition)
-
-    def to_operation(self):
-        return If
-
-
-class FilterOff(Filter):
-
-    def __init__(self, name, condition_needs, outputs):
-        super(FilterOff, self).__init__(name, condition_needs, outputs)
-
-    def to_operation(self):
-        return Else
-
-
-class StatefulTransformation(Transformation):
-
-    def __init__(self, **kwargs):
-        reduction = kwargs.pop('reduction', None)
-
-        kwargs.setdefault('func', None)
-        super(StatefulTransformation, self).__init__(**kwargs)
-
-        if reduction:
-            assert hasattr(reduction, '__call__'), 'reduction is not callable'
-        self.reduction = reduction
-
-    def reset(self):
-        raise NotImplementedError
-
-    def to_operation(self):
-        return operation(name=self.name, needs=self.inputs, provides=self.outputs, color=self.color)(self)
-
-
-class ReduceByKey(StatefulTransformation):
-
-    def __init__(self, **kwargs):
-        kwargs.setdefault('reduction', operator.add)
-        super(ReduceByKey, self).__init__(**kwargs)
-        self.res = {}
-        self.is_global_operation = True
-
-    def __call__(self, *args, **kwargs):
-        if len(args) == 2:
-            k, v = args
-            if k in self.res:
-                self.res[k] = self.reduction(self.res[k], v)
-            else:
-                self.res[k] = v
-        else:
-            for r in args:
-                for k, v in r.items():
-                    if k in self.res:
-                        self.res[k] = self.reduction(self.res[k], v)
-                    else:
-                        self.res[k] = v
-        return self.res
-
-    def reset(self):
-        self.res = {}
-
-
-class Accumulator(StatefulTransformation):
-
-    def __init__(self, **kwargs):
-        super(Accumulator, self).__init__(**kwargs)
-        self.res = []
-
-    def __call__(self, *args, **kwargs):
-        self.res.extend(args)
-
-        if self.reduction:
-            return self.reduction(self.res)
-        return self.res
-
-    def reset(self):
-        self.res = []
-
-
-class PickN(StatefulTransformation):
-
-    def __init__(self, **kwargs):
-        N = kwargs.pop('N', 1)
-        super(PickN, self).__init__(**kwargs)
-        self.N = N
-        self.idx = 0
-        self.res = [None]*self.N
-        self.clear = False
-        self.is_global_operation = True
-
-    def __call__(self, args):
-        if self.clear:
-            self.res = [None]*self.N
-            self.clear = False
-
-        if type(args) is not list:
-            args = [args]
-
-        for arg in args:
-            self.res[self.idx] = arg
-            self.idx = (self.idx + 1) % self.N
-
-        if not any(x is None for x in self.res):
-            self.clear = True
-            if self.N > 1:
-                return self.res
-            elif self.N == 1:
-                return self.res[0]
-
-    def reset(self):
-        self.res = [None]*self.N
-
-
-def Binning(name="", inputs=[], outputs=[], condition_needs=[]):
-    assert len(inputs) == 2
-    assert len(outputs) == 1
-
-    k, v = inputs
-    outputs = outputs[0]
-    map_outputs = [outputs+'_count']
-    reduce_outputs = [outputs+'_reduce']
-
-    def mean(d):
-        res = {}
-        for k, v in d.items():
-            res[k] = v[0]/v[1]
-        return res
-
-    nodes = [
-        Map(name=name+'_map', inputs=[v], outputs=map_outputs, condition_needs=condition_needs, func=lambda a: (a, 1)),
-        ReduceByKey(name=name+'_reduce', inputs=[k]+map_outputs, outputs=reduce_outputs,
-                    reduction=lambda cv, v: (cv[0]+v[0], cv[1]+v[1])),
-        Map(name=name+'_mean', inputs=reduce_outputs, outputs=[outputs], func=mean)
-    ]
-
-    return nodes

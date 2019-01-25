@@ -72,6 +72,16 @@ class Datagram(object):
 
 class Message(object):
     def __init__(self, mtype, identity, payload):
+        """
+        Message container
+
+        :param mtype: Message Type
+        :type mtype: MsgTypes
+        :param identity: Message Id Number
+        :type identity: int
+        :param payload: Message Payload
+        :type payload: dict
+        """
         self.mtype = mtype
         self.identity = identity
         self.payload = payload
@@ -86,6 +96,15 @@ class CollectorMessage(Message):
 
 class Source(abc.ABC):
     def __init__(self, idnum, num_workers, src_cfg):
+        """
+        :param idnum: Id number
+        :type idnum: int
+        :param num_workers: Number of workers
+        :type num_workers: int
+        :param src_cfg: Source configuration loaded from JSON file
+        :type src_cfg: dict
+        """
+
         self.idnum = idnum
         self.num_workers = num_workers
         self.interval = src_cfg['interval']
@@ -98,10 +117,16 @@ class Source(abc.ABC):
 
     @abc.abstractmethod
     def partition(self):
+        """
+        Return list of variables for which this source generates data for.
+        """
         pass
 
     @abc.abstractmethod
     def events(self):
+        """
+        Generator which returns yields `Message` containing dictionary of data as payload.
+        """
         pass
 
 

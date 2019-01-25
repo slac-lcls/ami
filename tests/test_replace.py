@@ -1,4 +1,5 @@
-from ami.graphkit_wrapper import Graph, Map, FilterOn, FilterOff, Binning
+from ami.graphkit_wrapper import Graph
+from ami.graph_nodes import Map, FilterOn, FilterOff, Binning
 import numpy as np
 
 

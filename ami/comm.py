@@ -4,7 +4,7 @@ import dill
 import logging
 from enum import IntEnum
 
-from ami.graphkit_wrapper import Map, PickN
+from ami.graph_nodes import Map, PickN
 from ami.data import MsgTypes, Message, CollectorMessage, DataTypes, Datagram
 
 
