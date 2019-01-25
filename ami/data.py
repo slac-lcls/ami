@@ -125,12 +125,13 @@ class PsanaSource(Source):
             event = {}
             for run in self.ds.runs():
                 dets = []
+                detinfo = run.detinfo
                 for (detname, det_xface_name), det_attr_list in detinfo.items():
                     # need this loop when we send the GUI det xfaces and attributes
                     # for det_xface_name,det_xface_attrs in det_xface_dict.items():
                     dets += [self.delimiter.join((detname, det_xface_name, attr)) for attr in det_attr_list]
                 self.dets = dets
-                yield Message(MsgTypes.Transition, self.idnum, Transition(Transitions.Configure, None)
+                yield Message(MsgTypes.Transition, self.idnum, Transition(Transitions.Configure, None))
                 for evt in self.ds.events():
                     # FIXME: when we move to real timestamps we should use this line
                     # timestamp = evt.seq.timestamp()
