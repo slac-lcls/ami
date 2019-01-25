@@ -75,12 +75,12 @@ class Message(object):
         """
         Message container
 
-        :param mtype: Message Type
-        :type mtype: MsgTypes
-        :param identity: Message Id Number
-        :type identity: int
-        :param payload: Message Payload
-        :type payload: dict
+        Args:
+            mtype (MsgTypes): Message type
+
+            identity (int): Message id number
+
+            payload (dict): Message payload
         """
         self.mtype = mtype
         self.identity = identity
@@ -97,12 +97,12 @@ class CollectorMessage(Message):
 class Source(abc.ABC):
     def __init__(self, idnum, num_workers, src_cfg):
         """
-        :param idnum: Id number
-        :type idnum: int
-        :param num_workers: Number of workers
-        :type num_workers: int
-        :param src_cfg: Source configuration loaded from JSON file
-        :type src_cfg: dict
+        Args:
+            idnum (int): Id number
+
+            num_workers (int): Number of workers
+
+            src_cfg (dict): Source configuration loaded from JSON file
         """
 
         self.idnum = idnum

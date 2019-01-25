@@ -260,17 +260,3 @@ def Binning(name="", inputs=[], outputs=[], condition_needs=[]):
     ]
 
     return nodes
-
-
-try:
-    import peakFinder
-
-    class PeakFinder(Transformation):
-
-        def __init__(self, *args, **kwargs):
-            self.pk = peakFinder.peak_finder_algos(*args, **kwargs)
-            self.pk.set_peak_selection_parameters(*args, **kwargs)
-
-
-except ModuleNotFoundError:
-    pass
