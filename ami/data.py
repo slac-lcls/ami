@@ -109,39 +109,41 @@ class PsanaSource(Source):
     def __init__(self, idnum, num_workers, src_cfg):
         super(__class__, self).__init__(idnum, num_workers, src_cfg)
         self.delimiter = ":"
+        self.dets = []
         if psana is not None:
             self.ds = psana.DataSource(self.config['filename'])
         else:
             raise NotImplementedError("psana is not available!")
 
     def partition(self):
-        dets = []
-        for run in self.ds.runs():
-            detinfo = run.detinfo
-            for (detname, det_xface_name), det_attr_list in detinfo.items():
-                # need this loop when we send the GUI det xfaces and attributes
-                # for det_xface_name,det_xface_attrs in det_xface_dict.items():
-                dets += [self.delimiter.join((detname, det_xface_name, attr)) for attr in det_attr_list]
-        return dets
+        return self.dets
 
     def events(self):
         timestamp = 0
         time.sleep(self.init_time)
         while True:
             event = {}
-            for evt in self.ds.events():
-                # FIXME: when we move to real timestamps we should use this line
-                # timestamp = evt.seq.timestamp()
-                for name in self.requested_names:
-                    obj = evt
-                    for token in name.split(self.delimiter):
-                        obj = getattr(obj, token)
-                    event[name] = obj
-                msg = Message(MsgTypes.Datagram, self.idnum, event)
-                msg.timestamp = timestamp
-                timestamp += 1
-                yield msg
-                time.sleep(self.interval)
+            for run in self.ds.runs():
+                dets = []
+                for (detname, det_xface_name), det_attr_list in detinfo.items():
+                    # need this loop when we send the GUI det xfaces and attributes
+                    # for det_xface_name,det_xface_attrs in det_xface_dict.items():
+                    dets += [self.delimiter.join((detname, det_xface_name, attr)) for attr in det_attr_list]
+                self.dets = dets
+                yield Message(MsgTypes.Transition, self.idnum, Transition(Transitions.Configure, None)
+                for evt in self.ds.events():
+                    # FIXME: when we move to real timestamps we should use this line
+                    # timestamp = evt.seq.timestamp()
+                    for name in self.requested_names:
+                        obj = evt
+                        for token in name.split(self.delimiter):
+                            obj = getattr(obj, token)
+                        event[name] = obj
+                    msg = Message(MsgTypes.Datagram, self.idnum, event)
+                    msg.timestamp = timestamp
+                    timestamp += 1
+                    yield msg
+                    time.sleep(self.interval)
 
 
 class RandomSource(Source):

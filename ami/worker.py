@@ -99,6 +99,11 @@ class Worker(object):
                     logger.exception("worker%s: Failure encountered executing graph:", self.idnum)
                     return 1
             else:
+                if msg.mtype == MsgTypes.Transitions and msg.payload.ttype == Transitions.Configure:
+                    partition = self.src.partition()
+                    self.store.message(MsgTypes.Transition,
+                                       self.idnum,
+                                       Transition(Transitions.Allocate, partition))
                 self.store.send(msg)
 
 
