@@ -8,7 +8,7 @@ import logging
 import argparse
 from ami import LogConfig
 from ami.comm import Ports, Colors, ResultStore
-from ami.data import MsgTypes, Transitions, Transition, RandomSource, StaticSource, PsanaSource
+from ami.data import MsgTypes, RandomSource, StaticSource, PsanaSource
 
 
 logger = logging.getLogger(__name__)
@@ -42,11 +42,6 @@ class Worker(object):
         return ret
 
     def run(self):
-        partition = self.src.partition()
-        self.store.message(MsgTypes.Transition,
-                           self.idnum,
-                           Transition(Transitions.Allocate, partition))
-
         for msg in self.src.events():
             # check to see if the graph has been reconfigured after update
             if msg.mtype == MsgTypes.Datagram:
@@ -99,11 +94,6 @@ class Worker(object):
                     logger.exception("worker%s: Failure encountered executing graph:", self.idnum)
                     return 1
             else:
-                if msg.mtype == MsgTypes.Transition and msg.payload.ttype == Transitions.Configure:
-                    partition = self.src.partition()
-                    self.store.message(MsgTypes.Transition,
-                                       self.idnum,
-                                       Transition(Transitions.Allocate, partition))
                 self.store.send(msg)
 
 

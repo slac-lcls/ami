@@ -112,15 +112,39 @@ class Source(abc.ABC):
         self.config = src_cfg['config']
         self.requested_names = []
 
+    def configure(self, detectors):
+        """
+        Constructs a properly formatted configure message
+
+        Args:
+            detectors (list): list of detector names to include in the message
+
+        Returns:
+            An object of type `Message` which includes the passed list of
+            detectors.
+        """
+        return Message(MsgTypes.Transition,
+                       self.idnum,
+                       Transition(Transitions.Configure, detectors))
+
+    def event(self, timestamp, data):
+        """
+        Constructs a properly formatted event message
+
+        Args:
+            timestamp (int): timestamp of the event
+
+            data (dict): the data of the event
+
+        Returns:
+            An object of type `Message` which includes the data for the event.
+        """
+        msg = Message(MsgTypes.Datagram, self.idnum, data)
+        msg.timestamp = timestamp
+        return msg
+
     def request(self, names):
         self.requested_names = names
-
-    @abc.abstractmethod
-    def partition(self):
-        """
-        Return list of variables for which this source generates data for.
-        """
-        pass
 
     @abc.abstractmethod
     def events(self):
@@ -141,18 +165,12 @@ class PsanaSource(Source):
         else:
             raise NotImplementedError("psana is not available!")
 
-
-    def partition(self):
-        return self.xtcdata_names
-
-
     def _update_xtcdata_names(self, run):
         detinfo = run.detinfo
         self.xtcdata_names = []
         for (detname, det_xface_name), det_attr_list in detinfo.items():
             self.xtcdata_names += [self.delimiter.join((detname, det_xface_name, attr)) for attr in det_attr_list]
         return
-    
 
     def events(self):
 
@@ -162,11 +180,9 @@ class PsanaSource(Source):
         while True:
             event = {}
             for run in self.ds.runs():
-                self._update_xtcdata_names(run) 
-                self.detectors = {} # psana Detector object cache
-                yield Message(MsgTypes.Transition,
-                              self.idnum,
-                              Transition(Transitions.Configure, None))
+                self._update_xtcdata_names(run)
+                self.detectors = {}  # psana Detector object cache
+                yield self.configure(self.xtcdata_names)
 
                 for evt in self.ds.events():
                     # FIXME: when we move to real timestamps we should use this line
@@ -189,10 +205,8 @@ class PsanaSource(Source):
                             obj = getattr(obj, token)
                         event[name] = obj(evt)
 
-                    msg = Message(MsgTypes.Datagram, self.idnum, event)
-                    msg.timestamp = timestamp
+                    yield self.event(timestamp, event)
                     timestamp += 1
-                    yield msg
                     time.sleep(self.interval)
 
 
@@ -201,12 +215,10 @@ class RandomSource(Source):
         super(__class__, self).__init__(idnum, num_workers, src_cfg)
         np.random.seed([idnum])
 
-    def partition(self):
-        return list(self.config.keys())
-
     def events(self):
         count = 0
         time.sleep(self.init_time)
+        yield self.configure(list(self.config.keys()))
         while True:
             event = {}
             for name, config in self.config.items():
@@ -222,9 +234,7 @@ class RandomSource(Source):
                     else:
                         logger.warn("DataSrc: %s has unknown type %s", name, config['dtype'])
             count += 1
-            msg = Message(MsgTypes.Datagram, self.idnum, event)
-            msg.timestamp = self.num_workers * count + self.idnum
-            yield msg
+            yield self.event(self.num_workers * count + self.idnum, event)
             time.sleep(self.interval)
 
 
@@ -236,12 +246,10 @@ class StaticSource(Source):
         if 'bound' in src_cfg:
             self.bound = src_cfg['bound']
 
-    def partition(self):
-        return list(self.config.keys())
-
     def events(self):
         count = 0
         time.sleep(self.init_time)
+        yield self.configure(list(self.config.keys()))
         while True:
             event = {}
             for name, config in self.config.items():
@@ -253,9 +261,7 @@ class StaticSource(Source):
                     else:
                         logger.warn("DataSrc: %s has unknown type %s", name, config['dtype'])
             count += 1
-            msg = Message(MsgTypes.Datagram, self.idnum, event)
-            msg.timestamp = self.num_workers * count + self.idnum
-            yield msg
+            yield self.event(self.num_workers * count + self.idnum, event)
             if count >= self.bound:
                 break
             time.sleep(self.interval)

@@ -59,7 +59,7 @@ class Manager(Collector):
             if self.export is not None:
                 self.export.send_string('data', zmq.SNDMORE)
                 self.export.send_pyobj(msg.payload)
-        elif (msg.mtype == MsgTypes.Transition) and (msg.payload.ttype == Transitions.Allocate):
+        elif (msg.mtype == MsgTypes.Transition) and (msg.payload.ttype == Transitions.Configure):
             self.partition = msg.payload.payload
             # export the partition info to epics
             self.export_graph()
