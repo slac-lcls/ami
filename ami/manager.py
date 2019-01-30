@@ -286,6 +286,8 @@ def main():
     comm_addr = "tcp://%s:%d" % (args.host, args.port)
     if args.enable_export:
         export_addr = "tcp://%s:%d" % (args.host, args.export)
+    else:
+        export_addr = None
 
     log_handlers = [logging.StreamHandler()]
     if args.log_file is not None:
