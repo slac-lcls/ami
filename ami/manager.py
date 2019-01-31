@@ -180,6 +180,9 @@ class Manager(Collector):
             self.graph_comm.send_string("graph", zmq.SNDMORE)
             self.graph_comm.send_pyobj((self.num_workers, self.num_nodes, self.version), zmq.SNDMORE)
             self.graph_comm.send(dill.dumps(self.graph))
+            # re-ask for config information on connect
+            self.graph_comm.send_string("cmd", zmq.SNDMORE)
+            self.graph_comm.send_string("config")
 
     def export_graph(self):
         if self.export is not None:

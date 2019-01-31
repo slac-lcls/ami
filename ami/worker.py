@@ -6,15 +6,16 @@ import json
 import dill
 import logging
 import argparse
+import functools
 from ami import LogConfig
-from ami.comm import Ports, Colors, ResultStore
-from ami.data import MsgTypes, RandomSource, StaticSource, PsanaSource
+from ami.comm import Ports, Colors, ResultStore, GraphReceiver
+from ami.data import MsgTypes, RandomSource, StaticSource, PsanaSource, SyncedSource
 
 
 logger = logging.getLogger(__name__)
 
 
-class Worker(object):
+class Worker:
     def __init__(self, idnum, heartbeat_period, src, collector_addr, graph_addr):
         """
         idnum : int
@@ -30,11 +31,48 @@ class Worker(object):
         self.store = ResultStore(collector_addr, self.ctx)
         self.graph = None
 
-        self.graph_comm = self.ctx.socket(zmq.SUB)
-        self.graph_comm.setsockopt_string(zmq.SUBSCRIBE, "")
-        self.graph_comm.connect(graph_addr)
+        self.graph_comm = GraphReceiver(graph_addr)
+        for topic in ["graph", "add", "del"]:
+            self.graph_comm.add_handler(topic, functools.partial(self.handle_graph, topic))
+        self.graph_comm.add_command("config", self.send_configure)
         self.last_timestamp = 0
         self.heartbeat_period = heartbeat_period
+
+    def send_configure(self):
+        self.store.send(self.src.configure())
+
+    def handle_graph(self, topic, num_work, num_col, version, payload):
+        if topic == "graph":
+            self.graph = dill.loads(payload)
+            if self.graph is not None:
+                self.graph.compile(num_workers=num_work, num_local_collectors=num_col)
+                self.src.request(self.graph.sources)
+                self.store.version = version
+        elif topic == "add":
+            add_update = dill.loads(payload)
+            if self.graph is not None:
+                self.graph.add(add_update)
+                self.graph.compile(num_workers=num_work, num_local_collectors=num_col)
+                self.src.request(self.graph.sources)
+                self.store.version = version
+            else:
+                logger.error("worker%d: Add requested on empty graph", self.idnum)
+        elif topic == "del":
+            name = dill.loads(payload)
+            if self.graph is not None:
+                self.graph.remove(name)
+                # check if the resulting graph is empty or not
+                if self.graph:
+                    self.graph.compile(num_workers=num_work, num_local_collectors=num_col)
+                    self.src.request(self.graph.sources)
+                else:
+                    self.graph = None
+                    self.src.request([])
+                self.store.version = version
+            else:
+                logger.warn("worker%d: No handler for received topic: %s", self.idnum, topic)
+        else:
+            logger.warn("worker%d: No handler for received topic: %s", self.idnum, topic)
 
     def check_heartbeat_boundary(self, timestamp):
         ret = (timestamp // self.heartbeat_period) > (self.last_timestamp // self.heartbeat_period)
@@ -51,40 +89,7 @@ class Worker(object):
                     self.store.clear()
                     while True:
                         try:
-                            topic = self.graph_comm.recv_string(flags=zmq.NOBLOCK)
-                            num_work, num_col, version = self.graph_comm.recv_pyobj()
-                            payload = self.graph_comm.recv()
-                            if topic == "graph":
-                                self.graph = dill.loads(payload)
-                                if self.graph is not None:
-                                    self.graph.compile(num_workers=num_work, num_local_collectors=num_col)
-                                    self.src.request(self.graph.sources)
-                                    self.store.version = version
-                            elif topic == "add":
-                                add_update = dill.loads(payload)
-                                if self.graph is not None:
-                                    self.graph.add(add_update)
-                                    self.graph.compile(num_workers=num_work, num_local_collectors=num_col)
-                                    self.src.request(self.graph.sources)
-                                    self.store.version = version
-                                else:
-                                    logger.error("worker%d: Add requested on empty graph", self.idnum)
-                            elif topic == "del":
-                                name = dill.loads(payload)
-                                if self.graph is not None:
-                                    self.graph.remove(name)
-                                    # check if the resulting graph is empty or not
-                                    if self.graph:
-                                        self.graph.compile(num_workers=num_work, num_local_collectors=num_col)
-                                        self.src.request(self.graph.sources)
-                                    else:
-                                        self.graph = None
-                                        self.src.request([])
-                                    self.store.version = version
-                                else:
-                                    logger.error("worker%d: Delete requested on empty graph", self.idnum)
-                            else:
-                                logger.warn("worker%d: No handler for received topic: %s", self.idnum, topic)
+                            self.graph_comm.recv(False)
                         except zmq.Again:
                             break
                 try:
@@ -123,6 +128,10 @@ def run_worker(num, num_workers, hb_period, source, collector_addr, graph_addr):
         src = PsanaSource(num,
                           num_workers,
                           src_cfg)
+    elif source[0] == 'synced':
+        src = SyncedSource(num,
+                           num_workers,
+                           src_cfg)
     else:
         logger.critical("worker%03d: unknown data source type: %s", num, source[0])
         return 1

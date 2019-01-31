@@ -83,7 +83,7 @@ class Store:
         self._store = {}
 
 
-class ZmqHandler(object):
+class ZmqHandler:
     def __init__(self, addr, ctx=None):
         if ctx is None:
             self.ctx = zmq.Context()
@@ -256,7 +256,47 @@ class Collector(abc.ABC):
                     self.handlers[sock]()
 
 
-class GraphCommHandler(object):
+class GraphReceiver:
+
+    def __init__(self, addr):
+        self.ctx = zmq.Context()
+        self.sock = self.ctx.socket(zmq.SUB)
+        self.sock.setsockopt_string(zmq.SUBSCRIBE, "")
+        self.sock.connect(addr)
+        self.handlers = {"cmd": self.command}
+        self.commands = {}
+        self.special = set(self.handlers.keys())
+
+    def command(self):
+        name = self.sock.recv_string()
+        if name in self.commands:
+            self.commands[name]()
+
+    def add_handler(self, topic, handler):
+        if topic not in self.special:
+            self.handlers[topic] = handler
+        else:
+            raise ValueError("handler for topic %s cannot be modified" % topic)
+
+    def add_command(self, name, handler):
+        self.commands[name] = handler
+
+    def recv(self, block=True):
+        if block:
+            topic = self.sock.recv_string()
+        else:
+            topic = self.sock.recv_string(flags=zmq.NOBLOCK)
+        # check if the topic is a special one
+        if topic in self.special:
+            self.handlers[topic]()
+        else:
+            num_work, num_col, version = self.sock.recv_pyobj()
+            payload = self.sock.recv()
+            if topic in self.handlers:
+                self.handlers[topic](num_work, num_col, version, payload)
+
+
+class GraphCommHandler:
 
     def __init__(self, addr):
         self._ctx = zmq.Context()

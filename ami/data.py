@@ -1,4 +1,5 @@
 import abc
+import zmq
 import time
 import logging
 try:
@@ -252,6 +253,42 @@ class RandomSource(Source):
             count += 1
             yield self.event(self.num_workers * count + self.idnum, event)
             time.sleep(self.interval)
+
+
+class SyncedSource(Source):
+    def __init__(self, idnum, num_workers, src_cfg):
+        super(__class__, self).__init__(idnum, num_workers, src_cfg)
+        np.random.seed([idnum])
+        self.ctx = zmq.Context()
+        self.ts_src = self.ctx.socket(zmq.REQ)
+        self.ts_src.connect(src_cfg['sync_addr'])
+
+    @property
+    def names(self):
+        return list(self.config.keys())
+
+    def events(self):
+        count = 0
+        time.sleep(self.init_time)
+        yield self.configure()
+        while True:
+            self.ts_src.send_string("ts")
+            timestamp = self.ts_src.recv_pyobj()
+            event = {}
+            for name, config in self.config.items():
+                if name in self.requested_names:
+                    if config['dtype'] == 'Scalar':
+                        value = config['range'][0] + (config['range'][1] - config['range'][0]) * np.random.rand(1)[0]
+                        if config.get('integer', False):
+                            event[name] = int(value)
+                        else:
+                            event[name] = value
+                    elif config['dtype'] == 'Waveform' or config['dtype'] == 'Image':
+                        event[name] = np.random.normal(config['pedestal'], config['width'], config['shape'])
+                    else:
+                        logger.warn("DataSrc: %s has unknown type %s", name, config['dtype'])
+            count += 1
+            yield self.event(timestamp, event)
 
 
 class StaticSource(Source):

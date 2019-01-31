@@ -4,8 +4,9 @@ import sys
 import dill
 import logging
 import argparse
+import functools
 from ami import LogConfig
-from ami.comm import Ports, Colors, Collector, EventBuilder
+from ami.comm import Ports, Colors, Collector, EventBuilder, GraphReceiver
 from ami.data import MsgTypes
 
 
@@ -25,19 +26,17 @@ class GraphCollector(Collector):
         self.downstream_addr = downstream_addr
 
         self.graph = None
-        self.graph_comm = self.ctx.socket(zmq.SUB)
-        self.graph_comm.setsockopt_string(zmq.SUBSCRIBE, "")
-        self.graph_comm.connect(graph_addr)
-        self.register(self.graph_comm, self.recv_graph)
+        self.graph_comm = GraphReceiver(graph_addr)
+        for topic in ["graph", "add", "del"]:
+            self.graph_comm.add_handler(topic, functools.partial(self.recv_graph, topic))
+        self.register(self.graph_comm.sock, self.graph_comm.recv)
 
-    def recv_graph(self):
-        topic = self.graph_comm.recv_string()
-        nwork, ncol, version = self.graph_comm.recv_pyobj()
+    def recv_graph(self, topic, nwork, ncol, version, payload):
         if topic == 'graph':
-            self.graph = self.graph_comm.recv()
+            self.graph = payload
             self.store.set_graph(version, nwork, ncol, self.graph)
         elif topic == "add":
-            add_update = dill.loads(self.graph_comm.recv())
+            add_update = dill.loads(payload)
             if self.graph is not None:
                 updated_graph = dill.loads(self.graph)
                 updated_graph.add(add_update)
@@ -46,7 +45,7 @@ class GraphCollector(Collector):
             else:
                 logger.error("Add requested on empty graph")
         elif topic == "del":
-            name = dill.loads(self.graph_comm.recv())
+            name = dill.loads(payload)
             if self.graph is not None:
                 updated_graph = dill.loads(self.graph)
                 updated_graph.remove(name)
