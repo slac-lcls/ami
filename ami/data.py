@@ -112,20 +112,28 @@ class Source(abc.ABC):
         self.config = src_cfg['config']
         self.requested_names = []
 
-    def configure(self, detectors):
+    @property
+    @abc.abstractmethod
+    def names(self):
+        """
+        Getter for the list of names of all data currently available from the source
+
+        Returns:
+            A list of names of all the currently available data from the source
+        """
+        pass
+
+    def configure(self):
         """
         Constructs a properly formatted configure message
 
-        Args:
-            detectors (list): list of detector names to include in the message
-
         Returns:
-            An object of type `Message` which includes the passed list of
-            detectors.
+            An object of type `Message` which includes a list of
+            names of the currently available detectors/data.
         """
         return Message(MsgTypes.Transition,
                        self.idnum,
-                       Transition(Transitions.Configure, detectors))
+                       Transition(Transitions.Configure, self.names))
 
     def event(self, timestamp, data):
         """
@@ -172,6 +180,10 @@ class PsanaSource(Source):
             self.xtcdata_names += [self.delimiter.join((detname, det_xface_name, attr)) for attr in det_attr_list]
         return
 
+    @property
+    def names(self):
+        return self.xtcdata_names
+
     def events(self):
 
         timestamp = 0
@@ -182,7 +194,7 @@ class PsanaSource(Source):
             for run in self.ds.runs():
                 self._update_xtcdata_names(run)
                 self.detectors = {}  # psana Detector object cache
-                yield self.configure(self.xtcdata_names)
+                yield self.configure()
 
                 for evt in self.ds.events():
                     # FIXME: when we move to real timestamps we should use this line
@@ -215,10 +227,14 @@ class RandomSource(Source):
         super(__class__, self).__init__(idnum, num_workers, src_cfg)
         np.random.seed([idnum])
 
+    @property
+    def names(self):
+        return list(self.config.keys())
+
     def events(self):
         count = 0
         time.sleep(self.init_time)
-        yield self.configure(list(self.config.keys()))
+        yield self.configure()
         while True:
             event = {}
             for name, config in self.config.items():
@@ -246,10 +262,14 @@ class StaticSource(Source):
         if 'bound' in src_cfg:
             self.bound = src_cfg['bound']
 
+    @property
+    def names(self):
+        return list(self.config.keys())
+
     def events(self):
         count = 0
         time.sleep(self.init_time)
-        yield self.configure(list(self.config.keys()))
+        yield self.configure()
         while True:
             event = {}
             for name, config in self.config.items():
