@@ -6,8 +6,8 @@ from ami.data import Source
 def test_psana_source(xtcwriter):
     if xtcwriter is None:
         return
-    psana_source_cls = Source.find_source('psana')
-    assert psana_source_cls is not None
+    psana_src_cls = Source.find_source('psana')
+    assert psana_src_cls is not None
     idnum = 0
     num_workers = 1
     src_cfg = {}
