@@ -98,3 +98,43 @@ def test_static_source(sim_src_cfg):
 
     # check that the static source returned the correct number of events
     assert count == sim_src_cfg['bound']
+
+
+def test_random_source(sim_src_cfg):
+    src_cls = Source.find_source('random')
+    assert src_cls is not None
+
+    idnum = 0
+    num_workers = 1
+
+    source = src_cls(idnum, num_workers, sim_src_cfg)
+
+    # check the names from the source are correct
+    expected_names = set(sim_src_cfg['config'].keys())
+    assert source.names == expected_names
+
+    # check the returned configuration message
+    config = source.configure()
+    assert config.mtype == MsgTypes.Transition
+    assert config.identity == idnum
+    assert isinstance(config.payload, Transition)
+    assert config.payload.ttype == Transitions.Configure
+    assert config.payload.payload == expected_names
+
+    # do a first loop over the data (events should be empty)
+    for msg in source.events():
+        if msg.mtype == MsgTypes.Datagram:
+            assert not msg.payload
+            break
+
+    # test the request feature of the source
+    assert not source.requested_names
+    source.request(expected_names)
+    assert source.requested_names == expected_names
+
+    # do a second loop over the data (events should be non-empty)
+    for msg in source.events():
+        if msg.mtype == MsgTypes.Datagram:
+            for name in expected_names:
+                assert name in msg.payload
+            break
