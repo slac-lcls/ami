@@ -32,6 +32,7 @@ def complex_graph(tmpdir_factory):
         dill.dump(graph, fd)
     return fname
 
+
 @pytest.fixture(scope='module')
 def xtcwriter(tmpdir_factory):
     if shutil.which('xtcwriter') is not None:
