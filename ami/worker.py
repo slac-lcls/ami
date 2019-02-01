@@ -9,7 +9,7 @@ import argparse
 import functools
 from ami import LogConfig
 from ami.comm import Ports, Colors, ResultStore, GraphReceiver
-from ami.data import MsgTypes, RandomSource, StaticSource, PsanaSource, SyncedSource
+from ami.data import MsgTypes, RandomSource, StaticSource, PsanaSource
 
 
 logger = logging.getLogger(__name__)
@@ -102,7 +102,7 @@ class Worker:
                 self.store.send(msg)
 
 
-def run_worker(num, num_workers, hb_period, source, collector_addr, graph_addr):
+def run_worker(num, num_workers, hb_period, source, collector_addr, graph_addr, flags=None):
 
     logger.info('Starting worker # %d, sending to collector at %s', num, collector_addr)
 
@@ -119,19 +119,18 @@ def run_worker(num, num_workers, hb_period, source, collector_addr, graph_addr):
     if source[0] == 'static':
         src = StaticSource(num,
                            num_workers,
-                           src_cfg)
+                           src_cfg,
+                           flags)
     elif source[0] == 'random':
         src = RandomSource(num,
                            num_workers,
-                           src_cfg)
+                           src_cfg,
+                           flags)
     elif source[0] == 'psana':
         src = PsanaSource(num,
                           num_workers,
-                          src_cfg)
-    elif source[0] == 'synced':
-        src = SyncedSource(num,
-                           num_workers,
-                           src_cfg)
+                          src_cfg,
+                          flags)
     else:
         logger.critical("worker%03d: unknown data source type: %s", num, source[0])
         return 1
@@ -190,6 +189,13 @@ def main():
     )
 
     parser.add_argument(
+        '-f',
+        '--flags',
+        nargs='*',
+        help='extra flags as key=value pairs that are passed to the data source'
+    )
+
+    parser.add_argument(
         '--log-level',
         default=LogConfig.Level,
         help='the logging level of the application (default %s)' % LogConfig.Level
@@ -209,6 +215,7 @@ def main():
     args = parser.parse_args()
     collector_addr = "tcp://localhost:%d" % args.collector
     graph_addr = "tcp://%s:%d" % (args.host, args.graph)
+    flags = {}
 
     log_handlers = [logging.StreamHandler()]
     if args.log_file is not None:
@@ -217,6 +224,13 @@ def main():
     logging.basicConfig(format=LogConfig.Format, level=log_level, handlers=log_handlers)
 
     try:
+        for flag in args.flags:
+            try:
+                key, value = flag.split('=')
+                flags[key] = value
+            except ValueError:
+                logger.exception("Problem parsing data source flag %s", flag)
+
         src_url_match = re.match('(?P<prot>.*)://(?P<body>.*)', args.source)
         if src_url_match:
             src_cfg = src_url_match.groups()
@@ -224,7 +238,7 @@ def main():
             logger.critical("Invalid data source config string: %s", args.source)
             return 1
 
-        run_worker(args.node_num, args.num_workers, args.heartbeat, src_cfg, collector_addr, graph_addr)
+        run_worker(args.node_num, args.num_workers, args.heartbeat, src_cfg, collector_addr, graph_addr, flags)
 
         return 0
     except KeyboardInterrupt:

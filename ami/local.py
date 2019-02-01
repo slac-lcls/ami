@@ -85,6 +85,13 @@ def build_parser():
     )
 
     parser.add_argument(
+        '-f',
+        '--flags',
+        nargs='*',
+        help='extra flags as key=value pairs that are passed to the data source of the worker'
+    )
+
+    parser.add_argument(
         '--headless',
         action='store_true',
         help='run in a headless mode (no GUI) can only interact over zmq'
@@ -114,6 +121,7 @@ def run_ami(args, queue=mp.Queue()):
 
     ipcdir = None
     export_addr = None
+    flags = {}
     if args.tcp:
         host = "127.0.0.1"
         collector_addr = "tcp://%s:%d" % (host, args.port)
@@ -146,6 +154,13 @@ def run_ami(args, queue=mp.Queue()):
     logging.basicConfig(format=LogConfig.FullFormat, level=log_level, handlers=log_handlers)
 
     try:
+        for flag in args.flags:
+            try:
+                key, value = flag.split('=')
+                flags[key] = value
+            except ValueError:
+                logger.exception("Problem parsing data source flag %s", flag)
+
         src_url_match = re.match('(?P<prot>.*)://(?P<body>.*)', args.source)
         if src_url_match:
             src_cfg = src_url_match.groups()
@@ -157,7 +172,7 @@ def run_ami(args, queue=mp.Queue()):
             proc = mp.Process(
                 name='worker%03d-n0' % i,
                 target=run_worker,
-                args=(i, args.num_workers, args.heartbeat, src_cfg, collector_addr, graph_addr)
+                args=(i, args.num_workers, args.heartbeat, src_cfg, collector_addr, graph_addr, flags)
             )
             proc.daemon = True
             proc.start()

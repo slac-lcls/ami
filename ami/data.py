@@ -96,7 +96,7 @@ class CollectorMessage(Message):
 
 
 class Source(abc.ABC):
-    def __init__(self, idnum, num_workers, src_cfg):
+    def __init__(self, idnum, num_workers, src_cfg, flags=None):
         """
         Args:
             idnum (int): Id number
@@ -112,6 +112,7 @@ class Source(abc.ABC):
         self.init_time = src_cfg['init_time']
         self.config = src_cfg['config']
         self.requested_names = []
+        self.flags = flags or {}
 
     @property
     @abc.abstractmethod
@@ -165,8 +166,8 @@ class Source(abc.ABC):
 
 class PsanaSource(Source):
 
-    def __init__(self, idnum, num_workers, src_cfg):
-        super(__class__, self).__init__(idnum, num_workers, src_cfg)
+    def __init__(self, idnum, num_workers, src_cfg, flags=None):
+        super(__class__, self).__init__(idnum, num_workers, src_cfg, flags)
         self.delimiter = ":"
         self.xtcdata_names = []
         if psana is not None:
@@ -223,9 +224,30 @@ class PsanaSource(Source):
                     time.sleep(self.interval)
 
 
-class RandomSource(Source):
-    def __init__(self, idnum, num_workers, src_cfg):
-        super(__class__, self).__init__(idnum, num_workers, src_cfg)
+class SimSource(Source):
+    def __init__(self, idnum, num_workers, src_cfg, flags=None):
+        super(__class__, self).__init__(idnum, num_workers, src_cfg, flags)
+        self.count = 0
+        self.synced = False
+        if 'sync' in self.flags:
+            self.ctx = zmq.Context()
+            self.ts_src = self.ctx.socket(zmq.REQ)
+            self.ts_src.connect(self.flags['sync'])
+            self.synced = True
+
+    @property
+    def timestamp(self):
+        if self.synced:
+            self.ts_src.send_string("ts")
+            return self.ts_src.recv_pyobj()
+        else:
+            self.count += 1
+            return self.num_workers * self.count + self.idnum
+
+
+class RandomSource(SimSource):
+    def __init__(self, idnum, num_workers, src_cfg, flags=None):
+        super(__class__, self).__init__(idnum, num_workers, src_cfg, flags)
         np.random.seed([idnum])
 
     @property
@@ -233,7 +255,6 @@ class RandomSource(Source):
         return list(self.config.keys())
 
     def events(self):
-        count = 0
         time.sleep(self.init_time)
         yield self.configure()
         while True:
@@ -250,50 +271,13 @@ class RandomSource(Source):
                         event[name] = np.random.normal(config['pedestal'], config['width'], config['shape'])
                     else:
                         logger.warn("DataSrc: %s has unknown type %s", name, config['dtype'])
-            count += 1
-            yield self.event(self.num_workers * count + self.idnum, event)
+            yield self.event(self.timestamp, event)
             time.sleep(self.interval)
 
 
-class SyncedSource(Source):
-    def __init__(self, idnum, num_workers, src_cfg):
-        super(__class__, self).__init__(idnum, num_workers, src_cfg)
-        np.random.seed([idnum])
-        self.ctx = zmq.Context()
-        self.ts_src = self.ctx.socket(zmq.REQ)
-        self.ts_src.connect(src_cfg['sync_addr'])
-
-    @property
-    def names(self):
-        return list(self.config.keys())
-
-    def events(self):
-        count = 0
-        time.sleep(self.init_time)
-        yield self.configure()
-        while True:
-            self.ts_src.send_string("ts")
-            timestamp = self.ts_src.recv_pyobj()
-            event = {}
-            for name, config in self.config.items():
-                if name in self.requested_names:
-                    if config['dtype'] == 'Scalar':
-                        value = config['range'][0] + (config['range'][1] - config['range'][0]) * np.random.rand(1)[0]
-                        if config.get('integer', False):
-                            event[name] = int(value)
-                        else:
-                            event[name] = value
-                    elif config['dtype'] == 'Waveform' or config['dtype'] == 'Image':
-                        event[name] = np.random.normal(config['pedestal'], config['width'], config['shape'])
-                    else:
-                        logger.warn("DataSrc: %s has unknown type %s", name, config['dtype'])
-            count += 1
-            yield self.event(timestamp, event)
-
-
-class StaticSource(Source):
-    def __init__(self, idnum, num_workers, src_cfg):
-        super(__class__, self).__init__(idnum, num_workers, src_cfg)
+class StaticSource(SimSource):
+    def __init__(self, idnum, num_workers, src_cfg, flags=None):
+        super(__class__, self).__init__(idnum, num_workers, src_cfg, flags)
         self.bound = np.inf
 
         if 'bound' in src_cfg:
@@ -318,7 +302,7 @@ class StaticSource(Source):
                     else:
                         logger.warn("DataSrc: %s has unknown type %s", name, config['dtype'])
             count += 1
-            yield self.event(self.num_workers * count + self.idnum, event)
+            yield self.event(self.timestamp, event)
             if count >= self.bound:
                 break
             time.sleep(self.interval)
