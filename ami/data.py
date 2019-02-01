@@ -221,7 +221,7 @@ class PsanaSource(Source):
                 self.detectors = {}  # psana Detector object cache
                 yield self.configure()
 
-                for evt in self.ds.events():
+                for evt in run.events():
                     # FIXME: when we move to real timestamps we should use this line
                     # timestamp = evt.seq.timestamp()
 
