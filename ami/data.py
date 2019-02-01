@@ -207,7 +207,7 @@ class PsanaSource(Source):
 
     @property
     def names(self):
-        return self.xtcdata_names
+        return set(self.xtcdata_names)
 
     def events(self):
 
@@ -275,7 +275,7 @@ class RandomSource(SimSource):
 
     @property
     def names(self):
-        return list(self.config.keys())
+        return set(self.config.keys())
 
     def events(self):
         time.sleep(self.init_time)
@@ -308,7 +308,7 @@ class StaticSource(SimSource):
 
     @property
     def names(self):
-        return list(self.config.keys())
+        return set(self.config.keys())
 
     def events(self):
         count = 0

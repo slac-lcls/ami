@@ -58,7 +58,7 @@ def test_static_source(sim_src_cfg):
 
     # check the names from the source are correct
     expected_names = set(sim_src_cfg['config'].keys())
-    assert set(source.names) == expected_names
+    assert source.names == expected_names
 
     # check the returned configuration message
     config = source.configure()
@@ -66,7 +66,7 @@ def test_static_source(sim_src_cfg):
     assert config.identity == idnum
     assert isinstance(config.payload, Transition)
     assert config.payload.ttype == Transitions.Configure
-    assert set(config.payload.payload) == expected_names
+    assert config.payload.payload == expected_names
 
     # do a first loop over the data (events should be empty)
     count = 0
