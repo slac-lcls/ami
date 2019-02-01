@@ -9,7 +9,7 @@ import argparse
 import functools
 from ami import LogConfig
 from ami.comm import Ports, Colors, ResultStore, GraphReceiver
-from ami.data import MsgTypes, RandomSource, StaticSource, PsanaSource
+from ami.data import MsgTypes, Source
 
 
 logger = logging.getLogger(__name__)
@@ -116,21 +116,12 @@ def run_worker(num, num_workers, hb_period, source, collector_addr, graph_addr, 
         logger.exception("worker%03d: problem parsing json file (%s):", num, source[1])
         return 1
 
-    if source[0] == 'static':
-        src = StaticSource(num,
-                           num_workers,
-                           src_cfg,
-                           flags)
-    elif source[0] == 'random':
-        src = RandomSource(num,
-                           num_workers,
-                           src_cfg,
-                           flags)
-    elif source[0] == 'psana':
-        src = PsanaSource(num,
-                          num_workers,
-                          src_cfg,
-                          flags)
+    src_cls = Source.find_source(source[0])
+    if src_cls is not None:
+        src = src_cls(num,
+                      num_workers,
+                      src_cfg,
+                      flags)
     else:
         logger.critical("worker%03d: unknown data source type: %s", num, source[0])
         return 1

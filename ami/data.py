@@ -1,6 +1,8 @@
+import sys
 import abc
 import zmq
 import time
+import inspect
 import logging
 try:
     import psana
@@ -113,6 +115,27 @@ class Source(abc.ABC):
         self.config = src_cfg['config']
         self.requested_names = []
         self.flags = flags or {}
+
+    @classmethod
+    def find_source(cls, name):
+        """
+        Finds the a subclass of `Source` matching the passed name. The matching
+        is either exact or it takes a lower case version of the prefix.
+
+        As an example 'psana' or 'PsanaSource' will map to `PsanaSource`.
+
+        Args:
+            name (str): The name of the subclass to search for
+
+        Returns:
+            The matching subclass of `Source` if found otherwise None
+        """
+        cls_list = inspect.getmembers(sys.modules[__name__],
+                                      lambda x:
+                                      inspect.isclass(x) and not inspect.isabstract(x) and issubclass(x, cls))
+        for clsname, clsobj in cls_list:
+            if (clsname == name) or (clsname == name.capitalize() + 'Source'):
+                return clsobj
 
     @property
     @abc.abstractmethod
