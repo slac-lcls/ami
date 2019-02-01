@@ -20,3 +20,8 @@ def test_psana_source(xtcwriter):
     psana_source.requested_names = psana_source.xtcdata_names
     evt = next(evtgen)
     assert(len(evt.payload['xppcspad:raw:raw']) == 18)
+
+
+def test_static_source():
+    src_cls = Source.find_source('static')
+    assert src_cls is not None
