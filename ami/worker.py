@@ -183,6 +183,7 @@ def main():
         '-f',
         '--flags',
         nargs='*',
+        default=[],
         help='extra flags as key=value pairs that are passed to the data source'
     )
 
