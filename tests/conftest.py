@@ -1,5 +1,7 @@
 import pytest
 import dill
+import shutil
+import subprocess
 import numpy as np
 
 from ami.graphkit_wrapper import Graph
@@ -29,3 +31,11 @@ def complex_graph(tmpdir_factory):
     with open(fname, 'wb') as fd:
         dill.dump(graph, fd)
     return fname
+
+@pytest.fixture(scope='module')
+def xtcwriter(tmpdir_factory):
+    if shutil.which('xtcwriter') is not None:
+        fname = tmpdir_factory.mktemp("xtcs", False).join('data.xtc2')
+        p = subprocess.run(['xtcwriter', '-f', fname], stdout=subprocess.PIPE)
+        if p.returncode == 0:
+            return fname
