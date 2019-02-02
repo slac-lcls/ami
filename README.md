@@ -46,6 +46,7 @@ Bigger Projects:
 - complex data types (e.g. peaks/times from hsd fex)
 - check gessner issue OK
 - call complex psana algorithm with parameters, e.g. peakfinder
+- record operator actions with "amicli" commands that could be played back
 
 6 DEC 18
 CPO/TJL:
