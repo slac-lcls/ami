@@ -53,7 +53,9 @@ class Manager(Collector):
     def process_msg(self, msg):
         if msg.mtype == MsgTypes.Datagram:
             self.feature_store.update(msg.payload)
-            self.feature_store.version = msg.version
+            if msg.version != self.feature_store.version:
+                self.feature_store.version = msg.version
+                self.export_graph()
             # export the collector data to epics
             self.export_data(msg.payload)
             if self.export is not None:
