@@ -113,7 +113,7 @@ class Source(abc.ABC):
         self.interval = src_cfg['interval']
         self.init_time = src_cfg['init_time']
         self.config = src_cfg['config']
-        self.requested_names = []
+        self.requested_names = set()
         self.flags = flags or {}
 
     @classmethod
@@ -177,7 +177,7 @@ class Source(abc.ABC):
         return msg
 
     def request(self, names):
-        self.requested_names = names
+        self.requested_names = set(names)
 
     @abc.abstractmethod
     def events(self):
@@ -207,7 +207,7 @@ class PsanaSource(Source):
 
     @property
     def names(self):
-        return self.xtcdata_names
+        return set(self.xtcdata_names)
 
     def events(self):
 
@@ -275,7 +275,7 @@ class RandomSource(SimSource):
 
     @property
     def names(self):
-        return list(self.config.keys())
+        return set(self.config.keys())
 
     def events(self):
         time.sleep(self.init_time)
@@ -308,7 +308,7 @@ class StaticSource(SimSource):
 
     @property
     def names(self):
-        return list(self.config.keys())
+        return set(self.config.keys())
 
     def events(self):
         count = 0

@@ -82,6 +82,11 @@ class NTGraph:
                 result[k] = V[k]
         return result
 
+    def assign(self, V, py):
+        """Store python value in Value
+        """
+        V.value = py
+
 
 class PvaExportHandler:
     def __init__(self, name, comm_addr, export_addr, aggregate=False):
