@@ -1,5 +1,6 @@
 from ami.flowchart.library.common import CtrlNode
 from ami.comm import GraphCommHandler
+from ami.graph_nodes import Map
 from PyQt5.QtCore import pyqtSlot, QTimer
 import pyqtgraph as pg
 
@@ -33,23 +34,44 @@ class AreaDetWidget(pg.ImageView):
         def roi_func(image):
             return pg.affineSlice(image, shape, origin, vector, (0, 1))
 
-        self.comm_handler.map("map_%s_roi" % self.name,
-                              inputs=[self.name],
-                              outputs=["%s_roi" % self.name],
-                              func=roi_func)
+        # self.comm_handler.map("map_%s_roi" % self.name,
+        #                       inputs=[self.name],
+        #                       outputs=["%s_roi" % self.name],
+        #                       func=roi_func)
+        self.func = roi_func
 
 
 class Roi(CtrlNode):
 
     nodeName = "Roi"
-    uiTemplate = [
-        ('row', 'intSpin', {'min': 0, 'max': 1024}),
-        ('col', 'intSpin', {'min': 0, 'max': 1024})
-    ]
+    uiTemplate = []
 
     def display(self, name, topic):
-        self.win = pg.QtGui.QMainWindow()
-        widget = AreaDetWidget(name, topic, self.addr, self.win)
-        self.win.setWindowTitle(name)
-        self.win.setCentralWidget(widget)
-        self.win.show()
+        if self.win is None:
+            self.win = pg.QtGui.QMainWindow()
+            self.widget = AreaDetWidget(name, topic, self.addr, self.win)
+            self.win.setWindowTitle(self.name())
+            self.win.setCentralWidget(self.widget)
+            self.win.show()
+            self.show = True
+        else:
+            if self.show:
+                self.win.hide()
+            else:
+                self.win.show()
+
+            self.show = not self.show
+
+    def to_operation(self):
+        # this should be cleaned up at some point
+        In = self.terminals['In'].inputTerminals()[0]
+
+        if In.node().name() == "Input":
+            inputs = [In.name()]
+        else:
+            inputs = [In.node().name()]
+
+        outputs = [self.name()]
+
+        node = Map(name=self.name(), inputs=inputs, outputs=outputs, func=self.widget.func)
+        return node

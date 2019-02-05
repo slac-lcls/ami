@@ -13,6 +13,7 @@ from ami.flowchart.Terminal import Terminal
 from ami.flowchart.library import LIBRARY
 from ami.flowchart.Node import Node
 from ami.comm import GraphCommHandler
+from ami.graphkit_wrapper import Graph
 
 import ami.flowchart.FlowchartCtrlTemplate_pyqt5 as FlowchartCtrlTemplate
 import os
@@ -85,10 +86,11 @@ class Flowchart(Node):
 
     def outputChanged(self):
         #  called when output of internal node has changed
-        vals = self.outputNode.inputValues()
-        self.widget().outputChanged(vals)
-        self.setOutput(**vals)
+        # vals = self.outputNode.inputValues()
+        # self.widget().outputChanged(vals)
+        # self.setOutput(**vals)
         # self.sigOutputChanged.emit(self)
+        pass
 
     def output(self):
         """Return a dict of the values on the Flowchart's output terminals.
@@ -435,6 +437,7 @@ class Flowchart(Node):
         self.restoreState(state, clear=True)
         self.viewBox.autoRange()
         self.sigFileLoaded.emit(fileName)
+        return fileName
 
     def saveFile(self, fileName=None, startDir=None, suggestedFileName='flowchart.fc'):
         """Save this flowchart to a .fc file
@@ -544,12 +547,29 @@ class FlowchartCtrlWidget(QtGui.QWidget):
         self.ui.loadBtn.clicked.connect(self.loadClicked)
         self.ui.saveBtn.clicked.connect(self.saveClicked)
         self.ui.saveAsBtn.clicked.connect(self.saveAsClicked)
+        self.ui.applyBtn.clicked.connect(self.apply)
         self.chart.sigFileLoaded.connect(self.setCurrentFile)
         self.ui.reloadBtn.clicked.connect(self.reloadClicked)
         self.chart.sigFileSaved.connect(self.fileSaved)
 
     def apply(self):
-        pass
+        nodes = self.chart.nodes()
+        graph_nodes = []
+        for name, node in nodes.items():
+            if hasattr(node, 'to_operation'):
+                n = node.to_operation()
+                if type(n) is list:
+                    graph_nodes.extend(n)
+                else:
+                    graph_nodes.append(n)
+        graph = Graph(name=str(self.chart.name))
+        for node in graph_nodes:
+            print(type(node).__name__, node.name, node.inputs, node.outputs, node.condition_needs)
+        graph.add(graph_nodes)
+        self.graphCommHandler.update(graph)
+
+        self.features = {}
+        self.pending = {}
 
     def reloadClicked(self):
         try:
@@ -560,9 +580,8 @@ class FlowchartCtrlWidget(QtGui.QWidget):
             raise
 
     def loadClicked(self):
-        # newFile = self.chart.loadFile()
-        # self.setCurrentFile(newFile)
-        pass
+        newFile = self.chart.loadFile()
+        self.setCurrentFile(newFile)
 
     def fileSaved(self, fileName):
         self.setCurrentFile(fileName)
@@ -765,7 +784,7 @@ class FlowchartWidget(dockarea.DockArea):
                     if i.node().name() == "Input":
                         name = i.name()
                     else:
-                        name = i.node().name()+"_"+i.name()
+                        name = i.node().name()
 
                     if name in self.ctrl.features:
                         topic = name
@@ -780,6 +799,7 @@ class FlowchartWidget(dockarea.DockArea):
                     if request_view:
                         self.ctrl.graphCommHandler.view(name)
                     n.display(name, topic)
+
             self.ctrl.select(n)
 
     def hoverOver(self, items):
@@ -808,8 +828,6 @@ class FlowchartWidget(dockarea.DockArea):
     def clear(self):
         # self.outputTree.setData(None)
         self.hoverText.setPlainText('')
-        self.selNameLabel.setText('')
-        self.selDescLabel.setText('')
 
 
 class FlowchartNode(Node):

@@ -81,6 +81,7 @@ class Node(QtCore.QObject):
             self.addTerminal(name, **opts)
 
         self.addr = addr
+        self.win = None
 
     def nextTerminalName(self, name):
         """Return an unused terminal name"""
@@ -264,10 +265,13 @@ class Node(QtCore.QObject):
         Subclasses may want to extend this method, adding extra keys to the returned
         dict."""
         pos = self.graphicsItem().pos()
-        state = {'pos': (pos.x(), pos.y()), 'bypass': self.isBypassed()}
+        state = {'pos': (pos.x(), pos.y())}
         termsEditable = self._allowAddInput | self._allowAddOutput
-        for term in self._inputs.values() + self._outputs.values():
+        terms = list(self._inputs.values())
+        terms.extend(list(self._outputs.values()))
+        for term in terms:
             termsEditable |= term._renamable | term._removable | term._multiable
+
         if termsEditable:
             state['terminals'] = self.saveTerminals()
         return state
@@ -277,7 +281,6 @@ class Node(QtCore.QObject):
         by saveState(). """
         pos = state.get('pos', (0, 0))
         self.graphicsItem().setPos(*pos)
-        self.bypass(state.get('bypass', False))
         if 'terminals' in state:
             self.restoreTerminals(state['terminals'])
 

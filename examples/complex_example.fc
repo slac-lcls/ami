@@ -1,0 +1,52 @@
+pos: (0.0, 0.0)
+terminals:
+    laser:
+        io: 'in'
+        multi: False
+        optional: False
+        renamable: False
+        removable: False
+        multiable: False
+    cspad:
+        io: 'in'
+        multi: False
+        optional: False
+        renamable: False
+        removable: False
+        multiable: False
+    delta_t:
+        io: 'in'
+        multi: False
+        optional: False
+        renamable: False
+        removable: False
+        multiable: False
+nodes: [{'class': 'Roi', 'name': 'Roi.0', 'pos': (-28.900496282037864, 84.93446848119876), 'state': {'pos': (-28.900496282037864, 84.93446848119876), 'ctrl': {}}}, {'class': 'FilterOn', 'name': 'FilterOn.0', 'pos': (-0.5752515675524137, -140.72331441086905), 'state': {'pos': (-0.5752515675524137, -140.72331441086905)}}, {'class': 'FilterOff', 'name': 'FilterOff.0', 'pos': (-5.296125686633388, -259.68934221170815), 'state': {'pos': (-5.296125686633388, -259.68934221170815)}}, {'class': 'Binning', 'name': 'Binning.0', 'pos': (222.25000685306668, -273.85196456895085), 'state': {'pos': (222.25000685306668, -273.85196456895085)}}, {'class': 'Binning', 'name': 'Binning.1', 'pos': (219.41748238161819, -135.0582654679719), 'state': {'pos': (219.41748238161819, -135.0582654679719)}}, {'class': 'Sum', 'name': 'Sum.0', 'pos': (106.11650352367622, 83.04611883356637), 'state': {'pos': (106.11650352367622, 83.04611883356637)}}]
+connects: [('Input', 'laser', 'FilterOff.0', 'Condition'), ('FilterOn.0', 'Out', 'Binning.1', 'Condition'), ('Sum.0', 'Out', 'Binning.1', 'Values'), ('Input', 'cspad', 'Roi.0', 'In'), ('Input', 'delta_t', 'Binning.0', 'Bins'), ('Sum.0', 'Out', 'Binning.0', 'Values'), ('Input', 'laser', 'FilterOn.0', 'Condition'), ('Roi.0', 'Out', 'Sum.0', 'In'), ('FilterOff.0', 'Out', 'Binning.0', 'Condition'), ('Input', 'delta_t', 'Binning.1', 'Bins')]
+inputNode:
+    pos: (-150.0, 0.0)
+    terminals:
+        laser:
+            io: 'out'
+            multi: False
+            optional: False
+            renamable: False
+            removable: False
+            multiable: False
+        cspad:
+            io: 'out'
+            multi: False
+            optional: False
+            renamable: False
+            removable: False
+            multiable: False
+        delta_t:
+            io: 'out'
+            multi: False
+            optional: False
+            renamable: False
+            removable: False
+            multiable: False
+outputNode:
+    pos: (302.83252447144855, 314.4102163307889)
+    terminals:

@@ -132,8 +132,8 @@ class CtrlNode(Node):
 class PlottingCtrlNode(CtrlNode):
     """Abstract class for CtrlNodes that can connect to plots."""
 
-    def __init__(self, name, ui=None, terminals=None):
-        CtrlNode.__init__(self, name, ui=ui, terminals=terminals)
+    def __init__(self, name, ui=None, terminals=None, addr=""):
+        super(PlottingCtrlNode, self).__init__(name, addr=addr, ui=ui, terminals=terminals)
         self.plotTerminal = self.addOutput('plot', optional=True)
 
     def connected(self, term, remote):
@@ -163,6 +163,15 @@ class PlottingCtrlNode(CtrlNode):
         out = CtrlNode.process(self, In, display)
         out['plot'] = None
         return out
+
+
+class UniOpNode(Node):
+    """Generic node for performing any operation like Out = In.fn()"""
+    def __init__(self, name, addr):
+        super(UniOpNode, self).__init__(name, addr=addr, terminals={
+            'In': {'io': 'in'},
+            'Out': {'io': 'out'}
+        })
 
 
 def metaArrayWrapper(fn):
