@@ -1,61 +1,19 @@
-#!/usr/bin/env python
+import sys
 import logging
 import argparse
-import sys
-import multiprocessing as mp
-import time
-
-from pyqtgraph.Qt import QtGui
-from ami.flowchart.Flowchart import Flowchart
-
 from ami import LogConfig
-from ami.comm import Ports, GraphCommHandler
+from ami.comm import Ports
+from ami.client import flowchart, legacy
 
 
 logger = logging.getLogger(__name__)
 
 
-def run_main_window(queue, addr):
-    app = QtGui.QApplication([])
-
-    # Create main window with grid layout
-    win = QtGui.QMainWindow()
-    win.setWindowTitle('AMI Client')
-    cw = QtGui.QWidget()
-    win.setCentralWidget(cw)
-    layout = QtGui.QGridLayout()
-    cw.setLayout(layout)
-
-    # TODO fix this
-    time.sleep(2)
-    comm = GraphCommHandler(addr)
-    terminals = {}
-
-    for name in comm.names:
-        terminals[name] = {'io': 'in'}
-
-    # Create flowchart, define input/output terminals
-    fc = Flowchart(terminals=terminals, addr=addr)
-    w = fc.widget()
-    fw = w.chartWidget
-
-    # Add flowchart control panel to the main window
-    layout.addWidget(w, 0, 0, 2, 1)
-    layout.addWidget(fw, 0, 1)
-
-    win.show()
-    retval = app.exec_()
-
-    queue.put(("exit", None, None))
-    return retval
-
-
-def run_client(addr, load):
-
-    queue = mp.Queue()
-    list_proc = mp.Process(
-        target=run_main_window, args=(queue, addr))
-    list_proc.start()
+def run_client(addr, load, use_legacy=True):
+    if use_legacy:
+        return legacy.run_client(addr, load)
+    else:
+        return flowchart.run_client(addr, load)
 
 
 def main():
@@ -76,11 +34,27 @@ def main():
         help='port for manager/client (GUI) communication (default: %d)' % Ports.Comm
     )
 
-    # parser.add_argument(
-    #     '-l',
-    #     '--load',
-    #     help='saved AMII configuration to load'
-    # )
+    parser.add_argument(
+        '-l',
+        '--load',
+        help='saved AMII configuration to load'
+    )
+
+    guimode_parser = parser.add_mutually_exclusive_group()
+
+    guimode_parser.add_argument(
+        '--legacy-gui',
+        dest='gui_mode',
+        action='store_true',
+        help="use the traditional AMI1-style GUI"
+    )
+
+    guimode_parser.add_argument(
+        '--flowchart-gui',
+        dest='gui_mode',
+        action='store_false',
+        help="use the new AMI2-style flowchart GUI"
+    )
 
     parser.add_argument(
         '--log-level',
@@ -103,7 +77,7 @@ def main():
     logging.basicConfig(format=LogConfig.Format, level=log_level, handlers=log_handlers)
 
     try:
-        return run_client(addr, args.load)
+        return run_client(addr, args.load, args.gui_mode)
     except KeyboardInterrupt:
         logger.info("Client killed by user...")
         return 0

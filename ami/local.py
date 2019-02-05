@@ -98,6 +98,22 @@ def build_parser():
         help='run in a headless mode (no GUI) can only interact over zmq'
     )
 
+    guimode_parser = parser.add_mutually_exclusive_group()
+
+    guimode_parser.add_argument(
+        '--legacy-gui',
+        dest='gui_mode',
+        action='store_true',
+        help="use the traditional AMI1-style GUI"
+    )
+
+    guimode_parser.add_argument(
+        '--flowchart-gui',
+        dest='gui_mode',
+        action='store_false',
+        help="use the new AMI2-style flowchart GUI"
+    )
+
     parser.add_argument(
         '--log-level',
         default=LogConfig.Level,
@@ -231,7 +247,7 @@ def run_ami(args, queue=mp.Queue()):
             client_proc = mp.Process(
                 name='client',
                 target=run_client,
-                args=(comm_addr, args.load)
+                args=(comm_addr, args.load, args.gui_mode)
             )
             client_proc.daemon = False
             client_proc.start()
