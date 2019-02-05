@@ -12,9 +12,11 @@ from numpy import ndarray
 from ami.flowchart.Terminal import Terminal
 from ami.flowchart.library import LIBRARY
 from ami.flowchart.Node import Node
+from ami.comm import GraphCommHandler
 
 import ami.flowchart.FlowchartCtrlTemplate_pyqt5 as FlowchartCtrlTemplate
 import os
+import threading
 
 
 class Flowchart(Node):
@@ -28,8 +30,9 @@ class Flowchart(Node):
     # called when nodes are added, removed, or renamed.
     sigChartChanged = QtCore.Signal(object, object, object)  # (self, action, node)
 
-    def __init__(self, terminals=None, name=None, filePath=None, library=None):
+    def __init__(self, terminals=None, name=None, filePath=None, library=None, addr=""):
         self.library = library or LIBRARY
+        self.addr = addr
         if name is None:
             name = "Flowchart"
         if terminals is None:
@@ -45,7 +48,6 @@ class Flowchart(Node):
         # self._chartGraphicsItem = FlowchartGraphicsItem(self)
         self._widget = None
         self._scene = None
-        self.processing = False  # flag that prevents recursive node updates
 
         self.widget()
 
@@ -166,7 +168,8 @@ class Flowchart(Node):
                     break
                 n += 1
 
-        node = self.library.getNodeType(nodeType)(name)
+        # create an instance of the node
+        node = self.library.getNodeType(nodeType)(name, addr=self.addr)
         self.addNode(node, name, pos)
         return node
 
@@ -284,9 +287,6 @@ class Flowchart(Node):
         Propagates new data forward through network."""
         #  first collect list of nodes/terminals and their dependencies
 
-        if self.processing:
-            return
-        self.processing = True
         try:
             deps = {}
             for name, node in self._nodes.items():
@@ -320,7 +320,6 @@ class Flowchart(Node):
                     terms |= set(node.outputs().values())
 
         finally:
-            self.processing = False
             if self.inputWasSet:
                 self.inputWasSet = False
             else:
@@ -341,7 +340,7 @@ class Flowchart(Node):
         graphical representation of the flowchart.
         """
         if self._widget is None:
-            self._widget = FlowchartCtrlWidget(self)
+            self._widget = FlowchartCtrlWidget(self, self.addr)
             self.scene = self._widget.scene()
             self.viewBox = self._widget.viewBox()
         return self._widget
@@ -514,7 +513,7 @@ class FlowchartCtrlWidget(QtGui.QWidget):
     as well as buttons for loading/saving flowcharts.
     """
 
-    def __init__(self, chart):
+    def __init__(self, chart, addr):
         self.items = {}
         # self.loadDir = loadDir  #  where to look initially for chart files
         self.currentFileName = None
@@ -528,12 +527,12 @@ class FlowchartCtrlWidget(QtGui.QWidget):
         self.ui.ctrlList.setVerticalScrollMode(self.ui.ctrlList.ScrollPerPixel)
         self.ui.ctrlList.setHorizontalScrollBarPolicy(QtCore.Qt.ScrollBarAlwaysOff)
 
+        self.pending = {}
+        self.features = {}
+        self.pending_lock = threading.Lock()
+
+        self.graphCommHandler = GraphCommHandler(addr)
         self.chartWidget = FlowchartWidget(chart, self)
-        # self.chartWidget.viewBox().autoRange()
-        # self.cwWin = QtGui.QMainWindow()
-        # self.cwWin.setWindowTitle('Flowchart')
-        # self.cwWin.setCentralWidget(self.chartWidget)
-        # self.cwWin.resize(1000,800)
 
         h = self.ui.ctrlList.header()
         if QT_LIB in ['PyQt4', 'PySide']:
@@ -549,15 +548,8 @@ class FlowchartCtrlWidget(QtGui.QWidget):
         self.ui.reloadBtn.clicked.connect(self.reloadClicked)
         self.chart.sigFileSaved.connect(self.fileSaved)
 
-    # def resizeEvent(self, ev):
-        # QtGui.QWidget.resizeEvent(self, ev)
-        # self.ui.ctrlList.setColumnWidth(0, self.ui.ctrlList.viewport().width()-20)
-
-    # def chartToggled(self, b):
-    #     if b:
-    #         self.cwWin.show()
-    #     else:
-    #         self.cwWin.hide()
+    def apply(self):
+        pass
 
     def reloadClicked(self):
         try:
@@ -640,10 +632,6 @@ class FlowchartCtrlWidget(QtGui.QWidget):
         if node in self.items:
             item = self.items[node]
             # self.disconnect(item.bypassBtn, QtCore.SIGNAL('clicked()'), self.bypassClicked)
-            try:
-                item.bypassBtn.clicked.disconnect(self.bypassClicked)
-            except (TypeError, RuntimeError):
-                pass
             self.ui.ctrlList.removeTopLevelItem(item)
 
     def chartWidget(self):
@@ -762,25 +750,37 @@ class FlowchartWidget(dockarea.DockArea):
     def selectionChanged(self):
         # print "FlowchartWidget.selectionChanged called."
         items = self._scene.selectedItems()
-        # print "     scene.selectedItems: ", items
-        if len(items) == 0:
-            data = None
-        else:
-            item = items[0]
-            if hasattr(item, 'node') and isinstance(item.node, Node):
-                n = item.node
-                self.ctrl.select(n)
-                data = {'outputs': n.outputValues(), 'inputs': n.inputValues()}
-                self.selNameLabel.setText(n.name())
-                if hasattr(n, 'nodeName'):
-                    self.selDescLabel.setText("<b>%s</b>: %s" % (n.nodeName, n.__class__.__doc__))
-                else:
-                    self.selDescLabel.setText("")
-                if n.exception is not None:
-                    data['exception'] = n.exception
-            else:
-                data = None
-        self.selectedTree.setData(data, hideRoot=True)
+
+        if len(items) != 1:
+            return
+
+        item = items[0]
+        if hasattr(item, 'node') and isinstance(item.node, Node):
+            n = item.node
+
+            for k, term in n.terminals.items():
+                inputs = term.inputTerminals()
+
+                for i in inputs:
+                    if i.node().name() == "Input":
+                        name = i.name()
+                    else:
+                        name = i.node().name()+"_"+i.name()
+
+                    if name in self.ctrl.features:
+                        topic = name
+                    else:
+                        topic = self.ctrl.graphCommHandler.auto(name)
+
+                    request_view = False
+                    with self.ctrl.pending_lock:
+                        if topic not in self.ctrl.pending:
+                            self.ctrl.pending[topic] = name
+                            request_view = True
+                    if request_view:
+                        self.ctrl.graphCommHandler.view(name)
+                    n.display(name, topic)
+            self.ctrl.select(n)
 
     def hoverOver(self, items):
         # print "FlowchartWidget.hoverOver called."
@@ -807,7 +807,6 @@ class FlowchartWidget(dockarea.DockArea):
 
     def clear(self):
         # self.outputTree.setData(None)
-        self.selectedTree.setData(None)
         self.hoverText.setPlainText('')
         self.selNameLabel.setText('')
         self.selDescLabel.setText('')

@@ -37,7 +37,7 @@ class Node(QtCore.QObject):
     sigTerminalAdded = QtCore.Signal(object, object)  # self, term
     sigTerminalRemoved = QtCore.Signal(object, object)  # self, term
 
-    def __init__(self, name, terminals=None, allowAddInput=False, allowAddOutput=False, allowRemove=True):
+    def __init__(self, name, terminals=None, allowAddInput=False, allowAddOutput=False, allowRemove=True, addr=""):
         """
         ==============  ============================================================
         **Arguments:**
@@ -60,6 +60,7 @@ class Node(QtCore.QObject):
                         context menu.
         allowRemove     bool; whether the user is allowed to remove this node by the
                         context menu.
+        addr            str; zeromq addr
         ==============  ============================================================
 
         """
@@ -78,6 +79,8 @@ class Node(QtCore.QObject):
             return
         for name, opts in terminals.items():
             self.addTerminal(name, **opts)
+
+        self.addr = addr
 
     def nextTerminalName(self, name):
         """Return an unused terminal name"""
@@ -221,11 +224,13 @@ class Node(QtCore.QObject):
 
     def connected(self, localTerm, remoteTerm):
         """Called whenever one of this node's terminals is connected elsewhere."""
-        pass
+        if localTerm.isInput() and remoteTerm.isOutput():
+            print("Connected")
 
     def disconnected(self, localTerm, remoteTerm):
         """Called whenever one of this node's terminals is disconnected from another."""
-        pass
+        if localTerm.isInput() and remoteTerm.isOutput():
+            print("Disconnected")
 
     def setOutput(self, **vals):
         self.setOutputNoSignal(**vals)
@@ -320,9 +325,6 @@ class Node(QtCore.QObject):
     def disconnectAll(self):
         for t in self.terminals.values():
             t.disconnectAll()
-
-    def to_wrapper_node(self):
-        raise NotImplementedError
 
 
 class NodeGraphicsItem(GraphicsObject):

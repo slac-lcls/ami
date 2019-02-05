@@ -1,9 +1,8 @@
 # -*- coding: utf-8 -*-
 
-# Form implementation generated from reading ui file './pyqtgraph/flowchart/FlowchartCtrlTemplate.ui'
+# Form implementation generated from reading ui file 'FlowchartCtrlTemplate.ui'
 #
-# Created: Wed Mar 26 15:09:28 2014
-#      by: PyQt5 UI code generator 5.0.1
+# Created by: PyQt5 UI code generator 5.11.2
 #
 # WARNING! All changes made in this file will be lost!
 
@@ -15,7 +14,7 @@ from pyqtgraph.widgets.TreeWidget import TreeWidget
 class Ui_Form(object):
     def setupUi(self, Form):
         Form.setObjectName("Form")
-        Form.resize(217, 499)
+        Form.resize(252, 499)
         self.gridLayout = QtWidgets.QGridLayout(Form)
         self.gridLayout.setContentsMargins(0, 0, 0, 0)
         self.gridLayout.setVerticalSpacing(0)
@@ -34,6 +33,10 @@ class Ui_Form(object):
         self.reloadBtn.setFlat(False)
         self.reloadBtn.setObjectName("reloadBtn")
         self.gridLayout.addWidget(self.reloadBtn, 4, 0, 1, 2)
+        self.applyBtn = QtWidgets.QPushButton(Form)
+        self.applyBtn.setCheckable(False)
+        self.applyBtn.setObjectName("applyBtn")
+        self.gridLayout.addWidget(self.applyBtn, 4, 2, 1, 2)
         self.ctrlList = TreeWidget(Form)
         self.ctrlList.setObjectName("ctrlList")
         self.ctrlList.headerItem().setText(0, "1")
@@ -60,3 +63,4 @@ class Ui_Form(object):
         self.saveBtn.setText(_translate("Form", "Save"))
         self.saveAsBtn.setText(_translate("Form", "As.."))
         self.reloadBtn.setText(_translate("Form", "Reload Libs"))
+        self.applyBtn.setText(_translate("Form", "Apply"))
