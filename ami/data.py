@@ -119,6 +119,17 @@ class Source(abc.ABC):
         self.flags = flags or {}
 
     def check_heartbeat_boundary(self, timestamp):
+        """
+        Checks if the timestamp given has crossed into another heartbeat
+        period than the current one.
+
+        Args:
+            timestamp (int): The timestamp to use for the check
+
+        Returns:
+            If a heartbeat boundary has been crossed a value of `True` is
+            returned.
+        """
         if self.heartbeat is None:
             self.heartbeat = (timestamp // self.heartbeat_period)
             return False
