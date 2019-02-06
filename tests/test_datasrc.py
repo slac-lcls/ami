@@ -35,11 +35,12 @@ def test_psana_source(xtcwriter):
     assert psana_src_cls is not None
     idnum = 0
     num_workers = 1
+    heartbeat_period = 10
     src_cfg = {}
     src_cfg['interval'] = 0
     src_cfg['init_time'] = 0
     src_cfg['config'] = {'filename': xtcwriter}
-    psana_source = psana_src_cls(idnum, num_workers, src_cfg)
+    psana_source = psana_src_cls(idnum, num_workers, heartbeat_period, src_cfg)
     evtgen = psana_source.events()
     next(evtgen)  # first event is the config
     psana_source.requested_names = psana_source.xtcdata_names
@@ -53,8 +54,9 @@ def test_static_source(sim_src_cfg):
 
     idnum = 0
     num_workers = 1
+    heartbeat_period = 10
 
-    source = src_cls(idnum, num_workers, sim_src_cfg)
+    source = src_cls(idnum, num_workers, heartbeat_period, sim_src_cfg)
 
     # check the names from the source are correct
     expected_names = set(sim_src_cfg['config'].keys())
@@ -106,8 +108,9 @@ def test_random_source(sim_src_cfg):
 
     idnum = 0
     num_workers = 1
+    heartbeat_period = 10
 
-    source = src_cls(idnum, num_workers, sim_src_cfg)
+    source = src_cls(idnum, num_workers, heartbeat_period, sim_src_cfg)
 
     # check the names from the source are correct
     expected_names = set(sim_src_cfg['config'].keys())

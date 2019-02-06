@@ -98,7 +98,7 @@ class CollectorMessage(Message):
 
 
 class Source(abc.ABC):
-    def __init__(self, idnum, num_workers, src_cfg, flags=None):
+    def __init__(self, idnum, num_workers, heartbeat_period, src_cfg, flags=None):
         """
         Args:
             idnum (int): Id number
@@ -110,11 +110,23 @@ class Source(abc.ABC):
 
         self.idnum = idnum
         self.num_workers = num_workers
+        self.heartbeat_period = heartbeat_period
+        self.heartbeat = None
         self.interval = src_cfg['interval']
         self.init_time = src_cfg['init_time']
         self.config = src_cfg['config']
         self.requested_names = set()
         self.flags = flags or {}
+
+    def check_heartbeat_boundary(self, timestamp):
+        if self.heartbeat is None:
+            self.heartbeat = (timestamp // self.heartbeat_period)
+            return False
+        elif (timestamp // self.heartbeat_period) > (self.heartbeat):
+            self.heartbeat = (timestamp // self.heartbeat_period)
+            return True
+        else:
+            return False
 
     @classmethod
     def find_source(cls, name):
@@ -172,9 +184,12 @@ class Source(abc.ABC):
         Returns:
             An object of type `Message` which includes the data for the event.
         """
+        old_heartbeat = self.heartbeat
+        if self.check_heartbeat_boundary(timestamp):
+            yield Message(MsgTypes.Heartbeat, self.idnum, old_heartbeat)
         msg = Message(MsgTypes.Datagram, self.idnum, data)
         msg.timestamp = timestamp
-        return msg
+        yield msg
 
     def request(self, names):
         self.requested_names = set(names)
@@ -189,8 +204,8 @@ class Source(abc.ABC):
 
 class PsanaSource(Source):
 
-    def __init__(self, idnum, num_workers, src_cfg, flags=None):
-        super(__class__, self).__init__(idnum, num_workers, src_cfg, flags)
+    def __init__(self, idnum, num_workers, heartbeat_period, src_cfg, flags=None):
+        super(__class__, self).__init__(idnum, num_workers, heartbeat_period, src_cfg, flags)
         self.delimiter = ":"
         self.xtcdata_names = []
         if psana is not None:
@@ -242,14 +257,14 @@ class PsanaSource(Source):
                             obj = getattr(obj, token)
                         event[name] = obj(evt)
 
-                    yield self.event(timestamp, event)
+                    yield from self.event(timestamp, event)
                     timestamp += 1
                     time.sleep(self.interval)
 
 
 class SimSource(Source):
-    def __init__(self, idnum, num_workers, src_cfg, flags=None):
-        super(__class__, self).__init__(idnum, num_workers, src_cfg, flags)
+    def __init__(self, idnum, num_workers, heartbeat_period, src_cfg, flags=None):
+        super(__class__, self).__init__(idnum, num_workers, heartbeat_period, src_cfg, flags)
         self.count = 0
         self.synced = False
         if 'sync' in self.flags:
@@ -269,8 +284,8 @@ class SimSource(Source):
 
 
 class RandomSource(SimSource):
-    def __init__(self, idnum, num_workers, src_cfg, flags=None):
-        super(__class__, self).__init__(idnum, num_workers, src_cfg, flags)
+    def __init__(self, idnum, num_workers, heartbeat_period, src_cfg, flags=None):
+        super(__class__, self).__init__(idnum, num_workers, heartbeat_period, src_cfg, flags)
         np.random.seed([idnum])
 
     @property
@@ -294,13 +309,13 @@ class RandomSource(SimSource):
                         event[name] = np.random.normal(config['pedestal'], config['width'], config['shape'])
                     else:
                         logger.warn("DataSrc: %s has unknown type %s", name, config['dtype'])
-            yield self.event(self.timestamp, event)
+            yield from self.event(self.timestamp, event)
             time.sleep(self.interval)
 
 
 class StaticSource(SimSource):
-    def __init__(self, idnum, num_workers, src_cfg, flags=None):
-        super(__class__, self).__init__(idnum, num_workers, src_cfg, flags)
+    def __init__(self, idnum, num_workers, heartbeat_period, src_cfg, flags=None):
+        super(__class__, self).__init__(idnum, num_workers, heartbeat_period, src_cfg, flags)
         self.bound = np.inf
 
         if 'bound' in src_cfg:
@@ -325,7 +340,7 @@ class StaticSource(SimSource):
                     else:
                         logger.warn("DataSrc: %s has unknown type %s", name, config['dtype'])
             count += 1
-            yield self.event(self.timestamp, event)
+            yield from self.event(self.timestamp, event)
             if count >= self.bound:
                 break
             time.sleep(self.interval)

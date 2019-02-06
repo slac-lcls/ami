@@ -16,7 +16,7 @@ logger = logging.getLogger(__name__)
 
 
 class Worker:
-    def __init__(self, idnum, heartbeat_period, src, collector_addr, graph_addr):
+    def __init__(self, idnum, src, collector_addr, graph_addr):
         """
         idnum : int
             a unique integer identifying this worker
@@ -35,8 +35,6 @@ class Worker:
         for topic in ["graph", "add", "del"]:
             self.graph_comm.add_handler(topic, functools.partial(self.handle_graph, topic))
         self.graph_comm.add_command("config", self.send_configure)
-        self.last_timestamp = 0
-        self.heartbeat_period = heartbeat_period
 
     def send_configure(self):
         self.store.send(self.src.configure())
@@ -47,7 +45,6 @@ class Worker:
             if self.graph is not None:
                 self.graph.compile(num_workers=num_work, num_local_collectors=num_col)
                 self.src.request(self.graph.sources)
-                logger.info(self.src.requested_names)
                 self.store.version = version
         elif topic == "add":
             add_update = dill.loads(payload)
@@ -75,30 +72,20 @@ class Worker:
         else:
             logger.warn("worker%d: No handler for received topic: %s", self.idnum, topic)
 
-    def check_heartbeat_boundary(self, timestamp):
-        ret = (timestamp // self.heartbeat_period) > (self.last_timestamp // self.heartbeat_period)
-        self.last_timestamp = timestamp
-        return ret
-
     def run(self):
         for msg in self.src.events():
             # check to see if the graph has been reconfigured after update
-            if msg.mtype == MsgTypes.Datagram:
-                if self.check_heartbeat_boundary(msg.timestamp):
-                    self.store.collect(self.idnum, msg.timestamp//self.heartbeat_period)
-                    # clear the data from the store after collecting
-                    self.store.clear()
-                    # check if there are graph updates
-                    graph_updated = False
-                    while True:
-                        try:
-                            self.graph_comm.recv(False)
-                            graph_updated = True
-                        except zmq.Again:
-                            break
-                    if graph_updated:
-                        logger.warn("worker%s: discarding event where graph changed", self.idnum)
-                        continue
+            if msg.mtype == MsgTypes.Heartbeat:
+                self.store.collect(self.idnum, msg.payload)
+                # clear the data from the store after collecting
+                self.store.clear()
+                # check if there are graph updates
+                while True:
+                    try:
+                        self.graph_comm.recv(False)
+                    except zmq.Again:
+                        break
+            elif msg.mtype == MsgTypes.Datagram:
                 try:
                     if self.graph is not None:
                         self.store.update(self.graph(msg.payload, color=Colors.Worker))
@@ -127,12 +114,13 @@ def run_worker(num, num_workers, hb_period, source, collector_addr, graph_addr, 
     if src_cls is not None:
         src = src_cls(num,
                       num_workers,
+                      hb_period,
                       src_cfg,
                       flags)
     else:
         logger.critical("worker%03d: unknown data source type: %s", num, source[0])
         return 1
-    worker = Worker(num, hb_period, src, collector_addr, graph_addr)
+    worker = Worker(num, src, collector_addr, graph_addr)
     return worker.run()
 
 
