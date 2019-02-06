@@ -47,6 +47,7 @@ class Worker:
             if self.graph is not None:
                 self.graph.compile(num_workers=num_work, num_local_collectors=num_col)
                 self.src.request(self.graph.sources)
+                logger.info(self.src.requested_names)
                 self.store.version = version
         elif topic == "add":
             add_update = dill.loads(payload)
@@ -70,7 +71,7 @@ class Worker:
                     self.src.request([])
                 self.store.version = version
             else:
-                logger.warn("worker%d: No handler for received topic: %s", self.idnum, topic)
+                logger.error("worker%d: Del requested on empty graph", self.idnum)
         else:
             logger.warn("worker%d: No handler for received topic: %s", self.idnum, topic)
 
@@ -87,11 +88,17 @@ class Worker:
                     self.store.collect(self.idnum, msg.timestamp//self.heartbeat_period)
                     # clear the data from the store after collecting
                     self.store.clear()
+                    # check if there are graph updates
+                    graph_updated = False
                     while True:
                         try:
                             self.graph_comm.recv(False)
+                            graph_updated = True
                         except zmq.Again:
                             break
+                    if graph_updated:
+                        logger.warn("worker%s: discarding event where graph changed", self.idnum)
+                        continue
                 try:
                     if self.graph is not None:
                         self.store.update(self.graph(msg.payload, color=Colors.Worker))
