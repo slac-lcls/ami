@@ -27,17 +27,12 @@ class AreaDetWidget(pg.ImageView):
     def image_updated(self, data):
         self.setImage(data)
 
-    # @pyqtSlot(pg.ROI)
     def roi_updated(self, roi):
         shape, vector, origin = roi.getAffineSliceParams(self.image, self.getImageItem())
 
         def roi_func(image):
             return pg.affineSlice(image, shape, origin, vector, (0, 1))
 
-        # self.comm_handler.map("map_%s_roi" % self.name,
-        #                       inputs=[self.name],
-        #                       outputs=["%s_roi" % self.name],
-        #                       func=roi_func)
         self.func = roi_func
 
 
@@ -45,6 +40,10 @@ class Roi(CtrlNode):
 
     nodeName = "Roi"
     uiTemplate = []
+
+    def __init__(self, name, addr):
+        self.widget = None
+        super(Roi, self).__init__(name, addr=addr)
 
     def display(self, name, topic):
         if self.win is None:
@@ -73,5 +72,11 @@ class Roi(CtrlNode):
 
         outputs = [self.name()]
 
-        node = Map(name=self.name(), inputs=inputs, outputs=outputs, func=self.widget.func)
+        if self.widget:
+            func = self.widget.func
+        else:
+            def func(img):
+                return img
+
+        node = Map(name=self.name(), inputs=inputs, outputs=outputs, func=func)
         return node

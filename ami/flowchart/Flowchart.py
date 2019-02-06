@@ -563,11 +563,8 @@ class FlowchartCtrlWidget(QtGui.QWidget):
                 else:
                     graph_nodes.append(n)
         graph = Graph(name=str(self.chart.name))
-        for node in graph_nodes:
-            print(type(node).__name__, node.name, node.inputs, node.outputs, node.condition_needs)
         graph.add(graph_nodes)
         self.graphCommHandler.update(graph)
-
         self.features = {}
         self.pending = {}
 
