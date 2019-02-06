@@ -5,11 +5,11 @@ import time
 
 from pyqtgraph.Qt import QtGui
 from ami.flowchart.Flowchart import Flowchart
-
+from ami import LogConfig
 from ami.comm import GraphCommHandler
 
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger(LogConfig.get_package_name(__name__))
 
 
 def run_main_window(queue, addr):

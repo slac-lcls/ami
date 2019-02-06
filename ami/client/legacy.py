@@ -16,11 +16,12 @@ from PyQt5.QtCore import pyqtSlot, QTimer, QRect
 
 import pyqtgraph as pg
 
+from ami import LogConfig
 from ami.data import DataTypes
 from ami.comm import GraphCommHandler
 
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger(LogConfig.get_package_name(__name__))
 
 
 class ScalarWidget(QLCDNumber):
