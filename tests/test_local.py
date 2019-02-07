@@ -18,7 +18,7 @@ from ami.comm import Ports, GraphCommHandler
 from ami.local import build_parser, run_ami
 
 
-@pytest.fixture(scope='class')
+@pytest.fixture(scope='module')
 def start_ami(pytestconfig):
     parser = build_parser()
     args = parser.parse_args(["-n", "1", '-t', '--headless',
@@ -48,16 +48,13 @@ def start_ami(pytestconfig):
     return 0
 
 
-@pytest.mark.usefixtures("start_ami")
-class TestAMI(object):
-
-    def test_complex_graph(self, complex_graph, start_ami):
-        comm_handler, root_dir = start_ami
-        comm_handler.load(complex_graph)
-        start = time.time()
-        while comm_handler.graphVersion != comm_handler.featuresVersion:
-            end = time.time()
-            if end - start > 10:
-                break
-        sig = comm_handler.fetch('signal')
-        assert sig == {1: 10000.0}
+def test_complex_graph(complex_graph, start_ami):
+    comm_handler, root_dir = start_ami
+    comm_handler.load(complex_graph)
+    start = time.time()
+    while comm_handler.graphVersion != comm_handler.featuresVersion:
+        end = time.time()
+        if end - start > 10:
+            break
+    sig = comm_handler.fetch('signal')
+    assert sig == {1: 10000.0}
