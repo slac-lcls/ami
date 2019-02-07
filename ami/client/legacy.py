@@ -76,6 +76,34 @@ class WaveformWidget(pg.GraphicsLayoutWidget):
             self.plot.setData(y=data)
 
 
+class HistogramWidget(pg.GraphicsLayoutWidget):
+    def __init__(self, name, topic, addr, parent=None):
+        super(__class__, self).__init__(parent)
+        self.name = name
+        self.topic = topic
+        self.timer = QTimer()
+        self.comm_handler = GraphCommHandler(addr)
+        self.plot_view = self.addPlot()
+        self.plot = None
+        self.timer.timeout.connect(self.get_waveform)
+        self.timer.start(1000)
+
+    @pyqtSlot()
+    def get_waveform(self):
+        reply = self.comm_handler.fetch(self.topic)
+        if reply is not None:
+            self.waveform_updated(reply)
+        else:
+            logger.warn("failed to fetch %s from manager!", self.topic)
+
+    def waveform_updated(self, data):
+        x, y = map(list, zip(*sorted(data.items())))
+        if self.plot is None:
+            self.plot = self.plot_view.plot(x=x, y=y, pen=None, symbol='o')
+        else:
+            self.plot.setData(x=x, y=y)
+
+
 class AreaDetWidget(pg.ImageView):
     def __init__(self, name, topic, addr, parent=None):
         super(AreaDetWidget, self).__init__(parent)
@@ -206,6 +234,9 @@ class DetectorList(QListWidget):
         elif data_type == DataTypes.Waveform:
             self._spawn_window('WaveformDetector', name, topic)
             logger.info('create waveform window for: %s', name)
+        elif data_type == DataTypes.Histogram:
+            self._spawn_window('HistogramDetector', name, topic)
+            logger.info('create histogram window for: %s', name)
         elif data_type == DataTypes.Scalar:
             self._spawn_window('ScalarDetector', name, topic)
             logger.info('create waveform window for: %s', name)
@@ -347,6 +378,9 @@ def run_widget(queue, window_type, name, topic, addr):
 
     elif window_type == 'WaveformDetector':
         widget = WaveformWidget(name, topic, addr, win)
+
+    elif window_type == 'HistogramDetector':
+        widget = HistogramWidget(name, topic, addr, win)
 
     elif window_type == 'ScalarDetector':
         widget = ScalarWidget(name, topic, addr, win)

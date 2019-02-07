@@ -29,6 +29,7 @@ class DataTypes(Enum):
     Waveform = 2
     Image = 3
     List = 4
+    Histogram = 5
 
     @staticmethod
     def get_type(data):
@@ -43,6 +44,8 @@ class DataTypes(Enum):
                 return DataTypes.Unknown
         elif isinstance(data, list):
             return DataTypes.List
+        elif isinstance(data, dict):
+            return DataTypes.Histogram
         else:
             return DataTypes.Scalar
 
