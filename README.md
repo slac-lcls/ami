@@ -44,6 +44,7 @@ Bigger Projects:
 - external-data (including collector) to worker feedback. probably EPICS.  (e.g. for background subtraction)
 - complex data types (e.g. peaks/times from hsd fex)
 - check gessner issue OK
+- included detectors changing from run to run
 - call complex psana algorithm with parameters, e.g. peakfinder
 - record operator actions with "amicli" commands that could be played back
 - parallelize global collector
