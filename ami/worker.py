@@ -45,7 +45,9 @@ class Worker:
             if self.graph is not None:
                 self.graph.compile(num_workers=num_work, num_local_collectors=num_col)
                 self.src.request(self.graph.sources)
-                self.store.version = version
+            else:
+                self.src.request([])
+            self.store.version = version
         elif topic == "add":
             add_update = dill.loads(payload)
             if self.graph is not None:
