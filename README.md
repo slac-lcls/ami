@@ -34,19 +34,19 @@ To use psana a working release need to be added to the python path
 
 20 DEC 18:
 Bigger Projects:
-- python message logging
 - switch to shmem
 - pydm (waiting for hugo)
+- different displays running in different processes
 - pvaccess (dan is working on this)
 - Clemens' complex example via GUI
 - partition call dropdown for xppcspad.raw..., xppcpad.fex...
 - display "reference counting" for automated graph-remove
-- graph mgr improvements
 - external-data (including collector) to worker feedback. probably EPICS.  (e.g. for background subtraction)
 - complex data types (e.g. peaks/times from hsd fex)
 - check gessner issue OK
 - call complex psana algorithm with parameters, e.g. peakfinder
 - record operator actions with "amicli" commands that could be played back
+- parallelize global collector
 
 6 DEC 18
 CPO/TJL:
