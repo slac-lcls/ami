@@ -1,5 +1,6 @@
 import pytest
 import dill
+import json
 import shutil
 import subprocess
 import numpy as np
@@ -8,7 +9,7 @@ from ami.graphkit_wrapper import Graph
 from ami.graph_nodes import Map, FilterOn, FilterOff, Binning, PickN
 
 
-@pytest.fixture(scope='module')
+@pytest.fixture(scope='session')
 def complex_graph(tmpdir_factory):
     graph = Graph(name='graph')
 
@@ -33,7 +34,7 @@ def complex_graph(tmpdir_factory):
     return fname
 
 
-@pytest.fixture(scope='module')
+@pytest.fixture(scope='session')
 def psana_graph(tmpdir_factory):
     graph = Graph(name='graph')
     graph.add(PickN(name='picker', inputs=['xppcspad:raw:raw'], outputs=['picked']))
@@ -43,10 +44,31 @@ def psana_graph(tmpdir_factory):
     return fname
 
 
-@pytest.fixture(scope='package')
+@pytest.fixture(scope='session')
 def xtcwriter(tmpdir_factory):
     if shutil.which('xtcwriter') is not None:
         fname = tmpdir_factory.mktemp("xtcs", False).join('data.xtc2')
         p = subprocess.run(['xtcwriter', '-f', fname], stdout=subprocess.PIPE)
         if p.returncode == 0:
             return fname
+
+
+@pytest.fixture(scope='session')
+def workerjson(tmpdir_factory, xtcwriter):
+
+    cfg = {
+        "interval": 0.01,
+        "init_time": 0.1,
+        "bound": 100,
+        "config": {
+            "filename": "data.xtc2" if xtcwriter is None else xtcwriter,
+            "delta_t": {"dtype": "Scalar", "range": [0, 10], "integer": True},
+            "cspad": {"dtype": "Image", "pedestal": 5, "width": 1, "shape": [512, 512]},
+            "laser": {"dtype": "Scalar", "range": [0, 2], "integer": True},
+        },
+    }
+
+    fname = tmpdir_factory.mktemp("worker_config", False).join('worker.json')
+    with open(fname, 'w') as fd:
+        json.dump(cfg, fd)
+    return fname
