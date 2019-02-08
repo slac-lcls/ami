@@ -90,7 +90,8 @@ class Worker:
             elif msg.mtype == MsgTypes.Datagram:
                 try:
                     if self.graph is not None:
-                        self.store.update(self.graph(msg.payload, color=Colors.Worker))
+                        graph_result = self.graph(msg.payload, color=Colors.Worker)
+                        self.store.update(graph_result)
                 except Exception:
                     logger.exception("worker%s: Failure encountered executing graph:", self.idnum)
                     return 1

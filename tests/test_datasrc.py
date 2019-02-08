@@ -29,6 +29,7 @@ def test_find_source():
 
 
 def test_psana_source(xtcwriter):
+    # don't run the test if psana is not installed
     if xtcwriter is None:
         return
     psana_src_cls = Source.find_source('psana')

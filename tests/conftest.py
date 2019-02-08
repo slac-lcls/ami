@@ -5,7 +5,7 @@ import subprocess
 import numpy as np
 
 from ami.graphkit_wrapper import Graph
-from ami.graph_nodes import Map, FilterOn, FilterOff, Binning
+from ami.graph_nodes import Map, FilterOn, FilterOff, Binning, PickN
 
 
 @pytest.fixture(scope='module')
@@ -26,7 +26,7 @@ def complex_graph(tmpdir_factory):
     graph.add(Binning(name='BinningOff', condition_needs=['laseroff'],
                       inputs=['delta_t', 'sum'], outputs=['reference']))
 
-    fname = tmpdir_factory.mktemp("graphs", False).join("complex_graph.dill")
+    fname = tmpdir_factory.mktemp("complex_graph", False).join("complex_graph.dill")
 
     with open(fname, 'wb') as fd:
         dill.dump(graph, fd)
@@ -34,6 +34,16 @@ def complex_graph(tmpdir_factory):
 
 
 @pytest.fixture(scope='module')
+def psana_graph(tmpdir_factory):
+    graph = Graph(name='graph')
+    graph.add(PickN(name='picker', inputs=['xppcspad:raw:raw'], outputs=['picked']))
+    fname = tmpdir_factory.mktemp("psana_graph", False).join("psana_graph.dill")
+    with open(fname, 'wb') as fd:
+        dill.dump(graph, fd)
+    return fname
+
+
+@pytest.fixture(scope='package')
 def xtcwriter(tmpdir_factory):
     if shutil.which('xtcwriter') is not None:
         fname = tmpdir_factory.mktemp("xtcs", False).join('data.xtc2')
