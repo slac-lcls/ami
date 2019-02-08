@@ -18,11 +18,12 @@ from ami.comm import Ports, GraphCommHandler
 from ami.local import build_parser, run_ami
 
 
-@pytest.fixture(scope='module')
-def start_ami(pytestconfig):
+@pytest.fixture(scope='function')
+def start_ami(request, pytestconfig):
     parser = build_parser()
     args = parser.parse_args(["-n", "1", '-t', '--headless',
-                              'static://%s' % os.path.join(pytestconfig.rootdir, 'tests', 'worker_test.json')])
+                              '%s://%s' %
+                              (request.param, os.path.join(pytestconfig.rootdir, 'tests', 'worker_test.json'))])
 
     queue = mp.Queue()
     ami = mp.Process(name='ami',
@@ -48,7 +49,21 @@ def start_ami(pytestconfig):
     return 0
 
 
+@pytest.mark.parametrize('start_ami', ['static'], indirect=True)
 def test_complex_graph(complex_graph, start_ami):
+    comm_handler, root_dir = start_ami
+    comm_handler.load(complex_graph)
+    start = time.time()
+    while comm_handler.graphVersion != comm_handler.featuresVersion:
+        end = time.time()
+        if end - start > 10:
+            break
+    sig = comm_handler.fetch('signal')
+    assert sig == {1: 10000.0}
+
+
+@pytest.mark.parametrize('start_ami', ['psana'], indirect=True)
+def test_complex_graph_psana(complex_graph, start_ami):
     comm_handler, root_dir = start_ami
     comm_handler.load(complex_graph)
     start = time.time()
