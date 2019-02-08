@@ -4,9 +4,18 @@ import json
 import shutil
 import subprocess
 import numpy as np
+try:
+    import psana
+except ImportError:
+    psana = None
 
 from ami.graphkit_wrapper import Graph
 from ami.graph_nodes import Map, FilterOn, FilterOff, Binning, PickN
+
+
+@pytest.fixture(scope='session')
+def use_psana():
+    return psana is not None
 
 
 @pytest.fixture(scope='session')

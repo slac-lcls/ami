@@ -18,7 +18,13 @@ from ami.local import build_parser, run_ami
 
 
 @pytest.fixture(scope='function')
-def start_ami(request, workerjson):
+def start_ami(request, workerjson, use_psana):
+
+    # don't run the fixture if psana is not installed
+    if not use_psana and request.param == "psana":
+        yield None
+        return
+
     parser = build_parser()
     args = parser.parse_args(["-n", "1", '-t', '--headless',
                               '%s://%s' %
@@ -62,10 +68,10 @@ def test_complex_graph(complex_graph, start_ami):
 
 
 @pytest.mark.parametrize('start_ami', ['psana'], indirect=True)
-def test_psana_graph(psana_graph, start_ami, xtcwriter):
+def test_psana_graph(psana_graph, start_ami, use_psana):
 
     # don't run the test if psana is not installed
-    if xtcwriter is None:
+    if not use_psana:
         return
 
     comm_handler = start_ami
