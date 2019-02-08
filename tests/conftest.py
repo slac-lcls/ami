@@ -19,7 +19,7 @@ def use_psana():
 
 
 @pytest.fixture(scope='session')
-def complex_graph(tmpdir_factory):
+def complex_graph_file(tmpdir_factory):
     graph = Graph(name='graph')
 
     def roi(cspad):
@@ -81,3 +81,9 @@ def workerjson(tmpdir_factory, xtcwriter):
     with open(fname, 'w') as fd:
         json.dump(cfg, fd)
     return fname
+
+
+@pytest.fixture(scope='function')
+def complex_graph(complex_graph_file):
+    with open(complex_graph_file, 'rb') as fd:
+        return dill.load(fd)

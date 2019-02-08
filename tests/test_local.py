@@ -55,9 +55,9 @@ def start_ami(request, workerjson, use_psana):
 
 
 @pytest.mark.parametrize('start_ami', ['static'], indirect=True)
-def test_complex_graph(complex_graph, start_ami):
+def test_complex_graph(complex_graph_file, start_ami):
     comm_handler = start_ami
-    comm_handler.load(complex_graph)
+    comm_handler.load(complex_graph_file)
     start = time.time()
     while comm_handler.graphVersion != comm_handler.featuresVersion:
         end = time.time()
