@@ -63,7 +63,7 @@ def test_complex_graph(complex_graph, start_ami):
 
 
 @pytest.mark.parametrize('start_ami', ['psana'], indirect=True)
-def test_complex_graph_psana(psana_graph, start_ami, xtcwriter):
+def test_psana_graph(psana_graph, start_ami, xtcwriter):
 
     # don't run the test if psana is not installed
     if xtcwriter is None:
@@ -78,3 +78,4 @@ def test_complex_graph_psana(psana_graph, start_ami, xtcwriter):
             break
     picked_cspad = comm_handler.fetch('picked')
     assert len(picked_cspad) == 18
+
