@@ -29,3 +29,5 @@ export PATH=$RELDIR/install/bin:${PATH}
 export PATH=$RELDIR/build/bin:${PATH}
 pyver=$(python -c "import sys; print(str(sys.version_info.major)+'.'+str(sys.version_info.minor))")
 export PYTHONPATH=$RELDIR/install/lib/python$pyver/site-packages
+# for procmgr
+export TESTRELDIR=$RELDIR/install
