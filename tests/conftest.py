@@ -61,7 +61,7 @@ def workerjson(tmpdir_factory, xtcwriter):
         "init_time": 0.1,
         "bound": 100,
         "config": {
-            "filename": "data.xtc2" if xtcwriter is None else xtcwriter,
+            "filename": "data.xtc2" if xtcwriter is None else str(xtcwriter),
             "delta_t": {"dtype": "Scalar", "range": [0, 10], "integer": True},
             "cspad": {"dtype": "Image", "pedestal": 5, "width": 1, "shape": [512, 512]},
             "laser": {"dtype": "Scalar", "range": [0, 2], "integer": True},
