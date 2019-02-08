@@ -24,7 +24,6 @@ class Flowchart(Node):
     sigFileLoaded = QtCore.Signal(object)
     sigFileSaved = QtCore.Signal(object)
 
-    # sigOutputChanged = QtCore.Signal() #  inherited from Node
     sigChartLoaded = QtCore.Signal()
     # called when output is expected to have changed
     sigStateChanged = QtCore.Signal()
@@ -53,16 +52,10 @@ class Flowchart(Node):
         self.widget()
 
         self.inputNode = Node('Input', allowRemove=False, allowAddOutput=True)
-        self.outputNode = Node('Output', allowRemove=False, allowAddInput=True)
         self.addNode(self.inputNode, 'Input', [-150, 0])
-        self.addNode(self.outputNode, 'Output', [300, 0])
 
-        self.outputNode.sigOutputChanged.connect(self.outputChanged)
-        self.outputNode.sigTerminalRenamed.connect(self.internalTerminalRenamed)
         self.inputNode.sigTerminalRenamed.connect(self.internalTerminalRenamed)
-        self.outputNode.sigTerminalRemoved.connect(self.internalTerminalRemoved)
         self.inputNode.sigTerminalRemoved.connect(self.internalTerminalRemoved)
-        self.outputNode.sigTerminalAdded.connect(self.internalTerminalAdded)
         self.inputNode.sigTerminalAdded.connect(self.internalTerminalAdded)
 
         self.viewBox.autoRange(padding=0.04)
@@ -84,19 +77,6 @@ class Flowchart(Node):
         self.inputWasSet = True
         self.inputNode.setOutput(**args)
 
-    def outputChanged(self):
-        #  called when output of internal node has changed
-        # vals = self.outputNode.inputValues()
-        # self.widget().outputChanged(vals)
-        # self.setOutput(**vals)
-        # self.sigOutputChanged.emit(self)
-        pass
-
-    def output(self):
-        """Return a dict of the values on the Flowchart's output terminals.
-        """
-        return self.outputNode.inputValues()
-
     def nodes(self):
         return self._nodes
 
@@ -112,14 +92,6 @@ class Flowchart(Node):
             finally:
                 self.inputNode.sigTerminalAdded.connect(self.internalTerminalAdded)
 
-        else:
-            opts['io'] = 'in'
-            # opts['multi'] = False
-            self.outputNode.sigTerminalAdded.disconnect(self.internalTerminalAdded)
-            try:
-                self.outputNode.addTerminal(name, **opts)
-            finally:
-                self.outputNode.sigTerminalAdded.connect(self.internalTerminalAdded)
         return term
 
     def removeTerminal(self, name):
@@ -155,7 +127,7 @@ class Flowchart(Node):
         # print self.terminals
         Node.terminalRenamed(self, self[oldName], oldName)
         # print self.terminals
-        for n in [self.inputNode, self.outputNode]:
+        for n in [self.inputNode]:
             if oldName in n.terminals:
                 n[oldName].rename(newName)
 
@@ -190,11 +162,10 @@ class Flowchart(Node):
         self.viewBox.addItem(item)
         item.moveBy(*pos)
         self._nodes[name] = node
-        if node is not self.inputNode and node is not self.outputNode:
+        if node is not self.inputNode:
             self.widget().addNode(node)
         node.sigClosed.connect(self.nodeClosed)
         node.sigRenamed.connect(self.nodeRenamed)
-        node.sigOutputChanged.connect(self.nodeOutputChanged)
         self.sigChartChanged.emit(self, 'add', node)
 
     def removeNode(self, node):
@@ -205,7 +176,7 @@ class Flowchart(Node):
     def nodeClosed(self, node):
         del self._nodes[node.name()]
         self.widget().removeNode(node)
-        for signal in ['sigClosed', 'sigRenamed', 'sigOutputChanged']:
+        for signal in ['sigClosed', 'sigRenamed']:
             try:
                 getattr(node, signal).disconnect(self.nodeClosed)
             except (TypeError, RuntimeError):
@@ -226,8 +197,6 @@ class Flowchart(Node):
         if term.node() is self:
             if term.isInput():
                 return self.inputNode[term.name()]
-            else:
-                return self.outputNode[term.name()]
         else:
             return term
 
@@ -284,49 +253,6 @@ class Flowchart(Node):
             ops.insert(i, ('d', t))
         return ops
 
-    def nodeOutputChanged(self, startNode):
-        """Triggered when a node's output values have changed. (NOT called during process())
-        Propagates new data forward through network."""
-        #  first collect list of nodes/terminals and their dependencies
-
-        try:
-            deps = {}
-            for name, node in self._nodes.items():
-                deps[node] = []
-                for t in node.outputs().values():
-                    deps[node].extend(t.dependentNodes())
-
-            #  determine order of updates
-            order = fn.toposort(deps, nodes=[startNode])
-            order.reverse()
-
-            #  keep track of terminals that have been updated
-            terms = set(startNode.outputs().values())
-
-            # print "======= Updating", startNode
-            # print("Order:", order)
-            for node in order[1:]:
-                # print("Processing node", node)
-                update = False
-                for term in list(node.inputs().values()):
-                    # print("  checking terminal", term)
-                    deps = list(term.connections().keys())
-                    for d in deps:
-                        if d in terms:
-                            # print("    ..input", d, "changed")
-                            update |= True
-                            term.inputChanged(d, process=False)
-                if update:
-                    # print("  processing..")
-                    node.update()
-                    terms |= set(node.outputs().values())
-
-        finally:
-            if self.inputWasSet:
-                self.inputWasSet = False
-            else:
-                self.sigStateChanged.emit()
-
     def chartGraphicsItem(self):
         """Return the graphicsItem that displays the internal nodes and
         connections of this flowchart.
@@ -376,7 +302,6 @@ class Flowchart(Node):
             state['connects'].append((a.node().name(), a.name(), b.node().name(), b.name()))
 
         state['inputNode'] = self.inputNode.saveState()
-        state['outputNode'] = self.outputNode.saveState()
 
         return state
 
@@ -401,7 +326,6 @@ class Flowchart(Node):
                     printExc("Error creating node %s: (continuing anyway)" % n['name'])
 
             self.inputNode.restoreState(state.get('inputNode', {}))
-            self.outputNode.restoreState(state.get('outputNode', {}))
 
             # self.restoreTerminals(state['terminals'])
             for n1, t1, n2, t2 in state['connects']:
@@ -416,7 +340,6 @@ class Flowchart(Node):
             self.blockSignals(False)
 
         self.sigChartLoaded.emit()
-        self.outputChanged()
         self.sigStateChanged.emit()
 
     def loadFile(self, fileName=None, startDir=None):
@@ -459,7 +382,7 @@ class Flowchart(Node):
         """Remove all nodes from this flowchart except the original input/output nodes.
         """
         for n in list(self._nodes.values()):
-            if n is self.inputNode or n is self.outputNode:
+            if n is self.inputNode:
                 continue
             n.close()  # calls self.nodeClosed(n) by signal
         # self.clearTerminals()
@@ -468,7 +391,6 @@ class Flowchart(Node):
     def clearTerminals(self):
         Node.clearTerminals(self)
         self.inputNode.clearTerminals()
-        self.outputNode.clearTerminals()
 
 
 class FlowchartGraphicsItem(GraphicsObject):
@@ -653,10 +575,6 @@ class FlowchartCtrlWidget(QtGui.QWidget):
     def chartWidget(self):
         return self.chartWidget
 
-    def outputChanged(self, data):
-        pass
-        # self.ui.outputTree.setData(data, hideRoot=True)
-
     def clear(self):
         self.chartWidget.clear()
 
@@ -825,7 +743,3 @@ class FlowchartWidget(dockarea.DockArea):
     def clear(self):
         # self.outputTree.setData(None)
         self.hoverText.setPlainText('')
-
-
-class FlowchartNode(Node):
-    pass

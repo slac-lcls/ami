@@ -30,7 +30,6 @@ class Node(QtCore.QObject):
     will use to automatically generate the control widget.
     """
 
-    sigOutputChanged = QtCore.Signal(object)   # self
     sigClosed = QtCore.Signal(object)
     sigRenamed = QtCore.Signal(object, object)
     sigTerminalRenamed = QtCore.Signal(object, object)  # term, oldName
@@ -226,22 +225,14 @@ class Node(QtCore.QObject):
     def connected(self, localTerm, remoteTerm):
         """Called whenever one of this node's terminals is connected elsewhere."""
         if localTerm.isInput() and remoteTerm.isOutput():
-            print("Connected")
+            pass
+            # print("Connected")
 
     def disconnected(self, localTerm, remoteTerm):
         """Called whenever one of this node's terminals is disconnected from another."""
         if localTerm.isInput() and remoteTerm.isOutput():
-            print("Disconnected")
-
-    def setOutput(self, **vals):
-        self.setOutputNoSignal(**vals)
-        self.sigOutputChanged.emit(self)  # triggers flowchart to propagate new data
-
-    def setOutputNoSignal(self, **vals):
-        for k, v in vals.items():
-            term = self.outputs()[k]
-            term.setValue(v)
-            term.setValueAcceptable(True)
+            pass
+            # print("Disconnected")
 
     def setException(self, exc):
         self.exception = exc

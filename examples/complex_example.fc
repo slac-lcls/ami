@@ -7,13 +7,6 @@ terminals:
         renamable: False
         removable: False
         multiable: False
-    cspad:
-        io: 'in'
-        multi: False
-        optional: False
-        renamable: False
-        removable: False
-        multiable: False
     delta_t:
         io: 'in'
         multi: False
@@ -21,19 +14,19 @@ terminals:
         renamable: False
         removable: False
         multiable: False
-nodes: [{'class': 'Roi', 'name': 'Roi.0', 'pos': (-28.900496282037864, 84.93446848119876), 'state': {'pos': (-28.900496282037864, 84.93446848119876), 'ctrl': {}}}, {'class': 'FilterOn', 'name': 'FilterOn.0', 'pos': (-0.5752515675524137, -140.72331441086905), 'state': {'pos': (-0.5752515675524137, -140.72331441086905)}}, {'class': 'FilterOff', 'name': 'FilterOff.0', 'pos': (-5.296125686633388, -259.68934221170815), 'state': {'pos': (-5.296125686633388, -259.68934221170815)}}, {'class': 'Binning', 'name': 'Binning.0', 'pos': (222.25000685306668, -273.85196456895085), 'state': {'pos': (222.25000685306668, -273.85196456895085)}}, {'class': 'Binning', 'name': 'Binning.1', 'pos': (219.41748238161819, -135.0582654679719), 'state': {'pos': (219.41748238161819, -135.0582654679719)}}, {'class': 'Sum', 'name': 'Sum.0', 'pos': (106.11650352367622, 83.04611883356637), 'state': {'pos': (106.11650352367622, 83.04611883356637)}}]
-connects: [('Input', 'laser', 'FilterOff.0', 'Condition'), ('FilterOn.0', 'Out', 'Binning.1', 'Condition'), ('Sum.0', 'Out', 'Binning.1', 'Values'), ('Input', 'cspad', 'Roi.0', 'In'), ('Input', 'delta_t', 'Binning.0', 'Bins'), ('Sum.0', 'Out', 'Binning.0', 'Values'), ('Input', 'laser', 'FilterOn.0', 'Condition'), ('Roi.0', 'Out', 'Sum.0', 'In'), ('FilterOff.0', 'Out', 'Binning.0', 'Condition'), ('Input', 'delta_t', 'Binning.1', 'Bins')]
+    cspad:
+        io: 'in'
+        multi: False
+        optional: False
+        renamable: False
+        removable: False
+        multiable: False
+nodes: [{'class': 'Roi', 'name': 'Roi.0', 'pos': (23.837818351146126, 130.827146229396), 'state': {'pos': (23.837818351146126, 130.827146229396), 'ctrl': {}}}, {'class': 'Sum', 'name': 'Sum.0', 'pos': (196.01375660263176, 136.25611725534372), 'state': {'pos': (196.01375660263176, 136.25611725534372)}}, {'class': 'FilterOn', 'name': 'FilterOn.0', 'pos': (81.22979776830803, -218.9537012995233), 'state': {'pos': (81.22979776830803, -218.9537012995233)}}, {'class': 'FilterOff', 'name': 'FilterOff.0', 'pos': (76.57639403178143, -102.61860788635715), 'state': {'pos': (76.57639403178143, -102.61860788635715)}}, {'class': 'Binning', 'name': 'Binning.0', 'pos': (259.6102743351629, -214.3002975629965), 'state': {'pos': (259.6102743351629, -214.3002975629965)}}, {'class': 'Binning', 'name': 'Binning.1', 'pos': (263.4881107822688, -94.86293499214608), 'state': {'pos': (263.4881107822688, -94.86293499214608)}}]
+connects: [('Input', 'delta_t', 'Binning.0', 'Bins'), ('FilterOff.0', 'Out', 'Binning.1', 'Condition'), ('Sum.0', 'Out', 'Binning.0', 'Values'), ('Roi.0', 'Out', 'Sum.0', 'In'), ('Input', 'delta_t', 'Binning.1', 'Bins'), ('Input', 'laser', 'FilterOff.0', 'Condition'), ('Sum.0', 'Out', 'Binning.1', 'Values'), ('FilterOn.0', 'Out', 'Binning.0', 'Condition'), ('Input', 'laser', 'FilterOn.0', 'Condition'), ('Input', 'cspad', 'Roi.0', 'In')]
 inputNode:
     pos: (-150.0, 0.0)
     terminals:
         laser:
-            io: 'out'
-            multi: False
-            optional: False
-            renamable: False
-            removable: False
-            multiable: False
-        cspad:
             io: 'out'
             multi: False
             optional: False
@@ -47,6 +40,10 @@ inputNode:
             renamable: False
             removable: False
             multiable: False
-outputNode:
-    pos: (302.83252447144855, 314.4102163307889)
-    terminals:
+        cspad:
+            io: 'out'
+            multi: False
+            optional: False
+            renamable: False
+            removable: False
+            multiable: False
