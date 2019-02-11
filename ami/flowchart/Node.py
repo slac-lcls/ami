@@ -35,8 +35,9 @@ class Node(QtCore.QObject):
     sigTerminalRenamed = QtCore.Signal(object, object)  # term, oldName
     sigTerminalAdded = QtCore.Signal(object, object)  # self, term
     sigTerminalRemoved = QtCore.Signal(object, object)  # self, term
+    sigTerminalConnected = QtCore.Signal(object)  # self
 
-    def __init__(self, name, terminals=None, allowAddInput=False, allowAddOutput=False, allowRemove=True, addr=""):
+    def __init__(self, name, terminals=None, allowAddInput=False, allowAddOutput=False, allowRemove=True):
         """
         ==============  ============================================================
         **Arguments:**
@@ -79,7 +80,8 @@ class Node(QtCore.QObject):
         for name, opts in terminals.items():
             self.addTerminal(name, **opts)
 
-        self.addr = addr
+        self.input_names = []
+        self.condition_names = []
         self.win = None
 
     def nextTerminalName(self, name):
@@ -225,14 +227,20 @@ class Node(QtCore.QObject):
     def connected(self, localTerm, remoteTerm):
         """Called whenever one of this node's terminals is connected elsewhere."""
         if localTerm.isInput() and remoteTerm.isOutput():
-            pass
-            # print("Connected")
+            if localTerm.name() == "In":
+                self.input_names.append(remoteTerm.node().name())
+            elif localTerm.name() == "Condition":
+                self.condition_names.append(remoteTerm.node().name())
+
+            self.sigTerminalConnected.emit(self)
 
     def disconnected(self, localTerm, remoteTerm):
         """Called whenever one of this node's terminals is disconnected from another."""
         if localTerm.isInput() and remoteTerm.isOutput():
-            pass
-            # print("Disconnected")
+            if localTerm.name() == "In":
+                self.input_names.remove(remoteTerm.node().name())
+            elif localTerm.name() == "Condition":
+                self.condition_names.remove(remoteTerm.node().name())
 
     def setException(self, exc):
         self.exception = exc
@@ -257,14 +265,7 @@ class Node(QtCore.QObject):
         dict."""
         pos = self.graphicsItem().pos()
         state = {'pos': (pos.x(), pos.y())}
-        termsEditable = self._allowAddInput | self._allowAddOutput
-        terms = list(self._inputs.values())
-        terms.extend(list(self._outputs.values()))
-        for term in terms:
-            termsEditable |= term._renamable | term._removable | term._multiable
-
-        if termsEditable:
-            state['terminals'] = self.saveTerminals()
+        state['terminals'] = self.saveTerminals()
         return state
 
     def restoreState(self, state):

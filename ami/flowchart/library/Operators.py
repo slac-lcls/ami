@@ -7,22 +7,14 @@ class Sum(Node):
 
     nodeName = "Sum"
 
-    def __init__(self, name, addr):
-        super(Sum, self).__init__(name, addr=addr, terminals={
+    def __init__(self, name):
+        super(Sum, self).__init__(name, terminals={
             'In': {'io': 'in'},
             'Out': {'io': 'out'}
         })
 
-    def to_operation(self):
-        In = self.terminals['In'].inputTerminals()[0]
-
-        if In.node().name() == "Input":
-            inputs = [In.name()]
-        else:
-            inputs = [In.node().name()]
-
+    def to_operation(self, inputs, conditions=[]):
         outputs = [self.name()]
-
         node = gn.Map(name=self.name(), inputs=inputs, outputs=outputs, func=np.sum)
         return node
 
@@ -31,39 +23,26 @@ class Binning(Node):
 
     nodeName = "Binning"
 
-    def __init__(self, name, addr):
-        super(Binning, self).__init__(name, addr=addr, terminals={
+    def __init__(self, name):
+        super(Binning, self).__init__(name, terminals={
             'Condition': {'io': 'in'},
             'Values': {'io': 'in'},
             'Bins': {'io': 'in'},
             'Out': {'io': 'out'}
         })
 
-    def to_operation(self):
-        inputs = []
+    def connected(self, localTerm, remoteTerm):
+        if localTerm.isInput() and remoteTerm.isOutput():
+            if localTerm.name() == "Condition":
+                self.condition_names.append(remoteTerm.node().name())
+            elif localTerm.name() == "Bins":
+                self.input_names.insert(0, remoteTerm.node().name())
+            elif localTerm.name() == "Values":
+                self.input_names.insert(1, remoteTerm.node().name())
 
-        Condition = self.terminals['Condition'].inputTerminals()[0]
+            self.sigTerminalConnected.emit(self)
 
-        if Condition.node().name() == "Input":
-            condition = [Condition.name()]
-        else:
-            condition = [Condition.node().name()]
-
-        Bins = self.terminals['Bins'].inputTerminals()[0]
-
-        if Bins.node().name() == "Input":
-            inputs.append(Bins.name())
-        else:
-            inputs.append(Bins.node().name())
-
-        Values = self.terminals['Values'].inputTerminals()[0]
-
-        if Values.node().name() == "Input":
-            inputs.append(Values.name())
-        else:
-            inputs.append(Values.node().name())
-
+    def to_operation(self, inputs, conditions=[]):
         outputs = [self.name()]
-
-        node = gn.Binning(name=self.name(), condition_needs=condition, inputs=inputs, outputs=outputs)
+        node = gn.Binning(name=self.name(), condition_needs=conditions, inputs=inputs, outputs=outputs)
         return node

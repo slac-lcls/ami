@@ -6,7 +6,6 @@ from pyqtgraph.debug import printExc
 from pyqtgraph import configfile as configfile
 from pyqtgraph import dockarea as dockarea
 from pyqtgraph.flowchart import FlowchartGraphicsView
-from pyqtgraph import functions as fn
 from pyqtgraph import GraphicsObject
 from numpy import ndarray
 from ami.flowchart.Terminal import Terminal
@@ -16,8 +15,11 @@ from ami.comm import GraphCommHandler
 from ami.graphkit_wrapper import Graph
 
 import ami.flowchart.FlowchartCtrlTemplate_pyqt5 as FlowchartCtrlTemplate
+import ami.client.flowchart_messages as fcMsgs
 import os
 import threading
+import zmq
+import dill
 
 
 class Flowchart(Node):
@@ -30,106 +32,42 @@ class Flowchart(Node):
     # called when nodes are added, removed, or renamed.
     sigChartChanged = QtCore.Signal(object, object, object)  # (self, action, node)
 
-    def __init__(self, terminals=None, name=None, filePath=None, library=None, addr=""):
+    def __init__(self, name=None, filePath=None, library=None, queue=None,
+                 graphmgr_addr="", node_pubsub_addr="", node_pushpull_addr=""):
+        super(Flowchart, self).__init__(name)
         self.library = library or LIBRARY
-        self.addr = addr
+        self.graphmgr_addr = graphmgr_addr
+        self.queue = queue
+
+        context = zmq.Context()
+
+        self.node_pubsub = context.socket(zmq.PUB)
+        self.node_pubsub.bind(node_pubsub_addr)
+
+        self.node_pushpull = context.socket(zmq.PULL)
+        self.node_pushpull.bind(node_pushpull_addr)
+
         if name is None:
             name = "Flowchart"
-        if terminals is None:
-            terminals = {}
-        self.filePath = filePath
-        #  create node without terminals; we'll add these later
-        Node.__init__(self, name, allowAddInput=True, allowAddOutput=True)
 
-        self.inputWasSet = False   # flag allows detection of changes in the absence of input change.
+        self.filePath = filePath
+
         self._nodes = {}
         self.nextZVal = 10
-        # self.connects = []
-        # self._chartGraphicsItem = FlowchartGraphicsItem(self)
         self._widget = None
         self._scene = None
 
         self.widget()
 
-        self.inputNode = Node('Input', allowRemove=False, allowAddOutput=True)
-        self.addNode(self.inputNode, 'Input', [-150, 0])
-
-        self.inputNode.sigTerminalRenamed.connect(self.internalTerminalRenamed)
-        self.inputNode.sigTerminalRemoved.connect(self.internalTerminalRemoved)
-        self.inputNode.sigTerminalAdded.connect(self.internalTerminalAdded)
-
-        self.viewBox.autoRange(padding=0.04)
-
-        for name, opts in terminals.items():
-            self.addTerminal(name, **opts)
+        # self.viewBox.autoRange(padding=0.04)
+        self.viewBox.enableAutoRange()
 
     def setLibrary(self, lib):
         self.library = lib
         self.widget().chartWidget.buildMenu()
 
-    def setInput(self, **args):
-        """Set the input values of the flowchart. This will automatically propagate
-        the new values throughout the flowchart, (possibly) causing the output to change.
-        """
-        # print "setInput", args
-        # Node.setInput(self, **args)
-        # print "  ....."
-        self.inputWasSet = True
-        self.inputNode.setOutput(**args)
-
     def nodes(self):
         return self._nodes
-
-    def addTerminal(self, name, **opts):
-        term = Node.addTerminal(self, name, **opts)
-        name = term.name()
-        if opts['io'] == 'in':  # inputs to the flowchart become outputs on the input node
-            opts['io'] = 'out'
-            opts['multi'] = False
-            self.inputNode.sigTerminalAdded.disconnect(self.internalTerminalAdded)
-            try:
-                self.inputNode.addTerminal(name, **opts)
-            finally:
-                self.inputNode.sigTerminalAdded.connect(self.internalTerminalAdded)
-
-        return term
-
-    def removeTerminal(self, name):
-        # print "remove:", name
-        term = self[name]
-        inTerm = self.internalTerminal(term)
-        Node.removeTerminal(self, name)
-        inTerm.node().removeTerminal(inTerm.name())
-
-    def internalTerminalRenamed(self, term, oldName):
-        self[oldName].rename(term.name())
-
-    def internalTerminalAdded(self, node, term):
-        if term._io == 'in':
-            io = 'out'
-        else:
-            io = 'in'
-        Node.addTerminal(self,
-                         term.name(),
-                         io=io, renamable=term.isRenamable(),
-                         removable=term.isRemovable(),
-                         multiable=term.isMultiable())
-
-    def internalTerminalRemoved(self, node, term):
-        try:
-            Node.removeTerminal(self, term.name())
-        except KeyError:
-            pass
-
-    def terminalRenamed(self, term, oldName):
-        newName = term.name()
-        # print "flowchart rename", newName, oldName
-        # print self.terminals
-        Node.terminalRenamed(self, self[oldName], oldName)
-        # print self.terminals
-        for n in [self.inputNode]:
-            if oldName in n.terminals:
-                n[oldName].rename(newName)
 
     def createNode(self, nodeType, name=None, pos=None):
         """Create a new Node and add it to this flowchart.
@@ -143,8 +81,12 @@ class Flowchart(Node):
                 n += 1
 
         # create an instance of the node
-        node = self.library.getNodeType(nodeType)(name, addr=self.addr)
+        node = self.library.getNodeType(nodeType)(name)
         self.addNode(node, name, pos)
+
+        msg = fcMsgs.CreateNode(name, nodeType)
+        self.queue.put(msg)
+
         return node
 
     def addNode(self, node, name, pos=None):
@@ -162,11 +104,17 @@ class Flowchart(Node):
         self.viewBox.addItem(item)
         item.moveBy(*pos)
         self._nodes[name] = node
-        if node is not self.inputNode:
-            self.widget().addNode(node)
+        self.widget().addNode(node)
         node.sigClosed.connect(self.nodeClosed)
         node.sigRenamed.connect(self.nodeRenamed)
+        node.sigTerminalConnected.connect(self.nodeConnected)
         self.sigChartChanged.emit(self, 'add', node)
+
+    def nodeConnected(self, node):
+        print("Connected", node.name(), node.input_names, node.condition_names)
+        self.node_pubsub.send_string(node.name(), zmq.SNDMORE)
+        msg = fcMsgs.UpdateNodeAttributes(node.name(), node.input_names, node.condition_names)
+        self.node_pubsub.send_pyobj(msg)
 
     def removeNode(self, node):
         """Remove a Node from this flowchart.
@@ -192,66 +140,9 @@ class Flowchart(Node):
     def arrangeNodes(self):
         pass
 
-    def internalTerminal(self, term):
-        """If the terminal belongs to the external Node, return the corresponding internal terminal"""
-        if term.node() is self:
-            if term.isInput():
-                return self.inputNode[term.name()]
-        else:
-            return term
-
     def connectTerminals(self, term1, term2):
         """Connect two terminals together within this flowchart."""
-        term1 = self.internalTerminal(term1)
-        term2 = self.internalTerminal(term2)
         term1.connectTo(term2)
-
-    def processOrder(self):
-        """Return the order of operations required to process this chart.
-        The order returned should look like [('p', node1), ('p', node2), ('d', terminal1), ...]
-        where each tuple specifies either (p)rocess this node or (d)elete the result from this terminal
-        """
-
-        #  first collect list of nodes/terminals and their dependencies
-        deps = {}
-        tdeps = {}   # {terminal: [nodes that depend on terminal]}
-        for name, node in self._nodes.items():
-            deps[node] = node.dependentNodes()
-            for t in node.outputs().values():
-                tdeps[t] = t.dependentNodes()
-
-        # print "DEPS:", deps
-        #  determine correct node-processing order
-        order = fn.toposort(deps)
-        # print "ORDER1:", order
-
-        #  construct list of operations
-        ops = [('p', n) for n in order]
-
-        #  determine when it is safe to delete terminal values
-        dels = []
-        for t, nodes in tdeps.items():
-            lastInd = 0
-            lastNode = None
-            #  determine which node is the last to be processed according to order
-            for n in nodes:
-                if n is self:
-                    lastInd = None
-                    break
-                else:
-                    try:
-                        ind = order.index(n)
-                    except ValueError:
-                        continue
-                if lastNode is None or ind > lastInd:
-                    lastNode = n
-                    lastInd = ind
-            if lastInd is not None:
-                dels.append((lastInd+1, t))
-        dels.sort(key=lambda a: a[0], reverse=True)
-        for i, t in dels:
-            ops.insert(i, ('d', t))
-        return ops
 
     def chartGraphicsItem(self):
         """Return the graphicsItem that displays the internal nodes and
@@ -268,7 +159,7 @@ class Flowchart(Node):
         graphical representation of the flowchart.
         """
         if self._widget is None:
-            self._widget = FlowchartCtrlWidget(self, self.addr)
+            self._widget = FlowchartCtrlWidget(self, self.graphmgr_addr)
             self.scene = self._widget.scene()
             self.viewBox = self._widget.viewBox()
         return self._widget
@@ -291,17 +182,16 @@ class Flowchart(Node):
 
         for name, node in self._nodes.items():
             cls = type(node)
+            clsName = "Node"
             if hasattr(cls, 'nodeName'):
                 clsName = cls.nodeName
-                pos = node.graphicsItem().pos()
-                ns = {'class': clsName, 'name': name, 'pos': (pos.x(), pos.y()), 'state': node.saveState()}
-                state['nodes'].append(ns)
+            pos = node.graphicsItem().pos()
+            ns = {'class': clsName, 'name': name, 'pos': (pos.x(), pos.y()), 'state': node.saveState()}
+            state['nodes'].append(ns)
 
         conn = self.listConnections()
         for a, b in conn:
             state['connects'].append((a.node().name(), a.name(), b.node().name(), b.name()))
-
-        state['inputNode'] = self.inputNode.saveState()
 
         return state
 
@@ -316,16 +206,23 @@ class Flowchart(Node):
             nodes = state['nodes']
             nodes.sort(key=lambda a: a['pos'][0])
             for n in nodes:
+
                 if n['name'] in self._nodes:
                     self._nodes[n['name']].restoreState(n['state'])
                     continue
-                try:
-                    node = self.createNode(n['class'], name=n['name'])
-                    node.restoreState(n['state'])
-                except Exception:
-                    printExc("Error creating node %s: (continuing anyway)" % n['name'])
-
-            self.inputNode.restoreState(state.get('inputNode', {}))
+                if n['class'] == "Node":
+                    try:
+                        node = Node(name=n['name'])
+                        node.restoreState(n['state'])
+                        self.addNode(node, n['name'], pos=n['pos'])
+                    except Exception:
+                        printExc("Error creating node %s: (continuing anyway)" % n['name'])
+                else:
+                    try:
+                        node = self.createNode(n['class'], name=n['name'])
+                        node.restoreState(n['state'])
+                    except Exception:
+                        printExc("Error creating node %s: (continuing anyway)" % n['name'])
 
             # self.restoreTerminals(state['terminals'])
             for n1, t1, n2, t2 in state['connects']:
@@ -382,15 +279,9 @@ class Flowchart(Node):
         """Remove all nodes from this flowchart except the original input/output nodes.
         """
         for n in list(self._nodes.values()):
-            if n is self.inputNode:
-                continue
             n.close()  # calls self.nodeClosed(n) by signal
         # self.clearTerminals()
         self.widget().clear()
-
-    def clearTerminals(self):
-        Node.clearTerminals(self)
-        self.inputNode.clearTerminals()
 
 
 class FlowchartGraphicsItem(GraphicsObject):
@@ -438,7 +329,7 @@ class FlowchartCtrlWidget(QtGui.QWidget):
     as well as buttons for loading/saving flowcharts.
     """
 
-    def __init__(self, chart, addr):
+    def __init__(self, chart, graphmgr_addr):
         self.items = {}
         # self.loadDir = loadDir  #  where to look initially for chart files
         self.currentFileName = None
@@ -456,7 +347,7 @@ class FlowchartCtrlWidget(QtGui.QWidget):
         self.features = {}
         self.pending_lock = threading.Lock()
 
-        self.graphCommHandler = GraphCommHandler(addr)
+        self.graphCommHandler = GraphCommHandler(graphmgr_addr)
         self.chartWidget = FlowchartWidget(chart, self)
 
         h = self.ui.ctrlList.header()
@@ -475,15 +366,22 @@ class FlowchartCtrlWidget(QtGui.QWidget):
         self.chart.sigFileSaved.connect(self.fileSaved)
 
     def apply(self):
-        nodes = self.chart.nodes()
         graph_nodes = []
-        for name, node in nodes.items():
-            if hasattr(node, 'to_operation'):
-                n = node.to_operation()
-                if type(n) is list:
-                    graph_nodes.extend(n)
-                else:
-                    graph_nodes.append(n)
+
+        for name, node in self.chart.nodes().items():
+            if not hasattr(node, 'to_operation'):
+                continue
+
+            self.chart.node_pubsub.send_string(name, zmq.SNDMORE)
+            self.chart.node_pubsub.send_pyobj(fcMsgs.Msg('operation'))
+
+            node = self.chart.node_pushpull.recv()
+            node = dill.loads(node)
+            if type(node) is list:
+                graph_nodes.extend(node)
+            else:
+                graph_nodes.append(node)
+
         graph = Graph(name=str(self.chart.name))
         graph.add(graph_nodes)
         self.graphCommHandler.update(graph)
@@ -690,32 +588,32 @@ class FlowchartWidget(dockarea.DockArea):
 
         item = items[0]
         if hasattr(item, 'node') and isinstance(item.node, Node):
-            n = item.node
+            node = item.node
+            inputs = []
 
-            for k, term in n.terminals.items():
-                inputs = term.inputTerminals()
+            for in_name in node.input_names:
 
-                for i in inputs:
-                    if i.node().name() == "Input":
-                        name = i.name()
-                    else:
-                        name = i.node().name()
+                if in_name in self.ctrl.features:
+                    topic = in_name
+                else:
+                    topic = self.ctrl.graphCommHandler.auto(in_name)
 
-                    if name in self.ctrl.features:
-                        topic = name
-                    else:
-                        topic = self.ctrl.graphCommHandler.auto(name)
+                request_view = False
 
-                    request_view = False
-                    with self.ctrl.pending_lock:
-                        if topic not in self.ctrl.pending:
-                            self.ctrl.pending[topic] = name
-                            request_view = True
-                    if request_view:
-                        self.ctrl.graphCommHandler.view(name)
-                    n.display(name, topic)
+                with self.ctrl.pending_lock:
+                    if topic not in self.ctrl.pending:
+                        self.ctrl.pending[topic] = in_name
+                        request_view = True
 
-            self.ctrl.select(n)
+                if request_view:
+                    self.ctrl.graphCommHandler.view(in_name)
+
+                inputs.append((in_name, topic))
+
+            self.chart.node_pubsub.send_string(node.name(), zmq.SNDMORE)
+            self.chart.node_pubsub.send_pyobj(fcMsgs.Display(node.name(), inputs))
+
+            self.ctrl.select(node)
 
     def hoverOver(self, items):
         # print "FlowchartWidget.hoverOver called."

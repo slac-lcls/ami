@@ -41,35 +41,17 @@ class Roi(CtrlNode):
     nodeName = "Roi"
     uiTemplate = []
 
-    def __init__(self, name, addr):
+    def __init__(self, name, **kwargs):
+        super(Roi, self).__init__(name, **kwargs)
         self.widget = None
-        super(Roi, self).__init__(name, addr=addr)
 
-    def display(self, name, topic):
-        if self.win is None:
-            self.win = pg.QtGui.QMainWindow()
-            self.widget = AreaDetWidget(name, topic, self.addr, self.win)
-            self.win.setWindowTitle(self.name())
-            self.win.setCentralWidget(self.widget)
-            self.win.show()
-            self.show = True
-        else:
-            if self.show:
-                self.win.hide()
-            else:
-                self.win.show()
+    def display(self, inputs, addr, win):
+        name, topic = inputs[0]
+        self.widget = AreaDetWidget(name, topic, addr, win)
+        return self.widget
 
-            self.show = not self.show
-
-    def to_operation(self):
+    def to_operation(self, inputs, conditions=[]):
         # this should be cleaned up at some point
-        In = self.terminals['In'].inputTerminals()[0]
-
-        if In.node().name() == "Input":
-            inputs = [In.name()]
-        else:
-            inputs = [In.node().name()]
-
         outputs = [self.name()]
 
         if self.widget:
@@ -78,5 +60,5 @@ class Roi(CtrlNode):
             def func(img):
                 return img
 
-        node = Map(name=self.name(), inputs=inputs, outputs=outputs, func=func)
+        node = Map(name=self.name(), inputs=inputs, outputs=outputs, conditions=conditions, func=func)
         return node

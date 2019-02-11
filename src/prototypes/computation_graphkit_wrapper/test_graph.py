@@ -1,6 +1,7 @@
 from ami.graphkit_wrapper import Graph
 from ami.graph_nodes import Map, FilterOn, FilterOff, PickN, Binning
 import numpy as np
+import pickle
 
 
 def roi(cspad):
@@ -29,6 +30,10 @@ print("LocalCollector: ", localCollector)
 globalCollector = graph(localCollector, color='globalCollector')
 print("GlobalCollector: ", globalCollector)
 print()
+
+with open('test.pickle', 'wb') as f:
+    pickle.dump(graph, f)
+
 # graph({'cspad': np.ones((200, 200)), 'laser': True, 'delta_t': 4}, color='worker')
 # worker = graph({'cspad': np.ones((200, 200)), 'laser': True, 'delta_t': 5}, color='worker')
 # print("Worker: ", worker)
