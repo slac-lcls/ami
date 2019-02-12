@@ -18,8 +18,9 @@ import ami.flowchart.FlowchartCtrlTemplate_pyqt5 as FlowchartCtrlTemplate
 import ami.client.flowchart_messages as fcMsgs
 import os
 import asyncio
-import threading
+import asyncqt
 import zmq.asyncio
+import threading
 import dill
 
 
@@ -34,12 +35,11 @@ class Flowchart(Node):
     sigChartChanged = QtCore.Signal(object, object, object)  # (self, action, node)
 
     def __init__(self, name=None, filePath=None, library=None, queue=None,
-                 graphmgr_addr="", node_pubsub_addr="", node_pushpull_addr="", loop=None):
+                 graphmgr_addr="", node_pubsub_addr="", node_pushpull_addr=""):
         super(Flowchart, self).__init__(name)
         self.library = library or LIBRARY
         self.graphmgr_addr = graphmgr_addr
         self.queue = queue
-        self.loop = loop
         context = zmq.asyncio.Context()
 
         self.node_pubsub = context.socket(zmq.XPUB)
@@ -112,10 +112,8 @@ class Flowchart(Node):
         node.sigTerminalDisconnected.connect(self.nodeDisconnected)
         self.sigChartChanged.emit(self, 'add', node)
 
-    def nodeConnected(self, node):
-        asyncio.ensure_future(self.nodeConnectedAsync(node), loop=self.loop)
-
-    async def nodeConnectedAsync(self, node):
+    @asyncqt.asyncSlot(object)
+    async def nodeConnected(self, node):
         msg = fcMsgs.UpdateNodeAttributes(node.name(), node.input_names, node.condition_names)
         asyncio.gather(
             self.node_pubsub.send_string(node.name(), zmq.SNDMORE),
@@ -130,10 +128,8 @@ class Flowchart(Node):
                 )
                 return
 
-    def nodeDisconnected(self, node):
-        asyncio.ensure_future(self.nodeConnectedAsync(node), loop=self.loop)
-
-    async def nodeDisconnectedAsync(self, node):
+    @asyncqt.asyncSlot(object)
+    async def nodeDisconnected(self, node):
         msg = fcMsgs.UpdateNodeAttributes(node.name(), node.input_names, node.condition_names)
         asyncio.gather(
             self.node_pubsub.send_string(node.name(), zmq.SNDMORE),
@@ -389,10 +385,8 @@ class FlowchartCtrlWidget(QtGui.QWidget):
         self.ui.reloadBtn.clicked.connect(self.reloadClicked)
         self.chart.sigFileSaved.connect(self.fileSaved)
 
-    def apply(self):
-        asyncio.ensure_future(self.applyAsync(), loop=self.chart.loop)
-
-    async def applyAsync(self):
+    @asyncqt.asyncSlot()
+    async def apply(self):
         graph_nodes = []
 
         for name, node in self.chart.nodes().items():

@@ -15,7 +15,7 @@ from ami.flowchart.library import LIBRARY
 from ami import LogConfig
 from ami.comm import GraphCommHandler
 from pyqtgraph.Qt import QtGui
-from quamash import QEventLoop
+from asyncqt import QEventLoop
 
 
 logger = logging.getLogger(LogConfig.get_package_name(__name__))
@@ -41,7 +41,7 @@ def run_main_window(queue, graphmgr_addr, node_pubsub_addr, node_pushpull_addr):
 
     # Create flowchart, define input/output terminals
     fc = Flowchart(queue=queue, graphmgr_addr=graphmgr_addr,
-                   node_pubsub_addr=node_pubsub_addr, node_pushpull_addr=node_pushpull_addr, loop=loop)
+                   node_pubsub_addr=node_pubsub_addr, node_pushpull_addr=node_pushpull_addr)
 
     y = 0
     for name in comm.names:
