@@ -15,7 +15,7 @@ from ami.flowchart.library import LIBRARY
 from ami import LogConfig
 from ami.comm import GraphCommHandler
 from pyqtgraph.Qt import QtGui
-from asyncqt import QEventLoop
+from quamash import QEventLoop
 
 
 logger = logging.getLogger(LogConfig.get_package_name(__name__))
@@ -23,6 +23,9 @@ logger = logging.getLogger(LogConfig.get_package_name(__name__))
 
 def run_main_window(queue, graphmgr_addr, node_pubsub_addr, node_pushpull_addr):
     app = QtGui.QApplication([])
+
+    loop = QEventLoop(app)
+    asyncio.set_event_loop(loop)
 
     # Create main window with grid layout
     win = QtGui.QMainWindow()
@@ -38,7 +41,7 @@ def run_main_window(queue, graphmgr_addr, node_pubsub_addr, node_pushpull_addr):
 
     # Create flowchart, define input/output terminals
     fc = Flowchart(queue=queue, graphmgr_addr=graphmgr_addr,
-                   node_pubsub_addr=node_pubsub_addr, node_pushpull_addr=node_pushpull_addr)
+                   node_pubsub_addr=node_pubsub_addr, node_pushpull_addr=node_pushpull_addr, loop=loop)
 
     y = 0
     for name in comm.names:
@@ -53,10 +56,10 @@ def run_main_window(queue, graphmgr_addr, node_pubsub_addr, node_pushpull_addr):
     layout.addWidget(fw, 0, 1)
 
     win.show()
-    retval = app.exec_()
+    with loop:
+        loop.run_forever()
 
     queue.put(fcMsgs.Msg("exit"))
-    return retval
 
 
 class NodeWindow:
@@ -105,7 +108,7 @@ class NodeWindow:
                     return
 
     def update(self, msg):
-        print(msg.name, msg.inputs, msg.conditions)
+        print("Received", self.node.name(), msg.inputs, msg.conditions)
         self.inputs = msg.inputs
         self.conditions = msg.conditions
 

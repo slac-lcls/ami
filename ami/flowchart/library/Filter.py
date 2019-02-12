@@ -20,7 +20,7 @@ class FilterOff(Filter):
 
     def to_operation(self, inputs, conditions=[]):
         outputs = [self.name()]
-        node = ami.graph_nodes.FilterOff(name=self.name(), condition_needs=inputs, outputs=outputs)
+        node = ami.graph_nodes.FilterOff(name=self.name(), condition_needs=conditions, outputs=outputs)
         return node
 
 
@@ -33,5 +33,5 @@ class FilterOn(Filter):
 
     def to_operation(self, inputs, conditions=[]):
         outputs = [self.name()]
-        node = ami.graph_nodes.FilterOn(name=self.name(), condition_needs=inputs, outputs=outputs)
+        node = ami.graph_nodes.FilterOn(name=self.name(), condition_needs=conditions, outputs=outputs)
         return node

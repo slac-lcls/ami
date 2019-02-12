@@ -17,8 +17,9 @@ from ami.graphkit_wrapper import Graph
 import ami.flowchart.FlowchartCtrlTemplate_pyqt5 as FlowchartCtrlTemplate
 import ami.client.flowchart_messages as fcMsgs
 import os
+import asyncio
 import threading
-import zmq
+import zmq.asyncio
 import dill
 
 
@@ -33,15 +34,15 @@ class Flowchart(Node):
     sigChartChanged = QtCore.Signal(object, object, object)  # (self, action, node)
 
     def __init__(self, name=None, filePath=None, library=None, queue=None,
-                 graphmgr_addr="", node_pubsub_addr="", node_pushpull_addr=""):
+                 graphmgr_addr="", node_pubsub_addr="", node_pushpull_addr="", loop=None):
         super(Flowchart, self).__init__(name)
         self.library = library or LIBRARY
         self.graphmgr_addr = graphmgr_addr
         self.queue = queue
+        self.loop = loop
+        context = zmq.asyncio.Context()
 
-        context = zmq.Context()
-
-        self.node_pubsub = context.socket(zmq.PUB)
+        self.node_pubsub = context.socket(zmq.XPUB)
         self.node_pubsub.bind(node_pubsub_addr)
 
         self.node_pushpull = context.socket(zmq.PULL)
@@ -108,13 +109,36 @@ class Flowchart(Node):
         node.sigClosed.connect(self.nodeClosed)
         node.sigRenamed.connect(self.nodeRenamed)
         node.sigTerminalConnected.connect(self.nodeConnected)
+        node.sigTerminalDisconnected.connect(self.nodeDisconnected)
         self.sigChartChanged.emit(self, 'add', node)
 
     def nodeConnected(self, node):
-        print("Connected", node.name(), node.input_names, node.condition_names)
-        self.node_pubsub.send_string(node.name(), zmq.SNDMORE)
+        asyncio.ensure_future(self.nodeConnectedAsync(node), loop=self.loop)
+
+    async def nodeConnectedAsync(self, node):
         msg = fcMsgs.UpdateNodeAttributes(node.name(), node.input_names, node.condition_names)
-        self.node_pubsub.send_pyobj(msg)
+        asyncio.gather(
+            self.node_pubsub.send_string(node.name(), zmq.SNDMORE),
+            self.node_pubsub.send_pyobj(msg)
+        )
+        topic = await self.node_pubsub.recv_string()
+        while True:
+            if topic.startswith('\x01'):
+                asyncio.gather(
+                    self.node_pubsub.send_string(node.name(), zmq.SNDMORE),
+                    self.node_pubsub.send_pyobj(msg)
+                )
+                return
+
+    def nodeDisconnected(self, node):
+        asyncio.ensure_future(self.nodeConnectedAsync(node), loop=self.loop)
+
+    async def nodeDisconnectedAsync(self, node):
+        msg = fcMsgs.UpdateNodeAttributes(node.name(), node.input_names, node.condition_names)
+        asyncio.gather(
+            self.node_pubsub.send_string(node.name(), zmq.SNDMORE),
+            self.node_pubsub.send_pyobj(msg)
+        )
 
     def removeNode(self, node):
         """Remove a Node from this flowchart.
@@ -366,17 +390,23 @@ class FlowchartCtrlWidget(QtGui.QWidget):
         self.chart.sigFileSaved.connect(self.fileSaved)
 
     def apply(self):
+        asyncio.ensure_future(self.applyAsync(), loop=self.chart.loop)
+
+    async def applyAsync(self):
         graph_nodes = []
 
         for name, node in self.chart.nodes().items():
             if not hasattr(node, 'to_operation'):
                 continue
 
-            self.chart.node_pubsub.send_string(name, zmq.SNDMORE)
-            self.chart.node_pubsub.send_pyobj(fcMsgs.Msg('operation'))
+            asyncio.gather(
+                self.chart.node_pubsub.send_string(name, zmq.SNDMORE),
+                self.chart.node_pubsub.send_pyobj(fcMsgs.Msg('operation'))
+            )
 
-            node = self.chart.node_pushpull.recv()
+            node = await self.chart.node_pushpull.recv()
             node = dill.loads(node)
+            print(node)
             if type(node) is list:
                 graph_nodes.extend(node)
             else:
@@ -384,6 +414,9 @@ class FlowchartCtrlWidget(QtGui.QWidget):
 
         graph = Graph(name=str(self.chart.name))
         graph.add(graph_nodes)
+
+        # TODO do some graph validation here before sending
+
         self.graphCommHandler.update(graph)
         self.features = {}
         self.pending = {}
