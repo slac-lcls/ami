@@ -160,7 +160,7 @@ class EventBuilder(ZmqHandler):
             self.graphs[ver_key].compile(num_workers=nwork, num_local_collectors=ncol)
         self.clear_graphs()
 
-    def complete(self, identity, eb_key):
+    def complete(self, eb_key, identity):
         if eb_key in self.pending:
             self.send(CollectorMessage(MsgTypes.Datagram,
                                        identity,
@@ -185,7 +185,7 @@ class EventBuilder(ZmqHandler):
             if graph is not None:
                 self.pending[eb_key].update(graph(data, color=self.color))
 
-    def transition(self, eb_id, eb_key):
+    def transition(self, eb_key, eb_id):
         if eb_key not in self.transitions:
             self.transitions[eb_key] = 0
         self.transitions[eb_key] |= (1 << eb_id)

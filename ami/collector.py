@@ -60,14 +60,14 @@ class GraphCollector(Collector):
 
     def process_msg(self, msg):
         if msg.mtype == MsgTypes.Transition:
-            self.store.transition(msg.identity, msg.payload.ttype)
+            self.store.transition(msg.payload.ttype, msg.identity)
             if self.store.transition_ready(msg.payload.ttype):
                 self.store.message(msg.mtype, self.node, msg.payload)
         elif msg.mtype == MsgTypes.Datagram:
             self.store.update(msg.heartbeat, msg.identity, msg.version, msg.payload)
             self.store.heartbeat(msg.heartbeat, msg.identity)
             if self.store.heartbeat_ready(msg.heartbeat):
-                self.store.complete(self.node, msg.heartbeat)
+                self.store.complete(msg.heartbeat, self.node)
                 # prune entries older than the current heartbeat
                 self.store.prune(msg.heartbeat)
             else:
