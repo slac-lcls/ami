@@ -65,7 +65,7 @@ class GraphCollector(Collector):
                 self.store.message(msg.mtype, self.node, msg.payload)
         elif msg.mtype == MsgTypes.Datagram:
             self.store.update(msg.heartbeat, msg.identity, msg.version, msg.payload)
-            self.store.heartbeat(msg.identity, msg.heartbeat)
+            self.store.heartbeat(msg.heartbeat, msg.identity)
             if self.store.heartbeat_ready(msg.heartbeat):
                 self.store.complete(self.node, msg.heartbeat)
                 # prune entries older than the current heartbeat

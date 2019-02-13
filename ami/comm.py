@@ -190,7 +190,7 @@ class EventBuilder(ZmqHandler):
             self.transitions[eb_key] = 0
         self.transitions[eb_key] |= (1 << eb_id)
 
-    def heartbeat(self, eb_id, eb_key):
+    def heartbeat(self, eb_key, eb_id):
         if eb_key not in self.contribs:
             self.contribs[eb_key] = 0
         self.contribs[eb_key] |= (1 << eb_id)
