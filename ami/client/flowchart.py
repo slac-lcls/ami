@@ -21,7 +21,7 @@ from asyncqt import QEventLoop
 logger = logging.getLogger(LogConfig.get_package_name(__name__))
 
 
-def run_main_window(queue, graphmgr_addr, node_pubsub_addr, node_pushpull_addr):
+def run_editor_window(broker_addr, graphmgr_addr, node_addr):
     app = QtGui.QApplication([])
 
     loop = QEventLoop(app)
@@ -40,8 +40,9 @@ def run_main_window(queue, graphmgr_addr, node_pubsub_addr, node_pushpull_addr):
     comm = GraphCommHandler(graphmgr_addr)
 
     # Create flowchart, define input/output terminals
-    fc = Flowchart(queue=queue, graphmgr_addr=graphmgr_addr,
-                   node_pubsub_addr=node_pubsub_addr, node_pushpull_addr=node_pushpull_addr)
+    fc = Flowchart(broker_addr=broker_addr,
+                   graphmgr_addr=graphmgr_addr,
+                   node_addr=node_addr)
 
     y = 0
     for name in comm.names:
@@ -59,12 +60,10 @@ def run_main_window(queue, graphmgr_addr, node_pubsub_addr, node_pushpull_addr):
     with loop:
         loop.run_forever()
 
-    queue.put(fcMsgs.Msg("exit"))
-
 
 class NodeWindow:
 
-    def __init__(self, msg, graphmgr_addr, node_pubsub_addr, node_pushpull_addr):
+    def __init__(self, msg, broker_addr, graphmgr_addr, editor_addr):
         self.app = QtGui.QApplication([])
         loop = QEventLoop(self.app)
         asyncio.set_event_loop(loop)
@@ -77,13 +76,13 @@ class NodeWindow:
         self.conditions = []
 
         self.ctx = zmq.asyncio.Context()
-        self.sub_sock = self.ctx.socket(zmq.SUB)
 
-        self.sub_sock.connect(node_pubsub_addr)
-        self.sub_sock.setsockopt_string(zmq.SUBSCRIBE, msg.name)
+        self.broker = self.ctx.socket(zmq.SUB)
+        self.broker.connect(broker_addr)
+        self.broker.setsockopt_string(zmq.SUBSCRIBE, msg.name)
 
-        self.push_sock = self.ctx.socket(zmq.PUSH)
-        self.push_sock.connect(node_pushpull_addr)
+        self.editor = self.ctx.socket(zmq.PUSH)
+        self.editor.connect(editor_addr)
 
         self.widget = None
         self.show = False
@@ -94,8 +93,8 @@ class NodeWindow:
 
     async def process(self):
         while True:
-            await self.sub_sock.recv_string()
-            msg = await self.sub_sock.recv_pyobj()
+            await self.broker.recv_string()
+            msg = await self.broker.recv_pyobj()
 
             if isinstance(msg, fcMsgs.UpdateNodeAttributes):
                 self.update(msg)
@@ -126,45 +125,105 @@ class NodeWindow:
     def operation(self):
         print(self.node.name(), self.inputs, self.conditions)
         node = dill.dumps(self.node.to_operation(self.inputs, self.conditions))
-        self.push_sock.send(node)
+        self.editor.send(node)
+
+
+class MessageBroker(object):
+
+    def __init__(self, graphmgr_addr, load):
+
+        ipcdir = tempfile.mkdtemp()
+
+        self.graphmgr_addr = graphmgr_addr
+        self.broker_sub_addr = "ipc://%s/broker_sub" % ipcdir
+        self.broker_pub_addr = "ipc://%s/broker_pub" % ipcdir
+        self.node_addr = "ipc://%s/nodes" % ipcdir
+
+        self.lock = asyncio.Lock()
+        self.msgs = {}
+        self.widget_procs = {}
+
+        self.ctx = zmq.asyncio.Context()
+        self.broker_sub_sock = self.ctx.socket(zmq.SUB)
+        self.broker_sub_sock.setsockopt_string(zmq.SUBSCRIBE, '')
+        self.broker_sub_sock.bind(self.broker_sub_addr)
+
+        self.broker_pub_sock = self.ctx.socket(zmq.XPUB)
+        self.broker_pub_sock.bind(self.broker_pub_addr)
+
+        self.launch_editor_window()
+
+        loop = asyncio.get_event_loop()
+        loop.run_until_complete(self.run())
+
+    def launch_editor_window(self):
+        editor_proc = mp.Process(
+            target=run_editor_window,
+            args=(self.broker_sub_addr, self.graphmgr_addr, self.node_addr),
+            daemon=True)
+        editor_proc.start()
+
+        self.widget_procs["editor"] = editor_proc
+
+    async def handle_connect(self):
+
+        while True:
+            topic = await self.broker_pub_sock.recv_string()
+
+            if topic.startswith('\x01'):
+                topic = topic.lstrip('\x01')
+                async with self.lock:
+                    if topic in self.msgs:
+                        msg = self.msgs[topic]
+                        self.broker_pub_sock.send_string(topic, zmq.SNDMORE)
+                        self.broker_pub_sock.send_pyobj(msg)
+                    else:
+                        continue
+
+    async def process_messages(self):
+
+        while True:
+            topic = await self.broker_sub_sock.recv_string()
+            msg = await self.broker_sub_sock.recv_pyobj()
+
+            if msg.name == 'exit':
+                logger.info("received exit signal - exiting!")
+                for topic in self.msgs:
+                    self.broker_pub_sock.send_string(fcMsgs.Msg('exit'))
+
+                for name, proc in self.widget_procs.items():
+                    proc.join()
+                break
+
+            elif isinstance(msg, fcMsgs.CreateNode):
+                proc = mp.Process(
+                    target=NodeWindow,
+                    args=(msg, self.broker_pub_addr, self.graphmgr_addr, self.node_addr),
+                    daemon=True
+                )
+                proc.start()
+                logger.info("creating process: %s pid: %d", msg.name, proc.pid)
+                async with self.lock:
+                    self.widget_procs[msg.name] = proc
+
+            elif isinstance(msg, fcMsgs.NodeMsg):
+                async with self.lock:
+                    self.msgs[topic] = msg
+                    await self.broker_pub_sock.send_string(topic, zmq.SNDMORE),
+                    await self.broker_pub_sock.send_pyobj(msg)
+
+            dead_procs = []
+            for name, proc in self.widget_procs.items():
+                if not proc.is_alive():
+                    dead_procs.append(name)
+
+            for name in dead_procs:
+                del self.widget_procs[name]
+
+    async def run(self):
+        await asyncio.gather(self.handle_connect(),
+                             self.process_messages())
 
 
 def run_client(graphmgr_addr, load):
-    ipcdir = tempfile.mkdtemp()
-    node_pubsub_addr = "ipc://%s/node_pubsub" % ipcdir
-    node_pushpull_addr = "ipc://%s/node_pushpull" % ipcdir
-    queue = mp.Queue()
-
-    list_proc = mp.Process(
-        target=run_main_window,
-        args=(queue, graphmgr_addr, node_pubsub_addr, node_pushpull_addr),
-        daemon=True)
-    list_proc.start()
-
-    widget_procs = {}
-    while True:
-        msg = queue.get()
-
-        if msg.name == 'exit':
-            logger.info("received exit signal - exiting!")
-            for name, proc in widget_procs.items():
-                proc.join()
-            break
-
-        elif isinstance(msg, fcMsgs.CreateNode):
-            proc = mp.Process(
-                target=NodeWindow,
-                args=(msg, graphmgr_addr, node_pubsub_addr, node_pushpull_addr),
-                daemon=True
-            )
-            proc.start()
-            logger.info("creating process: %s pid: %d", msg.name, proc.pid)
-            widget_procs[msg.name] = proc
-
-        dead_procs = []
-        for name, proc in widget_procs.items():
-            if not proc.is_alive():
-                dead_procs.append(name)
-
-        for name in dead_procs:
-            del widget_procs[name]
+    MessageBroker(graphmgr_addr, load)

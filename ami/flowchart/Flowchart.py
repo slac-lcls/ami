@@ -17,7 +17,6 @@ from ami.graphkit_wrapper import Graph
 import ami.flowchart.FlowchartCtrlTemplate_pyqt5 as FlowchartCtrlTemplate
 import ami.client.flowchart_messages as fcMsgs
 import os
-import asyncio
 import asyncqt
 import zmq.asyncio
 import threading
@@ -34,19 +33,18 @@ class Flowchart(Node):
     # called when nodes are added, removed, or renamed.
     sigChartChanged = QtCore.Signal(object, object, object)  # (self, action, node)
 
-    def __init__(self, name=None, filePath=None, library=None, queue=None,
-                 graphmgr_addr="", node_pubsub_addr="", node_pushpull_addr=""):
+    def __init__(self, name=None, filePath=None, library=None,
+                 broker_addr="", graphmgr_addr="", node_addr=""):
         super(Flowchart, self).__init__(name)
         self.library = library or LIBRARY
         self.graphmgr_addr = graphmgr_addr
-        self.queue = queue
-        context = zmq.asyncio.Context()
 
-        self.node_pubsub = context.socket(zmq.XPUB)
-        self.node_pubsub.bind(node_pubsub_addr)
+        self.ctx = zmq.asyncio.Context()
+        self.broker = self.ctx.socket(zmq.PUB)
+        self.broker.connect(broker_addr)
 
-        self.node_pushpull = context.socket(zmq.PULL)
-        self.node_pushpull.bind(node_pushpull_addr)
+        self.node = self.ctx.socket(zmq.PULL)
+        self.node.bind(node_addr)
 
         if name is None:
             name = "Flowchart"
@@ -86,7 +84,8 @@ class Flowchart(Node):
         self.addNode(node, name, pos)
 
         msg = fcMsgs.CreateNode(name, nodeType)
-        self.queue.put(msg)
+        self.broker.send_string(name, zmq.SNDMORE)
+        self.broker.send_pyobj(msg)
 
         return node
 
@@ -115,26 +114,14 @@ class Flowchart(Node):
     @asyncqt.asyncSlot(object)
     async def nodeConnected(self, node):
         msg = fcMsgs.UpdateNodeAttributes(node.name(), node.input_names, node.condition_names)
-        asyncio.gather(
-            self.node_pubsub.send_string(node.name(), zmq.SNDMORE),
-            self.node_pubsub.send_pyobj(msg)
-        )
-        topic = await self.node_pubsub.recv_string()
-        while True:
-            if topic.startswith('\x01'):
-                asyncio.gather(
-                    self.node_pubsub.send_string(node.name(), zmq.SNDMORE),
-                    self.node_pubsub.send_pyobj(msg)
-                )
-                return
+        await self.broker.send_string(msg.name, zmq.SNDMORE),
+        await self.broker.send_pyobj(msg)
 
     @asyncqt.asyncSlot(object)
     async def nodeDisconnected(self, node):
         msg = fcMsgs.UpdateNodeAttributes(node.name(), node.input_names, node.condition_names)
-        asyncio.gather(
-            self.node_pubsub.send_string(node.name(), zmq.SNDMORE),
-            self.node_pubsub.send_pyobj(msg)
-        )
+        await self.broker.send_string(node.name(), zmq.SNDMORE),
+        await self.broker.send_pyobj(msg)
 
     def removeNode(self, node):
         """Remove a Node from this flowchart.
@@ -165,7 +152,8 @@ class Flowchart(Node):
         term1.connectTo(term2)
 
     def chartGraphicsItem(self):
-        """Return the graphicsItem that displays the internal nodes and
+        """
+        Return the graphicsItem that displays the internal nodes and
         connections of this flowchart.
 
         Note that the similar method `graphicsItem()` is inherited from Node
@@ -173,7 +161,8 @@ class Flowchart(Node):
         return self.viewBox
 
     def widget(self):
-        """Return the control widget for this flowchart.
+        """
+        Return the control widget for this flowchart.
 
         This widget provides GUI access to the parameters for each node and a
         graphical representation of the flowchart.
@@ -194,7 +183,8 @@ class Flowchart(Node):
         return conn
 
     def saveState(self):
-        """Return a serializable data structure representing the current state of this flowchart.
+        """
+        Return a serializable data structure representing the current state of this flowchart.
         """
         state = Node.saveState(self)
         state['nodes'] = []
@@ -216,7 +206,8 @@ class Flowchart(Node):
         return state
 
     def restoreState(self, state, clear=False):
-        """Restore the state of this flowchart from a previous call to `saveState()`.
+        """
+        Restore the state of this flowchart from a previous call to `saveState()`.
         """
         self.blockSignals(True)
         try:
@@ -260,7 +251,8 @@ class Flowchart(Node):
         self.sigStateChanged.emit()
 
     def loadFile(self, fileName=None, startDir=None):
-        """Load a flowchart (*.fc) file.
+        """
+        Load a flowchart (*.fc) file.
         """
         if fileName is None:
             if startDir is None:
@@ -280,7 +272,8 @@ class Flowchart(Node):
         return fileName
 
     def saveFile(self, fileName=None, startDir=None, suggestedFileName='flowchart.fc'):
-        """Save this flowchart to a .fc file
+        """
+        Save this flowchart to a .fc file
         """
         if fileName is None:
             if startDir is None:
@@ -296,7 +289,8 @@ class Flowchart(Node):
         self.sigFileSaved.emit(fileName)
 
     def clear(self):
-        """Remove all nodes from this flowchart except the original input/output nodes.
+        """
+        Remove all nodes from this flowchart except the original input/output nodes.
         """
         for n in list(self._nodes.values()):
             n.close()  # calls self.nodeClosed(n) by signal
@@ -393,12 +387,10 @@ class FlowchartCtrlWidget(QtGui.QWidget):
             if not hasattr(node, 'to_operation'):
                 continue
 
-            asyncio.gather(
-                self.chart.node_pubsub.send_string(name, zmq.SNDMORE),
-                self.chart.node_pubsub.send_pyobj(fcMsgs.Msg('operation'))
-            )
+            await self.chart.broker.send_string(name, zmq.SNDMORE),
+            await self.chart.broker.send_pyobj(fcMsgs.NodeMsg('operation'))
 
-            node = await self.chart.node_pushpull.recv()
+            node = await self.chart.node.recv()
             node = dill.loads(node)
             print(node)
             if type(node) is list:
@@ -637,8 +629,8 @@ class FlowchartWidget(dockarea.DockArea):
 
                 inputs.append((in_name, topic))
 
-            self.chart.node_pubsub.send_string(node.name(), zmq.SNDMORE)
-            self.chart.node_pubsub.send_pyobj(fcMsgs.Display(node.name(), inputs))
+            self.chart.broker.send_string(node.name(), zmq.SNDMORE)
+            self.chart.broker.send_pyobj(fcMsgs.Display(node.name(), inputs))
 
             self.ctrl.select(node)
 
