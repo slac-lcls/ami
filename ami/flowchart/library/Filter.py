@@ -4,8 +4,8 @@ import ami.graph_nodes
 
 class Filter(Node):
 
-    def __init__(self, name, addr):
-        super(Filter, self).__init__(name, addr=addr, terminals={
+    def __init__(self, name):
+        super(Filter, self).__init__(name, terminals={
             'Condition': {'io': 'in'},
             'Out': {'io': 'out'}
         })
@@ -15,17 +15,12 @@ class FilterOff(Filter):
 
     nodeName = "FilterOff"
 
-    def to_operation(self):
-        In = self.terminals['Condition'].inputTerminals()[0]
+    def __init__(self, name):
+        super(FilterOff, self).__init__(name)
 
-        if In.node().name() == "Input":
-            inputs = [In.name()]
-        else:
-            inputs = [In.node().name()]
-
+    def to_operation(self, inputs, conditions=[]):
         outputs = [self.name()]
-
-        node = ami.graph_nodes.FilterOff(name=self.name(), condition_needs=inputs, outputs=outputs)
+        node = ami.graph_nodes.FilterOff(name=self.name(), condition_needs=conditions, outputs=outputs)
         return node
 
 
@@ -33,15 +28,10 @@ class FilterOn(Filter):
 
     nodeName = "FilterOn"
 
-    def to_operation(self):
-        In = self.terminals['Condition'].inputTerminals()[0]
+    def __init__(self, name):
+        super(FilterOn, self).__init__(name)
 
-        if In.node().name() == "Input":
-            inputs = [In.name()]
-        else:
-            inputs = [In.node().name()]
-
+    def to_operation(self, inputs, conditions=[]):
         outputs = [self.name()]
-
-        node = ami.graph_nodes.FilterOn(name=self.name(), condition_needs=inputs, outputs=outputs)
+        node = ami.graph_nodes.FilterOn(name=self.name(), condition_needs=conditions, outputs=outputs)
         return node

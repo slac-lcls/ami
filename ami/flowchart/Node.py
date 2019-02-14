@@ -35,8 +35,10 @@ class Node(QtCore.QObject):
     sigTerminalRenamed = QtCore.Signal(object, object)  # term, oldName
     sigTerminalAdded = QtCore.Signal(object, object)  # self, term
     sigTerminalRemoved = QtCore.Signal(object, object)  # self, term
+    sigTerminalConnected = QtCore.Signal(object)  # self
+    sigTerminalDisconnected = QtCore.Signal(object)  # self
 
-    def __init__(self, name, terminals=None, allowAddInput=False, allowAddOutput=False, allowRemove=True, addr=""):
+    def __init__(self, name, terminals=None, allowAddInput=False, allowAddOutput=False, allowRemove=True):
         """
         ==============  ============================================================
         **Arguments:**
@@ -79,7 +81,8 @@ class Node(QtCore.QObject):
         for name, opts in terminals.items():
             self.addTerminal(name, **opts)
 
-        self.addr = addr
+        self.input_names = []
+        self.condition_names = []
         self.win = None
 
     def nextTerminalName(self, name):
@@ -225,14 +228,20 @@ class Node(QtCore.QObject):
     def connected(self, localTerm, remoteTerm):
         """Called whenever one of this node's terminals is connected elsewhere."""
         if localTerm.isInput() and remoteTerm.isOutput():
-            pass
-            # print("Connected")
+            if localTerm.name() == "In":
+                self.input_names.append(remoteTerm.node().name())
+            elif localTerm.name() == "Condition":
+                self.condition_names.append(remoteTerm.node().name())
+            self.sigTerminalConnected.emit(self)
 
     def disconnected(self, localTerm, remoteTerm):
         """Called whenever one of this node's terminals is disconnected from another."""
         if localTerm.isInput() and remoteTerm.isOutput():
-            pass
-            # print("Disconnected")
+            if localTerm.name() == "In":
+                self.input_names.remove(remoteTerm.node().name())
+            elif localTerm.name() == "Condition":
+                self.condition_names.remove(remoteTerm.node().name())
+            self.sigTerminalDisconnected.emit(self)
 
     def setException(self, exc):
         self.exception = exc
@@ -257,14 +266,7 @@ class Node(QtCore.QObject):
         dict."""
         pos = self.graphicsItem().pos()
         state = {'pos': (pos.x(), pos.y())}
-        termsEditable = self._allowAddInput | self._allowAddOutput
-        terms = list(self._inputs.values())
-        terms.extend(list(self._outputs.values()))
-        for term in terms:
-            termsEditable |= term._renamable | term._removable | term._multiable
-
-        if termsEditable:
-            state['terminals'] = self.saveTerminals()
+        state['terminals'] = self.saveTerminals()
         return state
 
     def restoreState(self, state):
@@ -482,15 +484,14 @@ class NodeGraphicsItem(GraphicsObject):
     def buildMenu(self):
         self.menu = QtGui.QMenu()
         self.menu.setTitle("Node")
-        a = self.menu.addAction("Add input", self.addInputFromMenu)
-        if not self.node._allowAddInput:
-            a.setEnabled(False)
-        a = self.menu.addAction("Add output", self.addOutputFromMenu)
-        if not self.node._allowAddOutput:
-            a.setEnabled(False)
-        a = self.menu.addAction("Remove node", self.node.close)
-        if not self.node._allowRemove:
-            a.setEnabled(False)
+        if self.node._allowAddInput:
+            self.menu.addAction("Add input", self.addInputFromMenu)
+        if self.node._allowAddOutput:
+            self.menu.addAction("Add output", self.addOutputFromMenu)
+        if "Condition" not in self.node.terminals:
+            self.menu.addAction("Add condition", self.addConditionFromMenu)
+        if self.node._allowRemove:
+            self.menu.addAction("Remove node", self.node.close)
 
     def addInputFromMenu(self):
         # called when add input is clicked in context menu
@@ -499,3 +500,6 @@ class NodeGraphicsItem(GraphicsObject):
     def addOutputFromMenu(self):
         # called when add output is clicked in context menu
         self.node.addOutput(renamable=True, removable=True, multiable=False)
+
+    def addConditionFromMenu(self):
+        self.node.addInput(name="Condition", removable=True)

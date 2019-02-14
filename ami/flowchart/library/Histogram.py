@@ -37,21 +37,10 @@ class Histogram(CtrlNode):
     nodeName = "Histogram"
     uiTemplate = []
 
-    def __init__(self, name, addr):
-        super(Histogram, self).__init__(name, addr=addr, terminals={"In": {"io": "in"}})
+    def __init__(self, name):
+        super(Histogram, self).__init__(name, terminals={"In": {"io": "in"}})
 
-    def display(self, name, topic):
-        if self.win is None:
-            self.win = pg.QtGui.QMainWindow()
-            self.widget = WaveformWidget(name, topic, self.addr, self.win)
-            self.win.setWindowTitle(self.name())
-            self.win.setCentralWidget(self.widget)
-            self.win.show()
-            self.show = True
-        else:
-            if self.show:
-                self.win.hide()
-            else:
-                self.win.show()
-
-            self.show = not self.show
+    def display(self, inputs, addr, win):
+        name, topic = inputs[0]
+        self.widget = WaveformWidget(name, topic, addr, self.win)
+        return self.widget

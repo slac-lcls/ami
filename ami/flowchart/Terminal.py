@@ -55,7 +55,7 @@ class Terminal(object):
         else:
             return self._value
 
-    def setValue(self, val, process=True):
+    def setValue(self, val):
         """If this is a single-value terminal, val should be a single value.
         If this is a multi-value terminal, val should be a dict of terminal:value pairs"""
         if not self.isMultiValue():
@@ -69,8 +69,6 @@ class Terminal(object):
                 self._value.update(val)
 
         self.setValueAcceptable(None)  # by default, input values are 'unchecked' until Node.update().
-        if self.isInput() and process:
-            self.node().update()
 
         self.recolor()
 
@@ -105,15 +103,15 @@ class Terminal(object):
                 self.setValue(None)
         self.node().disconnected(self, term)
 
-    def inputChanged(self, term, process=True):
+    def inputChanged(self, term):
         """
         Called whenever there is a change to the input value to this terminal.
         It may often be useful to override this function.
         """
         if self.isMultiValue():
-            self.setValue({term: term.value(self)}, process=process)
+            self.setValue({term: term.value(self)})
         else:
-            self.setValue(term.value(self), process=process)
+            self.setValue(term.value(self))
 
     def valueIsAcceptable(self):
         """Returns True->acceptable  None->unknown  False->Unacceptable"""
@@ -377,22 +375,30 @@ class TerminalGraphicsItem(GraphicsObject):
         if self.menu is None:
             self.menu = QtGui.QMenu()
             self.menu.setTitle("Terminal")
-            remAct = QtGui.QAction("Remove terminal", self.menu)
-            remAct.triggered.connect(self.removeSelf)
-            self.menu.addAction(remAct)
-            self.menu.remAct = remAct
-            if not self.term.isRemovable():
-                remAct.setEnabled(False)
-            multiAct = QtGui.QAction("Multi-value", self.menu)
-            multiAct.setCheckable(True)
-            multiAct.setChecked(self.term.isMultiValue())
-            multiAct.setEnabled(self.term.isMultiable())
 
-            multiAct.triggered.connect(self.toggleMulti)
-            self.menu.addAction(multiAct)
-            self.menu.multiAct = multiAct
+            disconAct = QtGui.QAction("Disconnect", self.menu)
+            disconAct.triggered.connect(lambda: self.term.disconnectFrom(self.term.inputTerminals()[0]))
+            self.menu.addAction(disconAct)
+            self.menu.disconAct = disconAct
+            if not self.term.isConnected():
+                disconAct.setEnabled(False)
+
+            if self.term.isRemovable():
+                remAct = QtGui.QAction("Remove terminal", self.menu)
+                remAct.triggered.connect(self.removeSelf)
+                self.menu.addAction(remAct)
+                self.menu.remAct = remAct
+
             if self.term.isMultiable():
-                multiAct.setEnabled = False
+                multiAct = QtGui.QAction("Multi-value", self.menu)
+                multiAct.setCheckable(True)
+                multiAct.setChecked(self.term.isMultiValue())
+                multiAct.setEnabled(self.term.isMultiable())
+
+                multiAct.triggered.connect(self.toggleMulti)
+                self.menu.addAction(multiAct)
+                self.menu.multiAct = multiAct
+
         return self.menu
 
     def toggleMulti(self):
