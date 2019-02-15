@@ -3,6 +3,8 @@ import re
 import sys
 import dill
 import logging
+import asyncio
+import asyncqt
 import importlib
 import threading
 import numpy as np
@@ -12,13 +14,13 @@ from PyQt5.QtWidgets import QWidget, QHBoxLayout, QFileDialog, \
                             QApplication, QMainWindow, QPushButton, \
                             QLabel, QListWidgetItem, QLineEdit, \
                             QVBoxLayout, QListWidget, QLCDNumber
-from PyQt5.QtCore import pyqtSlot, QTimer, QRect
+from PyQt5.QtCore import pyqtSlot, pyqtSignal, QTimer, QRect
 
 import pyqtgraph as pg
 
 from ami import LogConfig
 from ami.data import DataTypes
-from ami.comm import GraphCommHandler
+from ami.comm import AsyncGraphCommHandler
 
 
 logger = logging.getLogger(LogConfig.get_package_name(__name__))
@@ -33,13 +35,13 @@ class ScalarWidget(QLCDNumber):
         self.setGeometry(QRect(320, 180, 191, 81))
         self.setDigitCount(10)
         self.setObjectName(topic)
-        self.comm_handler = GraphCommHandler(addr)
+        self.comm_handler = AsyncGraphCommHandler(addr)
         self.timer.timeout.connect(self.get_scalar)
         self.timer.start(1000)
 
-    @pyqtSlot()
-    def get_scalar(self):
-        reply = self.comm_handler.fetch(self.topic)
+    @asyncqt.asyncSlot()
+    async def get_scalar(self):
+        reply = await self.comm_handler.fetch(self.topic)
         if reply is not None:
             self.scalar_updated(reply)
         else:
@@ -55,15 +57,15 @@ class WaveformWidget(pg.GraphicsLayoutWidget):
         self.name = name
         self.topic = topic
         self.timer = QTimer()
-        self.comm_handler = GraphCommHandler(addr)
+        self.comm_handler = AsyncGraphCommHandler(addr)
         self.plot_view = self.addPlot()
         self.plot = None
         self.timer.timeout.connect(self.get_waveform)
         self.timer.start(1000)
 
-    @pyqtSlot()
-    def get_waveform(self):
-        reply = self.comm_handler.fetch(self.topic)
+    @asyncqt.asyncSlot()
+    async def get_waveform(self):
+        reply = await self.comm_handler.fetch(self.topic)
         if reply is not None:
             self.waveform_updated(reply)
         else:
@@ -82,15 +84,15 @@ class HistogramWidget(pg.GraphicsLayoutWidget):
         self.name = name
         self.topic = topic
         self.timer = QTimer()
-        self.comm_handler = GraphCommHandler(addr)
+        self.comm_handler = AsyncGraphCommHandler(addr)
         self.plot_view = self.addPlot()
         self.plot = None
         self.timer.timeout.connect(self.get_waveform)
         self.timer.start(1000)
 
-    @pyqtSlot()
-    def get_waveform(self):
-        reply = self.comm_handler.fetch(self.topic)
+    @asyncqt.asyncSlot()
+    async def get_waveform(self):
+        reply = await self.comm_handler.fetch(self.topic)
         if reply is not None:
             self.waveform_updated(reply)
         else:
@@ -109,15 +111,15 @@ class AreaDetWidget(pg.ImageView):
         super(AreaDetWidget, self).__init__(parent)
         self.name = name
         self.topic = topic
-        self.comm_handler = GraphCommHandler(addr)
+        self.comm_handler = AsyncGraphCommHandler(addr)
         self.timer = QTimer()
         self.timer.timeout.connect(self.get_image)
         self.timer.start(1000)
         self.roi.sigRegionChangeFinished.connect(self.roi_updated)
 
-    @pyqtSlot()
-    def get_image(self):
-        reply = self.comm_handler.fetch(self.topic)
+    @asyncqt.asyncSlot()
+    async def get_image(self):
+        reply = await self.comm_handler.fetch(self.topic)
         if reply is not None:
             self.image_updated(reply)
         else:
@@ -243,11 +245,11 @@ class DetectorList(QListWidget):
         else:
             logger.error('Feature type %s is not supported', self.features[topic])
 
-    @pyqtSlot()
-    def get_names(self):
+    @asyncqt.asyncSlot()
+    async def get_names(self):
         # detectors = dict, maps name --> type
-        self.names = sorted(self.comm_handler.names)
-        self.features = self.comm_handler.features
+        self.names = sorted(await self.comm_handler.names)
+        self.features = await self.comm_handler.features
         self.clear()
         self.addItem(self.calc_id)
         for k in self.names:
@@ -264,8 +266,8 @@ class DetectorList(QListWidget):
                 del self.pending[key]
         return
 
-    @pyqtSlot(QListWidgetItem)
-    def item_clicked(self, item):
+    @asyncqt.asyncSlot(QListWidgetItem)
+    async def item_clicked(self, item):
 
         name = item.text()
         # Check if there is already data for the feature in the result store
@@ -288,17 +290,21 @@ class DetectorList(QListWidget):
                     self.pending[topic] = name
                     request_view = True
             if request_view:
-                self.comm_handler.view(name)
+                await self.comm_handler.view(name)
 
     def _spawn_window(self, window_type, name, topic):
         self.queue.put((window_type, name, topic))
 
 
 class AmiGui(QWidget):
+
+    loadfile = pyqtSignal(str)
+    savefile = pyqtSignal(str)
+
     def __init__(self, queue, addr, ami_save, parent=None):
         super(__class__, self).__init__(parent)
         self.setWindowTitle("AMI Client")
-        self.comm_handler = GraphCommHandler(addr)
+        self.comm_handler = AsyncGraphCommHandler(addr)
 
         self.setupLabel = QLabel('Setup:', self)
         self.save_button = QPushButton('Save', self)
@@ -327,13 +333,16 @@ class AmiGui(QWidget):
         self.ami_layout.addWidget(self.reset_button)
         self.ami_layout.addWidget(self.amilist)
 
+        self.loadfile.connect(self.load_async)
+        self.savefile.connect(self.save_async)
+
     @pyqtSlot()
     def load(self):
         load_file = QFileDialog.getOpenFileName(
             self, "Open file", "", "AMI Autosave files (*.ami);;All Files (*)")
         if load_file[0]:
             logger.info("Loading graph configuration from file (%s)", load_file[0])
-            self.comm_handler.load(load_file[0])
+            self.loadfile.emit(load_file[0])
 
     @pyqtSlot()
     def save(self):
@@ -341,21 +350,31 @@ class AmiGui(QWidget):
             self, "Save file", "autosave.ami", "AMI Autosave files (*.ami);;All Files (*)")
         if save_file[0]:
             logger.info("Saving graph configuration to file (%s)", save_file[0])
-            self.comm_handler.save(save_file[0])
+            self.savefile.emit(save_file[0])
 
-    @pyqtSlot()
-    def reset(self):
-        if not self.comm_handler.reset():
+    @asyncqt.asyncSlot()
+    async def reset(self):
+        if not (await self.comm_handler.reset()):
             logger.error("Unable to reset feature store of the manager!")
 
-    @pyqtSlot()
-    def clear(self):
-        if not self.comm_handler.clear():
+    @asyncqt.asyncSlot()
+    async def clear(self):
+        if not (await self.comm_handler.clear()):
             logger.error("Unable to clear the graph configuration of the manager!")
+
+    @asyncqt.asyncSlot(str)
+    async def load_async(self, filename):
+        await self.comm_handler.load(filename)
+
+    @asyncqt.asyncSlot(str)
+    async def save_async(self, filename):
+        await self.comm_handler.save(filename)
 
 
 def run_main_window(queue, addr, ami_save):
     app = QApplication(sys.argv)
+    loop = asyncqt.QEventLoop(app)
+    asyncio.set_event_loop(loop)
     gui = AmiGui(queue, addr, ami_save)
     gui.show()
 
@@ -371,6 +390,8 @@ def run_main_window(queue, addr, ami_save):
 def run_widget(queue, window_type, name, topic, addr):
 
     app = QApplication(sys.argv)
+    loop = asyncqt.QEventLoop(app)
+    asyncio.set_event_loop(loop)
     win = QMainWindow()
 
     if window_type == 'AreaDetector':

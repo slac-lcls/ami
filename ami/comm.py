@@ -296,10 +296,13 @@ class GraphReceiver:
                 self.handlers[topic](num_work, num_col, version, payload)
 
 
-class GraphCommHandler:
+class CommHandler(abc.ABC):
 
-    def __init__(self, addr):
-        self._ctx = zmq.Context()
+    def __init__(self, addr, async_mode=False):
+        if async_mode:
+            self._ctx = zmq.asyncio.Context()
+        else:
+            self._ctx = zmq.Context()
         self._addr = addr
         self._sock = self._ctx.socket(zmq.REQ)
         self._sock.connect(self._addr)
@@ -316,44 +319,33 @@ class GraphCommHandler:
 
     @property
     def graph(self):
-        self._sock.send_string('get_graph')
-        return dill.loads(self._sock.recv())
+        return self._request_dill('get_graph')
 
     @property
     def features(self):
-        self._sock.send_string('get_features')
-        return self._sock.recv_pyobj()
+        return self._request('get_features')
 
     @property
     def names(self):
-        self._sock.send_string('get_names')
-        return self._sock.recv_pyobj()
+        return self._request('get_names')
 
     @property
     def versions(self):
-        self._sock.send_string('get_versions')
-        return self._sock.recv_pyobj()
+        return self._request('get_versions')
 
     @property
     def graphVersion(self):
-        self._sock.send_string('get_graph_version')
-        return self._sock.recv_pyobj()
+        return self._request('get_graph_version')
 
     @property
     def featuresVersion(self):
-        self._sock.send_string('get_features_version')
-        return self._sock.recv_pyobj()
+        return self._request('get_features_version')
 
     def fetch(self, name):
-        self._sock.send_string("fetch:%s" % name)
-        reply = self._sock.recv_string()
-        if reply == 'ok':
-            return self._sock.recv_pyobj()
+        return self._request("fetch:%s" % name, check=True)
 
     def edit(self, cmd, node):
-        self._sock.send_string('%s_graph' % cmd, zmq.SNDMORE)
-        self._sock.send(dill.dumps(node))
-        return self._sock.recv_string() == 'ok'
+        return self._post_dill('%s_graph' % cmd, node)
 
     def view(self, name):
         view_name = self.auto(name)
@@ -371,32 +363,132 @@ class GraphCommHandler:
         return self.edit("del", name)
 
     def clear(self):
-        self._sock.send_string('clear_graph')
-        return self._sock.recv_string() == 'ok'
+        return self._command('clear_graph')
 
     def reset(self):
-        self._sock.send_string('reset_features')
-        return self._sock.recv_string() == 'ok'
+        return self._command('reset_features')
 
     def update(self, graph):
-        self._sock.send_string('set_graph', zmq.SNDMORE)
-        self._sock.send(dill.dumps(graph))
-        return self._sock.recv_string() == 'ok'
+        return self._post_dill('set_graph', graph)
 
     def save(self, filename):
         if filename:
             try:
-                with open(filename, 'wb') as cnf:
-                    dill.dump(self.graph, cnf)
+                return self._save(filename)
             except OSError:
                 logger.exception("Problem opening saved graph configuration file:")
 
     def load(self, filename):
         if filename:
             try:
-                with open(filename, 'rb') as cnf:
-                    self.update(dill.load(cnf))
+                return self._load(filename)
             except OSError:
                     logger.exception("Problem opening saved graph configuration file:")
             except dill.UnpicklingError:
                     logger.exception("Problem parsing saved graph configuration file (%s):", filename)
+
+    @abc.abstractmethod
+    def _command(self, cmd):
+        pass
+
+    @abc.abstractmethod
+    def _request(self, cmd, check=False):
+        pass
+
+    @abc.abstractmethod
+    def _request_dill(self, cmd):
+        pass
+
+    @abc.abstractmethod
+    def _post_dill(self, cmd, payload):
+        pass
+
+    @abc.abstractmethod
+    def _load(self, graph):
+        pass
+
+    @abc.abstractmethod
+    def _save(self, graph):
+        pass
+
+
+class AsyncGraphCommHandler(CommHandler):
+
+    def __init__(self, addr):
+        super(__class__, self).__init__(addr, True)
+
+    async def _command(self, cmd):
+        await self._sock.send_string(cmd)
+        return (await self._sock.recv_string()) == 'ok'
+
+    async def _request(self, cmd, check=False):
+        await self._sock.send_string(cmd)
+        if check:
+            reply = await self._sock.recv_string()
+            if reply == 'ok':
+                return await self._sock.recv_pyobj()
+        else:
+            return await self._sock.recv_pyobj()
+
+    async def _request_dill(self, cmd):
+        await self._sock.send_string(cmd)
+        return dill.loads(await self._sock.recv())
+
+    async def _post_dill(self, cmd, payload):
+        await self._sock.send_string(cmd, zmq.SNDMORE)
+        await self._sock.send(dill.dumps(payload))
+        return (await self._sock.recv_string()) == 'ok'
+
+    async def save(self, filename):
+        if filename:
+            try:
+                with open(filename, 'wb') as cnf:
+                    dill.dump(await self.graph, cnf)
+            except OSError:
+                logger.exception("Problem opening saved graph configuration file:")
+
+    async def _load(self, filename):
+        with open(filename, 'rb') as cnf:
+            graph = dill.load(cnf)
+        return await self.update(graph)
+
+    async def _save(self, filename):
+        graph = await self.graph
+        with open(filename, 'wb') as cnf:
+            return dill.dump(graph, cnf)
+
+
+class GraphCommHandler(CommHandler):
+
+    def __init__(self, addr):
+        super(__class__, self).__init__(addr, False)
+
+    def _command(self, cmd):
+        self._sock.send_string(cmd)
+        return self._sock.recv_string() == 'ok'
+
+    def _request(self, cmd, check=False):
+        self._sock.send_string(cmd)
+        if check:
+            reply = self._sock.recv_string()
+            if reply == 'ok':
+                return self._sock.recv_pyobj()
+        else:
+            return self._sock.recv_pyobj()
+
+    def _request_dill(self, cmd):
+        self._sock.send_string(cmd)
+        return dill.loads(self._sock.recv())
+
+    def _post_dill(self, cmd, payload):
+        self._sock.send_string(cmd, zmq.SNDMORE)
+        self._sock.send(dill.dumps(payload))
+        return self._sock.recv_string() == 'ok'
+
+    def _load(self, filename):
+        with open(filename, 'rb') as cnf:
+            self.update(dill.load(cnf))
+
+    def _save(self, filename):
+        with open(filename, 'wb') as cnf:
+            dill.dump(self.graph, cnf)
