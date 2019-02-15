@@ -107,6 +107,9 @@ class HistogramWidget(pg.GraphicsLayoutWidget):
 
 
 class AreaDetWidget(pg.ImageView):
+
+    roiUpdate = pyqtSignal(object, name='roiUpdate')
+
     def __init__(self, name, topic, addr, parent=None):
         super(AreaDetWidget, self).__init__(parent)
         self.name = name
@@ -116,6 +119,7 @@ class AreaDetWidget(pg.ImageView):
         self.timer.timeout.connect(self.get_image)
         self.timer.start(1000)
         self.roi.sigRegionChangeFinished.connect(self.roi_updated)
+        self.roiUpdate.connect(self.roi_updated_async)
 
     @asyncqt.asyncSlot()
     async def get_image(self):
@@ -128,20 +132,27 @@ class AreaDetWidget(pg.ImageView):
     def image_updated(self, data):
         self.setImage(data)
 
-    # @pyqtSlot(pg.ROI)
+    @pyqtSlot(object)
     def roi_updated(self, roi):
         shape, vector, origin = roi.getAffineSliceParams(self.image, self.getImageItem())
 
         def roi_func(image):
             return pg.affineSlice(image, shape, origin, vector, (0, 1))
 
-        self.comm_handler.map("map_%s_roi" % self.name,
-                              inputs=[self.name],
-                              outputs=["%s_roi" % self.name],
-                              func=roi_func)
+        self.roiUpdate.emit(roi_func)
+
+    @asyncqt.asyncSlot(object)
+    async def roi_updated_async(self, roi_func):
+        await self.comm_handler.map("map_%s_roi" % self.name,
+                                    inputs=[self.name],
+                                    outputs=["%s_roi" % self.name],
+                                    func=roi_func)
 
 
 class Calculator(QWidget):
+
+    calcUpdated = pyqtSignal(str, object, object, name='calcUpdated')
+
     def __init__(self, comm, parent=None):
         super(Calculator, self).__init__(parent)
         self.setWindowTitle("Calculator")
@@ -174,6 +185,8 @@ class Calculator(QWidget):
         self.calc_layout.addWidget(self.button)
         self.setLayout(self.calc_layout)
 
+        self.calcUpdated.connect(self.update_calc)
+
     def parse_inputs(self):
         if self.inputsBox.text():
             return self.field_parse.split(self.inputsBox.text())
@@ -205,10 +218,14 @@ class Calculator(QWidget):
                 loc[k] = v
             return eval(code, glb, loc)
 
-        self.comm.map(name="map_%s_calc" % name,
-                      inputs=inputs,
-                      outputs=[name],
-                      func=calc_func)
+        self.calcUpdated.emit(name, inputs, calc_func)
+
+    @asyncqt.asyncSlot(str, object, object)
+    async def update_calc(self, name, inputs, calc_func):
+        await self.comm.map(name="map_%s_calc" % name,
+                            inputs=inputs,
+                            outputs=[name],
+                            func=calc_func)
 
 
 class DetectorList(QListWidget):
@@ -298,8 +315,8 @@ class DetectorList(QListWidget):
 
 class AmiGui(QWidget):
 
-    loadfile = pyqtSignal(str)
-    savefile = pyqtSignal(str)
+    loadFile = pyqtSignal(str, name='loadFile')
+    saveFile = pyqtSignal(str, name='saveFile')
 
     def __init__(self, queue, addr, ami_save, parent=None):
         super(__class__, self).__init__(parent)
@@ -333,8 +350,8 @@ class AmiGui(QWidget):
         self.ami_layout.addWidget(self.reset_button)
         self.ami_layout.addWidget(self.amilist)
 
-        self.loadfile.connect(self.load_async)
-        self.savefile.connect(self.save_async)
+        self.loadFile.connect(self.load_async)
+        self.saveFile.connect(self.save_async)
 
     @pyqtSlot()
     def load(self):
@@ -342,7 +359,7 @@ class AmiGui(QWidget):
             self, "Open file", "", "AMI Autosave files (*.ami);;All Files (*)")
         if load_file[0]:
             logger.info("Loading graph configuration from file (%s)", load_file[0])
-            self.loadfile.emit(load_file[0])
+            self.loadFile.emit(load_file[0])
 
     @pyqtSlot()
     def save(self):
@@ -350,7 +367,7 @@ class AmiGui(QWidget):
             self, "Save file", "autosave.ami", "AMI Autosave files (*.ami);;All Files (*)")
         if save_file[0]:
             logger.info("Saving graph configuration to file (%s)", save_file[0])
-            self.savefile.emit(save_file[0])
+            self.saveFile.emit(save_file[0])
 
     @asyncqt.asyncSlot()
     async def reset(self):
