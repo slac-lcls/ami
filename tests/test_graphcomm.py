@@ -1,4 +1,5 @@
 import pytest
+import re
 import zmq
 import dill
 import threading
@@ -14,15 +15,30 @@ class FakeManager:
         self.sock.bind(addr)
         self.conf = conf
         self.graph = None
+        self.feature_req = re.compile("fetch:(?P<name>.*)")
         self.thread = threading.Thread(target=self.run)
         self.thread.daemon = True
         self.thread.start()
+
+    def feature_request(self, request):
+        matched = self.feature_req.match(request)
+        if matched:
+            if matched.group('name') in self.conf['fetch']:
+                self.sock.send_string('ok', zmq.SNDMORE)
+                self.sock.send_pyobj(self.conf['fetch'][matched.group('name')])
+            else:
+                self.sock.send_string('error')
+            return True
+        else:
+            return False
 
     def run(self):
         while True:
             request = self.sock.recv_string()
             if request == 'test_exit':
                 break
+            elif self.feature_request(request):
+                pass
             elif request in self.conf:
                 if self.sock.getsockopt(zmq.RCVMORE):
                     payload = self.sock.recv()
@@ -159,3 +175,15 @@ def test_modify_graph(graph_comm, complex_graph):
     # remove the pickn
     assert comm.remove('test_pickn')
     assert 'test_pick_val' not in comm.graph.names
+
+
+@pytest.mark.parametrize('graph_comm',
+                         [{'fetch': {'cspad': 5}}, {'fetch': {'cspad': None}}],
+                         indirect=True)
+def test_fetch(graph_comm):
+    comm, conf = graph_comm
+
+    # test we can fetch something we expect
+    assert comm.fetch('cspad') == conf['fetch']['cspad']
+    # check that None is return when we ask for something that isn't there
+    assert comm.fetch('delta_t') is None
