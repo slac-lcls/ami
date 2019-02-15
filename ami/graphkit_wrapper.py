@@ -42,7 +42,7 @@ class Graph():
         as inputs for nodes. Internally generated names are exclued from this
         list!
         """
-        return [node for node in self.graph.nodes if isinstance(node, str) and self._name_is_valid(node)]
+        return {node for node in self.graph.nodes if isinstance(node, str) and self._name_is_valid(node)}
 
     @property
     def sources(self):
@@ -50,7 +50,7 @@ class Graph():
         Returns a list of all input data sources needed by the worker to process
         the full graph.
         """
-        return [name for name in self.inputs['worker'] if self._name_is_valid(name)]
+        return {name for name in self.inputs['worker'] if self._name_is_valid(name)}
 
     def add(self, op):
         """
