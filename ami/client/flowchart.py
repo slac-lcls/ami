@@ -7,8 +7,8 @@ import tempfile
 import asyncio
 import zmq
 import zmq.asyncio
-import ami.client.flowchart_messages as fcMsgs
 
+from ami.client import flowchart_messages as fcMsgs
 from ami.flowchart.Flowchart import Flowchart
 from ami.flowchart.Node import Node
 from ami.flowchart.library import LIBRARY

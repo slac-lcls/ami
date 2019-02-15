@@ -13,9 +13,9 @@ from ami.flowchart.library import LIBRARY
 from ami.flowchart.Node import Node
 from ami.comm import GraphCommHandler
 from ami.graphkit_wrapper import Graph
+from ami.client import flowchart_messages as fcMsgs
 
 import ami.flowchart.FlowchartCtrlTemplate_pyqt5 as FlowchartCtrlTemplate
-import ami.client.flowchart_messages as fcMsgs
 import os
 import asyncqt
 import zmq.asyncio
