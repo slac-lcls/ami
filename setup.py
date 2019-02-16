@@ -24,6 +24,9 @@ setup(
     url='https://confluence.slac.stanford.edu/display/PSDMInternal/AMI+Replacement',
     package_dir={'ami.examples': 'examples'},
     packages=['ami', 'ami.examples'],
+    setup_requires=[
+        'pytest-runner'
+    ],
     install_requires=[
         'dill',
         'pyzmq',
@@ -31,6 +34,11 @@ setup(
         'pyqtgraph',
         'networkfox',
         'ipython',
+        'asyncqt',
+    ],
+    tests_require=[
+        'pytest',
+        'pytest-asyncio',
     ],
     entry_points={
         'console_scripts': [

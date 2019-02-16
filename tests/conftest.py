@@ -19,6 +19,11 @@ def use_psana():
 
 
 @pytest.fixture(scope='session')
+def ipc_dir(tmpdir_factory):
+    return tmpdir_factory.mktemp("ipc_tests", False)
+
+
+@pytest.fixture(scope='session')
 def complex_graph_file(tmpdir_factory):
     graph = Graph(name='graph')
 
