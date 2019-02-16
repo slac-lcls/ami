@@ -1,6 +1,7 @@
 import abc
 import zmq
 import dill
+import asyncio
 import logging
 from enum import IntEnum
 
@@ -416,28 +417,33 @@ class AsyncGraphCommHandler(CommHandler):
 
     def __init__(self, addr):
         super(__class__, self).__init__(addr, True)
+        self.lock = asyncio.Lock()
 
     async def _command(self, cmd):
-        await self._sock.send_string(cmd)
-        return (await self._sock.recv_string()) == 'ok'
+        async with self.lock:
+            await self._sock.send_string(cmd)
+            return (await self._sock.recv_string()) == 'ok'
 
     async def _request(self, cmd, check=False):
-        await self._sock.send_string(cmd)
-        if check:
-            reply = await self._sock.recv_string()
-            if reply == 'ok':
+        async with self.lock:
+            await self._sock.send_string(cmd)
+            if check:
+                reply = await self._sock.recv_string()
+                if reply == 'ok':
+                    return await self._sock.recv_pyobj()
+            else:
                 return await self._sock.recv_pyobj()
-        else:
-            return await self._sock.recv_pyobj()
 
     async def _request_dill(self, cmd):
-        await self._sock.send_string(cmd)
-        return dill.loads(await self._sock.recv())
+        async with self.lock:
+            await self._sock.send_string(cmd)
+            return dill.loads(await self._sock.recv())
 
     async def _post_dill(self, cmd, payload):
-        await self._sock.send_string(cmd, zmq.SNDMORE)
-        await self._sock.send(dill.dumps(payload))
-        return (await self._sock.recv_string()) == 'ok'
+        async with self.lock:
+            await self._sock.send_string(cmd, zmq.SNDMORE)
+            await self._sock.send(dill.dumps(payload))
+            return (await self._sock.recv_string()) == 'ok'
 
     async def save(self, filename):
         if filename:
