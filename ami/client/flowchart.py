@@ -53,8 +53,8 @@ def run_editor_window(broker_addr, graphmgr_addr, node_addr):
     fw = w.chartWidget
 
     # Add flowchart control panel to the main window
-    layout.addWidget(w, 0, 0, 2, 1)
-    layout.addWidget(fw, 0, 1)
+    layout.addWidget(w.ui.toolBar, 0, 0, 1, -1)
+    layout.addWidget(fw, 1, 0)
 
     win.show()
     with loop:

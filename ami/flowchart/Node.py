@@ -38,7 +38,8 @@ class Node(QtCore.QObject):
     sigTerminalConnected = QtCore.Signal(object)  # self
     sigTerminalDisconnected = QtCore.Signal(object)  # self
 
-    def __init__(self, name, terminals=None, allowAddInput=False, allowAddOutput=False, allowRemove=True):
+    def __init__(self, name, terminals=None, allowAddInput=False, allowAddOutput=False, allowRemove=True,
+                 viewable=False):
         """
         ==============  ============================================================
         **Arguments:**
@@ -61,7 +62,8 @@ class Node(QtCore.QObject):
                         context menu.
         allowRemove     bool; whether the user is allowed to remove this node by the
                         context menu.
-        addr            str; zeromq addr
+        viewable        bool; whether a pick one should be inserted into the graph to
+                        view node inputs
         ==============  ============================================================
 
         """
@@ -74,6 +76,7 @@ class Node(QtCore.QObject):
         self._allowAddInput = allowAddInput   # flags to allow the user to add/remove terminals
         self._allowAddOutput = allowAddOutput
         self._allowRemove = allowRemove
+        self._viewable = viewable
 
         self.exception = None
         if terminals is None:
@@ -170,6 +173,9 @@ class Node(QtCore.QObject):
         """Return dict of all output terminals.
         Warning: do not modify."""
         return self._outputs
+
+    def viewable(self):
+        return self._viewable
 
     def graphicsItem(self):
         """Return the GraphicsItem for this node. Subclasses may re-implement

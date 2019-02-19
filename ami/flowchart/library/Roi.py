@@ -41,8 +41,8 @@ class Roi(CtrlNode):
     nodeName = "Roi"
     uiTemplate = []
 
-    def __init__(self, name, **kwargs):
-        super(Roi, self).__init__(name, **kwargs)
+    def __init__(self, name):
+        super(Roi, self).__init__(name, viewable=True)
         self.widget = None
 
     def display(self, inputs, addr, win):

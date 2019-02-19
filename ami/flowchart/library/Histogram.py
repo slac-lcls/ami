@@ -38,7 +38,7 @@ class Histogram(CtrlNode):
     uiTemplate = []
 
     def __init__(self, name):
-        super(Histogram, self).__init__(name, terminals={"In": {"io": "in"}})
+        super(Histogram, self).__init__(name, terminals={"In": {"io": "in"}}, viewable=True)
 
     def display(self, inputs, addr, win):
         name, topic = inputs[0]
