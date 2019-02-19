@@ -38,6 +38,8 @@ To use psana a working release need to be added to the python path
 - Fix gui crashes as they occur
 - Dynamic menus
 - saving node state (pull from separate processes)
+- documentation
+- cleanup repo
 
 20 DEC 18:
 Bigger Projects:

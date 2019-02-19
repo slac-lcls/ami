@@ -124,6 +124,7 @@ class NodeWindow:
                 cw.setLayout(layout)
                 layout.addWidget(self.ctrlWidget, 0, 0)
                 layout.addWidget(self.widget, 0, 1, -1, -1)
+                layout.setColumnStretch(1, 10)
             elif self.ctrlWidget:
                 self.win.setCentralWidget(self.ctrlWidget)
             elif self.widget:

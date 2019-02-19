@@ -1,6 +1,5 @@
 from ami.flowchart.library.common import CtrlNode
 from ami.comm import GraphCommHandler
-from ami.graph_nodes import Map
 from PyQt5.QtCore import pyqtSlot, QTimer
 import pyqtgraph as pg
 
@@ -14,7 +13,6 @@ class AreaDetWidget(pg.ImageView):
         self.timer = QTimer()
         self.timer.timeout.connect(self.get_image)
         self.timer.start(1000)
-        self.roi.sigRegionChangeFinished.connect(self.roi_updated)
 
     @pyqtSlot()
     def get_image(self):
@@ -27,38 +25,16 @@ class AreaDetWidget(pg.ImageView):
     def image_updated(self, data):
         self.setImage(data)
 
-    def roi_updated(self, roi):
-        shape, vector, origin = roi.getAffineSliceParams(self.image, self.getImageItem())
 
-        def roi_func(image):
-            return pg.affineSlice(image, shape, origin, vector, (0, 1))
+class ImageViewer(CtrlNode):
 
-        self.func = roi_func
-
-
-class Roi(CtrlNode):
-
-    nodeName = "Roi"
+    nodeName = "ImageViewer"
     uiTemplate = []
-    # uiTemplate = [('sigma',  'spin', {'value': 1.0, 'step': 1.0, 'bounds': [0.0, None]})]
 
     def __init__(self, name):
-        super(Roi, self).__init__(name, viewable=True)
-        self.widget = None
+        super(ImageViewer, self).__init__(name, terminals={"In": {"io": "in"}}, viewable=True)
 
     def display(self, inputs, addr, win):
         name, topic = inputs[0]
-        self.widget = AreaDetWidget(name, topic, addr, win)
+        self.widget = AreaDetWidget(name, topic, addr, self.win)
         return self.widget
-
-    def to_operation(self, inputs, conditions=[]):
-        outputs = [self.name()]
-
-        if self.widget:
-            func = self.widget.func
-        else:
-            def func(img):
-                return img
-
-        node = Map(name=self.name(), inputs=inputs, outputs=outputs, conditions=conditions, func=func)
-        return node
