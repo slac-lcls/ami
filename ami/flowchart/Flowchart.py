@@ -280,6 +280,8 @@ class Flowchart(Node):
             self.fileDialog.show()
             self.fileDialog.fileSelected.connect(self.saveFile)
             return
+        if not fileName.endswith('.fc'):
+            fileName += ".fc"
         configfile.writeConfigFile(self.saveState(), fileName)
         self.sigFileSaved.emit(fileName)
 

@@ -84,6 +84,7 @@ class NodeWindow:
         self.editor = self.ctx.socket(zmq.PUSH)
         self.editor.connect(editor_addr)
 
+        self.ctrlWidget = None
         self.widget = None
         self.show = False
         self.win.setWindowTitle(msg.name)
@@ -112,9 +113,21 @@ class NodeWindow:
         self.conditions = msg.conditions
 
     def display(self, msg):
-        if self.widget is None:
+        if self.ctrlWidget is None and self.widget is None:
+            self.ctrlWidget = self.node.ctrlWidget()
             self.widget = self.node.display(msg.inputs, self.graphmgr_addr, self.win)
-            self.win.setCentralWidget(self.widget)
+
+            if self.ctrlWidget and self.widget:
+                cw = QtGui.QWidget()
+                self.win.setCentralWidget(cw)
+                layout = QtGui.QGridLayout()
+                cw.setLayout(layout)
+                layout.addWidget(self.ctrlWidget, 0, 0)
+                layout.addWidget(self.widget, 0, 1, -1, -1)
+            elif self.ctrlWidget:
+                self.win.setCentralWidget(self.ctrlWidget)
+            elif self.widget:
+                self.win.setCentralWidget(self.widget)
 
         self.show = not self.show
         if self.show:

@@ -40,6 +40,7 @@ class Roi(CtrlNode):
 
     nodeName = "Roi"
     uiTemplate = []
+    # uiTemplate = [('sigma',  'spin', {'value': 1.0, 'step': 1.0, 'bounds': [0.0, None]})]
 
     def __init__(self, name):
         super(Roi, self).__init__(name, viewable=True)

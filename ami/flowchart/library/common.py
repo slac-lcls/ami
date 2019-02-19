@@ -15,6 +15,9 @@ except ImportError:
 
 def generateUi(opts):
     """Convenience function for generating common UI types"""
+    if len(opts) == 0:
+        return None, None, None
+
     widget = QtGui.QWidget()
     layout = QtGui.QFormLayout()
     layout.setSpacing(0)
@@ -97,7 +100,8 @@ class CtrlNode(Node):
         super(CtrlNode, self).__init__(name=name, terminals=terminals, **kwargs)
 
         self.ui, self.stateGroup, self.ctrls = generateUi(ui)
-        self.stateGroup.sigChanged.connect(self.changed)
+        if self.stateGroup:
+            self.stateGroup.sigChanged.connect(self.changed)
 
     def ctrlWidget(self):
         return self.ui
