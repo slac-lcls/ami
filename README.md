@@ -32,6 +32,13 @@ To use psana a working release need to be added to the python path
 
 # Status/To-do
 
+19 Feb 19:
+- Graph types/validation
+- Status messages from worker
+- Fix gui crashes as they occur
+- Dynamic menus
+- saving node state (pull from separate processes)
+
 20 DEC 18:
 Bigger Projects:
 - switch to shmem
