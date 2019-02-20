@@ -10,7 +10,7 @@ from numpy import ndarray
 from ami.flowchart.Terminal import Terminal
 from ami.flowchart.library import LIBRARY
 from ami.flowchart.Node import Node
-from ami.comm import GraphCommHandler
+from ami.comm import AsyncGraphCommHandler
 from ami.graphkit_wrapper import Graph
 from ami.client import flowchart_messages as fcMsgs
 
@@ -118,6 +118,7 @@ class Flowchart(Node):
         await self.broker.send_pyobj(msg)
 
     def nodeClosed(self, node):
+        # Qt does not like if this function is async
         del self._nodes[node.name()]
         for signal in ['sigClosed', 'sigRenamed']:
             try:
@@ -303,7 +304,7 @@ class FlowchartCtrlWidget(QtGui.QWidget):
         self.features = {}
         self.pending_lock = asyncio.Lock()
 
-        self.graphCommHandler = GraphCommHandler(graphmgr_addr)
+        self.graphCommHandler = AsyncGraphCommHandler(graphmgr_addr)
         self.chartWidget = FlowchartWidget(chart, self)
 
         self.ui.actionOpen.triggered.connect(self.openClicked)
@@ -312,7 +313,7 @@ class FlowchartCtrlWidget(QtGui.QWidget):
         self.ui.actionApply.triggered.connect(self.applyClicked)
         # self.chart.sigFileLoaded.connect(self.setCurrentFile)
         # self.ui.reloadBtn.clicked.connect(self.reloadClicked)
-        # self.chart.sigFileSaved.connect(self.fileSaved)
+        self.chart.sigFileSaved.connect(self.fileSaved)
 
     @asyncqt.asyncSlot()
     async def applyClicked(self):
@@ -323,7 +324,7 @@ class FlowchartCtrlWidget(QtGui.QWidget):
                 continue
 
             await self.chart.broker.send_string(name, zmq.SNDMORE),
-            await self.chart.broker.send_pyobj(fcMsgs.NodeMsg('operation'))
+            await self.chart.broker.send_pyobj(fcMsgs.GetNodeOperation())
 
             node = await self.chart.node.recv()
             node = dill.loads(node)
@@ -338,17 +339,15 @@ class FlowchartCtrlWidget(QtGui.QWidget):
 
         # TODO do some graph validation here before sending
 
-        self.graphCommHandler.update(graph)
+        await self.graphCommHandler.update(graph)
         self.features = {}
         self.pending = {}
 
     def reloadClicked(self):
         try:
             self.chartWidget.reloadLibrary()
-            self.ui.reloadBtn.success("Reloaded.")
-        except Exception:
-            self.ui.reloadBtn.success("Error.")
-            raise
+        except Exception as e:
+            raise e
 
     def openClicked(self):
         newFile = self.chart.loadFile()
@@ -356,7 +355,6 @@ class FlowchartCtrlWidget(QtGui.QWidget):
 
     def fileSaved(self, fileName):
         self.setCurrentFile(fileName)
-        self.ui.saveBtn.success("Saved.")
 
     def saveClicked(self):
         if self.currentFileName is None:
@@ -364,9 +362,7 @@ class FlowchartCtrlWidget(QtGui.QWidget):
         else:
             try:
                 self.chart.saveFile(self.currentFileName)
-                # self.ui.saveBtn.success("Saved.")
             except Exception as e:
-                self.ui.saveBtn.failure("Error")
                 raise e
 
     def saveAsClicked(self):
@@ -375,10 +371,7 @@ class FlowchartCtrlWidget(QtGui.QWidget):
                 self.chart.saveFile()
             else:
                 self.chart.saveFile(suggestedFileName=self.currentFileName)
-            # self.ui.saveAsBtn.success("Saved.")
-            # print "Back to saveAsClicked."
         except Exception as e:
-            self.ui.saveBtn.failure("Error")
             raise e
 
         # self.setCurrentFile(newFile)
@@ -537,7 +530,7 @@ class FlowchartWidget(dockarea.DockArea):
                         request_view = True
 
                 if request_view:
-                    self.ctrl.graphCommHandler.view(in_name)
+                    await self.ctrl.graphCommHandler.view(in_name)
 
                 inputs.append((in_name, topic))
 

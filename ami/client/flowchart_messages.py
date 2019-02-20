@@ -63,3 +63,9 @@ class UpdateNodeAttributes(NodeMsg):
         super(UpdateNodeAttributes, self).__init__(node_name)
         self.inputs = inputs
         self.conditions = conditions
+
+
+class GetNodeOperation(NodeMsg):
+
+    def __init__(self):
+        super(GetNodeOperation, self).__init__("")

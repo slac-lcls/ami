@@ -61,7 +61,7 @@ def run_editor_window(broker_addr, graphmgr_addr, node_addr):
         loop.run_forever()
 
 
-class NodeWindow:
+class NodeWindow(object):
 
     def __init__(self, msg, broker_addr, graphmgr_addr, editor_addr):
         self.app = QtGui.QApplication([])
@@ -101,11 +101,10 @@ class NodeWindow:
                 self.update(msg)
             elif isinstance(msg, fcMsgs.DisplayNode):
                 self.display(msg)
+            elif isinstance(msg, fcMsgs.GetNodeOperation):
+                self.operation()
             elif isinstance(msg, fcMsgs.CloseNode):
                 return
-            elif isinstance(msg, fcMsgs.Msg):
-                if msg.name == 'operation':
-                    self.operation()
 
     def update(self, msg):
         self.inputs = msg.inputs
@@ -215,6 +214,12 @@ class MessageBroker(object):
                 logger.info("creating process: %s pid: %d", msg.name, proc.pid)
                 async with self.lock:
                     self.widget_procs[msg.name] = proc
+
+            elif isinstance(msg, fcMsgs.UpdateNodeAttributes):
+                await self.forward_message(topic, msg)
+
+            elif isinstance(msg, fcMsgs.GetNodeOperation):
+                await self.forward_message(topic, msg)
 
             elif isinstance(msg, fcMsgs.DisplayNode):
                 await self.forward_message(topic, msg)
