@@ -61,14 +61,28 @@ def run_editor_window(broker_addr, graphmgr_addr, node_addr):
         loop.run_forever()
 
 
-class NodeWindow(object):
+class NodeWindow(QtGui.QMainWindow):
+
+    def __init__(self, proc, parent=None):
+        super(NodeWindow, self).__init__(parent)
+        self.proc = proc
+
+    def closeEvent(self, event):
+        self.proc.node.clear()
+        self.proc.widget = None
+        self.proc.ctrlWidget = None
+        self.destroy()
+        event.ignore()
+
+
+class NodeProcess(object):
 
     def __init__(self, msg, broker_addr, graphmgr_addr, editor_addr):
         self.app = QtGui.QApplication([])
         loop = QEventLoop(self.app)
         asyncio.set_event_loop(loop)
 
-        self.win = QtGui.QMainWindow()
+        self.win = NodeWindow(self)
 
         self.node = LIBRARY.getNodeType(msg.node_type)(msg.name)
         self.graphmgr_addr = graphmgr_addr
@@ -206,7 +220,7 @@ class MessageBroker(object):
 
             if isinstance(msg, fcMsgs.CreateNode):
                 proc = mp.Process(
-                    target=NodeWindow,
+                    target=NodeProcess,
                     args=(msg, self.broker_pub_addr, self.graphmgr_addr, self.node_addr),
                     daemon=True
                 )

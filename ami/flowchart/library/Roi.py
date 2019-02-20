@@ -48,8 +48,13 @@ class Roi(CtrlNode):
 
     def display(self, inputs, addr, win):
         name, topic = inputs[0]
-        self.widget = AreaDetWidget(name, topic, addr, win)
+        if self.widget is None:
+            self.widget = AreaDetWidget(name, topic, addr, win)
         return self.widget
+
+    def clear(self):
+        self.widget.timer.stop()
+        self.widget = None
 
     def to_operation(self, inputs, conditions=[]):
         outputs = [self.name()]

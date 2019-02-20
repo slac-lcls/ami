@@ -300,9 +300,8 @@ class FlowchartCtrlWidget(QtGui.QWidget):
         self.ui = EditorTemplate.Ui_Toolbar()
         self.ui.setupUi(parent=self)
 
-        self.pending = {}
+        self.features_lock = asyncio.Lock()
         self.features = {}
-        self.pending_lock = asyncio.Lock()
 
         self.graphCommHandler = AsyncGraphCommHandler(graphmgr_addr)
         self.chartWidget = FlowchartWidget(chart, self)
@@ -311,6 +310,7 @@ class FlowchartCtrlWidget(QtGui.QWidget):
         self.ui.actionSave.triggered.connect(self.saveClicked)
         # self.ui.saveAsBtn.clicked.connect(self.saveAsClicked)
         self.ui.actionApply.triggered.connect(self.applyClicked)
+        self.ui.actionHome.triggered.connect(self.homeClicked)
         # self.chart.sigFileLoaded.connect(self.setCurrentFile)
         # self.ui.reloadBtn.clicked.connect(self.reloadClicked)
         self.chart.sigFileSaved.connect(self.fileSaved)
@@ -338,10 +338,19 @@ class FlowchartCtrlWidget(QtGui.QWidget):
         graph.add(graph_nodes)
 
         # TODO do some graph validation here before sending
-
         await self.graphCommHandler.update(graph)
-        self.features = {}
-        self.pending = {}
+
+        # reinsert pick ones if they are still in the graph
+        features = {}
+
+        if self.features:
+            async with self.features_lock:
+                for name, node in self.chart.nodes().items():
+                    for in_name in node.input_names:
+                        if in_name in self.features:
+                            features[in_name] = self.features[in_name]
+                            await self.graphCommHandler.view(in_name)
+                self.features = features
 
     def reloadClicked(self):
         try:
@@ -376,6 +385,10 @@ class FlowchartCtrlWidget(QtGui.QWidget):
 
         # self.setCurrentFile(newFile)
 
+    def homeClicked(self):
+        children = self.viewBox().allChildren()
+        self.viewBox().autoRange(items=children)
+
     def setCurrentFile(self, fileName):
         self.currentFileName = fileName
         # if fileName is None:
@@ -383,9 +396,6 @@ class FlowchartCtrlWidget(QtGui.QWidget):
         # else:
         #     self.ui.fileNameLabel.setText("<b>%s</b>" % os.path.split(self.currentFileName)[1])
         # self.resizeEvent(None)
-
-    def itemChanged(self, *args):
-        pass
 
     def scene(self):
         # returns the GraphicsScene object
@@ -412,9 +422,6 @@ class FlowchartWidget(dockarea.DockArea):
         # self.setMinimumWidth(250)
         # self.setSizePolicy(QtGui.QSizePolicy(QtGui.QSizePolicy.Preferred, QtGui.QSizePolicy.Expanding))
 
-        # self.ui = FlowchartTemplate.Ui_Form()
-        # self.ui.setupUi(self)
-
         #  build user interface (it was easier to do it here than via developer)
         self.view = FlowchartGraphicsView.FlowchartGraphicsView(self)
         self.viewDock = dockarea.Dock('view', size=(1000, 600))
@@ -430,18 +437,12 @@ class FlowchartWidget(dockarea.DockArea):
 
         self._scene = self.view.scene()
         self._viewBox = self.view.viewBox()
-        # self._scene = QtGui.QGraphicsScene()
-        # self._scene = FlowchartGraphicsView.FlowchartGraphicsScene()
-        # self.view.setScene(self._scene)
 
         self.buildMenu()
         # self.ui.addNodeBtn.mouseReleaseEvent = self.addNodeBtnReleased
 
         self._scene.selectionChanged.connect(self.selectionChanged)
         self._scene.sigMouseHover.connect(self.hoverOver)
-        # self.view.sigClicked.connect(self.showViewMenu)
-        # self._scene.sigSceneContextMenu.connect(self.showViewMenu)
-        # self._viewBox.sigActionPositionChanged.connect(self.menuPosChanged)
 
     def reloadLibrary(self):
         # QtCore.QObject.disconnect(self.nodeMenu, QtCore.SIGNAL('triggered(QAction*)'), self.nodeMenuTriggered)
@@ -468,20 +469,6 @@ class FlowchartWidget(dockarea.DockArea):
         buildSubMenu(self.chart.library.getNodeTree(), self.nodeMenu, self.subMenus, pos=pos)
         self.nodeMenu.triggered.connect(self.nodeMenuTriggered)
         return self.nodeMenu
-
-    def menuPosChanged(self, pos):
-        self.menuPos = pos
-
-    def showViewMenu(self, ev):
-        # QtGui.QPushButton.mouseReleaseEvent(self.ui.addNodeBtn, ev)
-        # if ev.button() == QtCore.Qt.RightButton:
-            # self.menuPos = self.view.mapToScene(ev.pos())
-            # self.nodeMenu.popup(ev.globalPos())
-        # print "Flowchart.showViewMenu called"
-
-        # self.menuPos = ev.scenePos()
-        self.buildMenu(ev.scenePos())
-        self.nodeMenu.popup(ev.screenPos())
 
     def scene(self):
         return self._scene  # the GraphicsScene item
@@ -518,15 +505,15 @@ class FlowchartWidget(dockarea.DockArea):
             for in_name in node.input_names:
 
                 if in_name in self.ctrl.features:
-                    topic = in_name
+                    topic = self.ctrl.features[in_name]
                 else:
                     topic = self.ctrl.graphCommHandler.auto(in_name)
 
                 request_view = False
 
-                async with self.ctrl.pending_lock:
-                    if topic not in self.ctrl.pending:
-                        self.ctrl.pending[topic] = in_name
+                async with self.ctrl.features_lock:
+                    if in_name not in self.ctrl.features:
+                        self.ctrl.features[in_name] = topic
                         request_view = True
 
                 if request_view:

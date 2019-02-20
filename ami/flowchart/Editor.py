@@ -29,12 +29,20 @@ class Ui_Toolbar(object):
 
         # apply
         self.actionApply = QtWidgets.QAction(parent)
-        icon = QtGui.QIcon.fromTheme("document-new")
+        icon = QtGui.QIcon.fromTheme("media-playback-start")
         self.actionApply.setIcon(icon)
         self.actionApply.setIconText("Apply")
         self.actionApply.setObjectName("actionApply")
+
+        # home
+        self.actionHome = QtWidgets.QAction(parent)
+        icon = QtGui.QIcon.fromTheme("go-home")
+        self.actionHome.setIcon(icon)
+        self.actionHome.setIconText("Home")
+        self.actionHome.setObjectName("actionHome")
 
         self.toolBar.addAction(self.actionNew)
         self.toolBar.addAction(self.actionOpen)
         self.toolBar.addAction(self.actionSave)
         self.toolBar.addAction(self.actionApply)
+        self.toolBar.addAction(self.actionHome)
