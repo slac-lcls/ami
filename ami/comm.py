@@ -5,7 +5,7 @@ import asyncio
 import logging
 from enum import IntEnum
 
-from ami.graph_nodes import Map, PickN
+from ami.graph_nodes import Map, PickN, FilterOn, FilterOff
 from ami.data import MsgTypes, Message, CollectorMessage, DataTypes, Datagram
 
 
@@ -307,9 +307,13 @@ class CommHandler(abc.ABC):
         self._addr = addr
         self._sock = self._ctx.socket(zmq.REQ)
         self._sock.connect(self._addr)
-        self._expand_keys = ['inputs', 'outputs']
+        self._prune_keys = ['condition_needs', 'condition']
+        self._expand_keys = ['inputs', 'outputs', 'condition_needs']
 
     def _make_node(self, node, **kwargs):
+        for key in self._prune_keys:
+            if key in kwargs and kwargs[key] is None:
+                del kwargs[key]
         for key in self._expand_keys:
             if key in kwargs and not isinstance(kwargs[key], list):
                 kwargs[key] = [kwargs[key]]
@@ -345,23 +349,35 @@ class CommHandler(abc.ABC):
     def fetch(self, name):
         return self._request("fetch:%s" % name, check=True)
 
-    def edit(self, cmd, node):
-        return self._post_dill('%s_graph' % cmd, node)
+    def add(self, node):
+        return self._post_dill('add_graph', node)
 
     def view(self, name):
         view_name = self.auto(name)
         return self.pickN('%s_view' % view_name, name, view_name)
 
-    def pickN(self, name, inputs, outputs, N=1):
-        node = self._make_node(PickN, name=name, inputs=inputs, outputs=outputs, N=N)
-        return self.edit("add", node)
+    def pickN(self, name, inputs, outputs, N=1, condition_needs=None):
+        node = self._make_node(PickN, name=name, inputs=inputs, outputs=outputs, N=N,
+                               condition_needs=condition_needs)
+        return self.add(node)
 
-    def map(self, name, inputs, outputs, func):
-        node = self._make_node(Map, name=name, inputs=inputs, outputs=outputs, func=func)
-        return self.edit("add", node)
+    def map(self, name, inputs, outputs, func, condition_needs=None):
+        node = self._make_node(Map, name=name, inputs=inputs, outputs=outputs, func=func,
+                               condition_needs=condition_needs)
+        return self.add(node)
+
+    def filterOn(self, name, condition_needs, outputs, condition=None):
+        node = self._make_node(FilterOn, name=name, condition_needs=condition_needs, outputs=outputs,
+                               condition=condition)
+        return self.add(node)
+
+    def filterOff(self, name, condition_needs, outputs, condition=None):
+        node = self._make_node(FilterOff, name=name, condition_needs=condition_needs, outputs=outputs,
+                               condition=condition)
+        return self.add(node)
 
     def remove(self, name):
-        return self.edit("del", name)
+        return self._post_dill('del_graph', name)
 
     def clear(self):
         return self._command('clear_graph')
