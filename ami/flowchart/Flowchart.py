@@ -28,8 +28,6 @@ class Flowchart(Node):
     sigChartLoaded = QtCore.Signal()
     # called when output is expected to have changed
     sigStateChanged = QtCore.Signal()
-    # called when nodes are added, removed, or renamed.
-    sigChartChanged = QtCore.Signal(object, object, object)  # (self, action, node)
 
     def __init__(self, name=None, filePath=None, library=None,
                  broker_addr="", graphmgr_addr="", node_addr=""):
@@ -106,7 +104,6 @@ class Flowchart(Node):
         node.sigRenamed.connect(self.nodeRenamed)
         node.sigTerminalConnected.connect(self.nodeConnected)
         node.sigTerminalDisconnected.connect(self.nodeDisconnected)
-        self.sigChartChanged.emit(self, 'add', node)
 
     @asyncqt.asyncSlot(object)
     async def nodeConnected(self, node):
@@ -120,11 +117,6 @@ class Flowchart(Node):
         await self.broker.send_string(node.name(), zmq.SNDMORE),
         await self.broker.send_pyobj(msg)
 
-    def removeNode(self, node):
-        """Remove a Node from this flowchart.
-        """
-        node.close()
-
     def nodeClosed(self, node):
         del self._nodes[node.name()]
         for signal in ['sigClosed', 'sigRenamed']:
@@ -132,15 +124,12 @@ class Flowchart(Node):
                 getattr(node, signal).disconnect(self.nodeClosed)
             except (TypeError, RuntimeError):
                 pass
-        self.sigChartChanged.emit(self, 'remove', node)
+        self.broker.send_string(node.name(), zmq.SNDMORE)
+        self.broker.send_pyobj(fcMsgs.CloseNode())
 
     def nodeRenamed(self, node, oldName):
         del self._nodes[oldName]
         self._nodes[node.name()] = node
-        self.sigChartChanged.emit(self, 'rename', node)
-
-    def arrangeNodes(self):
-        pass
 
     def connectTerminals(self, term1, term2):
         """Connect two terminals together within this flowchart."""
@@ -530,6 +519,9 @@ class FlowchartWidget(dockarea.DockArea):
             node = item.node
             inputs = []
 
+            if len(node.inputs()) != len(node.input_names):
+                return
+
             for in_name in node.input_names:
 
                 if in_name in self.ctrl.features:
@@ -550,7 +542,7 @@ class FlowchartWidget(dockarea.DockArea):
                 inputs.append((in_name, topic))
 
             await self.chart.broker.send_string(node.name(), zmq.SNDMORE)
-            await self.chart.broker.send_pyobj(fcMsgs.Display(node.name(), inputs))
+            await self.chart.broker.send_pyobj(fcMsgs.DisplayNode(node.name(), inputs))
 
     def hoverOver(self, items):
         # print "FlowchartWidget.hoverOver called."

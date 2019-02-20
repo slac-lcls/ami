@@ -112,7 +112,8 @@ class CtrlNode(Node):
 
     def saveState(self):
         state = Node.saveState(self)
-        state['ctrl'] = self.stateGroup.state()
+        if self.stateGroup:
+            state['ctrl'] = self.stateGroup.state()
         return state
 
     def restoreState(self, state):

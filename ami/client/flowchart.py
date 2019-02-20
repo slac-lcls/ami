@@ -99,16 +99,15 @@ class NodeWindow:
 
             if isinstance(msg, fcMsgs.UpdateNodeAttributes):
                 self.update(msg)
-            elif isinstance(msg, fcMsgs.Display):
+            elif isinstance(msg, fcMsgs.DisplayNode):
                 self.display(msg)
+            elif isinstance(msg, fcMsgs.CloseNode):
+                return
             elif isinstance(msg, fcMsgs.Msg):
                 if msg.name == 'operation':
                     self.operation()
-                elif msg.name == 'exit':
-                    return
 
     def update(self, msg):
-        print("Received", self.node.name(), msg.inputs, msg.conditions)
         self.inputs = msg.inputs
         self.conditions = msg.conditions
 
@@ -137,7 +136,6 @@ class NodeWindow:
             self.win.hide()
 
     def operation(self):
-        print(self.node.name(), self.inputs, self.conditions)
         node = dill.dumps(self.node.to_operation(self.inputs, self.conditions))
         self.editor.send(node)
 
@@ -194,22 +192,20 @@ class MessageBroker(object):
                     else:
                         continue
 
+    async def forward_message(self, topic, msg):
+        if isinstance(msg, fcMsgs.NodeMsg):
+            async with self.lock:
+                self.msgs[topic] = msg
+                await self.broker_pub_sock.send_string(topic, zmq.SNDMORE)
+                await self.broker_pub_sock.send_pyobj(msg)
+
     async def process_messages(self):
 
         while True:
             topic = await self.broker_sub_sock.recv_string()
             msg = await self.broker_sub_sock.recv_pyobj()
 
-            if msg.name == 'exit':
-                logger.info("received exit signal - exiting!")
-                for topic in self.msgs:
-                    self.broker_pub_sock.send_string(fcMsgs.Msg('exit'))
-
-                for name, proc in self.widget_procs.items():
-                    proc.join()
-                break
-
-            elif isinstance(msg, fcMsgs.CreateNode):
+            if isinstance(msg, fcMsgs.CreateNode):
                 proc = mp.Process(
                     target=NodeWindow,
                     args=(msg, self.broker_pub_addr, self.graphmgr_addr, self.node_addr),
@@ -220,11 +216,28 @@ class MessageBroker(object):
                 async with self.lock:
                     self.widget_procs[msg.name] = proc
 
-            elif isinstance(msg, fcMsgs.NodeMsg):
+            elif isinstance(msg, fcMsgs.DisplayNode):
+                await self.forward_message(topic, msg)
+
+            elif isinstance(msg, fcMsgs.CloseNode):
+                await self.forward_message(topic, msg)
+
                 async with self.lock:
-                    self.msgs[topic] = msg
-                    await self.broker_pub_sock.send_string(topic, zmq.SNDMORE),
-                    await self.broker_pub_sock.send_pyobj(msg)
+                    if topic in self.widget_procs:
+                        proc = self.widget_procs[topic]
+                        logger.info("deleting process: %s pid: %d", topic, proc.pid)
+                        proc.join()
+                        del self.widget_procs[topic]
+
+            elif isinstance(msg, fcMsgs.ExitMsg):
+                logger.info("received exit signal - exiting!")
+                for topic in self.msgs:
+                    await self.broker_pub_sock.send_string(topic)
+                    await self.broker_pub_sock.send_pyobj(fcMsgs.CloseMsg())
+
+                for name, proc in self.widget_procs.items():
+                    proc.join()
+                break
 
             dead_procs = []
             for name, proc in self.widget_procs.items():

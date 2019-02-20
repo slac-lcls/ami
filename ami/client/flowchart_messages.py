@@ -14,6 +14,12 @@ class BrokerMsg(Msg):
         super(BrokerMsg, self).__init__(name)
 
 
+class ExitMsg(Msg):
+
+    def __init__(self):
+        super(ExitMsg, self).__init__("")
+
+
 class NodeMsg(Msg):
 
     """
@@ -31,10 +37,16 @@ class CreateNode(BrokerMsg):
         self.node_type = node_type
 
 
-class Display(NodeMsg):
+class CloseNode(NodeMsg):
+
+    def __init__(self):
+        super(CloseNode, self).__init__("")
+
+
+class DisplayNode(NodeMsg):
 
     def __init__(self, name, inputs):
-        super(Display, self).__init__(name)
+        super(DisplayNode, self).__init__(name)
         self.inputs = inputs
 
 
