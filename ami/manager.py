@@ -129,50 +129,76 @@ class Manager(Collector):
 
     def cmd_add_graph(self):
         raw_add = self.comm.recv()
-        if self.graph is None:
-            self.graph = Graph("manager_graph")
-            self.graph.add(dill.loads(raw_add))
-            self.publish_graph("graph", dill.dumps(self.graph))
-        else:
-            self.graph.add(dill.loads(raw_add))
-            self.publish_graph("add", raw_add)
-        self.compile_graph()
+        node = dill.loads(raw_add)
+        backup = dill.dumps(self.graph)
+        try:
+            if self.graph is None:
+                self.graph = Graph("manager_graph")
+                self.graph.add(node)
+                cmd = "graph"
+                raw_data = dill.dumps(self.graph)
+            else:
+                self.graph.add(node)
+                cmd = "add"
+                raw_data = raw_add
+            self.compile_graph()
+            self.publish_graph(cmd, raw_data)
+        except AssertionError:
+            logger.exception("Failure encountered adding node \"%s\" to the graph:", node.name)
+            self.graph = dill.loads(backup)
+            logger.info("Restored previous version of the graph (v%d)", self.version)
+            self.comm.send_string('error')
 
     def cmd_del_graph(self):
-        name = self.comm.recv()
+        raw_name = self.comm.recv()
+        name = dill.loads(raw_name)
         if self.graph is not None:
-            self.graph.remove(dill.loads(name))
-            # Check if the resulting graph is non-empty
-            if self.graph:
-                self.compile_graph()
-            else:
-                # if the graph is empty remove it
-                self.graph = None
-        self.publish_graph("del", name)
+            backup = dill.dumps(self.graph)
+            try:
+                self.graph.remove(name)
+                # Check if the resulting graph is non-empty
+                if self.graph:
+                    self.compile_graph()
+                else:
+                    # if the graph is empty remove it
+                    self.graph = None
+                self.publish_graph("del", raw_name)
+            except AssertionError:
+                logger.exception("Failure encountered removing node \"%s\" from the graph:", name)
+                self.graph = dill.loads(backup)
+                logger.info("Restored previous version of the graph (v%d)", self.version)
+                self.comm.send_string('error')
+        else:
+            # Removing nodes that don't exist returns 'ok', so this case should too...
+            self.comm.send_string('ok')
 
     def cmd_set_graph(self):
         raw_graph = self.comm.recv()
-        self.graph = dill.loads(raw_graph)
-        # Check if the graph is non-empty
-        if self.graph:
-            self.compile_graph()
-        else:
-            self.graph = None
-            raw_graph = dill.dumps(self.graph)
-        self.publish_graph("graph", raw_graph)
+        backup = dill.dumps(self.graph)
+        try:
+            self.graph = dill.loads(raw_graph)
+            # Check if the graph can be compiled
+            if self.graph:
+                self.compile_graph()
+            self.publish_graph("graph", raw_graph)
+        except AssertionError:
+            logger.exception("Failure encountered compiling the requested graph:")
+            self.graph = dill.loads(backup)
+            logger.info("Restored previous version of the graph (v%d)", self.version)
+            self.comm.send_string('error')
 
     def publish_graph(self, topic, graph):
-        logger.info("manager: sending requested graph...")
+        logger.info("Sending requested graph...")
         try:
             self.version += 1
             self.graph_comm.send_string(topic, zmq.SNDMORE)
             self.graph_comm.send_pyobj((self.num_workers, self.num_nodes, self.version), zmq.SNDMORE)
             self.graph_comm.send(graph)
             self.export_graph()
-            logger.info("manager: sending of graph (v%d) completed", self.version)
+            logger.info("Sending of graph (v%d) completed", self.version)
             self.comm.send_string('ok')
         except Exception:
-            logger.exception("manager: failed to send graph (v%d) -", self.version)
+            logger.exception("Failed to send graph (v%d) -", self.version)
             self.comm.send_string('error')
 
     def graph_request(self):
@@ -204,6 +230,7 @@ class Manager(Collector):
 
 
 def run_manager(num_workers, num_nodes, results_addr, graph_addr, comm_addr, export_addr=None):
+    logger.info('Starting manager, controlling %d workers on %d nodes', num_workers, num_nodes)
     manager = Manager(num_workers, num_nodes, results_addr, graph_addr, comm_addr, export_addr)
     return manager.run()
 
