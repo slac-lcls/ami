@@ -5,7 +5,7 @@ import asyncio
 import logging
 from enum import IntEnum
 
-from ami.graph_nodes import Map, PickN, FilterOn, FilterOff
+import ami.graph_nodes as gn
 from ami.data import MsgTypes, Message, CollectorMessage, DataTypes, Datagram
 
 
@@ -307,7 +307,7 @@ class CommHandler(abc.ABC):
         self._addr = addr
         self._sock = self._ctx.socket(zmq.REQ)
         self._sock.connect(self._addr)
-        self._prune_keys = ['condition_needs', 'condition']
+        self._prune_keys = ['condition_needs', 'condition', 'reduction']
         self._expand_keys = ['inputs', 'outputs', 'condition_needs']
 
     def _make_node(self, node, **kwargs):
@@ -347,32 +347,43 @@ class CommHandler(abc.ABC):
         return self._request('get_features_version')
 
     def fetch(self, name):
-        return self._request("fetch:%s" % name, check=True)
+        # if the reply is none try fetching the 'view' version of the name
+        return self._request("fetch:%s" % name, check=True, retry="fetch:%s" % self.auto(name))
 
     def add(self, node):
         return self._post_dill('add_graph', node)
 
     def view(self, name):
         view_name = self.auto(name)
-        return self.pickN('%s_view' % view_name, name, view_name)
+        return self.addPickN('%s_view' % view_name, name, view_name)
 
-    def pickN(self, name, inputs, outputs, N=1, condition_needs=None):
-        node = self._make_node(PickN, name=name, inputs=inputs, outputs=outputs, N=N,
+    def addPickN(self, name, inputs, outputs, N=1, condition_needs=None):
+        node = self._make_node(gn.PickN, name=name, inputs=inputs, outputs=outputs, N=N,
                                condition_needs=condition_needs)
         return self.add(node)
 
-    def map(self, name, inputs, outputs, func, condition_needs=None):
-        node = self._make_node(Map, name=name, inputs=inputs, outputs=outputs, func=func,
+    def addMap(self, name, inputs, outputs, func, condition_needs=None):
+        node = self._make_node(gn.Map, name=name, inputs=inputs, outputs=outputs, func=func,
                                condition_needs=condition_needs)
         return self.add(node)
 
-    def filterOn(self, name, condition_needs, outputs, condition=None):
-        node = self._make_node(FilterOn, name=name, condition_needs=condition_needs, outputs=outputs,
+    def addReduce(self, name, inputs, outputs, reduction=None, condition_needs=None):
+        node = self._make_node(gn.ReduceByKey, name=name, inputs=inputs, outputs=outputs,
+                               reduction=reduction, condition_needs=condition_needs)
+        return self.add(node)
+
+    def addBinning(self, name, inputs, outputs, condition_needs=None):
+        node = self._make_node(gn.Binning, name=name, inputs=inputs, outputs=outputs,
+                               condition_needs=condition_needs)
+        return self.add(node)
+
+    def addFilterOn(self, name, condition_needs, outputs, condition=None):
+        node = self._make_node(gn.FilterOn, name=name, condition_needs=condition_needs, outputs=outputs,
                                condition=condition)
         return self.add(node)
 
-    def filterOff(self, name, condition_needs, outputs, condition=None):
-        node = self._make_node(FilterOff, name=name, condition_needs=condition_needs, outputs=outputs,
+    def addFilterOff(self, name, condition_needs, outputs, condition=None):
+        node = self._make_node(gn.FilterOff, name=name, condition_needs=condition_needs, outputs=outputs,
                                condition=condition)
         return self.add(node)
 
@@ -440,13 +451,18 @@ class AsyncGraphCommHandler(CommHandler):
             await self._sock.send_string(cmd)
             return (await self._sock.recv_string()) == 'ok'
 
-    async def _request(self, cmd, check=False):
+    async def _request(self, cmd, check=False, retry=None):
         async with self.lock:
             await self._sock.send_string(cmd)
             if check:
                 reply = await self._sock.recv_string()
                 if reply == 'ok':
                     return await self._sock.recv_pyobj()
+                elif retry is not None:
+                    await self._sock.send_string(retry)
+                    reply = await self._sock.recv_string()
+                    if reply == 'ok':
+                        return await self._sock.recv_pyobj()
             else:
                 return await self._sock.recv_pyobj()
 
@@ -489,12 +505,17 @@ class GraphCommHandler(CommHandler):
         self._sock.send_string(cmd)
         return self._sock.recv_string() == 'ok'
 
-    def _request(self, cmd, check=False):
+    def _request(self, cmd, check=False, retry=None):
         self._sock.send_string(cmd)
         if check:
             reply = self._sock.recv_string()
             if reply == 'ok':
                 return self._sock.recv_pyobj()
+            elif retry is not None:
+                self._sock.send_string(retry)
+                reply = self._sock.recv_string()
+                if reply == 'ok':
+                    return self._sock.recv_pyobj()
         else:
             return self._sock.recv_pyobj()
 
