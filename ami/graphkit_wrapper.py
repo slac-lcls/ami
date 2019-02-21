@@ -33,7 +33,10 @@ class Graph():
         In other words this checks if the name collides with one the graph may
         generate internally.
         """
-        return not name.endswith(('_worker', '_localCollector', '_globalCollector'))
+        if isinstance(name, str):
+            return not name.endswith(('_worker', '_localCollector', '_globalCollector'))
+        else:
+            return False
 
     @property
     def names(self):
