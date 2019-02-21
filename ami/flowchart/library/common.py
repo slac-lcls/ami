@@ -90,6 +90,9 @@ class CtrlNode(Node):
     sigStateChanged = QtCore.Signal(object)
 
     def __init__(self, name, ui=None, terminals=None, **kwargs):
+        self.widget = None
+        self.task = None
+
         if ui is None:
             if hasattr(self, 'uiTemplate'):
                 ui = self.uiTemplate
@@ -132,6 +135,11 @@ class CtrlNode(Node):
         label = self.ui.layout().labelForField(w)
         w.show()
         label.show()
+
+    def clear(self):
+        if self.task:
+            self.task.cancel()
+        self.widget = None
 
 
 class PlottingCtrlNode(CtrlNode):

@@ -86,7 +86,6 @@ class Node(QtCore.QObject):
 
         self.input_names = []
         self.condition_names = []
-        self.win = None
 
     def nextTerminalName(self, name):
         """Return an unused terminal name"""

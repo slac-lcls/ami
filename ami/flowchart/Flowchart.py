@@ -341,15 +341,16 @@ class FlowchartCtrlWidget(QtGui.QWidget):
         await self.graphCommHandler.update(graph)
 
         # reinsert pick ones if they are still in the graph
-        features = {}
-
         if self.features:
+            features = {}
+
             async with self.features_lock:
                 for name, node in self.chart.nodes().items():
-                    for in_name in node.input_names:
-                        if in_name in self.features:
-                            features[in_name] = self.features[in_name]
-                            await self.graphCommHandler.view(in_name)
+                    if hasattr(node, 'input_names'):
+                        for in_name in node.input_names:
+                            if in_name in self.features:
+                                features[in_name] = self.features[in_name]
+                                await self.graphCommHandler.view(in_name)
                 self.features = features
 
     def reloadClicked(self):
