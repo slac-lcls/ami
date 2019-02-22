@@ -298,6 +298,16 @@ class GraphReceiver:
 
 
 class CommHandler(abc.ABC):
+    """Abstract base class for handling communication with the AMI graph manager.
+
+    This abstract class provides an interface for interacting with the graph
+    manager. Provides support for implementing both a synchronous as well as
+    an asynchronous version.
+
+    Args:
+        addr (str): the zmq address of the graph manager (e.g. tcp://localhost:5555)
+        async_mode (bool): if True the asyncio version of zmq is used
+    """
 
     def __init__(self, addr, async_mode=False):
         if async_mode:
@@ -311,6 +321,16 @@ class CommHandler(abc.ABC):
         self._expand_keys = ['inputs', 'outputs', 'condition_needs']
 
     def _make_node(self, node, **kwargs):
+        """
+        Constructs a graph node of the requested type.
+
+        Args:
+            node (cls): the class type of the node to create.
+            **kwargs: aribitrary keyword args to pass to constructor of the node.
+
+        Returns:
+            The constructed graph node.
+        """
         for key in self._prune_keys:
             if key in kwargs and kwargs[key] is None:
                 del kwargs[key]
@@ -320,86 +340,283 @@ class CommHandler(abc.ABC):
         return node(**kwargs)
 
     def auto(self, name):
+        """
+        Creates an auto generated name from the passed string by appending
+        the prefix `_auto_` to the string.
+
+        Args:
+            name (str): the string to use for generating an auto name
+
+        Returns:
+            The auto generated name
+        """
         return '_auto_%s' % name
 
     @property
     def graph(self):
+        """
+        Fetches the current graph from the manager.
+
+        Returns:
+            An object of type `Graph` representing the current analysis graph.
+        """
         return self._request_dill('get_graph')
 
     @property
     def features(self):
+        """
+        Information on the features currently available in the global feature
+        store.
+
+        Returns:
+            A dictionary where the keys are the names of the available features
+            and the values are the `DataTypes` of those features.
+        """
         return self._request('get_features')
 
     @property
     def names(self):
+        """
+        A set of all the user-defined output names in the in the graph that can
+        be used as inputs for nodes in the graph.
+
+        Returns:
+            A set of all the user-defined output names.
+        """
         return self._request('get_names')
 
     @property
     def versions(self):
+        """
+        The current graph and feature store versions.
+
+        Returns:
+            A tuple of the graph and feature store versions.
+        """
         return self._request('get_versions')
 
     @property
     def graphVersion(self):
+        """
+        The current graph version.
+
+        Returns:
+            The current version of the graph.
+        """
         return self._request('get_graph_version')
 
     @property
     def featuresVersion(self):
+        """
+        The current feature store version.
+
+        Returns:
+            The current version of the feature store.
+        """
         return self._request('get_features_version')
 
     def fetch(self, name):
+        """
+        Attempts to fetch a feature with the requested name from the global
+        features. If the feature is not present in the store then None is
+        returned.
+
+        Args:
+            name (str): the name of the feature to fetch.
+
+        Returns:
+            The object that is fetched from the global feature store.
+        """
         # if the reply is none try fetching the 'view' version of the name
         return self._request("fetch:%s" % name, check=True, retry="fetch:%s" % self.auto(name))
 
     def add(self, node):
+        """
+        Attempt to add the requested node (or list of nodes) to the graph.
+
+        Args:
+            node (list or node): the node or list of nodes to add to the graph.
+
+        Returns:
+            True if the graph change was successful, False otherwise.
+        """
         return self._post_dill('add_graph', node)
 
     def view(self, name):
+        """
+        Adds a Pick1 graph node for the requested graph output so that is can
+        be viewed. The format of output name of the Pick1 node is determined
+        by calling the `auto` method of this class.
+
+        Args:
+            name (str): The name of the graph output to start viewing.
+
+        Returns:
+            True if the graph change was successful, False otherwise.
+        """
         view_name = self.auto(name)
         return self.addPickN('%s_view' % view_name, name, view_name)
 
     def addPickN(self, name, inputs, outputs, N=1, condition_needs=None):
+        """
+        Adds a PickN graph node to the manager's graph.
+
+        Args:
+            name (str): the name of the node
+            inputs (list or str): the input(s) to use for the node.
+            outputs (list or str): the output(s) made by the node.
+            N (int): the number to pick for the PickN.
+            condition_needs (list or str): the names of any conditions
+                that the node depends on.
+
+        Returns:
+            True if the graph change was successful, False otherwise.
+        """
         node = self._make_node(gn.PickN, name=name, inputs=inputs, outputs=outputs, N=N,
                                condition_needs=condition_needs)
         return self.add(node)
 
     def addMap(self, name, inputs, outputs, func, condition_needs=None):
+        """
+        Adds a Map graph node to the manager's graph.
+
+        Args:
+            name (str): the name of the node
+            inputs (list or str): the input(s) to use for the node.
+            outputs (list or str): the output(s) made by the node.
+            func (function): the function to use for the map.
+            condition_needs (list or str): the names of any conditions
+                that the node depends on.
+
+        Returns:
+            True if the graph change was successful, False otherwise.
+        """
         node = self._make_node(gn.Map, name=name, inputs=inputs, outputs=outputs, func=func,
                                condition_needs=condition_needs)
         return self.add(node)
 
     def addReduce(self, name, inputs, outputs, reduction=None, condition_needs=None):
+        """
+        Adds a ReduceByKey graph node to the manager's graph.
+
+        Args:
+            name (str): the name of the node
+            inputs (list or str): the input(s) to use for the node.
+            outputs (list or str): the output(s) made by the node.
+            reduction (function): the function to use for the reduction.
+            condition_needs (list or str): the names of any conditions
+                that the node depends on.
+
+        Returns:
+            True if the graph change was successful, False otherwise.
+        """
         node = self._make_node(gn.ReduceByKey, name=name, inputs=inputs, outputs=outputs,
                                reduction=reduction, condition_needs=condition_needs)
         return self.add(node)
 
     def addBinning(self, name, inputs, outputs, condition_needs=None):
+        """
+        Adds a Binning graph node to the manager's graph.
+
+        Args:
+            name (str): the name of the node
+            inputs (list or str): the input(s) to use for the node.
+            outputs (list or str): the output(s) made by the node.
+            condition_needs (list or str): the names of any conditions
+                that the node depends on.
+
+        Returns:
+            True if the graph change was successful, False otherwise.
+        """
         node = self._make_node(gn.Binning, name=name, inputs=inputs, outputs=outputs,
                                condition_needs=condition_needs)
         return self.add(node)
 
     def addFilterOn(self, name, condition_needs, outputs, condition=None):
+        """
+        Adds a FilterOn graph node to the manager's graph.
+
+        Args:
+            name (str): the name of the node
+            condition_needs (list or str): the inputs needed for the evaluating
+                the filter condition.
+            outputs (list or str): the output(s) made by the node.
+            condition (function): the condition evaluation function to use.
+
+        Returns:
+            True if the graph change was successful, False otherwise.
+        """
         node = self._make_node(gn.FilterOn, name=name, condition_needs=condition_needs, outputs=outputs,
                                condition=condition)
         return self.add(node)
 
     def addFilterOff(self, name, condition_needs, outputs, condition=None):
+        """
+        Adds a FilterOff graph node to the manager's graph.
+
+        Args:
+            name (str): the name of the node
+            condition_needs (list or str): the inputs needed for the evaluating
+                the filter condition.
+            outputs (list or str): the output(s) made by the node.
+            condition (function): the condition evaluation function to use.
+
+        Returns:
+            True if the graph change was successful, False otherwise.
+        """
         node = self._make_node(gn.FilterOff, name=name, condition_needs=condition_needs, outputs=outputs,
                                condition=condition)
         return self.add(node)
 
     def remove(self, name):
+        """
+        Removes the node (if it exists) with the requested name from the graph.
+
+        Args:
+            name (str): The name of the node to remove from the graph
+
+        Returns:
+            True if the graph change was successful, False otherwise.
+        """
         return self._post_dill('del_graph', name)
 
     def clear(self):
+        """
+        Clears the manager's current graph.
+
+        Returns:
+            True if the graph change was successful, False otherwise.
+        """
         return self._command('clear_graph')
 
     def reset(self):
+        """
+        Clears all the data currently in the manager's feature store.
+
+        Returns:
+            True if the graph change was successful, False otherwise.
+        """
         return self._command('reset_features')
 
     def update(self, graph):
+        """
+        Replaces the manager's current graph with the requested graph.
+
+        Args:
+            graph (Graph): The new graph for the manager to use.
+
+        Returns:
+            True if the graph change was successful, False otherwise.
+        """
         return self._post_dill('set_graph', graph)
 
     def save(self, filename):
+        """
+        Saves the manager's current graph to a file.
+
+        Args:
+            filename (str): the name of the file for saving the graph.
+        """
         if filename:
             try:
                 return self._save(filename)
@@ -407,6 +624,15 @@ class CommHandler(abc.ABC):
                 logger.exception("Problem opening saved graph configuration file:")
 
     def load(self, filename):
+        """
+        Loads a graph from a file and replaces the manager's graph with it.
+
+        Args:
+            filename (str): the name of the file to load.
+
+        Returns:
+            True if the graph update was successful, False otherwise.
+        """
         if filename:
             try:
                 return self._load(filename)
@@ -441,6 +667,11 @@ class CommHandler(abc.ABC):
 
 
 class AsyncGraphCommHandler(CommHandler):
+    """An asynchronous interface for handling communication with the AMI graph manager.
+
+    Args:
+        addr (str): the zmq address of the graph manager (e.g. tcp://localhost:5555)
+    """
 
     def __init__(self, addr):
         super(__class__, self).__init__(addr, True)
@@ -497,6 +728,11 @@ class AsyncGraphCommHandler(CommHandler):
 
 
 class GraphCommHandler(CommHandler):
+    """A synchronous interface for handling communication with the AMI graph manager.
+
+    Args:
+        addr (str): the zmq address of the graph manager (e.g. tcp://localhost:5555)
+    """
 
     def __init__(self, addr):
         super(__class__, self).__init__(addr, False)

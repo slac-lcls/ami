@@ -32,6 +32,12 @@ class Graph():
 
         In other words this checks if the name collides with one the graph may
         generate internally.
+
+        Args:
+            name (str): the name whose validity will be checked
+
+        Returns:
+            True if the name is valid, False otherwise.
         """
         if isinstance(name, str):
             return not name.endswith(('_worker', '_localCollector', '_globalCollector'))
@@ -41,17 +47,23 @@ class Graph():
     @property
     def names(self):
         """
-        Returns a list of all user defined names in the graph that can be used
+        Returns a set of all user-defined names in the graph that can be used
         as inputs for nodes. Internally generated names are exclued from this
         list!
+
+        Returns:
+            The set of user-defined names
         """
         return {node for node in self.graph.nodes if isinstance(node, str) and self._name_is_valid(node)}
 
     @property
     def sources(self):
         """
-        Returns a list of all input data sources needed by the worker to process
+        Returns a set of all input data sources needed by the worker to process
         the full graph.
+
+        Returns:
+            The set of all the input data sources
         """
         return {name for name in self.inputs['worker'] if self._name_is_valid(name)}
 
@@ -61,7 +73,7 @@ class Graph():
         inputs and outputs match the old one's.
 
         Args:
-            op (Transformation): Operation node to add to graph.
+            op (list or Transformation): Operation node to add to graph.
         """
 
         try:
