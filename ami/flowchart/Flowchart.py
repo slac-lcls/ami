@@ -30,7 +30,7 @@ class Flowchart(Node):
     sigStateChanged = QtCore.Signal()
 
     def __init__(self, name=None, filePath=None, library=None,
-                 broker_addr="", graphmgr_addr="", node_addr=""):
+                 broker_addr="", graphmgr_addr="", node_addr="", checkpoint_addr=""):
         super(Flowchart, self).__init__(name)
         self.library = library or LIBRARY
         self.graphmgr_addr = graphmgr_addr
@@ -41,6 +41,9 @@ class Flowchart(Node):
 
         self.node = self.ctx.socket(zmq.PULL)
         self.node.bind(node_addr)
+
+        self.checkpoint = self.ctx.socket(zmq.PULL)
+        self.checkpoint.bind(checkpoint_addr)
 
         if name is None:
             name = "Flowchart"
@@ -180,8 +183,7 @@ class Flowchart(Node):
             clsName = "Node"
             if hasattr(cls, 'nodeName'):
                 clsName = cls.nodeName
-            pos = node.graphicsItem().pos()
-            ns = {'class': clsName, 'name': name, 'pos': (pos.x(), pos.y()), 'state': node.saveState()}
+            ns = {'class': clsName, 'name': name, 'state': node.saveState()}
             state['nodes'].append(ns)
 
         conn = self.listConnections()
@@ -200,7 +202,7 @@ class Flowchart(Node):
                 self.clear()
             Node.restoreState(self, state)
             nodes = state['nodes']
-            nodes.sort(key=lambda a: a['pos'][0])
+            nodes.sort(key=lambda a: a['state']['pos'][0])
             for n in nodes:
 
                 if n['name'] in self._nodes:
@@ -210,7 +212,7 @@ class Flowchart(Node):
                     try:
                         node = Node(name=n['name'])
                         node.restoreState(n['state'])
-                        self.addNode(node, n['name'], pos=n['pos'])
+                        self.addNode(node, n['name'], pos=n['state']['pos'])
                     except Exception:
                         printExc("Error creating node %s: (continuing anyway)" % n['name'])
                 else:
@@ -283,6 +285,14 @@ class Flowchart(Node):
             n.close()  # calls self.nodeClosed(n) by signal
         # self.clearTerminals()
 
+    async def updateState(self):
+        while True:
+            node_name = await self.checkpoint.recv_string()
+            new_node_state = await self.checkpoint.recv_pyobj()
+            current_node_state = self._nodes[node_name].saveState()
+            new_node_state['pos'] = current_node_state['pos']
+            self._nodes[node_name].restoreState(new_node_state)
+
 
 class FlowchartCtrlWidget(QtGui.QWidget):
     """
@@ -336,7 +346,6 @@ class FlowchartCtrlWidget(QtGui.QWidget):
 
         graph = Graph(name=str(self.chart.name))
         graph.add(graph_nodes)
-
         # TODO do some graph validation here before sending
         await self.graphCommHandler.update(graph)
 
@@ -415,13 +424,10 @@ class FlowchartCtrlWidget(QtGui.QWidget):
 class FlowchartWidget(dockarea.DockArea):
     """Includes the actual graphical flowchart and debugging interface"""
     def __init__(self, chart, ctrl):
-        # QtGui.QWidget.__init__(self)
         dockarea.DockArea.__init__(self)
         self.chart = chart
         self.ctrl = ctrl
         self.hoverItem = None
-        # self.setMinimumWidth(250)
-        # self.setSizePolicy(QtGui.QSizePolicy(QtGui.QSizePolicy.Preferred, QtGui.QSizePolicy.Expanding))
 
         #  build user interface (it was easier to do it here than via developer)
         self.view = FlowchartGraphicsView.FlowchartGraphicsView(self)
@@ -439,14 +445,10 @@ class FlowchartWidget(dockarea.DockArea):
         self._scene = self.view.scene()
         self._viewBox = self.view.viewBox()
 
-        self.buildMenu()
-        # self.ui.addNodeBtn.mouseReleaseEvent = self.addNodeBtnReleased
-
         self._scene.selectionChanged.connect(self.selectionChanged)
         self._scene.sigMouseHover.connect(self.hoverOver)
 
     def reloadLibrary(self):
-        # QtCore.QObject.disconnect(self.nodeMenu, QtCore.SIGNAL('triggered(QAction*)'), self.nodeMenuTriggered)
         self.nodeMenu.triggered.disconnect(self.nodeMenuTriggered)
         self.nodeMenu = None
         self.subMenus = []

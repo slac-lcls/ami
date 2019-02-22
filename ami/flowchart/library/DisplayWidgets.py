@@ -1,6 +1,13 @@
-import pyqtgraph as pg
+import logging
 import asyncio
+import pyqtgraph as pg
+from PyQt5.QtWidgets import QLCDNumber
+from PyQt5.QtCore import QRect
+from ami import LogConfig
 from ami.comm import AsyncGraphCommHandler
+
+
+logger = logging.getLogger(LogConfig.get_package_name(__name__))
 
 
 class AsyncFetcher(object):
@@ -14,32 +21,36 @@ class AsyncFetcher(object):
 
     async def fetch(self):
         await asyncio.sleep(1)
-        reply = await self.comm_handler.fetch(self.topic)
-        if reply is not None:
-            self.reply = reply
-        else:
-            print("failed to fetch %s from manager!" % self.topic)
+        self.reply = await self.comm_handler.fetch(self.topic)
+        if self.reply is None:
+            logger.warn("failed to fetch %s from manager!" % self.topic)
+
+
+class ScalarWidget(QLCDNumber):
+    def __init__(self, name, topic, addr, parent=None):
+        super(ScalarWidget, self).__init__(parent)
+        self.fetcher = AsyncFetcher(name, topic, addr)
+        self.setGeometry(QRect(320, 180, 191, 81))
+        self.setDigitCount(10)
+        self.setObjectName(topic)
+
+    async def update(self):
+        while True:
+            await self.fetecher.fetch()
+            if self.fetecher.reply is not None:
+                self.display(self.fetecher.reply)
 
 
 class AreaDetWidget(pg.ImageView):
     def __init__(self, name, topic, addr, parent=None):
         super(AreaDetWidget, self).__init__(parent)
         self.fetcher = AsyncFetcher(name, topic, addr)
-        self.roi.sigRegionChangeFinished.connect(self.roi_updated)
 
     async def update(self):
         while True:
             await self.fetcher.fetch()
             if self.fetcher.reply is not None:
                 self.setImage(self.fetcher.reply)
-
-    def roi_updated(self, roi):
-        shape, vector, origin = roi.getAffineSliceParams(self.image, self.getImageItem())
-
-        def roi_func(image):
-            return pg.affineSlice(image, shape, origin, vector, (0, 1))
-
-        self.func = roi_func
 
 
 class WaveformWidget(pg.GraphicsLayoutWidget):

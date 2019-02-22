@@ -14,14 +14,14 @@ from ami.flowchart.Node import Node
 from ami.flowchart.library import LIBRARY
 from ami import LogConfig
 from ami.comm import GraphCommHandler
-from pyqtgraph.Qt import QtGui
-from asyncqt import QEventLoop
+from pyqtgraph.Qt import QtGui, QtCore
+from asyncqt import QEventLoop, asyncSlot
 
 
 logger = logging.getLogger(LogConfig.get_package_name(__name__))
 
 
-def run_editor_window(broker_addr, graphmgr_addr, node_addr):
+def run_editor_window(broker_addr, graphmgr_addr, node_addr, checkpoint_addr):
     app = QtGui.QApplication([])
 
     loop = QEventLoop(app)
@@ -42,7 +42,8 @@ def run_editor_window(broker_addr, graphmgr_addr, node_addr):
     # Create flowchart, define input/output terminals
     fc = Flowchart(broker_addr=broker_addr,
                    graphmgr_addr=graphmgr_addr,
-                   node_addr=node_addr)
+                   node_addr=node_addr,
+                   checkpoint_addr=checkpoint_addr)
 
     y = 0
     for name in comm.names:
@@ -58,7 +59,7 @@ def run_editor_window(broker_addr, graphmgr_addr, node_addr):
 
     win.show()
     with loop:
-        loop.run_forever()
+        loop.run_until_complete(fc.updateState())
 
 
 class NodeWindow(QtGui.QMainWindow):
@@ -75,9 +76,10 @@ class NodeWindow(QtGui.QMainWindow):
         event.ignore()
 
 
-class NodeProcess(object):
+class NodeProcess(QtCore.QObject):
 
-    def __init__(self, msg, broker_addr, graphmgr_addr, editor_addr):
+    def __init__(self, msg, broker_addr, graphmgr_addr, editor_addr, checkpoint_addr):
+        super(NodeProcess, self).__init__()
         self.app = QtGui.QApplication([])
         loop = QEventLoop(self.app)
         asyncio.set_event_loop(loop)
@@ -98,6 +100,9 @@ class NodeProcess(object):
         self.editor = self.ctx.socket(zmq.PUSH)
         self.editor.connect(editor_addr)
 
+        self.checkpoint = self.ctx.socket(zmq.PUSH)
+        self.checkpoint.connect(checkpoint_addr)
+
         self.ctrlWidget = None
         self.widget = None
         self.show = False
@@ -116,7 +121,7 @@ class NodeProcess(object):
             elif isinstance(msg, fcMsgs.DisplayNode):
                 self.display(msg)
             elif isinstance(msg, fcMsgs.GetNodeOperation):
-                self.operation()
+                await self.operation()
             elif isinstance(msg, fcMsgs.CloseNode):
                 return
 
@@ -142,15 +147,24 @@ class NodeProcess(object):
             elif self.widget:
                 self.win.setCentralWidget(self.widget)
 
+            if self.ctrlWidget:
+                self.node.sigStateChanged.connect(self.send_checkpoint)
+
         self.show = not self.show
         if self.show:
             self.win.show()
         else:
             self.win.hide()
 
-    def operation(self):
+    async def operation(self):
         node = dill.dumps(self.node.to_operation(self.inputs, self.conditions))
-        self.editor.send(node)
+        await self.editor.send(node)
+
+    @asyncSlot(object)
+    async def send_checkpoint(self, node):
+        state = node.saveState()
+        await self.checkpoint.send_string(node.name(), zmq.SNDMORE)
+        await self.checkpoint.send_pyobj(state)
 
 
 class MessageBroker(object):
@@ -163,6 +177,7 @@ class MessageBroker(object):
         self.broker_sub_addr = "ipc://%s/broker_sub" % ipcdir
         self.broker_pub_addr = "ipc://%s/broker_pub" % ipcdir
         self.node_addr = "ipc://%s/nodes" % ipcdir
+        self.checkpoint_addr = "ipc://%s/checkpoint" % ipcdir
 
         self.lock = asyncio.Lock()
         self.msgs = {}
@@ -184,7 +199,7 @@ class MessageBroker(object):
     def launch_editor_window(self):
         editor_proc = mp.Process(
             target=run_editor_window,
-            args=(self.broker_sub_addr, self.graphmgr_addr, self.node_addr),
+            args=(self.broker_sub_addr, self.graphmgr_addr, self.node_addr, self.checkpoint_addr),
             daemon=True)
         editor_proc.start()
 
@@ -221,7 +236,7 @@ class MessageBroker(object):
             if isinstance(msg, fcMsgs.CreateNode):
                 proc = mp.Process(
                     target=NodeProcess,
-                    args=(msg, self.broker_pub_addr, self.graphmgr_addr, self.node_addr),
+                    args=(msg, self.broker_pub_addr, self.graphmgr_addr, self.node_addr, self.checkpoint_addr),
                     daemon=True
                 )
                 proc.start()

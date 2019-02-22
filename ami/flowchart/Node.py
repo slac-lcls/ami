@@ -354,7 +354,6 @@ class NodeGraphicsItem(GraphicsObject):
         self.nameItem.keyPressEvent = self.labelKeyPress
 
         self.menu = None
-        self.buildMenu()
 
     def labelFocusOut(self, ev):
         QtGui.QGraphicsTextItem.focusOutEvent(self.nameItem, ev)
@@ -482,6 +481,7 @@ class NodeGraphicsItem(GraphicsObject):
         return self.menu
 
     def raiseContextMenu(self, ev):
+        self.buildMenu()
         menu = self.scene().addParentContextMenus(self, self.getMenu(), ev)
         pos = ev.screenPos()
         menu.popup(QtCore.QPoint(pos.x(), pos.y()))

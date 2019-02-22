@@ -109,8 +109,8 @@ class CtrlNode(Node):
     def ctrlWidget(self):
         return self.ui
 
-    def changed(self):
-        self.update()
+    def changed(self, *args, **kwargs):
+        self.update(*args, **kwargs)
         self.sigStateChanged.emit(self)
 
     def saveState(self):
@@ -139,7 +139,7 @@ class CtrlNode(Node):
     def clear(self):
         if self.task:
             self.task.cancel()
-        self.widget = None
+            self.task = None
 
 
 class PlottingCtrlNode(CtrlNode):
