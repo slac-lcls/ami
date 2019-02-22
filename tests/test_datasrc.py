@@ -163,6 +163,6 @@ def test_source_heartbeat(sim_src_cfg):
             count += 1
         elif msg.mtype == MsgTypes.Heartbeat:
             # check that heart happened between the right events
-            assert ((count + 1) % heartbeat_period) == 0
+            assert (count % heartbeat_period) == 0
             # check that the number of the heartbeat is as expected
-            assert msg.payload == (count // heartbeat_period)
+            assert msg.payload == ((count - 1) // heartbeat_period)

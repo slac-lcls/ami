@@ -198,12 +198,13 @@ class Source(abc.ABC):
         Returns:
             An object of type `Message` which includes the data for the event.
         """
-        old_heartbeat = self.heartbeat
-        if self.check_heartbeat_boundary(timestamp):
-            yield Message(MsgTypes.Heartbeat, self.idnum, old_heartbeat)
         msg = Message(MsgTypes.Datagram, self.idnum, data)
         msg.timestamp = timestamp
         yield msg
+        # check if this crossed a heartbeat boundary -> emit a heartbeat msg
+        old_heartbeat = self.heartbeat
+        if self.check_heartbeat_boundary(timestamp):
+            yield Message(MsgTypes.Heartbeat, self.idnum, old_heartbeat)
 
     def request(self, names):
         self.requested_names = set(names)
