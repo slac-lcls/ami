@@ -143,10 +143,10 @@ class AreaDetWidget(pg.ImageView):
 
     @asyncqt.asyncSlot(object)
     async def roi_updated_async(self, roi_func):
-        await self.comm_handler.map("map_%s_roi" % self.name,
-                                    inputs=[self.name],
-                                    outputs=["%s_roi" % self.name],
-                                    func=roi_func)
+        await self.comm_handler.addMap("map_%s_roi" % self.name,
+                                       inputs=[self.name],
+                                       outputs=["%s_roi" % self.name],
+                                       func=roi_func)
 
 
 class Calculator(QWidget):
@@ -222,10 +222,10 @@ class Calculator(QWidget):
 
     @asyncqt.asyncSlot(str, object, object)
     async def update_calc(self, name, inputs, calc_func):
-        await self.comm.map(name="map_%s_calc" % name,
-                            inputs=inputs,
-                            outputs=[name],
-                            func=calc_func)
+        await self.comm.addMap(name="map_%s_calc" % name,
+                               inputs=inputs,
+                               outputs=[name],
+                               func=calc_func)
 
 
 class DetectorList(QListWidget):
