@@ -166,3 +166,29 @@ def test_source_heartbeat(sim_src_cfg):
             assert (count % heartbeat_period) == 0
             # check that the number of the heartbeat is as expected
             assert msg.payload == ((count - 1) // heartbeat_period)
+
+
+def test_source_request(sim_src_cfg):
+    src_cls = Source.find_source('static')
+    assert src_cls is not None
+
+    sim_src_cfg['bound'] = 10
+
+    idnum = 0
+    num_workers = 1
+    heartbeat_period = 3
+
+    expected_names = [
+        ['cspad'],
+        [],
+        ['cspad', 'delta_t'],
+    ]
+
+    source = src_cls(idnum, num_workers, heartbeat_period, sim_src_cfg)
+
+    # loop over the events testing that data dict keys match the requested names
+    for msg in source.events():
+        if msg.mtype == MsgTypes.Datagram:
+            assert set(msg.payload.keys()) == source.requested_names
+        elif msg.mtype == MsgTypes.Heartbeat:
+            source.request(expected_names[msg.payload])
