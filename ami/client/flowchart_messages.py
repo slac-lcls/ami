@@ -65,6 +65,15 @@ class UpdateNodeAttributes(NodeMsg):
         self.conditions = conditions
 
 
+class NodeCheckpoint(NodeMsg):
+
+    def __init__(self, node_name, inputs=None, conditions=None, state=None):
+        super(NodeCheckpoint, self).__init__(node_name)
+        self.inputs = inputs
+        self.conditions = conditions
+        self.state = state
+
+
 class GetNodeOperation(NodeMsg):
 
     def __init__(self):

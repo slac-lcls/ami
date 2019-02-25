@@ -42,8 +42,9 @@ class Flowchart(Node):
         self.node = self.ctx.socket(zmq.PULL)
         self.node.bind(node_addr)
 
-        self.checkpoint = self.ctx.socket(zmq.PULL)
-        self.checkpoint.bind(checkpoint_addr)
+        self.checkpoint = self.ctx.socket(zmq.SUB)
+        self.checkpoint.setsockopt_string(zmq.SUBSCRIBE, '')
+        self.checkpoint.connect(checkpoint_addr)
 
         if name is None:
             name = "Flowchart"
