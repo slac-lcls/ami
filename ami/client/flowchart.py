@@ -123,7 +123,7 @@ class NodeProcess(QtCore.QObject):
             elif isinstance(msg, fcMsgs.GetNodeOperation):
                 await self.operation()
             elif isinstance(msg, fcMsgs.NodeCheckpoint):
-                self.node.restoreState(msg)
+                self.restore_checkpoint(msg)
             elif isinstance(msg, fcMsgs.CloseNode):
                 return
 
@@ -287,6 +287,7 @@ class MessageBroker(object):
 
                     if name in self.checkpoints:
                         checkpoint = self.checkpoints[name]
+                        self.msgs[name] = checkpoint
                         await self.broker_pub_sock.send_string(name, zmq.SNDMORE)
                         await self.broker_pub_sock.send_pyobj(checkpoint)
 
@@ -315,6 +316,12 @@ class MessageBroker(object):
 
             elif isinstance(msg, fcMsgs.DisplayNode):
                 await self.forward_message_to_node(topic, msg)
+
+            elif isinstance(msg, fcMsgs.NodeCheckpoint):
+                # Receive checkpoints from editor when we load a saved graph
+                await self.forward_message_to_node(topic, msg)
+                async with self.lock:
+                    self.checkpoints[topic] = msg
 
             elif isinstance(msg, fcMsgs.CloseNode):
                 await self.forward_message_to_node(topic, msg)
