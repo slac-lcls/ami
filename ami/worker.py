@@ -6,7 +6,6 @@ import json
 import dill
 import logging
 import argparse
-import functools
 from ami import LogConfig
 from ami.comm import Ports, Colors, ResultStore, GraphReceiver
 from ami.data import MsgTypes, Source
@@ -32,47 +31,19 @@ class Worker:
         self.graph = None
 
         self.graph_comm = GraphReceiver(graph_addr)
-        for topic in ["graph", "add", "del"]:
-            self.graph_comm.add_handler(topic, functools.partial(self.handle_graph, topic))
+        self.graph_comm.add_handler("graph", self.recv_graph)
         self.graph_comm.add_command("config", self.send_configure)
 
     def send_configure(self):
         self.store.send(self.src.configure())
 
-    def handle_graph(self, topic, num_work, num_col, version, payload):
-        if topic == "graph":
-            self.graph = dill.loads(payload)
-            if self.graph is not None:
-                self.graph.compile(num_workers=num_work, num_local_collectors=num_col)
-                self.src.request(self.graph.sources)
-            else:
-                self.src.request([])
-            self.store.version = version
-        elif topic == "add":
-            add_update = dill.loads(payload)
-            if self.graph is not None:
-                self.graph.add(add_update)
-                self.graph.compile(num_workers=num_work, num_local_collectors=num_col)
-                self.src.request(self.graph.sources)
-                self.store.version = version
-            else:
-                logger.error("worker%d: Add requested on empty graph", self.idnum)
-        elif topic == "del":
-            name = dill.loads(payload)
-            if self.graph is not None:
-                self.graph.remove(name)
-                # check if the resulting graph is empty or not
-                if self.graph:
-                    self.graph.compile(num_workers=num_work, num_local_collectors=num_col)
-                    self.src.request(self.graph.sources)
-                else:
-                    self.graph = None
-                    self.src.request([])
-                self.store.version = version
-            else:
-                logger.error("worker%d: Del requested on empty graph", self.idnum)
+    def recv_graph(self, name, version, payload):
+        self.graph = dill.loads(payload)
+        if self.graph is not None:
+            self.src.request(self.graph.sources)
         else:
-            logger.warn("worker%d: No handler for received topic: %s", self.idnum, topic)
+            self.src.request([])
+        self.store.version = version
 
     def run(self):
         for msg in self.src.events():

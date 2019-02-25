@@ -89,13 +89,16 @@ def test_comp_graph(event_builder, eb_graph):
     hb = 0
     idnum = 0
     graph_version = 0
+    graph_name = 'test'
     nworkers = event_builder.num_contribs
     ncollectors = 1
     value = 6
     data = {'value_%s' % Colors.Worker: value}
 
     # add the graph to the event builder
-    event_builder.set_graph(graph_version, nworkers, ncollectors, eb_graph)
+    eb_graph = dill.loads(eb_graph)
+    eb_graph.compile(num_workers=nworkers, num_local_collectors=ncollectors)
+    event_builder.set_graph(graph_name, graph_version, dill.dumps(eb_graph))
     # check that the graph is there
     assert graph_version in event_builder.graphs
 

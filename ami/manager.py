@@ -118,7 +118,7 @@ class Manager(Collector):
 
     def cmd_clear_graph(self):
         self.graph = None
-        self.publish_graph("graph", dill.dumps(self.graph))
+        self.publish_graph()
 
     def cmd_reset_features(self):
         self.feature_store.clear()
@@ -128,21 +128,14 @@ class Manager(Collector):
         self.comm.send(dill.dumps(self.graph))
 
     def cmd_add_graph(self):
-        raw_add = self.comm.recv()
-        node = dill.loads(raw_add)
+        node = dill.loads(self.comm.recv())
         backup = dill.dumps(self.graph)
         try:
             if self.graph is None:
                 self.graph = Graph("manager_graph")
-                self.graph.add(node)
-                cmd = "graph"
-                raw_data = dill.dumps(self.graph)
-            else:
-                self.graph.add(node)
-                cmd = "add"
-                raw_data = raw_add
+            self.graph.add(node)
             self.compile_graph()
-            self.publish_graph(cmd, raw_data)
+            self.publish_graph()
         except AssertionError:
             logger.exception("Failure encountered adding node \"%s\" to the graph:", node.name)
             self.graph = dill.loads(backup)
@@ -150,8 +143,7 @@ class Manager(Collector):
             self.comm.send_string('error')
 
     def cmd_del_graph(self):
-        raw_name = self.comm.recv()
-        name = dill.loads(raw_name)
+        name = dill.loads(self.comm.recv())
         if self.graph is not None:
             backup = dill.dumps(self.graph)
             try:
@@ -162,7 +154,7 @@ class Manager(Collector):
                 else:
                     # if the graph is empty remove it
                     self.graph = None
-                self.publish_graph("del", raw_name)
+                self.publish_graph()
             except AssertionError:
                 logger.exception("Failure encountered removing node \"%s\" from the graph:", name)
                 self.graph = dill.loads(backup)
@@ -173,27 +165,26 @@ class Manager(Collector):
             self.comm.send_string('ok')
 
     def cmd_set_graph(self):
-        raw_graph = self.comm.recv()
         backup = dill.dumps(self.graph)
         try:
-            self.graph = dill.loads(raw_graph)
+            self.graph = dill.loads(self.comm.recv())
             # Check if the graph can be compiled
             if self.graph:
                 self.compile_graph()
-            self.publish_graph("graph", raw_graph)
+            self.publish_graph()
         except AssertionError:
             logger.exception("Failure encountered compiling the requested graph:")
             self.graph = dill.loads(backup)
             logger.info("Restored previous version of the graph (v%d)", self.version)
             self.comm.send_string('error')
 
-    def publish_graph(self, topic, graph):
+    def publish_graph(self):
         logger.info("Sending requested graph...")
         try:
             self.version += 1
-            self.graph_comm.send_string(topic, zmq.SNDMORE)
-            self.graph_comm.send_pyobj((self.num_workers, self.num_nodes, self.version), zmq.SNDMORE)
-            self.graph_comm.send(graph)
+            self.graph_comm.send_string("graph", zmq.SNDMORE)
+            self.graph_comm.send_pyobj((0, self.version), zmq.SNDMORE)
+            self.graph_comm.send(dill.dumps(self.graph))
             self.export_graph()
             logger.info("Sending of graph (v%d) completed", self.version)
             self.comm.send_string('ok')
@@ -206,7 +197,7 @@ class Manager(Collector):
 
         if request == "\x01":
             self.graph_comm.send_string("graph", zmq.SNDMORE)
-            self.graph_comm.send_pyobj((self.num_workers, self.num_nodes, self.version), zmq.SNDMORE)
+            self.graph_comm.send_pyobj((0, self.version), zmq.SNDMORE)
             self.graph_comm.send(dill.dumps(self.graph))
             # re-ask for config information on connect
             self.graph_comm.send_string("cmd", zmq.SNDMORE)

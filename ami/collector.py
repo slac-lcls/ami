@@ -1,9 +1,7 @@
 #!/usr/bin/env python
 import sys
-import dill
 import logging
 import argparse
-import functools
 from ami import LogConfig
 from ami.comm import Ports, Colors, Collector, EventBuilder, GraphReceiver
 from ami.data import MsgTypes
@@ -26,37 +24,12 @@ class GraphCollector(Collector):
 
         self.graph = None
         self.graph_comm = GraphReceiver(graph_addr)
-        for topic in ["graph", "add", "del"]:
-            self.graph_comm.add_handler(topic, functools.partial(self.recv_graph, topic))
+        self.graph_comm.add_handler("graph", self.recv_graph)
         self.register(self.graph_comm.sock, self.graph_comm.recv)
 
-    def recv_graph(self, topic, nwork, ncol, version, payload):
-        if topic == 'graph':
-            self.graph = payload
-            self.store.set_graph(version, nwork, ncol, self.graph)
-        elif topic == "add":
-            add_update = dill.loads(payload)
-            if self.graph is not None:
-                updated_graph = dill.loads(self.graph)
-                updated_graph.add(add_update)
-                self.graph = dill.dumps(updated_graph)
-                self.store.set_graph(version, nwork, ncol, self.graph)
-            else:
-                logger.error("Add requested on empty graph")
-        elif topic == "del":
-            name = dill.loads(payload)
-            if self.graph is not None:
-                updated_graph = dill.loads(self.graph)
-                updated_graph.remove(name)
-                # check if the resulting graph is empty
-                if not updated_graph:
-                    updated_graph = None
-                self.graph = dill.dumps(updated_graph)
-                self.store.set_graph(version, nwork, ncol, self.graph)
-            else:
-                logger.error("Delete requested on empty graph")
-        else:
-            logger.warn("invalid topic: %s", topic)
+    def recv_graph(self, name, version, payload):
+        self.graph = payload
+        self.store.set_graph(name, version, self.graph)
 
     def process_msg(self, msg):
         if msg.mtype == MsgTypes.Transition:

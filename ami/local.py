@@ -141,10 +141,10 @@ def run_ami(args, queue=mp.Queue()):
     flags = {}
     if args.tcp:
         host = "127.0.0.1"
-        collector_addr = "tcp://%s:%d" % (host, args.port)
-        globalcol_addr = "tcp://%s:%d" % (host, args.port+1)
-        graph_addr = "tcp://%s:%d" % (host, args.port+2)
-        comm_addr = "tcp://%s:%d" % (host, args.port+3)
+        comm_addr = "tcp://%s:%d" % (host, args.port)
+        graph_addr = "tcp://%s:%d" % (host, args.port+1)
+        collector_addr = "tcp://%s:%d" % (host, args.port+2)
+        globalcol_addr = "tcp://%s:%d" % (host, args.port+3)
         results_addr = "tcp://%s:%d" % (host, args.port+4)
         if args.export is not None:
             export_addr = "tcp://%s:%d" % (host, args.port+5)

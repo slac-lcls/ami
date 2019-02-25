@@ -155,10 +155,8 @@ class EventBuilder(ZmqHandler):
                 logger.debug("Pruned old graph (v%d)", ver_key)
                 del self.graphs[ver_key]
 
-    def set_graph(self, ver_key, nwork, ncol, graph):
+    def set_graph(self, name, ver_key, graph):
         self.graphs[ver_key] = dill.loads(graph)
-        if self.graphs[ver_key] is not None:
-            self.graphs[ver_key].compile(num_workers=nwork, num_local_collectors=ncol)
         self.clear_graphs()
 
     def complete(self, eb_key, identity):
@@ -291,10 +289,10 @@ class GraphReceiver:
         if topic in self.special:
             self.handlers[topic]()
         else:
-            num_work, num_col, version = self.sock.recv_pyobj()
+            name, version = self.sock.recv_pyobj()
             payload = self.sock.recv()
             if topic in self.handlers:
-                self.handlers[topic](num_work, num_col, version, payload)
+                self.handlers[topic](name, version, payload)
 
 
 class CommHandler(abc.ABC):

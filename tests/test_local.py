@@ -37,7 +37,7 @@ def start_ami(request, workerjson, use_psana):
     ami.start()
 
     host = "127.0.0.1"
-    comm_addr = "tcp://%s:%d" % (host, Ports.Comm+3)
+    comm_addr = "tcp://%s:%d" % (host, Ports.Comm)
     comm_handler = GraphCommHandler(comm_addr)
 
     yield comm_handler
