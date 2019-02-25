@@ -4,13 +4,6 @@ from pyqtgraph.widgets.SpinBox import SpinBox
 from pyqtgraph.WidgetGroup import WidgetGroup
 from pyqtgraph.widgets.ColorButton import ColorButton
 from ami.flowchart.Node import Node
-import numpy as np
-
-try:
-    import metaarray
-    HAVE_METAARRAY = True
-except ImportError:
-    HAVE_METAARRAY = False
 
 
 def generateUi(opts):
@@ -120,7 +113,7 @@ class CtrlNode(Node):
         return state
 
     def restoreState(self, state):
-        Node.restoreState(self, state)
+        super(CtrlNode, self).restoreState(state)
         if self.stateGroup is not None:
             self.stateGroup.setState(state.get('ctrl', {}))
 
@@ -142,42 +135,6 @@ class CtrlNode(Node):
             self.task = None
 
 
-class PlottingCtrlNode(CtrlNode):
-    """Abstract class for CtrlNodes that can connect to plots."""
-
-    def __init__(self, name, ui=None, terminals=None, addr=""):
-        super(PlottingCtrlNode, self).__init__(name, addr=addr, ui=ui, terminals=terminals)
-        self.plotTerminal = self.addOutput('plot', optional=True)
-
-    def connected(self, term, remote):
-        CtrlNode.connected(self, term, remote)
-        if term is not self.plotTerminal:
-            return
-        node = remote.node()
-        node.sigPlotChanged.connect(self.connectToPlot)
-        self.connectToPlot(node)
-
-    def disconnected(self, term, remote):
-        CtrlNode.disconnected(self, term, remote)
-        if term is not self.plotTerminal:
-            return
-        remote.node().sigPlotChanged.disconnect(self.connectToPlot)
-        self.disconnectFromPlot(remote.node().getPlot())
-
-    def connectToPlot(self, node):
-        """Define what happens when the node is connected to a plot"""
-        raise Exception("Must be re-implemented in subclass")
-
-    def disconnectFromPlot(self, plot):
-        """Define what happens when the node is disconnected from a plot"""
-        raise Exception("Must be re-implemented in subclass")
-
-    def process(self, In, display=True):
-        out = CtrlNode.process(self, In, display)
-        out['plot'] = None
-        return out
-
-
 class UniOpNode(Node):
     """Generic node for performing any operation like Out = In.fn()"""
     def __init__(self, name, addr):
@@ -185,18 +142,3 @@ class UniOpNode(Node):
             'In': {'io': 'in'},
             'Out': {'io': 'out'}
         })
-
-
-def metaArrayWrapper(fn):
-    def newFn(self, data, *args, **kargs):
-        if HAVE_METAARRAY and (hasattr(data, 'implements') and data.implements('MetaArray')):
-            d1 = fn(self, data.view(np.ndarray), *args, **kargs)
-            info = data.infoCopy()
-            if d1.shape != data.shape:
-                for i in range(data.ndim):
-                    if 'values' in info[i]:
-                        info[i]['values'] = info[i]['values'][:d1.shape[i]]
-            return metaarray.MetaArray(d1, info=info)
-        else:
-            return fn(self, data, *args, **kargs)
-    return newFn

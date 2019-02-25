@@ -42,8 +42,9 @@ class Flowchart(Node):
         self.node = self.ctx.socket(zmq.PULL)
         self.node.bind(node_addr)
 
-        self.checkpoint = self.ctx.socket(zmq.PULL)
-        self.checkpoint.bind(checkpoint_addr)
+        self.checkpoint = self.ctx.socket(zmq.SUB)
+        self.checkpoint.setsockopt_string(zmq.SUBSCRIBE, '')
+        self.checkpoint.connect(checkpoint_addr)
 
         if name is None:
             name = "Flowchart"
@@ -59,6 +60,8 @@ class Flowchart(Node):
 
         # self.viewBox.autoRange(padding=0.04)
         self.viewBox.enableAutoRange()
+
+        self.sigChartLoaded.connect(self.chartLoaded)
 
     def setLibrary(self, lib):
         self.library = lib
@@ -292,6 +295,15 @@ class Flowchart(Node):
             current_node_state = self._nodes[node_name].saveState()
             new_node_state['pos'] = current_node_state['pos']
             self._nodes[node_name].restoreState(new_node_state)
+
+    @asyncqt.asyncSlot()
+    async def chartLoaded(self):
+        for name, node in self.nodes().items():
+            if hasattr(node, "input_names"):
+                msg = fcMsgs.NodeCheckpoint(node.name(), inputs=node.input_names, conditions=node.condition_names,
+                                            state=node.saveState())
+                await self.broker.send_string(node.name(), zmq.SNDMORE)
+                await self.broker.send_pyobj(msg)
 
 
 class FlowchartCtrlWidget(QtGui.QWidget):

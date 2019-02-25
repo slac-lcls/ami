@@ -100,10 +100,10 @@ class NodeProcess(QtCore.QObject):
         self.editor = self.ctx.socket(zmq.PUSH)
         self.editor.connect(editor_addr)
 
-        self.checkpoint = self.ctx.socket(zmq.PUSH)
+        self.checkpoint = self.ctx.socket(zmq.PUB)
         self.checkpoint.connect(checkpoint_addr)
 
-        self.ctrlWidget = None
+        self.ctrlWidget = self.node.ctrlWidget()
         self.widget = None
         self.show = False
         self.win.setWindowTitle(msg.name)
@@ -122,6 +122,8 @@ class NodeProcess(QtCore.QObject):
                 self.display(msg)
             elif isinstance(msg, fcMsgs.GetNodeOperation):
                 await self.operation()
+            elif isinstance(msg, fcMsgs.NodeCheckpoint):
+                self.restore_checkpoint(msg)
             elif isinstance(msg, fcMsgs.CloseNode):
                 return
 
@@ -130,8 +132,7 @@ class NodeProcess(QtCore.QObject):
         self.conditions = msg.conditions
 
     def display(self, msg):
-        if self.ctrlWidget is None and self.widget is None:
-            self.ctrlWidget = self.node.ctrlWidget()
+        if self.widget is None:
             self.widget = self.node.display(msg.inputs, self.graphmgr_addr, self.win)
 
             if self.ctrlWidget and self.widget:
@@ -162,9 +163,14 @@ class NodeProcess(QtCore.QObject):
 
     @asyncSlot(object)
     async def send_checkpoint(self, node):
-        state = node.saveState()
+        msg = fcMsgs.NodeCheckpoint(node.name(), inputs=self.inputs, conditions=self.conditions, state=node.saveState())
         await self.checkpoint.send_string(node.name(), zmq.SNDMORE)
-        await self.checkpoint.send_pyobj(state)
+        await self.checkpoint.send_pyobj(msg)
+
+    def restore_checkpoint(self, checkpoint):
+        self.inputs = checkpoint.inputs
+        self.conditions = checkpoint.conditions
+        self.node.restoreState(checkpoint.state)
 
 
 class MessageBroker(object):
@@ -177,19 +183,30 @@ class MessageBroker(object):
         self.broker_sub_addr = "ipc://%s/broker_sub" % ipcdir
         self.broker_pub_addr = "ipc://%s/broker_pub" % ipcdir
         self.node_addr = "ipc://%s/nodes" % ipcdir
-        self.checkpoint_addr = "ipc://%s/checkpoint" % ipcdir
+
+        self.checkpoint_sub_addr = "ipc://%s/checkpoint_sub" % ipcdir
+        self.checkpoint_pub_addr = "ipc://%s/checkpoint_pub" % ipcdir
 
         self.lock = asyncio.Lock()
         self.msgs = {}
+        self.checkpoints = {}
         self.widget_procs = {}
 
         self.ctx = zmq.asyncio.Context()
+
         self.broker_sub_sock = self.ctx.socket(zmq.SUB)
         self.broker_sub_sock.setsockopt_string(zmq.SUBSCRIBE, '')
         self.broker_sub_sock.bind(self.broker_sub_addr)
 
         self.broker_pub_sock = self.ctx.socket(zmq.XPUB)
         self.broker_pub_sock.bind(self.broker_pub_addr)
+
+        self.checkpoint_sub_sock = self.ctx.socket(zmq.SUB)
+        self.checkpoint_sub_sock.setsockopt_string(zmq.SUBSCRIBE, '')
+        self.checkpoint_sub_sock.bind(self.checkpoint_sub_addr)
+
+        self.checkpoint_pub_sock = self.ctx.socket(zmq.PUB)
+        self.checkpoint_pub_sock.bind(self.checkpoint_pub_addr)
 
         self.launch_editor_window()
 
@@ -199,11 +216,11 @@ class MessageBroker(object):
     def launch_editor_window(self):
         editor_proc = mp.Process(
             target=run_editor_window,
-            args=(self.broker_sub_addr, self.graphmgr_addr, self.node_addr, self.checkpoint_addr),
+            args=(self.broker_sub_addr, self.graphmgr_addr, self.node_addr, self.checkpoint_pub_addr),
             daemon=True)
         editor_proc.start()
 
-        self.widget_procs["editor"] = editor_proc
+        self.editor = editor_proc
 
     async def handle_connect(self):
 
@@ -220,12 +237,59 @@ class MessageBroker(object):
                     else:
                         continue
 
-    async def forward_message(self, topic, msg):
+    async def handle_checkpoint(self):
+
+        while True:
+            topic = await self.checkpoint_sub_sock.recv_string()
+            msg = await self.checkpoint_sub_sock.recv_pyobj()
+
+            async with self.lock:
+                self.checkpoints[topic] = msg
+
+            await self.checkpoint_pub_sock.send_string(topic)
+            await self.checkpoint_pub_sock.send_pyobj(msg.state)
+
+    async def forward_message_to_node(self, topic, msg):
         if isinstance(msg, fcMsgs.NodeMsg):
             async with self.lock:
                 self.msgs[topic] = msg
-                await self.broker_pub_sock.send_string(topic, zmq.SNDMORE)
-                await self.broker_pub_sock.send_pyobj(msg)
+
+            await self.broker_pub_sock.send_string(topic, zmq.SNDMORE)
+            await self.broker_pub_sock.send_pyobj(msg)
+
+    async def monitor_processes(self):
+
+        while True:
+            await asyncio.sleep(0.25)
+
+            dead_procs = []
+            for name, np in self.widget_procs.items():
+                node_type, proc = np
+                if not proc.is_alive():
+                    dead_procs.append(name)
+
+            async with self.lock:
+                for name in dead_procs:
+                    typ, proc = self.widget_procs[name]
+                    msg = fcMsgs.CreateNode(name, typ)
+
+                    # don't resend last message
+                    del self.msgs[msg.name]
+
+                    proc = mp.Process(
+                        target=NodeProcess,
+                        args=(msg, self.broker_pub_addr, self.graphmgr_addr, self.node_addr, self.checkpoint_sub_addr),
+                        daemon=True
+                    )
+                    proc.start()
+                    logger.info("restarting process: %s pid: %d", msg.name, proc.pid)
+                    self.widget_procs[msg.name] = (msg.node_type, proc)
+
+                    if name in self.checkpoints:
+                        checkpoint = self.checkpoints[name]
+                        self.msgs[name] = checkpoint
+                        await self.broker_pub_sock.send_string(name, zmq.SNDMORE)
+                        await self.broker_pub_sock.send_pyobj(checkpoint)
 
     async def process_messages(self):
 
@@ -236,30 +300,36 @@ class MessageBroker(object):
             if isinstance(msg, fcMsgs.CreateNode):
                 proc = mp.Process(
                     target=NodeProcess,
-                    args=(msg, self.broker_pub_addr, self.graphmgr_addr, self.node_addr, self.checkpoint_addr),
+                    args=(msg, self.broker_pub_addr, self.graphmgr_addr, self.node_addr, self.checkpoint_sub_addr),
                     daemon=True
                 )
                 proc.start()
                 logger.info("creating process: %s pid: %d", msg.name, proc.pid)
                 async with self.lock:
-                    self.widget_procs[msg.name] = proc
+                    self.widget_procs[msg.name] = (msg.node_type, proc)
 
             elif isinstance(msg, fcMsgs.UpdateNodeAttributes):
-                await self.forward_message(topic, msg)
+                await self.forward_message_to_node(topic, msg)
 
             elif isinstance(msg, fcMsgs.GetNodeOperation):
-                await self.forward_message(topic, msg)
+                await self.forward_message_to_node(topic, msg)
 
             elif isinstance(msg, fcMsgs.DisplayNode):
-                await self.forward_message(topic, msg)
+                await self.forward_message_to_node(topic, msg)
+
+            elif isinstance(msg, fcMsgs.NodeCheckpoint):
+                # Receive checkpoints from editor when we load a saved graph
+                await self.forward_message_to_node(topic, msg)
+                async with self.lock:
+                    self.checkpoints[topic] = msg
 
             elif isinstance(msg, fcMsgs.CloseNode):
-                await self.forward_message(topic, msg)
+                await self.forward_message_to_node(topic, msg)
 
                 async with self.lock:
                     if topic in self.widget_procs:
-                        proc = self.widget_procs[topic]
                         logger.info("deleting process: %s pid: %d", topic, proc.pid)
+                        _, proc = self.widget_procs[topic]
                         proc.join()
                         del self.widget_procs[topic]
 
@@ -269,21 +339,16 @@ class MessageBroker(object):
                     await self.broker_pub_sock.send_string(topic)
                     await self.broker_pub_sock.send_pyobj(fcMsgs.CloseMsg())
 
-                for name, proc in self.widget_procs.items():
+                for name, np in self.widget_procs.items():
+                    node_type, proc = np
                     proc.join()
                 break
 
-            dead_procs = []
-            for name, proc in self.widget_procs.items():
-                if not proc.is_alive():
-                    dead_procs.append(name)
-
-            for name in dead_procs:
-                del self.widget_procs[name]
-
     async def run(self):
         await asyncio.gather(self.handle_connect(),
-                             self.process_messages())
+                             self.handle_checkpoint(),
+                             self.process_messages(),
+                             self.monitor_processes())
 
 
 def run_client(graphmgr_addr, load):
