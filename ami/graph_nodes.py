@@ -71,7 +71,6 @@ class Filter(abc.ABC):
         """
         self.name = kwargs['name']
         self.condition_needs = kwargs['condition_needs']
-        self.condition = kwargs.get('condition', lambda cond: cond)
         self.inputs = []
         self.outputs = kwargs['outputs']
         self.color = ""
@@ -91,6 +90,7 @@ class FilterOn(Filter):
             outputs (list): List of outputs
             condition (function): Condition to evaluate
         """
+        self.condition = kwargs.get('condition', lambda cond: cond)
         super(FilterOn, self).__init__(**kwargs)
 
     def to_operation(self):

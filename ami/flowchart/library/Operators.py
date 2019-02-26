@@ -15,7 +15,7 @@ class Sum(Node):
 
     def to_operation(self, inputs, conditions=[]):
         outputs = [self.name()]
-        node = gn.Map(name=self.name(), inputs=inputs, outputs=outputs, func=np.sum)
+        node = gn.Map(name=self.name()+"_operation", inputs=inputs, outputs=outputs, func=np.sum)
         return node
 
 
@@ -44,5 +44,6 @@ class Binning(Node):
 
     def to_operation(self, inputs, conditions=[]):
         outputs = [self.name()]
-        node = gn.Binning(name=self.name(), condition_needs=conditions, inputs=inputs, outputs=outputs)
+
+        node = gn.Binning(name=self.name()+"_operation", condition_needs=conditions, inputs=inputs, outputs=outputs)
         return node

@@ -62,12 +62,12 @@ class Roi(CtrlNode):
         extent_y = self.extent_y
 
         def func(img):
-            img[slice(origin_x, extent_x), slice(origin_y, extent_y)]
+            return img[slice(origin_x, extent_x), slice(origin_y, extent_y)]
 
         self.func = func
 
     def to_operation(self, inputs, conditions=[]):
         outputs = [self.name()]
 
-        node = Map(name=self.name(), inputs=inputs, outputs=outputs, conditions=conditions, func=self.func)
+        node = Map(name=self.name()+"_operation", inputs=inputs, outputs=outputs, conditions=conditions, func=self.func)
         return node

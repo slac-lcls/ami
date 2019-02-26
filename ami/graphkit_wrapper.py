@@ -334,9 +334,15 @@ class Graph():
         nodes = list(filter(lambda node: type(node) is not str, nodes))
         nodes = list(map(lambda node: node.to_operation(), nodes))
         node = filter_node.to_operation()
-        node = node(name=filter_node.name,
-                    condition_needs=filter_node.condition_needs, condition=filter_node.condition,
-                    needs=inputs, provides=outputs)(*nodes)
+        if hasattr(filter_node, 'condition'):
+            node = node(name=filter_node.name,
+                        condition_needs=filter_node.condition_needs, condition=filter_node.condition,
+                        needs=inputs, provides=outputs)(*nodes)
+        else:
+            node = node(name=filter_node.name,
+                        condition_needs=filter_node.condition_needs,
+                        needs=inputs, provides=outputs)(*nodes)
+
         return node
 
     def compile(self, num_workers=1, num_local_collectors=1):
