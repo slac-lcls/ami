@@ -215,7 +215,7 @@ class Flowchart(Node):
                     try:
                         node = Node(name=n['name'])
                         node.restoreState(n['state'])
-                        self.addNode(node, n['name'], pos=n['state']['pos'])
+                        self.addNode(node, n['name'])
                     except Exception:
                         printExc("Error creating node %s: (continuing anyway)" % n['name'])
                 else:

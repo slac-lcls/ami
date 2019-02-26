@@ -4,6 +4,7 @@ from pyqtgraph.widgets.SpinBox import SpinBox
 from pyqtgraph.WidgetGroup import WidgetGroup
 from pyqtgraph.widgets.ColorButton import ColorButton
 from ami.flowchart.Node import Node
+import asyncio
 
 
 def generateUi(opts):
@@ -134,11 +135,13 @@ class CtrlNode(Node):
             self.task.cancel()
             self.task = None
 
+    def display(self, inputs, addr, win, widget):
+        name, topic = inputs[0]
 
-class UniOpNode(Node):
-    """Generic node for performing any operation like Out = In.fn()"""
-    def __init__(self, name, addr):
-        super(UniOpNode, self).__init__(name, addr=addr, terminals={
-            'In': {'io': 'in'},
-            'Out': {'io': 'out'}
-        })
+        if self.widget is None:
+            self.widget = widget(name, topic, addr, win)
+
+        if self.task is None:
+            self.task = asyncio.ensure_future(self.widget.update())
+
+        return self.widget

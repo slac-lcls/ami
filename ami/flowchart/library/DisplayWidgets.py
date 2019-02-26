@@ -36,9 +36,9 @@ class ScalarWidget(QLCDNumber):
 
     async def update(self):
         while True:
-            await self.fetecher.fetch()
-            if self.fetecher.reply is not None:
-                self.display(self.fetecher.reply)
+            await self.fetcher.fetch()
+            if self.fetcher.reply is not None:
+                self.display(self.fetcher.reply)
 
 
 class AreaDetWidget(pg.ImageView):

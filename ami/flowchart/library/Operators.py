@@ -25,7 +25,6 @@ class Binning(Node):
 
     def __init__(self, name):
         super(Binning, self).__init__(name, terminals={
-            'Condition': {'io': 'in'},
             'Values': {'io': 'in'},
             'Bins': {'io': 'in'},
             'Out': {'io': 'out'}

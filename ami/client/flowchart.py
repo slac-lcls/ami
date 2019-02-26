@@ -163,7 +163,10 @@ class NodeProcess(QtCore.QObject):
 
     @asyncSlot(object)
     async def send_checkpoint(self, node):
-        msg = fcMsgs.NodeCheckpoint(node.name(), inputs=self.inputs, conditions=self.conditions, state=node.saveState())
+        msg = fcMsgs.NodeCheckpoint(node.name(),
+                                    inputs=self.inputs,
+                                    conditions=self.conditions,
+                                    state=node.saveState())
         await self.checkpoint.send_string(node.name(), zmq.SNDMORE)
         await self.checkpoint.send_pyobj(msg)
 
