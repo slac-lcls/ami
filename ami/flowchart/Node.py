@@ -32,7 +32,6 @@ class Node(QtCore.QObject):
 
     sigClosed = QtCore.Signal(object)
     sigRenamed = QtCore.Signal(object, object)
-    sigTerminalRenamed = QtCore.Signal(object, object)  # term, oldName
     sigTerminalAdded = QtCore.Signal(object, object)  # self, term
     sigTerminalRemoved = QtCore.Signal(object, object)  # self, term
     sigTerminalConnected = QtCore.Signal(object)  # self
@@ -132,20 +131,6 @@ class Node(QtCore.QObject):
             del self._outputs[name]
         self.graphicsItem().updateTerminals()
         self.sigTerminalRemoved.emit(self, term)
-
-    def terminalRenamed(self, term, oldName):
-        """Called after a terminal has been renamed
-
-        Causes sigTerminalRenamed to be emitted."""
-        newName = term.name()
-        for d in [self.terminals, self._inputs, self._outputs]:
-            if oldName not in d:
-                continue
-            d[newName] = d[oldName]
-            del d[oldName]
-
-        self.graphicsItem().updateTerminals()
-        self.sigTerminalRenamed.emit(term, oldName)
 
     def addTerminal(self, name, **opts):
         """Add a new terminal to this Node with the given name. Extra

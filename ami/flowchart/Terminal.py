@@ -7,8 +7,7 @@ import weakref
 
 
 class Terminal(object):
-    def __init__(self, node, name, io, optional=False, multi=False, pos=None, renamable=False, removable=False,
-                 multiable=False):
+    def __init__(self, node, name, io, optional=False, pos=None, removable=False):
         """
         Construct a new terminal.
 
@@ -18,76 +17,29 @@ class Terminal(object):
         name            string, the name of the terminal
         io              'in' or 'out'
         optional        bool, whether the node may process without connection to this terminal
-        multi           bool, for inputs: whether this terminal may make multiple connections
-                        for outputs: whether this terminal creates a different value for each connection
         pos             [x, y], the position of the terminal within its node's boundaries
-        renamable       (bool) Whether the terminal can be renamed by the user
         removable       (bool) Whether the terminal can be removed by the user
-        multiable       (bool) Whether the user may toggle the *multi* option for this terminal
         ==============  =================================================================================
         """
         self._io = io
         self._optional = optional
-        self._multi = multi
         self._node = weakref.ref(node)
         self._name = name
-        self._renamable = renamable
         self._removable = removable
-        self._multiable = multiable
         self._connections = {}
         self._graphicsItem = TerminalGraphicsItem(self, parent=self._node().graphicsItem())
 
-        if multi:
-            self._value = {}  # dictionary of terminal:value pairs.
-        else:
-            self._value = None
-
-        self.valueOk = None
-        self.recolor()
-
-    def value(self, term=None):
-        """Return the value this terminal provides for the connected terminal"""
-        if term is None:
-            return self._value
-
-        if self.isMultiValue():
-            return self._value.get(term, None)
-        else:
-            return self._value
-
-    def setValue(self, val):
-        """If this is a single-value terminal, val should be a single value.
-        If this is a multi-value terminal, val should be a dict of terminal:value pairs"""
-        if not self.isMultiValue():
-            if fn.eq(val, self._value):
-                return
-            self._value = val
-        else:
-            if not isinstance(self._value, dict):
-                self._value = {}
-            if val is not None:
-                self._value.update(val)
-
-        self.setValueAcceptable(None)  # by default, input values are 'unchecked' until Node.update().
-
+        self._value = None
         self.recolor()
 
     def setOpts(self, **opts):
-        self._renamable = opts.get('renamable', self._renamable)
         self._removable = opts.get('removable', self._removable)
-        self._multiable = opts.get('multiable', self._multiable)
-        if 'multi' in opts:
-            self.setMultiValue(opts['multi'])
 
     def connected(self, term):
         """
         Called whenever this terminal has been connected to another.
         (note--this function is called on both terminals)
         """
-        if self.isInput() and term.isOutput():
-            self.inputChanged(term)
-        if self.isOutput() and self.isMultiValue():
-            self.node().update()
         self.node().connected(self, term)
 
     def disconnected(self, term):
@@ -95,31 +47,11 @@ class Terminal(object):
         Called whenever this terminal has been disconnected from another.
         (note--this function is called on both terminals)
         """
-        if self.isMultiValue() and term in self._value:
-            del self._value[term]
-            self.node().update()
-        else:
-            if self.isInput():
-                self.setValue(None)
         self.node().disconnected(self, term)
 
-    def inputChanged(self, term):
-        """
-        Called whenever there is a change to the input value to this terminal.
-        It may often be useful to override this function.
-        """
-        if self.isMultiValue():
-            self.setValue({term: term.value(self)})
-        else:
-            self.setValue(term.value(self))
-
-    def valueIsAcceptable(self):
-        """Returns True->acceptable  None->unknown  False->Unacceptable"""
-        return self.valueOk
-
-    def setValueAcceptable(self, v=True):
-        self.valueOk = v
-        self.recolor()
+    def value(self, term=None):
+        """Return the value this terminal provides for the connected terminal"""
+        return self._value
 
     def connections(self):
         return self._connections
@@ -130,29 +62,11 @@ class Terminal(object):
     def isInput(self):
         return self._io == 'in'
 
-    def isMultiValue(self):
-        return self._multi
-
-    def setMultiValue(self, multi):
-        """Set whether this is a multi-value terminal."""
-        self._multi = multi
-        if not multi and len(self.inputTerminals()) > 1:
-            self.disconnectAll()
-
-        for term in self.inputTerminals():
-            self.inputChanged(term)
-
     def isOutput(self):
         return self._io == 'out'
 
-    def isRenamable(self):
-        return self._renamable
-
     def isRemovable(self):
         return self._removable
-
-    def isMultiable(self):
-        return self._multiable
 
     def name(self):
         return self._name
@@ -189,7 +103,7 @@ class Terminal(object):
             if term.node() is self.node():
                 raise Exception("Can't connect to terminal on same node.")
             for t in [self, term]:
-                if t.isInput() and not t._multi and len(t.connections()) > 0:
+                if t.isInput() and len(t.connections()) > 0:
                     raise Exception(
                         "Cannot connect %s <-> %s: Terminal %s is already connected to %s \
                         (and does not allow multiple connections)" % (self, term, t, list(t.connections().keys())))
@@ -254,12 +168,6 @@ class Terminal(object):
             for t in self.connections():
                 t.recolor(color, recurse=False)
 
-    def rename(self, name):
-        oldName = self._name
-        self._name = name
-        self.node().terminalRenamed(self, oldName)
-        self.graphicsItem().termRenamed(name)
-
     def __repr__(self):
         return "<Terminal %s.%s>" % (str(self.node().name()), str(self.name()))
 
@@ -275,11 +183,8 @@ class Terminal(object):
     def saveState(self):
         return {
             'io': self._io,
-            'multi': self._multi,
             'optional': self._optional,
-            'renamable': self._renamable,
             'removable': self._removable,
-            'multiable': self._multiable
         }
 
 
@@ -294,30 +199,8 @@ class TerminalGraphicsItem(GraphicsObject):
         self.label.scale(0.7, 0.7)
         self.newConnection = None
         self.setFiltersChildEvents(True)  # to pick up mouse events on the rectitem
-        if self.term.isRenamable():
-            self.label.setTextInteractionFlags(QtCore.Qt.TextEditorInteraction)
-            self.label.focusOutEvent = self.labelFocusOut
-            self.label.keyPressEvent = self.labelKeyPress
         self.setZValue(1)
         self.menu = None
-
-    def labelFocusOut(self, ev):
-        QtGui.QGraphicsTextItem.focusOutEvent(self.label, ev)
-        self.labelChanged()
-
-    def labelKeyPress(self, ev):
-        if ev.key() == QtCore.Qt.Key_Enter or ev.key() == QtCore.Qt.Key_Return:
-            self.labelChanged()
-        else:
-            QtGui.QGraphicsTextItem.keyPressEvent(self.label, ev)
-
-    def labelChanged(self):
-        newName = str(self.label.toPlainText())
-        if newName != self.term.name():
-            self.term.rename(newName)
-
-    def termRenamed(self, name):
-        self.label.setPlainText(name)
 
     def setBrush(self, brush):
         self.brush = brush
@@ -389,21 +272,7 @@ class TerminalGraphicsItem(GraphicsObject):
                 self.menu.addAction(remAct)
                 self.menu.remAct = remAct
 
-            if self.term.isMultiable():
-                multiAct = QtGui.QAction("Multi-value", self.menu)
-                multiAct.setCheckable(True)
-                multiAct.setChecked(self.term.isMultiValue())
-                multiAct.setEnabled(self.term.isMultiable())
-
-                multiAct.triggered.connect(self.toggleMulti)
-                self.menu.addAction(multiAct)
-                self.menu.multiAct = multiAct
-
         return self.menu
-
-    def toggleMulti(self):
-        multi = self.menu.multiAct.isChecked()
-        self.term.setMultiValue(multi)
 
     def removeSelf(self):
         self.term.node().removeTerminal(self.term)
