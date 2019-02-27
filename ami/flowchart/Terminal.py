@@ -7,7 +7,7 @@ import weakref
 
 
 class Terminal(object):
-    def __init__(self, node, name, io, optional=False, pos=None, removable=False):
+    def __init__(self, node, name, io, pos=None, removable=False):
         """
         Construct a new terminal.
 
@@ -16,13 +16,11 @@ class Terminal(object):
         node            the node to which this terminal belongs
         name            string, the name of the terminal
         io              'in' or 'out'
-        optional        bool, whether the node may process without connection to this terminal
         pos             [x, y], the position of the terminal within its node's boundaries
         removable       (bool) Whether the terminal can be removed by the user
         ==============  =================================================================================
         """
         self._io = io
-        self._optional = optional
         self._node = weakref.ref(node)
         self._name = name
         self._removable = removable
@@ -183,7 +181,6 @@ class Terminal(object):
     def saveState(self):
         return {
             'io': self._io,
-            'optional': self._optional,
             'removable': self._removable,
         }
 
