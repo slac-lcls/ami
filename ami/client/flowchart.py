@@ -71,7 +71,6 @@ class NodeWindow(QtGui.QMainWindow):
     def closeEvent(self, event):
         self.proc.node.clear()
         self.proc.widget = None
-        self.proc.ctrlWidget = None
         self.destroy()
         event.ignore()
 
