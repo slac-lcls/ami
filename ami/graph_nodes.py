@@ -243,8 +243,8 @@ def Binning(name="", inputs=[], outputs=[], condition_needs=[]):
 
     k, v = inputs
     outputs = outputs[0]
-    map_outputs = [outputs+'_count']
-    reduce_outputs = [outputs+'_reduce']
+    map_outputs = ['_'+outputs+'_count']
+    reduce_outputs = ['_'+outputs+'_reduce']
 
     def mean(d):
         res = {}
