@@ -31,7 +31,6 @@ class Node(QtCore.QObject):
     """
 
     sigClosed = QtCore.Signal(object)
-    sigRenamed = QtCore.Signal(object, object)
     sigTerminalAdded = QtCore.Signal(object, object)  # self, term
     sigTerminalRemoved = QtCore.Signal(object, object)  # self, term
     sigTerminalConnected = QtCore.Signal(object)  # self
@@ -191,12 +190,6 @@ class Node(QtCore.QObject):
         """Return the name of this node."""
         return self._name
 
-    def rename(self, name):
-        """Rename this node. This will cause sigRenamed to be emitted."""
-        oldName = self._name
-        self._name = name
-        self.sigRenamed.emit(self, oldName)
-
     def dependentNodes(self):
         """Return the list of nodes which provide direct input to this node"""
         nodes = set()
@@ -332,32 +325,10 @@ class NodeGraphicsItem(GraphicsObject):
         self.nameItem = QtGui.QGraphicsTextItem(self.node.name(), self)
         self.nameItem.setDefaultTextColor(QtGui.QColor(50, 50, 50))
         self.nameItem.moveBy(self.bounds.width()/2. - self.nameItem.boundingRect().width()/2., 0)
-        self.nameItem.setTextInteractionFlags(QtCore.Qt.TextEditorInteraction)
         self.updateTerminals()
-
-        self.nameItem.focusOutEvent = self.labelFocusOut
-        self.nameItem.keyPressEvent = self.labelKeyPress
 
         self.menu = None
         self.buildMenu()
-
-    def labelFocusOut(self, ev):
-        QtGui.QGraphicsTextItem.focusOutEvent(self.nameItem, ev)
-        self.labelChanged()
-
-    def labelKeyPress(self, ev):
-        if ev.key() == QtCore.Qt.Key_Enter or ev.key() == QtCore.Qt.Key_Return:
-            self.labelChanged()
-        else:
-            QtGui.QGraphicsTextItem.keyPressEvent(self.nameItem, ev)
-
-    def labelChanged(self):
-        newName = str(self.nameItem.toPlainText())
-        if newName != self.node.name():
-            self.node.rename(newName)
-
-        bounds = self.boundingRect()
-        self.nameItem.setPos(bounds.width()/2. - self.nameItem.boundingRect().width()/2., 0)
 
     def setPen(self, *args, **kwargs):
         self.pen = fn.mkPen(*args, **kwargs)
@@ -486,11 +457,11 @@ class NodeGraphicsItem(GraphicsObject):
 
     def addInputFromMenu(self):
         # called when add input is clicked in context menu
-        self.node.addInput(renamable=True, removable=True, multiable=True)
+        self.node.addInput(removable=True)
 
     def addOutputFromMenu(self):
         # called when add output is clicked in context menu
-        self.node.addOutput(renamable=True, removable=True, multiable=False)
+        self.node.addOutput(removable=True)
 
     def addConditionFromMenu(self):
         self.node.addInput(name="Condition", removable=True)

@@ -107,7 +107,6 @@ class Flowchart(Node):
         item.moveBy(*pos)
         self._nodes[name] = node
         node.sigClosed.connect(self.nodeClosed)
-        node.sigRenamed.connect(self.nodeRenamed)
         node.sigTerminalConnected.connect(self.nodeConnected)
         node.sigTerminalDisconnected.connect(self.nodeDisconnected)
 
@@ -126,17 +125,12 @@ class Flowchart(Node):
     def nodeClosed(self, node):
         # Qt does not like if this function is async
         del self._nodes[node.name()]
-        for signal in ['sigClosed', 'sigRenamed']:
-            try:
-                getattr(node, signal).disconnect(self.nodeClosed)
-            except (TypeError, RuntimeError):
-                pass
+        try:
+            getattr(node, 'sigClosed').disconnect(self.nodeClosed)
+        except (TypeError, RuntimeError):
+            pass
         self.broker.send_string(node.name(), zmq.SNDMORE)
         self.broker.send_pyobj(fcMsgs.CloseNode())
-
-    def nodeRenamed(self, node, oldName):
-        del self._nodes[oldName]
-        self._nodes[node.name()] = node
 
     def connectTerminals(self, term1, term2):
         """Connect two terminals together within this flowchart."""
