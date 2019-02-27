@@ -339,6 +339,7 @@ class NodeGraphicsItem(GraphicsObject):
         self.nameItem.keyPressEvent = self.labelKeyPress
 
         self.menu = None
+        self.buildMenu()
 
     def labelFocusOut(self, ev):
         QtGui.QGraphicsTextItem.focusOutEvent(self.nameItem, ev)
@@ -466,22 +467,22 @@ class NodeGraphicsItem(GraphicsObject):
         return self.menu
 
     def raiseContextMenu(self, ev):
-        self.buildMenu()
         menu = self.scene().addParentContextMenus(self, self.getMenu(), ev)
         pos = ev.screenPos()
         menu.popup(QtCore.QPoint(pos.x(), pos.y()))
 
     def buildMenu(self):
-        self.menu = QtGui.QMenu()
-        self.menu.setTitle("Node")
-        if self.node._allowAddInput:
-            self.menu.addAction("Add input", self.addInputFromMenu)
-        if self.node._allowAddOutput:
-            self.menu.addAction("Add output", self.addOutputFromMenu)
-        if "Condition" not in self.node.terminals:
-            self.menu.addAction("Add condition", self.addConditionFromMenu)
-        if self.node._allowRemove:
-            self.menu.addAction("Remove node", self.node.close)
+        if self.menu is None:
+            self.menu = QtGui.QMenu()
+            self.menu.setTitle("Node")
+            if self.node._allowAddInput:
+                self.menu.addAction("Add input", self.addInputFromMenu)
+            if self.node._allowAddOutput:
+                self.menu.addAction("Add output", self.addOutputFromMenu)
+            if "Condition" not in self.node.terminals:
+                self.menu.addAction("Add condition", self.addConditionFromMenu)
+            if self.node._allowRemove:
+                self.menu.addAction("Remove node", self.node.close)
 
     def addInputFromMenu(self):
         # called when add input is clicked in context menu
