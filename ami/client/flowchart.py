@@ -61,7 +61,7 @@ def run_editor_window(broker_addr, graphmgr_addr, node_addr, checkpoint_addr):
 
     win.show()
     with loop:
-        loop.run_until_complete(fc.updateState())
+        loop.run_forever()
 
 
 class NodeWindow(QtGui.QMainWindow):
@@ -214,9 +214,6 @@ class MessageBroker(object):
 
         self.launch_editor_window()
 
-        loop = asyncio.get_event_loop()
-        loop.run_until_complete(self.run())
-
     def launch_editor_window(self):
         editor_proc = mp.Process(
             target=run_editor_window,
@@ -225,6 +222,9 @@ class MessageBroker(object):
         editor_proc.start()
 
         self.editor = editor_proc
+
+    def wait_editor_exit(self):
+        self.editor.join()
 
     async def handle_connect(self):
 
@@ -356,4 +356,14 @@ class MessageBroker(object):
 
 
 def run_client(graphmgr_addr, load):
-    MessageBroker(graphmgr_addr, load)
+    mb = MessageBroker(graphmgr_addr, load)
+
+    loop = asyncio.get_event_loop()
+    task = asyncio.ensure_future(mb.run())
+
+    # wait for the editor window to exit
+    loop.run_until_complete(loop.run_in_executor(None, mb.wait_editor_exit))
+
+    # if the message brokers task is still running cancel it
+    if not task.done():
+        task.cancel()

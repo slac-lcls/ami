@@ -13,7 +13,8 @@ import multiprocessing as mp
 from PyQt5.QtWidgets import QWidget, QHBoxLayout, QFileDialog, \
                             QApplication, QMainWindow, QPushButton, \
                             QLabel, QListWidgetItem, QLineEdit, \
-                            QVBoxLayout, QListWidget, QLCDNumber
+                            QVBoxLayout, QListWidget, QLCDNumber, \
+                            QGroupBox, QTabWidget
 from PyQt5.QtCore import pyqtSlot, pyqtSignal, QTimer, QRect
 
 import pyqtgraph as pg
@@ -101,7 +102,7 @@ class HistogramWidget(pg.GraphicsLayoutWidget):
     def waveform_updated(self, data):
         x, y = map(list, zip(*sorted(data.items())))
         if self.plot is None:
-            self.plot = self.plot_view.plot(x=x, y=y, pen=None, symbol='o')
+            self.plot = self.plot_view.plot(x=x, y=y, symbol='o')
         else:
             self.plot.setData(x=x, y=y)
 
@@ -149,12 +150,125 @@ class AreaDetWidget(pg.ImageView):
                                        func=roi_func)
 
 
+class TabPlot(QWidget):
+
+    def __init__(self, idx, comm, plot_spawner, parent=None):
+        super(__class__, self).__init__(parent)
+        self.idx = idx
+        self.comm = comm
+        self.plot_spawner = plot_spawner
+
+    async def make_plot(self, src, post):
+        pass
+
+    @asyncqt.asyncSlot(int, object, object)
+    async def request_plot(self, idx, src, post):
+        if idx == self.idx:
+            info = await self.make_plot(src, post)
+            if info is not None:
+                data_type, name, topic = info
+                self.plot_spawner(data_type, name, topic)
+
+
+class ScanPlot(TabPlot):
+
+    def __init__(self, idx, comm, plot_spawner, parent=None):
+        super(__class__, self).__init__(idx, comm, plot_spawner, parent)
+        self.plotName = QLabel('Scan var', self)
+        self.plotBox = QLineEdit(self)
+
+        self.plot_layout = QHBoxLayout(self)
+        self.plot_layout.addWidget(self.plotName)
+        self.plot_layout.addWidget(self.plotBox)
+
+    async def make_plot(self, src, post):
+        key = self.plotBox.text()
+
+        if key:
+            if not post:
+                name = '%s_vs_%s' % (src, key)
+                post = self.comm.auto(name)
+            else:
+                name = post
+            await self.comm.addBinning(post+'_op', [key, src], post)
+            return DataTypes.Histogram, name, post
+
+
+class DummyPlot(TabPlot):
+    def __init__(self, idx, comm, plot_spawner, parent=None):
+        super(__class__, self).__init__(idx, comm, plot_spawner, parent)
+        self.plotName = QLabel('Dummy var', self)
+        self.plotBox = QLineEdit(self)
+
+        self.plot_layout = QHBoxLayout(self)
+        self.plot_layout.addWidget(self.plotName)
+        self.plot_layout.addWidget(self.plotBox)
+
+    async def make_plot(self, src, post):
+        key = self.plotBox.text()
+
+        if key:
+            print(key)
+
+
+class Env(QWidget):
+
+    makePlot = pyqtSignal(int, object, object, name='makePlot')
+
+    def __init__(self, comm, plot_spawner, parent=None):
+        super(__class__, self).__init__(parent)
+        self.setWindowTitle("Env")
+        self.comm = comm
+
+        self.srcBox = QLineEdit(self)
+        self.srcSelect = QPushButton('Select', self)
+        self.srcFilter = QPushButton('Filter', self)
+        self.postName = QLabel('Entry name', self)
+        self.postBox = QLineEdit(self)
+        self.tabs = QTabWidget(self)
+        self.tabs.addTab(ScanPlot(0, self.comm, plot_spawner, self.tabs), "Mean v Scan")
+        self.tabs.addTab(DummyPlot(1, self.comm, plot_spawner, self.tabs), "Dummy")
+        self.button = QPushButton('Plot', self)
+        self.button.clicked.connect(self.on_click)
+
+        self.src = QGroupBox("Source Channel")
+        self.src_layout = QHBoxLayout(self.src)
+        self.src_layout.addWidget(self.srcBox)
+        self.src_layout.addWidget(self.srcSelect)
+        self.src_layout.addWidget(self.srcFilter)
+
+        self.post = QHBoxLayout()
+        self.post.addWidget(self.postName)
+        self.post.addWidget(self.postBox)
+
+        self.plot = QGroupBox("Plot Type")
+        self.plot_layout = QVBoxLayout(self.plot)
+        self.plot_layout.addWidget(self.tabs)
+
+        self.env_layout = QVBoxLayout(self)
+        self.env_layout.addWidget(self.src)
+        self.env_layout.addLayout(self.post)
+        self.env_layout.addWidget(self.plot)
+        self.env_layout.addWidget(self.button)
+
+        for i in range(self.tabs.count()):
+            self.makePlot.connect(self.tabs.widget(i).request_plot)
+
+    @pyqtSlot()
+    def on_click(self):
+        src = self.srcBox.text()
+        post = self.postBox.text()
+
+        if src:
+            self.makePlot.emit(self.tabs.currentIndex(), src, post)
+
+
 class Calculator(QWidget):
 
     calcUpdated = pyqtSignal(str, object, object, name='calcUpdated')
 
     def __init__(self, comm, parent=None):
-        super(Calculator, self).__init__(parent)
+        super(__class__, self).__init__(parent)
         self.setWindowTitle("Calculator")
         self.comm = comm
         self.move(280, 80)
@@ -239,8 +353,10 @@ class DetectorList(QListWidget):
         self.pending_lock = threading.Lock()
         self.features = {}
         self.timer = QTimer()
-        self.calc_id = "calculator"
+        self.calc_id = "Calculator"
         self.calc = None
+        self.env_id = "Env"
+        self.env = None
         self.timer.timeout.connect(self.get_names)
         self.timer.start(1000)
         self.itemClicked.connect(self.item_clicked)
@@ -268,6 +384,7 @@ class DetectorList(QListWidget):
         self.names = sorted(await self.comm_handler.names)
         self.features = await self.comm_handler.features
         self.clear()
+        self.addItem(self.env_id)
         self.addItem(self.calc_id)
         for k in self.names:
             if not k.startswith("_"):
@@ -285,7 +402,6 @@ class DetectorList(QListWidget):
 
     @asyncqt.asyncSlot(QListWidgetItem)
     async def item_clicked(self, item):
-
         name = item.text()
         # Check if there is already data for the feature in the result store
         if name in self.features:
@@ -298,6 +414,11 @@ class DetectorList(QListWidget):
                 logger.info('create calculator widget')
                 self.calc = Calculator(self.comm_handler)
             self.calc.show()
+        elif name == self.env_id:
+            if self.env is None:
+                logger.info('create env widget')
+                self.env = Env(self.comm_handler, self.spawn_window)
+            self.env.show()
         elif topic in self.features:
             self.spawn_window(self.features[topic], name, topic)
         else:
@@ -323,7 +444,6 @@ class AmiGui(QWidget):
         self.setWindowTitle("AMI Client")
         self.comm_handler = AsyncGraphCommHandler(addr)
 
-        self.setupLabel = QLabel('Setup:', self)
         self.save_button = QPushButton('Save', self)
         self.save_button.clicked.connect(self.save)
         self.load_button = QPushButton('Load', self)
@@ -332,23 +452,26 @@ class AmiGui(QWidget):
         self.clear_button.clicked.connect(self.clear)
         self.reset_button = QPushButton('Reset Plots', self)
         self.reset_button.clicked.connect(self.reset)
-        self.dataLabel = QLabel('Data:', self)
         self.amilist = DetectorList(queue, self.comm_handler)
         if ami_save is not None:
             self.comm_handler.update(ami_save)
 
-        self.setup = QWidget(self)
+        self.setup = QGroupBox("Setup")
         self.setup_layout = QHBoxLayout(self.setup)
         self.setup_layout.addWidget(self.save_button)
         self.setup_layout.addWidget(self.load_button)
         self.setup_layout.addWidget(self.clear_button)
+        self.setup.setLayout(self.setup_layout)
+
+        self.data = QGroupBox("Data")
+        self.data_layout = QVBoxLayout(self)
+        self.data_layout.addWidget(self.reset_button)
+        self.data_layout.addWidget(self.amilist)
+        self.data.setLayout(self.data_layout)
 
         self.ami_layout = QVBoxLayout(self)
-        self.ami_layout.addWidget(self.setupLabel)
         self.ami_layout.addWidget(self.setup)
-        self.ami_layout.addWidget(self.dataLabel)
-        self.ami_layout.addWidget(self.reset_button)
-        self.ami_layout.addWidget(self.amilist)
+        self.ami_layout.addWidget(self.data)
 
         self.loadFile.connect(self.load_async)
         self.saveFile.connect(self.save_async)

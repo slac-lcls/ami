@@ -14,6 +14,6 @@ def test_replace(complex_graph):
     localCollector = complex_graph(worker, color='localCollector')
     globalCollector = complex_graph(localCollector, color='globalCollector')
 
-    assert worker == {'reference_reduce_worker': {4: (100.0, 1), 5: (100.0, 1)}}
-    assert localCollector == {'reference_reduce_localCollector': {4: (200.0, 2), 5: (200.0, 2)}}
+    assert worker == {'_reference_reduce_worker': {4: (100.0, 1), 5: (100.0, 1)}}
+    assert localCollector == {'_reference_reduce_localCollector': {4: (200.0, 2), 5: (200.0, 2)}}
     assert globalCollector == {'reference': {4: 100.0, 5: 100.0}}
