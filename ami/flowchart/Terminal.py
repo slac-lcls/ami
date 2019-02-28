@@ -230,7 +230,6 @@ class Terminal(object):
         return {
             'io': self._io,
             'removable': self._removable,
-            'type': self._type
         }
 
 
