@@ -181,7 +181,7 @@ class EventBuilder(ZmqHandler):
                          eb_key, eb_id, ver_key, self.pending[eb_key].version)
         else:
             graph = self.graphs.get(ver_key)
-            if graph is not None:
+            if graph:
                 self.pending[eb_key].update(graph(data, color=self.color))
 
     def transition(self, eb_key, eb_id):
