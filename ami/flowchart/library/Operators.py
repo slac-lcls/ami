@@ -9,8 +9,8 @@ class Sum(Node):
 
     def __init__(self, name):
         super(Sum, self).__init__(name, terminals={
-            'In': {'io': 'in'},
-            'Out': {'io': 'out'}
+            'In': {'io': 'in', 'type': (np.ndarray, list)},
+            'Out': {'io': 'out', 'type': np.float64}
         })
 
     def to_operation(self, inputs, conditions=[]):
@@ -25,9 +25,9 @@ class Binning(Node):
 
     def __init__(self, name):
         super(Binning, self).__init__(name, terminals={
-            'Values': {'io': 'in'},
-            'Bins': {'io': 'in'},
-            'Out': {'io': 'out'}
+            'Values': {'io': 'in', 'type': np.float64},
+            'Bins': {'io': 'in', 'type': int},
+            'Out': {'io': 'out', 'type': dict}
         })
 
     def connected(self, localTerm, remoteTerm):

@@ -107,6 +107,10 @@ class CtrlNode(Node):
         self.update(*args, **kwargs)
         self.sigStateChanged.emit(self)
 
+    def update(self, *args, **kwargs):
+        name, val = args
+        setattr(self, name, val)
+
     def saveState(self):
         state = Node.saveState(self)
         if self.stateGroup:
@@ -135,13 +139,13 @@ class CtrlNode(Node):
             self.task.cancel()
             self.task = None
 
-    def display(self, inputs, addr, win, widget):
-        name, topic = inputs[0]
+    def display(self, inputs, addr, win, widget=None):
 
-        if self.widget is None:
+        if self.widget is None and widget:
+            name, topic = inputs[0]
             self.widget = widget(name, topic, addr, win)
 
-        if self.task is None:
+        if self.task is None and self.widget:
             self.task = asyncio.ensure_future(self.widget.update())
 
         return self.widget

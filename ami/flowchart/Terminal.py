@@ -7,7 +7,7 @@ import weakref
 
 
 class Terminal(object):
-    def __init__(self, node, name, io, pos=None, removable=False):
+    def __init__(self, node, name, io, type=object, pos=None, removable=False):
         """
         Construct a new terminal.
 
@@ -16,6 +16,7 @@ class Terminal(object):
         node            the node to which this terminal belongs
         name            string, the name of the terminal
         io              'in' or 'out'
+        typ             type terminal expects/returns
         pos             [x, y], the position of the terminal within its node's boundaries
         removable       (bool) Whether the terminal can be removed by the user
         ==============  =================================================================================
@@ -25,6 +26,9 @@ class Terminal(object):
         self._name = name
         self._removable = removable
         self._connections = {}
+        self._type = type
+        self._fixedType = False
+
         self._graphicsItem = TerminalGraphicsItem(self, parent=self._node().graphicsItem())
 
         self._value = None
@@ -32,6 +36,7 @@ class Terminal(object):
 
     def setOpts(self, **opts):
         self._removable = opts.get('removable', self._removable)
+        self._type = opts.get('type', self._type)
 
     def connected(self, term):
         """
@@ -46,6 +51,12 @@ class Terminal(object):
         (note--this function is called on both terminals)
         """
         self.node().disconnected(self, term)
+
+    def type(self):
+        return self._type
+
+    def setType(self, type):
+        self._type = type
 
     def value(self, term=None):
         """Return the value this terminal provides for the connected terminal"""
@@ -105,6 +116,9 @@ class Terminal(object):
                     raise Exception(
                         "Cannot connect %s <-> %s: Terminal %s is already connected to %s \
                         (and does not allow multiple connections)" % (self, term, t, list(t.connections().keys())))
+            self.fixType(term)
+            if not checkType(self.type(), term.type()):
+                raise Exception("Invalid types. Expected: %s Got: %s", self.type(), term.type())
         except Exception:
             if connectionItem is not None:
                 connectionItem.close()
@@ -123,6 +137,37 @@ class Terminal(object):
 
         return connectionItem
 
+    def fixType(self, term):
+        if "Condition" in self.name() or "Condition" in term.name():
+            return
+
+        if self.type() == object:
+            self.setType(term.type())
+            terms = self.node().terminals
+            if self.isInput():
+                if 'Out' in terms and terms["Out"].type() == object:
+                    terms["Out"].setType(term.type())
+                    terms["Out"]._fixedType = True
+            elif self.isOutput():
+                if 'In' in terms:
+                    terms["In"].setType(term.type())
+                    terms["In"]._fixedType = True
+            self._fixedType = True
+
+        elif term.type() == object:
+            term.setType(self.type())
+            terms = term.node().terminals
+            if term.isInput():
+                if 'Out' in terms and terms["Out"].type() == object:
+                    terms["Out"].setType(self.type())
+                    terms["Out"]._fixedType = True
+            elif term.isOutput():
+                if 'In' in terms:
+                    terms["In"].setType(term.type())
+                    terms["In"]._fixedType = True
+
+            term._fixedType = True
+
     def disconnectFrom(self, term):
         if not self.connectedTo(term):
             return
@@ -132,6 +177,9 @@ class Terminal(object):
         del term._connections[self]
         self.recolor()
         term.recolor()
+
+        # if self._fixedType:
+        #     self.term.setType(object)
 
         self.disconnected(term)
         term.disconnected(self)
@@ -182,6 +230,7 @@ class Terminal(object):
         return {
             'io': self._io,
             'removable': self._removable,
+            'type': self._type
         }
 
 
@@ -452,3 +501,22 @@ class ConnectionItem(GraphicsObject):
                 p.setPen(fn.mkPen(self.style['color'], width=self.style['width']))
 
         p.drawPath(self.path)
+
+
+def checkType(t1, t2):
+
+    if not type(t1) == tuple:
+        t1 = (t1, )
+
+    if not type(t2) == tuple:
+        t2 = (t2, )
+
+    t1 = set(t1)
+    t2 = set(t2)
+
+    if t1.issubset(t2) or t2.issubset(t1):
+        return True
+    elif object in t1 or object in t2:
+        return True
+
+    return False

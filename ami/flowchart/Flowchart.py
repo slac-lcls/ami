@@ -9,6 +9,7 @@ from pyqtgraph.flowchart import FlowchartGraphicsView
 from numpy import ndarray
 from ami.flowchart.Terminal import Terminal
 from ami.flowchart.library import LIBRARY
+from ami.flowchart.library.common import CtrlNode
 from ami.flowchart.Node import Node
 from ami.comm import AsyncGraphCommHandler
 from ami.graphkit_wrapper import Graph
@@ -532,6 +533,11 @@ class FlowchartWidget(dockarea.DockArea):
 
             await self.chart.broker.send_string(node.name(), zmq.SNDMORE)
             await self.chart.broker.send_pyobj(fcMsgs.DisplayNode(node.name(), inputs))
+
+        elif hasattr(item, 'node') and isinstance(item.node, CtrlNode):
+            node = item.node
+            await self.chart.broker.send_string(node.name(), zmq.SNDMORE)
+            await self.chart.broker.send_pyobj(fcMsgs.DisplayNode(node.name(), []))
 
     def hoverOver(self, items):
         # print "FlowchartWidget.hoverOver called."

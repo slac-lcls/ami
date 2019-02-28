@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 from ami.flowchart.NodeLibrary import NodeLibrary, isNodeClass
-from ami.flowchart.library import Roi, Filter, Operators, Display
+from ami.flowchart.library import Roi, Filter, Operators, Display, Accumulators
 
 # Build default library
 LIBRARY = NodeLibrary()
@@ -14,7 +14,7 @@ getNodeType = LIBRARY.getNodeType
 
 # Add all nodes to the default library
 
-for mod in [Roi, Filter, Operators, Display]:
+for mod in [Roi, Filter, Operators, Display, Accumulators]:
     nodes = [getattr(mod, name) for name in dir(mod) if isNodeClass(getattr(mod, name))]
 
     for node in nodes:
