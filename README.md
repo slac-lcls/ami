@@ -32,6 +32,22 @@ To use psana a working release need to be added to the python path
 
 # Status/To-do
 
+1 MAR 19:
+- Graph types/validation
+- Status messages from worker
+- Dynamic menus
+- documentation
+- cleanup repo
+- Additional graph operations or flowchart boxes:
+    * Peak/hit finder operations
+    * Operation that collects the data for a scatter plot of two variables.
+    * Histogramming operation. This is like binning but instead of a key there is just a predefined set of bins and we count
+      the number of times the input we are reducing falls into each bin. This should have the option to normalize the total to one.
+    * Version of the ROI operation that works on 1-D arrays.
+    * A box in the flowchart that allows us to overlay two or more plots.
+    * Boxes in the flowchart for doing arthimetic operations. Do we want a box where they can enter an expression like (2*input - 5)/ 10
+      instead of having to do that in three boxes (multiple by 2, then subtract 5, and then divide by ten).
+
 19 Feb 19:
 - Graph types/validation
 - Status messages from worker
