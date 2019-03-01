@@ -9,5 +9,6 @@ install
 *.xtc
 *.h5
 *.ami
+*.fc
 *.last
 
