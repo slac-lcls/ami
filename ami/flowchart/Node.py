@@ -243,11 +243,14 @@ class Node(QtCore.QObject):
         when they are constructing their Node list."""
         return None
 
-    def connected(self, localTerm, remoteTerm, pos=0):
+    def connected(self, localTerm, remoteTerm, pos=None):
         """Called whenever one of this node's terminals is connected elsewhere."""
         node = remoteTerm.node()
         if localTerm.isInput() and remoteTerm.isOutput():
-            self._input_vars.insert(pos, Var(name=node.name(), type=remoteTerm.type()))
+            if pos is not None:
+                self._input_vars.insert(pos, Var(name=node.name(), type=remoteTerm.type()))
+            else:
+                self._input_vars.append(Var(name=node.name(), type=remoteTerm.type()))
         elif localTerm.isCondition():
             self._condition_vars.append(node.name())
         self.sigTerminalConnected.emit(self)
