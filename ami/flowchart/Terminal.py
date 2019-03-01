@@ -27,7 +27,7 @@ class Terminal(object):
         self._removable = removable
         self._connections = {}
         self._type = type
-        self._fixedType = False
+        self._propagatedType = False
 
         self._graphicsItem = TerminalGraphicsItem(self, parent=self._node().graphicsItem())
 
@@ -119,7 +119,7 @@ class Terminal(object):
                     raise Exception(
                         "Cannot connect %s <-> %s: Terminal %s is already connected to %s \
                         (and does not allow multiple connections)" % (self, term, t, list(t.connections().keys())))
-            self.fixType(term)
+            self.propagateType(term)
             if not checkType(self.type(), term.type()):
                 raise Exception("Invalid types. Expected: %s Got: %s", self.type(), term.type())
         except Exception:
@@ -140,7 +140,7 @@ class Terminal(object):
 
         return connectionItem
 
-    def fixType(self, term):
+    def propagateType(self, term):
         if self.isCondition() or term.isCondition():
             return
 
@@ -150,12 +150,12 @@ class Terminal(object):
             if self.isInput():
                 if 'Out' in terms and terms["Out"].type() == object:
                     terms["Out"].setType(term.type())
-                    terms["Out"]._fixedType = True
+                    terms["Out"]._propagatedType = True
             elif self.isOutput():
                 if 'In' in terms:
                     terms["In"].setType(term.type())
-                    terms["In"]._fixedType = True
-            self._fixedType = True
+                    terms["In"]._propagatedType = True
+            self._propagatedType = True
 
         elif term.type() == object:
             term.setType(self.type())
@@ -163,13 +163,13 @@ class Terminal(object):
             if term.isInput():
                 if 'Out' in terms and terms["Out"].type() == object:
                     terms["Out"].setType(self.type())
-                    terms["Out"]._fixedType = True
+                    terms["Out"]._propagatedType = True
             elif term.isOutput():
                 if 'In' in terms:
                     terms["In"].setType(term.type())
-                    terms["In"]._fixedType = True
+                    terms["In"]._propagatedType = True
 
-            term._fixedType = True
+            term._propagatedType = True
 
     def disconnectFrom(self, term):
         if not self.connectedTo(term):
@@ -181,7 +181,7 @@ class Terminal(object):
         self.recolor()
         term.recolor()
 
-        # if self._fixedType:
+        # if self._propagatedType:
         #     self.term.setType(object)
 
         self.disconnected(term)

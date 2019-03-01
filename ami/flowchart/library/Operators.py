@@ -9,7 +9,7 @@ class Sum(Node):
 
     def __init__(self, name):
         super(Sum, self).__init__(name, terminals={
-            'In': {'io': 'in', 'type': (np.ndarray, list)},
+            'In': {'io': 'in', 'type': (type(None), np.ndarray, list)},
             'Out': {'io': 'out', 'type': np.float64}
         })
 
@@ -17,7 +17,7 @@ class Sum(Node):
         outputs = self.output_vars()
         node = gn.Map(name=self.name()+"_operation",
                       condition_needs=conditions, inputs=inputs, outputs=outputs,
-                      func=np.sum)
+                      func=lambda a: np.sum(a, dtype=np.float64))
         return node
 
 

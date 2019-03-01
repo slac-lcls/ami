@@ -28,7 +28,7 @@ class PickN(CtrlNode):
     def __init__(self, name):
         super(PickN, self).__init__(name,
                                     terminals={'In': {'io': 'in', 'type': object},
-                                               'Out': {'io': 'out', 'type': list}})
+                                               'Out': {'io': 'out', 'type': (type(None), list)}})
         self.N = 2
 
     def to_operation(self, inputs, conditions=[]):

@@ -368,9 +368,9 @@ class FlowchartCtrlWidget(QtGui.QWidget):
         async with self.features_lock:
             for name, node in self.chart.nodes().items():
                 for in_var in node.input_vars():
-                    if in_var in self.features:
-                        features[in_var] = self.features[in_var]
-                        await self.graphCommHandler.view(in_var)
+                    if in_var.name in self.features:
+                        features[in_var.name] = self.features[in_var.name]
+                        await self.graphCommHandler.view(in_var.name)
             self.features = features
 
     def reloadClicked(self):

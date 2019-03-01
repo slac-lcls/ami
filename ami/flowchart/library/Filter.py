@@ -7,7 +7,7 @@ class Filter(Node):
     def __init__(self, name):
         super(Filter, self).__init__(name, terminals={
             'Condition': {'io': 'condition'},
-            'Out': {'io': 'out'}
+            'Out': {'io': 'out', 'type': bool}
         })
 
     def output_vars(self):
