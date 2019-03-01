@@ -1,12 +1,15 @@
 import pytest
-from ami.graphkit_wrapper import Graph
+import numpy as np
+from ami.graphkit_wrapper import Graph, Var
 from ami.graph_nodes import PickN
 
 
 @pytest.fixture(scope='function')
 def pickN_graph():
     graph = Graph(name='graph')
-    graph.add(PickN(name='cspad', N=9, inputs=['cspad'], outputs=['ncspads']))
+    graph.add(PickN(name='cspad_pickN', N=9,
+                    inputs=[Var(name='cspad', type=np.ndarray)],
+                    outputs=[Var(name='ncspads', type=(list, type(None)))]))
     graph.compile(num_workers=4, num_local_collectors=2)
     return graph
 

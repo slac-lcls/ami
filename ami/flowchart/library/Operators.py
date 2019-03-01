@@ -9,13 +9,15 @@ class Sum(Node):
 
     def __init__(self, name):
         super(Sum, self).__init__(name, terminals={
-            'In': {'io': 'in'},
-            'Out': {'io': 'out'}
+            'In': {'io': 'in', 'type': (type(None), np.ndarray, list)},
+            'Out': {'io': 'out', 'type': np.float64}
         })
 
     def to_operation(self, inputs, conditions=[]):
-        outputs = [self.name()]
-        node = gn.Map(name=self.name()+"_operation", inputs=inputs, outputs=outputs, func=np.sum)
+        outputs = self.output_vars()
+        node = gn.Map(name=self.name()+"_operation",
+                      condition_needs=conditions, inputs=inputs, outputs=outputs,
+                      func=lambda a: np.sum(a, dtype=np.float64))
         return node
 
 
@@ -25,24 +27,20 @@ class Binning(Node):
 
     def __init__(self, name):
         super(Binning, self).__init__(name, terminals={
-            'Values': {'io': 'in'},
-            'Bins': {'io': 'in'},
-            'Out': {'io': 'out'}
+            'Values': {'io': 'in', 'type': np.float64},
+            'Bins': {'io': 'in', 'type': int},
+            'Out': {'io': 'out', 'type': dict}
         })
 
     def connected(self, localTerm, remoteTerm):
-        if localTerm.isInput() and remoteTerm.isOutput():
-            if localTerm.name() == "Condition":
-                self.condition_names.append(remoteTerm.node().name())
-            elif localTerm.name() == "Bins":
-                self.input_names.insert(0, remoteTerm.node().name())
-            elif localTerm.name() == "Values":
-                self.input_names.insert(1, remoteTerm.node().name())
-
-            self.sigTerminalConnected.emit(self)
+        if localTerm.name() == "Bins":
+            super(Binning, self).connected(localTerm, remoteTerm, pos=0)
+        elif localTerm.name() == "Values":
+            super(Binning, self).connected(localTerm, remoteTerm, pos=1)
+        else:
+            super(Binning, self).connected(localTerm, remoteTerm)
 
     def to_operation(self, inputs, conditions=[]):
-        outputs = [self.name()]
-
+        outputs = self.output_vars()
         node = gn.Binning(name=self.name()+"_operation", condition_needs=conditions, inputs=inputs, outputs=outputs)
         return node

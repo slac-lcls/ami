@@ -9,6 +9,7 @@ from pyqtgraph.flowchart import FlowchartGraphicsView
 from numpy import ndarray
 from ami.flowchart.Terminal import Terminal
 from ami.flowchart.library import LIBRARY
+from ami.flowchart.library.common import CtrlNode
 from ami.flowchart.Node import Node
 from ami.comm import AsyncGraphCommHandler
 from ami.graphkit_wrapper import Graph
@@ -112,13 +113,13 @@ class Flowchart(Node):
 
     @asyncqt.asyncSlot(object)
     async def nodeConnected(self, node):
-        msg = fcMsgs.UpdateNodeAttributes(node.name(), node.input_names, node.condition_names)
+        msg = fcMsgs.UpdateNodeAttributes(node.name(), node.input_vars(), node.condition_vars())
         await self.broker.send_string(msg.name, zmq.SNDMORE),
         await self.broker.send_pyobj(msg)
 
     @asyncqt.asyncSlot(object)
     async def nodeDisconnected(self, node):
-        msg = fcMsgs.UpdateNodeAttributes(node.name(), node.input_names, node.condition_names)
+        msg = fcMsgs.UpdateNodeAttributes(node.name(), node.input_vars(), node.condition_vars())
         await self.broker.send_string(node.name(), zmq.SNDMORE),
         await self.broker.send_pyobj(msg)
 
@@ -293,11 +294,10 @@ class Flowchart(Node):
     @asyncqt.asyncSlot()
     async def chartLoaded(self):
         for name, node in self.nodes().items():
-            if hasattr(node, "input_names"):
-                msg = fcMsgs.NodeCheckpoint(node.name(), inputs=node.input_names, conditions=node.condition_names,
-                                            state=node.saveState())
-                await self.broker.send_string(node.name(), zmq.SNDMORE)
-                await self.broker.send_pyobj(msg)
+            msg = fcMsgs.NodeCheckpoint(node.name(), inputs=node.input_vars(), conditions=node.condition_vars(),
+                                        state=node.saveState())
+            await self.broker.send_string(node.name(), zmq.SNDMORE)
+            await self.broker.send_pyobj(msg)
 
 
 class FlowchartCtrlWidget(QtGui.QWidget):
@@ -352,21 +352,26 @@ class FlowchartCtrlWidget(QtGui.QWidget):
 
         graph = Graph(name=str(self.chart.name))
         graph.add(graph_nodes)
+
+        with open('graph.dill', 'wb') as f:
+            dill.dump(graph, f)
+
         # TODO do some graph validation here before sending
         await self.graphCommHandler.update(graph)
 
-        # reinsert pick ones if they are still in the graph
-        if self.features:
-            features = {}
+        if not self.features:
+            return
 
-            async with self.features_lock:
-                for name, node in self.chart.nodes().items():
-                    if hasattr(node, 'input_names'):
-                        for in_name in node.input_names:
-                            if in_name in self.features:
-                                features[in_name] = self.features[in_name]
-                                await self.graphCommHandler.view(in_name)
-                self.features = features
+        # reinsert pick ones if they are still in the graph
+        features = {}
+
+        async with self.features_lock:
+            for name, node in self.chart.nodes().items():
+                for in_var in node.input_vars():
+                    if in_var.name in self.features:
+                        features[in_var.name] = self.features[in_var.name]
+                        await self.graphCommHandler.view(in_var.name)
+            self.features = features
 
     def reloadClicked(self):
         try:
@@ -508,30 +513,35 @@ class FlowchartWidget(dockarea.DockArea):
             node = item.node
             inputs = []
 
-            if len(node.inputs()) != len(node.input_names):
+            if len(node.inputs()) != len(node.input_vars()):
                 return
 
-            for in_name in node.input_names:
+            for in_var in node.input_vars():
 
-                if in_name in self.ctrl.features:
-                    topic = self.ctrl.features[in_name]
+                if in_var.name in self.ctrl.features:
+                    topic = self.ctrl.features[in_var.name]
                 else:
-                    topic = self.ctrl.graphCommHandler.auto(in_name)
+                    topic = self.ctrl.graphCommHandler.auto(in_var.name)
 
                 request_view = False
 
                 async with self.ctrl.features_lock:
-                    if in_name not in self.ctrl.features:
-                        self.ctrl.features[in_name] = topic
+                    if in_var.name not in self.ctrl.features:
+                        self.ctrl.features[in_var.name] = topic
                         request_view = True
 
                 if request_view:
-                    await self.ctrl.graphCommHandler.view(in_name)
+                    await self.ctrl.graphCommHandler.view(in_var.name)
 
-                inputs.append((in_name, topic))
+                inputs.append((in_var.name, topic))
 
             await self.chart.broker.send_string(node.name(), zmq.SNDMORE)
             await self.chart.broker.send_pyobj(fcMsgs.DisplayNode(node.name(), inputs))
+
+        elif hasattr(item, 'node') and isinstance(item.node, CtrlNode):
+            node = item.node
+            await self.chart.broker.send_string(node.name(), zmq.SNDMORE)
+            await self.chart.broker.send_pyobj(fcMsgs.DisplayNode(node.name(), []))
 
     def hoverOver(self, items):
         # print "FlowchartWidget.hoverOver called."

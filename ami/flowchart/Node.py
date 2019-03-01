@@ -5,6 +5,7 @@ from pyqtgraph import functions as fn
 from pyqtgraph.pgcollections import OrderedDict
 from pyqtgraph.debug import printExc
 from ami.flowchart.Terminal import Terminal
+from networkfox import Var
 
 
 def strDict(d):
@@ -36,8 +37,8 @@ class Node(QtCore.QObject):
     sigTerminalConnected = QtCore.Signal(object)  # self
     sigTerminalDisconnected = QtCore.Signal(object)  # self
 
-    def __init__(self, name, terminals=None, allowAddInput=False, allowAddOutput=False, allowRemove=True,
-                 viewable=False):
+    def __init__(self, name, terminals=None, allowAddInput=False, allowAddOutput=False, allowAddCondition=True,
+                 allowRemove=True, viewable=False):
         """
         ==============  ============================================================
         **Arguments:**
@@ -58,6 +59,8 @@ class Node(QtCore.QObject):
                         context menu.
         allowAddOutput  bool; whether the user is allowed to add outputs by the
                         context menu.
+        allowAddCondition bool; whether the user is allowed to add a condition
+                        by the context menu.
         allowRemove     bool; whether the user is allowed to remove this node by the
                         context menu.
         viewable        bool; whether a pick one should be inserted into the graph to
@@ -71,19 +74,23 @@ class Node(QtCore.QObject):
         self.terminals = OrderedDict()
         self._inputs = OrderedDict()
         self._outputs = OrderedDict()
+        self._conditions = OrderedDict()
         self._allowAddInput = allowAddInput   # flags to allow the user to add/remove terminals
         self._allowAddOutput = allowAddOutput
+        self._allowAddCondition = allowAddCondition
         self._allowRemove = allowRemove
         self._viewable = viewable
 
         self.exception = None
+
+        self._input_vars = []
+        self._condition_vars = []
+
         if terminals is None:
             return
+
         for name, opts in terminals.items():
             self.addTerminal(name, **opts)
-
-        self.input_names = []
-        self.condition_names = []
 
     def nextTerminalName(self, name):
         """Return an unused terminal name"""
@@ -109,6 +116,13 @@ class Node(QtCore.QObject):
         This is a convenience function that just calls addTerminal(io='out', ...)"""
         return self.addTerminal(name, io='out', **args)
 
+    def addCondition(self, name="Condition", **args):
+        """Add a new condition terminal to this Node with the given name. Extra
+        keyword arguments are passed to Terminal.__init__.
+
+        This is a convenience function that just calls addTerminal(io='condition', ...)"""
+        return self.addTerminal(name, io='condition', **args)
+
     def removeTerminal(self, term):
         """Remove the specified terminal from this Node. May specify either the
         terminal's name or the terminal itself.
@@ -128,6 +142,8 @@ class Node(QtCore.QObject):
             del self._inputs[name]
         if name in self._outputs:
             del self._outputs[name]
+        if name in self._conditions:
+            del self._conditions[name]
         self.graphicsItem().updateTerminals()
         self.sigTerminalRemoved.emit(self, term)
 
@@ -143,6 +159,8 @@ class Node(QtCore.QObject):
             self._inputs[name] = term
         elif term.isOutput():
             self._outputs[name] = term
+        elif term.isCondition():
+            self._conditions[name] = term
         self.graphicsItem().updateTerminals()
         self.sigTerminalAdded.emit(self, term)
         return term
@@ -157,8 +175,25 @@ class Node(QtCore.QObject):
         Warning: do not modify."""
         return self._outputs
 
+    def conditions(self):
+        return self._conditions
+
     def viewable(self):
         return self._viewable
+
+    def input_vars(self):
+        return self._input_vars
+
+    def output_vars(self):
+        # TODO fix this for nodes with multiple outputs
+        # can't use self.name() for output
+        output_vars = []
+        for name, output in self._outputs.items():
+            output_vars.append(Var(name=self.name(), type=output.type()))
+        return output_vars
+
+    def condition_vars(self):
+        return self._condition_vars
 
     def graphicsItem(self):
         """Return the GraphicsItem for this node. Subclasses may re-implement
@@ -208,23 +243,26 @@ class Node(QtCore.QObject):
         when they are constructing their Node list."""
         return None
 
-    def connected(self, localTerm, remoteTerm):
+    def connected(self, localTerm, remoteTerm, pos=None):
         """Called whenever one of this node's terminals is connected elsewhere."""
+        node = remoteTerm.node()
         if localTerm.isInput() and remoteTerm.isOutput():
-            if localTerm.name() == "In":
-                self.input_names.append(remoteTerm.node().name())
-            elif localTerm.name() == "Condition":
-                self.condition_names.append(remoteTerm.node().name())
-            self.sigTerminalConnected.emit(self)
+            if pos is not None:
+                self._input_vars.insert(pos, Var(name=node.name(), type=remoteTerm.type()))
+            else:
+                self._input_vars.append(Var(name=node.name(), type=remoteTerm.type()))
+        elif localTerm.isCondition():
+            self._condition_vars.append(node.name())
+        self.sigTerminalConnected.emit(self)
 
     def disconnected(self, localTerm, remoteTerm):
         """Called whenever one of this node's terminals is disconnected from another."""
+        node = remoteTerm.node()
         if localTerm.isInput() and remoteTerm.isOutput():
-            if localTerm.name() == "In":
-                self.input_names.remove(remoteTerm.node().name())
-            elif localTerm.name() == "Condition":
-                self.condition_names.remove(remoteTerm.node().name())
-            self.sigTerminalDisconnected.emit(self)
+            self._input_vars.remove(Var(name=node.name(), type=remoteTerm.type()))
+        elif localTerm.isCondition():
+            self._condition_vars.remove(node.name())
+        self.sigTerminalDisconnected.emit(self)
 
     def setException(self, exc):
         self.exception = exc
@@ -286,6 +324,7 @@ class Node(QtCore.QObject):
             t.close()
         self.terminals = OrderedDict()
         self._inputs = OrderedDict()
+        self._conditions = OrderedDict()
         self._outputs = OrderedDict()
 
     def close(self):
@@ -341,10 +380,20 @@ class NodeGraphicsItem(GraphicsObject):
     def updateTerminals(self):
         bounds = self.bounds
         self.terminals = {}
+
         inp = self.node.inputs()
-        dy = bounds.height() / (len(inp)+1)
+        conds = self.node.conditions()
+
+        dy = bounds.height() / (len(inp)+len(conds)+1)
         y = dy
         for i, t in inp.items():
+            item = t.graphicsItem()
+            item.setParentItem(self)
+            item.setAnchor(0, y)
+            self.terminals[i] = (t, item)
+            y += dy
+
+        for i, t in conds.items():
             item = t.graphicsItem()
             item.setParentItem(self)
             item.setAnchor(0, y)
@@ -450,7 +499,7 @@ class NodeGraphicsItem(GraphicsObject):
                 self.menu.addAction("Add input", self.addInputFromMenu)
             if self.node._allowAddOutput:
                 self.menu.addAction("Add output", self.addOutputFromMenu)
-            if "Condition" not in self.node.terminals:
+            if self.node._allowAddCondition:
                 self.menu.addAction("Add condition", self.addConditionFromMenu)
             if self.node._allowRemove:
                 self.menu.addAction("Remove node", self.node.close)
@@ -464,4 +513,4 @@ class NodeGraphicsItem(GraphicsObject):
         self.node.addOutput(removable=True)
 
     def addConditionFromMenu(self):
-        self.node.addInput(name="Condition", removable=True)
+        self.node.addCondition(removable=True)

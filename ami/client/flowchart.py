@@ -7,6 +7,7 @@ import tempfile
 import asyncio
 import zmq
 import zmq.asyncio
+import numpy as np
 
 from ami.client import flowchart_messages as fcMsgs
 from ami.flowchart.Flowchart import Flowchart
@@ -46,8 +47,9 @@ def run_editor_window(broker_addr, graphmgr_addr, node_addr, checkpoint_addr):
                    checkpoint_addr=checkpoint_addr)
 
     y = 0
+    types = {'cspad': np.ndarray, 'laser': bool, 'delta_t': int}
     for name in comm.names:
-        fc.addNode(Node(name=name, terminals={'Out': {'io': 'out'}}), name=name, pos=[0, y])
+        fc.addNode(Node(name=name, terminals={'Out': {'io': 'out', 'type': types[name]}}), name=name, pos=[0, y])
         y += 150
 
     w = fc.widget()
@@ -265,8 +267,8 @@ class MessageBroker(object):
             await asyncio.sleep(0.25)
 
             dead_procs = []
-            for name, np in self.widget_procs.items():
-                node_type, proc = np
+            for name, ntp in self.widget_procs.items():
+                node_type, proc = ntp
                 if not proc.is_alive():
                     dead_procs.append(name)
 
@@ -334,17 +336,6 @@ class MessageBroker(object):
                         _, proc = self.widget_procs[topic]
                         proc.join()
                         del self.widget_procs[topic]
-
-            elif isinstance(msg, fcMsgs.ExitMsg):
-                logger.info("received exit signal - exiting!")
-                for topic in self.msgs:
-                    await self.broker_pub_sock.send_string(topic)
-                    await self.broker_pub_sock.send_pyobj(fcMsgs.CloseMsg())
-
-                for name, np in self.widget_procs.items():
-                    node_type, proc = np
-                    proc.join()
-                break
 
     async def run(self):
         await asyncio.gather(self.handle_connect(),

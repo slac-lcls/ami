@@ -62,7 +62,7 @@ def test_complex_graph(complex_graph_file, start_ami):
     while comm_handler.graphVersion != comm_handler.featuresVersion:
         end = time.time()
         if end - start > 10:
-            break
+            raise TimeoutError
     sig = comm_handler.fetch('signal')
     assert sig == {1: 10000.0}
 
@@ -80,6 +80,6 @@ def test_psana_graph(psana_graph, start_ami, use_psana):
     while comm_handler.graphVersion != comm_handler.featuresVersion:
         end = time.time()
         if end - start > 10:
-            break
+            raise TimeoutError
     picked_cspad = comm_handler.fetch('picked')
     assert len(picked_cspad) == 18

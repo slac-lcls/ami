@@ -10,7 +10,7 @@ except ImportError:
     psana = None
 
 from ami.graphkit_wrapper import Graph
-from ami.graph_nodes import Map, FilterOn, FilterOff, Binning, PickN
+from ami.graph_nodes import Map, FilterOn, FilterOff, Binning, PickN, Var
 
 
 @pytest.fixture(scope='session')
@@ -30,16 +30,33 @@ def complex_graph_file(tmpdir_factory):
     def roi(cspad):
         return cspad[:100, :100]
 
-    graph.add(Map(name='Roi', inputs=['cspad'], outputs=['roi'], func=roi))
-    graph.add(Map(name='Sum', inputs=['roi'], outputs=['sum'], func=np.sum))
+    graph.add(Map(name='Roi',
+                  inputs=[Var(name='cspad', type=np.ndarray)],
+                  outputs=[Var(name='roi', type=np.ndarray)],
+                  func=roi))
 
-    graph.add(FilterOn(name='FilterOn', condition_needs=['laser'], outputs=['laseron']))
-    graph.add(Binning(name='BinningOn', condition_needs=['laseron'], inputs=['delta_t', 'sum'],
-                      outputs=['signal']))
+    graph.add(Map(name='Sum',
+                  inputs=[Var(name='roi', type=np.ndarray)],
+                  outputs=[Var(name='sum', type=np.float64)],
+                  func=np.sum))
 
-    graph.add(FilterOff(name='FilterOff', condition_needs=['laser'], outputs=['laseroff']))
-    graph.add(Binning(name='BinningOff', condition_needs=['laseroff'],
-                      inputs=['delta_t', 'sum'], outputs=['reference']))
+    graph.add(FilterOn(name='FilterOn',
+                       condition_needs=['laser'],
+                       outputs=['laseron']))
+
+    graph.add(Binning(name='BinningOn',
+                      condition_needs=['laseron'],
+                      inputs=[Var(name='delta_t', type=int), Var(name='sum', type=np.float64)],
+                      outputs=[Var(name='signal', type=dict)]))
+
+    graph.add(FilterOff(name='FilterOff',
+                        condition_needs=['laser'],
+                        outputs=['laseroff']))
+
+    graph.add(Binning(name='BinningOff',
+                      condition_needs=['laseroff'],
+                      inputs=[Var('delta_t', type=int), Var(name='sum', type=np.float64)],
+                      outputs=[Var(name='reference', type=dict)]))
 
     fname = tmpdir_factory.mktemp("complex_graph", False).join("complex_graph.dill")
 
@@ -51,7 +68,9 @@ def complex_graph_file(tmpdir_factory):
 @pytest.fixture(scope='session')
 def psana_graph(tmpdir_factory):
     graph = Graph(name='graph')
-    graph.add(PickN(name='picker', inputs=['xppcspad:raw:raw'], outputs=['picked']))
+    graph.add(PickN(name='picker',
+                    inputs=[Var(name='xppcspad:raw:raw', type=np.array)],
+                    outputs=[Var(name='picked', type=np.array)]))
     fname = tmpdir_factory.mktemp("psana_graph", False).join("psana_graph.dill")
     with open(fname, 'wb') as fd:
         dill.dump(graph, fd)

@@ -1,19 +1,23 @@
 from ami.flowchart.library.DisplayWidgets import AreaDetWidget
 from ami.flowchart.library.common import CtrlNode
-from ami.graph_nodes import Map
+import ami.graph_nodes as gn
 import asyncio
+import numpy as np
 
 
 class Roi(CtrlNode):
 
     nodeName = "Roi"
-    uiTemplate = [('origin x',  'intSpin', {'value': 0.0, 'min': 0, 'max': 2147483647}),
-                  ('origin y',  'intSpin', {'value': 0.0, 'min': 0, 'max': 2147483647}),
-                  ('extent x',  'intSpin', {'value': 0.0, 'min': 0, 'max': 2147483647}),
-                  ('extent y',  'intSpin', {'value': 0.0, 'min': 0, 'max': 2147483647})]
+    uiTemplate = [('origin x',  'intSpin', {'value': 0, 'min': 0, 'max': 2147483647}),
+                  ('origin y',  'intSpin', {'value': 0, 'min': 0, 'max': 2147483647}),
+                  ('extent x',  'intSpin', {'value': 0, 'min': 0, 'max': 2147483647}),
+                  ('extent y',  'intSpin', {'value': 0, 'min': 0, 'max': 2147483647})]
 
     def __init__(self, name):
-        super(Roi, self).__init__(name, viewable=True)
+        super(Roi, self).__init__(name,
+                                  terminals={'In': {'io': 'in', 'type': np.ndarray},
+                                             'Out': {'io': 'out', 'type': np.ndarray}},
+                                  viewable=True)
         self.origin_x = 0
         self.origin_y = 0
         self.extent_x = 0
@@ -67,7 +71,8 @@ class Roi(CtrlNode):
         self.func = func
 
     def to_operation(self, inputs, conditions=[]):
-        outputs = [self.name()]
-
-        node = Map(name=self.name()+"_operation", inputs=inputs, outputs=outputs, conditions=conditions, func=self.func)
+        outputs = self.output_vars()
+        node = gn.Map(name=self.name()+"_operation",
+                      inputs=inputs, outputs=outputs, condition_needs=conditions,
+                      func=self.func)
         return node
