@@ -67,8 +67,8 @@ class WaveformWidget(pg.GraphicsLayoutWidget):
                 self.waveform_updated(self.fetcher.reply)
 
     def waveform_updated(self, data):
+        x, y = map(list, zip(*sorted(data.items())))
         if self.plot is None:
-            x, y = (list(data.keys()), list(data.values()))
-            self.plot = self.plot_view.plot(x, y)
+            self.plot = self.plot_view.plot(x, y, symbol='o')
         else:
-            self.plot.setData(y=list(data.values()))
+            self.plot.setData(x=x, y=y)
