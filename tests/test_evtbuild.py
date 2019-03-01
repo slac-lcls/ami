@@ -5,13 +5,15 @@ import dill
 from ami.data import MsgTypes, CollectorMessage
 from ami.comm import Colors, EventBuilder
 from ami.graphkit_wrapper import Graph
-from ami.graph_nodes import PickN
+from ami.graph_nodes import PickN, Var
 
 
 @pytest.fixture(scope='module')
 def eb_graph():
     graph = Graph(name='graph')
-    graph.add(PickN(name='pick1_values', N=1, inputs=['values'], outputs=['value']))
+    graph.add(PickN(name='pick1_values', N=1,
+                    inputs=[Var(name='values', type=int)],
+                    outputs=[Var(name='value', type=int)]))
     return dill.dumps(graph)
 
 

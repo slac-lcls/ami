@@ -15,7 +15,7 @@ class Terminal(object):
         **Arguments:**
         node            the node to which this terminal belongs
         name            string, the name of the terminal
-        io              'in' or 'out'
+        io              'in', 'out', or 'condition'
         typ             type terminal expects/returns
         pos             [x, y], the position of the terminal within its node's boundaries
         removable       (bool) Whether the terminal can be removed by the user
@@ -73,6 +73,9 @@ class Terminal(object):
 
     def isOutput(self):
         return self._io == 'out'
+
+    def isCondition(self):
+        return self._io == "condition"
 
     def isRemovable(self):
         return self._removable
@@ -138,7 +141,7 @@ class Terminal(object):
         return connectionItem
 
     def fixType(self, term):
-        if "Condition" in self.name() or "Condition" in term.name():
+        if self.isCondition() or term.isCondition():
             return
 
         if self.type() == object:
@@ -268,7 +271,7 @@ class TerminalGraphicsItem(GraphicsObject):
         br = self.box.mapRectToParent(self.box.boundingRect())
         lr = self.label.mapRectToParent(self.label.boundingRect())
 
-        if self.term.isInput():
+        if self.term.isInput() or self.term.isCondition():
             self.box.setPos(pos.x(), pos.y()-br.height()/2.)
             self.label.setPos(pos.x() + br.width(), pos.y() - lr.height()/2.)
         else:

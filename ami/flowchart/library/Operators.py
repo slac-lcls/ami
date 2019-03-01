@@ -14,7 +14,7 @@ class Sum(Node):
         })
 
     def to_operation(self, inputs, conditions=[]):
-        outputs = [self.name()]
+        outputs = [gn.Var(name=self.name(), type=np.float64)]
         node = gn.Map(name=self.name()+"_operation", inputs=inputs, outputs=outputs, func=np.sum)
         return node
 
@@ -41,8 +41,8 @@ class Binning(Node):
 
             self.sigTerminalConnected.emit(self)
 
-    def to_operation(self, inputs, conditions=[]):
-        outputs = [self.name()]
+    def to_operation(self, inputs, outputs, conditions=[]):
+        outputs = [gn.Var(name=self.name(), type=dict)]
 
         node = gn.Binning(name=self.name()+"_operation", condition_needs=conditions, inputs=inputs, outputs=outputs)
         return node

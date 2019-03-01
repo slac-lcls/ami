@@ -1,6 +1,6 @@
 from ami.flowchart.library.DisplayWidgets import AreaDetWidget
 from ami.flowchart.library.common import CtrlNode
-from ami.graph_nodes import Map
+import ami.graph_nodes as gn
 import asyncio
 import numpy as np
 
@@ -70,8 +70,10 @@ class Roi(CtrlNode):
 
         self.func = func
 
-    def to_operation(self, inputs, conditions=[]):
-        outputs = [self.name()]
+    def to_operation(self, inputs, outputs, conditions=[]):
+        outputs = [gn.Var(self.name(), type=np.ndarray)]
 
-        node = Map(name=self.name()+"_operation", inputs=inputs, outputs=outputs, conditions=conditions, func=self.func)
+        node = gn.Map(name=self.name()+"_operation",
+                      inputs=inputs, outputs=outputs, conditions=conditions,
+                      func=self.func)
         return node

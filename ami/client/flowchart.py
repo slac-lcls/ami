@@ -337,17 +337,6 @@ class MessageBroker(object):
                         proc.join()
                         del self.widget_procs[topic]
 
-            elif isinstance(msg, fcMsgs.ExitMsg):
-                logger.info("received exit signal - exiting!")
-                for topic in self.msgs:
-                    await self.broker_pub_sock.send_string(topic)
-                    await self.broker_pub_sock.send_pyobj(fcMsgs.CloseMsg())
-
-                for name, ntp in self.widget_procs.items():
-                    node_type, proc = np
-                    proc.join()
-                break
-
     async def run(self):
         await asyncio.gather(self.handle_connect(),
                              self.handle_checkpoint(),

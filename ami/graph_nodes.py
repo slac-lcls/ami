@@ -1,6 +1,6 @@
 import abc
 import operator
-from networkfox import operation, If, Else
+from networkfox import operation, If, Else, Var
 
 
 class Transformation(abc.ABC):
@@ -243,8 +243,8 @@ def Binning(name="", inputs=[], outputs=[], condition_needs=[]):
 
     k, v = inputs
     outputs = outputs[0]
-    map_outputs = ['_'+outputs+'_count']
-    reduce_outputs = ['_'+outputs+'_reduce']
+    map_outputs = [Var(name=outputs.name+'_count', type=tuple)]
+    reduce_outputs = [Var(name=outputs.name+'_reduce', type=dict)]
 
     def mean(d):
         res = {}

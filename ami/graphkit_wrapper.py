@@ -1,7 +1,7 @@
 import networkx as nx
 import itertools as it
 import collections
-from networkfox import compose
+from networkfox import compose, Var
 import ami.graph_nodes
 
 
@@ -45,6 +45,16 @@ class Graph():
             return False
 
     @property
+    def variables(self):
+        """
+        Returns a set of all nodes of type `Var` in the graph.
+
+        Returns:
+            A set of all `Var` nodes.
+        """
+        return {node for node in self.graph.nodes if isinstance(node, Var)}
+
+    @property
     def names(self):
         """
         Returns a set of all user-defined names in the graph that can be used
@@ -54,7 +64,7 @@ class Graph():
         Returns:
             The set of user-defined names
         """
-        return {node for node in self.graph.nodes if isinstance(node, str) and self._name_is_valid(node)}
+        return {node.name for node in self.variables if self._name_is_valid(node.name)}
 
     @property
     def sources(self):
@@ -65,49 +75,71 @@ class Graph():
         Returns:
             The set of all the input data sources
         """
-        return {name for name in self.inputs['worker'] if self._name_is_valid(name)}
+        sources = set()
 
-    def add(self, ops):
+        for var in self.inputs['worker']:
+            if isinstance(var, Var):
+                var = var.name
+            if self._name_is_valid(var):
+                sources.add(var)
+
+        return sources
+
+    def get_type(self, name):
+        """
+        Returns the type of a Var node in the graph
+
+        Args:
+            name (str): The name field of the Var node in graph
+
+        Returns:
+            The type of the Var node if found
+        """
+        for node in self.graph.nodes:
+            if isinstance(node, Var) and node.name == name:
+                return node.type
+
+    def add(self, op):
         """
         Add an operation to the graph. If the node already exists in the graph try to replace it if the new node's
         inputs and outputs match the old one's.
 
         Args:
-            ops (list or Transformation): Operation node to add to graph.
+            op (list or Transformation): Operation node to add to graph.
+        """
+
+        try:
+            self.insert(op)
+        except AssertionError:
+            self.replace(op)
+
+    def insert(self, ops):
+        """
+        Insert operations into the graph. If an operation already exists in the graph this function raises an
+        AssertionError.
+
+        Args:
+            ops (list or Transformation): Operation to insert into graph
+
+        Raises:
+            AssertionError: if an operation already exists in the graph
         """
 
         if type(ops) is not list:
             ops = [ops]
 
         for op in ops:
-            try:
-                self.insert(op)
-            except AssertionError:
-                self.replace(op)
+            assert op not in self.graph.nodes(), "Operation may only be added once %s" % op.name
+            assert op.name not in self.children_of_global_operations, "Operation may only be added once %s" % op.name
 
-    def insert(self, op):
-        """
-        Insert an operation into the graph. If the node already exists in the graph this function raises an
-        AssertionError.
+            for i in op.inputs:
+                self.graph.add_edge(i, op)
 
-        Args:
-            op (list or Transformation): Operation to insert into graph
+            for o in op.outputs:
+                self.graph.add_edge(op, o)
 
-        Raises:
-            AssertionError: if the node already exists in the graph
-        """
-
-        assert op not in self.graph.nodes(), "Operation may only be added once %s" % op.name
-        assert op.name not in self.children_of_global_operations, "Operation may only be added once %s" % op.name
-
-        for i in op.inputs:
-            self.graph.add_edge(i, op)
-
-        for o in op.outputs:
-            self.graph.add_edge(op, o)
-
-        for i in op.condition_needs:
-            self.graph.add_edge(i, op)
+            for i in op.condition_needs:
+                self.graph.add_edge(i, op)
 
         self.graphkit = None
 
@@ -219,7 +251,7 @@ class Graph():
 
                 color = 'worker'
                 for node in nodes:
-                    if type(node) is str:
+                    if type(node) is str or isinstance(node, Var):
                         continue
 
                     if node in self.global_operations or node in self.expanded_global_operations:
@@ -256,7 +288,7 @@ class Graph():
             for color in color_order:
 
                 if color == 'worker':
-                    worker_outputs = list(map(lambda o: o+'_worker', node.outputs))
+                    worker_outputs = list(map(lambda o: Var(name=o.name+'_worker', type=o.type), node.outputs))
 
                     worker_N = 1
                     if hasattr(node, 'N'):
@@ -277,7 +309,8 @@ class Graph():
 
                 elif color == 'localCollector':
                     self.inputs[color].update(worker_outputs)
-                    local_collector_outputs = list(map(lambda o: o+'_localCollector', node.outputs))
+                    local_collector_outputs = list(map(lambda o: Var(name=o.name+'_localCollector', type=o.type),
+                                                       node.outputs))
 
                     local_collector_N = 1
                     if hasattr(node, 'N'):
@@ -331,7 +364,7 @@ class Graph():
         inputs = [n for n, d in subgraph.in_degree() if d == 0]
         inputs = list(it.chain.from_iterable([i.inputs for i in inputs]))
         outputs = [n for n, d in subgraph.out_degree() if d == 0]
-        nodes = list(filter(lambda node: type(node) is not str, nodes))
+        nodes = list(filter(lambda node: not isinstance(node, Var), nodes))
         nodes = list(map(lambda node: node.to_operation(), nodes))
         node = filter_node.to_operation()
         if hasattr(filter_node, 'condition'):
@@ -394,7 +427,7 @@ class Graph():
         for node in self.graph.nodes:
             if node in seen:
                 continue
-            if type(node) is str:
+            if type(node) is str or isinstance(node, Var):
                 continue
             body.append(node.to_operation())
 
@@ -435,4 +468,4 @@ class Graph():
 
         result = self.graphkit(*args, **kwargs)
         outputs = self.outputs[color]
-        return {k: result[k] for k in outputs if k in result}
+        return {k.name: result[k.name] for k in outputs if k.name in result}

@@ -14,12 +14,6 @@ class BrokerMsg(Msg):
         super(BrokerMsg, self).__init__(name)
 
 
-class ExitMsg(Msg):
-
-    def __init__(self):
-        super(ExitMsg, self).__init__("")
-
-
 class NodeMsg(Msg):
 
     """

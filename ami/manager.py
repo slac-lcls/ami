@@ -32,7 +32,7 @@ class Manager(Collector):
         self.num_nodes = num_nodes
         self.partition = []
         self.feature_store = Store()
-        self.feature_req = re.compile("fetch:(?P<name>.*)")
+        self.feature_req = re.compile("(?P<type>fetch|lookup):(?P<name>.*)")
         self.graph = None
         self.version = 0
 
@@ -80,9 +80,22 @@ class Manager(Collector):
     def feature_request(self, request):
         matched = self.feature_req.match(request)
         if matched:
-            if matched.group('name') in self.feature_store.namespace:
-                self.comm.send_string('ok', zmq.SNDMORE)
-                self.comm.send_pyobj(self.feature_store.get(matched.group('name')))
+            if matched.group('type') == 'fetch':
+                if matched.group('name') in self.feature_store.namespace:
+                    self.comm.send_string('ok', zmq.SNDMORE)
+                    self.comm.send_pyobj(self.feature_store.get(matched.group('name')))
+                else:
+                    self.comm.send_string('error')
+            elif matched.group('type') == 'lookup':
+                if self.graph is not None:
+                    var_type = self.graph.get_type(matched.group('name'))
+                    if var_type is not None:
+                        self.comm.send_string('ok', zmq.SNDMORE)
+                        self.comm.send_pyobj(var_type)
+                    else:
+                        self.comm.send_string('error')
+                else:
+                    self.comm.send_string('error')
             else:
                 self.comm.send_string('error')
             return True

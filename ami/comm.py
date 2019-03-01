@@ -333,8 +333,18 @@ class CommHandler(abc.ABC):
             if key in kwargs and kwargs[key] is None:
                 del kwargs[key]
         for key in self._expand_keys:
-            if key in kwargs and not isinstance(kwargs[key], list):
-                kwargs[key] = [kwargs[key]]
+            if key in kwargs:
+                if not isinstance(kwargs[key], list):
+                    kwargs[key] = [kwargs[key]]
+                converted_vars = []
+                for var in kwargs[key]:
+                    if isinstance(var, gn.Var):
+                        converted_vars.append(var)
+                    else:
+                        converted_vars.append(gn.Var(var))
+
+                kwargs[key] = converted_vars
+
         return node(**kwargs)
 
     def auto(self, name):
@@ -413,6 +423,18 @@ class CommHandler(abc.ABC):
         """
         return self._request('get_features_version')
 
+    def get_type(self, name):
+        """
+        Lookups of the type of a `Var` node in the graph by its name field.
+
+        Args:
+            name (str): the name of the node
+
+        Returns:
+            The type of the node if it is found in the graph
+        """
+        return self._request("lookup:%s" % name, check=True)
+
     def fetch(self, name):
         """
         Attempts to fetch a feature with the requested name from the global
@@ -452,8 +474,7 @@ class CommHandler(abc.ABC):
         Returns:
             True if the graph change was successful, False otherwise.
         """
-        view_name = self.auto(name)
-        return self.addPickN('%s_view' % view_name, name, view_name)
+        return self._view(name)
 
     def addPickN(self, name, inputs, outputs, N=1, condition_needs=None):
         """
@@ -656,6 +677,10 @@ class CommHandler(abc.ABC):
         pass
 
     @abc.abstractmethod
+    def _view(self, name):
+        pass
+
+    @abc.abstractmethod
     def _load(self, graph):
         pass
 
@@ -714,6 +739,14 @@ class AsyncGraphCommHandler(CommHandler):
             except OSError:
                 logger.exception("Problem opening saved graph configuration file:")
 
+    async def _view(self, name):
+        view_name = self.auto(name)
+        var_type = await self.get_type(name)
+        if var_type is None:
+            return await self.addPickN('%s_view' % view_name, name, view_name)
+        else:
+            return await self.addPickN('%s_view' % view_name, gn.Var(name, var_type), gn.Var(view_name, var_type))
+
     async def _load(self, filename):
         with open(filename, 'rb') as cnf:
             graph = dill.load(cnf)
@@ -761,6 +794,14 @@ class GraphCommHandler(CommHandler):
         self._sock.send_string(cmd, zmq.SNDMORE)
         self._sock.send(dill.dumps(payload))
         return self._sock.recv_string() == 'ok'
+
+    def _view(self, name):
+        view_name = self.auto(name)
+        var_type = self.get_type(name)
+        if var_type is None:
+            return self.addPickN('%s_view' % view_name, name, view_name)
+        else:
+            return self.addPickN('%s_view' % view_name, gn.Var(name, var_type), gn.Var(view_name, var_type))
 
     def _load(self, filename):
         with open(filename, 'rb') as cnf:
