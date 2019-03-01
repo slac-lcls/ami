@@ -84,7 +84,6 @@ class Node(QtCore.QObject):
         self.exception = None
 
         self._input_vars = []
-        self._output_vars = []
         self._condition_vars = []
 
         if terminals is None:
@@ -185,6 +184,14 @@ class Node(QtCore.QObject):
     def input_vars(self):
         return self._input_vars
 
+    def output_vars(self):
+        # TODO fix this for nodes with multiple outputs
+        # can't use self.name() for output
+        output_vars = []
+        for name, output in self._outputs.items():
+            output_vars.append(Var(name=self.name(), type=output.type()))
+        return output_vars
+
     def condition_vars(self):
         return self._condition_vars
 
@@ -236,25 +243,23 @@ class Node(QtCore.QObject):
         when they are constructing their Node list."""
         return None
 
-    def connected(self, localTerm, remoteTerm):
+    def connected(self, localTerm, remoteTerm, pos=0):
         """Called whenever one of this node's terminals is connected elsewhere."""
+        node = remoteTerm.node()
         if localTerm.isInput() and remoteTerm.isOutput():
-            node = remoteTerm.node()
-            if localTerm.name() == "In":
-                self._input_vars.append(Var(name=node.name(), type=remoteTerm.type()))
-            elif localTerm.name() == "Condition":
-                self._condition_vars.append(node.name())
-            self.sigTerminalConnected.emit(self)
+            self._input_vars.insert(pos, Var(name=node.name(), type=remoteTerm.type()))
+        elif localTerm.isCondition():
+            self._condition_vars.append(node.name())
+        self.sigTerminalConnected.emit(self)
 
     def disconnected(self, localTerm, remoteTerm):
         """Called whenever one of this node's terminals is disconnected from another."""
+        node = remoteTerm.node()
         if localTerm.isInput() and remoteTerm.isOutput():
-            node = remoteTerm.node()
-            if localTerm.name() == "In":
-                self._input_vars.remove(Var(name=node.name(), type=remoteTerm.type()))
-            elif localTerm.name() == "Condition":
-                self._condition_vars.remove(node.name())
-            self.sigTerminalDisconnected.emit(self)
+            self._input_vars.remove(Var(name=node.name(), type=remoteTerm.type()))
+        elif localTerm.isCondition():
+            self._condition_vars.remove(node.name())
+        self.sigTerminalDisconnected.emit(self)
 
     def setException(self, exc):
         self.exception = exc

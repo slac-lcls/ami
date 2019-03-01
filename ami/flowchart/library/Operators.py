@@ -14,7 +14,7 @@ class Sum(Node):
         })
 
     def to_operation(self, inputs, conditions=[]):
-        outputs = [gn.Var(name=self.name(), type=np.float64)]
+        outputs = self.output_vars()
         node = gn.Map(name=self.name()+"_operation", inputs=inputs, outputs=outputs, func=np.sum)
         return node
 
@@ -31,18 +31,14 @@ class Binning(Node):
         })
 
     def connected(self, localTerm, remoteTerm):
-        if localTerm.isInput() and remoteTerm.isOutput():
-            if localTerm.name() == "Condition":
-                self.condition_names.append(remoteTerm.node().name())
-            elif localTerm.name() == "Bins":
-                self.input_names.insert(0, remoteTerm.node().name())
-            elif localTerm.name() == "Values":
-                self.input_names.insert(1, remoteTerm.node().name())
+        if localTerm.name() == "Bins":
+            super(Binning, self).connected(localTerm, remoteTerm, pos=0)
+        elif localTerm.name() == "Values":
+            super(Binning, self).connected(localTerm, remoteTerm, pos=1)
+        else:
+            super(Binning, self).connected(localTerm, remoteTerm)
 
-            self.sigTerminalConnected.emit(self)
-
-    def to_operation(self, inputs, outputs, conditions=[]):
-        outputs = [gn.Var(name=self.name(), type=dict)]
-
+    def to_operation(self, inputs, conditions=[]):
+        outputs = self.output_vars()
         node = gn.Binning(name=self.name()+"_operation", condition_needs=conditions, inputs=inputs, outputs=outputs)
         return node

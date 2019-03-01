@@ -435,6 +435,11 @@ class Graph():
 
         self.graphkit = compose(name=self.name)(*body)
 
+    def nxplot(self, filename=None):
+        A = nx.nx_agraph.to_agraph(self.graph)
+        A.layout(prog='dot')
+        A.draw(filename)
+
     def plot(self, filename=None):
         """
         Generate plot of the graph.

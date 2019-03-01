@@ -352,6 +352,7 @@ class FlowchartCtrlWidget(QtGui.QWidget):
 
         graph = Graph(name=str(self.chart.name))
         graph.add(graph_nodes)
+
         # TODO do some graph validation here before sending
         await self.graphCommHandler.update(graph)
 

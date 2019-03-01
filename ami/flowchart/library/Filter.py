@@ -1,14 +1,17 @@
 from ami.flowchart.Node import Node
-import ami.graph_nodes
+import ami.graph_nodes as gn
 
 
 class Filter(Node):
 
     def __init__(self, name):
         super(Filter, self).__init__(name, terminals={
-            'Condition': {'io': 'in'},
+            'Condition': {'io': 'condition'},
             'Out': {'io': 'out'}
         })
+
+    def output_vars(self):
+        return [self.name()]
 
 
 class FilterOff(Filter):
@@ -19,8 +22,8 @@ class FilterOff(Filter):
         super(FilterOff, self).__init__(name)
 
     def to_operation(self, inputs, conditions=[]):
-        outputs = [self.name()]
-        node = ami.graph_nodes.FilterOff(name=self.name()+'_operation', condition_needs=conditions, outputs=outputs)
+        outputs = self.output_vars()
+        node = gn.FilterOff(name=self.name()+'_operation', condition_needs=conditions, outputs=outputs)
         return node
 
 
@@ -32,6 +35,6 @@ class FilterOn(Filter):
         super(FilterOn, self).__init__(name)
 
     def to_operation(self, inputs, conditions=[]):
-        outputs = [self.name()]
-        node = ami.graph_nodes.FilterOn(name=self.name()+'_operation', condition_needs=conditions, outputs=outputs)
+        outputs = self.output_vars()
+        node = gn.FilterOn(name=self.name()+'_operation', condition_needs=conditions, outputs=outputs)
         return node

@@ -13,8 +13,7 @@ class Pick1(CtrlNode):
                                                'Out': {'io': 'out', 'type': object}})
 
     def to_operation(self, inputs, conditions=[]):
-        i = inputs[0]
-        outputs = [gn.Var(name=self.name(), type=i.type)]
+        outputs = self.output_vars()
         node = gn.PickN(name=self.name()+"_operation", inputs=inputs, outputs=outputs, N=1)
         return node
 
@@ -31,6 +30,6 @@ class PickN(CtrlNode):
         self.N = 2
 
     def to_operation(self, inputs, conditions=[]):
-        outputs = [gn.Var(name=self.name(), type=(None, list))]
+        outputs = self.output_vars()
         node = gn.PickN(name=self.name()+"_operation", inputs=inputs, outputs=outputs, N=self.N)
         return node

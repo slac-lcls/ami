@@ -70,9 +70,8 @@ class Roi(CtrlNode):
 
         self.func = func
 
-    def to_operation(self, inputs, outputs, conditions=[]):
-        outputs = [gn.Var(self.name(), type=np.ndarray)]
-
+    def to_operation(self, inputs, conditions=[]):
+        outputs = self.output_vars()
         node = gn.Map(name=self.name()+"_operation",
                       inputs=inputs, outputs=outputs, conditions=conditions,
                       func=self.func)
