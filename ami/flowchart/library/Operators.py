@@ -15,7 +15,9 @@ class Sum(Node):
 
     def to_operation(self, inputs, conditions=[]):
         outputs = self.output_vars()
-        node = gn.Map(name=self.name()+"_operation", inputs=inputs, outputs=outputs, func=np.sum)
+        node = gn.Map(name=self.name()+"_operation",
+                      condition_needs=conditions, inputs=inputs, outputs=outputs,
+                      func=np.sum)
         return node
 
 

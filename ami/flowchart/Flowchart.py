@@ -353,6 +353,9 @@ class FlowchartCtrlWidget(QtGui.QWidget):
         graph = Graph(name=str(self.chart.name))
         graph.add(graph_nodes)
 
+        with open('graph.dill', 'wb') as f:
+            dill.dump(graph, f)
+
         # TODO do some graph validation here before sending
         await self.graphCommHandler.update(graph)
 
@@ -523,7 +526,7 @@ class FlowchartWidget(dockarea.DockArea):
                 request_view = False
 
                 async with self.ctrl.features_lock:
-                    if in_var not in self.ctrl.features:
+                    if in_var.name not in self.ctrl.features:
                         self.ctrl.features[in_var.name] = topic
                         request_view = True
 
