@@ -20,6 +20,7 @@ class NodeLibrary:
     def __init__(self):
         self.nodeList = OrderedDict()
         self.nodeTree = OrderedDict()
+        self.labelTree = OrderedDict()
 
     def addNodeType(self, nodeClass, paths, override=False):
         """
@@ -59,6 +60,15 @@ class NodeLibrary:
 
     def getNodeTree(self):
         return self.nodeTree
+
+    def getLabelTree(self):
+        if self.labelTree:
+            return self.labelTree
+
+        for root, children in self.nodeTree.items():
+            self.labelTree[root] = children.keys()
+
+        return self.labelTree
 
     def copy(self):
         """

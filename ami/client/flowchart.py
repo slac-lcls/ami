@@ -52,12 +52,8 @@ def run_editor_window(broker_addr, graphmgr_addr, node_addr, checkpoint_addr):
         fc.addNode(Node(name=name, terminals={'Out': {'io': 'out', 'type': types[name]}}), name=name, pos=[0, y])
         y += 150
 
-    w = fc.widget()
-    fw = w.chartWidget
-
     # Add flowchart control panel to the main window
-    layout.addWidget(w.ui.toolBar, 0, 0, 1, -1)
-    layout.addWidget(fw, 1, 0)
+    layout.addWidget(fc.widget(), 0, 0, 2, 1)
 
     win.show()
     with loop:

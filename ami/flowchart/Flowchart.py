@@ -5,8 +5,8 @@ from pyqtgraph import FileDialog
 from pyqtgraph.debug import printExc
 from pyqtgraph import configfile as configfile
 from pyqtgraph import dockarea as dockarea
-from pyqtgraph.flowchart import FlowchartGraphicsView
 from numpy import ndarray
+from ami.flowchart.FlowchartGraphicsView import FlowchartGraphicsView
 from ami.flowchart.Terminal import Terminal
 from ami.flowchart.library import LIBRARY
 from ami.flowchart.library.common import CtrlNode
@@ -312,15 +312,16 @@ class FlowchartCtrlWidget(QtGui.QWidget):
         self.items = {}
         self.currentFileName = None
         self.chart = chart
+        self.chartWidget = FlowchartWidget(chart, self)
 
         self.ui = EditorTemplate.Ui_Toolbar()
-        self.ui.setupUi(parent=self)
+        self.ui.setupUi(parent=self, chart=self.chartWidget)
+        self.ui.create_model(self.ui.node_tree, self.chart.library.getLabelTree())
 
         self.features_lock = asyncio.Lock()
         self.features = {}
 
         self.graphCommHandler = AsyncGraphCommHandler(graphmgr_addr)
-        self.chartWidget = FlowchartWidget(chart, self)
 
         self.ui.actionOpen.triggered.connect(self.openClicked)
         self.ui.actionSave.triggered.connect(self.saveClicked)
@@ -352,9 +353,6 @@ class FlowchartCtrlWidget(QtGui.QWidget):
 
         graph = Graph(name=str(self.chart.name))
         graph.add(graph_nodes)
-
-        with open('graph.dill', 'wb') as f:
-            dill.dump(graph, f)
 
         # TODO do some graph validation here before sending
         await self.graphCommHandler.update(graph)
@@ -441,7 +439,7 @@ class FlowchartWidget(dockarea.DockArea):
         self.hoverItem = None
 
         #  build user interface (it was easier to do it here than via developer)
-        self.view = FlowchartGraphicsView.FlowchartGraphicsView(self)
+        self.view = FlowchartGraphicsView(self)
         self.viewDock = dockarea.Dock('view', size=(1000, 600))
         self.viewDock.addWidget(self.view)
         self.viewDock.hideTitleBar()
