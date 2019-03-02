@@ -66,11 +66,9 @@ class FlowchartViewBox(ViewBox):
         return data
 
     def dropEvent(self, ev):
-        print("Dropped.", ev.pos())
         if ev.mimeData().hasFormat('application/x-qabstractitemmodeldatalist'):
             arr = ev.mimeData().data('application/x-qabstractitemmodeldatalist')
             nodeType = self.decode_data(arr)[0][0].value()
-            print(nodeType, ev.pos())
             self.widget.chart.createNode(nodeType, pos=ev.pos())
             ev.accept()
         else:
