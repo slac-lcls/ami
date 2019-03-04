@@ -3,6 +3,7 @@ import zmq
 import dill
 import asyncio
 import logging
+import zmq.asyncio
 from enum import IntEnum
 
 import ami.graph_nodes as gn
@@ -461,31 +462,34 @@ class CommHandler(abc.ABC):
             # if the reply is none try fetching the 'view' version of the name
             return self._request("fetch:%s" % names, check=True, retry="fetch:%s" % self.auto(names))
 
-    def add(self, node):
+    def add(self, nodes):
         """
         Attempt to add the requested node (or list of nodes) to the graph.
 
         Args:
-            node (list or node): the node or list of nodes to add to the graph.
+            nodes (node or list): the node or list of nodes to add to the graph.
 
         Returns:
             True if the graph change was successful, False otherwise.
         """
-        return self._post_dill('add_graph', node)
+        return self._post_dill('add_graph', nodes)
 
-    def view(self, name):
+    def view(self, names):
         """
         Adds a Pick1 graph node for the requested graph output so that is can
         be viewed. The format of output name of the Pick1 node is determined
         by calling the `auto` method of this class.
 
         Args:
-            name (str): The name of the graph output to start viewing.
+            names (str or list): The names of the graph outputs to start viewing.
 
         Returns:
             True if the graph change was successful, False otherwise.
         """
-        return self._view(name)
+        if not isinstance(names, list):
+            names = [names]
+
+        return self._view(names)
 
     def addPickN(self, name, inputs, outputs, N=1, condition_needs=None):
         """
@@ -759,21 +763,21 @@ class AsyncGraphCommHandler(CommHandler):
             await self._sock.send(dill.dumps(payload))
             return (await self._sock.recv_string()) == 'ok'
 
-    async def save(self, filename):
-        if filename:
-            try:
-                with open(filename, 'wb') as cnf:
-                    dill.dump(await self.graph, cnf)
-            except OSError:
-                logger.exception("Problem opening saved graph configuration file:")
+    async def _view(self, names):
+        nodes = []
+        for name in names:
+            view_name = self.auto(name)
+            var_type = await self.get_type(name)
+            node_name = '%s_view' % view_name
+            if var_type is None:
+                inputs = name
+                outputs = view_name
+            else:
+                inputs = gn.Var(name, var_type)
+                outputs = gn.Var(view_name, var_type)
+            nodes.append(self._make_node(gn.PickN, name=node_name, inputs=inputs, outputs=outputs, N=1))
 
-    async def _view(self, name):
-        view_name = self.auto(name)
-        var_type = await self.get_type(name)
-        if var_type is None:
-            return await self.addPickN('%s_view' % view_name, name, view_name)
-        else:
-            return await self.addPickN('%s_view' % view_name, gn.Var(name, var_type), gn.Var(view_name, var_type))
+        return await self.add(nodes)
 
     async def _load(self, filename):
         with open(filename, 'rb') as cnf:
@@ -836,13 +840,21 @@ class GraphCommHandler(CommHandler):
         self._sock.send(dill.dumps(payload))
         return self._sock.recv_string() == 'ok'
 
-    def _view(self, name):
-        view_name = self.auto(name)
-        var_type = self.get_type(name)
-        if var_type is None:
-            return self.addPickN('%s_view' % view_name, name, view_name)
-        else:
-            return self.addPickN('%s_view' % view_name, gn.Var(name, var_type), gn.Var(view_name, var_type))
+    def _view(self, names):
+        nodes = []
+        for name in names:
+            view_name = self.auto(name)
+            var_type = self.get_type(name)
+            node_name = '%s_view' % view_name
+            if var_type is None:
+                inputs = name
+                outputs = view_name
+            else:
+                inputs = gn.Var(name, var_type)
+                outputs = gn.Var(view_name, var_type)
+            nodes.append(self._make_node(gn.PickN, name=node_name, inputs=inputs, outputs=outputs, N=1))
+
+        return self.add(nodes)
 
     def _load(self, filename):
         with open(filename, 'rb') as cnf:

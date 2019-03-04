@@ -249,6 +249,17 @@ async def test_modify_graph_async(graph_comm, complex_graph):
     assert await comm.remove('%s_view' % comm.auto('cspad'))
     assert comm.auto('cspad') not in (await comm.graph).names
 
+    # add multiple views to the graph
+    assert await comm.view(['cspad', 'delta_t'])
+    # check that the views are in the graph
+    assert comm.auto('cspad') in (await comm.graph).names
+    assert comm.auto('delta_t') in (await comm.graph).names
+    # remove the views
+    assert await comm.remove('%s_view' % comm.auto('cspad'))
+    assert comm.auto('cspad') not in (await comm.graph).names
+    assert await comm.remove('%s_view' % comm.auto('delta_t'))
+    assert comm.auto('delta_t') not in (await comm.graph).names
+
     # Test the various addNode functions of comm handler
     functions_to_test = {
         comm.addMap:        ('test_map', 'signal', 'test_value', (lambda x: x + 2,)),
@@ -290,6 +301,17 @@ def test_modify_graph(graph_comm, complex_graph):
     # remove the view
     assert comm.remove('%s_view' % comm.auto('cspad'))
     assert comm.auto('cspad') not in comm.graph.names
+
+    # add multiple views to the graph
+    assert comm.view(['cspad', 'delta_t'])
+    # check that the views are in the graph
+    assert comm.auto('cspad') in comm.graph.names
+    assert comm.auto('delta_t') in comm.graph.names
+    # remove the views
+    assert comm.remove('%s_view' % comm.auto('cspad'))
+    assert comm.auto('cspad') not in comm.graph.names
+    assert comm.remove('%s_view' % comm.auto('delta_t'))
+    assert comm.auto('delta_t') not in comm.graph.names
 
     # Test the various addNode functions of comm handler
     functions_to_test = {
