@@ -319,6 +319,13 @@ class CommHandler(abc.ABC):
         self._prune_keys = ['condition_needs', 'condition', 'reduction']
         self._expand_keys = ['inputs', 'outputs', 'condition_needs']
 
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc_value, traceback):
+        self._sock.close()
+        self._ctx.destroy()
+
     def _make_node(self, node, **kwargs):
         """
         Constructs a graph node of the requested type.
@@ -602,17 +609,20 @@ class CommHandler(abc.ABC):
                                condition=condition)
         return self.add(node)
 
-    def remove(self, name):
+    def remove(self, names):
         """
         Removes the node (if it exists) with the requested name from the graph.
 
         Args:
-            name (str): The name of the node to remove from the graph
+            names (str or list): The names of the nodes to remove from the graph
 
         Returns:
             True if the graph change was successful, False otherwise.
         """
-        return self._post_dill('del_graph', name)
+        if not isinstance(names, list):
+            names = [names]
+
+        return self._post_dill('del_graph', names)
 
     def clear(self):
         """

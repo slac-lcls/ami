@@ -16,7 +16,7 @@ class FakeManager:
         self.sock.bind(addr)
         self.conf = conf
         self.graph = None
-        self.feature_req = re.compile("fetch:(?P<name>.*)")
+        self.feature_req = re.compile("(?P<type>fetch|lookup):(?P<name>.*)")
         if use_thread:
             self.thread = threading.Thread(target=self.run)
             self.thread.daemon = True
@@ -25,9 +25,10 @@ class FakeManager:
     def feature_request(self, request):
         matched = self.feature_req.match(request)
         if matched:
-            if matched.group('name') in self.conf['fetch']:
+            cmd_type = matched.group('type')
+            if cmd_type in self.conf and matched.group('name') in self.conf[cmd_type]:
                 self.sock.send_string('ok', zmq.SNDMORE)
-                self.sock.send_pyobj(self.conf['fetch'][matched.group('name')])
+                self.sock.send_pyobj(self.conf[cmd_type][matched.group('name')])
             else:
                 self.sock.send_string('error')
             return True
@@ -52,7 +53,8 @@ class FakeManager:
                         self.graph.add(dill.loads(payload))
                         self.sock.send_string('ok')
                     elif self.conf[request] == 'del_graph':
-                        self.graph.remove(dill.loads(payload))
+                        for name in dill.loads(payload):
+                            self.graph.remove(name)
                         self.sock.send_string('ok')
                     else:
                         self.sock.send_string('error')
@@ -98,6 +100,55 @@ def graph_comm(request, ipc_dir, event_loop):
     # clean up all the zmq stuff
     for ctx in ctxs:
         ctx.destroy()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('graph_comm',
+                         [
+                            (True, {'lookup': {'cspad': int, 'opal': float}}),
+                            (True, {'lookup': {'cspad': object, 'opal': type(None)}})
+                         ],
+                         indirect=True)
+async def test_get_type_async(graph_comm):
+    comm, conf = graph_comm
+
+    # test looking up the types of names that exist
+    assert await comm.get_type('cspad') == conf['lookup']['cspad']
+    assert await comm.get_type('opal') == conf['lookup']['opal']
+    # test looking up the types of names that do not exist
+    assert await comm.get_type('laser') is None
+    # test batch lookup of types
+    names_to_lookup = ['cspad', 'opal']
+    assert await comm.get_type(names_to_lookup) == [conf['lookup'][name] for name in names_to_lookup]
+    # test batch lookup of types where they don't exist
+    assert await comm.get_type(['laser', 'delta_t']) is None
+    # test batch lookup of types where some names don't exist
+    names_to_lookup = ['cspad', 'opal', 'delta_t']
+    assert await comm.get_type(names_to_lookup) == [conf['lookup'].get(name) for name in names_to_lookup]
+
+
+@pytest.mark.parametrize('graph_comm',
+                         [
+                            {'lookup': {'cspad': int, 'opal': float}},
+                            {'lookup': {'cspad': object, 'opal': type(None)}},
+                         ],
+                         indirect=True)
+def test_get_type(graph_comm):
+    comm, conf = graph_comm
+
+    # test looking up the types of names that exist
+    assert comm.get_type('cspad') == conf['lookup']['cspad']
+    assert comm.get_type('opal') == conf['lookup']['opal']
+    # test looking up the types of names that do not exist
+    assert comm.get_type('laser') is None
+    # test batch lookup of types
+    names_to_lookup = ['cspad', 'opal']
+    assert comm.get_type(names_to_lookup) == [conf['lookup'][name] for name in names_to_lookup]
+    # test batch lookup of types where they don't exist
+    assert comm.get_type(['laser', 'delta_t']) is None
+    # test batch lookup of types where some names don't exist
+    names_to_lookup = ['cspad', 'opal', 'delta_t']
+    assert comm.get_type(names_to_lookup) == [conf['lookup'].get(name) for name in names_to_lookup]
 
 
 @pytest.mark.asyncio
@@ -250,14 +301,14 @@ async def test_modify_graph_async(graph_comm, complex_graph):
     assert comm.auto('cspad') not in (await comm.graph).names
 
     # add multiple views to the graph
-    assert await comm.view(['cspad', 'delta_t'])
+    names_to_view = ['cspad', 'delta_t']
+    assert await comm.view(names_to_view)
     # check that the views are in the graph
     assert comm.auto('cspad') in (await comm.graph).names
     assert comm.auto('delta_t') in (await comm.graph).names
     # remove the views
-    assert await comm.remove('%s_view' % comm.auto('cspad'))
+    assert await comm.remove(['%s_view' % comm.auto(name) for name in names_to_view])
     assert comm.auto('cspad') not in (await comm.graph).names
-    assert await comm.remove('%s_view' % comm.auto('delta_t'))
     assert comm.auto('delta_t') not in (await comm.graph).names
 
     # Test the various addNode functions of comm handler
@@ -303,14 +354,14 @@ def test_modify_graph(graph_comm, complex_graph):
     assert comm.auto('cspad') not in comm.graph.names
 
     # add multiple views to the graph
-    assert comm.view(['cspad', 'delta_t'])
+    names_to_view = ['cspad', 'delta_t']
+    assert comm.view(names_to_view)
     # check that the views are in the graph
     assert comm.auto('cspad') in comm.graph.names
     assert comm.auto('delta_t') in comm.graph.names
     # remove the views
-    assert comm.remove('%s_view' % comm.auto('cspad'))
+    assert comm.remove(['%s_view' % comm.auto(name) for name in names_to_view])
     assert comm.auto('cspad') not in comm.graph.names
-    assert comm.remove('%s_view' % comm.auto('delta_t'))
     assert comm.auto('delta_t') not in comm.graph.names
 
     # Test the various addNode functions of comm handler
