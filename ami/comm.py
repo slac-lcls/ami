@@ -423,32 +423,43 @@ class CommHandler(abc.ABC):
         """
         return self._request('get_features_version')
 
-    def get_type(self, name):
+    def get_type(self, names):
         """
         Lookups of the type of a `Var` node in the graph by its name field.
 
         Args:
-            name (str): the name of the node
+            names (str or list): the name of the node. List of node names also
+                                accepted.
 
         Returns:
-            The type of the node if it is found in the graph
+            The types of the nodes if they are found in the graph
         """
-        return self._request("lookup:%s" % name, check=True)
+        if isinstance(names, list):
+            return self._request_batch(cmds=["lookup:%s" % name for name in names], check=True)
+        else:
+            return self._request("lookup:%s" % names, check=True)
 
-    def fetch(self, name):
+    def fetch(self, names):
         """
         Attempts to fetch a feature with the requested name from the global
         features. If the feature is not present in the store then None is
         returned.
 
         Args:
-            name (str): the name of the feature to fetch.
+            names (str or list): the name of the feature to fetch. List of
+                                names also accepted.
 
         Returns:
-            The object that is fetched from the global feature store.
+            The object or list of objects that was fetched from the global
+            feature store.
         """
-        # if the reply is none try fetching the 'view' version of the name
-        return self._request("fetch:%s" % name, check=True, retry="fetch:%s" % self.auto(name))
+        if isinstance(names, list):
+            return self._request_batch(cmds=["fetch:%s" % name for name in names],
+                                       check=True,
+                                       retries=["fetch:%s" % self.auto(name) for name in names])
+        else:
+            # if the reply is none try fetching the 'view' version of the name
+            return self._request("fetch:%s" % names, check=True, retry="fetch:%s" % self.auto(names))
 
     def add(self, node):
         """
@@ -665,7 +676,11 @@ class CommHandler(abc.ABC):
         pass
 
     @abc.abstractmethod
-    def _request(self, cmd, check=False):
+    def _request(self, cmd, check=False, retry=None):
+        pass
+
+    @abc.abstractmethod
+    def _request_batch(self, cmds, check=False, retries=None):
         pass
 
     @abc.abstractmethod
@@ -719,6 +734,19 @@ class AsyncGraphCommHandler(CommHandler):
                         return await self._sock.recv_pyobj()
             else:
                 return await self._sock.recv_pyobj()
+
+    async def _request_batch(self, cmds, check=False, retries=None):
+        results = []
+        if retries is None:
+            for cmd in cmds:
+                results.append(await self._request(cmd, check))
+        else:
+            for cmd, retry in zip(cmds, retries):
+                results.append(await self._request(cmd, check, retry))
+        if all(entry is None for entry in results):
+            return None
+        else:
+            return results
 
     async def _request_dill(self, cmd):
         async with self.lock:
@@ -785,6 +813,19 @@ class GraphCommHandler(CommHandler):
                     return self._sock.recv_pyobj()
         else:
             return self._sock.recv_pyobj()
+
+    def _request_batch(self, cmds, check=False, retries=None):
+        results = []
+        if retries is None:
+            for cmd in cmds:
+                results.append(self._request(cmd, check))
+        else:
+            for cmd, retry in zip(cmds, retries):
+                results.append(self._request(cmd, check, retry))
+        if all(entry is None for entry in results):
+            return None
+        else:
+            return results
 
     def _request_dill(self, cmd):
         self._sock.send_string(cmd)
