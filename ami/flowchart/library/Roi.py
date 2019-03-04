@@ -12,6 +12,7 @@ class Roi(CtrlNode):
                   ('origin y',  'intSpin', {'value': 0, 'min': 0, 'max': 2147483647}),
                   ('extent x',  'intSpin', {'value': 0, 'min': 0, 'max': 2147483647}),
                   ('extent y',  'intSpin', {'value': 0, 'min': 0, 'max': 2147483647})]
+    desc = "Region of Interest"
 
     def __init__(self, name):
         super(Roi, self).__init__(name,

@@ -69,7 +69,10 @@ class FlowchartViewBox(ViewBox):
         if ev.mimeData().hasFormat('application/x-qabstractitemmodeldatalist'):
             arr = ev.mimeData().data('application/x-qabstractitemmodeldatalist')
             nodeType = self.decode_data(arr)[0][0].value()
-            self.widget.chart.createNode(nodeType, pos=ev.pos())
+            try:
+                self.widget.chart.createNode(nodeType, pos=self.mapToView(ev.pos()))
+            except Exception:
+                pass
             ev.accept()
         else:
             ev.ignore()

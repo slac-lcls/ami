@@ -6,6 +6,7 @@ import numpy as np
 class Sum(Node):
 
     nodeName = "Sum"
+    desc = "Sum"
 
     def __init__(self, name):
         super(Sum, self).__init__(name, terminals={
@@ -24,6 +25,7 @@ class Sum(Node):
 class Binning(Node):
 
     nodeName = "Binning"
+    desc = "Binning"
 
     def __init__(self, name):
         super(Binning, self).__init__(name, terminals={

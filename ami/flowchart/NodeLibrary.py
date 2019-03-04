@@ -66,7 +66,9 @@ class NodeLibrary:
             return self.labelTree
 
         for root, children in self.nodeTree.items():
-            self.labelTree[root] = children.keys()
+            items = {name: child.desc for name, child in children.items()}
+            items = list(items.items())
+            self.labelTree[root] = items
 
         return self.labelTree
 

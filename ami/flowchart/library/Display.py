@@ -7,6 +7,7 @@ class ScalarViewer(CtrlNode):
 
     nodeName = "ScalarViewer"
     uiTemplate = []
+    desc = "ScalarViewer"
 
     def __init__(self, name):
         super(ScalarViewer, self).__init__(name,
@@ -21,6 +22,7 @@ class ImageViewer(CtrlNode):
 
     nodeName = "ImageViewer"
     uiTemplate = []
+    desc = "ImageViewer"
 
     def __init__(self, name):
         super(ImageViewer, self).__init__(name, terminals={"In": {"io": "in", "type": np.ndarray}}, viewable=True)
@@ -33,6 +35,7 @@ class Histogram(CtrlNode):
 
     nodeName = "Histogram"
     uiTemplate = []
+    desc = "Histogram"
 
     def __init__(self, name):
         super(Histogram, self).__init__(name, terminals={"In": {"io": "in", "type": dict}}, viewable=True)

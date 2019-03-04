@@ -264,6 +264,13 @@ class Node(QtCore.QObject):
             self._condition_vars.remove(node.name())
         self.sigTerminalDisconnected.emit(self)
 
+    def isConnected(self):
+        for name, term in self.terminals.items():
+            if term.isInput() and not term.hasInput():
+                return False
+
+        return True
+
     def setException(self, exc):
         self.exception = exc
         self.recolor()

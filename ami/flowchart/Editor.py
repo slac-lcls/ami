@@ -111,12 +111,17 @@ class Ui_Toolbar(object):
         self.gridLayout.addWidget(self.node_search, 3, 0, 1, 1)
         self.gridLayout.addWidget(self.node_tree, 4, 0, 1, 1)
         self.gridLayout.addWidget(chart, 1, 1, -1, -1)
+        self.gridLayout.setColumnStretch(1, 10)
 
         self.node_search.textChanged.connect(self.node_search_text_changed)
 
     def populate_tree(self, children, parent):
         for child in sorted(children):
-            node = QtGui.QStandardItem(child)
+            if type(child) is tuple:
+                node = QtGui.QStandardItem(child[0])
+                node.setToolTip(child[1])
+            else:
+                node = QtGui.QStandardItem(child)
             parent.appendRow(node)
 
             if isinstance(children, dict):
@@ -128,7 +133,7 @@ class Ui_Toolbar(object):
         tree.sortByColumn(0, QtCore.Qt.AscendingOrder)
         tree.expandAll()
 
-    def node_search_text_changed(self, text=None):
+    def node_search_text_changed(self):
         self.search_text_changed(self.node_tree, self.node_model, self.node_search.text())
 
     def search_text_changed(self, tree, model, text):

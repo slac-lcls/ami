@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-from pyqtgraph.Qt import QtCore, QtGui
+from pyqtgraph.Qt import QtCore, QtGui, QtWidgets
 from pyqtgraph.pgcollections import OrderedDict
 from pyqtgraph import FileDialog
 from pyqtgraph.debug import printExc
@@ -46,6 +46,8 @@ class Flowchart(Node):
         self.checkpoint = self.ctx.socket(zmq.SUB)
         self.checkpoint.setsockopt_string(zmq.SUBSCRIBE, '')
         self.checkpoint.connect(checkpoint_addr)
+
+        self.undoStack = QtWidgets.QUndoStack(self)
 
         if name is None:
             name = "Flowchart"
@@ -335,10 +337,17 @@ class FlowchartCtrlWidget(QtGui.QWidget):
     @asyncqt.asyncSlot()
     async def applyClicked(self):
         graph_nodes = []
+        disconnectedNodes = []
 
-        for name, node in self.chart.nodes().items():
-            if not hasattr(node, 'to_operation'):
+        for name, gnode in self.chart.nodes().items():
+            if not hasattr(gnode, 'to_operation'):
                 continue
+
+            if not gnode.isConnected():
+                disconnectedNodes.append(gnode)
+            elif gnode.exception:
+                gnode.clearException()
+                gnode.recolor()
 
             await self.chart.broker.send_string(name, zmq.SNDMORE),
             await self.chart.broker.send_pyobj(fcMsgs.GetNodeOperation())
@@ -351,10 +360,15 @@ class FlowchartCtrlWidget(QtGui.QWidget):
             else:
                 graph_nodes.append(node)
 
+        if disconnectedNodes:
+            for node in disconnectedNodes:
+                node.setException(True)
+                node.recolor()
+            return
+
         graph = Graph(name=str(self.chart.name))
         graph.add(graph_nodes)
 
-        # TODO do some graph validation here before sending
         await self.graphCommHandler.update(graph)
 
         if not self.features:

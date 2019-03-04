@@ -1,11 +1,12 @@
+from ami.flowchart.Node import Node
 from ami.flowchart.library.common import CtrlNode
 import ami.graph_nodes as gn
 
 
-class Pick1(CtrlNode):
+class Pick1(Node):
 
     nodeName = "Pick1"
-    uiTemplate = []
+    desc = "Pick1"
 
     def __init__(self, name):
         super(Pick1, self).__init__(name,
@@ -24,6 +25,7 @@ class PickN(CtrlNode):
 
     nodeName = "PickN"
     uiTemplate = [('N', 'intSpin', {'value': 2, 'min': 2, 'max': 4096})]
+    desc = "PickN"
 
     def __init__(self, name):
         super(PickN, self).__init__(name,
