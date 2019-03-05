@@ -23,14 +23,22 @@ class Manager(Collector):
     configuration changes to the graph.
     """
 
-    def __init__(self, num_workers, num_nodes, results_addr, graph_addr, comm_addr, export_addr=None):
+    def __init__(self,
+                 num_workers,
+                 num_nodes,
+                 results_addr,
+                 graph_addr,
+                 comm_addr,
+                 msg_addr,
+                 info_addr,
+                 export_addr=None):
         """
         protocol right now only tells you how to communicate with workers
         """
         super(__class__, self).__init__(results_addr)
         self.num_workers = num_workers
         self.num_nodes = num_nodes
-        self.partition = []
+        self.partition = set()
         self.feature_store = Store()
         self.feature_req = re.compile("(?P<type>fetch|lookup):(?P<name>.*)")
         self.graph = None
@@ -49,6 +57,11 @@ class Manager(Collector):
         self.graph_comm.setsockopt(zmq.XPUB_VERBOSE, True)
         self.graph_comm.bind(graph_addr)
         self.register(self.graph_comm, self.graph_request)
+        self.info_comm = self.ctx.socket(zmq.PUB)
+        self.info_comm.bind(info_addr)
+        self.node_msg_comm = self.ctx.socket(zmq.PULL)
+        self.node_msg_comm.bind(msg_addr)
+        self.register(self.node_msg_comm, self.node_request)
 
     def process_msg(self, msg):
         if msg.mtype == MsgTypes.Datagram:
@@ -128,6 +141,9 @@ class Manager(Collector):
 
     def cmd_get_names(self):
         self.comm.send_pyobj(self.names)
+
+    def cmd_get_sources(self):
+        self.comm.send_pyobj(self.partition)
 
     def cmd_clear_graph(self):
         self.graph = None
@@ -217,6 +233,13 @@ class Manager(Collector):
             self.graph_comm.send_string("cmd", zmq.SNDMORE)
             self.graph_comm.send_string("config")
 
+    def node_request(self):
+        topic = self.node_msg_comm.recv_string()
+        msg = self.node_msg_comm.recv_string()
+
+        self.info_comm.send_string(topic, zmq.SNDMORE)
+        self.info_comm.send_string(msg)
+
     def export_graph(self):
         if self.export is not None:
             data = {
@@ -234,9 +257,9 @@ class Manager(Collector):
             self.export.send_pyobj(data)
 
 
-def run_manager(num_workers, num_nodes, results_addr, graph_addr, comm_addr, export_addr=None):
+def run_manager(num_workers, num_nodes, results_addr, graph_addr, comm_addr, msg_addr, info_addr, export_addr=None):
     logger.info('Starting manager, controlling %d workers on %d nodes', num_workers, num_nodes)
-    manager = Manager(num_workers, num_nodes, results_addr, graph_addr, comm_addr, export_addr)
+    manager = Manager(num_workers, num_nodes, results_addr, graph_addr, comm_addr, msg_addr, info_addr, export_addr)
     return manager.run()
 
 
@@ -299,6 +322,22 @@ def main():
     )
 
     parser.add_argument(
+        '-m',
+        '--message',
+        type=int,
+        default=Ports.Message,
+        help='port for receiving out-of-band messages from nodes (default: %d)' % Ports.Message
+    )
+
+    parser.add_argument(
+        '-i',
+        '--info',
+        type=int,
+        default=Ports.Info,
+        help='port for status information communication (default: %d)' % Ports.Info
+    )
+
+    parser.add_argument(
         '-E',
         '--enable-export',
         action='store_true',
@@ -321,6 +360,8 @@ def main():
     results_addr = "tcp://%s:%d" % (args.host, args.results)
     graph_addr = "tcp://%s:%d" % (args.host, args.graph)
     comm_addr = "tcp://%s:%d" % (args.host, args.port)
+    msg_addr = "tcp://%s:%d" % (args.host, args.message)
+    info_addr = "tcp://%s:%d" % (args.host, args.info)
     if args.enable_export:
         export_addr = "tcp://%s:%d" % (args.host, args.export)
     else:
@@ -333,7 +374,14 @@ def main():
     logging.basicConfig(format=LogConfig.Format, level=log_level, handlers=log_handlers)
 
     try:
-        return run_manager(args.num_workers, args.num_nodes, results_addr, graph_addr, comm_addr, export_addr)
+        return run_manager(args.num_workers,
+                           args.num_nodes,
+                           results_addr,
+                           graph_addr,
+                           comm_addr,
+                           msg_addr,
+                           info_addr,
+                           export_addr)
     except KeyboardInterrupt:
         logger.info("Manager killed by user...")
         return 0

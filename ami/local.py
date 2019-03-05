@@ -148,6 +148,8 @@ def run_ami(args, queue=mp.Queue()):
         results_addr = "tcp://%s:%d" % (host, args.port+4)
         if args.export is not None:
             export_addr = "tcp://%s:%d" % (host, args.port+5)
+        msg_addr = "tcp://%s:%d" % (host, args.port+6)
+        info_addr = "tcp://%s:%d" % (host, args.port+7)
     else:
         ipcdir = tempfile.mkdtemp()
         collector_addr = "ipc://%s/node_collector" % ipcdir
@@ -157,6 +159,8 @@ def run_ami(args, queue=mp.Queue()):
         results_addr = "ipc://%s/results" % ipcdir
         if args.export is not None:
             export_addr = "ipc://%s/export" % ipcdir
+        msg_addr = "ipc://%s/message" % ipcdir
+        info_addr = "ipc://%s/info" % ipcdir
 
     procs = []
     failed_proc = False
@@ -216,7 +220,7 @@ def run_ami(args, queue=mp.Queue()):
         manager_proc = mp.Process(
             name='manager',
             target=run_manager,
-            args=(args.num_workers, 1, results_addr, graph_addr, comm_addr, export_addr)
+            args=(args.num_workers, 1, results_addr, graph_addr, comm_addr, msg_addr, info_addr, export_addr)
         )
         manager_proc.daemon = True
         manager_proc.start()

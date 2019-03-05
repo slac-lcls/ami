@@ -26,6 +26,8 @@ class Ports(IntEnum):
     FinalCollector = 5558
     Results = 5559
     Export = 5560
+    Message = 5561
+    Info = 5562
 
 
 class Store:
@@ -400,6 +402,17 @@ class CommHandler(abc.ABC):
             A set of all the user-defined output names.
         """
         return self._request('get_names')
+
+    @property
+    def sources(self):
+        """
+        A set of the names of all the external data sources that can be used as
+        inputs for nodes in the graph.
+
+        Returns:
+            A set of the names of all the external data sources,
+        """
+        return self._request('get_sources')
 
     @property
     def versions(self):
