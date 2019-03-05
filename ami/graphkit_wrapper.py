@@ -378,6 +378,35 @@ class Graph():
 
         return node
 
+    def _collect_global_inputs(self):
+        """
+        Insert Pick1 for nodes which run global collector but depend on inputs which are only available on worker.
+        """
+        inputs = [n for n, d in self.graph.in_degree() if d == 0]
+
+        global_collector_nodes = list(filter(lambda node: getattr(node, 'color', '') == 'globalCollector',
+                                             self.graph.nodes))
+        for node in global_collector_nodes:
+            new_inputs = []
+            update_inputs = False
+            if node in self.global_operations:
+                continue
+            for i in node.inputs:
+                if i in inputs:
+                    pickone = ami.graph_nodes.PickN(name=i.name+"_pick1",
+                                                    inputs=[i],
+                                                    outputs=[Var(name="one_"+i.name, type=i.type)])
+                    self.global_operations.add(pickone)
+                    self.add(pickone)
+                    update_inputs = True
+                    new_inputs.extend(pickone.outputs)
+                else:
+                    new_inputs.append(i)
+            self.graph.remove_node(node)
+            if update_inputs:
+                node.inputs = new_inputs
+            self.add(node)
+
     def compile(self, num_workers=1, num_local_collectors=1):
         """
         Convert an AMI graph to a networkfox graph. This function must be called after any function which modifies the
@@ -392,10 +421,11 @@ class Graph():
         """
         self.inputs = collections.defaultdict(set)
         self._color_nodes()
+        self._collect_global_inputs()
         self._expand_global_operations(num_workers, num_local_collectors)
 
         seen = set()
-        branch_merge_candidates = [n for n, d in self.graph.in_degree() if d >= 2 and type(n) is str]
+        branch_merge_candidates = [n for n, d in self.graph.in_degree() if d >= 2 and isinstance(n, Var)]
         graph_filters = list(filter(lambda node: isinstance(node, ami.graph_nodes.Filter), self.graph.nodes))
         outputs = [n for n, d in self.graph.out_degree() if d == 0]
         body = []
@@ -470,7 +500,6 @@ class Graph():
 
         color = kwargs.get('color', None)
         assert color is not None
-
         result = self.graphkit(*args, **kwargs)
         outputs = self.outputs[color]
         return {k.name: result[k.name] for k in outputs if k.name in result}

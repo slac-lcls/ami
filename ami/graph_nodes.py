@@ -36,7 +36,7 @@ class Transformation(abc.ABC):
                     self.name == getattr(other, 'name', None))
 
     def __repr__(self):
-        return u"%s(name='%s')" % (self.__class__.__name__, self.name)
+        return u"%s(name='%s', color='%s')" % (self.__class__.__name__, self.name, self.color)
 
     def to_operation(self):
         """
@@ -78,6 +78,9 @@ class Filter(abc.ABC):
     @abc.abstractmethod
     def to_operation(self):
         return
+
+    def __repr__(self):
+        return u"%s(name='%s', color='%s')" % (self.__class__.__name__, self.name, self.color)
 
 
 class FilterOn(Filter):
@@ -210,13 +213,15 @@ class PickN(StatefulTransformation):
         self.clear = False
         self.is_global_operation = True
 
-    def __call__(self, args):
+    def __call__(self, *args):
         if self.clear:
             self.res = [None]*self.N
             self.clear = False
 
-        if type(args) is not list:
+        if len(args) > 1:
             args = [args]
+        elif len(args) == 1 and type(args[0]) is list:
+            args = args[0]
 
         for arg in args:
             self.res[self.idx] = arg
