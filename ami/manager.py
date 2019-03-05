@@ -156,11 +156,12 @@ class Manager(Collector):
             self.comm.send_string('error')
 
     def cmd_del_graph(self):
-        name = dill.loads(self.comm.recv())
+        names = dill.loads(self.comm.recv())
         if self.graph is not None:
             backup = dill.dumps(self.graph)
             try:
-                self.graph.remove(name)
+                for name in names:
+                    self.graph.remove(name)
                 # Check if the resulting graph is non-empty
                 if self.graph:
                     self.compile_graph()

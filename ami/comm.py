@@ -3,6 +3,7 @@ import zmq
 import dill
 import asyncio
 import logging
+import zmq.asyncio
 from enum import IntEnum
 
 import ami.graph_nodes as gn
@@ -318,6 +319,13 @@ class CommHandler(abc.ABC):
         self._prune_keys = ['condition_needs', 'condition', 'reduction']
         self._expand_keys = ['inputs', 'outputs', 'condition_needs']
 
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc_value, traceback):
+        self._sock.close()
+        self._ctx.destroy()
+
     def _make_node(self, node, **kwargs):
         """
         Constructs a graph node of the requested type.
@@ -423,58 +431,72 @@ class CommHandler(abc.ABC):
         """
         return self._request('get_features_version')
 
-    def get_type(self, name):
+    def get_type(self, names):
         """
         Lookups of the type of a `Var` node in the graph by its name field.
 
         Args:
-            name (str): the name of the node
+            names (str or list): the name of the node. List of node names also
+                                accepted.
 
         Returns:
-            The type of the node if it is found in the graph
+            The types of the nodes if they are found in the graph
         """
-        return self._request("lookup:%s" % name, check=True)
+        if isinstance(names, list):
+            return self._request_batch(cmds=["lookup:%s" % name for name in names], check=True)
+        else:
+            return self._request("lookup:%s" % names, check=True)
 
-    def fetch(self, name):
+    def fetch(self, names):
         """
         Attempts to fetch a feature with the requested name from the global
         features. If the feature is not present in the store then None is
         returned.
 
         Args:
-            name (str): the name of the feature to fetch.
+            names (str or list): the name of the feature to fetch. List of
+                                names also accepted.
 
         Returns:
-            The object that is fetched from the global feature store.
+            The object or list of objects that was fetched from the global
+            feature store.
         """
-        # if the reply is none try fetching the 'view' version of the name
-        return self._request("fetch:%s" % name, check=True, retry="fetch:%s" % self.auto(name))
+        if isinstance(names, list):
+            return self._request_batch(cmds=["fetch:%s" % name for name in names],
+                                       check=True,
+                                       retries=["fetch:%s" % self.auto(name) for name in names])
+        else:
+            # if the reply is none try fetching the 'view' version of the name
+            return self._request("fetch:%s" % names, check=True, retry="fetch:%s" % self.auto(names))
 
-    def add(self, node):
+    def add(self, nodes):
         """
         Attempt to add the requested node (or list of nodes) to the graph.
 
         Args:
-            node (list or node): the node or list of nodes to add to the graph.
+            nodes (node or list): the node or list of nodes to add to the graph.
 
         Returns:
             True if the graph change was successful, False otherwise.
         """
-        return self._post_dill('add_graph', node)
+        return self._post_dill('add_graph', nodes)
 
-    def view(self, name):
+    def view(self, names):
         """
         Adds a Pick1 graph node for the requested graph output so that is can
         be viewed. The format of output name of the Pick1 node is determined
         by calling the `auto` method of this class.
 
         Args:
-            name (str): The name of the graph output to start viewing.
+            names (str or list): The names of the graph outputs to start viewing.
 
         Returns:
             True if the graph change was successful, False otherwise.
         """
-        return self._view(name)
+        if not isinstance(names, list):
+            names = [names]
+
+        return self._view(names)
 
     def addPickN(self, name, inputs, outputs, N=1, condition_needs=None):
         """
@@ -587,17 +609,20 @@ class CommHandler(abc.ABC):
                                condition=condition)
         return self.add(node)
 
-    def remove(self, name):
+    def remove(self, names):
         """
         Removes the node (if it exists) with the requested name from the graph.
 
         Args:
-            name (str): The name of the node to remove from the graph
+            names (str or list): The names of the nodes to remove from the graph
 
         Returns:
             True if the graph change was successful, False otherwise.
         """
-        return self._post_dill('del_graph', name)
+        if not isinstance(names, list):
+            names = [names]
+
+        return self._post_dill('del_graph', names)
 
     def clear(self):
         """
@@ -665,7 +690,11 @@ class CommHandler(abc.ABC):
         pass
 
     @abc.abstractmethod
-    def _request(self, cmd, check=False):
+    def _request(self, cmd, check=False, retry=None):
+        pass
+
+    @abc.abstractmethod
+    def _request_batch(self, cmds, check=False, retries=None):
         pass
 
     @abc.abstractmethod
@@ -720,6 +749,19 @@ class AsyncGraphCommHandler(CommHandler):
             else:
                 return await self._sock.recv_pyobj()
 
+    async def _request_batch(self, cmds, check=False, retries=None):
+        results = []
+        if retries is None:
+            for cmd in cmds:
+                results.append(await self._request(cmd, check))
+        else:
+            for cmd, retry in zip(cmds, retries):
+                results.append(await self._request(cmd, check, retry))
+        if all(entry is None for entry in results):
+            return None
+        else:
+            return results
+
     async def _request_dill(self, cmd):
         async with self.lock:
             await self._sock.send_string(cmd)
@@ -731,21 +773,21 @@ class AsyncGraphCommHandler(CommHandler):
             await self._sock.send(dill.dumps(payload))
             return (await self._sock.recv_string()) == 'ok'
 
-    async def save(self, filename):
-        if filename:
-            try:
-                with open(filename, 'wb') as cnf:
-                    dill.dump(await self.graph, cnf)
-            except OSError:
-                logger.exception("Problem opening saved graph configuration file:")
+    async def _view(self, names):
+        nodes = []
+        for name in names:
+            view_name = self.auto(name)
+            var_type = await self.get_type(name)
+            node_name = '%s_view' % view_name
+            if var_type is None:
+                inputs = name
+                outputs = view_name
+            else:
+                inputs = gn.Var(name, var_type)
+                outputs = gn.Var(view_name, var_type)
+            nodes.append(self._make_node(gn.PickN, name=node_name, inputs=inputs, outputs=outputs, N=1))
 
-    async def _view(self, name):
-        view_name = self.auto(name)
-        var_type = await self.get_type(name)
-        if var_type is None:
-            return await self.addPickN('%s_view' % view_name, name, view_name)
-        else:
-            return await self.addPickN('%s_view' % view_name, gn.Var(name, var_type), gn.Var(view_name, var_type))
+        return await self.add(nodes)
 
     async def _load(self, filename):
         with open(filename, 'rb') as cnf:
@@ -786,6 +828,19 @@ class GraphCommHandler(CommHandler):
         else:
             return self._sock.recv_pyobj()
 
+    def _request_batch(self, cmds, check=False, retries=None):
+        results = []
+        if retries is None:
+            for cmd in cmds:
+                results.append(self._request(cmd, check))
+        else:
+            for cmd, retry in zip(cmds, retries):
+                results.append(self._request(cmd, check, retry))
+        if all(entry is None for entry in results):
+            return None
+        else:
+            return results
+
     def _request_dill(self, cmd):
         self._sock.send_string(cmd)
         return dill.loads(self._sock.recv())
@@ -795,13 +850,21 @@ class GraphCommHandler(CommHandler):
         self._sock.send(dill.dumps(payload))
         return self._sock.recv_string() == 'ok'
 
-    def _view(self, name):
-        view_name = self.auto(name)
-        var_type = self.get_type(name)
-        if var_type is None:
-            return self.addPickN('%s_view' % view_name, name, view_name)
-        else:
-            return self.addPickN('%s_view' % view_name, gn.Var(name, var_type), gn.Var(view_name, var_type))
+    def _view(self, names):
+        nodes = []
+        for name in names:
+            view_name = self.auto(name)
+            var_type = self.get_type(name)
+            node_name = '%s_view' % view_name
+            if var_type is None:
+                inputs = name
+                outputs = view_name
+            else:
+                inputs = gn.Var(name, var_type)
+                outputs = gn.Var(view_name, var_type)
+            nodes.append(self._make_node(gn.PickN, name=node_name, inputs=inputs, outputs=outputs, N=1))
+
+        return self.add(nodes)
 
     def _load(self, filename):
         with open(filename, 'rb') as cnf:
