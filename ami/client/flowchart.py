@@ -46,8 +46,21 @@ def run_editor_window(broker_addr, graphmgr_addr, node_addr, checkpoint_addr):
                    node_addr=node_addr,
                    checkpoint_addr=checkpoint_addr)
 
+    types = {'EBeam:raw:energy': np.float64,
+             'EBeam:raw:segments': object,
+             'xppcspad:raw:calib': object,
+             'xppcspad:raw:image': np.ndarray,
+             'xppcspad:raw:raw': object,
+             'xppcspad:raw:segments': object,
+             'xpphsd:raw:segments': object,
+             'xpphsd:raw:waveform': np.ndarray,
+             'xpplaser:raw:laserOn': bool,
+             'xpplaser:raw:segments': object,
+             'cspad': np.ndarray,
+             'laser': bool,
+             'delta_t': int}
+
     y = 0
-    types = {'cspad': np.ndarray, 'laser': bool, 'delta_t': int}
     for name in comm.names:
         fc.addNode(Node(name=name, terminals={'Out': {'io': 'out', 'type': types[name]}}), name=name, pos=[0, y])
         y += 150
