@@ -1,5 +1,6 @@
 import logging
 import asyncio
+import itertools as it
 import pyqtgraph as pg
 from PyQt5.QtWidgets import QLCDNumber
 from PyQt5.QtCore import QRect
@@ -9,66 +10,103 @@ from ami.comm import AsyncGraphCommHandler
 
 logger = logging.getLogger(LogConfig.get_package_name(__name__))
 
+colors = ['b', 'g', 'r']
+symbols = ['o', 's', 't', 'd', '+']
+symbols_colors = list(it.product(symbols, colors))
+
 
 class AsyncFetcher(object):
 
-    def __init__(self, name, topic, addr):
-        self.name = name
-        self.topic = topic
-        self.addr = addr
+    def __init__(self, topics={}, addr=None):
+        self.names = list(topics.keys())
+        self.topics = list(topics.values())
         self.comm_handler = AsyncGraphCommHandler(addr)
-        self.reply = None
+        self.reply = {}
 
     async def fetch(self):
         await asyncio.sleep(1)
-        self.reply = await self.comm_handler.fetch(self.topic)
-        if self.reply is None:
-            logger.warn("failed to fetch %s from manager!" % self.topic)
+        reply = await self.comm_handler.fetch(self.topics)
+        if reply:
+            self.reply = dict(zip(self.names, reply))
+        else:
+            self.reply = {}
+            logger.warn("failed to fetch %s from manager!" % self.topics.values())
 
 
 class ScalarWidget(QLCDNumber):
-    def __init__(self, name, topic, addr, parent=None):
+
+    def __init__(self, topics, addr, parent=None):
         super(ScalarWidget, self).__init__(parent)
-        self.fetcher = AsyncFetcher(name, topic, addr)
+        self.fetcher = AsyncFetcher(topics, addr)
         self.setGeometry(QRect(320, 180, 191, 81))
         self.setDigitCount(10)
-        self.setObjectName(topic)
 
     async def update(self):
         while True:
             await self.fetcher.fetch()
-            if self.fetcher.reply is not None:
-                self.display(self.fetcher.reply)
+            for k, v in self.fetcher.reply.items():
+                self.display(v)
 
 
 class AreaDetWidget(pg.ImageView):
-    def __init__(self, name, topic, addr, parent=None):
+
+    def __init__(self, topics, addr, parent=None):
         super(AreaDetWidget, self).__init__(parent)
-        self.fetcher = AsyncFetcher(name, topic, addr)
+        self.fetcher = AsyncFetcher(topics, addr)
 
     async def update(self):
         while True:
             await self.fetcher.fetch()
-            if self.fetcher.reply is not None:
-                self.setImage(self.fetcher.reply)
+            for k, v in self.fetcher.reply.items():
+                self.setImage(v)
 
 
-class WaveformWidget(pg.GraphicsLayoutWidget):
-    def __init__(self, name, topic, addr, parent=None):
-        super(WaveformWidget, self).__init__(parent)
-        self.fetcher = AsyncFetcher(name, topic, addr)
+class HistogramWidget(pg.GraphicsLayoutWidget):
+
+    def __init__(self, topics, addr, parent=None):
+        super(HistogramWidget, self).__init__(parent)
+        self.fetcher = AsyncFetcher(topics, addr)
         self.plot_view = self.addPlot()
-        self.plot = None
+        self.plot_view.addLegend()
+        self.plot = {}
+
+    async def update(self):
+        while True:
+            await self.fetcher.fetch()
+            self.histogram_updated(self.fetcher.reply)
+
+    def histogram_updated(self, data):
+        i = 0
+        for name, data in data.items():
+            x, y = map(list, zip(*sorted(data.items())))
+
+            if name not in self.plot:
+                symbol, color = symbols_colors[i]
+                i += 1
+                self.plot[name] = self.plot_view.plot(x, y, name=name,
+                                                      symbol=symbol,
+                                                      symbolBrush=color)
+            else:
+                self.plot[name].setData(x=x, y=y)
+
+
+class ScatterWidget(pg.GraphicsLayoutWidget):
+
+    def __init__(self, topics, addr, parent=None):
+        super(ScatterWidget, self).__init__(parent)
+        self.fetcher = AsyncFetcher(topics, addr)
+        self.plot_view = self.addPlot()
+        self.plot = {}
 
     async def update(self):
         while True:
             await self.fetcher.fetch()
             if self.fetcher.reply is not None:
-                self.waveform_updated(self.fetcher.reply)
+                self.scatter_updated(self.fetcher.reply)
 
-    def waveform_updated(self, data):
-        x, y = map(list, zip(*sorted(data.items())))
+    def scatter_updated(self, data):
+        x, y = data
         if self.plot is None:
-            self.plot = self.plot_view.plot(x, y, symbol='o')
+            self.plot = self.plot_view.plot([x], [y], symbol='o')
         else:
-            self.plot.setData(x=x, y=y)
+            self.plot.setData(x=[x], y=[y])

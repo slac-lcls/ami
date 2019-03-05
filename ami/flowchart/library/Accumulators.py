@@ -30,11 +30,13 @@ class PickN(CtrlNode):
     def __init__(self, name):
         super(PickN, self).__init__(name,
                                     terminals={'In': {'io': 'in', 'type': object},
-                                               'Out': {'io': 'out', 'type': (type(None), list)}})
+                                               'Out': {'io': 'out', 'type': (type(None), list, tuple)}},
+                                    allowAddInput=True)
         self.N = 2
 
     def to_operation(self, inputs, conditions=[]):
         outputs = self.output_vars()
+        print(inputs)
         node = gn.PickN(name=self.name()+"_operation",
                         inputs=inputs, outputs=outputs, condiiton_needs=conditions,
                         N=self.N)

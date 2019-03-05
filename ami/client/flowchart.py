@@ -130,7 +130,7 @@ class NodeProcess(QtCore.QObject):
 
     def display(self, msg):
         if self.widget is None:
-            self.widget = self.node.display(msg.inputs, self.graphmgr_addr, self.win)
+            self.widget = self.node.display(msg.topics, self.graphmgr_addr, self.win)
 
             if self.ctrlWidget and self.widget:
                 cw = QtGui.QWidget()

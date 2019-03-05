@@ -101,7 +101,7 @@ class Node(QtCore.QObject):
             i += 1
         return name2
 
-    def addInput(self, name="Input", **args):
+    def addInput(self, name="In", **args):
         """Add a new input terminal to this Node with the given name. Extra
         keyword arguments are passed to Terminal.__init__.
 
@@ -109,7 +109,7 @@ class Node(QtCore.QObject):
         # print "Node.addInput called."
         return self.addTerminal(name, io='in', **args)
 
-    def addOutput(self, name="Output", **args):
+    def addOutput(self, name="Out", **args):
         """Add a new output terminal to this Node with the given name. Extra
         keyword arguments are passed to Terminal.__init__.
 

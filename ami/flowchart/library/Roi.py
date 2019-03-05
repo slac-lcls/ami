@@ -25,10 +25,9 @@ class Roi(CtrlNode):
         self.extent_y = 0
         self.func = lambda img: img
 
-    def display(self, inputs, addr, win):
-        name, topic = inputs[0]
+    def display(self, topics, addr, win):
         if self.widget is None:
-            self.widget = AreaDetWidget(name, topic, addr, win)
+            self.widget = AreaDetWidget(topics, addr, win)
             self.widget.roi.sigRegionChangeFinished.connect(self.changed)
 
         if self.task is None:

@@ -39,16 +39,9 @@ class CloseNode(NodeMsg):
 
 class DisplayNode(NodeMsg):
 
-    def __init__(self, name, inputs):
+    def __init__(self, name, topics):
         super(DisplayNode, self).__init__(name)
-        self.inputs = inputs
-
-
-class RenameNode(Msg):
-
-    def __init__(self, old_name, new_name):
-        super(RenameNode, self).__init__(old_name)
-        self.new_name = new_name
+        self.topics = topics
 
 
 class UpdateNodeAttributes(NodeMsg):
