@@ -99,47 +99,47 @@ class Graph():
             if isinstance(node, Var) and node.name == name:
                 return node.type
 
-    def add(self, op):
+    def add(self, ops):
         """
-        Add an operation to the graph. If the node already exists in the graph try to replace it if the new node's
+        Add operations to the graph. If a node already exists in the graph try to replace it if the new node's
         inputs and outputs match the old one's.
 
         Args:
-            op (list or Transformation): Operation node to add to graph.
-        """
-
-        try:
-            self.insert(op)
-        except AssertionError:
-            self.replace(op)
-
-    def insert(self, ops):
-        """
-        Insert operations into the graph. If an operation already exists in the graph this function raises an
-        AssertionError.
-
-        Args:
-            ops (list or Transformation): Operation to insert into graph
-
-        Raises:
-            AssertionError: if an operation already exists in the graph
+            ops (list or Transformation): Operation node to add to graph.
         """
 
         if type(ops) is not list:
             ops = [ops]
 
         for op in ops:
-            assert op not in self.graph.nodes(), "Operation may only be added once %s" % op.name
-            assert op.name not in self.children_of_global_operations, "Operation may only be added once %s" % op.name
+            try:
+                self.insert(op)
+            except AssertionError:
+                self.replace(op)
 
-            for i in op.inputs:
-                self.graph.add_edge(i, op)
+    def insert(self, op):
+        """
+        Insert an operation into the graph. If an operation already exists in the graph this function raises an
+        AssertionError.
 
-            for o in op.outputs:
-                self.graph.add_edge(op, o)
+        Args:
+            op (Transformation): Operation to insert into graph
 
-            for i in op.condition_needs:
-                self.graph.add_edge(i, op)
+        Raises:
+            AssertionError: if an operation already exists in the graph
+        """
+
+        assert op not in self.graph.nodes(), "Operation may only be added once %s" % op.name
+        assert op.name not in self.children_of_global_operations, "Operation may only be added once %s" % op.name
+
+        for i in op.inputs:
+            self.graph.add_edge(i, op)
+
+        for o in op.outputs:
+            self.graph.add_edge(op, o)
+
+        for i in op.condition_needs:
+            self.graph.add_edge(i, op)
 
         self.graphkit = None
 
