@@ -36,7 +36,6 @@ class PickN(CtrlNode):
 
     def to_operation(self, inputs, conditions=[]):
         outputs = self.output_vars()
-        print(inputs)
         node = gn.PickN(name=self.name()+"_operation",
                         inputs=list(inputs.values()), outputs=outputs, condiiton_needs=list(conditions.values()),
                         N=self.N)

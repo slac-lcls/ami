@@ -19,13 +19,9 @@ class Roi(CtrlNode):
                                   terminals={'In': {'io': 'in', 'type': np.ndarray},
                                              'Out': {'io': 'out', 'type': np.ndarray}},
                                   viewable=True)
-        self.origin_x = 0
-        self.origin_y = 0
-        self.extent_x = 0
-        self.extent_y = 0
         self.func = lambda img: img
 
-    def display(self, topics, addr, win):
+    def display(self, topics, addr, win, **kwargs):
         if self.widget is None:
             self.widget = AreaDetWidget(topics, addr, win)
             self.widget.roi.sigRegionChangeFinished.connect(self.changed)

@@ -96,9 +96,20 @@ class CtrlNode(Node):
             terminals = {'In': {'io': 'in'}, 'Out': {'io': 'out'}}
         super(CtrlNode, self).__init__(name=name, terminals=terminals, **kwargs)
 
+        self.init_values(ui)
         self.ui, self.stateGroup, self.ctrls = generateUi(ui)
         if self.stateGroup:
             self.stateGroup.sigChanged.connect(self.changed)
+
+    def init_values(self, opts):
+        for opt in opts:
+            if len(opt) != 3:
+                continue
+            k, t, o = opt
+
+            if 'value' in o:
+                k = k.replace(" ", "_")
+                setattr(self, k, o['value'])
 
     def ctrlWidget(self):
         return self.ui
@@ -109,6 +120,7 @@ class CtrlNode(Node):
 
     def update(self, *args, **kwargs):
         name, val = args
+        name = name.replace(" ", "_")
         setattr(self, name, val)
 
     def saveState(self):
