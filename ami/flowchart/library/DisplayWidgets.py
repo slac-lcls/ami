@@ -30,7 +30,7 @@ class AsyncFetcher(object):
             self.reply = dict(zip(self.names, reply))
         else:
             self.reply = {}
-            logger.warn("failed to fetch %s from manager!" % self.topics.values())
+            logger.warn("failed to fetch %s from manager!", self.topics)
 
 
 class ScalarWidget(QLCDNumber):
