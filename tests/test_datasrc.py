@@ -1,4 +1,5 @@
 import pytest
+import numpy as np
 
 from ami.data import MsgTypes, Source, Transition, Transitions
 
@@ -12,6 +13,7 @@ def sim_src_cfg():
         'config': {
             "delta_t": {"dtype": "Scalar", "range": [0, 10], "integer": True},
             "cspad": {"dtype": "Image", "pedestal": 5, "width": 1, "shape": [512, 512]},
+            "acq": {"dtype": "Waveform", "pedestal": 5, "width": 1, "shape": 512},
             "laser": {"dtype": "Scalar", "range": [0, 2], "integer": True},
         },
     }
@@ -63,6 +65,19 @@ def test_static_source(sim_src_cfg):
     # check the names from the source are correct
     expected_names = set(sim_src_cfg['config'].keys())
     assert source.names == expected_names
+    # check the types from the source are correct
+    expected_dtypes = {}
+    for name, cfg in sim_src_cfg['config'].items():
+        if cfg["dtype"] == "Scalar":
+            if cfg.get("integer", False):
+                expected_dtypes[name] = int
+            else:
+                expected_dtypes[name] = float
+        elif cfg["dtype"] == "Image" or cfg["dtype"] == "Waveform":
+            expected_dtypes[name] = np.ndarray
+        else:
+            expected_dtypes[name] = None
+    assert source.types == expected_dtypes
 
     # check the returned configuration message
     config = source.configure()
@@ -71,6 +86,8 @@ def test_static_source(sim_src_cfg):
     assert isinstance(config.payload, Transition)
     assert config.payload.ttype == Transitions.Configure
     assert set(config.payload.payload) == expected_names
+    for name, dtype in config.payload.payload.items():
+        assert dtype == expected_dtypes[name]
 
     # do a first loop over the data (events should be empty)
     count = 0
@@ -117,6 +134,19 @@ def test_random_source(sim_src_cfg):
     # check the names from the source are correct
     expected_names = set(sim_src_cfg['config'].keys())
     assert source.names == expected_names
+    # check the types from the source are correct
+    expected_dtypes = {}
+    for name, cfg in sim_src_cfg['config'].items():
+        if cfg["dtype"] == "Scalar":
+            if cfg.get("integer", False):
+                expected_dtypes[name] = int
+            else:
+                expected_dtypes[name] = float
+        elif cfg["dtype"] == "Image" or cfg["dtype"] == "Waveform":
+            expected_dtypes[name] = np.ndarray
+        else:
+            expected_dtypes[name] = None
+    assert source.types == expected_dtypes
 
     # check the returned configuration message
     config = source.configure()
@@ -125,6 +155,8 @@ def test_random_source(sim_src_cfg):
     assert isinstance(config.payload, Transition)
     assert config.payload.ttype == Transitions.Configure
     assert set(config.payload.payload) == expected_names
+    for name, dtype in config.payload.payload.items():
+        assert dtype == expected_dtypes[name]
 
     # do a first loop over the data (events should be empty)
     for msg in source.events():
@@ -142,6 +174,7 @@ def test_random_source(sim_src_cfg):
         if msg.mtype == MsgTypes.Datagram:
             for name in expected_names:
                 assert name in msg.payload
+                assert type(msg.payload[name]) == expected_dtypes[name]
             break
 
 

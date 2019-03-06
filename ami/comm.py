@@ -406,11 +406,12 @@ class CommHandler(abc.ABC):
     @property
     def sources(self):
         """
-        A set of the names of all the external data sources that can be used as
-        inputs for nodes in the graph.
+        A dictionary with information on all of the external data sources that
+        can be used as inputs for nodes in the graph, where the key is the name
+        of the data source and the value is the type of the data source.
 
         Returns:
-            A set of the names of all the external data sources,
+            A dictionary with information on all of the external data sources.
         """
         return self._request('get_sources')
 
