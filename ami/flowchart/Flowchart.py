@@ -211,7 +211,7 @@ class Flowchart(Node):
                     continue
                 if n['class'] == "Node":
                     try:
-                        node = Node(name=n['name'])
+                        node = Node(name=n['name'], terminals=n['state'].get('terminals', {}))
                         node.restoreState(n['state'])
                         self.addNode(node, n['name'])
                     except Exception:

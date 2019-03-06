@@ -86,6 +86,22 @@ class Node(QtCore.QObject):
         self._input_vars = []
         self._condition_vars = []
 
+        brush = self.determineColor(terminals)
+        self.graphicsItem(brush)
+
+        for name, opts in terminals.items():
+            self.addTerminal(name, **opts)
+
+    def nextTerminalName(self, name):
+        """Return an unused terminal name"""
+        name2 = name
+        i = 1
+        while name2 in self.terminals:
+            name2 = "%s.%d" % (name, i)
+            i += 1
+        return name2
+
+    def determineColor(self, terminals):
         isInput = True
         isOutput = True
         for name, term in terminals.items():
@@ -104,19 +120,7 @@ class Node(QtCore.QObject):
         elif isOutput and not isInput:
             brush = fn.mkBrush(0, 255, 0, 150)
 
-        self.graphicsItem(brush)
-
-        for name, opts in terminals.items():
-            self.addTerminal(name, **opts)
-
-    def nextTerminalName(self, name):
-        """Return an unused terminal name"""
-        name2 = name
-        i = 1
-        while name2 in self.terminals:
-            name2 = "%s.%d" % (name, i)
-            i += 1
-        return name2
+        return brush
 
     def addInput(self, name="In", **args):
         """Add a new input terminal to this Node with the given name. Extra
