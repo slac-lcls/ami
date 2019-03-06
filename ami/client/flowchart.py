@@ -110,10 +110,15 @@ class NodeProcess(QtCore.QObject):
             loop.run_until_complete(asyncio.gather(self.process(), self.monitor_node_task()))
 
     async def monitor_node_task(self):
-        while self.node.task is None:
-            await asyncio.sleep(0.1)
-        # await the node task so we can see any exceptions it raised
-        await self.node.task
+        if hasattr(self.node, 'task'):
+            while self.node.task is None:
+                await asyncio.sleep(0.1)
+            # await the node task so we can see any exceptions it raised
+            try:
+                await self.node.task
+            except asyncio.CancelledError:
+                # ignore cancelled errors just means the window was closed
+                pass
 
     async def process(self):
         while True:
