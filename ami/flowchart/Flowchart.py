@@ -341,8 +341,6 @@ class FlowchartCtrlWidget(QtGui.QWidget):
         disconnectedNodes = []
 
         for name, gnode in self.chart.nodes().items():
-            if not hasattr(gnode, 'to_operation'):
-                continue
 
             if not gnode.isConnected():
                 disconnectedNodes.append(gnode)
@@ -350,6 +348,9 @@ class FlowchartCtrlWidget(QtGui.QWidget):
             elif gnode.exception:
                 gnode.clearException()
                 gnode.recolor()
+
+            if not hasattr(gnode, 'to_operation'):
+                continue
 
             await self.chart.broker.send_string(name, zmq.SNDMORE),
             await self.chart.broker.send_pyobj(fcMsgs.GetNodeOperation())
@@ -384,7 +385,7 @@ class FlowchartCtrlWidget(QtGui.QWidget):
 
         async with self.features_lock:
             for name, node in self.chart.nodes().items():
-                for in_var in node.input_vars():
+                for term, in_var in node.input_vars().items():
                     if in_var.name in self.features:
                         features[in_var.name] = self.features[in_var.name]
                         await self.graphCommHandler.view(in_var.name)
@@ -534,7 +535,7 @@ class FlowchartWidget(dockarea.DockArea):
             if len(node.inputs()) != len(node.input_vars()):
                 return
 
-            for in_var in node.input_vars():
+            for term, in_var in node.input_vars().items():
 
                 if in_var.name in self.ctrl.features:
                     topic = self.ctrl.features[in_var.name]

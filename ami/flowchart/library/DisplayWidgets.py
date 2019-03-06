@@ -36,7 +36,7 @@ class AsyncFetcher(object):
 
 class ScalarWidget(QLCDNumber):
 
-    def __init__(self, topics, addr, parent=None):
+    def __init__(self, topics, addr, parent=None, **kwargs):
         super(ScalarWidget, self).__init__(parent)
         self.fetcher = AsyncFetcher(topics, addr)
         self.setGeometry(QRect(320, 180, 191, 81))
@@ -51,7 +51,7 @@ class ScalarWidget(QLCDNumber):
 
 class AreaDetWidget(pg.ImageView):
 
-    def __init__(self, topics, addr, parent=None):
+    def __init__(self, topics, addr, parent=None, **kwargs):
         super(AreaDetWidget, self).__init__(parent)
         self.fetcher = AsyncFetcher(topics, addr)
 
@@ -65,12 +65,13 @@ class AreaDetWidget(pg.ImageView):
 
 class HistogramWidget(pg.GraphicsLayoutWidget):
 
-    def __init__(self, topics, addr, parent=None):
+    def __init__(self, topics, addr, parent=None, **kwargs):
         super(HistogramWidget, self).__init__(parent)
         self.fetcher = AsyncFetcher(topics, addr)
         self.plot_view = self.addPlot()
         self.plot_view.addLegend()
         self.plot = {}
+        self.terms = kwargs.get('terms', {})
 
     async def update(self):
         while True:
@@ -79,8 +80,9 @@ class HistogramWidget(pg.GraphicsLayoutWidget):
 
     def histogram_updated(self, data):
         i = 0
-        for name, data in data.items():
-            x, y = map(list, zip(*sorted(data.items())))
+        for term, var in self.terms.items():
+            name = var.name
+            x, y = map(list, zip(*sorted(data[name].items())))
 
             if name not in self.plot:
                 symbol, color = symbols_colors[i]
@@ -94,11 +96,13 @@ class HistogramWidget(pg.GraphicsLayoutWidget):
 
 class ScatterWidget(pg.GraphicsLayoutWidget):
 
-    def __init__(self, topics, addr, parent=None):
+    def __init__(self, topics, addr, parent=None, **kwargs):
         super(ScatterWidget, self).__init__(parent)
         self.fetcher = AsyncFetcher(topics, addr)
         self.plot_view = self.addPlot()
+        self.plot_view.addLegend()
         self.plot = {}
+        self.terms = kwargs.get('terms', {})
 
     async def update(self):
         while True:
@@ -107,8 +111,23 @@ class ScatterWidget(pg.GraphicsLayoutWidget):
                 self.scatter_updated(self.fetcher.reply)
 
     def scatter_updated(self, data):
-        x, y = data
-        if self.plot is None:
-            self.plot = self.plot_view.plot([x], [y], symbol='o')
-        else:
-            self.plot.setData(x=[x], y=[y])
+        num_terms = int(len(self.terms)/2)
+        for i in range(0, num_terms):
+            x = "X"
+            y = "Y"
+            if i > 0:
+                x += ".%d" % i
+                y += ".%d" % i
+            x = self.terms[x].name
+            y = self.terms[y].name
+            name = " vs ".join((x, y))
+            x = [data[x]]
+            y = [data[y]]
+
+            if name not in self.plot:
+                self.plot[name] = pg.ScatterPlotItem(name=name)
+                self.plot_view.addItem(self.plot[name])
+                self.plot_view.addLegend().addItem(self.plot[name], name=name)
+            scatter = self.plot[name]
+            symbol, color = symbols_colors[i]
+            scatter.addPoints(x=x, y=y, symbol=symbol, brush=color)

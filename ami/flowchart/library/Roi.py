@@ -70,9 +70,9 @@ class Roi(CtrlNode):
 
         self.func = func
 
-    def to_operation(self, inputs, conditions=[]):
+    def to_operation(self, inputs, conditions={}):
         outputs = self.output_vars()
         node = gn.Map(name=self.name()+"_operation",
-                      inputs=inputs, outputs=outputs, condition_needs=conditions,
+                      condition_needs=list(conditions.values()), inputs=list(inputs.values()), outputs=outputs,
                       func=self.func)
         return node

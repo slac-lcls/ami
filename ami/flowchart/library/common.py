@@ -139,10 +139,10 @@ class CtrlNode(Node):
             self.task.cancel()
             self.task = None
 
-    def display(self, topics, addr, win, widget=None):
+    def display(self, topics, addr, win, widget=None, **args):
 
         if self.widget is None and widget:
-            self.widget = widget(topics, addr, win)
+            self.widget = widget(topics, addr, win, **args)
 
         if self.task is None and self.widget:
             self.task = asyncio.ensure_future(self.widget.update())

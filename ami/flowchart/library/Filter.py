@@ -24,7 +24,7 @@ class FilterOff(Filter):
 
     def to_operation(self, inputs, conditions=[]):
         outputs = self.output_vars()
-        node = gn.FilterOff(name=self.name()+'_operation', condition_needs=conditions, outputs=outputs)
+        node = gn.FilterOff(name=self.name()+'_operation', condition_needs=list(conditions.values()), outputs=outputs)
         return node
 
 
@@ -38,5 +38,5 @@ class FilterOn(Filter):
 
     def to_operation(self, inputs, conditions=[]):
         outputs = self.output_vars()
-        node = gn.FilterOn(name=self.name()+'_operation', condition_needs=conditions, outputs=outputs)
+        node = gn.FilterOn(name=self.name()+'_operation', condition_needs=list(conditions.values()), outputs=outputs)
         return node

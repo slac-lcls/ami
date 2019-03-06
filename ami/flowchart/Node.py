@@ -83,8 +83,8 @@ class Node(QtCore.QObject):
 
         self.exception = None
 
-        self._input_vars = []
-        self._condition_vars = []
+        self._input_vars = {}  # term:var
+        self._condition_vars = {}  # term:var
 
         brush = self.determineColor(terminals)
         self.graphicsItem(brush)
@@ -268,21 +268,17 @@ class Node(QtCore.QObject):
         """Called whenever one of this node's terminals is connected elsewhere."""
         node = remoteTerm.node()
         if localTerm.isInput() and remoteTerm.isOutput():
-            if pos is not None:
-                self._input_vars.insert(pos, Var(name=node.name(), type=remoteTerm.type()))
-            else:
-                self._input_vars.append(Var(name=node.name(), type=remoteTerm.type()))
+            self._input_vars[localTerm.name()] = Var(name=node.name(), type=remoteTerm.type())
         elif localTerm.isCondition():
-            self._condition_vars.append(node.name())
+            self._condition_vars[localTerm.name()] = node.name()
         self.sigTerminalConnected.emit(self)
 
     def disconnected(self, localTerm, remoteTerm):
         """Called whenever one of this node's terminals is disconnected from another."""
-        node = remoteTerm.node()
         if localTerm.isInput() and remoteTerm.isOutput():
-            self._input_vars.remove(Var(name=node.name(), type=remoteTerm.type()))
+            del self._input_vars[localTerm.name()]
         elif localTerm.isCondition():
-            self._condition_vars.remove(node.name())
+            del self._condition_vars[localTerm.name()]
         self.sigTerminalDisconnected.emit(self)
 
     def isConnected(self):

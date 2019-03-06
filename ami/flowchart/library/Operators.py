@@ -14,10 +14,10 @@ class Sum(Node):
             'Out': {'io': 'out', 'type': np.float64}
         })
 
-    def to_operation(self, inputs, conditions=[]):
+    def to_operation(self, inputs, conditions={}):
         outputs = self.output_vars()
         node = gn.Map(name=self.name()+"_operation",
-                      condition_needs=conditions, inputs=inputs, outputs=outputs,
+                      condition_needs=list(conditions.values()), inputs=list(inputs.values()), outputs=outputs,
                       func=lambda a: np.sum(a, dtype=np.float64))
         return node
 
@@ -34,15 +34,9 @@ class Binning(Node):
             'Out': {'io': 'out', 'type': dict}
         })
 
-    def connected(self, localTerm, remoteTerm):
-        if localTerm.name() == "Bins":
-            super(Binning, self).connected(localTerm, remoteTerm, pos=0)
-        elif localTerm.name() == "Values":
-            super(Binning, self).connected(localTerm, remoteTerm, pos=1)
-        else:
-            super(Binning, self).connected(localTerm, remoteTerm)
-
-    def to_operation(self, inputs, conditions=[]):
+    def to_operation(self, inputs, conditions={}):
         outputs = self.output_vars()
-        node = gn.Binning(name=self.name()+"_operation", condition_needs=conditions, inputs=inputs, outputs=outputs)
+        ordered_inputs = [inputs['Bins'], inputs['Values']]
+        node = gn.Binning(name=self.name()+"_operation",
+                          condition_needs=list(conditions.values()), inputs=ordered_inputs, outputs=outputs)
         return node

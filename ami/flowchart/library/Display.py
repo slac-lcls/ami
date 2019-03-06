@@ -14,8 +14,8 @@ class ScalarViewer(CtrlNode):
                                            terminals={"In": {"io": "in", "type": (float, int, bool, np.float64)}},
                                            viewable=True)
 
-    def display(self, topics, addr, win):
-        return super(ScalarViewer, self).display(topics, addr, win, ScalarWidget)
+    def display(self, topics, addr, win, **kwargs):
+        return super(ScalarViewer, self).display(topics, addr, win, ScalarWidget, **kwargs)
 
 
 class ImageViewer(CtrlNode):
@@ -27,8 +27,8 @@ class ImageViewer(CtrlNode):
     def __init__(self, name):
         super(ImageViewer, self).__init__(name, terminals={"In": {"io": "in", "type": np.ndarray}}, viewable=True)
 
-    def display(self, topics, addr, win):
-        return super(ImageViewer, self).display(topics, addr, win, AreaDetWidget)
+    def display(self, topics, addr, win, **kwargs):
+        return super(ImageViewer, self).display(topics, addr, win, AreaDetWidget, **kwargs)
 
 
 class Histogram(CtrlNode):
@@ -43,8 +43,8 @@ class Histogram(CtrlNode):
                                         allowAddInput=True,
                                         viewable=True)
 
-    def display(self, topics, addr, win):
-        return super(Histogram, self).display(topics, addr, win, HistogramWidget)
+    def display(self, topics, addr, win, **kwargs):
+        return super(Histogram, self).display(topics, addr, win, HistogramWidget, **kwargs)
 
 
 class ScatterPlot(CtrlNode):
@@ -56,7 +56,12 @@ class ScatterPlot(CtrlNode):
     def __init__(self, name):
         super(ScatterPlot, self).__init__(name, terminals={"X": {"io": "in", "type": (int, np.float64)},
                                                            "Y": {"io": "in", "type": (int, np.float64)}},
+                                          allowAddInput=True,
                                           viewable=True)
 
-    def display(self, topics, addr, win):
-        return super(ScatterPlot, self).display(topics, addr, win, ScatterWidget)
+    def display(self, topics, addr, win, **kwargs):
+        return super(ScatterPlot, self).display(topics, addr, win, ScatterWidget, **kwargs)
+
+    def addInput(self, **args):
+        self.addTerminal(name="X", io='in', **args)
+        self.addTerminal(name="Y", io='in', **args)
