@@ -30,11 +30,12 @@ class Flowchart(Node):
     # called when output is expected to have changed
     sigStateChanged = QtCore.Signal()
 
-    def __init__(self, name=None, filePath=None, library=None,
+    def __init__(self, name=None, filePath=None, library=None, source_library=None,
                  broker_addr="", graphmgr_addr="", node_addr="", checkpoint_addr=""):
         super(Flowchart, self).__init__(name)
         self.library = library or LIBRARY
         self.graphmgr_addr = graphmgr_addr
+        self.source_library = source_library
 
         self.ctx = zmq.asyncio.Context()
         self.broker = self.ctx.socket(zmq.PUB)
@@ -311,7 +312,8 @@ class FlowchartCtrlWidget(QtGui.QWidget):
     def __init__(self, chart, graphmgr_addr):
         super(FlowchartCtrlWidget, self).__init__()
 
-        self.items = {}
+        self.graphCommHandler = AsyncGraphCommHandler(graphmgr_addr)
+
         self.currentFileName = None
         self.chart = chart
         self.chartWidget = FlowchartWidget(chart, self)
@@ -319,11 +321,10 @@ class FlowchartCtrlWidget(QtGui.QWidget):
         self.ui = EditorTemplate.Ui_Toolbar()
         self.ui.setupUi(parent=self, chart=self.chartWidget)
         self.ui.create_model(self.ui.node_tree, self.chart.library.getLabelTree())
+        self.ui.create_model(self.ui.source_tree, self.chart.source_library.getLabelTree())
 
         self.features_lock = asyncio.Lock()
         self.features = {}
-
-        self.graphCommHandler = AsyncGraphCommHandler(graphmgr_addr)
 
         self.ui.actionOpen.triggered.connect(self.openClicked)
         self.ui.actionSave.triggered.connect(self.saveClicked)
@@ -345,6 +346,7 @@ class FlowchartCtrlWidget(QtGui.QWidget):
 
             if not gnode.isConnected():
                 disconnectedNodes.append(gnode)
+                continue
             elif gnode.exception:
                 gnode.clearException()
                 gnode.recolor()
@@ -364,6 +366,9 @@ class FlowchartCtrlWidget(QtGui.QWidget):
             for node in disconnectedNodes:
                 node.setException(True)
                 node.recolor()
+            return
+
+        if not graph_nodes:
             return
 
         graph = Graph(name=str(self.chart.name))

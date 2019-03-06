@@ -1,6 +1,7 @@
 import logging
 import asyncio
 import itertools as it
+import numpy as np
 import pyqtgraph as pg
 from PyQt5.QtWidgets import QLCDNumber
 from PyQt5.QtCore import QRect
@@ -30,7 +31,7 @@ class AsyncFetcher(object):
             self.reply = dict(zip(self.names, reply))
         else:
             self.reply = {}
-            logger.warn("failed to fetch %s from manager!", self.topics)
+            logger.warn("failed to fetch %s from manager!" % self.topics)
 
 
 class ScalarWidget(QLCDNumber):
@@ -58,6 +59,7 @@ class AreaDetWidget(pg.ImageView):
         while True:
             await self.fetcher.fetch()
             for k, v in self.fetcher.reply.items():
+                v = v.astype(np.float, copy=False)
                 self.setImage(v)
 
 

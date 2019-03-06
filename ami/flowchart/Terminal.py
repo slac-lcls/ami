@@ -394,9 +394,9 @@ class ConnectionItem(GraphicsObject):
         self.path = None
         self.shapePath = None
         self.style = {
-            'shape': 'line',
+            'shape': 'cubic',
             'color': (100, 100, 250),
-            'width': 1.0,
+            'width': 10.0,
             'hoverColor': (150, 150, 250),
             'hoverWidth': 1.0,
             'selectedColor': (200, 200, 0),

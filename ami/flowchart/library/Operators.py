@@ -30,7 +30,7 @@ class Binning(Node):
     def __init__(self, name):
         super(Binning, self).__init__(name, terminals={
             'Values': {'io': 'in', 'type': np.float64},
-            'Bins': {'io': 'in', 'type': int},
+            'Bins': {'io': 'in', 'type': (int, np.float64)},
             'Out': {'io': 'out', 'type': dict}
         })
 

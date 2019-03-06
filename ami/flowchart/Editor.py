@@ -114,6 +114,7 @@ class Ui_Toolbar(object):
         self.gridLayout.setColumnStretch(1, 10)
 
         self.node_search.textChanged.connect(self.node_search_text_changed)
+        self.source_search.textChanged.connect(self.source_search_text_changed)
 
     def populate_tree(self, children, parent):
         for child in sorted(children):
@@ -135,6 +136,9 @@ class Ui_Toolbar(object):
 
     def node_search_text_changed(self):
         self.search_text_changed(self.node_tree, self.node_model, self.node_search.text())
+
+    def source_search_text_changed(self):
+        self.search_text_changed(self.source_tree, self.source_model, self.source_search.text())
 
     def search_text_changed(self, tree, model, text):
         model.setFilterRegExp(text)

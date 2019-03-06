@@ -37,7 +37,7 @@ class Node(QtCore.QObject):
     sigTerminalConnected = QtCore.Signal(object)  # self
     sigTerminalDisconnected = QtCore.Signal(object)  # self
 
-    def __init__(self, name, terminals=None, allowAddInput=False, allowAddOutput=False, allowAddCondition=True,
+    def __init__(self, name, terminals={}, allowAddInput=False, allowAddOutput=False, allowAddCondition=True,
                  allowRemove=True, viewable=False):
         """
         ==============  ============================================================
@@ -86,8 +86,25 @@ class Node(QtCore.QObject):
         self._input_vars = []
         self._condition_vars = []
 
-        if terminals is None:
-            return
+        isInput = True
+        isOutput = True
+        for name, term in terminals.items():
+            if term['io'] == 'in':
+                isInput = False
+            elif term['io'] == 'out':
+                isOutput = False
+            elif term['io'] == 'condition':
+                isInput = False
+                isOutput = False
+                break
+
+        brush = None
+        if isInput and not isOutput:
+            brush = fn.mkBrush(255, 0, 0, 150)
+        elif isOutput and not isInput:
+            brush = fn.mkBrush(0, 255, 0, 150)
+
+        self.graphicsItem(brush)
 
         for name, opts in terminals.items():
             self.addTerminal(name, **opts)
@@ -195,11 +212,11 @@ class Node(QtCore.QObject):
     def condition_vars(self):
         return self._condition_vars
 
-    def graphicsItem(self):
+    def graphicsItem(self, brush=None):
         """Return the GraphicsItem for this node. Subclasses may re-implement
         this method to customize their appearance in the flowchart."""
         if self._graphicsItem is None:
-            self._graphicsItem = NodeGraphicsItem(self)
+            self._graphicsItem = NodeGraphicsItem(self, brush)
         return self._graphicsItem
 
     # this is just bad planning. Causes too many bugs.
@@ -266,7 +283,7 @@ class Node(QtCore.QObject):
 
     def isConnected(self):
         for name, term in self.terminals.items():
-            if term.isInput() and not term.hasInput():
+            if (term.isInput() or term.isCondition()) and not term.hasInput():
                 return False
 
         return True
@@ -353,12 +370,15 @@ class Node(QtCore.QObject):
 
 
 class NodeGraphicsItem(GraphicsObject):
-    def __init__(self, node):
+    def __init__(self, node, brush=None):
         GraphicsObject.__init__(self)
 
         self.pen = fn.mkPen(0, 0, 0)
         self.selectPen = fn.mkPen(200, 200, 200, width=2)
-        self.brush = fn.mkBrush(200, 200, 200, 150)
+        if brush:
+            self.brush = brush
+        else:
+            self.brush = fn.mkBrush(200, 200, 200, 150)
         self.hoverBrush = fn.mkBrush(200, 200, 200, 200)
         self.selectBrush = fn.mkBrush(200, 200, 255, 200)
         self.hovered = False

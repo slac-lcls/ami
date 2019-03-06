@@ -1,6 +1,7 @@
 from pyqtgraph.Qt import QtGui, QtCore
 from pyqtgraph.widgets.GraphicsView import GraphicsView
 from pyqtgraph.graphicsItems.ViewBox import ViewBox
+from ami.flowchart.Node import Node
 
 
 class FlowchartGraphicsView(GraphicsView):
@@ -9,7 +10,7 @@ class FlowchartGraphicsView(GraphicsView):
     sigClicked = QtCore.Signal(object)
 
     def __init__(self, widget, *args):
-        GraphicsView.__init__(self, *args, useOpenGL=False)
+        GraphicsView.__init__(self, *args, useOpenGL=False, background=0.5)
         self.setAcceptDrops(True)
         self._vb = FlowchartViewBox(widget, lockAspect=True, invertY=True)
         self.setCentralItem(self._vb)
@@ -71,8 +72,18 @@ class FlowchartViewBox(ViewBox):
             nodeType = self.decode_data(arr)[0][0].value()
             try:
                 self.widget.chart.createNode(nodeType, pos=self.mapToView(ev.pos()))
+                ev.accept()
+                return
             except Exception:
                 pass
-            ev.accept()
+
+            try:
+                node = self.widget.chart.source_library.getSourceType(nodeType)
+                node = Node(name=nodeType, terminals={'Out': {'io': 'out', 'type': node}})
+                self.widget.chart.addNode(node, name=nodeType, pos=self.mapToView(ev.pos()))
+                ev.accept()
+                return
+            except Exception:
+                pass
         else:
             ev.ignore()

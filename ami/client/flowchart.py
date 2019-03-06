@@ -10,8 +10,8 @@ import zmq.asyncio
 
 from ami.client import flowchart_messages as fcMsgs
 from ami.flowchart.Flowchart import Flowchart
-from ami.flowchart.Node import Node
 from ami.flowchart.library import LIBRARY
+from ami.flowchart.NodeLibrary import SourceLibrary
 from ami import LogConfig
 from ami.comm import GraphCommHandler
 from pyqtgraph.Qt import QtGui, QtCore
@@ -39,16 +39,19 @@ def run_editor_window(broker_addr, graphmgr_addr, node_addr, checkpoint_addr):
     time.sleep(2)
     comm = GraphCommHandler(graphmgr_addr)
 
+    sources = comm.sources
+    source_library = SourceLibrary()
+
+    for source, node_type in sources.items():
+        root, *_ = source.split(':')
+        source_library.addNodeType(source, node_type, [[root]])
+
     # Create flowchart, define input/output terminals
     fc = Flowchart(broker_addr=broker_addr,
                    graphmgr_addr=graphmgr_addr,
                    node_addr=node_addr,
-                   checkpoint_addr=checkpoint_addr)
-
-    y = 0
-    for name, dtype in comm.sources.items():
-        fc.addNode(Node(name=name, terminals={'Out': {'io': 'out', 'type': dtype}}), name=name, pos=[0, y])
-        y += 150
+                   checkpoint_addr=checkpoint_addr,
+                   source_library=source_library)
 
     # Add flowchart control panel to the main window
     layout.addWidget(fc.widget(), 0, 0, 2, 1)
