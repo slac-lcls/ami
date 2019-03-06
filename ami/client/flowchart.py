@@ -107,7 +107,13 @@ class NodeProcess(QtCore.QObject):
         self.win.setWindowTitle(msg.name)
 
         with loop:
-            loop.run_until_complete(self.process())
+            loop.run_until_complete(asyncio.gather(self.process(), self.monitor_node_task()))
+
+    async def monitor_node_task(self):
+        while self.node.task is None:
+            await asyncio.sleep(0.1)
+        # await the node task so we can see any exceptions it raised
+        await self.node.task
 
     async def process(self):
         while True:
