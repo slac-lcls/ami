@@ -69,8 +69,8 @@ def complex_graph_file(tmpdir_factory):
 def psana_graph(tmpdir_factory):
     graph = Graph(name='graph')
     graph.add(PickN(name='picker',
-                    inputs=[Var(name='xppcspad:raw:raw', type=np.array)],
-                    outputs=[Var(name='picked', type=np.array)]))
+                    inputs=[Var(name='xppcspad:raw:image', type=np.ndarray)],
+                    outputs=[Var(name='picked', type=np.ndarray)]))
     fname = tmpdir_factory.mktemp("psana_graph", False).join("psana_graph.dill")
     with open(fname, 'wb') as fd:
         dill.dump(graph, fd)
@@ -93,8 +93,8 @@ def workerjson(tmpdir_factory, xtcwriter):
         "interval": 0.01,
         "init_time": 0.1,
         "bound": 100,
+        "filename": "data.xtc2" if xtcwriter is None else str(xtcwriter),
         "config": {
-            "filename": "data.xtc2" if xtcwriter is None else str(xtcwriter),
             "delta_t": {"dtype": "Scalar", "range": [0, 10], "integer": True},
             "cspad": {"dtype": "Image", "pedestal": 5, "width": 1, "shape": [512, 512]},
             "laser": {"dtype": "Scalar", "range": [0, 2], "integer": True},

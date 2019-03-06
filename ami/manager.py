@@ -38,7 +38,7 @@ class Manager(Collector):
         super(__class__, self).__init__(results_addr)
         self.num_workers = num_workers
         self.num_nodes = num_nodes
-        self.partition = set()
+        self.partition = {}
         self.feature_store = Store()
         self.feature_req = re.compile("(?P<type>fetch|lookup):(?P<name>.*)")
         self.graph = None

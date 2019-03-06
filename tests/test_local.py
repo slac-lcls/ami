@@ -82,4 +82,4 @@ def test_psana_graph(psana_graph, start_ami, use_psana):
         if end - start > 10:
             raise TimeoutError
     picked_cspad = comm_handler.fetch('picked')
-    assert len(picked_cspad) == 18
+    assert picked_cspad.shape == (6, 6)

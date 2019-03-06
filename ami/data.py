@@ -115,9 +115,9 @@ class Source(abc.ABC):
         self.num_workers = num_workers
         self.heartbeat_period = heartbeat_period
         self.heartbeat = None
-        self.interval = src_cfg['interval']
-        self.init_time = src_cfg['init_time']
-        self.config = src_cfg['config']
+        self.interval = src_cfg.get('interval', 0)
+        self.init_time = src_cfg.get('init_time', 0)
+        self.config = src_cfg.get('config', {})
         self.requested_names = set()
         self.flags = flags or {}
 
@@ -167,10 +167,26 @@ class Source(abc.ABC):
     @abc.abstractmethod
     def names(self):
         """
-        Getter for the list of names of all data currently available from the source
+        Getter for the list of names of all data currently available from the
+        source.
 
         Returns:
-            A list of names of all the currently available data from the source
+            A list of names of all the currently available data from the
+            source.
+        """
+        pass
+
+    @property
+    @abc.abstractmethod
+    def types(self):
+        """
+        Getter for the dictionary of all data currently available from the
+        source where the key is the name of the data source and the value is
+        the type of the source.
+
+        Returns:
+            A dictionary with the types of all the currently available data
+            from the source.
         """
         pass
 
@@ -184,7 +200,7 @@ class Source(abc.ABC):
         """
         return Message(MsgTypes.Transition,
                        self.idnum,
-                       Transition(Transitions.Configure, self.names))
+                       Transition(Transitions.Configure, self.types))
 
     def event(self, timestamp, data):
         """
@@ -224,7 +240,7 @@ class PsanaSource(Source):
         self.delimiter = ":"
         self.xtcdata_names = []
         if psana is not None:
-            self.ds = psana.DataSource(self.config['filename'])
+            self.ds = psana.DataSource(src_cfg['filename'])
         else:
             raise NotImplementedError("psana is not available!")
 
@@ -235,9 +251,22 @@ class PsanaSource(Source):
             self.xtcdata_names += [self.delimiter.join((detname, det_xface_name, attr)) for attr in det_attr_list]
         return
 
+    def _fake_detector_types(self, detname):
+        types = {
+            'EBeam:raw:energy': np.float64,
+            'xppcspad:raw:image': np.ndarray,
+            'xpphsd:raw:waveform': np.ndarray,
+            'xpplaser:raw:laserOn': bool,
+        }
+        return types.get(detname, object)
+
     @property
     def names(self):
         return set(self.xtcdata_names)
+
+    @property
+    def types(self):
+        return {detname: self._fake_detector_types(detname) for detname in self.xtcdata_names}
 
     def events(self):
 
@@ -288,6 +317,25 @@ class SimSource(Source):
             self.ts_src.connect(self.flags['sync'])
             self.synced = True
 
+    def _map_dtype(self, config):
+        if config['dtype'] == 'Scalar':
+            if config.get('integer', False):
+                return int
+            else:
+                return float
+        elif config['dtype'] == 'Waveform' or config['dtype'] == 'Image':
+            return np.ndarray
+        else:
+            return None
+
+    @property
+    def names(self):
+        return set(self.config.keys())
+
+    @property
+    def types(self):
+        return {name: self._map_dtype(config) for name, config in self.config.items()}
+
     @property
     def timestamp(self):
         if self.synced:
@@ -302,10 +350,6 @@ class RandomSource(SimSource):
     def __init__(self, idnum, num_workers, heartbeat_period, src_cfg, flags=None):
         super(__class__, self).__init__(idnum, num_workers, heartbeat_period, src_cfg, flags)
         np.random.seed([idnum])
-
-    @property
-    def names(self):
-        return set(self.config.keys())
 
     def events(self):
         time.sleep(self.init_time)
@@ -331,14 +375,7 @@ class RandomSource(SimSource):
 class StaticSource(SimSource):
     def __init__(self, idnum, num_workers, heartbeat_period, src_cfg, flags=None):
         super(__class__, self).__init__(idnum, num_workers, heartbeat_period, src_cfg, flags)
-        self.bound = np.inf
-
-        if 'bound' in src_cfg:
-            self.bound = src_cfg['bound']
-
-    @property
-    def names(self):
-        return set(self.config.keys())
+        self.bound = src_cfg.get('bound', np.inf)
 
     def events(self):
         count = 0

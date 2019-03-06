@@ -37,16 +37,17 @@ def test_psana_source(xtcwriter):
     idnum = 0
     num_workers = 1
     heartbeat_period = 10
-    src_cfg = {}
-    src_cfg['interval'] = 0
-    src_cfg['init_time'] = 0
-    src_cfg['config'] = {'filename': xtcwriter}
+    src_cfg = {
+        'interval':  0,
+        'init_time':  0,
+        'filename': xtcwriter,
+    }
     psana_source = psana_src_cls(idnum, num_workers, heartbeat_period, src_cfg)
     evtgen = psana_source.events()
     next(evtgen)  # first event is the config
     psana_source.requested_names = psana_source.xtcdata_names
     evt = next(evtgen)
-    assert(len(evt.payload['xppcspad:raw:raw']) == 18)
+    assert evt.payload['xppcspad:raw:raw'].shape == (2, 3, 6)
 
 
 def test_static_source(sim_src_cfg):
@@ -69,7 +70,7 @@ def test_static_source(sim_src_cfg):
     assert config.identity == idnum
     assert isinstance(config.payload, Transition)
     assert config.payload.ttype == Transitions.Configure
-    assert config.payload.payload == expected_names
+    assert set(config.payload.payload) == expected_names
 
     # do a first loop over the data (events should be empty)
     count = 0
@@ -123,7 +124,7 @@ def test_random_source(sim_src_cfg):
     assert config.identity == idnum
     assert isinstance(config.payload, Transition)
     assert config.payload.ttype == Transitions.Configure
-    assert config.payload.payload == expected_names
+    assert set(config.payload.payload) == expected_names
 
     # do a first loop over the data (events should be empty)
     for msg in source.events():
