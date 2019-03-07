@@ -3,6 +3,7 @@ import asyncio
 import itertools as it
 import numpy as np
 import pyqtgraph as pg
+import collections
 from PyQt5.QtWidgets import QLCDNumber
 from PyQt5.QtCore import QRect
 from ami import LogConfig
@@ -131,3 +132,35 @@ class ScatterWidget(pg.GraphicsLayoutWidget):
             scatter = self.plot[name]
             symbol, color = symbols_colors[i]
             scatter.addPoints(x=x, y=y, symbol=symbol, brush=color)
+
+
+class WaveformWidget(pg.GraphicsLayoutWidget):
+
+    def __init__(self, topics, addr, parent=None, **kwargs):
+        super(WaveformWidget, self).__init__(parent)
+        self.fetcher = AsyncFetcher(topics, addr)
+        self.plot_view = self.addPlot()
+        self.plot_view.addLegend()
+        self.plot = {}
+        self.terms = kwargs.get('terms', {})
+        self.ys = collections.defaultdict(list)
+
+    async def update(self):
+        while True:
+            await self.fetcher.fetch()
+            if self.fetcher.reply is not None:
+                self.waveform_updated(self.fetcher.reply)
+
+    def waveform_updated(self, data):
+        i = 0
+        for term, var in self.terms.items():
+            name = var.name
+            self.ys[name].append(data[name])
+
+            if name not in self.plot:
+                symbol, color = symbols_colors[i]
+                i += 1
+                self.plot[name] = self.plot_view.plot(y=self.ys[name], name=name,
+                                                      symbol=symbol, symbolBrush=color)
+            else:
+                self.plot[name].setData(y=self.ys[name])

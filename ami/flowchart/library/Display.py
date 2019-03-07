@@ -1,4 +1,5 @@
-from ami.flowchart.library.DisplayWidgets import ScalarWidget, ScatterWidget, AreaDetWidget, HistogramWidget
+from ami.flowchart.library.DisplayWidgets import ScalarWidget, ScatterWidget, WaveformWidget, AreaDetWidget
+from ami.flowchart.library.DisplayWidgets import HistogramWidget
 from ami.flowchart.library.common import CtrlNode
 import numpy as np
 
@@ -65,3 +66,27 @@ class ScatterPlot(CtrlNode):
     def addInput(self, **args):
         self.addTerminal(name="X", io='in', **args)
         self.addTerminal(name="Y", io='in', **args)
+
+
+class WaveformPlot(CtrlNode):
+
+    nodeName = "WaveformPlot"
+    uiTemplate = []
+    desc = "Waveform Plot"
+
+    def __init__(self, name):
+        super(WaveformPlot, self).__init__(name, terminals={"Y": {"io": "in", "type": (int, np.float64)}},
+                                           allowAddInput=True,
+                                           viewable=True)
+
+    def addInput(self, **args):
+        self.addTerminal(name="Y", io='in', **args)
+
+    def display(self, topics, addr, win, **kwargs):
+        return super(WaveformPlot, self).display(topics, addr, win, WaveformWidget, **kwargs)
+
+    def clear(self):
+        if self.widget is not None:
+            for i in self.widget.ys:
+                self.widget.ys[i] = []
+        super(WaveformPlot, self).clear()
