@@ -32,6 +32,19 @@ To use psana a working release need to be added to the python path
 
 # Status/To-do
 
+8 MAR 19:
+- Status messages from worker
+- Dynamic Menus
+- documentation
+- cleanup repo
+- Additional graph operations:
+    * Peak/hit finder operations
+    * Version of the ROI operation that works on 1-D arrays.
+- parallelize global collector
+- gui regression tests
+- undo/redo, copy/cut/paste (not sure about this)
+- performance optimizations (profile and maybe see if we can use numba)
+    
 1 MAR 19:
 - Graph types/validation
 - Status messages from worker
