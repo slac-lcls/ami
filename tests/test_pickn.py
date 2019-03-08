@@ -35,7 +35,7 @@ def test_pickn(pickN_graph):
 @pytest.fixture(scope='function')
 def pickMultiple_graph():
     graph = Graph(name='graph')
-    graph.add(PickN(name='cspad', N=9,
+    graph.add(PickN(name='cspad_pickN', N=9,
                     inputs=[Var(name='cspad', type=int), Var(name='delta_t', type=int)],
                     outputs=[Var(name='ncspads', type=(type(None), list))]))
     graph.compile(num_workers=4, num_local_collectors=2)
@@ -59,3 +59,32 @@ def test_pickMultiple(pickMultiple_graph):
 
     assert localCollector1 == {'ncspads_localCollector': [(1, 10), (2, 20), (3, 30), (4, 40)]}
     assert globalCollector == {'ncspads': [(1, 10), (2, 20), (3, 30), (4, 40), (1, 10), (2, 20), (3, 30), (4, 40)]}
+
+
+@pytest.fixture(scope='function')
+def pickList_graph():
+    graph = Graph(name='graph')
+    graph.add(PickN(name='cspad_pickN', N=9,
+                    inputs=[Var(name='cspad', type=list)],
+                    outputs=[Var(name='ncspads', type=(type(None), list))]))
+    graph.compile(num_workers=4, num_local_collectors=2)
+    return graph
+
+
+def test_pickList(pickList_graph):
+    pickList_graph({'cspad': [1, 2]}, color='worker')
+    worker1 = pickList_graph({'cspad': [3, 4]}, color='worker')
+    pickList_graph({'cspad': [-1, -2]}, color='worker')
+    worker2 = pickList_graph({'cspad': [-3, -4]}, color='worker')
+
+    pickList_graph(worker1, color='localCollector')
+    localCollector1 = pickList_graph(worker2, color='localCollector')
+
+    pickList_graph(localCollector1, color='globalCollector')
+    globalCollector = pickList_graph(localCollector1, color='globalCollector')
+
+    assert worker1 == {'ncspads_worker': [[1, 2], [3, 4]]}
+    assert worker2 == {'ncspads_worker': [[-1, -2], [-3, -4]]}
+
+    assert localCollector1 == {'ncspads_localCollector': [[1, 2], [3, 4], [-1, -2], [-3, -4]]}
+    assert globalCollector == {'ncspads': [[1, 2], [3, 4], [-1, -2], [-3, -4], [1, 2], [3, 4], [-1, -2], [-3, -4]]}
