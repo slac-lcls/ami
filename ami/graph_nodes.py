@@ -1,5 +1,6 @@
 import abc
 import operator
+import numpy as np
 from networkfox import operation, If, Else, Var
 
 
@@ -157,13 +158,48 @@ class StatefulTransformation(Transformation):
         return operation(name=self.name, needs=self.inputs, provides=self.outputs, color=self.color)(self)
 
 
-class ReduceByKey(StatefulTransformation):
+class GlobalTransformation(StatefulTransformation):
+
+    def __init__(self, **kwargs):
+        """
+        Keyword Arguments:
+            name (str): Name of node
+            inputs (list): List of inputs
+            outputs (list): List of outputs
+            condition_needs (list): List of condition needs
+            reduction (function): Reduction function
+            is_expanded (bool): Indicates this node's input comes another part
+                of the expanded operation
+            num_contributors (int): the number of contributors providing input
+                to this part of the global operation
+        """
+        is_expanded = kwargs.pop('is_expanded', False)
+        num_contributors = kwargs.pop('num_contributors', None)
+        super(GlobalTransformation, self).__init__(**kwargs)
+        self.is_global_operation = True
+        self.is_expanded = is_expanded
+        self.num_contributors = num_contributors
+
+    def on_expand(self):
+        """
+        Called when expanding a global operation to get an extra kwargs that
+        should be passed to the expanded nodes when they are constructed.
+
+        This is intended to be overrided by subclasses if they need this!
+
+        Returns:
+            Dictionary of keyword arguments to pass when constructing the
+            globally expanded version of this operation
+        """
+        return {}
+
+
+class ReduceByKey(GlobalTransformation):
 
     def __init__(self, **kwargs):
         kwargs.setdefault('reduction', operator.add)
         super(ReduceByKey, self).__init__(**kwargs)
         self.res = {}
-        self.is_global_operation = True
 
     def __call__(self, *args, **kwargs):
         if len(args) == 2:
@@ -202,7 +238,7 @@ class Accumulator(StatefulTransformation):
         self.res = []
 
 
-class PickN(StatefulTransformation):
+class PickN(GlobalTransformation):
 
     def __init__(self, **kwargs):
         N = kwargs.pop('N', 1)
@@ -211,7 +247,6 @@ class PickN(StatefulTransformation):
         self.idx = 0
         self.res = [None]*self.N
         self.clear = False
-        self.is_global_operation = True
 
     def __call__(self, *args):
         if self.clear:
@@ -220,7 +255,7 @@ class PickN(StatefulTransformation):
 
         if len(args) > 1:
             args = [args]
-        elif len(args) == 1 and type(args[0]) is list:
+        elif self.is_expanded and len(args) == 1 and type(args[0]) is list:
             args = args[0]
 
         for arg in args:
@@ -236,6 +271,61 @@ class PickN(StatefulTransformation):
 
     def reset(self):
         self.res = [None]*self.N
+
+
+class RollingBuffer(GlobalTransformation):
+
+    def __init__(self, **kwargs):
+        N = kwargs.pop('N', 1)
+        use_numpy = kwargs.pop('use_numpy', False)
+        super(__class__, self).__init__(**kwargs)
+        self.N = N
+        self.use_numpy = use_numpy
+        self.idx = 0
+        self.count = 0
+        self.res = None if use_numpy else []
+
+    def __call__(self, *args):
+
+        if len(args) == 1:
+            dims = 0
+            args = args[0]
+        else:
+            dims = len(args)
+
+        if self.is_expanded:
+            if self.count == 0:
+                self.idx = 0
+            self.count = (self.count + 1) % self.num_contributors
+
+        if self.use_numpy:
+            if self.is_expanded:
+                dtype = args.dtype
+                nelem = len(args)
+            else:
+                dtype = type(args)
+                nelem = 1
+            if self.res is None:
+                self.res = np.zeros(self.N, dtype=dtype)
+            self.idx += nelem
+            self.res = np.roll(self.res, -nelem)
+            self.res[..., -nelem:] = [args] if dims else args
+            return self.res[-self.idx:]
+        else:
+            if self.is_expanded:
+                self.res.extend(args)
+                self.idx = min(self.idx + len(args), self.N)
+            else:
+                self.res.append(args)
+                self.idx = min(self.idx + 1, self.N)
+            self.res = self.res[-self.idx:]
+            return self.res
+
+    def on_expand(self):
+        return {'use_numpy': self.use_numpy}
+
+    def reset(self):
+        self.idx = 0
 
 
 def Binning(name="", inputs=[], outputs=[], condition_needs=[]):

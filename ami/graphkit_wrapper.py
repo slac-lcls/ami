@@ -285,6 +285,7 @@ class Graph():
             color_order = ['worker', 'localCollector', 'globalCollector']
             worker_outputs = None
             local_collector_outputs = None
+            extras = node.on_expand()
             for color in color_order:
 
                 if color == 'worker':
@@ -295,7 +296,8 @@ class Graph():
                         worker_N = max(node.N // num_workers, 1)
 
                     worker_node = NewNode(name=node.name+'_worker', inputs=inputs, outputs=worker_outputs,
-                                          condition_needs=condition_needs, reduction=node.reduction, N=worker_N)
+                                          condition_needs=condition_needs, reduction=node.reduction, N=worker_N,
+                                          **extras)
                     worker_node.color = color
                     worker_node.is_global_operation = False
                     self.children_of_global_operations[node.name].add(worker_node)
@@ -313,12 +315,15 @@ class Graph():
                                                        node.outputs))
 
                     local_collector_N = 1
+                    workers_per_local_collector = None
                     if hasattr(node, 'N'):
                         local_collector_N = max(node.N // num_local_collectors, 1)
+                        workers_per_local_collector = max(num_workers // num_local_collectors, 1)
 
                     local_collector_node = NewNode(name=node.name+'_localCollector', inputs=worker_outputs,
                                                    outputs=local_collector_outputs, reduction=node.reduction,
-                                                   N=local_collector_N)
+                                                   N=local_collector_N, is_expanded=True,
+                                                   num_contributors=workers_per_local_collector, **extras)
                     local_collector_node.color = color
                     local_collector_node.is_global_operation = False
                     self.children_of_global_operations[node.name].add(local_collector_node)
@@ -336,7 +341,8 @@ class Graph():
 
                     global_collector_node = NewNode(name=node.name+'_globalCollector',
                                                     inputs=local_collector_outputs,
-                                                    outputs=outputs, reduction=node.reduction, N=N)
+                                                    outputs=outputs, reduction=node.reduction, N=N, is_expanded=True,
+                                                    num_contributors=num_local_collectors, **extras)
                     global_collector_node.color = color
                     self.children_of_global_operations[node.name].add(global_collector_node)
                     self.expanded_global_operations.add(global_collector_node)
