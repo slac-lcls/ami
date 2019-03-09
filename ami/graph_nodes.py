@@ -301,7 +301,11 @@ class RollingBuffer(GlobalTransformation):
         if self.use_numpy:
             if self.is_expanded:
                 dtype = args.dtype
-                nelem = len(args)
+                if len(args) > self.N:
+                    nelem = self.N
+                    args = args[..., -self.N:]
+                else:
+                    nelem = len(args)
             else:
                 dtype = type(args)
                 nelem = 1
