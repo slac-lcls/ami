@@ -115,11 +115,16 @@ class Source(abc.ABC):
         self.num_workers = num_workers
         self.heartbeat_period = heartbeat_period
         self.heartbeat = None
+        self.old_heartbeat = None
         self.interval = src_cfg.get('interval', 0)
         self.init_time = src_cfg.get('init_time', 0)
         self.config = src_cfg.get('config', {})
         self.requested_names = set()
         self.flags = flags or {}
+        self._base_types = {
+            'timestamp': int,
+            'heartbeat': int,
+        }
 
     def check_heartbeat_boundary(self, timestamp):
         """
@@ -137,6 +142,7 @@ class Source(abc.ABC):
             self.heartbeat = (timestamp // self.heartbeat_period)
             return False
         elif (timestamp // self.heartbeat_period) > (self.heartbeat):
+            self.old_heartbeat = self.heartbeat
             self.heartbeat = (timestamp // self.heartbeat_period)
             return True
         else:
@@ -163,8 +169,21 @@ class Source(abc.ABC):
             if (clsname == name) or (clsname == name.capitalize() + 'Source'):
                 return clsobj
 
-    @property
     @abc.abstractmethod
+    def _names(self):
+        """
+        An abstract method that subclasses of `Source` need to implement.
+
+        It should return a list of names of all data currently available from
+        the source.
+
+        Returns:
+            A list of names of all the currently available data from the
+            source.
+        """
+        pass
+
+    @property
     def names(self):
         """
         Getter for the list of names of all data currently available from the
@@ -174,10 +193,26 @@ class Source(abc.ABC):
             A list of names of all the currently available data from the
             source.
         """
+        subclass_names = self._names()
+        subclass_names.update(self._base_types)
+        return subclass_names
+
+    @abc.abstractmethod
+    def _types(self):
+        """
+        An abstract method that subclasses of `Source` need to implement.
+
+        It should return a dictionary of all data currently available from the
+        source where the key is the name of the data source and the value is
+        the type of the source.
+
+        Returns:
+            A dictionary with the types of all the currently available data
+            from the source.
+        """
         pass
 
     @property
-    @abc.abstractmethod
     def types(self):
         """
         Getter for the dictionary of all data currently available from the
@@ -188,7 +223,9 @@ class Source(abc.ABC):
             A dictionary with the types of all the currently available data
             from the source.
         """
-        pass
+        subclass_types = self._types()
+        subclass_types.update(self._base_types)
+        return subclass_types
 
     def configure(self):
         """
@@ -202,6 +239,16 @@ class Source(abc.ABC):
                        self.idnum,
                        Transition(Transitions.Configure, self.types))
 
+    def heartbeat_msg(self):
+        """
+        Constructs a properly formatted heartbeat message
+
+        Returns:
+            An object of type `Message` which includes a the most recently
+            completed heartbeat.
+        """
+        return Message(MsgTypes.Heartbeat, self.idnum, self.old_heartbeat)
+
     def event(self, timestamp, data):
         """
         Constructs a properly formatted event message
@@ -214,21 +261,26 @@ class Source(abc.ABC):
         Returns:
             An object of type `Message` which includes the data for the event.
         """
+        base = [('timestamp', timestamp), ('heartbeat', self.heartbeat)]
+        data.update({k: v for k, v in base if k in self.requested_names})
         msg = Message(MsgTypes.Datagram, self.idnum, data)
         msg.timestamp = timestamp
         yield msg
-        # check if this crossed a heartbeat boundary -> emit a heartbeat msg
-        old_heartbeat = self.heartbeat
-        if self.check_heartbeat_boundary(timestamp):
-            yield Message(MsgTypes.Heartbeat, self.idnum, old_heartbeat)
 
     def request(self, names):
+        """
+        Request that the source includes the specified data from its list of
+        available data when it emits event messages.
+
+        Args:
+            names (list): names of the data being requested
+        """
         self.requested_names = set(names)
 
     @abc.abstractmethod
     def events(self):
         """
-        Generator which returns yields `Message` containing dictionary of data as payload.
+        Generator which yields `Message` containing dictionary of data as payload.
         """
         pass
 
@@ -260,12 +312,10 @@ class PsanaSource(Source):
         }
         return types.get(detname, object)
 
-    @property
-    def names(self):
+    def _names(self):
         return set(self.xtcdata_names)
 
-    @property
-    def types(self):
+    def _types(self):
         return {detname: self._fake_detector_types(detname) for detname in self.xtcdata_names}
 
     def events(self):
@@ -283,6 +333,8 @@ class PsanaSource(Source):
                 for evt in run.events():
                     # FIXME: when we move to real timestamps we should use this line
                     # timestamp = evt.seq.timestamp()
+                    if self.check_heartbeat_boundary(timestamp):
+                        yield self.heartbeat_msg()
 
                     for name in self.requested_names:
 
@@ -328,12 +380,10 @@ class SimSource(Source):
         else:
             return None
 
-    @property
-    def names(self):
+    def _names(self):
         return set(self.config.keys())
 
-    @property
-    def types(self):
+    def _types(self):
         return {name: self._map_dtype(config) for name, config in self.config.items()}
 
     @property
@@ -356,6 +406,10 @@ class RandomSource(SimSource):
         yield self.configure()
         while True:
             event = {}
+            # get the timestamp and check heartbeat
+            timestamp = self.timestamp
+            if self.check_heartbeat_boundary(timestamp):
+                yield self.heartbeat_msg()
             for name, config in self.config.items():
                 if name in self.requested_names:
                     if config['dtype'] == 'Scalar':
@@ -368,7 +422,7 @@ class RandomSource(SimSource):
                         event[name] = np.random.normal(config['pedestal'], config['width'], config['shape'])
                     else:
                         logger.warn("DataSrc: %s has unknown type %s", name, config['dtype'])
-            yield from self.event(self.timestamp, event)
+            yield from self.event(timestamp, event)
             time.sleep(self.interval)
 
 
@@ -383,6 +437,10 @@ class StaticSource(SimSource):
         yield self.configure()
         while True:
             event = {}
+            # get the timestamp and check heartbeat
+            timestamp = self.timestamp
+            if self.check_heartbeat_boundary(timestamp):
+                yield self.heartbeat_msg()
             for name, config in self.config.items():
                 if name in self.requested_names:
                     if config['dtype'] == 'Scalar':
@@ -392,7 +450,7 @@ class StaticSource(SimSource):
                     else:
                         logger.warn("DataSrc: %s has unknown type %s", name, config['dtype'])
             count += 1
-            yield from self.event(self.timestamp, event)
+            yield from self.event(timestamp, event)
             if count >= self.bound:
                 break
             time.sleep(self.interval)

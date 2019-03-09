@@ -386,7 +386,7 @@ class DetectorList(QListWidget):
         self.clear()
         self.addItem(self.env_id)
         self.addItem(self.calc_id)
-        for k in self.names:
+        for k in sorted(self.names):
             if not k.startswith("_"):
                 self.addItem(k)
         with self.pending_lock:

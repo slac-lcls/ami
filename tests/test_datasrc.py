@@ -63,10 +63,11 @@ def test_static_source(sim_src_cfg):
     source = src_cls(idnum, num_workers, heartbeat_period, sim_src_cfg)
 
     # check the names from the source are correct
-    expected_names = set(sim_src_cfg['config'].keys())
+    expected_names = {'timestamp', 'heartbeat'}
+    expected_names.update(sim_src_cfg['config'].keys())
     assert source.names == expected_names
     # check the types from the source are correct
-    expected_dtypes = {}
+    expected_dtypes = {'timestamp': int, 'heartbeat': int}
     for name, cfg in sim_src_cfg['config'].items():
         if cfg["dtype"] == "Scalar":
             if cfg.get("integer", False):
@@ -115,7 +116,10 @@ def test_static_source(sim_src_cfg):
                 elif (cfg["dtype"] == "Image") or (cfg["dtype"] == "Waveform"):
                     assert (msg.payload[name] == 1).all()
             count += 1
-            assert msg.timestamp == num_workers * count + idnum + sim_src_cfg['bound']
+            expected_ts = num_workers * count + idnum + sim_src_cfg['bound']
+            assert msg.timestamp == expected_ts
+            assert msg.payload['timestamp'] == expected_ts
+            assert msg.payload['heartbeat'] == expected_ts // heartbeat_period
 
     # check that the static source returned the correct number of events
     assert count == sim_src_cfg['bound']
@@ -132,10 +136,11 @@ def test_random_source(sim_src_cfg):
     source = src_cls(idnum, num_workers, heartbeat_period, sim_src_cfg)
 
     # check the names from the source are correct
-    expected_names = set(sim_src_cfg['config'].keys())
+    expected_names = {'timestamp', 'heartbeat'}
+    expected_names.update(sim_src_cfg['config'].keys())
     assert source.names == expected_names
     # check the types from the source are correct
-    expected_dtypes = {}
+    expected_dtypes = {'timestamp': int, 'heartbeat': int}
     for name, cfg in sim_src_cfg['config'].items():
         if cfg["dtype"] == "Scalar":
             if cfg.get("integer", False):
@@ -197,7 +202,7 @@ def test_source_heartbeat(sim_src_cfg):
             count += 1
         elif msg.mtype == MsgTypes.Heartbeat:
             # check that heart happened between the right events
-            assert (count % heartbeat_period) == 0
+            assert ((count + 1) % heartbeat_period) == 0
             # check that the number of the heartbeat is as expected
             assert msg.payload == ((count - 1) // heartbeat_period)
 
