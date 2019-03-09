@@ -1,4 +1,5 @@
 import pytest
+import numpy as np
 from ami.graphkit_wrapper import Graph, Var
 from ami.graph_nodes import PickN, RollingBuffer
 
@@ -91,20 +92,48 @@ def test_pickList(pickList_graph):
 
 
 @pytest.fixture(scope='function')
-def rollingBuffer_graph():
+def rollingBuffer_graph(request):
+    N, nworkers, ncollectors, expected = request.param
+
     graph = Graph(name='graph')
-    graph.add(RollingBuffer(name='cspad_rollingBuffer', N=9,
+    graph.add(RollingBuffer(name='cspad_rollingBuffer', N=N,
                             inputs=[Var(name='cspad', type=int)],
                             outputs=[Var(name='ncspads', type=list)]))
-    graph.compile(num_workers=4, num_local_collectors=2)
-    return graph
+    graph.compile(num_workers=nworkers, num_local_collectors=ncollectors)
+    return graph, expected
 
 
+@pytest.mark.parametrize('rollingBuffer_graph',
+                         [
+                            (9, 4, 2, (2, [1, 2], [3, 4])),
+                            (8, 4, 2, (2, [1, 2], [3, 4])),
+                            (4, 4, 2, (1, [1], [2])),
+                            (12, 4, 2, (2, [1, 2], [3, 4])),
+                            (12, 4, 2, (3, [1, 2, 3], [4, 5, 6])),
+                            (4, 4, 2, (2, [2], [4])),
+                            (1, 4, 2, (2, [2], [4], [4], [4])),
+                            (4, 1, 1, (4, [1, 2, 3, 4], [5, 6, 7, 8], [5, 6, 7, 8], [5, 6, 7, 8])),
+                            (4, 1, 1, (2, [1, 2], [3, 4], [3, 4], [3, 4])),
+                         ],
+                         indirect=True)
 def test_rollingBuffer(rollingBuffer_graph):
-    rollingBuffer_graph({'cspad': 1}, color='worker')
-    worker1 = rollingBuffer_graph({'cspad': 2}, color='worker')
-    rollingBuffer_graph({'cspad': 3}, color='worker')
-    worker2 = rollingBuffer_graph({'cspad': 4}, color='worker')
+    rollingBuffer_graph, expected = rollingBuffer_graph
+    try:
+        steps, expected1, expected2 = expected
+        expected3 = expected1 + expected2
+        expected4 = expected3 * 2
+    except ValueError:
+        steps, expected1, expected2, expected3, expected4 = expected
+
+    start = 1
+    stop = start + steps
+    for i in range(start, stop):
+        worker1 = rollingBuffer_graph({'cspad': i}, color='worker')
+    rollingBuffer_graph.reset()
+    start = stop
+    stop = start + steps
+    for i in range(start, stop):
+        worker2 = rollingBuffer_graph({'cspad': i}, color='worker')
 
     rollingBuffer_graph(worker1, color='localCollector')
     localCollector = rollingBuffer_graph(worker2, color='localCollector')
@@ -112,8 +141,71 @@ def test_rollingBuffer(rollingBuffer_graph):
     rollingBuffer_graph(localCollector, color='globalCollector')
     globalCollector = rollingBuffer_graph(localCollector, color='globalCollector')
 
-    assert worker1 == {'ncspads_worker': [1, 2]}
-    assert worker2 == {'ncspads_worker': [3, 4]}
+    assert worker1 == {'ncspads_worker': expected1}
+    assert worker2 == {'ncspads_worker': expected2}
 
-    assert localCollector == {'ncspads_localCollector': [1, 2, 3, 4]}
-    assert globalCollector == {'ncspads': [1, 2, 3, 4, 1, 2, 3, 4]}
+    assert localCollector == {'ncspads_localCollector': expected3}
+    assert globalCollector == {'ncspads': expected4}
+
+
+@pytest.fixture(scope='function')
+def rollingBufferNumpy_graph(request):
+    N, nworkers, ncollectors, expected = request.param
+
+    graph = Graph(name='graph')
+    graph.add(RollingBuffer(name='cspad_rollingBuffer', N=N,
+                            inputs=[Var(name='cspad', type=int)],
+                            outputs=[Var(name='ncspads', type=np.ndarray)],
+                            use_numpy=True))
+    graph.compile(num_workers=nworkers, num_local_collectors=ncollectors)
+    return graph, expected
+
+
+@pytest.mark.parametrize('rollingBufferNumpy_graph',
+                         [
+                            (9, 4, 2, (2, [1, 2], [3, 4])),
+                            (8, 4, 2, (2, [1, 2], [3, 4])),
+                            (4, 4, 2, (1, [1], [2])),
+                            (12, 4, 2, (2, [1, 2], [3, 4])),
+                            (12, 4, 2, (3, [1, 2, 3], [4, 5, 6])),
+                            (4, 4, 2, (2, [2], [4])),
+                            (1, 4, 2, (2, [2], [4], [4], [4])),
+                            (4, 1, 1, (4, [1, 2, 3, 4], [5, 6, 7, 8], [5, 6, 7, 8], [5, 6, 7, 8])),
+                            (4, 1, 1, (2, [1, 2], [3, 4], [3, 4], [3, 4])),
+                         ],
+                         indirect=True)
+def test_rollingBufferNumpy(rollingBufferNumpy_graph):
+    rollingBuffer_graph, expected = rollingBufferNumpy_graph
+    try:
+        steps, expected1, expected2 = expected
+        expected3 = expected1 + expected2
+        expected4 = expected3 * 2
+    except ValueError:
+        steps, expected1, expected2, expected3, expected4 = expected
+    # convert to numpy arrays
+    expected1 = np.array(expected1)
+    expected2 = np.array(expected2)
+    expected3 = np.array(expected3)
+    expected4 = np.array(expected4)
+
+    start = 1
+    stop = start + steps
+    for i in range(start, stop):
+        worker1 = rollingBuffer_graph({'cspad': i}, color='worker')
+    rollingBuffer_graph.reset()
+    start = stop
+    stop = start + steps
+    for i in range(start, stop):
+        worker2 = rollingBuffer_graph({'cspad': i}, color='worker')
+
+    rollingBuffer_graph(worker1, color='localCollector')
+    localCollector = rollingBuffer_graph(worker2, color='localCollector')
+
+    rollingBuffer_graph(localCollector, color='globalCollector')
+    globalCollector = rollingBuffer_graph(localCollector, color='globalCollector')
+
+    assert np.array_equal(worker1['ncspads_worker'], expected1)
+    assert np.array_equal(worker2['ncspads_worker'], expected2)
+
+    assert np.array_equal(localCollector['ncspads_localCollector'], expected3)
+    assert np.array_equal(globalCollector['ncspads'], expected4)
