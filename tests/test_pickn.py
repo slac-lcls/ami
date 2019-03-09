@@ -1,6 +1,6 @@
 import pytest
 from ami.graphkit_wrapper import Graph, Var
-from ami.graph_nodes import PickN
+from ami.graph_nodes import PickN, RollingBuffer
 
 
 @pytest.fixture(scope='function')
@@ -88,3 +88,32 @@ def test_pickList(pickList_graph):
 
     assert localCollector1 == {'ncspads_localCollector': [[1, 2], [3, 4], [-1, -2], [-3, -4]]}
     assert globalCollector == {'ncspads': [[1, 2], [3, 4], [-1, -2], [-3, -4], [1, 2], [3, 4], [-1, -2], [-3, -4]]}
+
+
+@pytest.fixture(scope='function')
+def rollingBuffer_graph():
+    graph = Graph(name='graph')
+    graph.add(RollingBuffer(name='cspad_rollingBuffer', N=9,
+                            inputs=[Var(name='cspad', type=int)],
+                            outputs=[Var(name='ncspads', type=list)]))
+    graph.compile(num_workers=4, num_local_collectors=2)
+    return graph
+
+
+def test_rollingBuffer(rollingBuffer_graph):
+    rollingBuffer_graph({'cspad': 1}, color='worker')
+    worker1 = rollingBuffer_graph({'cspad': 2}, color='worker')
+    rollingBuffer_graph({'cspad': 3}, color='worker')
+    worker2 = rollingBuffer_graph({'cspad': 4}, color='worker')
+
+    rollingBuffer_graph(worker1, color='localCollector')
+    localCollector = rollingBuffer_graph(worker2, color='localCollector')
+
+    rollingBuffer_graph(localCollector, color='globalCollector')
+    globalCollector = rollingBuffer_graph(localCollector, color='globalCollector')
+
+    assert worker1 == {'ncspads_worker': [1, 2]}
+    assert worker2 == {'ncspads_worker': [3, 4]}
+
+    assert localCollector == {'ncspads_localCollector': [1, 2, 3, 4]}
+    assert globalCollector == {'ncspads': [1, 2, 3, 4, 1, 2, 3, 4]}

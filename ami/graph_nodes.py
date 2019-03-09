@@ -310,7 +310,6 @@ class RollingBuffer(GlobalTransformation):
             self.idx += nelem
             self.res = np.roll(self.res, -nelem)
             self.res[..., -nelem:] = [args] if dims else args
-            return self.res[-self.idx:]
         else:
             if self.is_expanded:
                 self.res.extend(args)
@@ -319,7 +318,8 @@ class RollingBuffer(GlobalTransformation):
                 self.res.append(args)
                 self.idx = min(self.idx + 1, self.N)
             self.res = self.res[-self.idx:]
-            return self.res
+
+        return self.res[-self.idx:]
 
     def on_expand(self):
         return {'use_numpy': self.use_numpy}
