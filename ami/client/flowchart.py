@@ -187,9 +187,10 @@ class NodeProcess(QtCore.QObject):
 
 class MessageBroker(object):
 
-    def __init__(self, graphmgr_addr, load):
+    def __init__(self, graphmgr_addr, load, ipcdir=None):
 
-        ipcdir = tempfile.mkdtemp()
+        if ipcdir is None:
+            ipcdir = tempfile.mkdtemp()
 
         self.graphmgr_addr = graphmgr_addr
         self.broker_sub_addr = "ipc://%s/broker_sub" % ipcdir

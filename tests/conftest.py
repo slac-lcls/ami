@@ -3,6 +3,8 @@ import dill
 import json
 import shutil
 import subprocess
+import signal
+import multiprocessing as mp
 import numpy as np
 try:
     import psana
@@ -11,6 +13,8 @@ except ImportError:
 
 from ami.graphkit_wrapper import Graph
 from ami.graph_nodes import Map, FilterOn, FilterOff, Binning, PickN, Var
+from ami.local import build_parser, run_ami
+from ami.comm import Ports, GraphCommHandler
 
 
 @pytest.fixture(scope='session')
@@ -111,3 +115,40 @@ def workerjson(tmpdir_factory, xtcwriter):
 def complex_graph(complex_graph_file):
     with open(complex_graph_file, 'rb') as fd:
         return dill.load(fd)
+
+
+@pytest.fixture(scope='function')
+def start_ami(request, workerjson, use_psana):
+
+    # don't run the fixture if psana is not installed
+    if not use_psana and request.param == "psana":
+        yield None
+        return
+
+    parser = build_parser()
+    args = parser.parse_args(["-n", "1", '-t', '--headless',
+                              '%s://%s' %
+                              (request.param, workerjson)])
+
+    queue = mp.Queue()
+    ami = mp.Process(name='ami',
+                     target=run_ami,
+                     args=(args, queue))
+    ami.start()
+
+    host = "127.0.0.1"
+    comm_addr = "tcp://%s:%d" % (host, Ports.Comm)
+    comm_handler = GraphCommHandler(comm_addr)
+
+    yield comm_handler
+
+    queue.put(None)
+    ami.join()
+
+    if ami.exitcode == 0 or ami.exitcode == -signal.SIGTERM:
+        print('AMI exited successfully')
+    else:
+        print('AMI exited with non-zero status code: %d' % ami.exitcode)
+        return 1
+
+    return 0

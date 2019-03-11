@@ -38,7 +38,7 @@ class Node(QtCore.QObject):
     sigTerminalDisconnected = QtCore.Signal(object)  # self
 
     def __init__(self, name, terminals={}, allowAddInput=False, allowAddOutput=False, allowAddCondition=True,
-                 allowRemove=True, viewable=False):
+                 allowRemove=True, viewable=False, buffered=False):
         """
         ==============  ============================================================
         **Arguments:**
@@ -65,6 +65,8 @@ class Node(QtCore.QObject):
                         context menu.
         viewable        bool; whether a pick one should be inserted into the graph to
                         view node inputs
+        buffered        bool; whether a node has a to_operation which returns a rolling
+                        buffer
         ==============  ============================================================
 
         """
@@ -80,6 +82,7 @@ class Node(QtCore.QObject):
         self._allowAddCondition = allowAddCondition
         self._allowRemove = allowRemove
         self._viewable = viewable
+        self._buffered = buffered
 
         self.exception = None
 
@@ -202,12 +205,16 @@ class Node(QtCore.QObject):
     def viewable(self):
         return self._viewable
 
+    def buffered(self):
+        return self._buffered
+
     def input_vars(self):
         return self._input_vars
 
     def output_vars(self):
         # TODO fix this for nodes with multiple outputs
         # can't use self.name() for output
+
         output_vars = []
         for name, output in self._outputs.items():
             output_vars.append(Var(name=self.name(), type=output.type()))

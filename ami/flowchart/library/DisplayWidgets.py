@@ -3,7 +3,6 @@ import asyncio
 import itertools as it
 import numpy as np
 import pyqtgraph as pg
-import collections
 from PyQt5.QtWidgets import QLCDNumber
 from PyQt5.QtCore import QRect
 from ami import LogConfig
@@ -19,17 +18,27 @@ symbols_colors = list(it.product(symbols, colors))
 
 class AsyncFetcher(object):
 
-    def __init__(self, topics={}, addr=None):
+    def __init__(self, topics={}, addr=None, buffered=False):
         self.names = list(topics.keys())
-        self.topics = list(topics.values())
+        if buffered:
+            self.topics = list(topics.values())[0]
+        else:
+            self.topics = list(topics.values())
         self.comm_handler = AsyncGraphCommHandler(addr)
+        self.buffered = buffered
         self.reply = {}
 
     async def fetch(self):
         await asyncio.sleep(1)
         reply = await self.comm_handler.fetch(self.topics)
+
         if reply:
-            self.reply = dict(zip(self.names, reply))
+            if self.buffered and len(self.names) > 1:
+                self.reply = dict(zip(self.names, zip(*reply)))
+            elif self.buffered:
+                self.reply = {self.names[0]: reply}
+            else:
+                self.reply = dict(zip(self.names, reply))
         else:
             self.reply = {}
             logger.warn("failed to fetch %s from manager!" % self.topics)
@@ -99,7 +108,7 @@ class ScatterWidget(pg.GraphicsLayoutWidget):
 
     def __init__(self, topics, addr, parent=None, **kwargs):
         super(ScatterWidget, self).__init__(parent)
-        self.fetcher = AsyncFetcher(topics, addr)
+        self.fetcher = AsyncFetcher(topics, addr, buffered=True)
         self.plot_view = self.addPlot()
         self.plot_view.addLegend()
         self.plot = {}
@@ -108,10 +117,11 @@ class ScatterWidget(pg.GraphicsLayoutWidget):
     async def update(self):
         while True:
             await self.fetcher.fetch()
-            if self.fetcher.reply is not None:
+            if self.fetcher.reply:
                 self.scatter_updated(self.fetcher.reply)
 
     def scatter_updated(self, data):
+
         num_terms = int(len(self.terms)/2)
         for i in range(0, num_terms):
             x = "X"
@@ -122,8 +132,8 @@ class ScatterWidget(pg.GraphicsLayoutWidget):
             x = self.terms[x].name
             y = self.terms[y].name
             name = " vs ".join((x, y))
-            x = [data[x]]
-            y = [data[y]]
+            x = data[x]
+            y = data[y]
 
             if name not in self.plot:
                 self.plot[name] = pg.ScatterPlotItem(name=name)
@@ -131,19 +141,18 @@ class ScatterWidget(pg.GraphicsLayoutWidget):
                 self.plot_view.addLegend().addItem(self.plot[name], name=name)
             scatter = self.plot[name]
             symbol, color = symbols_colors[i]
-            scatter.addPoints(x=x, y=y, symbol=symbol, brush=color)
+            scatter.setData(x=x, y=y, symbol=symbol, brush=color)
 
 
 class WaveformWidget(pg.GraphicsLayoutWidget):
 
     def __init__(self, topics, addr, parent=None, **kwargs):
         super(WaveformWidget, self).__init__(parent)
-        self.fetcher = AsyncFetcher(topics, addr)
+        self.fetcher = AsyncFetcher(topics, addr, buffered=True)
         self.plot_view = self.addPlot()
         self.plot_view.addLegend()
         self.plot = {}
         self.terms = kwargs.get('terms', {})
-        self.ys = collections.defaultdict(list)
 
     async def update(self):
         while True:
@@ -153,14 +162,14 @@ class WaveformWidget(pg.GraphicsLayoutWidget):
 
     def waveform_updated(self, data):
         i = 0
+
         for term, var in self.terms.items():
             name = var.name
-            self.ys[name].append(data[name])
 
             if name not in self.plot:
                 symbol, color = symbols_colors[i]
                 i += 1
-                self.plot[name] = self.plot_view.plot(y=self.ys[name], name=name,
+                self.plot[name] = self.plot_view.plot(y=np.array(data[name]), name=name,
                                                       symbol=symbol, symbolBrush=color)
             else:
-                self.plot[name].setData(y=self.ys[name])
+                self.plot[name].setData(y=np.array(data[name]))

@@ -8,50 +8,8 @@ To use:
 2. Implement one or more test() functions
 """
 
-import signal
-import multiprocessing as mp
 import pytest
 import time
-
-from ami.comm import Ports, GraphCommHandler
-from ami.local import build_parser, run_ami
-
-
-@pytest.fixture(scope='function')
-def start_ami(request, workerjson, use_psana):
-
-    # don't run the fixture if psana is not installed
-    if not use_psana and request.param == "psana":
-        yield None
-        return
-
-    parser = build_parser()
-    args = parser.parse_args(["-n", "1", '-t', '--headless',
-                              '%s://%s' %
-                              (request.param, workerjson)])
-
-    queue = mp.Queue()
-    ami = mp.Process(name='ami',
-                     target=run_ami,
-                     args=(args, queue))
-    ami.start()
-
-    host = "127.0.0.1"
-    comm_addr = "tcp://%s:%d" % (host, Ports.Comm)
-    comm_handler = GraphCommHandler(comm_addr)
-
-    yield comm_handler
-
-    queue.put(None)
-    ami.join()
-
-    if ami.exitcode == 0 or ami.exitcode == -signal.SIGTERM:
-        print('AMI exited successfully')
-    else:
-        print('AMI exited with non-zero status code: %d' % ami.exitcode)
-        return 1
-
-    return 0
 
 
 @pytest.mark.parametrize('start_ami', ['static'], indirect=True)

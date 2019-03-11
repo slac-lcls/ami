@@ -2,6 +2,7 @@ from ami.flowchart.library.DisplayWidgets import ScalarWidget, ScatterWidget, Wa
 from ami.flowchart.library.DisplayWidgets import HistogramWidget
 from ami.flowchart.library.common import CtrlNode
 import numpy as np
+import ami.graph_nodes as gn
 
 
 class ScalarViewer(CtrlNode):
@@ -51,14 +52,14 @@ class Histogram(CtrlNode):
 class ScatterPlot(CtrlNode):
 
     nodeName = "ScatterPlot"
-    uiTemplate = []
+    uiTemplate = [("Num Points", 'intSpin', {'value': 100, 'min': 1, 'max': 2147483647})]
     desc = "Scatter Plot"
 
     def __init__(self, name):
         super(ScatterPlot, self).__init__(name, terminals={"X": {"io": "in", "type": (int, np.float64)},
                                                            "Y": {"io": "in", "type": (int, np.float64)}},
                                           allowAddInput=True,
-                                          viewable=True)
+                                          buffered=True)
 
     def display(self, topics, addr, win, **kwargs):
         return super(ScatterPlot, self).display(topics, addr, win, ScatterWidget, **kwargs)
@@ -67,17 +68,24 @@ class ScatterPlot(CtrlNode):
         self.addTerminal(name="X", io='in', **args)
         self.addTerminal(name="Y", io='in', **args)
 
+    def to_operation(self, inputs, conditions=[]):
+        outputs = [gn.Var(name=self.name(), type=list)]
+        node = gn.RollingBuffer(name=self.name()+"_operation", N=self.Num_Points,
+                                conditions_needs=list(conditions.values()), inputs=list(inputs.values()),
+                                outputs=outputs)
+        return node
+
 
 class WaveformPlot(CtrlNode):
 
     nodeName = "WaveformPlot"
-    uiTemplate = []
+    uiTemplate = [("Num Points", 'intSpin', {'value': 100, 'min': 1, 'max': 2147483647})]
     desc = "Waveform Plot"
 
     def __init__(self, name):
         super(WaveformPlot, self).__init__(name, terminals={"Y": {"io": "in", "type": (int, np.float64)}},
                                            allowAddInput=True,
-                                           viewable=True)
+                                           buffered=True)
 
     def addInput(self, **args):
         self.addTerminal(name="Y", io='in', **args)
@@ -85,8 +93,9 @@ class WaveformPlot(CtrlNode):
     def display(self, topics, addr, win, **kwargs):
         return super(WaveformPlot, self).display(topics, addr, win, WaveformWidget, **kwargs)
 
-    def clear(self):
-        if self.widget is not None:
-            for i in self.widget.ys:
-                self.widget.ys[i] = []
-        super(WaveformPlot, self).clear()
+    def to_operation(self, inputs, conditions=[]):
+        outputs = [gn.Var(name=self.name(), type=list)]
+        node = gn.RollingBuffer(name=self.name()+"_operation", N=self.Num_Points,
+                                conditions_needs=list(conditions.values()), inputs=list(inputs.values()),
+                                outputs=outputs)
+        return node

@@ -527,8 +527,22 @@ class FlowchartWidget(dockarea.DockArea):
             return
 
         item = items[0]
-        if hasattr(item, 'node') and isinstance(item.node, Node) and item.node.viewable():
-            node = item.node
+        if not hasattr(item, 'node'):
+            return
+
+        node = item.node
+
+        if isinstance(item.node, Node) and item.node.buffered():
+            topics = []
+
+            for term, in_var in node.input_vars().items():
+                topics.append((in_var.name, node.name()))
+
+            await self.chart.broker.send_string(node.name(), zmq.SNDMORE)
+            await self.chart.broker.send_pyobj(fcMsgs.DisplayNode(node.name(), dict(topics)))
+
+        elif isinstance(item.node, Node) and item.node.viewable():
+
             topics = []
             views = []
 
@@ -559,8 +573,7 @@ class FlowchartWidget(dockarea.DockArea):
             await self.chart.broker.send_string(node.name(), zmq.SNDMORE)
             await self.chart.broker.send_pyobj(fcMsgs.DisplayNode(node.name(), dict(topics)))
 
-        elif hasattr(item, 'node') and isinstance(item.node, CtrlNode):
-            node = item.node
+        elif isinstance(item.node, CtrlNode):
             await self.chart.broker.send_string(node.name(), zmq.SNDMORE)
             await self.chart.broker.send_pyobj(fcMsgs.DisplayNode(node.name(), []))
 
