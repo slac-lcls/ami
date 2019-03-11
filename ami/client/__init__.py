@@ -1,4 +1,5 @@
 import sys
+import glob
 import logging
 import argparse
 from ami import LogConfig
@@ -26,12 +27,26 @@ def main():
         help='hostname of the AMII Manager (default: 127.0.0.1)'
     )
 
-    parser.add_argument(
+    addr_group = parser.add_mutually_exclusive_group()
+
+    addr_group.add_argument(
         '-p',
         '--port',
         type=int,
         default=Ports.Comm,
         help='port for manager/client (GUI) communication (default: %d)' % Ports.Comm
+    )
+
+    addr_group.add_argument(
+        '-i',
+        '--ipc-dir',
+        help='directory containing the ipc file descriptor for manager/client (GUI) communication'
+    )
+
+    addr_group.add_argument(
+        '--ipc',
+        action='store_true',
+        help='attempt to search for ipc file descriptors for manager/client (GUI) communication'
     )
 
     parser.add_argument(
@@ -68,13 +83,39 @@ def main():
     )
 
     args = parser.parse_args()
-    addr = "tcp://%s:%d" % (args.host, args.port)
 
     log_handlers = [logging.StreamHandler()]
     if args.log_file is not None:
         log_handlers.append(logging.FileHandler(args.log_file))
     log_level = getattr(logging, args.log_level.upper(), logging.INFO)
     logging.basicConfig(format=LogConfig.Format, level=log_level, handlers=log_handlers)
+
+    if args.ipc:
+        ipc_list = glob.glob('/tmp/*/comm')
+        if ipc_list:
+            if len(ipc_list) == 1:
+                addr = "ipc://%s" % ipc_list[0]
+            else:
+                prompt = "Found %d ipc file descriptors:\n" % len(ipc_list)
+                for i, ipc_name in enumerate(ipc_list):
+                    prompt += " %d - %s\n" % (i, ipc_name)
+                prompt += " %d - Quit\n\nPlease choose one: " % len(ipc_list)
+                choice = input(prompt)
+                try:
+                    addr = "ipc://%s" % ipc_list[int(choice)]
+                except ValueError:
+                    logger.critical("Invalid option '%s' chosen!", choice)
+                    return 1
+                except IndexError:
+                    logger.debug("Option chosen is outside range of ipc list - assume quit!")
+                    return 0
+        else:
+            logger.critical("No manager ipc file descriptors found!")
+            return 1
+    elif args.ipc_dir is not None:
+        addr = "ipc://%s/comm" % args.ipc_addr
+    else:
+        addr = "tcp://%s:%d" % (args.host, args.port)
 
     try:
         return run_client(addr, args.load, args.gui_mode)
