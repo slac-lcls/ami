@@ -20,6 +20,20 @@ class ScalarViewer(CtrlNode):
         return super(ScalarViewer, self).display(topics, addr, win, ScalarWidget, **kwargs)
 
 
+
+class WaveformViewer(CtrlNode):
+
+    nodeName = "WaveformViewer"
+    uiTemplate = []
+    desc = "WaveformViewer"
+
+    def __init__(self, name):
+        super(WaveformViewer, self).__init__(name, terminals={"In": {"io": "in", "type": np.ndarray}}, viewable=True)
+
+    def display(self, topics, addr, win, **kwargs):
+        return super(WaveformViewer, self).display(topics, addr, win, WaveformWidget, **kwargs)
+
+
 class ImageViewer(CtrlNode):
 
     nodeName = "ImageViewer"
