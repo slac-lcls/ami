@@ -90,22 +90,22 @@ class ScatterPlot(CtrlNode):
         return node
 
 
-class WaveformPlot(CtrlNode):
+class LinePlot(CtrlNode):
 
-    nodeName = "WaveformPlot"
+    nodeName = "LinePlot"
     uiTemplate = [("Num Points", 'intSpin', {'value': 100, 'min': 1, 'max': 2147483647})]
     desc = "Waveform Plot"
 
     def __init__(self, name):
-        super(WaveformPlot, self).__init__(name, terminals={"Y": {"io": "in", "type": (int, np.float64)}},
-                                           allowAddInput=True,
-                                           buffered=True)
+        super(LinePlot, self).__init__(name, terminals={"Y": {"io": "in", "type": (int, np.float64)}},
+                                       allowAddInput=True,
+                                       buffered=True)
 
     def addInput(self, **args):
         self.addTerminal(name="Y", io='in', **args)
 
     def display(self, topics, addr, win, **kwargs):
-        return super(WaveformPlot, self).display(topics, addr, win, WaveformWidget, **kwargs)
+        return super(LinePlot, self).display(topics, addr, win, WaveformWidget, **kwargs)
 
     def to_operation(self, inputs, conditions=[]):
         outputs = [gn.Var(name=self.name(), type=list)]
