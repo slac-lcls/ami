@@ -20,7 +20,6 @@ class ScalarViewer(CtrlNode):
         return super(ScalarViewer, self).display(topics, addr, win, ScalarWidget, **kwargs)
 
 
-
 class WaveformViewer(CtrlNode):
 
     nodeName = "WaveformViewer"
