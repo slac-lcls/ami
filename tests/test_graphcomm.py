@@ -4,8 +4,8 @@ import zmq
 import dill
 import threading
 import zmq.asyncio
+import numpy as np
 
-from ami.data import DataTypes
 from ami.comm import GraphCommHandler, AsyncGraphCommHandler
 
 
@@ -190,7 +190,7 @@ def test_versions(graph_comm):
                                 {
                                     'get_names': {'cspad', 'delta_t', 'laser'},
                                     'get_sources': {'cspad': float, 'delta_t': int, 'laser': int},
-                                    'get_features': {'cspad_img': DataTypes.Image}
+                                    'get_features': {'cspad_img': np.ndarray}
                                 }
                             ),
                             (True, {'get_names': set(), 'get_sources':  {}, 'get_features': {}}),
@@ -210,7 +210,7 @@ async def test_names_async(graph_comm):
                             {
                                 'get_names': {'cspad', 'delta_t', 'laser'},
                                 'get_sources': {'cspad': float, 'delta_t': int, 'laser': int},
-                                'get_features': {'cspad_img': DataTypes.Image}
+                                'get_features': {'cspad_img': np.ndarray}
                             },
                             {'get_names': set(), 'get_sources':  {}, 'get_features': {}},
                          ],

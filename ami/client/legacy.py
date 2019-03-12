@@ -20,7 +20,6 @@ from PyQt5.QtCore import pyqtSlot, pyqtSignal, QTimer, QRect
 import pyqtgraph as pg
 
 from ami import LogConfig
-from ami.data import DataTypes
 from ami.comm import AsyncGraphCommHandler
 
 
@@ -191,7 +190,7 @@ class ScanPlot(TabPlot):
             else:
                 name = post
             await self.comm.addBinning(post+'_op', [key, src], post)
-            return DataTypes.Histogram, name, post
+            return 'HistogramDetector', name, post
 
 
 class DummyPlot(TabPlot):
@@ -360,23 +359,22 @@ class DetectorList(QListWidget):
         self.timer.timeout.connect(self.get_names)
         self.timer.start(1000)
         self.itemClicked.connect(self.item_clicked)
-        return
 
-    def spawn_window(self, data_type, name, topic):
-        if data_type == DataTypes.Image:
-            self._spawn_window('AreaDetector', name, topic)
-            logger.info('create area detector window for: %s', name)
-        elif data_type == DataTypes.Waveform:
-            self._spawn_window('WaveformDetector', name, topic)
-            logger.info('create waveform window for: %s', name)
-        elif data_type == DataTypes.Histogram:
-            self._spawn_window('HistogramDetector', name, topic)
-            logger.info('create histogram window for: %s', name)
-        elif data_type == DataTypes.Scalar:
-            self._spawn_window('ScalarDetector', name, topic)
-            logger.info('create waveform window for: %s', name)
-        else:
-            logger.error('Feature type %s is not supported', self.features[topic])
+    def spawn_window(self, window_type, name, topic):
+        self.queue.put((window_type, name, topic))
+
+    def window_type(self, data_type):
+        if isinstance(data_type, tuple):
+            data_type, ndims = data_type
+            if issubclass(data_type, np.ndarray):
+                if ndims == 1:
+                    return 'WaveformDetector'
+                elif ndims == 2:
+                    return 'AreaDetector'
+        elif issubclass(data_type, dict):
+            return 'HistogramDetector'
+        elif issubclass(data_type, (int, float)):
+            return 'ScalarDetector'
 
     @asyncqt.asyncSlot()
     async def get_names(self):
@@ -393,7 +391,12 @@ class DetectorList(QListWidget):
             done = []
             for topic, name in self.pending.items():
                 if topic in self.features:
-                    self.spawn_window(self.features[topic], name, topic)
+                    window_type = self.window_type(self.features[topic])
+                    if window_type is not None:
+                        self.spawn_window(window_type, name, topic)
+                        logger.info('create %s window for: %s', window_type, name)
+                    else:
+                        logger.error('Feature type %s is not supported', self.features[topic])
                     # append to list of done entries to delete after iterating
                     done.append(topic)
             for key in done:

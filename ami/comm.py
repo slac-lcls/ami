@@ -3,11 +3,12 @@ import zmq
 import dill
 import asyncio
 import logging
+import numpy as np
 import zmq.asyncio
 from enum import IntEnum
 
 import ami.graph_nodes as gn
-from ami.data import MsgTypes, Message, CollectorMessage, DataTypes, Datagram
+from ami.data import MsgTypes, Message, CollectorMessage, Datagram
 
 
 logger = logging.getLogger(__name__)
@@ -39,7 +40,14 @@ class Store:
         self.version = version
         self._store = {}
 
-    def create(self, name, datatype=DataTypes.Unset):
+    @staticmethod
+    def get_type(data):
+        if isinstance(data, np.ndarray):
+            return type(data), data.ndim
+        else:
+            return type(data)
+
+    def create(self, name, datatype=None):
         if name in self._store:
             raise ValueError("result named %s already exists in ResultStore" % name)
         else:
@@ -71,10 +79,10 @@ class Store:
                 self.put(k, v)
 
     def put(self, name, data):
-        datatype = DataTypes.get_type(data)
-        if datatype is not DataTypes.Unset:
+        if data is not None:
+            datatype = self.get_type(data)
             if name in self._store:
-                if datatype == self._store[name].dtype or self._store[name].dtype == DataTypes.Unset:
+                if datatype == self._store[name].dtype or self._store[name].dtype is None:
                     self._store[name].dtype = datatype
                     self._store[name].data = data
                 else:
@@ -388,7 +396,9 @@ class CommHandler(abc.ABC):
 
         Returns:
             A dictionary where the keys are the names of the available features
-            and the values are the `DataTypes` of those features.
+            and the values are the types of those features. In the case of a
+            feature where the type is an ndarray the value is a tuple of the
+            type and the number of dimensions of the array.
         """
         return self._request('get_features')
 

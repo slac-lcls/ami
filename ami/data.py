@@ -22,34 +22,6 @@ class MsgTypes(Enum):
     Graph = 3
 
 
-class DataTypes(Enum):
-    Unknown = -1
-    Unset = 0
-    Scalar = 1
-    Waveform = 2
-    Image = 3
-    List = 4
-    Histogram = 5
-
-    @staticmethod
-    def get_type(data):
-        if data is None:
-            return DataTypes.Unset
-        elif isinstance(data, np.ndarray):
-            if data.ndim == 1:
-                return DataTypes.Waveform
-            elif data.ndim == 2:
-                return DataTypes.Image
-            else:
-                return DataTypes.Unknown
-        elif isinstance(data, list):
-            return DataTypes.List
-        elif isinstance(data, dict):
-            return DataTypes.Histogram
-        else:
-            return DataTypes.Scalar
-
-
 class Transitions(Enum):
     Allocate = 0
     Configure = 1
