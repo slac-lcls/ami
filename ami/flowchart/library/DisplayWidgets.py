@@ -32,7 +32,7 @@ class AsyncFetcher(object):
         await asyncio.sleep(1)
         reply = await self.comm_handler.fetch(self.topics)
 
-        if reply:
+        if reply is not None:
             if self.buffered and len(self.names) > 1:
                 self.reply = dict(zip(self.names, zip(*reply)))
             elif self.buffered:
