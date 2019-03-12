@@ -23,6 +23,27 @@ class Sum(Node):
         return node
 
 
+class Projection(CtrlNode):
+
+    nodeName = "Projection"
+    uiTemplate = [('axis', 'intSpin', {'value': 0, 'min': 0, 'max': 1})]
+    desc = "Projection"
+
+    def __init__(self, name):
+        super(Projection, self).__init__(name, terminals={
+            'In': {'io': 'in', 'type': (type(None), np.ndarray)},
+            'Out': {'io': 'out', 'type': np.ndarray}
+        })
+
+    def to_operation(self, inputs, conditions={}):
+        outputs = self.output_vars()
+        axis = self.axis
+        node = gn.Map(name=self.name()+"_operation",
+                      condition_needs=list(conditions.values()), inputs=list(inputs.values()), outputs=outputs,
+                      func=lambda a: np.sum(a, axis=axis))
+        return node
+
+
 class BinByVar(Node):
 
     nodeName = "BinByVar"
