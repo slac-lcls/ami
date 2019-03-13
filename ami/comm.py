@@ -40,6 +40,12 @@ class Store:
         self.version = version
         self._store = {}
 
+    def __bool__(self):
+        if self._store:
+            return True
+        else:
+            return False
+
     @staticmethod
     def get_type(data):
         if isinstance(data, np.ndarray):
