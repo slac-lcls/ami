@@ -226,6 +226,21 @@ class EventBuilder(ZmqHandler):
 
 
 class Node(abc.ABC):
+    """Abstract base class for nodes that interact with the AMI graph manager.
+
+    This abstract class provides basically functionality for nodes in that need
+    to receive updates from the AMI graph managers publish socket. It also
+    provides a method for nodes to report back information to the graph manager
+    out-of-band from the normal gather mechanism.
+
+    Args:
+        node (int): the numeric node identifier
+        graph_addr (str): the zmq address of the graph manager update socket
+        msg_addr (str): the zmq address of the graph manager out-of-band
+            message socket.
+        ctx (zmq.Context): optional zmq context for the node to use. If none is
+            passed it creates one.
+    """
 
     def __init__(self, node, graph_addr, msg_addr, ctx=None):
         self.node = node
@@ -245,23 +260,60 @@ class Node(abc.ABC):
     @property
     @abc.abstractmethod
     def name(self):
+        """
+        An abstract property that subclassess should implement which returns
+        the node's name.
+
+        Returns:
+            The name of this node
+        """
         pass
 
     @abc.abstractmethod
     def recv_graph(self, name, version, payload):
+        """
+        An abstract method that subclasses should implement. This method is
+        called everytime that a graph update is received.
+
+        Args:
+            name (str):      the name of the graph that is updated.
+            version (int):   the version number of the updated graph.
+            payload (bytes): the raw payload of the update.
+        """
         pass
 
     def report(self, topic, payload):
+        """
+        Sends an out-of-band report from this node directly to the AMI graph
+        manager without going through the normal gather mechanism. E.g. this
+        could be used to report a failure executing the graph on the node.
+
+        Args:
+            topic (str): the topic of the report.
+            payload (obj): the payload of the report. This can be any arbitrary
+                object that can be serialized using dill.
+        """
         self.node_msg_comm.send_string(topic, zmq.SNDMORE)
         self.node_msg_comm.send_string(self.name, zmq.SNDMORE)
         self.node_msg_comm.send(dill.dumps(payload))
 
 
 class Collector(abc.ABC):
-    """
-    This class gathers (via zeromq) results from many
-    ResultsStores. But rather than use gather, it employs
-    an async send/recieve pattern.
+    """Abstract base class for collecting (via zeromq) results from many
+    node's ResultsStores.
+
+    Whenever results are received on the collection socket they are processed.
+    This processing should be implemented in the subclass by overriding the
+    `process_msg` method.
+
+    The class also has the ability to register other sockets (plus a callback).
+    During the main collection loop if there is data available on this extra
+    socket, then the associated callback is called.
+
+    Args:
+        addr (str): the zmq address for receiving the collected results.
+        ctx (zmq.Context): optional zmq context for the node to use. If none is
+            passed it creates one.
     """
 
     def __init__(self, addr, ctx=None):
@@ -274,39 +326,65 @@ class Collector(abc.ABC):
         self.collector.bind(addr)
         self.poller.register(self.collector, zmq.POLLIN)
         self.handlers = {}
-        return
 
     def register(self, sock, handler):
+        """
+        Register the passed socket with the poller used in the main collection
+        loop. If data is received on the socket then the associated handler
+        function is called. It is the responsibility of the handler function
+        to read the data from the socket.
+
+        Args:
+            sock (zmq.Socket): the zmq socket to add to the poller.
+            handler (function): the handler function to be called when the
+                socket has data available.
+        """
         self.handlers[sock] = handler
         self.poller.register(sock, zmq.POLLIN)
 
     def unregister(self, sock):
+        """
+        Removes a previously registered socket from the poller used in the main
+        collection loop.
+
+        Args:
+            sock (zmq.Socket): the zmq socket to remove from the poller.
+        """
         if sock in self.handlers:
             del self.handlers[sock]
             self.poller.unregister(sock)
 
-    def recv(self):
-        return self.collector.recv_pyobj()
-
     @abc.abstractmethod
     def process_msg(self, msg):
-        return
+        """
+        An abstract method that subclasses should implement. This method is
+        called each time a message is received on the collector socket.
+
+        Args:
+            msg (CollectorMessage): the message to be processed.
+        """
+        pass
 
     def run(self):
+        """
+        The main collector loop runs forever polling the collector socket
+        plus any additional sockets added by calling the `register` method.
+        When data is available on the socket the corresponding handler is
+        called.
+        """
         while True:
             for sock, flag in self.poller.poll():
                 if flag != zmq.POLLIN:
                     continue
                 if sock is self.collector:
-                    msg = self.recv()
+                    msg = self.collector.recv_pyobj()
                     self.process_msg(msg)
                 elif sock in self.handlers:
                     self.handlers[sock]()
 
 
 class GraphReceiver:
-    """
-    Class for handling graph updates from the AMI graph manager.
+    """Class for handling graph updates from the AMI graph manager.
 
     This class is intended to handle graph update information published by the
     AMI graph manager. It allows handler functions to be set for certain topics
