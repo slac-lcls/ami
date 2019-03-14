@@ -273,6 +273,17 @@ class Collector(abc.ABC):
 
 
 class GraphReceiver:
+    """
+    Class for handling graph updates from the AMI graph manager.
+
+    This class is intended to handle graph update information published by the
+    AMI graph manager. It allows handler functions to be set for certain topics
+    or commands published by the graph manager. When a particular topic or
+    command is received the corresponding handler function is called.
+
+    Args:
+        addr (str): the zmq address of the graph manager (e.g. tcp://localhost:5555)
+    """
 
     def __init__(self, addr):
         self.ctx = zmq.Context()
@@ -284,20 +295,66 @@ class GraphReceiver:
         self.special = set(self.handlers.keys())
 
     def command(self):
+        """
+        Called when a message with the topic "cmd" is received. If there are
+        any handlers designated for the command received they will be called.
+        """
         name = self.sock.recv_string()
         if name in self.commands:
             self.commands[name]()
 
     def add_handler(self, topic, handler):
+        """
+        Sets the handler for the requested topic to the provided handler
+        function. Only one handler can be assigned to a topic, but a
+        handler function can be used by multiple topics.
+
+        The handler function is called with three positional arguments:
+            name (str):      the name of the graph that is updated.
+            version (int):   the version number of the updated graph.
+            payload (bytes): the raw payload of the update.
+
+        Args:
+            topic (str): the name of the topic.
+            handler (function): the handler function to be called.
+
+        Raises:
+            ValueError: if the topic name conflicts with one of the internally
+                        reserved topics.
+        """
         if topic not in self.special:
             self.handlers[topic] = handler
         else:
             raise ValueError("handler for topic %s cannot be modified" % topic)
 
     def add_command(self, name, handler):
+        """
+        Sets the handler for the requested command to the provided handler
+        function. Only one handler can be assigned to a command, but a
+        handler function can be used by multiple commands.
+
+        The handler function is called with no arguments.
+
+        Args:
+            name (str): the name of the command.
+            handler (function): the handler function to be called.
+        """
         self.commands[name] = handler
 
     def recv(self, block=True):
+        """
+        Function should be called to receive data from the AMI graph manager.
+        This function blocks until a graph update is available. Non-blocking
+        behavior is possible by passing `block=False` to the call.
+
+        Keyword Arguments:
+            block (bool): determines if the function call should block. Defaults
+                to True.
+
+        Raises:
+            zmq.Again: if no graph update is available and the function is called in
+                non-blocking mode.
+        """
         if block:
             topic = self.sock.recv_string()
         else:
