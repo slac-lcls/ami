@@ -169,6 +169,27 @@ class TabPlot(QWidget):
                 self.plot_spawner(data_type, name, topic)
 
 
+class TimePlot(TabPlot):
+
+    def __init__(self, idx, comm, plot_spawner, parent=None):
+        super(__class__, self).__init__(idx, comm, plot_spawner, parent)
+        self.plotName = QLabel('Scan var', self)
+        self.plotBox = QLineEdit(self)
+
+        self.plot_layout = QHBoxLayout(self)
+        self.plot_layout.addWidget(self.plotName)
+        self.plot_layout.addWidget(self.plotBox)
+
+    async def make_plot(self, src, post):
+        if not post:
+            name = '%s_vs_time' % src
+            post = self.comm.auto(name)
+        else:
+            name = post
+        await self.comm.addBinning(post+'_op', ['heartbeat', src], post)
+        return 'HistogramDetector', name, post
+
+
 class ScanPlot(TabPlot):
 
     def __init__(self, idx, comm, plot_spawner, parent=None):
@@ -225,8 +246,9 @@ class Env(QWidget):
         self.postName = QLabel('Entry name', self)
         self.postBox = QLineEdit(self)
         self.tabs = QTabWidget(self)
-        self.tabs.addTab(ScanPlot(0, self.comm, plot_spawner, self.tabs), "Mean v Scan")
-        self.tabs.addTab(DummyPlot(1, self.comm, plot_spawner, self.tabs), "Dummy")
+        self.tabs.addTab(TimePlot(0, self.comm, plot_spawner, self.tabs), "Mean v Time")
+        self.tabs.addTab(ScanPlot(1, self.comm, plot_spawner, self.tabs), "Mean v Scan")
+        self.tabs.addTab(DummyPlot(2, self.comm, plot_spawner, self.tabs), "Dummy")
         self.button = QPushButton('Plot', self)
         self.button.clicked.connect(self.on_click)
 
