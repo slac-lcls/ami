@@ -193,7 +193,7 @@ def run_ami(args, queue=mp.Queue()):
             proc = mp.Process(
                 name='worker%03d-n0' % i,
                 target=run_worker,
-                args=(i, args.num_workers, args.heartbeat, src_cfg, collector_addr, graph_addr, flags)
+                args=(i, args.num_workers, args.heartbeat, src_cfg, collector_addr, graph_addr, msg_addr, flags)
             )
             proc.daemon = True
             proc.start()
@@ -202,7 +202,7 @@ def run_ami(args, queue=mp.Queue()):
         collector_proc = mp.Process(
             name='nodecol-n0',
             target=run_node_collector,
-            args=(0, args.num_workers, collector_addr, globalcol_addr, graph_addr)
+            args=(0, args.num_workers, collector_addr, globalcol_addr, graph_addr, msg_addr)
         )
         collector_proc.daemon = True
         collector_proc.start()
@@ -211,7 +211,7 @@ def run_ami(args, queue=mp.Queue()):
         globalcol_proc = mp.Process(
             name='globalcol',
             target=run_global_collector,
-            args=(0, 1, globalcol_addr, results_addr, graph_addr)
+            args=(0, 1, globalcol_addr, results_addr, graph_addr, msg_addr)
         )
         globalcol_proc.daemon = True
         globalcol_proc.start()

@@ -3,17 +3,18 @@ import sys
 import logging
 import argparse
 from ami import LogConfig
-from ami.comm import Ports, Colors, Collector, EventBuilder, GraphReceiver
+from ami.comm import Ports, Colors, Node, Collector, EventBuilder
 from ami.data import MsgTypes
 
 
 logger = logging.getLogger(__name__)
 
 
-class GraphCollector(Collector):
-    def __init__(self, node, num_workers, color, collector_addr, downstream_addr, graph_addr):
-        super(__class__, self).__init__(collector_addr)
-        self.node = node
+class GraphCollector(Node, Collector):
+    def __init__(self, node, base_name, num_workers, color, collector_addr, downstream_addr, graph_addr, msg_addr):
+        Node.__init__(self, node, graph_addr, msg_addr)
+        Collector.__init__(self, collector_addr, ctx=self.ctx)
+        self.base_name = base_name
         self.num_workers = num_workers
         self.store = EventBuilder(
             self.num_workers, 10, color, downstream_addr, self.ctx)
@@ -22,10 +23,11 @@ class GraphCollector(Collector):
 
         self.downstream_addr = downstream_addr
 
-        self.graph = None
-        self.graph_comm = GraphReceiver(graph_addr)
-        self.graph_comm.add_handler("graph", self.recv_graph)
         self.register(self.graph_comm.sock, self.graph_comm.recv)
+
+    @property
+    def name(self):
+        return self.base_name % self.node
 
     def recv_graph(self, name, version, payload):
         self.graph = payload
@@ -48,24 +50,40 @@ class GraphCollector(Collector):
                 self.store.prune()
 
 
-def run_collector(node_num, num_contribs, color, collector_addr, upstream_addr, graph_addr):
+def run_collector(node_num, base_name, num_contribs, color, collector_addr, upstream_addr, graph_addr, msg_addr):
     logger.info('Starting collector on node # %d', node_num)
     collector = GraphCollector(
         node_num,
+        base_name,
         num_contribs,
         color,
         collector_addr,
         upstream_addr,
-        graph_addr)
+        graph_addr,
+        msg_addr)
     return collector.run()
 
 
-def run_node_collector(node_num, num_contribs, collector_addr, upstream_addr, graph_addr):
-    return run_collector(node_num, num_contribs, Colors.LocalCollector, collector_addr, upstream_addr, graph_addr)
+def run_node_collector(node_num, num_contribs, collector_addr, upstream_addr, graph_addr, msg_addr):
+    return run_collector(node_num,
+                         "localCollector%03d",
+                         num_contribs,
+                         Colors.LocalCollector,
+                         collector_addr,
+                         upstream_addr,
+                         graph_addr,
+                         msg_addr)
 
 
-def run_global_collector(node_num, num_contribs, collector_addr, upstream_addr, graph_addr):
-    return run_collector(node_num, num_contribs, Colors.GlobalCollector, collector_addr, upstream_addr, graph_addr)
+def run_global_collector(node_num, num_contribs, collector_addr, upstream_addr, graph_addr, msg_addr):
+    return run_collector(node_num,
+                         "globalCollector%03d",
+                         num_contribs,
+                         Colors.GlobalCollector,
+                         collector_addr,
+                         upstream_addr,
+                         graph_addr,
+                         msg_addr)
 
 
 def main(color, upstream_port, downstream_port):
@@ -103,6 +121,14 @@ def main(color, upstream_port, downstream_port):
     )
 
     parser.add_argument(
+        '-m',
+        '--message',
+        type=int,
+        default=Ports.Message,
+        help='port for sending out-of-band messages from nodes (default: %d)' % Ports.Message
+    )
+
+    parser.add_argument(
         '-n',
         '--num-contribs',
         type=int,
@@ -133,6 +159,7 @@ def main(color, upstream_port, downstream_port):
     collector_addr = "tcp://*:%d" % (args.collector)
     downstream_addr = "tcp://%s:%d" % (args.host, args.downstream)
     graph_addr = "tcp://%s:%d" % (args.host, args.graph)
+    msg_addr = "tcp://%s:%d" % (args.host, args.message)
 
     log_handlers = [logging.StreamHandler()]
     if args.log_file is not None:
@@ -141,7 +168,7 @@ def main(color, upstream_port, downstream_port):
     logging.basicConfig(format=LogConfig.Format, level=log_level, handlers=log_handlers)
 
     try:
-        run_collector(args.node_num, args.num_contribs, color, collector_addr, downstream_addr, graph_addr)
+        run_collector(args.node_num, args.num_contribs, color, collector_addr, downstream_addr, graph_addr, msg_addr)
 
         return 0
     except KeyboardInterrupt:

@@ -7,32 +7,32 @@ import dill
 import logging
 import argparse
 from ami import LogConfig
-from ami.comm import Ports, Colors, ResultStore, GraphReceiver
+from ami.comm import Ports, Colors, ResultStore, Node
 from ami.data import MsgTypes, Source
 
 
 logger = logging.getLogger(__name__)
 
 
-class Worker:
-    def __init__(self, idnum, src, collector_addr, graph_addr):
+class Worker(Node):
+    def __init__(self, node, src, collector_addr, graph_addr, msg_addr):
         """
-        idnum : int
+        node : int
             a unique integer identifying this worker
         src : object
             object with an events() method that is an iterable (like psana.DataSource)
         """
+        super(__class__, self).__init__(node, graph_addr, msg_addr)
 
-        self.idnum = idnum
         self.src = src
-        self.ctx = zmq.Context()
 
         self.store = ResultStore(collector_addr, self.ctx)
-        self.graph = None
 
-        self.graph_comm = GraphReceiver(graph_addr)
-        self.graph_comm.add_handler("graph", self.recv_graph)
         self.graph_comm.add_command("config", self.send_configure)
+
+    @property
+    def name(self):
+        return "worker%03d" % self.node
 
     def send_configure(self):
         self.store.send(self.src.configure())
@@ -49,7 +49,7 @@ class Worker:
         for msg in self.src.events():
             # check to see if the graph has been reconfigured after update
             if msg.mtype == MsgTypes.Heartbeat:
-                self.store.collect(self.idnum, msg.payload)
+                self.store.collect(self.node, msg.payload)
                 # clear the data from the store after collecting
                 self.store.clear()
                 # check if there are graph updates
@@ -64,13 +64,13 @@ class Worker:
                         graph_result = self.graph(msg.payload, color=Colors.Worker)
                         self.store.update(graph_result)
                 except Exception:
-                    logger.exception("worker%s: Failure encountered executing graph:", self.idnum)
+                    logger.exception("%s: Failure encountered executing graph:", self.name)
                     return 1
             else:
                 self.store.send(msg)
 
 
-def run_worker(num, num_workers, hb_period, source, collector_addr, graph_addr, flags=None):
+def run_worker(num, num_workers, hb_period, source, collector_addr, graph_addr, msg_addr, flags=None):
 
     logger.info('Starting worker # %d, sending to collector at %s', num, collector_addr)
 
@@ -94,7 +94,7 @@ def run_worker(num, num_workers, hb_period, source, collector_addr, graph_addr, 
     else:
         logger.critical("worker%03d: unknown data source type: %s", num, source[0])
         return 1
-    worker = Worker(num, src, collector_addr, graph_addr)
+    worker = Worker(num, src, collector_addr, graph_addr, msg_addr)
     return worker.run()
 
 
@@ -122,6 +122,14 @@ def main():
         type=int,
         default=Ports.NodeCollector,
         help='port for node collector (default: %d)' % Ports.NodeCollector
+    )
+
+    parser.add_argument(
+        '-m',
+        '--message',
+        type=int,
+        default=Ports.Message,
+        help='port for sending out-of-band messages from nodes (default: %d)' % Ports.Message
     )
 
     parser.add_argument(
@@ -176,6 +184,7 @@ def main():
     args = parser.parse_args()
     collector_addr = "tcp://localhost:%d" % args.collector
     graph_addr = "tcp://%s:%d" % (args.host, args.graph)
+    msg_addr = "tcp://%s:%d" % (args.host, args.message)
     flags = {}
 
     log_handlers = [logging.StreamHandler()]
@@ -199,7 +208,14 @@ def main():
             logger.critical("Invalid data source config string: %s", args.source)
             return 1
 
-        run_worker(args.node_num, args.num_workers, args.heartbeat, src_cfg, collector_addr, graph_addr, flags)
+        run_worker(args.node_num,
+                   args.num_workers,
+                   args.heartbeat,
+                   src_cfg,
+                   collector_addr,
+                   graph_addr,
+                   msg_addr,
+                   flags)
 
         return 0
     except KeyboardInterrupt:

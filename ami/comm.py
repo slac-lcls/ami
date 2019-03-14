@@ -225,6 +225,38 @@ class EventBuilder(ZmqHandler):
         return ((1 << self.num_contribs) - 1) == self.contribs[eb_key]
 
 
+class Node(abc.ABC):
+
+    def __init__(self, node, graph_addr, msg_addr, ctx=None):
+        self.node = node
+        if ctx is None:
+            self.ctx = zmq.Context()
+        else:
+            self.ctx = ctx
+
+        self.graph = None
+
+        self.graph_comm = GraphReceiver(graph_addr)
+        self.graph_comm.add_handler("graph", self.recv_graph)
+
+        self.node_msg_comm = self.ctx.socket(zmq.PUSH)
+        self.node_msg_comm.connect(msg_addr)
+
+    @property
+    @abc.abstractmethod
+    def name(self):
+        pass
+
+    @abc.abstractmethod
+    def recv_graph(self, name, version, payload):
+        pass
+
+    def report(self, topic, payload):
+        self.node_msg_comm.send_string(topic, zmq.SNDMORE)
+        self.node_msg_comm.send_string(self.name, zmq.SNDMORE)
+        self.node_msg_comm.send(dill.dumps(payload))
+
+
 class Collector(abc.ABC):
     """
     This class gathers (via zeromq) results from many

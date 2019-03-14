@@ -235,10 +235,12 @@ class Manager(Collector):
 
     def node_request(self):
         topic = self.node_msg_comm.recv_string()
-        msg = self.node_msg_comm.recv_string()
+        node = self.node_msg_comm.recv_string()
+        payload = self.node_msg_comm.recv()
 
         self.info_comm.send_string(topic, zmq.SNDMORE)
-        self.info_comm.send_string(msg)
+        self.info_comm.send_string(node, node)
+        self.info_comm.send(payload)
 
     def export_graph(self):
         if self.export is not None:
