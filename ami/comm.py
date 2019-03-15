@@ -332,7 +332,7 @@ class EventBuilder(ZmqHandler):
 class Node(abc.ABC):
     """Abstract base class for nodes that interact with the AMI graph manager.
 
-    This abstract class provides basically functionality for nodes in that need
+    This abstract class provides basically functionality for nodes that need
     to receive updates from the AMI graph managers publish socket. It also
     provides a method for nodes to report back information to the graph manager
     out-of-band from the normal gather mechanism.
