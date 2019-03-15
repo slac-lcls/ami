@@ -32,8 +32,14 @@ class Ports(IntEnum):
 
 
 class Store:
-    """
-    This class is a key value that for holding Datagrams
+    """Class for holding data as key value pairs.
+
+    The data is store internally as Datagram objects. When new data is inserted
+    for a key its type is checked to see if it matches the type of previous
+    value (if any).
+
+    Args:
+        version (int): The current version id of the store. Defaults to zero.
     """
 
     def __init__(self, version=0):
@@ -41,6 +47,12 @@ class Store:
         self._store = {}
 
     def __bool__(self):
+        """
+        Returns the truth value of the store class.
+
+        Returns:
+            False if the store is empty and True otherwise.
+        """
         if self._store:
             return True
         else:
@@ -48,22 +60,66 @@ class Store:
 
     @staticmethod
     def get_type(data):
+        """
+        Static method for returning the type of a piece of data as used for
+        comparisons by the store. When the object is a `numpy.ndarray` a tuple
+        of the type and number of dimensions is returned, otherwise just the
+        type is returned.
+
+        Args:
+            data (object): the object whose type is to be returned
+
+        Returns:
+            the type of the object.
+        """
         if isinstance(data, np.ndarray):
             return type(data), data.ndim
         else:
             return type(data)
 
     def create(self, name, datatype=None):
+        """
+        Creates an empty entry in the store for the name provided. This is
+        intended for cases where you want to set the type of an entry in the
+        store, but don't yet have any data for the entry.
+
+        Args:
+            name (str): the name of the entry.
+            datatype (type): the type of the entry.
+
+        Raises:
+            ValueError: if `name` already exists in the store.
+        """
         if name in self._store:
-            raise ValueError("result named %s already exists in ResultStore" % name)
+            raise ValueError("result named %s already exists in the store" % name)
         else:
             self._store[name] = Datagram(name, datatype)
 
     def get_dgram(self, name):
+        """
+        Returns the `Datagram` in the store associated with that entry.
+
+        Args:
+            name (str): the name of the entry
+
+        Raises:
+            KeyError: if there is no entry in the store with the requested
+                name.
+
+        Returns:
+            the current `Datagram` object of the entry in the store.
+        """
         return self._store[name]
 
     @property
     def namespace(self):
+        """
+        Returns a dictionary containing the raw data associated with all the
+        entries in the store where the entry name is the key.
+
+        Returns:
+            A dictionary with all the raw data in the store.
+        """
         ns = {}
         for k in self._store.keys():
             ns[k] = self._store[k].data
@@ -71,20 +127,65 @@ class Store:
 
     @property
     def types(self):
+        """
+        Returns a dictionary containing the types of all the entries in the
+        store where the entry name is the key.
+
+        Returns:
+            A dictionary with all the types in the store.
+        """
         ns = {}
         for k in self._store.keys():
             ns[k] = self._store[k].dtype
         return ns
 
     def get(self, name):
+        """
+        Retrieves the raw data associated with an entry in the store.
+
+        Args:
+            name (str): the name of the entry
+
+        Raises:
+            KeyError: if there is no entry in the store with the requested
+                name.
+
+        Returns:
+            the raw data associated with the entry
+        """
         return self._store[name].data
 
     def update(self, updates):
+        """
+        Update the using the passed dictionary, where the key in the dictionary
+        is used as the name of the entry and the value becomes the new data
+        associated with the entry.
+
+        Args:
+            updates (dict): the dictionary to use for the update.
+
+        Raises:
+            TypeError: if the type of data doesn't match the type of the
+                existing entry in the store with that name.
+        """
         if updates is not None:
             for k, v in updates.items():
                 self.put(k, v)
 
     def put(self, name, data):
+        """
+        Sets the data associated with an entry in the store. If there is an
+        existing entry in the store with that name, the type of the data is
+        checked to see that it matches with what is already in the store.
+
+        Args:
+            name (str): the name of the entry
+            data (object): the data to associate with the entry
+
+        Raises:
+            TypeError: if the type of data doesn't match the type of the
+                existing entry in the store with that name.
+        """
         if data is not None:
             datatype = self.get_type(data)
             if name in self._store:
@@ -98,6 +199,9 @@ class Store:
                 self._store[name] = Datagram(name, datatype, data)
 
     def clear(self):
+        """
+        Clears all the entries currently in the store.
+        """
         self._store = {}
 
 
