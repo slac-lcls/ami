@@ -236,7 +236,7 @@ class Manager(Collector):
         payload = self.node_msg_comm.recv()
 
         self.info_comm.send_string(topic, zmq.SNDMORE)
-        self.info_comm.send_string(node, node)
+        self.info_comm.send_string(node, zmq.SNDMORE)
         self.info_comm.send(payload)
 
     def export_graph(self):
@@ -329,7 +329,7 @@ def main():
     )
 
     parser.add_argument(
-        '-i',
+        '-I',
         '--info',
         type=int,
         default=Ports.Info,

@@ -1,3 +1,4 @@
+import os
 import sys
 import glob
 import logging
@@ -10,11 +11,11 @@ from ami.client import flowchart, legacy
 logger = logging.getLogger(__name__)
 
 
-def run_client(addr, load, use_legacy=True):
+def run_client(comm_addr, info_addr, load, use_legacy=True):
     if use_legacy:
-        return legacy.run_client(addr, load)
+        return legacy.run_client(comm_addr, info_addr, load)
     else:
-        return flowchart.run_client(addr, load)
+        return flowchart.run_client(comm_addr, info_addr, load)
 
 
 def main():
@@ -33,8 +34,9 @@ def main():
         '-p',
         '--port',
         type=int,
-        default=Ports.Comm,
-        help='port for manager/client (GUI) communication (default: %d)' % Ports.Comm
+        nargs=2,
+        default=(Ports.Comm, Ports.Info),
+        help='port for manager/client (GUI) communication and status info (default: %d, %d)' % (Ports.Comm, Ports.Info)
     )
 
     addr_group.add_argument(
@@ -91,10 +93,13 @@ def main():
     logging.basicConfig(format=LogConfig.Format, level=log_level, handlers=log_handlers)
 
     if args.ipc:
-        ipc_list = glob.glob('/tmp/*/comm')
-        if ipc_list:
+        ipc_comm_set = {os.path.dirname(ipc) for ipc in glob.glob('/tmp/*/comm')}
+        ipc_info_set = {os.path.dirname(ipc) for ipc in glob.glob('/tmp/*/info')}
+        ipc_list = list(ipc_comm_set.intersection(ipc_info_set))
+        if ipc_list and ipc_list:
             if len(ipc_list) == 1:
-                addr = "ipc://%s" % ipc_list[0]
+                comm_addr = "ipc://%s/comm" % ipc_list[0]
+                info_addr = "ipc://%s/info" % ipc_list[0]
             else:
                 prompt = "Found %d ipc file descriptors:\n" % len(ipc_list)
                 for i, ipc_name in enumerate(ipc_list):
@@ -102,7 +107,8 @@ def main():
                 prompt += " %d - Quit\n\nPlease choose one: " % len(ipc_list)
                 choice = input(prompt)
                 try:
-                    addr = "ipc://%s" % ipc_list[int(choice)]
+                    comm_addr = "ipc://%s/comm" % ipc_list[int(choice)]
+                    info_addr = "ipc://%s/info" % ipc_list[int(choice)]
                 except ValueError:
                     logger.critical("Invalid option '%s' chosen!", choice)
                     return 1
@@ -113,12 +119,15 @@ def main():
             logger.critical("No manager ipc file descriptors found!")
             return 1
     elif args.ipc_dir is not None:
-        addr = "ipc://%s/comm" % args.ipc_addr
+        comm_addr = "ipc://%s/comm" % args.ipc_addr
+        info_addr = "ipc://%s/info" % args.ipc_addr
     else:
-        addr = "tcp://%s:%d" % (args.host, args.port)
+        comm, info = args.port
+        comm_addr = "tcp://%s:%d" % (args.host, comm)
+        info_addr = "tcp://%s:%d" % (args.host, info)
 
     try:
-        return run_client(addr, args.load, args.gui_mode)
+        return run_client(comm_addr, info_addr, args.load, args.gui_mode)
     except KeyboardInterrupt:
         logger.info("Client killed by user...")
         return 0

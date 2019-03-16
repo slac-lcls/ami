@@ -353,7 +353,7 @@ class MessageBroker(object):
                              self.monitor_processes())
 
 
-def run_client(graphmgr_addr, load):
+def run_client(graphmgr_addr, graphinfo_addr, load):
     mb = MessageBroker(graphmgr_addr, load)
 
     loop = asyncio.get_event_loop()

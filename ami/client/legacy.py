@@ -14,13 +14,13 @@ from PyQt5.QtWidgets import QWidget, QHBoxLayout, QFileDialog, \
                             QApplication, QMainWindow, QPushButton, \
                             QLabel, QListWidgetItem, QLineEdit, \
                             QVBoxLayout, QListWidget, QLCDNumber, \
-                            QGroupBox, QTabWidget
-from PyQt5.QtCore import pyqtSlot, pyqtSignal, QTimer, QRect
+                            QGroupBox, QTabWidget, QPlainTextEdit
+from PyQt5.QtCore import pyqtSlot, pyqtSignal, QTimer, QRect, QThread
 
 import pyqtgraph as pg
 
 from ami import LogConfig
-from ami.comm import AsyncGraphCommHandler
+from ami.comm import AsyncGraphCommHandler, GraphInfoReceiver
 
 
 logger = logging.getLogger(LogConfig.get_package_name(__name__))
@@ -173,12 +173,6 @@ class TimePlot(TabPlot):
 
     def __init__(self, idx, comm, plot_spawner, parent=None):
         super(__class__, self).__init__(idx, comm, plot_spawner, parent)
-        self.plotName = QLabel('Scan var', self)
-        self.plotBox = QLineEdit(self)
-
-        self.plot_layout = QHBoxLayout(self)
-        self.plot_layout.addWidget(self.plotName)
-        self.plot_layout.addWidget(self.plotBox)
 
     async def make_plot(self, src, post):
         if not post:
@@ -214,23 +208,6 @@ class ScanPlot(TabPlot):
             return 'HistogramDetector', name, post
 
 
-class DummyPlot(TabPlot):
-    def __init__(self, idx, comm, plot_spawner, parent=None):
-        super(__class__, self).__init__(idx, comm, plot_spawner, parent)
-        self.plotName = QLabel('Dummy var', self)
-        self.plotBox = QLineEdit(self)
-
-        self.plot_layout = QHBoxLayout(self)
-        self.plot_layout.addWidget(self.plotName)
-        self.plot_layout.addWidget(self.plotBox)
-
-    async def make_plot(self, src, post):
-        key = self.plotBox.text()
-
-        if key:
-            print(key)
-
-
 class Env(QWidget):
 
     makePlot = pyqtSignal(int, object, object, name='makePlot')
@@ -248,7 +225,6 @@ class Env(QWidget):
         self.tabs = QTabWidget(self)
         self.tabs.addTab(TimePlot(0, self.comm, plot_spawner, self.tabs), "Mean v Time")
         self.tabs.addTab(ScanPlot(1, self.comm, plot_spawner, self.tabs), "Mean v Scan")
-        self.tabs.addTab(DummyPlot(2, self.comm, plot_spawner, self.tabs), "Dummy")
         self.button = QPushButton('Plot', self)
         self.button.clicked.connect(self.on_click)
 
@@ -445,7 +421,12 @@ class DetectorList(QListWidget):
                 self.env = Env(self.comm_handler, self.spawn_window)
             self.env.show()
         elif topic in self.features:
-            self.spawn_window(self.features[topic], name, topic)
+            window_type = self.window_type(self.features[topic])
+            if window_type is not None:
+                self.spawn_window(window_type, name, topic)
+                logger.info('create %s window for: %s', window_type, name)
+            else:
+                logger.error('Feature type %s is not supported', self.features[topic])
         else:
             request_view = False
             with self.pending_lock:
@@ -459,15 +440,41 @@ class DetectorList(QListWidget):
         self.queue.put((window_type, name, topic))
 
 
+class QtSignalLogHandler(logging.StreamHandler):
+
+    def __init__(self, signal):
+        super(__class__, self).__init__()
+        self.signal = signal
+
+    def emit(self, record):
+        msg = self.format(record)
+        self.signal.emit(msg)
+
+
+class AmiInfo(QThread):
+
+    sig = pyqtSignal(str, str)
+
+    def __init__(self, addr, slot, parent=None):
+        super(__class__, self).__init__(parent)
+        self.info = GraphInfoReceiver(addr)
+        self.sig.connect(slot)
+
+    def run(self):
+        for topic, msg in self.info.messages:
+            self.sig.emit(topic, msg)
+
+
 class AmiGui(QWidget):
 
     loadFile = pyqtSignal(str, name='loadFile')
     saveFile = pyqtSignal(str, name='saveFile')
+    statusUpdate = pyqtSignal(str, name='statusUpdate')
 
-    def __init__(self, queue, addr, ami_save, parent=None):
+    def __init__(self, queue, comm_addr, info_addr, ami_save, parent=None):
         super(__class__, self).__init__(parent)
         self.setWindowTitle("AMI Client")
-        self.comm_handler = AsyncGraphCommHandler(addr)
+        self.comm_handler = AsyncGraphCommHandler(comm_addr)
 
         self.save_button = QPushButton('Save', self)
         self.save_button.clicked.connect(self.save)
@@ -477,6 +484,8 @@ class AmiGui(QWidget):
         self.clear_button.clicked.connect(self.clear)
         self.reset_button = QPushButton('Reset Plots', self)
         self.reset_button.clicked.connect(self.reset)
+        self.status_box = QPlainTextEdit(self)
+        self.status_box.setReadOnly(True)
         self.amilist = DetectorList(queue, self.comm_handler)
         if ami_save is not None:
             self.comm_handler.update(ami_save)
@@ -494,12 +503,32 @@ class AmiGui(QWidget):
         self.data_layout.addWidget(self.amilist)
         self.data.setLayout(self.data_layout)
 
+        self.status = QGroupBox("Status")
+        self.status_layout = QVBoxLayout(self)
+        self.status_layout.addWidget(self.status_box)
+        self.status.setLayout(self.status_layout)
+
         self.ami_layout = QVBoxLayout(self)
-        self.ami_layout.addWidget(self.setup)
-        self.ami_layout.addWidget(self.data)
+        self.ami_layout.addWidget(self.setup, 1)
+        self.ami_layout.addWidget(self.data, 4)
+        self.ami_layout.addWidget(self.status, 2)
 
         self.loadFile.connect(self.load_async)
         self.saveFile.connect(self.save_async)
+        self.statusUpdate.connect(self.status_box.appendPlainText)
+
+        # the status box to logging
+        add_logging_handler(self.statusUpdate)
+
+        # create a qthread that listens for info messages from the cluster to log them.
+        self.info_thread = AmiInfo(info_addr, self.log_message)
+        self.info_thread.start()
+
+    @pyqtSlot(str, str)
+    def log_message(self, topic, msg):
+        # see if the topic name is a log level then use that otherwise use info
+        log_func = getattr(logger, topic, 'info')
+        log_func(msg)
 
     @pyqtSlot()
     def load(self):
@@ -536,11 +565,15 @@ class AmiGui(QWidget):
         await self.comm_handler.save(filename)
 
 
-def run_main_window(queue, addr, ami_save):
+def add_logging_handler(signal):
+    logger.addHandler(QtSignalLogHandler(signal))
+
+
+def run_main_window(queue, comm_addr, info_addr, ami_save):
     app = QApplication(sys.argv)
     loop = asyncqt.QEventLoop(app)
     asyncio.set_event_loop(loop)
-    gui = AmiGui(queue, addr, ami_save)
+    gui = AmiGui(queue, comm_addr, info_addr, ami_save)
     gui.show()
 
     # wait for the qt app to exit
@@ -581,7 +614,7 @@ def run_widget(queue, window_type, name, topic, addr):
     return app.exec_()
 
 
-def run_client(addr, load):
+def run_client(comm_addr, info_addr, load):
     saved_cfg = None
     if load is not None:
         try:
@@ -597,7 +630,7 @@ def run_client(addr, load):
     queue = mp.Queue()
     list_proc = mp.Process(
         target=run_main_window, args=(
-            queue, addr, saved_cfg))
+            queue, comm_addr, info_addr, saved_cfg))
     list_proc.start()
     widget_procs = []
 
@@ -609,6 +642,6 @@ def run_client(addr, load):
         logger.debug("opening new widget: %s %s %s", window_type, name, topic)
         proc = mp.Process(
             target=run_widget, args=(
-                queue, window_type, name, topic, addr))
+                queue, window_type, name, topic, comm_addr))
         proc.start()
         widget_procs.append(proc)

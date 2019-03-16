@@ -251,7 +251,7 @@ def run_ami(args, queue=mp.Queue()):
             client_proc = mp.Process(
                 name='client',
                 target=run_client,
-                args=(comm_addr, args.load, args.gui_mode)
+                args=(comm_addr, info_addr, args.load, args.gui_mode)
             )
             client_proc.daemon = False
             client_proc.start()

@@ -583,6 +583,63 @@ class GraphReceiver:
                 self.handlers[topic](name, version, payload)
 
 
+class GraphInfoReceiver:
+    """Class for handling information messages sent by the AMI graph manager.
+
+    This class is intended to handle status information published by the
+    AMI graph manager. The graph manager publishes status information such as
+    node failures via zmq pub/sub. This class is intended as a helper for
+    receiving these messages.
+
+    Args:
+        addr (str): the zmq address of the graph manager info service
+            (e.g. tcp://localhost:5555)
+        subscriptions (str): the subscription string used for topic filtering
+            of the messages by zmq.
+        ctx (zmq.Context): optional zmq context for the node to use. If none is
+            passed it creates one.
+    """
+
+    def __init__(self, addr, subscriptions="", ctx=None):
+        if ctx is None:
+            self.ctx = zmq.Context()
+        else:
+            self.ctx = ctx
+        self.sock = self.ctx.socket(zmq.SUB)
+        self.sock.setsockopt_string(zmq.SUBSCRIBE, subscriptions)
+        self.sock.connect(addr)
+
+    def recv(self):
+        """
+        Low level function for receiving a raw message from the graph manager
+        info service.
+
+        Returns:
+            A tuple containing the message topic, the name of the node that
+                generated the message, and the raw payload of the message.
+        """
+        topic = self.sock.recv_string()
+        node = self.sock.recv_string()
+        payload = dill.loads(self.sock.recv())
+        return topic, node, payload
+
+    @property
+    def messages(self):
+        """
+        A generator that returns formatted messages from the graph manager info
+        service. Only messages where the payload is a string are returned by
+        this generator. The message is re-formatted as string containing both
+        the node name and the body of the message.
+
+        Returns:
+            A tuple consisting of the message topic and the formatted message.
+        """
+        while True:
+            topic, node, msg = self.recv()
+            if isinstance(msg, str):
+                yield topic, "%s: %s" % (node, msg)
+
+
 class CommHandler(abc.ABC):
     """Abstract base class for handling communication with the AMI graph manager.
 

@@ -64,6 +64,7 @@ class Worker(Node):
                         graph_result = self.graph(msg.payload, color=Colors.Worker)
                         self.store.update(graph_result)
                 except Exception:
+                    self.report("error", "Fatal error encountered executing graph!")
                     logger.exception("%s: Failure encountered executing graph:", self.name)
                     return 1
             else:
