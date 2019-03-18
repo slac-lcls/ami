@@ -241,7 +241,7 @@ class ResultStore(Store, ZmqHandler):
 class EventBuilder(ZmqHandler):
 
     def __init__(self, num_contribs, depth, color, addr, ctx=None):
-        super(__class__, self).__init__(addr, ctx)
+        super().__init__(addr, ctx)
         self.num_contribs = num_contribs
         self.depth = depth
         self.color = color
@@ -644,31 +644,21 @@ class CommHandler(abc.ABC):
     """Abstract base class for handling communication with the AMI graph manager.
 
     This abstract class provides an interface for interacting with the graph
-    manager. Provides support for implementing both a synchronous as well as
-    an asynchronous version.
-
-    Args:
-        addr (str): the zmq address of the graph manager (e.g. tcp://localhost:5555)
-        async_mode (bool): if True the asyncio version of zmq is used
+    manager. The protocol used for talking to the manager is left to the
+    subclass to implement.
     """
 
-    def __init__(self, addr, async_mode=False):
-        if async_mode:
-            self._ctx = zmq.asyncio.Context()
-        else:
-            self._ctx = zmq.Context()
-        self._addr = addr
-        self._sock = self._ctx.socket(zmq.REQ)
-        self._sock.connect(self._addr)
+    def __init__(self):
         self._prune_keys = ['condition_needs', 'condition', 'reduction']
         self._expand_keys = ['inputs', 'outputs', 'condition_needs']
 
+    @abc.abstractmethod
     def __enter__(self):
-        return self
+        pass
 
+    @abc.abstractmethod
     def __exit__(self, exc_type, exc_value, traceback):
-        self._sock.close()
-        self._ctx.destroy()
+        pass
 
     def _make_node(self, node, **kwargs):
         """
@@ -1076,7 +1066,37 @@ class CommHandler(abc.ABC):
         pass
 
 
-class AsyncGraphCommHandler(CommHandler):
+class ZmqCommHandler(CommHandler):
+    """Abstract base class for handling communication with the AMI graph manager via zmq.
+
+    This abstract class provides an interface for interacting with the graph
+    manager via zmq. Provides support for implementing both a synchronous as
+    well as an asynchronous version.
+
+    Args:
+        addr (str): the zmq address of the graph manager (e.g. tcp://localhost:5555)
+        async_mode (bool): if True the asyncio version of zmq is used
+    """
+
+    def __init__(self, addr, async_mode=False):
+        super().__init__()
+        if async_mode:
+            self._ctx = zmq.asyncio.Context()
+        else:
+            self._ctx = zmq.Context()
+        self._addr = addr
+        self._sock = self._ctx.socket(zmq.REQ)
+        self._sock.connect(self._addr)
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc_value, traceback):
+        self._sock.close()
+        self._ctx.destroy()
+
+
+class AsyncGraphCommHandler(ZmqCommHandler):
     """An asynchronous interface for handling communication with the AMI graph manager.
 
     Args:
@@ -1084,7 +1104,7 @@ class AsyncGraphCommHandler(CommHandler):
     """
 
     def __init__(self, addr):
-        super(__class__, self).__init__(addr, True)
+        super().__init__(addr, True)
         self.lock = asyncio.Lock()
 
     async def _command(self, cmd):
@@ -1158,7 +1178,7 @@ class AsyncGraphCommHandler(CommHandler):
             return dill.dump(graph, cnf)
 
 
-class GraphCommHandler(CommHandler):
+class GraphCommHandler(ZmqCommHandler):
     """A synchronous interface for handling communication with the AMI graph manager.
 
     Args:
@@ -1166,7 +1186,7 @@ class GraphCommHandler(CommHandler):
     """
 
     def __init__(self, addr):
-        super(__class__, self).__init__(addr, False)
+        super().__init__(addr, False)
 
     def _command(self, cmd):
         self._sock.send_string(cmd)
