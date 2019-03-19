@@ -35,7 +35,7 @@ class Manager(Collector):
         """
         protocol right now only tells you how to communicate with workers
         """
-        super(__class__, self).__init__(results_addr)
+        super().__init__(results_addr)
         self.num_workers = num_workers
         self.num_nodes = num_nodes
         self.partition = {}
@@ -84,6 +84,15 @@ class Manager(Collector):
         return name_set
 
     @property
+    def types(self):
+        if self.graph is not None:
+            types_dict = {var.name: var.type for var in self.graph.variables}
+        else:
+            types_dict = {}
+        types_dict.update(self.partition)
+        return types_dict
+
+    @property
     def features(self):
         return self.feature_store.types
 
@@ -98,7 +107,7 @@ class Manager(Collector):
                     self.comm.send_string('error')
             elif matched.group('type') == 'lookup':
                 if self.graph is not None:
-                    var_type = self.graph.get_type(matched.group('name'))
+                    var_type = self.types.get(matched.group('name'))
                     if var_type is not None:
                         self.comm.send_string('ok', zmq.SNDMORE)
                         self.comm.send_pyobj(var_type)
@@ -138,6 +147,9 @@ class Manager(Collector):
 
     def cmd_get_names(self):
         self.comm.send_pyobj(self.names)
+
+    def cmd_get_types(self):
+        self.comm.send_pyobj(self.types)
 
     def cmd_get_sources(self):
         self.comm.send_pyobj(self.partition)
@@ -243,6 +255,8 @@ class Manager(Collector):
         if self.export is not None:
             data = {
                 'names': self.names,
+                'types': self.types,
+                'sources': self.partition,
                 'version': self.version,
                 'store': self.feature_store.version,
                 'dill': dill.dumps(self.graph)

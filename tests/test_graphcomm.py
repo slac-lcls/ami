@@ -189,11 +189,12 @@ def test_versions(graph_comm):
                                 True,
                                 {
                                     'get_names': {'cspad', 'delta_t', 'laser'},
+                                    'get_types': {'cspad': float, 'delta_t': int, 'laser': int, 'img': np.ndarray},
                                     'get_sources': {'cspad': float, 'delta_t': int, 'laser': int},
                                     'get_features': {'cspad_img': np.ndarray}
                                 }
                             ),
-                            (True, {'get_names': set(), 'get_sources':  {}, 'get_features': {}}),
+                            (True, {'get_names': set(), 'get_types': {}, 'get_sources':  {}, 'get_features': {}}),
                          ],
                          indirect=True)
 async def test_names_async(graph_comm):
@@ -201,6 +202,7 @@ async def test_names_async(graph_comm):
 
     # test the names of features property give the expected value
     assert await comm.names == conf['get_names']
+    assert await comm.types == conf['get_types']
     assert await comm.sources == conf['get_sources']
     assert await comm.features == conf['get_features']
 
@@ -209,10 +211,11 @@ async def test_names_async(graph_comm):
                          [
                             {
                                 'get_names': {'cspad', 'delta_t', 'laser'},
+                                'get_types': {'cspad': float, 'delta_t': int, 'laser': int, 'img': np.ndarray},
                                 'get_sources': {'cspad': float, 'delta_t': int, 'laser': int},
                                 'get_features': {'cspad_img': np.ndarray}
                             },
-                            {'get_names': set(), 'get_sources':  {}, 'get_features': {}},
+                            {'get_names': set(), 'get_types': {}, 'get_sources':  {}, 'get_features': {}},
                          ],
                          indirect=True)
 def test_names(graph_comm):
@@ -220,6 +223,7 @@ def test_names(graph_comm):
 
     # test the names of features property give the expected value
     assert comm.names == conf['get_names']
+    assert comm.types == conf['get_types']
     assert comm.sources == conf['get_sources']
     assert comm.features == conf['get_features']
 
