@@ -68,13 +68,13 @@ class Manager(Collector):
             self.feature_store.update(msg.payload)
             if msg.version != self.feature_store.version:
                 self.feature_store.version = msg.version
-                self.export_graph()
+                self.export_store()
             # export the collector data to epics
             self.export_data(msg.payload)
         elif (msg.mtype == MsgTypes.Transition) and (msg.payload.ttype == Transitions.Configure):
             self.partition = msg.payload.payload
             # export the partition info to epics
-            self.export_graph()
+            self.export_config()
 
     @property
     def names(self):
@@ -160,6 +160,8 @@ class Manager(Collector):
 
     def cmd_reset_features(self):
         self.feature_store.clear()
+        self.feature_store.version = 0
+        self.export_store()
         self.comm.send_string('ok')
 
     def cmd_get_graph(self):
@@ -258,11 +260,23 @@ class Manager(Collector):
                 'types': self.types,
                 'sources': self.partition,
                 'version': self.version,
-                'store': self.feature_store.version,
                 'dill': dill.dumps(self.graph)
             }
             self.export.send_string('graph', zmq.SNDMORE)
             self.export.send_pyobj(data)
+
+    def export_store(self):
+        if self.export is not None:
+            data = {
+                'version': self.feature_store.version,
+                'features': self.features,
+            }
+            self.export.send_string('store', zmq.SNDMORE)
+            self.export.send_pyobj(data)
+
+    def export_config(self):
+        self.export_store()
+        self.export_graph()
 
     def export_data(self, data):
         if self.export is not None:
