@@ -406,8 +406,10 @@ class DetectorList(QListWidget):
         name = item.text()
         # Check if there is already data for the feature in the result store
         if name in self.features:
+            need_view = False
             topic = name
         else:
+            need_view = True
             topic = self.comm_handler.auto(name)
 
         if name == self.calc_id:
@@ -427,6 +429,9 @@ class DetectorList(QListWidget):
                 logger.info('create %s window for: %s', window_type, name)
             else:
                 logger.error('Feature type %s is not supported', self.features[topic])
+            # check if a view needs to be re-added
+            if need_view and topic not in self.names:
+                await self.comm_handler.view(name)
         else:
             request_view = False
             with self.pending_lock:
