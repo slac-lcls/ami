@@ -1,48 +1,152 @@
 #!/usr/bin/env python
+import re
 import sys
 import zmq
 import time
+import dill
 import logging
 import argparse
 import threading
+import functools
 import numpy as np
 import collections
 from ami import LogConfig
-from ami.comm import Ports
+from ami.comm import Ports, CommHandler
 from p4p import Type, Value
 from p4p.nt import alarm, timeStamp, NTScalar, NTNDArray
 from p4p.server import Server, StaticProvider
 from p4p.server.thread import SharedPV
+import p4p.client.thread as pct
+import p4p.client.asyncio as pca
 
 
 logger = logging.getLogger(__name__)
 
 
-def _generate_schema():
-    def btyes_to_np(value):
-        return np.frombuffer(value, dtype=np.ubyte)
-    fields = collections.OrderedDict([
-        ('names', 'as'),
-        ('version', 'l'),
-        ('store', 'l'),
-        ('dill', 'aB'),
-    ])
-    schema = [(k, v) for k, v in fields.items()]
-    byte_fields = {'dill'}
-    flat_names = {
-        'names':    'graph:names',
-        'version':  'graph:version',
-        'store':    'store:version',
-        'dill':     'graph:dill',
-    }
+def _generate_schema(graph=True):
+    if graph:
+        fields = collections.OrderedDict([
+            ('names', 'as'),
+            ('types', 'aB'),
+            ('sources', 'aB'),
+            ('version', 'l'),
+            ('dill', 'aB'),
+        ])
+        schema = [(k, v) for k, v in fields.items()]
+        byte_fields = {'dill'}
+        object_fields = {'sources', 'types'}
+        flat_names = {
+            'names':    'graph:names',
+            'types':    'graph:types',
+            'sources':  'graph:sources',
+            'version':  'graph:version',
+            'dill':     'graph:dill',
+        }
+    else:
+        fields = collections.OrderedDict([
+            ('version', 'l'),
+            ('features', 'aB'),
+        ])
+        schema = [(k, v) for k, v in fields.items()]
+        byte_fields = set()
+        object_fields = {'features'}
+        flat_names = {
+            'version':  'store:version',
+            'features': 'store:features',
+        }
+
+    def get_type(key, value):
+        if key in byte_fields:
+            return NTBytes()
+        elif key in object_fields:
+            return NTObject()
+        else:
+            return NTScalar(value)
+
     flat_schema = {
-        k: (flat_names[k], NTScalar(v), btyes_to_np if k in byte_fields else None) for k, v in fields.items()
+        k: (flat_names[k], get_type(k, v)) for k, v in fields.items()
     }
-    return schema, flat_schema, byte_fields
+    return schema, flat_schema, byte_fields, object_fields
+
+
+class NTBytes:
+
+    @classmethod
+    def buildType(klass, extra=[]):
+        """Build type
+        """
+        return Type([
+            ('value', 'aB'),
+            ('alarm', alarm),
+            ('timeStamp', timeStamp),
+        ], id='ami:export/NTBytes:1.0')
+
+    def __init__(self, **kws):
+        self.type = self.buildType(**kws)
+
+    def wrap(self, value):
+        """Wrap dictionary as Value
+        """
+        S, NS = divmod(time.time(), 1.0)
+        return Value(self.type, {
+            'value': np.frombuffer(value, dtype=np.ubyte),
+            'timeStamp': {
+                'secondsPastEpoch': S,
+                'nanoseconds': NS * 1e9,
+            },
+        })
+
+    @classmethod
+    def unwrap(klass, value):
+        V = value.value
+        return V.tobytes()
+
+    def assign(self, V, py):
+        """Store python value in Value
+        """
+        V.value = py
+
+
+class NTObject:
+
+    @classmethod
+    def buildType(klass, extra=[]):
+        """Build type
+        """
+        return Type([
+            ('value', 'aB'),
+            ('alarm', alarm),
+            ('timeStamp', timeStamp),
+        ], id='ami:export/NTObject:1.0')
+
+    def __init__(self, **kws):
+        self.type = self.buildType(**kws)
+
+    def wrap(self, value):
+        """Wrap dictionary as Value
+        """
+        S, NS = divmod(time.time(), 1.0)
+        return Value(self.type, {
+            'value': np.frombuffer(dill.dumps(value), dtype=np.ubyte),
+            'timeStamp': {
+                'secondsPastEpoch': S,
+                'nanoseconds': NS * 1e9,
+            },
+        })
+
+    @classmethod
+    def unwrap(klass, value):
+        V = value.value
+        return dill.loads(V.tobytes())
+
+    def assign(self, V, py):
+        """Store python value in Value
+        """
+        V.value = py
 
 
 class NTGraph:
-    schema, flat_schema, byte_fields = _generate_schema()
+    schema, flat_schema, byte_fields, object_fields = _generate_schema()
 
     @classmethod
     def buildType(klass, extra=[]):
@@ -52,7 +156,7 @@ class NTGraph:
             ('value', ('S', None, klass.schema)),
             ('alarm', alarm),
             ('timeStamp', timeStamp),
-        ], id='epics:nt/NTGraph:1.0')
+        ], id='ami:export/NTGraph:1.0')
 
     def __init__(self, **kws):
         self.type = self.buildType(**kws)
@@ -63,6 +167,8 @@ class NTGraph:
         S, NS = divmod(time.time(), 1.0)
         for field in self.byte_fields:
             value[field] = np.frombuffer(value[field], np.ubyte)
+        for field in self.object_fields:
+            value[field] = np.frombuffer(dill.dumps(value[field]), np.ubyte)
         return Value(self.type, {
             'value': value,
             'timeStamp': {
@@ -78,6 +184,8 @@ class NTGraph:
         for k in V:
             if k in klass.byte_fields:
                 result[k] = V[k].tobytes()
+            elif k in klass.object_fields:
+                result[k] = dill.loads(V[k].tobytes())
             else:
                 result[k] = V[k]
         return result
@@ -86,6 +194,229 @@ class NTGraph:
         """Store python value in Value
         """
         V.value = py
+
+
+class NTStore:
+    schema, flat_schema, byte_fields, object_fields = _generate_schema(False)
+
+    @classmethod
+    def buildType(klass, extra=[]):
+        """Build type
+        """
+        return Type([
+            ('value', ('S', None, klass.schema)),
+            ('alarm', alarm),
+            ('timeStamp', timeStamp),
+        ], id='ami:export/NTStore:1.0')
+
+    def __init__(self, **kws):
+        self.type = self.buildType(**kws)
+
+    def wrap(self, value):
+        """Wrap dictionary as Value
+        """
+        S, NS = divmod(time.time(), 1.0)
+        for field in self.byte_fields:
+            value[field] = np.frombuffer(value[field], np.ubyte)
+        for field in self.object_fields:
+            value[field] = np.frombuffer(dill.dumps(value[field]), np.ubyte)
+        return Value(self.type, {
+            'value': value,
+            'timeStamp': {
+                'secondsPastEpoch': S,
+                'nanoseconds': NS * 1e9,
+            },
+        })
+
+    @classmethod
+    def unwrap(klass, value):
+        result = {}
+        V = value.value
+        for k in V:
+            if k in klass.byte_fields:
+                result[k] = V[k].tobytes()
+            elif k in klass.object_fields:
+                result[k] = dill.loads(V[k].tobytes())
+            else:
+                result[k] = V[k]
+        return result
+
+    def assign(self, V, py):
+        """Store python value in Value
+        """
+        V.value = py
+
+
+CUSTOM_TYPE_WRAPPERS = {
+    'ami:export/NTBytes:1.0': NTBytes,
+    'ami:export/NTObject:1.0': NTObject,
+    'ami:export/NTGraph:1.0': NTGraph,
+    'ami:export/NTStore:1.0': NTStore,
+}
+
+
+class PvaCommHandler(CommHandler):
+
+    def __init__(self, name, async_mode=False):
+        super().__init__()
+        self._name = name
+        if async_mode:
+            self._ctx = pca.Context('pva', nt=CUSTOM_TYPE_WRAPPERS)
+            self._errors = (TimeoutError, pca.RemoteError)
+        else:
+            self._ctx = pct.Context('pva', nt=CUSTOM_TYPE_WRAPPERS)
+            self._errors = (TimeoutError, pct.RemoteError)
+        self._feature_req = re.compile("(?P<type>fetch|lookup):(?P<name>.*)")
+        self._pvmap = {
+            'get_names': '%s:graph:names',
+            'get_types': '%s:graph:types',
+            'get_sources': '%s:graph:sources',
+            'get_versions': ['%s:graph:version', '%s:store:version'],
+            'get_graph_version': '%s:graph:version',
+            'get_features_version': '%s:store:version',
+            'get_features': '%s:store:features',
+            'add_graph': '%s:graph:add',
+            'get_graph': '%s:graph:dill',
+            'set_graph': '%s:graph:set',
+            'del_graph': '%s:graph:del',
+        }
+
+    @staticmethod
+    def _serialize(payload):
+        return np.frombuffer(dill.dumps(payload), np.ubyte)
+
+    @staticmethod
+    def _deserialize(payload):
+        return dill.loads(payload.tobytes())
+
+    def _get_pvname(self, cmd):
+        if cmd in self._pvmap:
+            if isinstance(self._pvmap[cmd], list):
+                return [n % self._name for n in self._pvmap[cmd]]
+            else:
+                return self._pvmap[cmd] % self._name
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc_value, traceback):
+        self._ctx.close()
+
+
+class PvaGraphCommHandler(PvaCommHandler):
+
+    def __init__(self, name):
+        super().__init__(name, False)
+
+    def _checked_put(self, pvname, value):
+        try:
+            self._ctx.put(pvname, value)
+            return True
+        except self._errors:
+            return False
+
+    def _checked_get(self, pvname):
+        try:
+            reply = self._ctx.get(pvname)
+        except self._errors:
+            reply = None
+        return reply
+
+    def _command(self, cmd):
+        return self._checked_put("%s:graph:command" % self._name, cmd)
+
+    def _try_request(self, cmd):
+        try:
+            matched = self._feature_req.match(cmd)
+            if matched:
+                if matched.group('type') == 'fetch':
+                    return True, self._ctx.get('%s:%s' % (self._name, matched.group('name')))
+                elif matched.group('type') == 'lookup':
+                    reply = self._ctx.get(self._get_pvname('get_types'))
+                    if matched.group('name') in reply:
+                        return True, reply[matched.group('name')]
+            else:
+                pvname = self._get_pvname(cmd)
+                if pvname is not None:
+                    return True, self._ctx.get(self._get_pvname(cmd))
+
+            # if we fell through to here it is a failure
+            return False, None
+        except self._errors:
+            return False, None
+
+    def _request(self, cmd, check=False, retry=None):
+        if check:
+            status, reply = self._try_request(cmd)
+            if status:
+                return reply
+            elif retry is not None:
+                status, reply = self._try_request(retry)
+                if status:
+                    return reply
+        else:
+            pvname = self._get_pvname(cmd)
+            if pvname is not None:
+                return self._checked_get(pvname)
+
+    def _request_batch(self, cmds, check=False, retries=None):
+        results = []
+        if retries is None:
+            for cmd in cmds:
+                results.append(self._request(cmd, check))
+        else:
+            for cmd, retry in zip(cmds, retries):
+                results.append(self._request(cmd, check, retry))
+        if all(entry is None for entry in results):
+            return None
+        else:
+            return results
+
+    def _request_dill(self, cmd):
+        pvname = self._get_pvname(cmd)
+        if pvname is not None:
+            reply = self._checked_get(pvname)
+            if reply is not None:
+                return self._deserialize(reply)
+
+    def _post_dill(self, cmd, payload):
+        pvname = self._get_pvname(cmd)
+        if pvname is not None:
+            return self._checked_put(pvname, self._serialize(payload))
+        else:
+            return False
+
+    def _view(self, names):
+        nodes = []
+        for name in names:
+            view_name = self.auto(name)
+            var_type = self.get_type(name)
+            nodes.append(self._make_view_node(name, view_name, var_type))
+
+        return self.add(nodes)
+
+    def _load(self, filename):
+        with open(filename, 'rb') as cnf:
+            self.update(dill.load(cnf))
+
+    def _save(self, filename):
+        with open(filename, 'wb') as cnf:
+            dill.dump(self.graph, cnf)
+
+
+class PutHandler:
+
+    def __init__(self, put=None, rpc=None):
+        self._put = put
+        self._rpc = rpc
+
+    def put(self, pv, op):
+        if self._put is not None:
+            self._put(pv, op)
+
+    def rpc(self, pv, op):
+        if self._rpc is not None:
+            self._rpc(pv, op)
 
 
 class PvaExportHandler:
@@ -104,6 +435,40 @@ class PvaExportHandler:
         self.aggregate = aggregate
         self.pvs = {}
         self.ignored = set()
+        self.create_pv('graph:command', NTScalar('s'), "", func=self.command_pv)
+        self.create_bytes_pv('graph:add', b"", func=functools.partial(self.payload_pv, 'add_graph'))
+        self.create_bytes_pv('graph:set', b"", func=functools.partial(self.payload_pv, 'set_graph'))
+        self.create_bytes_pv('graph:del', b"", func=functools.partial(self.payload_pv, 'del_graph'))
+
+    def command_pv(self, pv, op):
+        cmd = op.value()
+        self.comm.send_string(cmd)
+        if self.comm.recv_string() == 'ok':
+            pv.post(cmd)
+            op.done()
+        else:
+            op.done(error='command failed')
+
+    def payload_pv(self, topic, pv, op):
+        payload = op.value()
+        self.comm.send_string(topic, zmq.SNDMORE)
+        self.comm.send(payload)
+        if self.comm.recv_string() == 'ok':
+            pv.post(payload)
+            op.done()
+        else:
+            op.done(error='post payload failed')
+
+    def create_pv(self, name, nt, initial, func=None):
+        if func is not None:
+            pv = SharedPV(nt=nt, initial=initial, handler=PutHandler(put=func))
+        else:
+            pv = SharedPV(nt=nt, initial=initial)
+        self.provider.add('%s:%s' % (self.name, name), pv)
+        self.pvs[name] = pv
+
+    def create_bytes_pv(self, name, initial, func=None):
+        self.create_pv(name, NTBytes(), initial, func=func)
 
     def valid(self, name):
         return (name not in self.ignored) and (not name.startswith('_'))
@@ -122,27 +487,42 @@ class PvaExportHandler:
             return NTScalar('l')
         elif isinstance(data, float):
             return NTScalar('d')
+        else:
+            return NTObject()
 
     def update_graph(self, data):
+        # add the unaggregated version of the pvs
+        for key, value in data.items():
+            if key in NTGraph.flat_schema:
+                name, nttype = NTGraph.flat_schema[key]
+                if name not in self.pvs:
+                    self.create_pv(name, nttype, value)
+                else:
+                    self.pvs[name].post(value)
+        # add the aggregated graph pv if requested
         if self.aggregate:
             if 'graph' not in self.pvs:
-                logger.debug("Creating pv for names in the graph")
-                pv = SharedPV(nt=NTGraph(), initial=data)
-                self.provider.add('%s:graph' % self.name, pv)
-                self.pvs['graph'] = pv
+                logger.debug("Creating pv for info on the graph")
+                self.create_pv('graph', NTGraph(), data)
             else:
                 self.pvs['graph'].post(data)
-        else:
-            for k, v in data.items():
-                if k in NTGraph.flat_schema:
-                    name, nttype, func = NTGraph.flat_schema[k]
-                    value = func(v) if func is not None else v
-                    if name not in self.pvs:
-                        pv = SharedPV(nt=nttype, initial=value)
-                        self.provider.add('%s:%s' % (self.name, name), pv)
-                        self.pvs[name] = pv
-                    else:
-                        self.pvs[name].post(value)
+
+    def update_store(self, data):
+        # add the unaggregated version of the pvs
+        for key, value in data.items():
+            if key in NTStore.flat_schema:
+                name, nttype = NTStore.flat_schema[key]
+                if name not in self.pvs:
+                    self.create_pv(name, nttype, value)
+                else:
+                    self.pvs[name].post(value)
+        # add the aggregated graph pv if requested
+        if self.aggregate:
+            if 'store' not in self.pvs:
+                logger.debug("Creating pv for info on the store")
+                self.create_pv('store', NTStore(), data)
+            else:
+                self.pvs['store'].post(data)
 
     def server(self):
         Server.forever(providers=[self.provider])
@@ -163,9 +543,7 @@ class PvaExportHandler:
                             pv_type = self.get_pv_type(data)
                             if pv_type is not None:
                                 logger.debug("Creating new pv named %s", name)
-                                pv = SharedPV(nt=pv_type, initial=data)
-                                self.provider.add('%s:%s' % (self.name, name), pv)
-                                self.pvs[name] = pv
+                                self.create_pv(name, pv_type, data)
                             else:
                                 logger.warn("Cannot map type of '%s' to PV: %s", name, type(data))
                                 self.ignored.add(name)
@@ -173,6 +551,8 @@ class PvaExportHandler:
                             self.pvs[name].post(data)
             elif topic == 'graph':
                 self.update_graph(exports)
+            elif topic == 'store':
+                self.update_store(exports)
             else:
                 logger.warn("No handler for topic: %s", topic)
 
