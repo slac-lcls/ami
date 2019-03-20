@@ -1,9 +1,11 @@
 #!/usr/bin/env python
 import re
+import abc
 import sys
 import zmq
 import time
 import dill
+import asyncio
 import logging
 import argparse
 import threading
@@ -257,12 +259,13 @@ CUSTOM_TYPE_WRAPPERS = {
 
 class PvaCommHandler(CommHandler):
 
-    def __init__(self, name, async_mode=False):
+    def __init__(self, name, async_mode=False, timeout=1.0):
         super().__init__()
         self._name = name
+        self._timeout = timeout
         if async_mode:
             self._ctx = pca.Context('pva', nt=CUSTOM_TYPE_WRAPPERS)
-            self._errors = (TimeoutError, pca.RemoteError)
+            self._errors = (asyncio.TimeoutError, pca.RemoteError)
         else:
             self._ctx = pct.Context('pva', nt=CUSTOM_TYPE_WRAPPERS)
             self._errors = (TimeoutError, pct.RemoteError)
@@ -287,7 +290,19 @@ class PvaCommHandler(CommHandler):
 
     @staticmethod
     def _deserialize(payload):
-        return dill.loads(payload.tobytes())
+        return dill.loads(payload)
+
+    @abc.abstractmethod
+    def _checked_put(self, pvname, value):
+        pass
+
+    @abc.abstractmethod
+    def _unchecked_get(self, pvname):
+        pass
+
+    @abc.abstractmethod
+    def _checked_get(self, pvname):
+        pass
 
     def _get_pvname(self, cmd):
         if cmd in self._pvmap:
@@ -303,21 +318,24 @@ class PvaCommHandler(CommHandler):
         self._ctx.close()
 
 
-class PvaGraphCommHandler(PvaCommHandler):
+class GraphCommHandler(PvaCommHandler):
 
-    def __init__(self, name):
-        super().__init__(name, False)
+    def __init__(self, name, timeout=1.0):
+        super().__init__(name, False, timeout)
 
     def _checked_put(self, pvname, value):
         try:
-            self._ctx.put(pvname, value)
+            self._ctx.put(pvname, value, timeout=self._timeout)
             return True
         except self._errors:
             return False
 
+    def _unchecked_get(self, pvname):
+        return self._ctx.get(pvname, timeout=self._timeout)
+
     def _checked_get(self, pvname):
         try:
-            reply = self._ctx.get(pvname)
+            reply = self._ctx.get(pvname, timeout=self._timeout)
         except self._errors:
             reply = None
         return reply
@@ -330,15 +348,15 @@ class PvaGraphCommHandler(PvaCommHandler):
             matched = self._feature_req.match(cmd)
             if matched:
                 if matched.group('type') == 'fetch':
-                    return True, self._ctx.get('%s:%s' % (self._name, matched.group('name')))
+                    return True, self._unchecked_get('%s:%s' % (self._name, matched.group('name')))
                 elif matched.group('type') == 'lookup':
-                    reply = self._ctx.get(self._get_pvname('get_types'))
+                    reply = self._unchecked_get(self._get_pvname('get_types'))
                     if matched.group('name') in reply:
                         return True, reply[matched.group('name')]
             else:
                 pvname = self._get_pvname(cmd)
                 if pvname is not None:
-                    return True, self._ctx.get(self._get_pvname(cmd))
+                    return True, self._unchecked_get(pvname)
 
             # if we fell through to here it is a failure
             return False, None
@@ -402,6 +420,112 @@ class PvaGraphCommHandler(PvaCommHandler):
     def _save(self, filename):
         with open(filename, 'wb') as cnf:
             dill.dump(self.graph, cnf)
+
+
+class AsyncGraphCommHandler(PvaCommHandler):
+
+    def __init__(self, name, timeout=1.0):
+        super().__init__(name, True, timeout)
+
+    async def _checked_put(self, pvname, value):
+        try:
+            await asyncio.wait_for(self._ctx.put(pvname, value), timeout=self._timeout)
+            return True
+        except self._errors:
+            return False
+
+    async def _unchecked_get(self, pvname):
+        return await asyncio.wait_for(self._ctx.get(pvname), timeout=self._timeout)
+
+    async def _checked_get(self, pvname):
+        try:
+            reply = await asyncio.wait_for(self._ctx.get(pvname), timeout=self._timeout)
+        except self._errors:
+            reply = None
+        return reply
+
+    async def _command(self, cmd):
+        return await self._checked_put("%s:graph:command" % self._name, cmd)
+
+    async def _try_request(self, cmd):
+        try:
+            matched = self._feature_req.match(cmd)
+            if matched:
+                if matched.group('type') == 'fetch':
+                    return True, await self._unchecked_get('%s:%s' % (self._name, matched.group('name')))
+                elif matched.group('type') == 'lookup':
+                    reply = await self._unchecked_get(self._get_pvname('get_types'))
+                    if matched.group('name') in reply:
+                        return True, reply[matched.group('name')]
+            else:
+                pvname = self._get_pvname(cmd)
+                if pvname is not None:
+                    return True, await self._unchecked_get(pvname)
+
+            # if we fell through to here it is a failure
+            return False, None
+        except self._errors:
+            return False, None
+
+    async def _request(self, cmd, check=False, retry=None):
+        if check:
+            status, reply = await self._try_request(cmd)
+            if status:
+                return reply
+            elif retry is not None:
+                status, reply = await self._try_request(retry)
+                if status:
+                    return reply
+        else:
+            pvname = self._get_pvname(cmd)
+            if pvname is not None:
+                return await self._checked_get(pvname)
+
+    async def _request_batch(self, cmds, check=False, retries=None):
+        results = []
+        if retries is None:
+            for cmd in cmds:
+                results.append(await self._request(cmd, check))
+        else:
+            for cmd, retry in zip(cmds, retries):
+                results.append(await self._request(cmd, check, retry))
+        if all(entry is None for entry in results):
+            return None
+        else:
+            return results
+
+    async def _request_dill(self, cmd):
+        pvname = self._get_pvname(cmd)
+        if pvname is not None:
+            reply = await self._checked_get(pvname)
+            if reply is not None:
+                return self._deserialize(reply)
+
+    async def _post_dill(self, cmd, payload):
+        pvname = self._get_pvname(cmd)
+        if pvname is not None:
+            return await self._checked_put(pvname, self._serialize(payload))
+        else:
+            return False
+
+    async def _view(self, names):
+        nodes = []
+        for name in names:
+            view_name = self.auto(name)
+            var_type = await self.get_type(name)
+            nodes.append(self._make_view_node(name, view_name, var_type))
+
+        return await self.add(nodes)
+
+    async def _load(self, filename):
+        with open(filename, 'rb') as cnf:
+            graph = dill.load(cnf)
+        return await self.update(graph)
+
+    async def _save(self, filename):
+        graph = await self.graph
+        with open(filename, 'wb') as cnf:
+            return dill.dump(graph, cnf)
 
 
 class PutHandler:
