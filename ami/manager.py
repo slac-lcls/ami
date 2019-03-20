@@ -65,12 +65,21 @@ class Manager(Collector):
 
     def process_msg(self, msg):
         if msg.mtype == MsgTypes.Datagram:
-            self.feature_store.update(msg.payload)
-            if msg.version != self.feature_store.version:
-                self.feature_store.version = msg.version
-                self.export_store()
-            # export the collector data to epics
-            self.export_data(msg.payload)
+            if msg.version < self.feature_store.version:
+                logger.warning("Received data from version %d of the graph when version %d or newer was expected!",
+                               msg.version,
+                               self.feature_store.version)
+            else:
+                old_names = self.feature_store.names
+                self.feature_store.update(msg.payload)
+                if msg.version > self.feature_store.version:
+                    self.feature_store.version = msg.version
+                    self.export_store()
+                elif old_names != self.feature_store.names:
+                    # if there are new entries in the store notify the export layer
+                    self.export_store()
+                # export the collector data to epics
+                self.export_data(msg.payload)
         elif (msg.mtype == MsgTypes.Transition) and (msg.payload.ttype == Transitions.Configure):
             self.partition = msg.payload.payload
             # export the partition info to epics

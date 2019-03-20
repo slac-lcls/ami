@@ -126,6 +126,16 @@ class Store:
         return ns
 
     @property
+    def names(self):
+        """
+        Returns a set containing the names of all the entries in the store.
+
+        Returns:
+            A set of the names of the entries in the store.
+        """
+        return set(self._store)
+
+    @property
     def types(self):
         """
         Returns a dictionary containing the types of all the entries in the

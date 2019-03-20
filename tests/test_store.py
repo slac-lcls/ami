@@ -28,6 +28,7 @@ def store(request, ipc_dir):
 def test_store_clear(store):
     # test that the store is empty
     assert not store
+    assert not store.names
     assert not store.namespace
 
     # add something to the store
@@ -35,6 +36,7 @@ def test_store_clear(store):
 
     # test that the store is non-empty
     assert store
+    assert store.names
     assert store.namespace
 
     # clear the store
@@ -42,6 +44,7 @@ def test_store_clear(store):
 
     # test that the store is empty
     assert not store
+    assert not store.names
     assert not store.namespace
 
     # call clear on an empty store
@@ -49,6 +52,7 @@ def test_store_clear(store):
 
     # test that the store is empty
     assert not store
+    assert not store.names
     assert not store.namespace
 
 
@@ -165,17 +169,20 @@ def test_store_put(obj, expected, store):
             # check that the store has the obj and it is marked as the right type plus dimension
             assert 'test' in store.namespace
             assert np.array_equal(store.get('test'), obj)
+            assert 'test' in store.names
             assert 'test' in store.types
             assert store.types['test'] == expected
         else:
             # check that the store has the obj and it is marked as the right type
             assert 'test' in store.namespace
             assert store.get('test') == obj
+            assert 'test' in store.names
             assert 'test' in store.types
             assert store.types['test'] == expected
     else:
         # check that None doesn't get put into the store
         assert 'test' not in store.namespace
+        assert 'test' not in store.names
         assert 'test' not in store.types
 
 
@@ -206,11 +213,13 @@ def test_store_update(obj, expected, store):
             obj_type, ndims = obj_type
             assert np.array_equal(store.get(name), obj[name])
             assert isinstance(store.get(name), obj_type)
+            assert name in store.names
             assert name in store.types
             assert store.types[name] == (obj_type, ndims)
         else:
             assert store.get(name) == obj[name]
             assert isinstance(store.get(name), obj_type)
+            assert name in store.names
             assert name in store.types
             assert store.types[name] == obj_type
 
