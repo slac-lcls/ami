@@ -115,13 +115,10 @@ class Manager(Collector):
                 else:
                     self.comm.send_string('error')
             elif matched.group('type') == 'lookup':
-                if self.graph is not None:
-                    var_type = self.types.get(matched.group('name'))
-                    if var_type is not None:
-                        self.comm.send_string('ok', zmq.SNDMORE)
-                        self.comm.send_pyobj(var_type)
-                    else:
-                        self.comm.send_string('error')
+                var_type = self.types.get(matched.group('name'))
+                if var_type is not None:
+                    self.comm.send_string('ok', zmq.SNDMORE)
+                    self.comm.send_pyobj(var_type)
                 else:
                     self.comm.send_string('error')
             else:
@@ -186,7 +183,11 @@ class Manager(Collector):
             self.compile_graph()
             self.publish_graph()
         except AssertionError:
-            logger.exception("Failure encountered adding node \"%s\" to the graph:", node.name)
+            if isinstance(node, list):
+                logger.exception("Failure encountered adding nodes \"%s\" to the graph:",
+                                 ", ".join(n.name for n in node))
+            else:
+                logger.exception("Failure encountered adding node \"%s\" to the graph:", node.name)
             self.graph = dill.loads(backup)
             logger.info("Restored previous version of the graph (v%d)", self.version)
             self.comm.send_string('error')
