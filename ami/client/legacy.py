@@ -35,7 +35,7 @@ class ScalarWidget(QLCDNumber):
         self.setGeometry(QRect(320, 180, 191, 81))
         self.setDigitCount(10)
         self.setObjectName(topic)
-        self.comm_handler = AsyncGraphCommHandler(addr)
+        self.comm_handler = AsyncGraphCommHandler(addr, False)
         self.timer.timeout.connect(self.get_scalar)
         self.timer.start(1000)
 
@@ -57,7 +57,7 @@ class WaveformWidget(pg.GraphicsLayoutWidget):
         self.name = name
         self.topic = topic
         self.timer = QTimer()
-        self.comm_handler = AsyncGraphCommHandler(addr)
+        self.comm_handler = AsyncGraphCommHandler(addr, False)
         self.plot_view = self.addPlot()
         self.plot = None
         self.timer.timeout.connect(self.get_waveform)
@@ -84,7 +84,7 @@ class HistogramWidget(pg.GraphicsLayoutWidget):
         self.name = name
         self.topic = topic
         self.timer = QTimer()
-        self.comm_handler = AsyncGraphCommHandler(addr)
+        self.comm_handler = AsyncGraphCommHandler(addr, False)
         self.plot_view = self.addPlot()
         self.plot = None
         self.timer.timeout.connect(self.get_waveform)
@@ -114,7 +114,7 @@ class AreaDetWidget(pg.ImageView):
         super(AreaDetWidget, self).__init__(parent)
         self.name = name
         self.topic = topic
-        self.comm_handler = AsyncGraphCommHandler(addr)
+        self.comm_handler = AsyncGraphCommHandler(addr, False)
         self.timer = QTimer()
         self.timer.timeout.connect(self.get_image)
         self.timer.start(1000)
@@ -479,7 +479,7 @@ class AmiGui(QWidget):
     def __init__(self, queue, comm_addr, info_addr, ami_save, parent=None):
         super(__class__, self).__init__(parent)
         self.setWindowTitle("AMI Client")
-        self.comm_handler = AsyncGraphCommHandler(comm_addr)
+        self.comm_handler = AsyncGraphCommHandler(comm_addr, False)
 
         self.save_button = QPushButton('Save', self)
         self.save_button.clicked.connect(self.save)

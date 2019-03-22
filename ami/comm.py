@@ -656,9 +656,13 @@ class CommHandler(abc.ABC):
     This abstract class provides an interface for interacting with the graph
     manager. The protocol used for talking to the manager is left to the
     subclass to implement.
+
+    Args:
+        use_types (bool): if True types are required for node inputs and outputs
     """
 
-    def __init__(self):
+    def __init__(self, use_types):
+        self._use_types = use_types
         self._prune_keys = ['condition_needs', 'condition', 'reduction']
         self._expand_keys = ['inputs', 'outputs', 'condition_needs']
 
@@ -692,6 +696,8 @@ class CommHandler(abc.ABC):
                 for var in kwargs[key]:
                     if isinstance(var, gn.Var):
                         converted_vars.append(var)
+                    elif self._use_types:
+                        raise TypeError("node inputs/outputs must be of type %s not %s" % (gn.Var, type(var)))
                     else:
                         converted_vars.append(gn.Var(var))
 
@@ -712,7 +718,7 @@ class CommHandler(abc.ABC):
             The constructed graph view node.
         """
         node_name = '%s_view' % view_name
-        if var_type is None:
+        if var_type is None or not self._use_types:
             inputs = name
             outputs = view_name
         else:
@@ -1120,11 +1126,12 @@ class ZmqCommHandler(CommHandler):
 
     Args:
         addr (str): the zmq address of the graph manager (e.g. tcp://localhost:5555)
+        use_types (bool): if True types are required for node inputs and outputs
         async_mode (bool): if True the asyncio version of zmq is used
     """
 
-    def __init__(self, addr, async_mode=False):
-        super().__init__()
+    def __init__(self, addr, use_types, async_mode):
+        super().__init__(use_types)
         if async_mode:
             self._ctx = zmq.asyncio.Context()
         else:
@@ -1146,10 +1153,11 @@ class AsyncGraphCommHandler(ZmqCommHandler):
 
     Args:
         addr (str): the zmq address of the graph manager (e.g. tcp://localhost:5555)
+        use_types (bool): if True types are required for node inputs and outputs
     """
 
-    def __init__(self, addr):
-        super().__init__(addr, True)
+    def __init__(self, addr, use_types=True):
+        super().__init__(addr, use_types, True)
         self.lock = asyncio.Lock()
 
     async def _command(self, cmd):
@@ -1221,10 +1229,11 @@ class GraphCommHandler(ZmqCommHandler):
 
     Args:
         addr (str): the zmq address of the graph manager (e.g. tcp://localhost:5555)
+        use_types (bool): if True types are required for node inputs and outputs
     """
 
-    def __init__(self, addr):
-        super().__init__(addr, False)
+    def __init__(self, addr, use_types=True):
+        super().__init__(addr, use_types, False)
 
     def _command(self, cmd):
         self._sock.send_string(cmd)
