@@ -182,7 +182,7 @@ class Manager(Collector):
             self.graph.add(node)
             self.compile_graph()
             self.publish_graph()
-        except AssertionError:
+        except (AssertionError, TypeError):
             if isinstance(node, list):
                 logger.exception("Failure encountered adding nodes \"%s\" to the graph:",
                                  ", ".join(n.name for n in node))
@@ -206,7 +206,7 @@ class Manager(Collector):
                     # if the graph is empty remove it
                     self.graph = None
                 self.publish_graph()
-            except AssertionError:
+            except (AssertionError, TypeError):
                 logger.exception("Failure encountered removing node \"%s\" from the graph:", name)
                 self.graph = dill.loads(backup)
                 logger.info("Restored previous version of the graph (v%d)", self.version)
@@ -223,7 +223,7 @@ class Manager(Collector):
             if self.graph:
                 self.compile_graph()
             self.publish_graph()
-        except AssertionError:
+        except (AssertionError, TypeError):
             logger.exception("Failure encountered compiling the requested graph:")
             self.graph = dill.loads(backup)
             logger.info("Restored previous version of the graph (v%d)", self.version)
