@@ -5,6 +5,7 @@ import dill
 import threading
 import zmq.asyncio
 import numpy as np
+import ami.graph_nodes as gn
 
 from ami.comm import GraphCommHandler, AsyncGraphCommHandler
 
@@ -330,8 +331,14 @@ async def test_modify_graph_async(graph_comm, complex_graph):
 
     # Loop over the set of functions to test
     for func, (name, inputs, output, args) in functions_to_test.items():
+        # convert inputs from str to gn.Var
+        if isinstance(inputs, list):
+            converted_inputs = [gn.Var(i) for i in inputs]
+        else:
+            converted_inputs = gn.Var(inputs)
+        converted_output = gn.Var(output)
         # add the node to the graph
-        assert await func(name, inputs, output, *args)
+        assert await func(name, converted_inputs, converted_output, *args)
         # test that the node was added
         assert output in (await comm.graph).names
         # remove the node
@@ -383,8 +390,14 @@ def test_modify_graph(graph_comm, complex_graph):
 
     # Loop over the set of functions to test
     for func, (name, inputs, output, args) in functions_to_test.items():
+        # convert inputs from str to gn.Var
+        if isinstance(inputs, list):
+            converted_inputs = [gn.Var(i) for i in inputs]
+        else:
+            converted_inputs = gn.Var(inputs)
+        converted_output = gn.Var(output)
         # add the node to the graph
-        assert func(name, inputs, output, *args)
+        assert func(name, converted_inputs, converted_output, *args)
         # test that the node was added
         assert output in comm.graph.names
         # remove the node

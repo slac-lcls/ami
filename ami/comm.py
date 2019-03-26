@@ -719,8 +719,8 @@ class CommHandler(abc.ABC):
         """
         node_name = '%s_view' % view_name
         if var_type is None or not self._use_types:
-            inputs = name
-            outputs = view_name
+            inputs = gn.Var(name)
+            outputs = gn.Var(view_name)
         else:
             inputs = gn.Var(name, var_type)
             outputs = gn.Var(view_name, var_type)
