@@ -1128,14 +1128,12 @@ class ZmqCommHandler(CommHandler):
         addr (str): the zmq address of the graph manager (e.g. tcp://localhost:5555)
         use_types (bool): if True types are required for node inputs and outputs
         async_mode (bool): if True the asyncio version of zmq is used
+        ctx (zmq.Context): zmq context for the node to use.
     """
 
-    def __init__(self, addr, use_types, async_mode):
+    def __init__(self, addr, use_types, ctx):
         super().__init__(use_types)
-        if async_mode:
-            self._ctx = zmq.asyncio.Context()
-        else:
-            self._ctx = zmq.Context()
+        self._ctx = ctx
         self._addr = addr
         self._sock = self._ctx.socket(zmq.REQ)
         self._sock.connect(self._addr)
@@ -1154,10 +1152,19 @@ class AsyncGraphCommHandler(ZmqCommHandler):
     Args:
         addr (str): the zmq address of the graph manager (e.g. tcp://localhost:5555)
         use_types (bool): if True types are required for node inputs and outputs
+        ctx (zmq.Context): optional shared zmq context for the node to use.
+
+    Raises:
+        TypeError: if `ctx` is an unacceptable type.
     """
 
-    def __init__(self, addr, use_types=True):
-        super().__init__(addr, use_types, True)
+    def __init__(self, addr, use_types=True, ctx=None):
+        if ctx is None:
+            ctx = zmq.asyncio.Context()
+        elif not isinstance(ctx, zmq.asyncio.Context):
+            raise TypeError("Handler only supports shared contexts of type %s not %s"
+                            % (zmq.asyncio.Context, type(ctx)))
+        super().__init__(addr, use_types, ctx)
         self.lock = asyncio.Lock()
 
     async def _command(self, cmd):
@@ -1230,10 +1237,19 @@ class GraphCommHandler(ZmqCommHandler):
     Args:
         addr (str): the zmq address of the graph manager (e.g. tcp://localhost:5555)
         use_types (bool): if True types are required for node inputs and outputs
+        ctx (zmq.Context): optional shared zmq context for the node to use.
+
+    Raises:
+        TypeError: if `ctx` is an unacceptable type.
     """
 
-    def __init__(self, addr, use_types=True):
-        super().__init__(addr, use_types, False)
+    def __init__(self, addr, use_types=True, ctx=None):
+        if ctx is None:
+            ctx = zmq.Context()
+        elif not isinstance(ctx, zmq.Context):
+            raise TypeError("Handler only supports shared contexts of type %s not %s"
+                            % (zmq.Context, type(ctx)))
+        super().__init__(addr, use_types, ctx)
 
     def _command(self, cmd):
         self._sock.send_string(cmd)

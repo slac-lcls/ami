@@ -18,6 +18,8 @@ from p4p import Type, Value
 from p4p.nt import alarm, timeStamp, NTScalar, NTNDArray
 from p4p.server import Server, StaticProvider
 from p4p.server.thread import SharedPV
+from p4p.rpc import rpc, NTURIDispatcher
+from p4p.util import ThreadedWorkQueue
 import p4p.client.thread as pct
 import p4p.client.asyncio as pca
 
@@ -259,8 +261,8 @@ CUSTOM_TYPE_WRAPPERS = {
 
 class PvaCommHandler(CommHandler):
 
-    def __init__(self, name, async_mode=False, timeout=1.0):
-        super().__init__()
+    def __init__(self, name, use_types, async_mode, timeout=1.0):
+        super().__init__(use_types)
         self._name = name
         self._timeout = timeout
         if async_mode:
@@ -320,8 +322,8 @@ class PvaCommHandler(CommHandler):
 
 class GraphCommHandler(PvaCommHandler):
 
-    def __init__(self, name, timeout=1.0):
-        super().__init__(name, False, timeout)
+    def __init__(self, name, use_types=True, timeout=1.0):
+        super().__init__(name, use_types, False, timeout)
 
     def _checked_put(self, pvname, value):
         try:
@@ -424,8 +426,8 @@ class GraphCommHandler(PvaCommHandler):
 
 class AsyncGraphCommHandler(PvaCommHandler):
 
-    def __init__(self, name, timeout=1.0):
-        super().__init__(name, True, timeout)
+    def __init__(self, name, use_types=True, timeout=1.0):
+        super().__init__(name, use_types, True, timeout)
 
     async def _checked_put(self, pvname, value):
         try:
@@ -528,7 +530,7 @@ class AsyncGraphCommHandler(PvaCommHandler):
             return dill.dump(graph, cnf)
 
 
-class PutHandler:
+class PvaExportPutHandler:
 
     def __init__(self, put=None, rpc=None):
         self._put = put
@@ -543,7 +545,39 @@ class PutHandler:
             self._rpc(pv, op)
 
 
-class PvaExportHandler:
+class PvaExportRpcHandler:
+    def __init__(self, ctx, addr):
+        self.ctx = ctx
+        self.comm = self.ctx.socket(zmq.REQ)
+        self.comm.connect(addr)
+
+    def command(self, cmd):
+        self.comm.send_string(cmd)
+        return self.comm.recv_string()
+
+    def payload(self, topic, payload):
+        self.comm.send_string(topic, zmq.SNDMORE)
+        self.comm.send(payload)
+        return self.comm.recv_string()
+
+    @rpc(NTScalar('s'))
+    def clear(self, graph):
+        return self.command('clear_graph')
+
+    @rpc(NTScalar('s'))
+    def reset(self, graph):
+        return self.command('reset_features')
+
+    @rpc(NTScalar('s'))
+    def add(self, graph, payload):
+        return self.payload('add_graph', payload)
+
+    @rpc(NTScalar('s'))
+    def view(self, graph, name):
+        pass
+
+
+class PvaExportServer:
     def __init__(self, name, comm_addr, export_addr, aggregate=False):
         self.name = name
         self.ctx = zmq.Context()
@@ -552,8 +586,13 @@ class PvaExportHandler:
         self.export.connect(export_addr)
         self.comm = self.ctx.socket(zmq.REQ)
         self.comm.connect(comm_addr)
+        self.queue = ThreadedWorkQueue(maxsize=20, workers=1)
         # pva server provider
         self.provider = StaticProvider(name)
+        self.rpc_provider = NTURIDispatcher(self.queue,
+                                            target=PvaExportRpcHandler(self.ctx, comm_addr),
+                                            name="%s:cmd" % self.name,
+                                            prefix="%s:cmd:" % self.name)
         self.server_thread = threading.Thread(target=self.server, name='pvaserv')
         self.server_thread.daemon = True
         self.aggregate = aggregate
@@ -585,7 +624,7 @@ class PvaExportHandler:
 
     def create_pv(self, name, nt, initial, func=None):
         if func is not None:
-            pv = SharedPV(nt=nt, initial=initial, handler=PutHandler(put=func))
+            pv = SharedPV(nt=nt, initial=initial, handler=PvaExportPutHandler(put=func))
         else:
             pv = SharedPV(nt=nt, initial=initial)
         self.provider.add('%s:%s' % (self.name, name), pv)
@@ -649,7 +688,13 @@ class PvaExportHandler:
                 self.pvs['store'].post(data)
 
     def server(self):
-        Server.forever(providers=[self.provider])
+        server = Server(providers=[self.provider, self.rpc_provider])
+        with server, self.queue:
+            try:
+                while True:
+                    time.sleep(100)
+            except KeyboardInterrupt:
+                pass
 
     def run(self):
         # start the pva server thread
@@ -682,7 +727,7 @@ class PvaExportHandler:
 
 
 def run_export(name, comm_addr, export_addr, aggregate=False):
-    export = PvaExportHandler(name, comm_addr, export_addr, aggregate)
+    export = PvaExportServer(name, comm_addr, export_addr, aggregate)
     return export.run()
 
 
