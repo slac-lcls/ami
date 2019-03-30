@@ -66,9 +66,10 @@ class Message(object):
 
 
 class CollectorMessage(Message):
-    def __init__(self, mtype, identity, heartbeat, version, payload):
+    def __init__(self, mtype, identity, heartbeat, name, version, payload):
         super(__class__, self).__init__(mtype, identity, payload)
         self.heartbeat = heartbeat
+        self.name = name
         self.version = version
 
 

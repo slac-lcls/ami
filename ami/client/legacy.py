@@ -27,7 +27,7 @@ logger = logging.getLogger(LogConfig.get_package_name(__name__))
 
 
 class ScalarWidget(QLCDNumber):
-    def __init__(self, name, topic, addr, parent=None):
+    def __init__(self, name, topic, graph_name, addr, parent=None):
         super(__class__, self).__init__(parent)
         self.name = name
         self.topic = topic
@@ -35,7 +35,7 @@ class ScalarWidget(QLCDNumber):
         self.setGeometry(QRect(320, 180, 191, 81))
         self.setDigitCount(10)
         self.setObjectName(topic)
-        self.comm_handler = AsyncGraphCommHandler(addr, False)
+        self.comm_handler = AsyncGraphCommHandler(graph_name, addr, False)
         self.timer.timeout.connect(self.get_scalar)
         self.timer.start(1000)
 
@@ -52,12 +52,12 @@ class ScalarWidget(QLCDNumber):
 
 
 class WaveformWidget(pg.GraphicsLayoutWidget):
-    def __init__(self, name, topic, addr, parent=None):
+    def __init__(self, name, topic, graph_name, addr, parent=None):
         super(__class__, self).__init__(parent)
         self.name = name
         self.topic = topic
         self.timer = QTimer()
-        self.comm_handler = AsyncGraphCommHandler(addr, False)
+        self.comm_handler = AsyncGraphCommHandler(graph_name, addr, False)
         self.plot_view = self.addPlot()
         self.plot = None
         self.timer.timeout.connect(self.get_waveform)
@@ -79,12 +79,12 @@ class WaveformWidget(pg.GraphicsLayoutWidget):
 
 
 class HistogramWidget(pg.GraphicsLayoutWidget):
-    def __init__(self, name, topic, addr, parent=None):
+    def __init__(self, name, topic, graph_name, addr, parent=None):
         super(__class__, self).__init__(parent)
         self.name = name
         self.topic = topic
         self.timer = QTimer()
-        self.comm_handler = AsyncGraphCommHandler(addr, False)
+        self.comm_handler = AsyncGraphCommHandler(graph_name, addr, False)
         self.plot_view = self.addPlot()
         self.plot = None
         self.timer.timeout.connect(self.get_waveform)
@@ -110,11 +110,11 @@ class AreaDetWidget(pg.ImageView):
 
     roiUpdate = pyqtSignal(object, name='roiUpdate')
 
-    def __init__(self, name, topic, addr, parent=None):
+    def __init__(self, name, topic, graph_name, addr, parent=None):
         super(AreaDetWidget, self).__init__(parent)
         self.name = name
         self.topic = topic
-        self.comm_handler = AsyncGraphCommHandler(addr, False)
+        self.comm_handler = AsyncGraphCommHandler(graph_name, addr, False)
         self.timer = QTimer()
         self.timer.timeout.connect(self.get_image)
         self.timer.start(1000)
@@ -476,10 +476,10 @@ class AmiGui(QWidget):
     saveFile = pyqtSignal(str, name='saveFile')
     statusUpdate = pyqtSignal(str, name='statusUpdate')
 
-    def __init__(self, queue, comm_addr, info_addr, ami_save, parent=None):
+    def __init__(self, queue, graph_name, comm_addr, info_addr, ami_save, parent=None):
         super(__class__, self).__init__(parent)
         self.setWindowTitle("AMI Client")
-        self.comm_handler = AsyncGraphCommHandler(comm_addr, False)
+        self.comm_handler = AsyncGraphCommHandler(graph_name, comm_addr, False)
 
         self.save_button = QPushButton('Save', self)
         self.save_button.clicked.connect(self.save)
@@ -574,11 +574,11 @@ def add_logging_handler(signal):
     logger.addHandler(QtSignalLogHandler(signal))
 
 
-def run_main_window(queue, comm_addr, info_addr, ami_save):
+def run_main_window(queue, graph_name, comm_addr, info_addr, ami_save):
     app = QApplication(sys.argv)
     loop = asyncqt.QEventLoop(app)
     asyncio.set_event_loop(loop)
-    gui = AmiGui(queue, comm_addr, info_addr, ami_save)
+    gui = AmiGui(queue, graph_name, comm_addr, info_addr, ami_save)
     gui.show()
 
     # wait for the qt app to exit
@@ -590,7 +590,7 @@ def run_main_window(queue, comm_addr, info_addr, ami_save):
     return retval
 
 
-def run_widget(queue, window_type, name, topic, addr):
+def run_widget(queue, window_type, name, topic, graph_name, addr):
 
     app = QApplication(sys.argv)
     loop = asyncqt.QEventLoop(app)
@@ -598,16 +598,16 @@ def run_widget(queue, window_type, name, topic, addr):
     win = QMainWindow()
 
     if window_type == 'AreaDetector':
-        widget = AreaDetWidget(name, topic, addr, win)
+        widget = AreaDetWidget(name, topic, graph_name, addr, win)
 
     elif window_type == 'WaveformDetector':
-        widget = WaveformWidget(name, topic, addr, win)
+        widget = WaveformWidget(name, topic, graph_name, addr, win)
 
     elif window_type == 'HistogramDetector':
-        widget = HistogramWidget(name, topic, addr, win)
+        widget = HistogramWidget(name, topic, graph_name, addr, win)
 
     elif window_type == 'ScalarDetector':
-        widget = ScalarWidget(name, topic, addr, win)
+        widget = ScalarWidget(name, topic, graph_name, addr, win)
 
     else:
         raise ValueError('%s not valid window_type' % window_type)
@@ -619,7 +619,7 @@ def run_widget(queue, window_type, name, topic, addr):
     return app.exec_()
 
 
-def run_client(comm_addr, info_addr, load):
+def run_client(graph_name, comm_addr, info_addr, load):
     saved_cfg = None
     if load is not None:
         try:
@@ -635,7 +635,7 @@ def run_client(comm_addr, info_addr, load):
     queue = mp.Queue()
     list_proc = mp.Process(
         target=run_main_window, args=(
-            queue, comm_addr, info_addr, saved_cfg))
+            queue, graph_name, comm_addr, info_addr, saved_cfg))
     list_proc.start()
     widget_procs = []
 
@@ -647,6 +647,6 @@ def run_client(comm_addr, info_addr, load):
         logger.debug("opening new widget: %s %s %s", window_type, name, topic)
         proc = mp.Process(
             target=run_widget, args=(
-                queue, window_type, name, topic, comm_addr))
+                queue, window_type, name, topic, graph_name, comm_addr))
         proc.start()
         widget_procs.append(proc)

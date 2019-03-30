@@ -2,8 +2,8 @@
 import sys
 import logging
 import argparse
-from ami import LogConfig
-from ami.comm import Ports, Colors, Node, Collector, EventBuilder
+from ami import LogConfig, Defaults
+from ami.comm import Ports, Colors, Node, Collector, TransitionBuilder, EventBuilder
 from ami.data import MsgTypes
 
 
@@ -16,8 +16,8 @@ class GraphCollector(Node, Collector):
         Collector.__init__(self, collector_addr, ctx=self.ctx)
         self.base_name = base_name
         self.num_workers = num_workers
-        self.store = EventBuilder(
-            self.num_workers, 10, color, downstream_addr, self.ctx)
+        self.transitions = TransitionBuilder(self.num_workers, downstream_addr, self.ctx)
+        self.store = EventBuilder(self.num_workers, 10, color, downstream_addr, self.ctx)
         self.pickers = {}
         self.strategies = {}
 
@@ -35,19 +35,19 @@ class GraphCollector(Node, Collector):
 
     def process_msg(self, msg):
         if msg.mtype == MsgTypes.Transition:
-            self.store.transition(msg.payload.ttype, msg.identity)
-            if self.store.transition_ready(msg.payload.ttype):
-                self.store.message(msg.mtype, self.node, msg.payload)
+            self.transitions.update(msg.payload.ttype, msg.identity, msg.payload.payload)
+            if self.transitions.ready(msg.payload.ttype):
+                self.transitions.complete(msg.payload.ttype, self.node)
         elif msg.mtype == MsgTypes.Datagram:
-            self.store.update(msg.heartbeat, msg.identity, msg.version, msg.payload)
-            self.store.heartbeat(msg.heartbeat, msg.identity)
-            if self.store.heartbeat_ready(msg.heartbeat):
-                self.store.complete(msg.heartbeat, self.node)
+            self.store.update(msg.name, msg.heartbeat, msg.identity, msg.version, msg.payload)
+            self.store.mark(msg.name, msg.heartbeat, msg.identity)
+            if self.store.ready(msg.name, msg.heartbeat):
+                self.store.complete(msg.name, msg.heartbeat, self.node)
                 # prune entries older than the current heartbeat
-                self.store.prune(msg.heartbeat)
+                self.store.prune(msg.name, msg.heartbeat)
             else:
                 # prune older entries from the event builder
-                self.store.prune()
+                self.store.prune(msg.name)
 
 
 def run_collector(node_num, base_name, num_contribs, color, collector_addr, upstream_addr, graph_addr, msg_addr):
@@ -92,8 +92,8 @@ def main(color, upstream_port, downstream_port):
     parser.add_argument(
         '-H',
         '--host',
-        default='localhost',
-        help='hostname of the AMII Manager (default: localhost)'
+        default=Defaults.Host,
+        help='hostname of the AMII Manager (default: %s)' % Defaults.Host
     )
 
     parser.add_argument(

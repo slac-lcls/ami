@@ -6,7 +6,7 @@ import json
 import dill
 import logging
 import argparse
-from ami import LogConfig
+from ami import LogConfig, Defaults
 from ami.comm import Ports, Colors, ResultStore, Node
 from ami.data import MsgTypes, Source
 
@@ -38,12 +38,13 @@ class Worker(Node):
         self.store.send(self.src.configure())
 
     def recv_graph(self, name, version, payload):
-        self.graph = dill.loads(payload)
-        if self.graph is not None:
-            self.src.request(self.graph.sources)
-        else:
-            self.src.request([])
-        self.store.version = version
+        self.graphs[name] = dill.loads(payload)
+        requests = set()
+        for graph in self.graphs.values():
+            if graph is not None:
+                requests.update(graph.sources)
+        self.src.request(requests)
+        self.store.configure(name, version)
 
     def run(self):
         for msg in self.src.events():
@@ -60,9 +61,10 @@ class Worker(Node):
                         break
             elif msg.mtype == MsgTypes.Datagram:
                 try:
-                    if self.graph:
-                        graph_result = self.graph(msg.payload, color=Colors.Worker)
-                        self.store.update(graph_result)
+                    for name, graph in self.graphs.items():
+                        if graph:
+                            graph_result = graph(msg.payload, color=Colors.Worker)
+                            self.store.update(name, graph_result)
                 except Exception:
                     self.report("error", "Fatal error encountered executing graph!")
                     logger.exception("%s: Failure encountered executing graph:", self.name)
@@ -105,8 +107,8 @@ def main():
     parser.add_argument(
         '-H',
         '--host',
-        default='localhost',
-        help='hostname of the AMII Manager (default: localhost)'
+        default=Defaults.Host,
+        help='hostname of the AMII Manager (default: %s)' % Defaults.Host
     )
 
     parser.add_argument(

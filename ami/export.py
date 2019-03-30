@@ -12,7 +12,8 @@ import threading
 import functools
 import numpy as np
 import collections
-from ami import LogConfig
+import ami.comm
+from ami import LogConfig, Defaults
 from ami.comm import Ports, CommHandler
 from p4p import Type, Value
 from p4p.nt import alarm, timeStamp, NTScalar, NTNDArray
@@ -547,34 +548,32 @@ class PvaExportPutHandler:
 
 class PvaExportRpcHandler:
     def __init__(self, ctx, addr):
-        self.ctx = ctx
-        self.comm = self.ctx.socket(zmq.REQ)
-        self.comm.connect(addr)
-
-    def command(self, cmd):
-        self.comm.send_string(cmd)
-        return self.comm.recv_string()
+        self.comm = ami.comm.GraphCommHandler(addr, ctx=ctx)
 
     def payload(self, topic, payload):
         self.comm.send_string(topic, zmq.SNDMORE)
         self.comm.send(payload)
         return self.comm.recv_string()
 
-    @rpc(NTScalar('s'))
+    @rpc(NTScalar('?'))
     def clear(self, graph):
-        return self.command('clear_graph')
+        return self.comm.clear()
 
-    @rpc(NTScalar('s'))
+    @rpc(NTScalar('?'))
     def reset(self, graph):
-        return self.command('reset_features')
+        return self.comm.reset()
 
-    @rpc(NTScalar('s'))
+    @rpc(NTScalar('?'))
     def add(self, graph, payload):
         return self.payload('add_graph', payload)
 
+    @rpc(NTScalar('as'))
+    def names(self, graph):
+        return self.comm.names
+
     @rpc(NTScalar('s'))
     def view(self, graph, name):
-        pass
+        return self.comm.view(name)
 
 
 class PvaExportServer:
@@ -737,8 +736,8 @@ def main():
     parser.add_argument(
         '-H',
         '--host',
-        default='localhost',
-        help='hostname of the AMII Manager (default: localhost)'
+        default=Defaults.Host,
+        help='hostname of the AMII Manager (default: %s)' % Defaults.Host
     )
 
     parser.add_argument(

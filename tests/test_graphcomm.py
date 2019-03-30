@@ -38,6 +38,7 @@ class FakeManager:
 
     def run(self):
         while True:
+            name = self.sock.recv_string()
             request = self.sock.recv_string()
             if request == 'test_exit':
                 self.sock.close()
@@ -74,6 +75,7 @@ class FakeManager:
 @pytest.fixture(scope='function')
 def graph_comm(request, ipc_dir, event_loop):
     ctxs = []
+    name = "graph"
     addr = "ipc://%s/graphcomm_async" % ipc_dir
     # check the requested parameters
     if isinstance(request.param, dict):
@@ -86,10 +88,10 @@ def graph_comm(request, ipc_dir, event_loop):
         ctx = zmq.Context()
         manager = FakeManager(ctx, addr, conf)
         ctxs.append(ctx)
-        comm = AsyncGraphCommHandler(addr)
+        comm = AsyncGraphCommHandler(name, addr)
         ctxs.append(comm._ctx)
     else:
-        comm = GraphCommHandler(addr)
+        comm = GraphCommHandler(name, addr)
         ctx = comm._ctx
         manager = FakeManager(ctx, addr, conf)
         ctxs.append(ctx)
@@ -106,8 +108,9 @@ def graph_comm(request, ipc_dir, event_loop):
 @pytest.fixture(scope='function')
 def graph_comm_simple(request, ipc_dir):
     ctxs = []
+    name = "graph"
     addr = "ipc://%s/graphcomm_simple" % ipc_dir
-    comm = GraphCommHandler(addr, request.param)
+    comm = GraphCommHandler(name, addr, request.param)
     ctxs.append(comm._ctx)
 
     yield comm, addr
@@ -244,20 +247,26 @@ def test_names(graph_comm):
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize('graph_comm', [(True, {'clear_graph': None, 'reset_features': None})], indirect=True)
+@pytest.mark.parametrize('graph_comm',
+                         [(True, {'clear_graph': None, 'reset_features': None, 'create_graph': None})],
+                         indirect=True)
 async def test_commands_async(graph_comm):
     comm, conf = graph_comm
 
     assert await comm.clear()
     assert await comm.reset()
+    assert await comm.create()
 
 
-@pytest.mark.parametrize('graph_comm', [{'clear_graph': None, 'reset_features': None}], indirect=True)
+@pytest.mark.parametrize('graph_comm',
+                         [{'clear_graph': None, 'reset_features': None, 'create_graph': None}],
+                         indirect=True)
 def test_commands(graph_comm):
     comm, conf = graph_comm
 
     assert comm.clear()
     assert comm.reset()
+    assert comm.create()
 
 
 @pytest.mark.asyncio

@@ -8,7 +8,7 @@ import tempfile
 import argparse
 import multiprocessing as mp
 
-from ami import LogConfig
+from ami import LogConfig, Defaults
 from ami.comm import Ports, GraphCommHandler
 from ami.manager import run_manager
 from ami.worker import run_worker
@@ -90,6 +90,13 @@ def build_parser():
         nargs='*',
         default=[],
         help='extra flags as key=value pairs that are passed to the data source of the worker'
+    )
+
+    parser.add_argument(
+        '-g',
+        '--graph-name',
+        default=Defaults.GraphName,
+        help='the name of the graph used (default: %s)' % Defaults.GraphName
     )
 
     parser.add_argument(
@@ -240,10 +247,10 @@ def run_ami(args, queue=mp.Queue()):
             procs.append(export_proc)
 
         if args.console:
-            run_console(comm_addr, args.load)
+            run_console(args.graph_name, comm_addr, args.load)
         elif args.headless:
             if args.load:
-                comm_handler = GraphCommHandler(comm_addr)
+                comm_handler = GraphCommHandler(args.graph_name, comm_addr)
                 comm_handler.load(args.load)
             while queue.empty():
                 pass
@@ -251,7 +258,7 @@ def run_ami(args, queue=mp.Queue()):
             client_proc = mp.Process(
                 name='client',
                 target=run_client,
-                args=(comm_addr, info_addr, args.load, args.gui_mode)
+                args=(args.graph_name, comm_addr, info_addr, args.load, args.gui_mode)
             )
             client_proc.daemon = False
             client_proc.start()

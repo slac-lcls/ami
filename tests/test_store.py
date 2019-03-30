@@ -234,21 +234,33 @@ def test_store_update(obj, expected, store):
 def test_store_collect(obj, expected, store):
     store, addr = store
 
+    # the namespace and version in the store
+    name = 'test_namespace'
+    # test that the namespace doesn't already exist
+    assert name not in store
+    # initialize the namespace
+    store.configure(name, 0)
+    # test the namespace exists
+    assert name in store
+    assert store.stores[name].version == 0
+
     # create the fake collector
     collector = store.ctx.socket(zmq.PULL)
     collector.bind(addr)
 
-    store.update(obj)
+    store.update(name, obj)
 
     # call collect several times changing the version and heartbeat
     for i in range(5):
-        store.version = i // 2
+        store.configure(name, i // 2)
         store.collect(0, i)
 
         msg = collector.recv_pyobj()
         # check that we get a collector message
         assert isinstance(msg, CollectorMessage)
         assert msg.mtype == MsgTypes.Datagram
+        # check the name is correct
+        assert msg.name == name
         # check the version is correct
         assert msg.version == i // 2
         # check the heartbeat is correct
@@ -259,3 +271,59 @@ def test_store_collect(obj, expected, store):
         assert msg.payload == expected
 
     collector.close()
+
+
+@pytest.mark.parametrize('obj, expected, store',
+                         [
+                            ({}, False, True),
+                            ({"t1": 1, "t2": "bad"}, True, True),
+                            ({"t1": 1, "t2": "bad"}, True, True),
+                         ],
+                         indirect=['store'])
+def test_store_addremove(obj, expected, store):
+    store, addr = store
+
+    # check that the store is empty (a.k.a. it has no namespaces)
+    assert not store
+
+    # the namespace and version in the store
+    name = 'test_namespace'
+    bad_name = 'bad_namespace'
+    # add a namespace to the store
+    store.configure(name, 0)
+
+    # check the store is non-empty
+    assert store
+    # test the __contains__ method of the store
+    assert name in store
+    assert bad_name not in store
+
+    # check that the namespace is empty
+    assert not store.stores[name]
+    # add data to the namespace
+    store.update(name, obj)
+    # check the namespace is non-empty as expected
+    if expected:
+        assert store.stores[name]
+    else:
+        assert not store.stores[name]
+
+    # try adding data to a namespace that doesn't exist
+    try:
+        store.update(bad_name, obj)
+        # we should not get here
+        assert False
+    except KeyError:
+        # check that the namespace wasn't magically created...
+        assert bad_name not in store
+
+    # clear the store namespaces
+    store.clear()
+    # check that the namespace is empty
+    assert not store.stores[name]
+
+    # remove the namespace
+    store.remove(name)
+    # check that the remove worked
+    assert name not in store
+    assert not store

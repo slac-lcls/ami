@@ -5,21 +5,21 @@ import IPython
 import argparse
 
 from traitlets.config.loader import Config
-from ami import LogConfig
+from ami import LogConfig, Defaults
 from ami.comm import Ports
 
 
 logger = logging.getLogger(__name__)
 
 
-def run_console(addr, load):
+def run_console(name, addr, load):
     banners = {
         'banner1': 'AMII Interactive Shell Client',
         'banner2': " - using manager at %s\n - use 'amicli?' for help\n" % addr,
     }
     exec_lines = [
         'from ami.comm import GraphCommHandler',
-        'amicli = GraphCommHandler("%s")' % addr,
+        'amicli = GraphCommHandler("%s", "%s")' % (name, addr),
     ]
     if load is not None:
         exec_lines.append('amicli.load("%s")' % load)
@@ -34,8 +34,8 @@ def main():
     parser.add_argument(
         '-H',
         '--host',
-        default='127.0.0.1',
-        help='hostname of the AMII Manager (default: 127.0.0.1)'
+        default=Defaults.Host,
+        help='hostname of the AMII Manager (default: %s)' % Defaults.Host
     )
 
     addr_group = parser.add_mutually_exclusive_group()
@@ -58,6 +58,13 @@ def main():
         '--ipc',
         action='store_true',
         help='attempt to search for ipc file descriptors for manager/client (SHELL) communication'
+    )
+
+    parser.add_argument(
+        '-g',
+        '--graph-name',
+        default=Defaults.GraphName,
+        help='the name of the graph used for manager/client (SHELL) communication (default: %s)' % Defaults.GraphName
     )
 
     parser.add_argument(
@@ -116,7 +123,7 @@ def main():
         addr = "tcp://%s:%d" % (args.host, args.port)
 
     try:
-        return run_console(addr, args.load)
+        return run_console(args.graph_name, addr, args.load)
     except KeyboardInterrupt:
         logger.info("Client killed by user...")
         return 0

@@ -39,10 +39,10 @@ class Manager(Collector):
         self.num_workers = num_workers
         self.num_nodes = num_nodes
         self.partition = {}
-        self.feature_store = Store()
+        self.feature_stores = {}
         self.feature_req = re.compile("(?P<type>fetch|lookup):(?P<name>.*)")
-        self.graph = None
-        self.version = 0
+        self.graphs = {}
+        self.versions = {}
 
         if export_addr is None:
             self.export = None
@@ -65,57 +65,76 @@ class Manager(Collector):
 
     def process_msg(self, msg):
         if msg.mtype == MsgTypes.Datagram:
-            if msg.version < self.feature_store.version:
-                logger.warning("Received data from version %d of the graph when version %d or newer was expected!",
+            if msg.name not in self.feature_stores:
+                logger.warning("Received data from unknown graph '%s'!", msg.name)
+            elif msg.version < self.feature_stores[msg.name].version:
+                logger.warning("Received data from version %d of the graph '%s' when version %d or newer was expected!",
                                msg.version,
-                               self.feature_store.version)
+                               msg.name,
+                               self.feature_stores[msg.name].version)
             else:
-                old_names = self.feature_store.names
-                self.feature_store.update(msg.payload)
-                if msg.version > self.feature_store.version:
-                    self.feature_store.version = msg.version
-                    self.export_store()
-                elif old_names != self.feature_store.names:
+                old_names = self.feature_stores[msg.name].names
+                self.feature_stores[msg.name].update(msg.payload)
+                if msg.version > self.feature_stores[msg.name].version:
+                    self.feature_stores[msg.name].version = msg.version
+                    self.export_store(msg.name)
+                elif old_names != self.feature_stores[msg.name].names:
                     # if there are new entries in the store notify the export layer
-                    self.export_store()
+                    self.export_store(msg.name)
                 # export the collector data to epics
-                self.export_data(msg.payload)
+                self.export_data(msg.name, msg.payload)
         elif (msg.mtype == MsgTypes.Transition) and (msg.payload.ttype == Transitions.Configure):
             self.partition = msg.payload.payload
             # export the partition info to epics
             self.export_config()
 
-    @property
-    def names(self):
+    def exists(self, name):
+        return all(name in val for val in [self.feature_stores, self.graphs, self.versions])
+
+    def create(self, name):
+        if self.exists(name):
+            raise ValueError("Graph with the name '%s' already exists" % name)
+        else:
+            self.feature_stores[name] = Store()
+            self.graphs[name] = None
+            self.versions[name] = 0
+
+    def delete(self, name):
+        if self.exists(name):
+            del self.feature_stores[name]
+            del self.graphs[name]
+            del self.versions[name]
+        else:
+            raise ValueError("Graph with the name '%s' does not exist" % name)
+
+    def names(self, name):
         name_set = set(self.partition)
-        if self.graph is not None:
-            name_set.update(self.graph.names)
+        if self.graphs[name] is not None:
+            name_set.update(self.graphs[name].names)
         return name_set
 
-    @property
-    def types(self):
-        if self.graph is not None:
-            types_dict = {var.name: var.type for var in self.graph.variables}
+    def types(self, name):
+        if self.graphs[name] is not None:
+            types_dict = {var.name: var.type for var in self.graphs[name].variables}
         else:
             types_dict = {}
         types_dict.update(self.partition)
         return types_dict
 
-    @property
-    def features(self):
-        return self.feature_store.types
+    def features(self, name):
+        return self.feature_stores[name].types
 
-    def feature_request(self, request):
+    def feature_request(self, name, request):
         matched = self.feature_req.match(request)
         if matched:
             if matched.group('type') == 'fetch':
-                if matched.group('name') in self.feature_store.namespace:
+                if matched.group('name') in self.feature_stores[name].namespace:
                     self.comm.send_string('ok', zmq.SNDMORE)
-                    self.comm.send_pyobj(self.feature_store.get(matched.group('name')))
+                    self.comm.send_pyobj(self.feature_stores[name].get(matched.group('name')))
                 else:
                     self.comm.send_string('error')
             elif matched.group('type') == 'lookup':
-                var_type = self.types.get(matched.group('name'))
+                var_type = self.types(name).get(matched.group('name'))
                 if var_type is not None:
                     self.comm.send_string('ok', zmq.SNDMORE)
                     self.comm.send_pyobj(var_type)
@@ -128,128 +147,145 @@ class Manager(Collector):
             return False
 
     def client_request(self):
+        name = self.comm.recv_string()
         request = self.comm.recv_string()
+        if not self.exists(name) and not request == 'create_graph':
+            self.create(name)
         # check if it is a feature request
-        if not self.feature_request(request):
-            getattr(self, "cmd_%s" % request, self.cmd_unknown)()
+        if not self.feature_request(name, request):
+            getattr(self, "cmd_%s" % request, self.cmd_unknown)(name)
 
-    def compile_graph(self):
-        self.graph.compile(num_workers=self.num_workers, num_local_collectors=self.num_nodes)
+    def compile_graph(self, name):
+        self.graphs[name].compile(num_workers=self.num_workers, num_local_collectors=self.num_nodes)
 
-    def cmd_unknown(self):
+    def cmd_unknown(self, name):
         self.comm.send_string('error')
 
-    def cmd_get_versions(self):
-        self.comm.send_pyobj((self.version, self.feature_store.version))
+    def cmd_get_versions(self, name):
+        self.comm.send_pyobj((self.versions[name], self.feature_stores[name].version))
 
-    def cmd_get_graph_version(self):
-        self.comm.send_pyobj(self.version)
+    def cmd_get_graph_version(self, name):
+        self.comm.send_pyobj(self.versions[name])
 
-    def cmd_get_features_version(self):
-        self.comm.send_pyobj(self.feature_store.version)
+    def cmd_get_features_version(self, name):
+        self.comm.send_pyobj(self.feature_stores[name].version)
 
-    def cmd_get_features(self):
-        self.comm.send_pyobj(self.features)
+    def cmd_get_features(self, name):
+        self.comm.send_pyobj(self.features(name))
 
-    def cmd_get_names(self):
-        self.comm.send_pyobj(self.names)
+    def cmd_get_names(self, name):
+        self.comm.send_pyobj(self.names(name))
 
-    def cmd_get_types(self):
-        self.comm.send_pyobj(self.types)
+    def cmd_get_types(self, name):
+        self.comm.send_pyobj(self.types(name))
 
-    def cmd_get_sources(self):
+    def cmd_get_sources(self, name):
         self.comm.send_pyobj(self.partition)
 
-    def cmd_clear_graph(self):
-        self.graph = None
-        self.publish_graph()
-
-    def cmd_reset_features(self):
-        self.feature_store.clear()
-        self.feature_store.version = 0
-        self.export_store()
+    def cmd_create_graph(self, name):
+        if not self.exists(name):
+            self.create(name)
         self.comm.send_string('ok')
 
-    def cmd_get_graph(self):
-        self.comm.send(dill.dumps(self.graph))
+    def cmd_remove_graph(self, name):
+        if self.exists(name):
+            self.delete(name)
+        self.comm.send_string('ok')
 
-    def cmd_add_graph(self):
+    def cmd_clear_graph(self, name):
+        self.graphs[name] = None
+        self.publish_graph(name)
+
+    def cmd_reset_features(self, name):
+        self.feature_stores[name].clear()
+        self.feature_stores[name].version = 0
+        self.export_store(name)
+        self.comm.send_string('ok')
+
+    def cmd_list_graphs(self, name):
+        self.comm.send_pyobj(set(self.graphs))
+
+    def cmd_get_graph(self, name):
+        self.comm.send(dill.dumps(self.graphs[name]))
+
+    def cmd_add_graph(self, name):
         node = dill.loads(self.comm.recv())
-        backup = dill.dumps(self.graph)
+        backup = dill.dumps(self.graphs[name])
         try:
-            if self.graph is None:
-                self.graph = Graph("manager_graph")
-            self.graph.add(node)
-            self.compile_graph()
-            self.publish_graph()
+            if self.graphs[name] is None:
+                self.graphs[name] = Graph(name)
+            self.graphs[name].add(node)
+            self.compile_graph(name)
+            self.publish_graph(name)
         except (AssertionError, TypeError):
             if isinstance(node, list):
                 logger.exception("Failure encountered adding nodes \"%s\" to the graph:",
                                  ", ".join(n.name for n in node))
             else:
                 logger.exception("Failure encountered adding node \"%s\" to the graph:", node.name)
-            self.graph = dill.loads(backup)
-            logger.info("Restored previous version of the graph (v%d)", self.version)
+            self.graphs[name] = dill.loads(backup)
+            logger.info("Restored previous version of the graph (%s v%d)", name, self.versions[name])
             self.comm.send_string('error')
 
-    def cmd_del_graph(self):
-        names = dill.loads(self.comm.recv())
+    def cmd_del_graph(self, name):
+        nodes = dill.loads(self.comm.recv())
         if self.graph is not None:
             backup = dill.dumps(self.graph)
             try:
-                for name in names:
-                    self.graph.remove(name)
+                for node in nodes:
+                    self.graphs[name].remove(node)
                 # Check if the resulting graph is non-empty
-                if self.graph:
-                    self.compile_graph()
+                if self.graphs[name]:
+                    self.compile_graph(name)
                 else:
                     # if the graph is empty remove it
-                    self.graph = None
-                self.publish_graph()
+                    self.graphs[name] = None
+                self.publish_graph(name)
             except (AssertionError, TypeError):
-                logger.exception("Failure encountered removing node \"%s\" from the graph:", name)
-                self.graph = dill.loads(backup)
-                logger.info("Restored previous version of the graph (v%d)", self.version)
+                logger.exception("Failure encountered removing nodes \"%s\" from the graph:", nodes)
+                self.graphs[name] = dill.loads(backup)
+                logger.info("Restored previous version of the graph (%s v%d)", name, self.versions[name])
                 self.comm.send_string('error')
         else:
             # Removing nodes that don't exist returns 'ok', so this case should too...
             self.comm.send_string('ok')
 
-    def cmd_set_graph(self):
-        backup = dill.dumps(self.graph)
+    def cmd_set_graph(self, name):
+        backup = dill.dumps(self.graphs[name])
         try:
-            self.graph = dill.loads(self.comm.recv())
+            self.graphs[name] = dill.loads(self.comm.recv())
             # Check if the graph can be compiled
-            if self.graph:
-                self.compile_graph()
-            self.publish_graph()
+            if self.graphs[name]:
+                self.compile_graph(name)
+            self.publish_graph(name)
         except (AssertionError, TypeError):
             logger.exception("Failure encountered compiling the requested graph:")
-            self.graph = dill.loads(backup)
-            logger.info("Restored previous version of the graph (v%d)", self.version)
+            self.graphs[name] = dill.loads(backup)
+            logger.info("Restored previous version of the graph (%s v%d)", name, self.versions[name])
             self.comm.send_string('error')
 
-    def publish_graph(self):
+    def publish_graph(self, name):
         logger.info("Sending requested graph...")
         try:
-            self.version += 1
+            self.versions[name] += 1
             self.graph_comm.send_string("graph", zmq.SNDMORE)
-            self.graph_comm.send_pyobj((0, self.version), zmq.SNDMORE)
-            self.graph_comm.send(dill.dumps(self.graph))
-            self.export_graph()
-            logger.info("Sending of graph (v%d) completed", self.version)
+            self.graph_comm.send_pyobj((name, self.versions[name]), zmq.SNDMORE)
+            self.graph_comm.send(dill.dumps(self.graphs[name]))
+            self.export_graph(name)
+            logger.info("Sending of graph (%s v%d) completed", name, self.versions[name])
             self.comm.send_string('ok')
         except Exception:
-            logger.exception("Failed to send graph (v%d) -", self.version)
+            logger.exception("Failed to send graph (%s v%d) -", name, self.versions[name])
             self.comm.send_string('error')
 
     def graph_request(self):
         request = self.graph_comm.recv_string()
 
         if request == "\x01":
-            self.graph_comm.send_string("graph", zmq.SNDMORE)
-            self.graph_comm.send_pyobj((0, self.version), zmq.SNDMORE)
-            self.graph_comm.send(dill.dumps(self.graph))
+            for name, graph in self.graphs.items():
+                self.graph_comm.send_string("graph", zmq.SNDMORE)
+                self.graph_comm.send_pyobj((name, self.versions[name]), zmq.SNDMORE)
+                self.graph_comm.send(dill.dumps(graph))
             # re-ask for config information on connect
             self.graph_comm.send_string("cmd", zmq.SNDMORE)
             self.graph_comm.send_string("config")
@@ -263,7 +299,7 @@ class Manager(Collector):
         self.info_comm.send_string(node, zmq.SNDMORE)
         self.info_comm.send(payload)
 
-    def export_graph(self):
+    def export_graph(self, name):
         if self.export is not None:
             data = {
                 'names': self.names,
@@ -275,7 +311,7 @@ class Manager(Collector):
             self.export.send_string('graph', zmq.SNDMORE)
             self.export.send_pyobj(data)
 
-    def export_store(self):
+    def export_store(self, name):
         if self.export is not None:
             data = {
                 'version': self.feature_store.version,
@@ -285,10 +321,12 @@ class Manager(Collector):
             self.export.send_pyobj(data)
 
     def export_config(self):
-        self.export_store()
-        self.export_graph()
+        for name in self.feature_stores:
+            self.export_store(name)
+        for name in self.graphs:
+            self.export_graph(name)
 
-    def export_data(self, data):
+    def export_data(self, name, data):
         if self.export is not None:
             self.export.send_string('data', zmq.SNDMORE)
             self.export.send_pyobj(data)

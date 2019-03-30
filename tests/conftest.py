@@ -136,19 +136,21 @@ def start_ami(request, workerjson, use_psana):
                      args=(args, queue))
     ami.start()
 
-    host = "127.0.0.1"
-    comm_addr = "tcp://%s:%d" % (host, Ports.Comm)
-    comm_handler = GraphCommHandler(comm_addr)
+    try:
+        host = "127.0.0.1"
+        comm_addr = "tcp://%s:%d" % (host, Ports.Comm)
+        comm_handler = GraphCommHandler(args.graph_name, comm_addr)
+        yield comm_handler
+    except Exception:
+        # let the fixture exit 'gracefully' if it fails
+        yield None
+    finally:
+        queue.put(None)
+        ami.join()
 
-    yield comm_handler
-
-    queue.put(None)
-    ami.join()
-
-    if ami.exitcode == 0 or ami.exitcode == -signal.SIGTERM:
-        print('AMI exited successfully')
-    else:
-        print('AMI exited with non-zero status code: %d' % ami.exitcode)
-        return 1
-
-    return 0
+        if ami.exitcode == 0 or ami.exitcode == -signal.SIGTERM:
+            print('AMI exited successfully')
+            return 0
+        else:
+            print('AMI exited with non-zero status code: %d' % ami.exitcode)
+            return 1

@@ -3,12 +3,13 @@ import zmq
 import dill
 import asyncio
 import logging
+import functools
 import numpy as np
 import zmq.asyncio
 from enum import IntEnum
 
 import ami.graph_nodes as gn
-from ami.data import MsgTypes, Message, CollectorMessage, Datagram
+from ami.data import MsgTypes, Message, Transition, CollectorMessage, Datagram
 
 
 logger = logging.getLogger(__name__)
@@ -231,8 +232,12 @@ class ZmqHandler:
         msg = Message(mtype, identity, payload)
         self.send(msg)
 
+    def collector_message(self, identity, heartbeat, name, version, payload):
+        msg = CollectorMessage(MsgTypes.Datagram, identity, heartbeat, name, version, payload)
+        self.send(msg)
 
-class ResultStore(Store, ZmqHandler):
+
+class ResultStore(ZmqHandler):
     """
     This class is a AMI /graph node that collects results
     from a single process and has the ability to send them
@@ -241,26 +246,75 @@ class ResultStore(Store, ZmqHandler):
     """
 
     def __init__(self, addr, ctx=None):
-        Store.__init__(self)
-        ZmqHandler.__init__(self, addr, ctx)
+        super().__init__(addr, ctx)
+        self.stores = {}
+
+    def __bool__(self):
+        if self.stores:
+            return True
+        else:
+            return False
+
+    def __contains__(self, name):
+        return name in self.stores
+
+    def configure(self, name, version):
+        if name not in self.stores:
+            self.stores[name] = Store(version=version)
+        else:
+            self.stores[name].version = version
+
+    def remove(self, name):
+        del self.stores[name]
+
+    def update(self, name, updates):
+        self.stores[name].update(updates)
 
     def collect(self, identity, heartbeat):
-        self.send(CollectorMessage(MsgTypes.Datagram, identity, heartbeat, self.version, self.namespace))
+        for name, store in self.stores.items():
+            self.collector_message(identity, heartbeat, name, store.version, store.namespace)
+
+    def clear(self):
+        for store in self.stores.values():
+            store.clear()
 
 
-class EventBuilder(ZmqHandler):
-
-    def __init__(self, num_contribs, depth, color, addr, ctx=None):
-        super().__init__(addr, ctx)
+class ContributionBuilder(abc.ABC):
+    def __init__(self, num_contribs):
         self.num_contribs = num_contribs
+        self.pending = {}
+        self.contribs = {}
+
+    @abc.abstractmethod
+    def _complete(self, eb_key, identity):
+        pass
+
+    def complete(self, eb_key, identity):
+        if eb_key in self.pending:
+            self._complete(eb_key, identity)
+            del self.pending[eb_key]
+            del self.contribs[eb_key]
+            logger.debug("Completed key %s", eb_key)
+
+    def mark(self, eb_key, eb_id):
+        if eb_key not in self.contribs:
+            self.contribs[eb_key] = 0
+        self.contribs[eb_key] |= (1 << eb_id)
+
+    def ready(self, eb_key):
+        if eb_key not in self.contribs:
+            return False
+        return ((1 << self.num_contribs) - 1) == self.contribs[eb_key]
+
+
+class GraphBuilder(ContributionBuilder):
+    def __init__(self, num_contribs, depth, color, completion):
+        super().__init__(num_contribs)
         self.depth = depth
         self.color = color
         self.latest = 0
-        # using a dict because it is random access instead of a sequential list
-        self.transitions = {}
-        self.pending = {}
-        self.contribs = {}
         self.graphs = {}
+        self.completion = completion
 
     def prune(self, prune_key=None):
         if prune_key is None:
@@ -269,7 +323,7 @@ class EventBuilder(ZmqHandler):
             depth = self.latest - prune_key
         if len(self.pending) > depth:
             for eb_key in sorted(self.pending.keys(), reverse=True)[depth:]:
-                logger.debug("Pruned uncompleted heartbeat %d", eb_key)
+                logger.debug("Pruned uncompleted key %d", eb_key)
                 del self.pending[eb_key]
                 del self.contribs[eb_key]
 
@@ -290,16 +344,8 @@ class EventBuilder(ZmqHandler):
         self.graphs[ver_key] = dill.loads(graph)
         self.clear_graphs()
 
-    def complete(self, eb_key, identity):
-        if eb_key in self.pending:
-            self.send(CollectorMessage(MsgTypes.Datagram,
-                                       identity,
-                                       eb_key,
-                                       self.pending[eb_key].version,
-                                       self.pending[eb_key].namespace))
-            del self.pending[eb_key]
-            del self.contribs[eb_key]
-            logger.debug("Completed heartbeat %s", eb_key)
+    def _complete(self, eb_key, identity):
+        self.completion(eb_key, identity, self.pending[eb_key])
 
     def update(self, eb_key, eb_id, ver_key, data):
         if eb_key not in self.pending:
@@ -315,28 +361,79 @@ class EventBuilder(ZmqHandler):
             if graph:
                 self.pending[eb_key].update(graph(data, color=self.color))
 
-    def transition(self, eb_key, eb_id):
-        if eb_key not in self.transitions:
-            self.transitions[eb_key] = 0
-        self.transitions[eb_key] |= (1 << eb_id)
 
-    def heartbeat(self, eb_key, eb_id):
-        if eb_key not in self.contribs:
-            self.contribs[eb_key] = 0
-        self.contribs[eb_key] |= (1 << eb_id)
+class TransitionBuilder(ContributionBuilder, ZmqHandler):
+    def __init__(self, num_contribs, addr, ctx=None):
+        ContributionBuilder.__init__(self, num_contribs)
+        ZmqHandler.__init__(self, addr, ctx)
 
-    def get(self, eb_key, name):
-        return self.pending[eb_key].get(name)
+    def _complete(self, eb_key, identity):
+        self.message(MsgTypes.Transition, identity, Transition(eb_key, self.pending[eb_key]))
 
-    def transition_ready(self, eb_key):
-        if eb_key not in self.transitions:
-            return False
-        return ((1 << self.num_contribs) - 1) == self.transitions[eb_key]
+    def update(self, eb_key, eb_id, payload):
+        if eb_key not in self.pending:
+            self.pending[eb_key] = payload
+        elif payload != self.pending[eb_key]:
+            logger.error("Transition mismatch: %s payload from id %s does not match the other contributers",
+                         eb_key, eb_id)
+        self.mark(eb_key, eb_id)
 
-    def heartbeat_ready(self, eb_key):
-        if eb_key not in self.contribs:
-            return False
-        return ((1 << self.num_contribs) - 1) == self.contribs[eb_key]
+
+class EventBuilder(ZmqHandler):
+
+    def __init__(self, num_contribs, depth, color, addr, ctx=None):
+        super().__init__(addr, ctx)
+        self.num_contribs = num_contribs
+        self.depth = depth
+        self.color = color
+        self.builders = {}
+
+    def create(self, name):
+        self.builders[name] = GraphBuilder(self.num_contribs,
+                                           self.depth,
+                                           self.color,
+                                           functools.partial(self.completion, name))
+
+    def prune(self, name, prune_key=None):
+        self.builders[name].prune(prune_key)
+
+    def clear_graphs(self, name):
+        self.builders[name].clear_graphs()
+
+    def set_graph(self, name, ver_key, graph):
+        if name not in self.builders:
+            self.create(name)
+        self.builders[name].graphs[ver_key] = dill.loads(graph)
+        self.builders[name].clear_graphs()
+
+    def complete(self, name, eb_key, identity):
+        self.builders[name].complete(eb_key, identity)
+
+    def completion(self, name, eb_key, identity, payload):
+        self.collector_message(identity, eb_key, name, payload.version, payload.namespace)
+
+    def update(self, name, eb_key, eb_id, ver_key, data):
+        if name not in self.builders:
+            self.create(name)
+        self.builders[name].update(eb_key, eb_id, ver_key, data)
+
+    def contribs(self, name):
+        return self.builders[name].contribs
+
+    def pending(self, name):
+        return self.builders[name].pending
+
+    def graphs(self, name):
+        return self.builders[name].graphs
+
+    def latest(self, name):
+        return self.builders[name].latest
+
+    def mark(self, name, eb_key, eb_id):
+        self.builders[name].mark(eb_key, eb_id)
+
+    def ready(self, name, eb_key):
+        return self.builders[name].ready(eb_key)
 
 
 class Node(abc.ABC):
@@ -363,7 +460,7 @@ class Node(abc.ABC):
         else:
             self.ctx = ctx
 
-        self.graph = None
+        self.graphs = {}
 
         self.graph_comm = GraphReceiver(graph_addr)
         self.graph_comm.add_handler("graph", self.recv_graph)
@@ -414,7 +511,7 @@ class Node(abc.ABC):
 
 class Collector(abc.ABC):
     """Abstract base class for collecting (via zeromq) results from many
-    node's ResultsStores.
+    node's ResultStores.
 
     Whenever results are received on the collection socket they are processed.
     This processing should be implemented in the subclass by overriding the
@@ -658,10 +755,13 @@ class CommHandler(abc.ABC):
     subclass to implement.
 
     Args:
+        name(str): the name of the graph instance in the manager to use
         use_types (bool): if True types are required for node inputs and outputs
     """
 
-    def __init__(self, use_types):
+    def __init__(self, name, use_types):
+        self._name = name
+        self._allocated = False
         self._use_types = use_types
         self._prune_keys = ['condition_needs', 'condition', 'reduction']
         self._expand_keys = ['inputs', 'outputs', 'condition_needs']
@@ -742,7 +842,7 @@ class CommHandler(abc.ABC):
     @property
     def graph(self):
         """
-        Fetches the current graph from the manager.
+        Fetches the current graph instance from the manager.
 
         Returns:
             An object of type `Graph` representing the current analysis graph.
@@ -753,7 +853,7 @@ class CommHandler(abc.ABC):
     def features(self):
         """
         Information on the features currently available in the global feature
-        store.
+        store of the graph.
 
         Returns:
             A dictionary where the keys are the names of the available features
@@ -849,8 +949,8 @@ class CommHandler(abc.ABC):
     def fetch(self, names):
         """
         Attempts to fetch a feature with the requested name from the global
-        features. If the feature is not present in the store then None is
-        returned.
+        features of the graph. If the feature is not present in the store then
+        None is returned.
 
         Args:
             names (str or list): the name of the feature to fetch. List of
@@ -899,7 +999,7 @@ class CommHandler(abc.ABC):
 
     def addPickN(self, name, inputs, outputs, N=1, condition_needs=None):
         """
-        Adds a PickN graph node to the manager's graph.
+        Adds a PickN graph node to the graph.
 
         Args:
             name (str): the name of the node
@@ -918,7 +1018,7 @@ class CommHandler(abc.ABC):
 
     def addMap(self, name, inputs, outputs, func, condition_needs=None):
         """
-        Adds a Map graph node to the manager's graph.
+        Adds a Map graph node to the graph.
 
         Args:
             name (str): the name of the node
@@ -937,7 +1037,7 @@ class CommHandler(abc.ABC):
 
     def addReduce(self, name, inputs, outputs, reduction=None, condition_needs=None):
         """
-        Adds a ReduceByKey graph node to the manager's graph.
+        Adds a ReduceByKey graph node to the graph.
 
         Args:
             name (str): the name of the node
@@ -956,7 +1056,7 @@ class CommHandler(abc.ABC):
 
     def addBinning(self, name, inputs, outputs, condition_needs=None):
         """
-        Adds a Binning graph node to the manager's graph.
+        Adds a Binning graph node to the graph.
 
         Args:
             name (str): the name of the node
@@ -974,7 +1074,7 @@ class CommHandler(abc.ABC):
 
     def addFilterOn(self, name, condition_needs, outputs, condition=None):
         """
-        Adds a FilterOn graph node to the manager's graph.
+        Adds a FilterOn graph node to the graph.
 
         Args:
             name (str): the name of the node
@@ -992,7 +1092,7 @@ class CommHandler(abc.ABC):
 
     def addFilterOff(self, name, condition_needs, outputs, condition=None):
         """
-        Adds a FilterOff graph node to the manager's graph.
+        Adds a FilterOff graph node to the graph.
 
         Args:
             name (str): the name of the node
@@ -1023,9 +1123,18 @@ class CommHandler(abc.ABC):
 
         return self._post_dill('del_graph', names)
 
+    def create(self):
+        """
+        Creates a graph instance in the manager if one does not already exist.
+
+        Returns:
+            True if the graph change was successful, False otherwise.
+        """
+        return self._command('create_graph')
+
     def clear(self):
         """
-        Clears the manager's current graph.
+        Clears the current graph instance in the manager.
 
         Returns:
             True if the graph change was successful, False otherwise.
@@ -1034,7 +1143,8 @@ class CommHandler(abc.ABC):
 
     def reset(self):
         """
-        Clears all the data currently in the manager's feature store.
+        Clears all the data currently in the manager's feature store that is
+        associated with the current graph instance.
 
         Returns:
             True if the graph change was successful, False otherwise.
@@ -1043,7 +1153,8 @@ class CommHandler(abc.ABC):
 
     def update(self, graph):
         """
-        Replaces the manager's current graph with the requested graph.
+        Replaces the current graph instance in the manager with the requested
+        graph.
 
         Args:
             graph (Graph): The new graph for the manager to use.
@@ -1055,7 +1166,7 @@ class CommHandler(abc.ABC):
 
     def save(self, filename):
         """
-        Saves the manager's current graph to a file.
+        Saves the current instance of the graph from the manager to a file.
 
         Args:
             filename (str): the name of the file for saving the graph.
@@ -1068,7 +1179,8 @@ class CommHandler(abc.ABC):
 
     def load(self, filename):
         """
-        Loads a graph from a file and replaces the manager's graph with it.
+        Loads a graph from a file and replaces the current graph instance in the
+        manager with it.
 
         Args:
             filename (str): the name of the file to load.
@@ -1125,14 +1237,15 @@ class ZmqCommHandler(CommHandler):
     well as an asynchronous version.
 
     Args:
+        name (str): the name of the graph instance in the manager to use
         addr (str): the zmq address of the graph manager (e.g. tcp://localhost:5555)
         use_types (bool): if True types are required for node inputs and outputs
         async_mode (bool): if True the asyncio version of zmq is used
         ctx (zmq.Context): zmq context for the node to use.
     """
 
-    def __init__(self, addr, use_types, ctx):
-        super().__init__(use_types)
+    def __init__(self, name, addr, use_types, ctx):
+        super().__init__(name, use_types)
         self._ctx = ctx
         self._addr = addr
         self._sock = self._ctx.socket(zmq.REQ)
@@ -1150,6 +1263,7 @@ class AsyncGraphCommHandler(ZmqCommHandler):
     """An asynchronous interface for handling communication with the AMI graph manager.
 
     Args:
+        name (str): the name of the graph instance in the manager to use
         addr (str): the zmq address of the graph manager (e.g. tcp://localhost:5555)
         use_types (bool): if True types are required for node inputs and outputs
         ctx (zmq.Context): optional shared zmq context for the node to use.
@@ -1158,28 +1272,31 @@ class AsyncGraphCommHandler(ZmqCommHandler):
         TypeError: if `ctx` is an unacceptable type.
     """
 
-    def __init__(self, addr, use_types=True, ctx=None):
+    def __init__(self, name, addr, use_types=True, ctx=None):
         if ctx is None:
             ctx = zmq.asyncio.Context()
         elif not isinstance(ctx, zmq.asyncio.Context):
             raise TypeError("Handler only supports shared contexts of type %s not %s"
                             % (zmq.asyncio.Context, type(ctx)))
-        super().__init__(addr, use_types, ctx)
+        super().__init__(name, addr, use_types, ctx)
         self.lock = asyncio.Lock()
 
     async def _command(self, cmd):
         async with self.lock:
+            await self._sock.send_string(self._name, zmq.SNDMORE)
             await self._sock.send_string(cmd)
             return (await self._sock.recv_string()) == 'ok'
 
     async def _request(self, cmd, check=False, retry=None):
         async with self.lock:
+            await self._sock.send_string(self._name, zmq.SNDMORE)
             await self._sock.send_string(cmd)
             if check:
                 reply = await self._sock.recv_string()
                 if reply == 'ok':
                     return await self._sock.recv_pyobj()
                 elif retry is not None:
+                    await self._sock.send_string(self._name, zmq.SNDMORE)
                     await self._sock.send_string(retry)
                     reply = await self._sock.recv_string()
                     if reply == 'ok':
@@ -1202,11 +1319,13 @@ class AsyncGraphCommHandler(ZmqCommHandler):
 
     async def _request_dill(self, cmd):
         async with self.lock:
+            await self._sock.send_string(self._name, zmq.SNDMORE)
             await self._sock.send_string(cmd)
             return dill.loads(await self._sock.recv())
 
     async def _post_dill(self, cmd, payload):
         async with self.lock:
+            await self._sock.send_string(self._name, zmq.SNDMORE)
             await self._sock.send_string(cmd, zmq.SNDMORE)
             await self._sock.send(dill.dumps(payload))
             return (await self._sock.recv_string()) == 'ok'
@@ -1235,6 +1354,7 @@ class GraphCommHandler(ZmqCommHandler):
     """A synchronous interface for handling communication with the AMI graph manager.
 
     Args:
+        name (str): the name of the graph instance in the manager to use
         addr (str): the zmq address of the graph manager (e.g. tcp://localhost:5555)
         use_types (bool): if True types are required for node inputs and outputs
         ctx (zmq.Context): optional shared zmq context for the node to use.
@@ -1243,25 +1363,28 @@ class GraphCommHandler(ZmqCommHandler):
         TypeError: if `ctx` is an unacceptable type.
     """
 
-    def __init__(self, addr, use_types=True, ctx=None):
+    def __init__(self, name, addr, use_types=True, ctx=None):
         if ctx is None:
             ctx = zmq.Context()
         elif not isinstance(ctx, zmq.Context):
             raise TypeError("Handler only supports shared contexts of type %s not %s"
                             % (zmq.Context, type(ctx)))
-        super().__init__(addr, use_types, ctx)
+        super().__init__(name, addr, use_types, ctx)
 
     def _command(self, cmd):
+        self._sock.send_string(self._name, zmq.SNDMORE)
         self._sock.send_string(cmd)
         return self._sock.recv_string() == 'ok'
 
     def _request(self, cmd, check=False, retry=None):
+        self._sock.send_string(self._name, zmq.SNDMORE)
         self._sock.send_string(cmd)
         if check:
             reply = self._sock.recv_string()
             if reply == 'ok':
                 return self._sock.recv_pyobj()
             elif retry is not None:
+                self._sock.send_string(self._name, zmq.SNDMORE)
                 self._sock.send_string(retry)
                 reply = self._sock.recv_string()
                 if reply == 'ok':
@@ -1283,10 +1406,12 @@ class GraphCommHandler(ZmqCommHandler):
             return results
 
     def _request_dill(self, cmd):
+        self._sock.send_string(self._name, zmq.SNDMORE)
         self._sock.send_string(cmd)
         return dill.loads(self._sock.recv())
 
     def _post_dill(self, cmd, payload):
+        self._sock.send_string(self._name, zmq.SNDMORE)
         self._sock.send_string(cmd, zmq.SNDMORE)
         self._sock.send(dill.dumps(payload))
         return self._sock.recv_string() == 'ok'

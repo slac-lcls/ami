@@ -10,3 +10,8 @@ class LogConfig:
     @staticmethod
     def get_package_name(name):
         return '.'.join(name.split('.')[:-1])
+
+
+class Defaults:
+    Host = 'localhost'
+    GraphName = 'graph'

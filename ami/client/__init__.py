@@ -3,7 +3,7 @@ import sys
 import glob
 import logging
 import argparse
-from ami import LogConfig
+from ami import LogConfig, Defaults
 from ami.comm import Ports
 from ami.client import flowchart, legacy
 
@@ -11,9 +11,9 @@ from ami.client import flowchart, legacy
 logger = logging.getLogger(__name__)
 
 
-def run_client(comm_addr, info_addr, load, use_legacy=True):
+def run_client(graph_name, comm_addr, info_addr, load, use_legacy=True):
     if use_legacy:
-        return legacy.run_client(comm_addr, info_addr, load)
+        return legacy.run_client(graph_name, comm_addr, info_addr, load)
     else:
         return flowchart.run_client(comm_addr, info_addr, load)
 
@@ -24,8 +24,8 @@ def main():
     parser.add_argument(
         '-H',
         '--host',
-        default='localhost',
-        help='hostname of the AMII Manager (default: 127.0.0.1)'
+        default=Defaults.Host,
+        help='hostname of the AMII Manager (default: %s)' % Defaults.Host
     )
 
     addr_group = parser.add_mutually_exclusive_group()
@@ -49,6 +49,13 @@ def main():
         '--ipc',
         action='store_true',
         help='attempt to search for ipc file descriptors for manager/client (GUI) communication'
+    )
+
+    parser.add_argument(
+        '-g',
+        '--graph-name',
+        default=Defaults.GraphName,
+        help='the name of the graph used (default: %s)' % Defaults.GraphName
     )
 
     parser.add_argument(
@@ -127,7 +134,7 @@ def main():
         info_addr = "tcp://%s:%d" % (args.host, info)
 
     try:
-        return run_client(comm_addr, info_addr, args.load, args.gui_mode)
+        return run_client(args.graph_name, comm_addr, info_addr, args.load, args.gui_mode)
     except KeyboardInterrupt:
         logger.info("Client killed by user...")
         return 0
