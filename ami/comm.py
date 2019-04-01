@@ -289,6 +289,10 @@ class ContributionBuilder(abc.ABC):
     def _complete(self, eb_key, identity):
         pass
 
+    @abc.abstractmethod
+    def _update(self, eb_key, identity, *args, **kwargs):
+        pass
+
     def complete(self, eb_key, identity):
         if eb_key in self.pending:
             self._complete(eb_key, identity)
@@ -297,9 +301,19 @@ class ContributionBuilder(abc.ABC):
             logger.debug("Completed key %s", eb_key)
 
     def mark(self, eb_key, eb_id):
-        if eb_key not in self.contribs:
-            self.contribs[eb_key] = 0
-        self.contribs[eb_key] |= (1 << eb_id)
+        if 0 <= eb_id < self.num_contribs:
+            if eb_key not in self.contribs:
+                self.contribs[eb_key] = 0
+            self.contribs[eb_key] |= (1 << eb_id)
+        else:
+            raise ValueError("eb_id of %d is invalid for %d contributors" % (eb_id, self.num_contribs))
+
+    def update(self, eb_key, eb_id, *args, **kwargs):
+        if 0 <= eb_id < self.num_contribs:
+            self._update(eb_key, eb_id, *args, **kwargs)
+            self.mark(eb_key, eb_id)
+        else:
+            raise ValueError("eb_id of %d is invalid for %d contributors" % (eb_id, self.num_contribs))
 
     def ready(self, eb_key):
         if eb_key not in self.contribs:
@@ -347,7 +361,7 @@ class GraphBuilder(ContributionBuilder):
     def _complete(self, eb_key, identity):
         self.completion(eb_key, identity, self.pending[eb_key])
 
-    def update(self, eb_key, eb_id, ver_key, data):
+    def _update(self, eb_key, eb_id, ver_key, data):
         if eb_key not in self.pending:
             self.pending[eb_key] = Store(version=ver_key)
             self.contribs[eb_key] = 0
@@ -370,13 +384,12 @@ class TransitionBuilder(ContributionBuilder, ZmqHandler):
     def _complete(self, eb_key, identity):
         self.message(MsgTypes.Transition, identity, Transition(eb_key, self.pending[eb_key]))
 
-    def update(self, eb_key, eb_id, payload):
+    def _update(self, eb_key, eb_id, payload):
         if eb_key not in self.pending:
             self.pending[eb_key] = payload
         elif payload != self.pending[eb_key]:
             logger.error("Transition mismatch: %s payload from id %s does not match the other contributers",
                          eb_key, eb_id)
-        self.mark(eb_key, eb_id)
 
 
 class EventBuilder(ZmqHandler):

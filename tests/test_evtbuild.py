@@ -3,9 +3,23 @@ import zmq
 import dill
 
 from ami.data import MsgTypes, CollectorMessage
-from ami.comm import Colors, EventBuilder
+from ami.comm import Colors, ContributionBuilder, EventBuilder
 from ami.graphkit_wrapper import Graph
 from ami.graph_nodes import PickN, Var
+
+
+class FakeBuilder(ContributionBuilder):
+    def __init__(self, num_contribs):
+        super().__init__(num_contribs)
+        self.completed = set()
+
+    def _complete(self, eb_key, identity):
+        self.completed.add((eb_key, identity))
+
+    def _update(self, eb_key, eb_id, data):
+        if eb_key not in self.pending:
+            self.pending[eb_key] = {}
+        self.pending[eb_key][eb_id] = data
 
 
 @pytest.fixture(scope='module')
@@ -26,6 +40,71 @@ def event_builder(request):
     # clean up all the zmq stuff
     eb.collector.close()
     eb.ctx.destroy()
+
+
+@pytest.fixture(scope='function')
+def test_builder(request):
+    return FakeBuilder(request.param)
+
+
+@pytest.mark.parametrize('test_builder, num_contribs, expected',
+                         [
+                            (1, 1, True),
+                            (2, 2, True),
+                            (3, 2, False),
+                         ],
+                         indirect=['test_builder'])
+def test_builder_comp(test_builder, num_contribs, expected):
+    num_hb = 5
+    identity = 0
+    expected_comp = set()
+
+    for hb in range(num_hb):
+        # check that the heartbeat is not ready
+        assert not test_builder.ready(hb)
+        for contrib in range(num_contribs):
+            # check that the heartbeat is not ready
+            assert not test_builder.ready(hb)
+            test_builder.update(hb, contrib, (hb << 4) + contrib)
+            # check that the expected data was added to pending
+            assert test_builder.pending[hb][contrib] == (hb << 4) + contrib
+        if expected:
+            # check that the event builder is ready as expected
+            assert test_builder.ready(hb)
+            expected_comp.add((hb, identity))
+            test_builder.complete(hb, identity)
+            # check that pending has been clearted
+            assert hb not in test_builder.pending
+            # check that the completion function was called
+            assert test_builder.completed
+            assert test_builder.completed == expected_comp
+        else:
+            # check that the event builder is ready as expected
+            assert not test_builder.ready(hb)
+            # check that pending has not been clearted
+            assert hb in test_builder.pending
+            # check that the completion function was not called
+            assert not test_builder.completed
+
+
+@pytest.mark.parametrize('test_builder, contrib_id, bad',
+                         [
+                            (1, -1, True),
+                            (1, 0, False),
+                            (1, 1, True),
+                            (2, 0, False),
+                            (2, 1, False),
+                            (2, 2, True),
+                         ],
+                         indirect=['test_builder'])
+def test_builder_valid_contributors(test_builder, contrib_id, bad):
+    try:
+        test_builder.update(0, contrib_id, "test_data")
+        # check that we didn't get here with an invalid contributor id
+        assert not bad
+    except ValueError:
+        # check that a ValueError was thrown on an invalid contributor id
+        assert bad
 
 
 @pytest.mark.parametrize('event_builder', [(1, 5), (2, 5), (3, 5)], indirect=True)
@@ -50,7 +129,6 @@ def test_eb_depth(event_builder):
 
     for hb in range(num_hb):
         event_builder.update(name, hb, 0, 0, {})
-        event_builder.mark(name, hb, 0)
         event_builder.prune(name)
         assert event_builder.latest(name) == hb
         expected_depth = hb + 1 if hb < depth else depth
@@ -79,7 +157,6 @@ def test_comp_prune(event_builder):
     for hb, contribs, depth in hbs:
         for contrib in contribs:
             event_builder.update(name, hb, contrib, 0, {})
-            event_builder.mark(name, hb, contrib)
         if event_builder.ready(name, hb):
             event_builder.prune(name, hb)
         # check the contribs and pending are the correct size
@@ -112,9 +189,7 @@ def test_comp_graph(event_builder, eb_graph):
     assert graph_version in event_builder.graphs(graph_name)
 
     event_builder.update(graph_name, hb, 0, graph_version, data)
-    event_builder.mark(graph_name, hb, 0)
     event_builder.update(graph_name, hb, 1, graph_version, data)
-    event_builder.mark(graph_name, hb, 1)
 
     # test that the heartbeat is ready
     assert event_builder.ready(graph_name, hb)

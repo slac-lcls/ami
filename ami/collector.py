@@ -40,7 +40,6 @@ class GraphCollector(Node, Collector):
                 self.transitions.complete(msg.payload.ttype, self.node)
         elif msg.mtype == MsgTypes.Datagram:
             self.store.update(msg.name, msg.heartbeat, msg.identity, msg.version, msg.payload)
-            self.store.mark(msg.name, msg.heartbeat, msg.identity)
             if self.store.ready(msg.name, msg.heartbeat):
                 self.store.complete(msg.name, msg.heartbeat, self.node)
                 # prune entries older than the current heartbeat
