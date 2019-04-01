@@ -43,6 +43,7 @@ class Manager(Collector):
         self.feature_req = re.compile("(?P<type>fetch|lookup):(?P<name>.*)")
         self.graphs = {}
         self.versions = {}
+        self.global_cmds = {"list_graphs"}
 
         if export_addr is None:
             self.export = None
@@ -147,18 +148,21 @@ class Manager(Collector):
             return False
 
     def client_request(self):
-        name = self.comm.recv_string()
         request = self.comm.recv_string()
-        if not self.exists(name) and not request == 'create_graph':
-            self.create(name)
-        # check if it is a feature request
-        if not self.feature_request(name, request):
-            getattr(self, "cmd_%s" % request, self.cmd_unknown)(name)
+        if request in self.global_cmds:
+            getattr(self, "cmd_%s" % request, self.cmd_unknown)()
+        else:
+            name = self.comm.recv_string()
+            if not self.exists(name) and not request == 'create_graph':
+                self.create(name)
+            # check if it is a feature request
+            if not self.feature_request(name, request):
+                getattr(self, "cmd_%s" % request, self.cmd_unknown)(name)
 
     def compile_graph(self, name):
         self.graphs[name].compile(num_workers=self.num_workers, num_local_collectors=self.num_nodes)
 
-    def cmd_unknown(self, name):
+    def cmd_unknown(self, name=None):
         self.comm.send_string('error')
 
     def cmd_get_versions(self, name):
@@ -202,7 +206,7 @@ class Manager(Collector):
         self.export_store(name)
         self.comm.send_string('ok')
 
-    def cmd_list_graphs(self, name):
+    def cmd_list_graphs(self):
         self.comm.send_pyobj(set(self.graphs))
 
     def cmd_get_graph(self, name):

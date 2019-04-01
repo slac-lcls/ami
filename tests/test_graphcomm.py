@@ -38,38 +38,41 @@ class FakeManager:
 
     def run(self):
         while True:
-            name = self.sock.recv_string()
             request = self.sock.recv_string()
             if request == 'test_exit':
                 self.sock.close()
                 break
-            elif self.feature_request(request):
-                pass
-            elif request in self.conf:
-                if self.sock.getsockopt(zmq.RCVMORE):
-                    payload = self.sock.recv()
-                    if self.conf[request] == 'graph':
-                        self.graph = dill.loads(payload)
-                        self.sock.send_string('ok')
-                    elif self.conf[request] == 'add_graph':
-                        self.graph.add(dill.loads(payload))
-                        self.sock.send_string('ok')
-                    elif self.conf[request] == 'del_graph':
-                        for name in dill.loads(payload):
-                            self.graph.remove(name)
+            elif request == 'list_graphs':
+                self.sock.send_pyobj(self.conf[request])
+            else:
+                name = self.sock.recv_string()
+                if self.feature_request(request):
+                    pass
+                elif request in self.conf:
+                    if self.sock.getsockopt(zmq.RCVMORE):
+                        payload = self.sock.recv()
+                        if self.conf[request] == 'graph':
+                            self.graph = dill.loads(payload)
+                            self.sock.send_string('ok')
+                        elif self.conf[request] == 'add_graph':
+                            self.graph.add(dill.loads(payload))
+                            self.sock.send_string('ok')
+                        elif self.conf[request] == 'del_graph':
+                            for name in dill.loads(payload):
+                                self.graph.remove(name)
+                            self.sock.send_string('ok')
+                        else:
+                            self.sock.send_string('error')
+                    elif self.conf[request] == 'graph':
+                        self.sock.send(dill.dumps(self.graph))
+                    elif self.conf[request] is None:
                         self.sock.send_string('ok')
                     else:
-                        self.sock.send_string('error')
-                elif self.conf[request] == 'graph':
-                    self.sock.send(dill.dumps(self.graph))
-                elif self.conf[request] is None:
-                    self.sock.send_string('ok')
+                        self.sock.send_pyobj(self.conf[request])
                 else:
-                    self.sock.send_pyobj(self.conf[request])
-            else:
-                while self.sock.getsockopt(zmq.RCVMORE):
-                    self.sock.recv()
-                self.sock.send_string('error')
+                    while self.sock.getsockopt(zmq.RCVMORE):
+                        self.sock.recv()
+                    self.sock.send_string('error')
 
 
 @pytest.fixture(scope='function')
@@ -118,6 +121,35 @@ def graph_comm_simple(request, ipc_dir):
     # clean up all the zmq stuff
     for ctx in ctxs:
         ctx.destroy()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('graph_comm',
+                         [
+                            (True, {'list_graphs': set()}),
+                            (True, {'list_graphs': {'graph'}}),
+                            (True, {'list_graphs': {'graph1', 'graph2'}}),
+                         ],
+                         indirect=True)
+async def test_list_graphs_async(graph_comm):
+    comm, conf = graph_comm
+
+    # test that the graph list is as expected
+    assert await comm.graphs == conf['list_graphs']
+
+
+@pytest.mark.parametrize('graph_comm',
+                         [
+                            {'list_graphs': set()},
+                            {'list_graphs': {'graph'}},
+                            {'list_graphs': {'graph1', 'graph2'}},
+                         ],
+                         indirect=True)
+def test_list_graphs(graph_comm):
+    comm, conf = graph_comm
+
+    # test that the graph list is as expected
+    assert comm.graphs == conf['list_graphs']
 
 
 @pytest.mark.asyncio

@@ -863,6 +863,16 @@ class CommHandler(abc.ABC):
         return self._request_dill('get_graph')
 
     @property
+    def graphs(self):
+        """
+        A set of the names all the currently active graphs in the graph manager.
+
+        Returns:
+            A set of the names of the currently active graphs.
+        """
+        return self._query('list_graphs')
+
+    @property
     def features(self):
         """
         Information on the features currently available in the global feature
@@ -1214,6 +1224,10 @@ class CommHandler(abc.ABC):
         pass
 
     @abc.abstractmethod
+    def _query(self, cmd):
+        pass
+
+    @abc.abstractmethod
     def _request(self, cmd, check=False, retry=None):
         pass
 
@@ -1296,21 +1310,26 @@ class AsyncGraphCommHandler(ZmqCommHandler):
 
     async def _command(self, cmd):
         async with self.lock:
-            await self._sock.send_string(self._name, zmq.SNDMORE)
-            await self._sock.send_string(cmd)
+            await self._sock.send_string(cmd, zmq.SNDMORE)
+            await self._sock.send_string(self._name)
             return (await self._sock.recv_string()) == 'ok'
+
+    async def _query(self, cmd):
+        async with self.lock:
+            await self._sock.send_string(cmd)
+            return await self._sock.recv_pyobj()
 
     async def _request(self, cmd, check=False, retry=None):
         async with self.lock:
-            await self._sock.send_string(self._name, zmq.SNDMORE)
-            await self._sock.send_string(cmd)
+            await self._sock.send_string(cmd, zmq.SNDMORE)
+            await self._sock.send_string(self._name)
             if check:
                 reply = await self._sock.recv_string()
                 if reply == 'ok':
                     return await self._sock.recv_pyobj()
                 elif retry is not None:
-                    await self._sock.send_string(self._name, zmq.SNDMORE)
-                    await self._sock.send_string(retry)
+                    await self._sock.send_string(retry, zmq.SNDMORE)
+                    await self._sock.send_string(self._name)
                     reply = await self._sock.recv_string()
                     if reply == 'ok':
                         return await self._sock.recv_pyobj()
@@ -1332,14 +1351,14 @@ class AsyncGraphCommHandler(ZmqCommHandler):
 
     async def _request_dill(self, cmd):
         async with self.lock:
-            await self._sock.send_string(self._name, zmq.SNDMORE)
-            await self._sock.send_string(cmd)
+            await self._sock.send_string(cmd, zmq.SNDMORE)
+            await self._sock.send_string(self._name)
             return dill.loads(await self._sock.recv())
 
     async def _post_dill(self, cmd, payload):
         async with self.lock:
-            await self._sock.send_string(self._name, zmq.SNDMORE)
             await self._sock.send_string(cmd, zmq.SNDMORE)
+            await self._sock.send_string(self._name, zmq.SNDMORE)
             await self._sock.send(dill.dumps(payload))
             return (await self._sock.recv_string()) == 'ok'
 
@@ -1385,20 +1404,24 @@ class GraphCommHandler(ZmqCommHandler):
         super().__init__(name, addr, use_types, ctx)
 
     def _command(self, cmd):
-        self._sock.send_string(self._name, zmq.SNDMORE)
-        self._sock.send_string(cmd)
+        self._sock.send_string(cmd, zmq.SNDMORE)
+        self._sock.send_string(self._name)
         return self._sock.recv_string() == 'ok'
 
-    def _request(self, cmd, check=False, retry=None):
-        self._sock.send_string(self._name, zmq.SNDMORE)
+    def _query(self, cmd):
         self._sock.send_string(cmd)
+        return self._sock.recv_pyobj()
+
+    def _request(self, cmd, check=False, retry=None):
+        self._sock.send_string(cmd, zmq.SNDMORE)
+        self._sock.send_string(self._name)
         if check:
             reply = self._sock.recv_string()
             if reply == 'ok':
                 return self._sock.recv_pyobj()
             elif retry is not None:
-                self._sock.send_string(self._name, zmq.SNDMORE)
-                self._sock.send_string(retry)
+                self._sock.send_string(retry, zmq.SNDMORE)
+                self._sock.send_string(self._name)
                 reply = self._sock.recv_string()
                 if reply == 'ok':
                     return self._sock.recv_pyobj()
@@ -1419,13 +1442,13 @@ class GraphCommHandler(ZmqCommHandler):
             return results
 
     def _request_dill(self, cmd):
-        self._sock.send_string(self._name, zmq.SNDMORE)
-        self._sock.send_string(cmd)
+        self._sock.send_string(cmd, zmq.SNDMORE)
+        self._sock.send_string(self._name)
         return dill.loads(self._sock.recv())
 
     def _post_dill(self, cmd, payload):
-        self._sock.send_string(self._name, zmq.SNDMORE)
         self._sock.send_string(cmd, zmq.SNDMORE)
+        self._sock.send_string(self._name, zmq.SNDMORE)
         self._sock.send(dill.dumps(payload))
         return self._sock.recv_string() == 'ok'
 
