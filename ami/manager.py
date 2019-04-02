@@ -38,6 +38,7 @@ class Manager(Collector):
         super().__init__(results_addr)
         self.num_workers = num_workers
         self.num_nodes = num_nodes
+        self.heartbeats = {}
         self.partition = {}
         self.feature_stores = {}
         self.feature_req = re.compile("(?P<type>fetch|lookup):(?P<name>.*)")
@@ -84,6 +85,8 @@ class Manager(Collector):
                     self.export_store(msg.name)
                 # export the collector data to epics
                 self.export_data(msg.name, msg.payload)
+                # update the latest heartbeat indicator
+                self.heartbeats[msg.name] = msg.heartbeat
         elif (msg.mtype == MsgTypes.Transition) and (msg.payload.ttype == Transitions.Configure):
             self.partition = msg.payload.payload
             # export the partition info to epics
@@ -99,12 +102,14 @@ class Manager(Collector):
             self.feature_stores[name] = Store()
             self.graphs[name] = None
             self.versions[name] = 0
+            self.heartbeats[name] = None
 
     def delete(self, name):
         if self.exists(name):
             del self.feature_stores[name]
             del self.graphs[name]
             del self.versions[name]
+            del self.heartbeats[name]
         else:
             raise ValueError("Graph with the name '%s' does not exist" % name)
 
@@ -164,6 +169,9 @@ class Manager(Collector):
 
     def cmd_unknown(self, name=None):
         self.comm.send_string('error')
+
+    def cmd_get_heartbeat(self, name):
+        self.comm.send_pyobj(self.heartbeats[name])
 
     def cmd_get_versions(self, name):
         self.comm.send_pyobj((self.versions[name], self.feature_stores[name].version))
@@ -233,8 +241,8 @@ class Manager(Collector):
 
     def cmd_del_graph(self, name):
         nodes = dill.loads(self.comm.recv())
-        if self.graph is not None:
-            backup = dill.dumps(self.graph)
+        if self.graphs[name] is not None:
+            backup = dill.dumps(self.graphs[name])
             try:
                 for node in nodes:
                     self.graphs[name].remove(node)

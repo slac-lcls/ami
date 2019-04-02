@@ -475,7 +475,7 @@ class Node(abc.ABC):
 
         self.graphs = {}
 
-        self.graph_comm = GraphReceiver(graph_addr)
+        self.graph_comm = GraphReceiver(graph_addr, ctx)
         self.graph_comm.add_handler("graph", self.recv_graph)
 
         self.node_msg_comm = self.ctx.socket(zmq.PUSH)
@@ -617,16 +617,39 @@ class GraphReceiver:
 
     Args:
         addr (str): the zmq address of the graph manager (e.g. tcp://localhost:5555)
+        ctx (zmq.Context): optional zmq context for the node to use. If none is
+            passed it creates one.
     """
 
-    def __init__(self, addr):
-        self.ctx = zmq.Context()
+    def __init__(self, addr, ctx=None):
+        if ctx is None:
+            self.ctx = zmq.Context()
+            self.owner = True
+        else:
+            self.ctx = ctx
+            self.owner = False
         self.sock = self.ctx.socket(zmq.SUB)
         self.sock.setsockopt_string(zmq.SUBSCRIBE, "")
         self.sock.connect(addr)
         self.handlers = {"cmd": self.command}
         self.commands = {}
         self.special = set(self.handlers.keys())
+
+    def close(self):
+        """
+        Function should be called to clean up zmq resources. All sockets are
+        closed and the zmq.Context is destroyed if it is owned by this
+        instance.
+        """
+        self.sock.close()
+        if self.owner:
+            self.ctx.destroy()
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc_value, traceback):
+        self.close()
 
     def command(self):
         """
@@ -723,11 +746,29 @@ class GraphInfoReceiver:
     def __init__(self, addr, subscriptions="", ctx=None):
         if ctx is None:
             self.ctx = zmq.Context()
+            self.owner = True
         else:
             self.ctx = ctx
+            self.owner = False
         self.sock = self.ctx.socket(zmq.SUB)
         self.sock.setsockopt_string(zmq.SUBSCRIBE, subscriptions)
         self.sock.connect(addr)
+
+    def close(self):
+        """
+        Function should be called to clean up zmq resources. All sockets are
+        closed and the zmq.Context is destroyed if it is owned by this
+        instance.
+        """
+        self.sock.close()
+        if self.owner:
+            self.ctx.destroy()
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc_value, traceback):
+        self.close()
 
     def recv(self):
         """
@@ -780,12 +821,19 @@ class CommHandler(abc.ABC):
         self._expand_keys = ['inputs', 'outputs', 'condition_needs']
 
     @abc.abstractmethod
-    def __enter__(self):
+    def close(self):
+        """
+        This abstact method should be implemented by subclasses to cleanup any
+        connected resources. The instance is no longer intended to be used
+        after calling close.
+        """
         pass
 
-    @abc.abstractmethod
+    def __enter__(self):
+        return self
+
     def __exit__(self, exc_type, exc_value, traceback):
-        pass
+        self.close()
 
     def _make_node(self, node, **kwargs):
         """
@@ -871,6 +919,17 @@ class CommHandler(abc.ABC):
             The name of the current graph
         """
         return self._get_current()
+
+    @property
+    def heartbeat(self):
+        """
+        Fetches the latest heartbeat for which the graph manager has received
+        results from the graph.
+
+        Returns:
+            The latest heartbeat that the manager has results from the graph.
+        """
+        return self._request('get_heartbeat')
 
     @property
     def graph(self):
@@ -1029,6 +1088,23 @@ class CommHandler(abc.ABC):
             names = [names]
 
         return self._view(names)
+
+    def unview(self, names):
+        """
+        Removes a Pick1 graph node for the requested graph output that was
+        previously created by the 'view' method. If no such Pick1 exists then
+        nothing is done.
+
+        Args:
+            names (str or list): The names of the graph outputs to stop viewing.
+
+        Returns:
+            True if the graph change was successful, False otherwise.
+        """
+        if not isinstance(names, list):
+            names = [names]
+
+        return self.remove(["%s_view" % self.auto(name) for name in names])
 
     def addPickN(self, name, inputs, outputs, N=1, condition_needs=None):
         """
@@ -1300,21 +1376,21 @@ class ZmqCommHandler(CommHandler):
         use_types (bool): if True types are required for node inputs and outputs
         async_mode (bool): if True the asyncio version of zmq is used
         ctx (zmq.Context): zmq context for the node to use.
+        owner (bool): if True this class is the owner of the context
     """
 
-    def __init__(self, name, addr, use_types, ctx):
+    def __init__(self, name, addr, use_types, ctx, owner):
         super().__init__(name, use_types)
         self._ctx = ctx
         self._addr = addr
+        self._owner = owner
         self._sock = self._ctx.socket(zmq.REQ)
         self._sock.connect(self._addr)
 
-    def __enter__(self):
-        return self
-
-    def __exit__(self, exc_type, exc_value, traceback):
+    def close(self):
         self._sock.close()
-        self._ctx.destroy()
+        if self._owner:
+            self._ctx.destroy()
 
 
 class AsyncGraphCommHandler(ZmqCommHandler):
@@ -1333,10 +1409,13 @@ class AsyncGraphCommHandler(ZmqCommHandler):
     def __init__(self, name, addr, use_types=True, ctx=None):
         if ctx is None:
             ctx = zmq.asyncio.Context()
+            owner = True
         elif not isinstance(ctx, zmq.asyncio.Context):
             raise TypeError("Handler only supports shared contexts of type %s not %s"
                             % (zmq.asyncio.Context, type(ctx)))
-        super().__init__(name, addr, use_types, ctx)
+        else:
+            owner = False
+        super().__init__(name, addr, use_types, ctx, owner)
         self.lock = asyncio.Lock()
 
     async def _command(self, cmd):
@@ -1445,10 +1524,13 @@ class GraphCommHandler(ZmqCommHandler):
     def __init__(self, name, addr, use_types=True, ctx=None):
         if ctx is None:
             ctx = zmq.Context()
+            owner = True
         elif not isinstance(ctx, zmq.Context):
             raise TypeError("Handler only supports shared contexts of type %s not %s"
                             % (zmq.Context, type(ctx)))
-        super().__init__(name, addr, use_types, ctx)
+        else:
+            owner = False
+        super().__init__(name, addr, use_types, ctx, owner)
 
     def _command(self, cmd):
         self._sock.send_string(cmd, zmq.SNDMORE)

@@ -126,6 +126,35 @@ def graph_comm_simple(request, ipc_dir):
 @pytest.mark.asyncio
 @pytest.mark.parametrize('graph_comm',
                          [
+                            (True, {'list_graphs': {'graph'}, 'create_graph': None}),
+                         ],
+                         indirect=True)
+async def test_current_async(graph_comm):
+    comm, conf = graph_comm
+
+    # test that the graph list is as expected
+    assert await comm.current == 'graph'
+    assert await comm.select('graph2')
+    assert await comm.current == 'graph2'
+
+
+@pytest.mark.parametrize('graph_comm',
+                         [
+                            {'list_graphs': {'graph'}, 'create_graph': None},
+                         ],
+                         indirect=True)
+def test_current(graph_comm):
+    comm, conf = graph_comm
+
+    # test that the graph list is as expected
+    assert comm.current == 'graph'
+    assert comm.select('graph2')
+    assert comm.current == 'graph2'
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('graph_comm',
+                         [
                             (True, {'list_graphs': set()}),
                             (True, {'list_graphs': {'graph'}}),
                             (True, {'list_graphs': {'graph1', 'graph2'}}),
@@ -371,7 +400,7 @@ async def test_modify_graph_async(graph_comm, complex_graph):
     assert comm.auto('cspad') in (await comm.graph).names
     assert comm.auto('delta_t') in (await comm.graph).names
     # remove the views
-    assert await comm.remove(['%s_view' % comm.auto(name) for name in names_to_view])
+    assert await comm.unview(names_to_view)
     assert comm.auto('cspad') not in (await comm.graph).names
     assert comm.auto('delta_t') not in (await comm.graph).names
 
@@ -430,7 +459,7 @@ def test_modify_graph(graph_comm, complex_graph):
     assert comm.auto('cspad') in comm.graph.names
     assert comm.auto('delta_t') in comm.graph.names
     # remove the views
-    assert comm.remove(['%s_view' % comm.auto(name) for name in names_to_view])
+    assert comm.unview(names_to_view)
     assert comm.auto('cspad') not in comm.graph.names
     assert comm.auto('delta_t') not in comm.graph.names
 
