@@ -853,6 +853,26 @@ class CommHandler(abc.ABC):
         return '_auto_%s' % name
 
     @property
+    def active(self):
+        """
+        A set of the names all the active graphs in the graph manager.
+
+        Returns:
+            A set of the names of the active graphs.
+        """
+        return self._query('list_graphs')
+
+    @property
+    def current(self):
+        """
+        The name of the current graph.
+
+        Returns:
+            The name of the current graph
+        """
+        return self._get_current()
+
+    @property
     def graph(self):
         """
         Fetches the current graph instance from the manager.
@@ -861,16 +881,6 @@ class CommHandler(abc.ABC):
             An object of type `Graph` representing the current analysis graph.
         """
         return self._request_dill('get_graph')
-
-    @property
-    def graphs(self):
-        """
-        A set of the names all the currently active graphs in the graph manager.
-
-        Returns:
-            A set of the names of the currently active graphs.
-        """
-        return self._query('list_graphs')
 
     @property
     def features(self):
@@ -1146,6 +1156,19 @@ class CommHandler(abc.ABC):
 
         return self._post_dill('del_graph', names)
 
+    def select(self, name):
+        """
+        Select the graph from the graph manager to use. If the named graph does
+        not already exist it will be created.
+
+        Args:
+            name (str): the name of the graph to use.
+
+        Returns:
+            True if the graph change was successful, False otherwise.
+        """
+        return self._set_current(name)
+
     def create(self):
         """
         Creates a graph instance in the manager if one does not already exist.
@@ -1245,6 +1268,14 @@ class CommHandler(abc.ABC):
 
     @abc.abstractmethod
     def _view(self, name):
+        pass
+
+    @abc.abstractmethod
+    def _get_current(self):
+        pass
+
+    @abc.abstractmethod
+    def _set_current(self):
         pass
 
     @abc.abstractmethod
@@ -1371,6 +1402,18 @@ class AsyncGraphCommHandler(ZmqCommHandler):
 
         return await self.add(nodes)
 
+    async def _get_current(self):
+        async with self.lock:
+            return self._name
+
+    async def _set_current(self, name):
+        async with self.lock:
+            self._name = name
+        if name in await self.active:
+            return True
+        else:
+            return await self.create()
+
     async def _load(self, filename):
         with open(filename, 'rb') as cnf:
             graph = dill.load(cnf)
@@ -1384,6 +1427,10 @@ class AsyncGraphCommHandler(ZmqCommHandler):
 
 class GraphCommHandler(ZmqCommHandler):
     """A synchronous interface for handling communication with the AMI graph manager.
+
+    This class is not thread-safe since it uses a single zeromq socket which can
+    not be shared between threads. Multiple threads should each use their own
+    instance of the class.
 
     Args:
         name (str): the name of the graph instance in the manager to use
@@ -1460,6 +1507,16 @@ class GraphCommHandler(ZmqCommHandler):
             nodes.append(self._make_view_node(name, view_name, var_type))
 
         return self.add(nodes)
+
+    def _get_current(self):
+        return self._name
+
+    def _set_current(self, name):
+        self._name = name
+        if name in self.active:
+            return True
+        else:
+            return self.create()
 
     def _load(self, filename):
         with open(filename, 'rb') as cnf:

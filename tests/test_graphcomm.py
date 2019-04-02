@@ -135,7 +135,7 @@ async def test_list_graphs_async(graph_comm):
     comm, conf = graph_comm
 
     # test that the graph list is as expected
-    assert await comm.graphs == conf['list_graphs']
+    assert await comm.active == conf['list_graphs']
 
 
 @pytest.mark.parametrize('graph_comm',
@@ -149,7 +149,7 @@ def test_list_graphs(graph_comm):
     comm, conf = graph_comm
 
     # test that the graph list is as expected
-    assert comm.graphs == conf['list_graphs']
+    assert comm.active == conf['list_graphs']
 
 
 @pytest.mark.asyncio
