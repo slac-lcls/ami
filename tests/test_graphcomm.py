@@ -126,6 +126,99 @@ def graph_comm_simple(request, ipc_dir):
 @pytest.mark.asyncio
 @pytest.mark.parametrize('graph_comm',
                          [
+                            (True, {'list_graphs': {'graph'}, 'create_graph': None, 'clear_graph': None}),
+                         ],
+                         indirect=True)
+async def test_valid_name_async(graph_comm):
+    comm, conf = graph_comm
+
+    # names to try selecting
+    names = [
+        ('test', True),
+        (None, False),
+        (7, False),
+        ('graph', True),
+    ]
+
+    # check that this throws a TypeError when expected
+    for name, expected in names:
+        try:
+            assert await comm.select(name)
+            # check we get here only when expected
+            assert expected
+        except TypeError:
+            # check we get here only when we expect to fail
+            assert not expected
+
+    # check sending of commands when graph name is unset
+    names = [
+        (None, False),
+        ("", False),
+        ("graph", True),
+    ]
+    for name, expected in names:
+        # set the _name field directly to avoid selects type checking
+        comm._name = name
+        # should always be able to ask of list of graph names
+        assert await comm.active
+        try:
+            assert await comm.clear()
+            # check we get here only when expected
+            assert expected
+        except ValueError:
+            # check we get here only when we expect to fail
+            assert not expected
+
+
+@pytest.mark.parametrize('graph_comm',
+                         [
+                            {'list_graphs': {'graph'}, 'create_graph': None, 'clear_graph': None},
+                         ],
+                         indirect=True)
+def test_valid_name(graph_comm):
+    comm, conf = graph_comm
+
+    # names to try selecting
+    names = [
+        ('test', True),
+        (None, False),
+        (7, False),
+        ('graph', True),
+    ]
+
+    # check that this throws a TypeError when expected
+    for name, expected in names:
+        try:
+            assert comm.select(name)
+            # check we get here only when expected
+            assert expected
+        except TypeError:
+            # check we get here only when we expect to fail
+            assert not expected
+
+    # check sending of commands when graph name is unset
+    names = [
+        (None, False),
+        ("", False),
+        ("graph", True),
+    ]
+    for name, expected in names:
+        # set the _name field directly to avoid selects type checking
+        comm._name = name
+        # should always be able to ask of list of graph names
+        assert comm.active
+        try:
+            assert comm.clear()
+            # check we get here only when expected
+            assert expected
+        except ValueError:
+            # check we get here only when we expect to fail
+            assert not expected
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('graph_comm',
+                         [
                             (True, {'list_graphs': {'graph'}, 'create_graph': None}),
                          ],
                          indirect=True)

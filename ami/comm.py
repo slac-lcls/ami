@@ -811,6 +811,9 @@ class CommHandler(abc.ABC):
     Args:
         name(str): the name of the graph instance in the manager to use
         use_types (bool): if True types are required for node inputs and outputs
+
+    Raises:
+        TypeError: if `name` is an unacceptable type.
     """
 
     def __init__(self, name, use_types):
@@ -819,6 +822,9 @@ class CommHandler(abc.ABC):
         self._use_types = use_types
         self._prune_keys = ['condition_needs', 'condition', 'reduction']
         self._expand_keys = ['inputs', 'outputs', 'condition_needs']
+
+        if name is not None and not isinstance(self._name, str):
+            raise TypeError("%s only supports graph names of type %s not %s" % (__class__, str, type(name)))
 
     @abc.abstractmethod
     def close(self):
@@ -1242,8 +1248,14 @@ class CommHandler(abc.ABC):
 
         Returns:
             True if the graph change was successful, False otherwise.
+
+        Raises:
+            TypeError: if `name` is an unacceptable type.
         """
-        return self._set_current(name)
+        if isinstance(name, str):
+            return self._set_current(name)
+        else:
+            raise TypeError("graph name must be of type %s" % str)
 
     def create(self):
         """
@@ -1392,6 +1404,10 @@ class ZmqCommHandler(CommHandler):
         if self._owner:
             self._ctx.destroy()
 
+    @abc.abstractmethod
+    def _header(self, cmd, flags=0):
+        pass
+
 
 class AsyncGraphCommHandler(ZmqCommHandler):
     """An asynchronous interface for handling communication with the AMI graph manager.
@@ -1411,17 +1427,23 @@ class AsyncGraphCommHandler(ZmqCommHandler):
             ctx = zmq.asyncio.Context()
             owner = True
         elif not isinstance(ctx, zmq.asyncio.Context):
-            raise TypeError("Handler only supports shared contexts of type %s not %s"
-                            % (zmq.asyncio.Context, type(ctx)))
+            raise TypeError("%s only supports shared contexts of type %s not %s"
+                            % (__class__, zmq.asyncio.Context, type(ctx)))
         else:
             owner = False
         super().__init__(name, addr, use_types, ctx, owner)
         self.lock = asyncio.Lock()
 
+    async def _header(self, cmd, flags=0):
+        if self._name:
+            await self._sock.send_string(cmd, zmq.SNDMORE)
+            await self._sock.send_string(self._name, flags)
+        else:
+            raise ValueError("graph name must be a non-emtpy string")
+
     async def _command(self, cmd):
         async with self.lock:
-            await self._sock.send_string(cmd, zmq.SNDMORE)
-            await self._sock.send_string(self._name)
+            await self._header(cmd)
             return (await self._sock.recv_string()) == 'ok'
 
     async def _query(self, cmd):
@@ -1431,15 +1453,13 @@ class AsyncGraphCommHandler(ZmqCommHandler):
 
     async def _request(self, cmd, check=False, retry=None):
         async with self.lock:
-            await self._sock.send_string(cmd, zmq.SNDMORE)
-            await self._sock.send_string(self._name)
+            await self._header(cmd)
             if check:
                 reply = await self._sock.recv_string()
                 if reply == 'ok':
                     return await self._sock.recv_pyobj()
                 elif retry is not None:
-                    await self._sock.send_string(retry, zmq.SNDMORE)
-                    await self._sock.send_string(self._name)
+                    await self._header(retry)
                     reply = await self._sock.recv_string()
                     if reply == 'ok':
                         return await self._sock.recv_pyobj()
@@ -1461,14 +1481,12 @@ class AsyncGraphCommHandler(ZmqCommHandler):
 
     async def _request_dill(self, cmd):
         async with self.lock:
-            await self._sock.send_string(cmd, zmq.SNDMORE)
-            await self._sock.send_string(self._name)
+            await self._header(cmd)
             return dill.loads(await self._sock.recv())
 
     async def _post_dill(self, cmd, payload):
         async with self.lock:
-            await self._sock.send_string(cmd, zmq.SNDMORE)
-            await self._sock.send_string(self._name, zmq.SNDMORE)
+            await self._header(cmd, zmq.SNDMORE)
             await self._sock.send(dill.dumps(payload))
             return (await self._sock.recv_string()) == 'ok'
 
@@ -1526,15 +1544,21 @@ class GraphCommHandler(ZmqCommHandler):
             ctx = zmq.Context()
             owner = True
         elif not isinstance(ctx, zmq.Context):
-            raise TypeError("Handler only supports shared contexts of type %s not %s"
-                            % (zmq.Context, type(ctx)))
+            raise TypeError("%s only supports shared contexts of type %s not %s"
+                            % (__class__, zmq.Context, type(ctx)))
         else:
             owner = False
         super().__init__(name, addr, use_types, ctx, owner)
 
+    def _header(self, cmd, flags=0):
+        if self._name:
+            self._sock.send_string(cmd, zmq.SNDMORE)
+            self._sock.send_string(self._name, flags)
+        else:
+            raise ValueError("graph name must be a non-emtpy string")
+
     def _command(self, cmd):
-        self._sock.send_string(cmd, zmq.SNDMORE)
-        self._sock.send_string(self._name)
+        self._header(cmd)
         return self._sock.recv_string() == 'ok'
 
     def _query(self, cmd):
@@ -1542,15 +1566,13 @@ class GraphCommHandler(ZmqCommHandler):
         return self._sock.recv_pyobj()
 
     def _request(self, cmd, check=False, retry=None):
-        self._sock.send_string(cmd, zmq.SNDMORE)
-        self._sock.send_string(self._name)
+        self._header(cmd)
         if check:
             reply = self._sock.recv_string()
             if reply == 'ok':
                 return self._sock.recv_pyobj()
             elif retry is not None:
-                self._sock.send_string(retry, zmq.SNDMORE)
-                self._sock.send_string(self._name)
+                self._header(retry)
                 reply = self._sock.recv_string()
                 if reply == 'ok':
                     return self._sock.recv_pyobj()
@@ -1571,13 +1593,11 @@ class GraphCommHandler(ZmqCommHandler):
             return results
 
     def _request_dill(self, cmd):
-        self._sock.send_string(cmd, zmq.SNDMORE)
-        self._sock.send_string(self._name)
+        self._header(cmd)
         return dill.loads(self._sock.recv())
 
     def _post_dill(self, cmd, payload):
-        self._sock.send_string(cmd, zmq.SNDMORE)
-        self._sock.send_string(self._name, zmq.SNDMORE)
+        self._header(cmd, zmq.SNDMORE)
         self._sock.send(dill.dumps(payload))
         return self._sock.recv_string() == 'ok'
 

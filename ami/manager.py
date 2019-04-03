@@ -201,6 +201,10 @@ class Manager(Collector):
 
     def cmd_remove_graph(self, name):
         if self.exists(name):
+            # send a null graph to workers
+            self.graphs[name] = None
+            self.publish_graph(name)
+            # delete the local graph information
             self.delete(name)
         self.comm.send_string('ok')
 
