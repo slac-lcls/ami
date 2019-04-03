@@ -24,7 +24,7 @@ class AsyncFetcher(object):
             self.topics = list(topics.values())[0]
         else:
             self.topics = list(topics.values())
-        self.comm_handler = AsyncGraphCommHandler(addr)
+        self.comm_handler = AsyncGraphCommHandler(addr.name, addr.uri)
         self.buffered = buffered
         self.reply = {}
 

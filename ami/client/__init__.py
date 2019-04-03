@@ -3,6 +3,7 @@ import sys
 import glob
 import logging
 import argparse
+import collections
 from ami import LogConfig, Defaults
 from ami.comm import Ports
 from ami.client import flowchart, legacy
@@ -11,11 +12,15 @@ from ami.client import flowchart, legacy
 logger = logging.getLogger(__name__)
 
 
+GraphAddress = collections.namedtuple('GraphAddress', ['name', 'uri'])
+
+
 def run_client(graph_name, comm_addr, info_addr, load, use_legacy=True):
+    graph_addr = GraphAddress(graph_name, comm_addr)
     if use_legacy:
-        return legacy.run_client(graph_name, comm_addr, info_addr, load)
+        return legacy.run_client(graph_addr, info_addr, load)
     else:
-        return flowchart.run_client(comm_addr, info_addr, load)
+        return flowchart.run_client(graph_addr, info_addr, load)
 
 
 def main():

@@ -37,7 +37,7 @@ def run_editor_window(broker_addr, graphmgr_addr, node_addr, checkpoint_addr):
 
     # TODO fix this
     time.sleep(2)
-    comm = GraphCommHandler(graphmgr_addr)
+    comm = GraphCommHandler(graphmgr_addr.name, graphmgr_addr.uri)
 
     sources = comm.sources
     source_library = SourceLibrary()
