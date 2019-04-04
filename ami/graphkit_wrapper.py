@@ -25,7 +25,7 @@ class Graph():
     def __bool__(self):
         return self.graph.size() != 0
 
-    def _name_is_valid(self, name):
+    def name_is_valid(self, name):
         """
         Returns true if the name passed is a valid user-defined name for inputs
         and outputs in the graph.
@@ -64,7 +64,7 @@ class Graph():
         Returns:
             The set of user-defined names
         """
-        return {node.name for node in self.variables if self._name_is_valid(node.name)}
+        return {node.name for node in self.variables if self.name_is_valid(node.name)}
 
     @property
     def sources(self):
@@ -80,7 +80,7 @@ class Graph():
         for var in self.inputs['worker']:
             if isinstance(var, Var):
                 var = var.name
-            if self._name_is_valid(var):
+            if self.name_is_valid(var):
                 sources.add(var)
 
         return sources
