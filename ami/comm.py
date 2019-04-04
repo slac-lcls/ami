@@ -475,8 +475,11 @@ class Node(abc.ABC):
 
         self.graphs = {}
 
+        self.graph_initialized = False
+
         self.graph_comm = GraphReceiver(graph_addr, ctx)
         self.graph_comm.add_handler("graph", self.recv_graph)
+        self.graph_comm.add_handler("init", self.recv_graph_init)
 
         self.node_msg_comm = self.ctx.socket(zmq.PUSH)
         self.node_msg_comm.connect(msg_addr)
@@ -497,7 +500,7 @@ class Node(abc.ABC):
     def recv_graph(self, name, version, payload):
         """
         An abstract method that subclasses should implement. This method is
-        called everytime that a graph update is received.
+        called everytime that a complete graph update is received.
 
         Args:
             name (str):      the name of the graph that is updated.
@@ -505,6 +508,22 @@ class Node(abc.ABC):
             payload (bytes): the raw payload of the update.
         """
         pass
+
+    def recv_graph_init(self, name, version, payload):
+        """
+        This method is called everytime that a graph init update is received.
+        The init messages are meant only for newly connecting nodes. If the
+        graph has never been initialized then the `rech_graph` method is
+        called.
+
+        Args:
+            name (str):      the name of the graph that is updated.
+            version (int):   the version number of the updated graph.
+            payload (bytes): the raw payload of the update.
+        """
+        if not self.graph_initialized:
+            self.recv_graph(name, version, payload)
+            self.graph_initialized = True
 
     def report(self, topic, payload):
         """

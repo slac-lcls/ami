@@ -302,7 +302,7 @@ class Manager(Collector):
 
         if request == "\x01":
             for name, graph in self.graphs.items():
-                self.graph_comm.send_string("graph", zmq.SNDMORE)
+                self.graph_comm.send_string("init", zmq.SNDMORE)
                 self.graph_comm.send_pyobj((name, self.versions[name]), zmq.SNDMORE)
                 self.graph_comm.send(dill.dumps(graph))
             # re-ask for config information on connect
