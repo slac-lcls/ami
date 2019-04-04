@@ -56,6 +56,13 @@ class ResultsInjector(Node, ZmqHandler):
         else:
             return self.mark
 
+    def data(self, hb, payload, wait=False):
+        self.collector_message(self.node, hb, self.name, self.version, payload)
+        if wait:
+            self.wait_for(hb)
+        else:
+            return hb
+
     def wait_for(self, counter):
         while self.wait_counter < counter:
             time.sleep(0.01)
@@ -75,6 +82,16 @@ class ResultsInjector(Node, ZmqHandler):
                 except zmq.Again:
                     pass
             return not failed
+
+
+@pytest.fixture(scope='function')
+def result_data():
+    return {
+        'laser': True,
+        'delta_t': np.random.rand(1)[0],
+        'wave8': np.random.normal(0, 20.0, 100),
+        'cspad': np.random.normal(30, 5.0, (10, 10)),
+    }
 
 
 @pytest.fixture(scope='function')
@@ -114,24 +131,6 @@ def manager_ctrl(manager_proc):
             inject.graph_comm.recv()
 
             yield comm, inject
-    finally:
-        # clean up the shared zmq Context
-        ctx.destroy()
-
-
-@pytest.fixture(scope='function')
-def manager_config(request, manager_proc):
-    ctx = zmq.Context()
-    name = "graph"
-    addr = manager_proc['comm']
-    partition = request.param['partition']
-    try:
-        with GraphCommHandler(name, addr, ctx=ctx) as comm, ResultsInjector(manager_proc, ctx, 0, name) as inject:
-            inject.partition(partition, wait=True)
-            # wait for the graph subscription to finish setting up
-            inject.graph_comm.recv()
-
-            yield comm, inject, request.param
     finally:
         # clean up the shared zmq Context
         ctx.destroy()
@@ -209,3 +208,66 @@ def test_manager_create(manager_ctrl):
     assert comm.current == default
     assert default in comm.active
     assert comm.auto(view_name) in comm.names
+
+
+def test_manager_store(manager_ctrl, result_data):
+    comm, injector = manager_ctrl
+
+    hb = 1
+
+    # allocate a graph
+    assert comm.create()
+
+    # inject data into the manager
+    injector.version = 1
+    injector.data(hb, result_data, wait=True)
+
+    # test the data returned by features
+    assert comm.heartbeat == hb
+    assert comm.featuresVersion == injector.version
+    features = comm.features
+    assert features
+    assert set(features) == set(result_data)
+    for name, value in result_data.items():
+        # check that features has the correct type for each key
+        if isinstance(value, np.ndarray):
+            assert features[name] == (type(value), value.ndim)
+            # check that fetch returns the expected array
+            assert np.array_equal(comm.fetch(name), value)
+        else:
+            assert features[name] == type(value)
+            # check that fetch returns the expected value
+            assert comm.fetch(name) == value
+
+    # reset the store
+    assert comm.reset()
+
+    # check that the features dictionary is empty
+    assert comm.heartbeat == hb
+    assert comm.featuresVersion == 0
+    features = comm.features
+    assert not features
+    # check that none of the names in the result data are fetchable
+    for name in result_data:
+        assert comm.fetch(name) is None
+
+
+def test_manager_clear(manager_ctrl, complex_graph):
+    comm, injector = manager_ctrl
+
+    # push the complex graph
+    assert comm.update(complex_graph)
+
+    # check that the graph is not None
+    assert comm.graph is not None
+    # check that the manager published the graph change
+    assert injector.wait_graph(timeout=1.0)
+    assert dill.loads(injector.graphs[comm.current][comm.graphVersion]) is not None
+
+    # clear the graph
+    assert comm.clear()
+    # check that the graph is None now
+    assert comm.graph is None
+    # check that the manager published the graph change
+    assert injector.wait_graph(timeout=1.0)
+    assert dill.loads(injector.graphs[comm.current][comm.graphVersion]) is None
