@@ -121,7 +121,8 @@ class Manager(Collector):
 
     def types(self, name):
         if self.graphs[name] is not None:
-            types_dict = {var.name: var.type for var in self.graphs[name].variables}
+            types_dict = {var.name: var.type for var in self.graphs[name].variables
+                          if self.graphs[name].name_is_valid(var.name)}
         else:
             types_dict = {}
         types_dict.update(self.partition)
@@ -156,13 +157,15 @@ class Manager(Collector):
         request = self.comm.recv_string()
         if request in self.global_cmds:
             getattr(self, "cmd_%s" % request, self.cmd_unknown)()
-        else:
+        elif self.comm.getsockopt(zmq.RCVMORE):
             name = self.comm.recv_string()
             if not self.exists(name) and not request == 'create_graph':
                 self.create(name)
             # check if it is a feature request
             if not self.feature_request(name, request):
                 getattr(self, "cmd_%s" % request, self.cmd_unknown)(name)
+        else:
+            self.comm.send_string('error')
 
     def compile_graph(self, name):
         self.graphs[name].compile(num_workers=self.num_workers, num_local_collectors=self.num_nodes)
