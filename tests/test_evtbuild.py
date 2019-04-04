@@ -2,8 +2,8 @@ import pytest
 import zmq
 import dill
 
-from ami.data import MsgTypes, CollectorMessage
-from ami.comm import Colors, ContributionBuilder, EventBuilder
+from ami.data import MsgTypes, Transitions, Message, CollectorMessage
+from ami.comm import Colors, ContributionBuilder, TransitionBuilder, EventBuilder
 from ami.graphkit_wrapper import Graph
 from ami.graph_nodes import PickN, Var
 
@@ -40,6 +40,18 @@ def event_builder(request):
     # clean up all the zmq stuff
     eb.collector.close()
     eb.ctx.destroy()
+
+
+@pytest.fixture(scope='function')
+def transition_builder(request):
+    num = request.param
+    addr = "inproc://eb_test"
+    tb = TransitionBuilder(num, addr)
+    yield num, addr, tb
+
+    # clean up all the zmq stuff
+    tb.collector.close()
+    tb.ctx.destroy()
 
 
 @pytest.fixture(scope='function')
@@ -105,6 +117,51 @@ def test_builder_valid_contributors(test_builder, contrib_id, bad):
     except ValueError:
         # check that a ValueError was thrown on an invalid contributor id
         assert bad
+
+
+@pytest.mark.parametrize('transition_builder, ttype',
+                         [
+                            (1, Transitions.Configure),
+                            (2, Transitions.Configure),
+                            (3, Transitions.Configure),
+                            (1, Transitions.Allocate),
+                            (2, Transitions.Allocate),
+                            (3, Transitions.Allocate),
+                         ],
+                         indirect=['transition_builder'])
+def test_tb_comp(transition_builder, ttype):
+    contribs, addr, tb = transition_builder
+    sock = tb.ctx.socket(zmq.PULL)
+    sock.bind(addr)
+    idnum = 0
+    alt_key = "alt_key"
+    payload = {"test": "val"}
+
+    for contrib in range(contribs):
+        assert not tb.ready(alt_key)
+        assert not tb.ready(ttype)
+        # update the transition
+        tb.update(ttype, contrib, payload)
+    # check that the builder is ready for the expected type
+    assert tb.ready(ttype)
+    # check that other keys aren't ready
+    assert not tb.ready(alt_key)
+
+    # complete the transition
+    tb.complete(ttype, idnum)
+
+    try:
+        msg = sock.recv_pyobj(zmq.NOBLOCK)
+    except zmq.Again:
+        msg = None
+    # test that the sock recv worked
+    assert msg is not None
+    assert isinstance(msg, Message)
+    assert msg.mtype == MsgTypes.Transition
+    assert msg.identity == idnum
+    # test the value in the results dictionary from the message
+    assert msg.payload.ttype == ttype
+    assert msg.payload.payload == payload
 
 
 @pytest.mark.parametrize('event_builder', [(1, 5), (2, 5), (3, 5)], indirect=True)
