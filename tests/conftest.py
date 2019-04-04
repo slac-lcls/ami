@@ -149,7 +149,6 @@ def start_ami(request, workerjson, use_psana):
         ami.join()
 
         if ami.exitcode == 0 or ami.exitcode == -signal.SIGTERM:
-            print('AMI exited successfully')
             return 0
         else:
             print('AMI exited with non-zero status code: %d' % ami.exitcode)
