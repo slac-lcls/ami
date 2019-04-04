@@ -4,6 +4,7 @@ import time
 import dill
 import numpy as np
 import multiprocessing as mp
+import ami.graph_nodes as gn
 
 from ami.data import MsgTypes, Transitions, Transition
 from ami.comm import Node, ZmqHandler, GraphCommHandler
@@ -182,6 +183,48 @@ def test_manager_add_view(manager_ctrl, name):
     assert graph is None
 
 
+@pytest.mark.parametrize('node_info',
+                         [
+                            ('addMap',
+                             {
+                                'name': 'test_map',
+                                'inputs': gn.Var('inval', int),
+                                'outputs': gn.Var('outval', float),
+                                'func': lambda x: float(x),
+                             }),
+                            ('addPickN',
+                             {
+                                'name': 'test_map',
+                                'inputs': gn.Var('inval', int),
+                                'outputs': gn.Var('outval', float),
+                                'N': 5,
+                             }),
+                         ])
+def test_manager_add_node(manager_ctrl, node_info):
+    comm, injector = manager_ctrl
+    func, kwargs = node_info
+
+    # insert the node in the graph
+    assert hasattr(comm, func)
+    assert getattr(comm, func)(**kwargs)
+
+    # check that the node is in the graph
+    assert kwargs['inputs'].name in comm.graph.names
+    assert kwargs['outputs'].name in comm.graph.names
+
+    # check that the change is in the received graph object
+    assert injector.wait_graph(timeout=1.0)
+    graph = dill.loads(injector.graphs[comm.current][comm.graphVersion])
+    assert kwargs['inputs'].name in graph.names
+    assert kwargs['outputs'].name in graph.names
+
+    # remove the node from the graph
+    assert comm.remove(kwargs['name'])
+
+    # check that the node was removed
+    assert comm.graph is None
+
+
 def test_manager_create(manager_ctrl):
     comm, injector = manager_ctrl
 
@@ -271,3 +314,69 @@ def test_manager_clear(manager_ctrl, complex_graph):
     # check that the manager published the graph change
     assert injector.wait_graph(timeout=1.0)
     assert dill.loads(injector.graphs[comm.current][comm.graphVersion]) is None
+
+
+def test_manager_badcommand(manager_ctrl):
+    comm, injector = manager_ctrl
+
+    # send an unknown command to manager
+    comm._header("fake_command")
+    assert comm._sock.recv_string() != 'ok'
+
+    # check that a valid command still works
+    assert comm.clear()
+
+    # send an incomplete command
+    comm._sock.send_string("clear_graph")
+    assert comm._sock.recv_string() != 'ok'
+
+    # check that a valid command still works
+    assert comm.clear()
+
+
+def test_manager_graphinfo(manager_ctrl, complex_graph):
+    comm, injector = manager_ctrl
+
+    # push the complex graph
+    assert comm.update(complex_graph)
+
+    # check that the graph is not None
+    assert comm.graph is not None
+
+    expected_types = {var.name: var.type for var in complex_graph.variables}
+
+    # check the names in the graph
+    assert comm.names == complex_graph.names
+    assert comm.types == expected_types
+
+    # check getting the types individually
+    for name in complex_graph.names:
+        assert comm.get_type(name) == complex_graph.get_type(name)
+
+
+def test_manager_versions(manager_ctrl):
+    comm, injector = manager_ctrl
+
+    graph_version = 0
+    feature_version = 0
+
+    # check the version readback
+    assert comm.graphVersion == graph_version
+    assert comm.featuresVersion == feature_version
+    assert comm.versions == (graph_version, feature_version)
+
+    # bump the graph version and recheck
+    graph_version += 1
+    assert comm.clear()
+    assert comm.graphVersion == graph_version
+    assert comm.featuresVersion == feature_version
+    assert comm.versions == (graph_version, feature_version)
+
+    # bump the feature version and recheck
+    feature_version = graph_version
+    # inject fake data with the new version
+    injector.version = feature_version
+    injector.data(1, {}, wait=True)
+    assert comm.graphVersion == graph_version
+    assert comm.featuresVersion == feature_version
+    assert comm.versions == (graph_version, feature_version)
