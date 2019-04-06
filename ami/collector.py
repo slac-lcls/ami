@@ -23,15 +23,38 @@ class GraphCollector(Node, Collector):
 
         self.downstream_addr = downstream_addr
 
-        self.register(self.graph_comm.sock, self.graph_comm.recv)
+        self.register(self.graph_comm.sock, self.recv_handler)
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc_value, traceback):
+        self.close()
 
     @property
     def name(self):
         return self.base_name % self.node
 
-    def recv_graph(self, name, version, payload):
-        self.graph = payload
-        self.store.set_graph(name, version, self.graph)
+    def close(self):
+        self.ctx.destroy()
+
+    def recv_handler(self):
+        try:
+            self.graph_comm.recv()
+        except (AssertionError, TypeError):
+            logger.exception("Failure encountered updating graph:")
+            self.report("error", "Fatal error encountered updating graph!")
+            self.exitcode = 1
+            self.running = False
+
+    def recv_graph(self, name, version, args, graph):
+        self.store.set_graph(name, version, args, graph)
+
+    def recv_graph_add(self, name, version, args, nodes):
+        self.store.add_graph(name, version, args, nodes)
+
+    def recv_graph_del(self, name, version, args, nodes):
+        self.store.del_graph(name, version, args, nodes)
 
     def process_msg(self, msg):
         if msg.mtype == MsgTypes.Transition:
@@ -51,16 +74,16 @@ class GraphCollector(Node, Collector):
 
 def run_collector(node_num, base_name, num_contribs, color, collector_addr, upstream_addr, graph_addr, msg_addr):
     logger.info('Starting collector on node # %d', node_num)
-    collector = GraphCollector(
-        node_num,
-        base_name,
-        num_contribs,
-        color,
-        collector_addr,
-        upstream_addr,
-        graph_addr,
-        msg_addr)
-    return collector.run()
+    with GraphCollector(
+            node_num,
+            base_name,
+            num_contribs,
+            color,
+            collector_addr,
+            upstream_addr,
+            graph_addr,
+            msg_addr) as collector:
+        return collector.run()
 
 
 def run_node_collector(node_num, num_contribs, collector_addr, upstream_addr, graph_addr, msg_addr):

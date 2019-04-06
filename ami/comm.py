@@ -9,6 +9,7 @@ import zmq.asyncio
 from enum import IntEnum
 
 import ami.graph_nodes as gn
+from ami.graphkit_wrapper import Graph
 from ami.data import MsgTypes, Message, Transition, CollectorMessage, Datagram
 
 
@@ -327,8 +328,27 @@ class GraphBuilder(ContributionBuilder):
         self.depth = depth
         self.color = color
         self.latest = 0
-        self.graphs = {}
+        self.graph = None
+        self.pending_graphs = {}
+        self.version = None
         self.completion = completion
+
+    def _init(self, name):
+        if self.graph is None:
+            self.graph = Graph(name)
+
+    def _edit(self, cmd, obj):
+        if cmd == "set":
+            self.graph = obj
+        elif cmd == "add":
+            self.graph.add(obj)
+        elif cmd == "del":
+            for node in obj:
+                self.graph.remove(node)
+
+    def _compile(self, args):
+        if self.graph:
+            self.graph.compile(**args)
 
     def prune(self, prune_key=None):
         if prune_key is None:
@@ -341,24 +361,43 @@ class GraphBuilder(ContributionBuilder):
                 del self.pending[eb_key]
                 del self.contribs[eb_key]
 
-    def active_graphs(self):
-        active = set()
-        for store in self.pending.values():
-            active.add(store.version)
-        return active
+    def set_graph(self, name, ver_key, args, graph):
+        self.pending_graphs[ver_key] = (False, "set", name, args, graph)
 
-    def clear_graphs(self):
-        active = self.active_graphs()
-        for ver_key in sorted(self.graphs.keys(), reverse=True)[self.depth:]:
-            if ver_key not in active:
-                logger.debug("Pruned old graph (v%d)", ver_key)
-                del self.graphs[ver_key]
+    def add_graph(self, name, ver_key, args, nodes):
+        self.pending_graphs[ver_key] = (True, "add", name, args, nodes)
 
-    def set_graph(self, name, ver_key, graph):
-        self.graphs[ver_key] = dill.loads(graph)
-        self.clear_graphs()
+    def del_graph(self, name, ver_key, args, nodes):
+        self.pending_graphs[ver_key] = (True, "del", name, args, nodes)
+
+    def apply_graph(self, ver_key):
+        if self.version is None or ver_key > self.version:
+            versions = [ver for ver in sorted(self.pending_graphs) if ver <= ver_key]
+            if ver_key in versions:
+                for version in versions:
+                    init, cmd, name, args, obj = self.pending_graphs[version]
+                    self._init(name)
+                    self._edit(cmd, obj)
+                    self._compile(args)
+                    del self.pending_graphs[version]
+                self.version = ver_key
+                return True
+            else:
+                return False
+        elif ver_key == self.version:
+            return True
+        else:
+            return False
 
     def _complete(self, eb_key, identity):
+        if self.apply_graph(self.pending[eb_key].version):
+            contribs = self.pending[eb_key].namespace
+            self.pending[eb_key].clear()
+            if self.graph:
+                for data in contribs.values():
+                    self.pending[eb_key].update(self.graph(data, color=self.color))
+        else:
+            self.pending[eb_key].clear()
         self.completion(eb_key, identity, self.pending[eb_key])
 
     def _update(self, eb_key, eb_id, ver_key, data):
@@ -371,9 +410,7 @@ class GraphBuilder(ContributionBuilder):
             logger.error("Graph version mismatch: heartbeat %s from id %s has version %s when %s was expected",
                          eb_key, eb_id, ver_key, self.pending[eb_key].version)
         else:
-            graph = self.graphs.get(ver_key)
-            if graph:
-                self.pending[eb_key].update(graph(data, color=self.color))
+            self.pending[eb_key].put(eb_id, data)
 
 
 class TransitionBuilder(ContributionBuilder, ZmqHandler):
@@ -413,11 +450,20 @@ class EventBuilder(ZmqHandler):
     def clear_graphs(self, name):
         self.builders[name].clear_graphs()
 
-    def set_graph(self, name, ver_key, graph):
+    def set_graph(self, name, ver_key, args, graph):
         if name not in self.builders:
             self.create(name)
-        self.builders[name].graphs[ver_key] = dill.loads(graph)
-        self.builders[name].clear_graphs()
+        self.builders[name].set_graph(name, ver_key, args, graph)
+
+    def add_graph(self, name, ver_key, args, graph):
+        if name not in self.builders:
+            self.create(name)
+        self.builders[name].add_graph(name, ver_key, args, graph)
+
+    def del_graph(self, name, ver_key, args, graph):
+        if name not in self.builders:
+            self.create(name)
+        self.builders[name].del_graph(name, ver_key, args, graph)
 
     def complete(self, name, eb_key, identity):
         self.builders[name].complete(eb_key, identity)
@@ -436,8 +482,14 @@ class EventBuilder(ZmqHandler):
     def pending(self, name):
         return self.builders[name].pending
 
-    def graphs(self, name):
-        return self.builders[name].graphs
+    def pending_graphs(self, name):
+        return self.builders[name].pending_graphs
+
+    def graph(self, name):
+        return self.builders[name].graph
+
+    def version(self, name):
+        return self.builders[name].version
 
     def latest(self, name):
         return self.builders[name].latest
@@ -480,6 +532,8 @@ class Node(abc.ABC):
         self.graph_comm = GraphReceiver(graph_addr, ctx)
         self.graph_comm.add_handler("graph", self.recv_graph)
         self.graph_comm.add_handler("init", self.recv_graph_init)
+        self.graph_comm.add_handler("add", self.recv_graph_add)
+        self.graph_comm.add_handler("del", self.recv_graph_del)
 
         self.node_msg_comm = self.ctx.socket(zmq.PUSH)
         self.node_msg_comm.connect(msg_addr)
@@ -497,7 +551,7 @@ class Node(abc.ABC):
         pass
 
     @abc.abstractmethod
-    def recv_graph(self, name, version, payload):
+    def recv_graph(self, name, version, args, graph):
         """
         An abstract method that subclasses should implement. This method is
         called everytime that a complete graph update is received.
@@ -505,11 +559,12 @@ class Node(abc.ABC):
         Args:
             name (str):      the name of the graph that is updated.
             version (int):   the version number of the updated graph.
-            payload (bytes): the raw payload of the update.
+            args (dict):     the keyword arguments to be used for compilation.
+            graph (Graph):   the updated graph.
         """
         pass
 
-    def recv_graph_init(self, name, version, payload):
+    def recv_graph_init(self, name, version, args, graph):
         """
         This method is called everytime that a graph init update is received.
         The init messages are meant only for newly connecting nodes. If the
@@ -519,11 +574,40 @@ class Node(abc.ABC):
         Args:
             name (str):      the name of the graph that is updated.
             version (int):   the version number of the updated graph.
-            payload (bytes): the raw payload of the update.
+            args (dict):     the keyword arguments to be used for compilation.
+            graph (Graph):   the updated graph.
         """
         if not self.graph_initialized:
-            self.recv_graph(name, version, payload)
+            self.recv_graph(name, version, args, graph)
             self.graph_initialized = True
+
+    @abc.abstractmethod
+    def recv_graph_add(self, name, version, args, nodes):
+        """
+        An abstract method that subclasses should implement. This method is
+        called everytime that a graph addition update is received.
+
+        Args:
+            name (str):      the name of the graph that is updated.
+            version (int):   the version number of the updated graph.
+            args (dict):     the keyword arguments to be used for compilation.
+            nodes (object):  the nodes to add to the graph.
+        """
+        pass
+
+    @abc.abstractmethod
+    def recv_graph_del(self, name, version, args, nodes):
+        """
+        An abstract method that subclasses should implement. This method is
+        called everytime that a graph remove update is received.
+
+        Args:
+            name (str):      the name of the graph that is updated.
+            version (int):   the version number of the updated graph.
+            args (dict):     the keyword arguments to be used for compilation.
+            nodes (object):  the nodes to remove from the graph.
+        """
+        pass
 
     def report(self, topic, payload):
         """
@@ -569,6 +653,8 @@ class Collector(abc.ABC):
         self.collector.bind(addr)
         self.poller.register(self.collector, zmq.POLLIN)
         self.handlers = {}
+        self.running = True
+        self.exitcode = 0
 
     def register(self, sock, handler):
         """
@@ -614,8 +700,11 @@ class Collector(abc.ABC):
         plus any additional sockets added by calling the `register` method.
         When data is available on the socket the corresponding handler is
         called.
+
+        Returns:
+            The current value of the exitcode attribute of the class.
         """
-        while True:
+        while self.running:
             for sock, flag in self.poller.poll():
                 if flag != zmq.POLLIN:
                     continue
@@ -624,6 +713,8 @@ class Collector(abc.ABC):
                     self.process_msg(msg)
                 elif sock in self.handlers:
                     self.handlers[sock]()
+
+        return self.exitcode
 
 
 class GraphReceiver:
@@ -739,10 +830,10 @@ class GraphReceiver:
         if topic in self.special:
             self.handlers[topic]()
         else:
-            name, version = self.sock.recv_pyobj()
-            payload = self.sock.recv()
+            name, version, args = self.sock.recv_pyobj()
+            payload = dill.loads(self.sock.recv())
             if topic in self.handlers:
-                self.handlers[topic](name, version, payload)
+                self.handlers[topic](name, version, args, payload)
 
 
 class GraphInfoReceiver:

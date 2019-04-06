@@ -3,12 +3,12 @@ import re
 import sys
 import zmq
 import json
-import dill
 import logging
 import argparse
 from ami import LogConfig, Defaults
 from ami.comm import Ports, Colors, ResultStore, Node
 from ami.data import MsgTypes, Source
+from ami.graphkit_wrapper import Graph
 
 
 logger = logging.getLogger(__name__)
@@ -30,21 +30,50 @@ class Worker(Node):
 
         self.graph_comm.add_command("config", self.send_configure)
 
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc_value, traceback):
+        self.close()
+
     @property
     def name(self):
         return "worker%03d" % self.node
 
+    def close(self):
+        self.ctx.destroy()
+
     def send_configure(self):
         self.store.send(self.src.configure())
 
-    def recv_graph(self, name, version, payload):
-        self.graphs[name] = dill.loads(payload)
+    def init_graph(self, name):
+        if name not in self.graphs or self.graphs[name] is None:
+            self.graphs[name] = Graph(name)
+
+    def update_graph(self, name, version, args):
+        if self.graphs[name]:
+            self.graphs[name].compile(**args)
         requests = set()
         for graph in self.graphs.values():
             if graph is not None:
                 requests.update(graph.sources)
         self.src.request(requests)
         self.store.configure(name, version)
+
+    def recv_graph(self, name, version, args, graph):
+        self.graphs[name] = graph
+        self.update_graph(name, version, args)
+
+    def recv_graph_add(self, name, version, args, nodes):
+        self.init_graph(name)
+        self.graphs[name].add(nodes)
+        self.update_graph(name, version, args)
+
+    def recv_graph_del(self, name, version, args, nodes):
+        self.init_graph(name)
+        for node in nodes:
+            self.graphs[name].remove(node)
+        self.update_graph(name, version, args)
 
     def run(self):
         for msg in self.src.events():
@@ -59,6 +88,10 @@ class Worker(Node):
                         self.graph_comm.recv(False)
                     except zmq.Again:
                         break
+                    except (AssertionError, TypeError):
+                        logger.exception("Failure encountered updating graph:")
+                        self.report("error", "Fatal error encountered updating graph!")
+                        return 1
             elif msg.mtype == MsgTypes.Datagram:
                 try:
                     for name, graph in self.graphs.items():
@@ -66,8 +99,8 @@ class Worker(Node):
                             graph_result = graph(msg.payload, color=Colors.Worker)
                             self.store.update(name, graph_result)
                 except Exception:
-                    self.report("error", "Fatal error encountered executing graph!")
                     logger.exception("%s: Failure encountered executing graph:", self.name)
+                    self.report("error", "Fatal error encountered executing graph!")
                     return 1
             else:
                 self.store.send(msg)
@@ -97,8 +130,8 @@ def run_worker(num, num_workers, hb_period, source, collector_addr, graph_addr, 
     else:
         logger.critical("worker%03d: unknown data source type: %s", num, source[0])
         return 1
-    worker = Worker(num, src, collector_addr, graph_addr, msg_addr)
-    return worker.run()
+    with Worker(num, src, collector_addr, graph_addr, msg_addr) as worker:
+        return worker.run()
 
 
 def main():

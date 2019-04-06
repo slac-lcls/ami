@@ -235,23 +235,28 @@ def test_comp_graph(event_builder, eb_graph):
     graph_name = 'test'
     nworkers = event_builder.num_contribs
     ncollectors = 1
+    graph_args = {'num_workers': nworkers, 'num_local_collectors': ncollectors}
     value = 6
     data = {'value_%s' % Colors.Worker: value}
 
     # add the graph to the event builder
     eb_graph = dill.loads(eb_graph)
-    eb_graph.compile(num_workers=nworkers, num_local_collectors=ncollectors)
-    event_builder.set_graph(graph_name, graph_version, dill.dumps(eb_graph))
+    event_builder.set_graph(graph_name, graph_version, graph_args, eb_graph)
     # check that the graph is there
-    assert graph_version in event_builder.graphs(graph_name)
+    assert graph_version in event_builder.pending_graphs(graph_name)
+    assert event_builder.version(graph_name) is None
 
-    event_builder.update(graph_name, hb, 0, graph_version, data)
-    event_builder.update(graph_name, hb, 1, graph_version, data)
+    for i in range(nworkers):
+        event_builder.update(graph_name, hb, i, graph_version, data)
 
     # test that the heartbeat is ready
     assert event_builder.ready(graph_name, hb)
 
     event_builder.complete(graph_name, hb, idnum)
+
+    # check that the pending graph has been applied
+    assert graph_version not in event_builder.pending_graphs(graph_name)
+    assert event_builder.version(graph_name) == graph_version
 
     try:
         msg = sock.recv_pyobj(zmq.NOBLOCK)
@@ -268,3 +273,59 @@ def test_comp_graph(event_builder, eb_graph):
     assert msg.version == graph_version
     # test the value in the results dictionary from the message
     assert msg.payload.get('value_%s' % Colors.LocalCollector) == value
+
+
+@pytest.mark.parametrize('event_builder', [(2, 5)], indirect=True)
+def test_pending_graph(event_builder, eb_graph):
+    sock = event_builder.ctx.socket(zmq.PULL)
+    sock.bind("inproc://eb_test")
+
+    hb = 0
+    idnum = 0
+    graph_versions = 3
+    graph_name = 'test'
+    nworkers = event_builder.num_contribs
+    ncollectors = 1
+    graph_args = {'num_workers': nworkers, 'num_local_collectors': ncollectors}
+    value = 6
+    data = {'value_%s' % Colors.Worker: value}
+
+    # add the graph to the event builder
+    eb_graph = dill.loads(eb_graph)
+    for ver in range(graph_versions):
+        event_builder.set_graph(graph_name, ver, graph_args, eb_graph)
+        assert ver in event_builder.pending_graphs(graph_name)
+        assert event_builder.version(graph_name) is None
+
+    # now fire off completions and see if the pending graphs are applied
+    for ver in range(graph_versions):
+        for i in range(nworkers):
+            event_builder.update(graph_name, hb, i, ver, data)
+
+        # test that the heartbeat is ready
+        assert event_builder.ready(graph_name, hb)
+        event_builder.complete(graph_name, hb, idnum)
+
+        # check that the pending graph has been applied
+        assert ver not in event_builder.pending_graphs(graph_name)
+        assert event_builder.version(graph_name) == ver
+        # check that the pending graphs are still pending...
+        for nv in range(ver+1, graph_versions):
+            assert nv in event_builder.pending_graphs(graph_name)
+            assert event_builder.version(graph_name) == ver
+
+        # another completion with the same graph
+        for i in range(nworkers):
+            event_builder.update(graph_name, hb, i, ver, data)
+
+        # test that the heartbeat is ready
+        assert event_builder.ready(graph_name, hb)
+        event_builder.complete(graph_name, hb, idnum)
+
+        # check that the pending graph has been applied
+        assert ver not in event_builder.pending_graphs(graph_name)
+        assert event_builder.version(graph_name) == ver
+        # check that the pending graphs are still pending...
+        for nv in range(ver+1, graph_versions):
+            assert nv in event_builder.pending_graphs(graph_name)
+            assert event_builder.version(graph_name) == ver

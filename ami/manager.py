@@ -65,6 +65,15 @@ class Manager(Collector):
         self.node_msg_comm.bind(msg_addr)
         self.register(self.node_msg_comm, self.node_request)
 
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc_value, traceback):
+        self.close()
+
+    def close(self):
+        self.ctx.destroy()
+
     def process_msg(self, msg):
         if msg.mtype == MsgTypes.Datagram:
             if msg.name not in self.feature_stores:
@@ -91,6 +100,10 @@ class Manager(Collector):
             self.partition = msg.payload.payload
             # export the partition info to epics
             self.export_config()
+
+    @property
+    def compilier_args(self):
+        return {'num_workers': self.num_workers, 'num_local_collectors': self.num_nodes}
 
     def exists(self, name):
         return all(name in val for val in [self.feature_stores, self.graphs, self.versions])
@@ -168,7 +181,15 @@ class Manager(Collector):
             self.comm.send_string('error')
 
     def compile_graph(self, name):
-        self.graphs[name].compile(num_workers=self.num_workers, num_local_collectors=self.num_nodes)
+        """
+        Tries to compile the named graph. A copy of the original graph is made,
+        so the original graph is uneffected by the compilation.
+
+        Args:
+            name (str): the name of the graph to compile.
+        """
+        graph = dill.loads(dill.dumps(self.graphs[name]))
+        graph.compile(**self.compilier_args)
 
     def cmd_unknown(self, name=None):
         self.comm.send_string('error')
@@ -228,20 +249,20 @@ class Manager(Collector):
         self.comm.send(dill.dumps(self.graphs[name]))
 
     def cmd_add_graph(self, name):
-        node = dill.loads(self.comm.recv())
+        nodes = dill.loads(self.comm.recv())
         backup = dill.dumps(self.graphs[name])
         try:
             if self.graphs[name] is None:
                 self.graphs[name] = Graph(name)
-            self.graphs[name].add(node)
+            self.graphs[name].add(nodes)
             self.compile_graph(name)
-            self.publish_graph(name)
+            self.publish_delta(name, "add", nodes)
         except (AssertionError, TypeError):
-            if isinstance(node, list):
+            if isinstance(nodes, list):
                 logger.exception("Failure encountered adding nodes \"%s\" to the graph:",
-                                 ", ".join(n.name for n in node))
+                                 ", ".join(n.name for n in nodes))
             else:
-                logger.exception("Failure encountered adding node \"%s\" to the graph:", node.name)
+                logger.exception("Failure encountered adding node \"%s\" to the graph:", nodes.name)
             self.graphs[name] = dill.loads(backup)
             logger.info("Restored previous version of the graph (%s v%d)", name, self.versions[name])
             self.comm.send_string('error')
@@ -259,7 +280,7 @@ class Manager(Collector):
                 else:
                     # if the graph is empty remove it
                     self.graphs[name] = None
-                self.publish_graph(name)
+                self.publish_delta(name, "del", nodes)
             except (AssertionError, TypeError):
                 logger.exception("Failure encountered removing nodes \"%s\" from the graph:", nodes)
                 self.graphs[name] = dill.loads(backup)
@@ -283,12 +304,29 @@ class Manager(Collector):
             logger.info("Restored previous version of the graph (%s v%d)", name, self.versions[name])
             self.comm.send_string('error')
 
+    def publish_info(self, name):
+        return name, self.versions[name], self.compilier_args
+
+    def publish_delta(self, name, cmd, delta):
+        logger.info("Sending requested delta of graph...")
+        try:
+            self.versions[name] += 1
+            self.graph_comm.send_string(cmd, zmq.SNDMORE)
+            self.graph_comm.send_pyobj(self.publish_info(name), zmq.SNDMORE)
+            self.graph_comm.send(dill.dumps(delta))
+            self.export_graph(name)
+            logger.info("Sending delta of graph (%s v%d) completed", name, self.versions[name])
+            self.comm.send_string('ok')
+        except Exception:
+            logger.exception("Failed to send delta of graph (%s v%d) -", name, self.versions[name])
+            self.comm.send_string('error')
+
     def publish_graph(self, name):
         logger.info("Sending requested graph...")
         try:
             self.versions[name] += 1
             self.graph_comm.send_string("graph", zmq.SNDMORE)
-            self.graph_comm.send_pyobj((name, self.versions[name]), zmq.SNDMORE)
+            self.graph_comm.send_pyobj(self.publish_info(name), zmq.SNDMORE)
             self.graph_comm.send(dill.dumps(self.graphs[name]))
             self.export_graph(name)
             logger.info("Sending of graph (%s v%d) completed", name, self.versions[name])
@@ -303,7 +341,7 @@ class Manager(Collector):
         if request == "\x01":
             for name, graph in self.graphs.items():
                 self.graph_comm.send_string("init", zmq.SNDMORE)
-                self.graph_comm.send_pyobj((name, self.versions[name]), zmq.SNDMORE)
+                self.graph_comm.send_pyobj(self.publish_info(name), zmq.SNDMORE)
                 self.graph_comm.send(dill.dumps(graph))
             # re-ask for config information on connect
             self.graph_comm.send_string("cmd", zmq.SNDMORE)
@@ -353,8 +391,16 @@ class Manager(Collector):
 
 def run_manager(num_workers, num_nodes, results_addr, graph_addr, comm_addr, msg_addr, info_addr, export_addr=None):
     logger.info('Starting manager, controlling %d workers on %d nodes', num_workers, num_nodes)
-    manager = Manager(num_workers, num_nodes, results_addr, graph_addr, comm_addr, msg_addr, info_addr, export_addr)
-    return manager.run()
+    with Manager(
+            num_workers,
+            num_nodes,
+            results_addr,
+            graph_addr,
+            comm_addr,
+            msg_addr,
+            info_addr,
+            export_addr) as manager:
+        return manager.run()
 
 
 def main():

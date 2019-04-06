@@ -1,7 +1,6 @@
 import pytest
 import zmq
 import time
-import dill
 import numpy as np
 import multiprocessing as mp
 import ami.graph_nodes as gn
@@ -40,7 +39,16 @@ class ResultsInjector(Node, ZmqHandler):
         hb = self.comm.heartbeat
         return hb if hb is not None else -1
 
-    def recv_graph(self, name, version, payload):
+    def recv_graph(self, name, version, args, payload):
+        self.store_graph(name, version, payload)
+
+    def recv_graph_add(self, name, version, args, payload):
+        self.store_graph(name, version, payload)
+
+    def recv_graph_del(self, name, version, args, payload):
+        self.store_graph(name, version, payload)
+
+    def store_graph(self, name, version, payload):
         if name not in self.graphs:
             self.graphs[name] = {}
         self.graphs[name][version] = payload
@@ -152,8 +160,14 @@ def test_manager_partition(manager_ctrl, partition):
     assert comm.names == set(partition)
 
 
-@pytest.mark.parametrize('name', ["cspad", "delta_t", "test"])
-def test_manager_add_view(manager_ctrl, name):
+@pytest.mark.parametrize('names',
+                         [
+                            ["cspad"],
+                            ["delta_t"],
+                            ["test"],
+                            ["cspad", "delta_t"],
+                         ])
+def test_manager_add_view(manager_ctrl, names):
     comm, injector = manager_ctrl
 
     # create a fake partition
@@ -162,25 +176,30 @@ def test_manager_add_view(manager_ctrl, name):
 
     # add a view to the graph
     version = comm.graphVersion
-    assert comm.view(name)
+    assert comm.view(names)
     assert comm.graphVersion == version + 1
-    assert comm.auto(name) in comm.names
+    for name in names:
+        assert comm.auto(name) in comm.names
 
     # check that the change is in the received graph object
     assert injector.wait_graph(timeout=1.0)
-    graph = dill.loads(injector.graphs[comm.current][comm.graphVersion])
-    assert comm.auto(name) in graph.names
+    nodes = injector.graphs[comm.current][comm.graphVersion]
+    assert len(nodes) == len(names)
+    for name, node in zip(names, nodes):
+        assert node.name == "%s_view" % comm.auto(name)
 
     # remove the view from the graph
     version = comm.graphVersion
-    assert comm.unview(name)
+    assert comm.unview(names)
     assert comm.graphVersion == version + 1
-    assert comm.auto(name) not in comm.names
+    for name in names:
+        assert comm.auto(name) not in comm.names
 
     # check that the change is in the received graph object
     assert injector.wait_graph(timeout=1.0)
-    graph = dill.loads(injector.graphs[comm.current][comm.graphVersion])
-    assert graph is None
+    removes = injector.graphs[comm.current][comm.graphVersion]
+    for name, remove in zip(names, removes):
+        assert remove == "%s_view" % comm.auto(name)
 
 
 @pytest.mark.parametrize('node_info',
@@ -191,18 +210,20 @@ def test_manager_add_view(manager_ctrl, name):
                                 'inputs': gn.Var('inval', int),
                                 'outputs': gn.Var('outval', float),
                                 'func': lambda x: float(x),
-                             }),
+                             },
+                             gn.Map),
                             ('addPickN',
                              {
                                 'name': 'test_map',
                                 'inputs': gn.Var('inval', int),
                                 'outputs': gn.Var('outval', float),
                                 'N': 5,
-                             }),
+                             },
+                             gn.PickN),
                          ])
 def test_manager_add_node(manager_ctrl, node_info):
     comm, injector = manager_ctrl
-    func, kwargs = node_info
+    func, kwargs, expected = node_info
 
     # insert the node in the graph
     assert hasattr(comm, func)
@@ -214,15 +235,25 @@ def test_manager_add_node(manager_ctrl, node_info):
 
     # check that the change is in the received graph object
     assert injector.wait_graph(timeout=1.0)
-    graph = dill.loads(injector.graphs[comm.current][comm.graphVersion])
-    assert kwargs['inputs'].name in graph.names
-    assert kwargs['outputs'].name in graph.names
+    node = injector.graphs[comm.current][comm.graphVersion]
+    # check the type of the node
+    assert isinstance(node, expected)
+    # check the name of the node
+    assert node.name == kwargs['name']
+    # check the inputs and outputs of the node
+    assert kwargs['inputs'] in node.inputs
+    assert kwargs['outputs'] in node.outputs
 
     # remove the node from the graph
     assert comm.remove(kwargs['name'])
 
     # check that the node was removed
     assert comm.graph is None
+
+    # check that the change is in the received graph object
+    assert injector.wait_graph(timeout=1.0)
+    names = injector.graphs[comm.current][comm.graphVersion]
+    assert kwargs['name'] in names
 
 
 def test_manager_create(manager_ctrl):
@@ -305,7 +336,7 @@ def test_manager_clear(manager_ctrl, complex_graph):
     assert comm.graph is not None
     # check that the manager published the graph change
     assert injector.wait_graph(timeout=1.0)
-    assert dill.loads(injector.graphs[comm.current][comm.graphVersion]) is not None
+    assert injector.graphs[comm.current][comm.graphVersion] is not None
 
     # clear the graph
     assert comm.clear()
@@ -313,7 +344,7 @@ def test_manager_clear(manager_ctrl, complex_graph):
     assert comm.graph is None
     # check that the manager published the graph change
     assert injector.wait_graph(timeout=1.0)
-    assert dill.loads(injector.graphs[comm.current][comm.graphVersion]) is None
+    assert injector.graphs[comm.current][comm.graphVersion] is None
 
 
 def test_manager_badcommand(manager_ctrl):
