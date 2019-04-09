@@ -50,14 +50,17 @@ class Worker(Node):
         if name not in self.graphs or self.graphs[name] is None:
             self.graphs[name] = Graph(name)
 
-    def update_graph(self, name, version, args):
-        if self.graphs[name]:
-            self.graphs[name].compile(**args)
+    def update_requests(self):
         requests = set()
         for graph in self.graphs.values():
             if graph is not None:
                 requests.update(graph.sources)
         self.src.request(requests)
+
+    def update_graph(self, name, version, args):
+        if self.graphs[name]:
+            self.graphs[name].compile(**args)
+        self.update_requests()
         self.store.configure(name, version)
 
     def recv_graph(self, name, version, args, graph):
@@ -74,6 +77,13 @@ class Worker(Node):
         for node in nodes:
             self.graphs[name].remove(node)
         self.update_graph(name, version, args)
+
+    def recv_graph_purge(self, name, version, args, nodes):
+        if name in self.graphs:
+            del self.graphs[name]
+        if name in self.store:
+            self.store.remove(name)
+        self.update_requests()
 
     def run(self):
         for msg in self.src.events():

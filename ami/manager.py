@@ -44,7 +44,9 @@ class Manager(Collector):
         self.feature_req = re.compile("(?P<type>fetch|lookup):(?P<name>.*)")
         self.graphs = {}
         self.versions = {}
+        self.purged = set()
         self.global_cmds = {"list_graphs"}
+        self.no_auto_create_cmds = {"create_graph", "destroy_graph"}
 
         if export_addr is None:
             self.export = None
@@ -77,7 +79,10 @@ class Manager(Collector):
     def process_msg(self, msg):
         if msg.mtype == MsgTypes.Datagram:
             if msg.name not in self.feature_stores:
-                logger.warning("Received data from unknown graph '%s'!", msg.name)
+                if msg.name in self.purged:
+                    logger.debug("Received data from deleted graph '%s'!", msg.name)
+                else:
+                    logger.warning("Received data from unknown graph '%s'!", msg.name)
             elif msg.version < self.feature_stores[msg.name].version:
                 logger.warning("Received data from version %d of the graph '%s' when version %d or newer was expected!",
                                msg.version,
@@ -116,6 +121,11 @@ class Manager(Collector):
             self.graphs[name] = None
             self.versions[name] = 0
             self.heartbeats[name] = None
+            # notify export of the new graph
+            self.export_create(name)
+            # remove the graph name from the purged list if there
+            if name in self.purged:
+                self.purged.remove(name)
 
     def delete(self, name):
         if self.exists(name):
@@ -123,6 +133,10 @@ class Manager(Collector):
             del self.graphs[name]
             del self.versions[name]
             del self.heartbeats[name]
+            # notify export of the removed graph
+            self.export_destroy(name)
+            # add the graph name to the purged list
+            self.purged.add(name)
         else:
             raise ValueError("Graph with the name '%s' does not exist" % name)
 
@@ -172,7 +186,7 @@ class Manager(Collector):
             getattr(self, "cmd_%s" % request, self.cmd_unknown)()
         elif self.comm.getsockopt(zmq.RCVMORE):
             name = self.comm.recv_string()
-            if not self.exists(name) and not request == 'create_graph':
+            if not self.exists(name) and request not in self.no_auto_create_cmds:
                 self.create(name)
             # check if it is a feature request
             if not self.feature_request(name, request):
@@ -223,14 +237,14 @@ class Manager(Collector):
             self.create(name)
         self.comm.send_string('ok')
 
-    def cmd_remove_graph(self, name):
+    def cmd_destroy_graph(self, name):
         if self.exists(name):
             # send a null graph to workers
-            self.graphs[name] = None
-            self.publish_graph(name)
+            self.publish_purge(name)
             # delete the local graph information
             self.delete(name)
-        self.comm.send_string('ok')
+        else:
+            self.comm.send_string('ok')
 
     def cmd_clear_graph(self, name):
         self.graphs[name] = None
@@ -307,6 +321,21 @@ class Manager(Collector):
     def publish_info(self, name):
         return name, self.versions[name], self.compilier_args
 
+    def publish_purge(self, name):
+        logger.info("Purging requested graph...")
+        try:
+            self.graphs[name] = None
+            self.versions[name] += 1
+            self.graph_comm.send_string("purge", zmq.SNDMORE)
+            self.graph_comm.send_pyobj(self.publish_info(name), zmq.SNDMORE)
+            self.graph_comm.send(dill.dumps(self.graphs[name]))
+            self.export_graph(name)
+            logger.info("Purging of graph (%s v%d) completed", name, self.versions[name])
+            self.comm.send_string('ok')
+        except Exception:
+            logger.exception("Failed to purge graph (%s v%d) -", name, self.versions[name])
+            self.comm.send_string('error')
+
     def publish_delta(self, name, cmd, delta):
         logger.info("Sending requested delta of graph...")
         try:
@@ -359,33 +388,58 @@ class Manager(Collector):
     def export_graph(self, name):
         if self.export is not None:
             data = {
-                'names': self.names,
-                'types': self.types,
+                'names': self.names(name),
+                'types': self.types(name),
                 'sources': self.partition,
-                'version': self.version,
-                'dill': dill.dumps(self.graph)
+                'version': self.versions[name],
+                'dill': dill.dumps(self.graphs[name])
             }
             self.export.send_string('graph', zmq.SNDMORE)
+            self.export.send_string(name, zmq.SNDMORE)
             self.export.send_pyobj(data)
 
     def export_store(self, name):
         if self.export is not None:
             data = {
-                'version': self.feature_store.version,
-                'features': self.features,
+                'version': self.feature_stores[name].version,
+                'features': self.features(name),
             }
             self.export.send_string('store', zmq.SNDMORE)
+            self.export.send_string(name, zmq.SNDMORE)
+            self.export.send_pyobj(data)
+
+    def export_info(self):
+        if self.export is not None:
+            data = {
+                'graphs': set(self.graphs),
+            }
+            self.export.send_string('info', zmq.SNDMORE)
+            self.export.send_string("", zmq.SNDMORE)
             self.export.send_pyobj(data)
 
     def export_config(self):
+        self.export_info()
         for name in self.feature_stores:
             self.export_store(name)
         for name in self.graphs:
             self.export_graph(name)
 
+    def export_create(self, name):
+        self.export_info()
+        self.export_store(name)
+        self.export_graph(name)
+
+    def export_destroy(self, name):
+        self.export_info()
+        if self.export is not None:
+            self.export.send_string('destroy', zmq.SNDMORE)
+            self.export.send_string(name, zmq.SNDMORE)
+            self.export.send_pyobj(None)
+
     def export_data(self, name, data):
         if self.export is not None:
             self.export.send_string('data', zmq.SNDMORE)
+            self.export.send_string(name, zmq.SNDMORE)
             self.export.send_pyobj(data)
 
 

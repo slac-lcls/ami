@@ -444,11 +444,11 @@ class EventBuilder(ZmqHandler):
                                            self.color,
                                            functools.partial(self.completion, name))
 
+    def destroy(self, name):
+        del self.builders[name]
+
     def prune(self, name, prune_key=None):
         self.builders[name].prune(prune_key)
-
-    def clear_graphs(self, name):
-        self.builders[name].clear_graphs()
 
     def set_graph(self, name, ver_key, args, graph):
         if name not in self.builders:
@@ -464,6 +464,10 @@ class EventBuilder(ZmqHandler):
         if name not in self.builders:
             self.create(name)
         self.builders[name].del_graph(name, ver_key, args, graph)
+
+    def purge_graph(self, name, ver_key, args, graph):
+        if name in self.builders:
+            self.destroy(name)
 
     def complete(self, name, eb_key, identity):
         self.builders[name].complete(eb_key, identity)
@@ -534,6 +538,7 @@ class Node(abc.ABC):
         self.graph_comm.add_handler("init", self.recv_graph_init)
         self.graph_comm.add_handler("add", self.recv_graph_add)
         self.graph_comm.add_handler("del", self.recv_graph_del)
+        self.graph_comm.add_handler("purge", self.recv_graph_purge)
 
         self.node_msg_comm = self.ctx.socket(zmq.PUSH)
         self.node_msg_comm.connect(msg_addr)
@@ -606,6 +611,20 @@ class Node(abc.ABC):
             version (int):   the version number of the updated graph.
             args (dict):     the keyword arguments to be used for compilation.
             nodes (object):  the nodes to remove from the graph.
+        """
+        pass
+
+    @abc.abstractmethod
+    def recv_graph_purge(self, name, version, args, graph):
+        """
+        An abstract method that subclasses should implement. This method is
+        called everytime that a graph purge is received.
+
+        Args:
+            name (str):      the name of the graph that should be purged.
+            version (int):   the version number of the purged graph.
+            args (dict):     the keyword arguments to be used for compilation.
+            graph (Graph):   the purged graph.
         """
         pass
 
@@ -1375,6 +1394,15 @@ class CommHandler(abc.ABC):
             True if the graph change was successful, False otherwise.
         """
         return self._command('create_graph')
+
+    def destroy(self):
+        """
+        Destroys the graph instance in the manager if one already exists.
+
+        Returns:
+            True if the graph change was successful, False otherwise.
+        """
+        return self._command('destroy_graph')
 
     def clear(self):
         """

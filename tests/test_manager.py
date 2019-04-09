@@ -48,6 +48,10 @@ class ResultsInjector(Node, ZmqHandler):
     def recv_graph_del(self, name, version, args, payload):
         self.store_graph(name, version, payload)
 
+    def recv_graph_purge(self, name, version, args, payload):
+        if name in self.graphs:
+            del self.graphs[name]
+
     def store_graph(self, name, version, payload):
         if name not in self.graphs:
             self.graphs[name] = {}
@@ -282,6 +286,30 @@ def test_manager_create(manager_ctrl):
     assert comm.current == default
     assert default in comm.active
     assert comm.auto(view_name) in comm.names
+
+
+def test_manager_destroy(manager_ctrl):
+    comm, injector = manager_ctrl
+
+    view_name = 'test'
+    name = comm.current
+    assert name not in comm.active
+
+    # make a graph and test that it is there
+    assert comm.create()
+    assert name in comm.active
+
+    # add a view to the default graph
+    assert comm.view(view_name)
+    assert comm.auto(view_name) in comm.names
+    assert injector.wait_graph(timeout=1.0)
+    assert name in injector.graphs
+
+    # destory the graph and check
+    assert comm.destroy()
+    assert name not in comm.active
+    assert injector.wait_graph(timeout=1.0)
+    assert name not in injector.graphs
 
 
 def test_manager_store(manager_ctrl, result_data):

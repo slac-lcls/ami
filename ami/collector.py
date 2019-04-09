@@ -56,6 +56,9 @@ class GraphCollector(Node, Collector):
     def recv_graph_del(self, name, version, args, nodes):
         self.store.del_graph(name, version, args, nodes)
 
+    def recv_graph_purge(self, name, version, args, graph):
+        self.store.purge_graph(name, version, args, graph)
+
     def process_msg(self, msg):
         if msg.mtype == MsgTypes.Transition:
             self.transitions.update(msg.payload.ttype, msg.identity, msg.payload.payload)

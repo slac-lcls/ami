@@ -41,11 +41,11 @@ def _generate_schema(graph=True):
         byte_fields = {'dill'}
         object_fields = {'sources', 'types'}
         flat_names = {
-            'names':    'graph:names',
-            'types':    'graph:types',
-            'sources':  'graph:sources',
-            'version':  'graph:version',
-            'dill':     'graph:dill',
+            'names':    'names',
+            'types':    'types',
+            'sources':  'sources',
+            'version':  'version',
+            'dill':     'dill',
         }
     else:
         fields = collections.OrderedDict([
@@ -545,37 +545,48 @@ class PvaExportPutHandler:
 
 class PvaExportRpcHandler:
     def __init__(self, ctx, addr):
-        self.comm = ami.comm.GraphCommHandler(addr, ctx=ctx)
+        self.ctx = ctx
+        self.addr = addr
+        self.comms = {}
 
-    def payload(self, topic, payload):
+    def _check_comm(self, graph):
+        if graph not in self.comms:
+            self.comms[graph] = ami.comm.GraphCommHandler(graph, self.addr, ctx=self.ctx)
+
+    def _payload(self, topic, payload):
         self.comm.send_string(topic, zmq.SNDMORE)
         self.comm.send(payload)
         return self.comm.recv_string()
 
     @rpc(NTScalar('?'))
     def clear(self, graph):
-        return self.comm.clear()
+        self._check_comm(graph)
+        return self.comms[graph].clear()
 
     @rpc(NTScalar('?'))
     def reset(self, graph):
-        return self.comm.reset()
+        self._check_comm(graph)
+        return self.comm[graph].reset()
 
     @rpc(NTScalar('?'))
     def add(self, graph, payload):
-        return self.payload('add_graph', payload)
+        self._check_comm(graph)
+        return self._payload('add_graph', payload)
 
     @rpc(NTScalar('as'))
     def names(self, graph):
-        return self.comm.names
+        self._check_comm(graph)
+        return self.comms[graph].names
 
-    @rpc(NTScalar('s'))
+    @rpc(NTScalar('?'))
     def view(self, graph, name):
-        return self.comm.view(name)
+        self._check_comm(graph)
+        return self.comms[graph].view(name)
 
 
 class PvaExportServer:
     def __init__(self, name, comm_addr, export_addr, aggregate=False):
-        self.name = name
+        self.base = name
         self.ctx = zmq.Context()
         self.export = self.ctx.socket(zmq.SUB)
         self.export.setsockopt_string(zmq.SUBSCRIBE, "")
@@ -587,30 +598,52 @@ class PvaExportServer:
         self.provider = StaticProvider(name)
         self.rpc_provider = NTURIDispatcher(self.queue,
                                             target=PvaExportRpcHandler(self.ctx, comm_addr),
-                                            name="%s:cmd" % self.name,
-                                            prefix="%s:cmd:" % self.name)
+                                            name="%s:cmd" % self.base,
+                                            prefix="%s:cmd:" % self.base)
         self.server_thread = threading.Thread(target=self.server, name='pvaserv')
         self.server_thread.daemon = True
         self.aggregate = aggregate
         self.pvs = {}
         self.ignored = set()
-        self.create_pv('graph:command', NTScalar('s'), "", func=self.command_pv)
-        self.create_bytes_pv('graph:add', b"", func=functools.partial(self.payload_pv, 'add_graph'))
-        self.create_bytes_pv('graph:set', b"", func=functools.partial(self.payload_pv, 'set_graph'))
-        self.create_bytes_pv('graph:del', b"", func=functools.partial(self.payload_pv, 'del_graph'))
+        self.graph_pvbase = "ana"
+        self.data_pvbase = "data"
+        self.info_pvbase = "info"
+        self.cmd_pvs = {'command'}
+        self.payload_cmd_pvs = {'add', 'set', 'del'}
 
-    def command_pv(self, pv, op):
+    @staticmethod
+    def join_pv(*args):
+        return ":".join(args)
+
+    def graph_pvname(self, graph, name=None):
+        if name is not None:
+            return ":".join([self.graph_pvbase, graph, name])
+        else:
+            return ":".join([self.graph_pvbase, graph])
+
+    def data_pvname(self, graph, name):
+        return ":".join([self.graph_pvbase, graph, self.data_pvbase, name])
+
+    def info_pvname(self, name):
+        return ":".join([self.info_pvbase, name])
+
+    def find_graph_pvnames(self, graph, names):
+        return [name for name in names if name.startswith(self.graph_pvname(graph))]
+
+    def command_pv(self, name, pv, op):
         cmd = op.value()
-        self.comm.send_string(cmd)
+        self.comm.send_string(cmd, zmq.SNDMORE)
+        self.comm.send_string(name)
         if self.comm.recv_string() == 'ok':
             pv.post(cmd)
             op.done()
         else:
             op.done(error='command failed')
 
-    def payload_pv(self, topic, pv, op):
+    def payload_pv(self, name, topic, pv, op):
         payload = op.value()
         self.comm.send_string(topic, zmq.SNDMORE)
+        self.comm.send_string(name, zmq.SNDMORE)
         self.comm.send(payload)
         if self.comm.recv_string() == 'ok':
             pv.post(payload)
@@ -623,14 +656,14 @@ class PvaExportServer:
             pv = SharedPV(nt=nt, initial=initial, handler=PvaExportPutHandler(put=func))
         else:
             pv = SharedPV(nt=nt, initial=initial)
-        self.provider.add('%s:%s' % (self.name, name), pv)
+        self.provider.add('%s:%s' % (self.base, name), pv)
         self.pvs[name] = pv
 
     def create_bytes_pv(self, name, initial, func=None):
         self.create_pv(name, NTBytes(), initial, func=func)
 
-    def valid(self, name):
-        return (name not in self.ignored) and (not name.startswith('_'))
+    def valid(self, name, group=None):
+        return not name.startswith('_')
 
     def unmangle(self, name):
         prefix = '_auto_'
@@ -649,39 +682,86 @@ class PvaExportServer:
         else:
             return NTObject()
 
-    def update_graph(self, data):
+    def update_graph_cmd_pvs(self, graph):
+        for pvname in self.cmd_pvs:
+            if pvname not in self.pvs:
+                self.create_pv(pvname, NTScalar('s'), "", func=functools.partial(self.command_pv, graph))
+        for pvname, topic in ((self.graph_pvname(graph, name), "%s_graph" % name) for name in self.payload_cmd_pvs):
+            if pvname not in self.pvs:
+                self.create_bytes_pv(pvname, b"", func=functools.partial(self.payload_pv, graph, topic))
+
+    def update_graph(self, graph, data):
+        # check if the command pv for this graph exist and create if needed
+        self.update_graph_cmd_pvs(graph)
         # add the unaggregated version of the pvs
         for key, value in data.items():
             if key in NTGraph.flat_schema:
                 name, nttype = NTGraph.flat_schema[key]
-                if name not in self.pvs:
-                    self.create_pv(name, nttype, value)
+                pvname = self.graph_pvname(graph, name)
+                if pvname not in self.pvs:
+                    self.create_pv(pvname, nttype, value)
                 else:
-                    self.pvs[name].post(value)
+                    self.pvs[pvname].post(value)
         # add the aggregated graph pv if requested
         if self.aggregate:
-            if 'graph' not in self.pvs:
+            pvname = self.graph_pvname(graph)
+            if pvname not in self.pvs:
                 logger.debug("Creating pv for info on the graph")
-                self.create_pv('graph', NTGraph(), data)
+                self.create_pv(pvname, NTGraph(), data)
             else:
-                self.pvs['graph'].post(data)
+                self.pvs[pvname].post(data)
 
-    def update_store(self, data):
+    def update_store(self, graph, data):
         # add the unaggregated version of the pvs
         for key, value in data.items():
             if key in NTStore.flat_schema:
                 name, nttype = NTStore.flat_schema[key]
-                if name not in self.pvs:
-                    self.create_pv(name, nttype, value)
+                pvname = self.graph_pvname(graph, name)
+                if pvname not in self.pvs:
+                    self.create_pv(pvname, nttype, value)
                 else:
-                    self.pvs[name].post(value)
+                    self.pvs[pvname].post(value)
         # add the aggregated graph pv if requested
         if self.aggregate:
-            if 'store' not in self.pvs:
+            pvname = self.graph_pvname(graph, 'store')
+            if pvname not in self.pvs:
                 logger.debug("Creating pv for info on the store")
-                self.create_pv('store', NTStore(), data)
+                self.create_pv(pvname, NTStore(), data)
             else:
-                self.pvs['store'].post(data)
+                self.pvs[pvname].post(data)
+
+    def update_info(self, data):
+        # add the unaggregated version of the pvs
+        for key, value in data.items():
+            pvname = self.info_pvname(key)
+            if pvname not in self.pvs:
+                self.create_pv(pvname, NTScalar('as'), value)
+            else:
+                self.pvs[pvname].post(value)
+
+    def update_data(self, graph, name, data):
+        pvname = self.data_pvname(graph, name)
+        if pvname not in self.ignored:
+            if pvname not in self.pvs:
+                pv_type = self.get_pv_type(data)
+                if pv_type is not None:
+                    logger.debug("Creating new pv named %s for graph %s", name, graph)
+                    self.create_pv(pvname, pv_type, data)
+                else:
+                    logger.warn("Cannot map type of '%s' from graph '%s' to PV: %s", name, graph, type(data))
+                    self.ignored.add(pvname)
+            else:
+                self.pvs[pvname].post(data)
+
+    def update_destroy(self, graph):
+        # close all the pvs associated with the purged graph
+        for name in self.find_graph_pvnames(graph, self.pvs):
+            logger.debug("Removing pv named %s for graph %s", name, graph)
+            self.provider.remove('%s:%s' % (self.base, name))
+            del self.pvs[name]
+        # remove any ignored pvs associated with the purged graph
+        for name in self.find_graph_pvnames(graph, self.ignored):
+            self.ignored.remove(name)
 
     def server(self):
         server = Server(providers=[self.provider, self.rpc_provider])
@@ -698,26 +778,22 @@ class PvaExportServer:
         logger.info("Starting PVA data export server")
         while True:
             topic = self.export.recv_string()
+            graph = self.export.recv_string()
             exports = self.export.recv_pyobj()
             if topic == 'data':
                 for raw, data in exports.items():
                     name = self.unmangle(raw)
                     # ignore names starting with '_' after unmangling - these are private
                     if self.valid(name):
-                        if name not in self.pvs:
-                            pv_type = self.get_pv_type(data)
-                            if pv_type is not None:
-                                logger.debug("Creating new pv named %s", name)
-                                self.create_pv(name, pv_type, data)
-                            else:
-                                logger.warn("Cannot map type of '%s' to PV: %s", name, type(data))
-                                self.ignored.add(name)
-                        else:
-                            self.pvs[name].post(data)
+                        self.update_data(graph, name, data)
             elif topic == 'graph':
-                self.update_graph(exports)
+                self.update_graph(graph, exports)
             elif topic == 'store':
-                self.update_store(exports)
+                self.update_store(graph, exports)
+            elif topic == 'info':
+                self.update_info(exports)
+            elif topic == 'destroy':
+                self.update_destroy(graph)
             else:
                 logger.warn("No handler for topic: %s", topic)
 
