@@ -50,6 +50,7 @@ setup(
             'ami-client = ami.client:main',
             'ami-console = ami.console:main',
             'ami-local = ami.local:main',
+            'ami-export = ami.export:main',
         ]
     },
     classifiers=[
