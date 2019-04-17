@@ -39,6 +39,7 @@ setup(
     tests_require=[
         'pytest',
         'pytest-asyncio',
+        'pytest-qt'
     ],
     entry_points={
         'console_scripts': [

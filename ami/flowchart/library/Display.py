@@ -81,7 +81,7 @@ class ScatterPlot(CtrlNode):
         self.addTerminal(name="X", io='in', **args)
         self.addTerminal(name="Y", io='in', **args)
 
-    def to_operation(self, inputs, conditions=[]):
+    def to_operation(self, inputs, conditions={}):
         outputs = [gn.Var(name=self.name(), type=list)]
         node = gn.RollingBuffer(name=self.name()+"_operation", N=self.Num_Points,
                                 conditions_needs=list(conditions.values()), inputs=list(inputs.values()),
@@ -93,7 +93,7 @@ class LinePlot(CtrlNode):
 
     nodeName = "LinePlot"
     uiTemplate = [("Num Points", 'intSpin', {'value': 100, 'min': 1, 'max': 2147483647})]
-    desc = "Waveform Plot"
+    desc = "Line Plot"
 
     def __init__(self, name):
         super(LinePlot, self).__init__(name, terminals={"Y": {"io": "in", "type": (int, np.float64)}},
@@ -106,7 +106,7 @@ class LinePlot(CtrlNode):
     def display(self, topics, addr, win, **kwargs):
         return super(LinePlot, self).display(topics, addr, win, WaveformWidget, **kwargs)
 
-    def to_operation(self, inputs, conditions=[]):
+    def to_operation(self, inputs, conditions={}):
         outputs = [gn.Var(name=self.name(), type=list)]
         node = gn.RollingBuffer(name=self.name()+"_operation", N=self.Num_Points,
                                 conditions_needs=list(conditions.values()), inputs=list(inputs.values()),
