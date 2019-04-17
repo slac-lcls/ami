@@ -8,6 +8,7 @@ import numpy as np
 from ami import LogConfig
 from ami.comm import CommHandler
 from ami.export.nt import CUSTOM_TYPE_WRAPPERS
+from p4p.nt import NTURI
 from p4p.rpc import rpccall, rpcproxy
 import p4p.client.thread as pct
 import p4p.client.asyncio as pca
@@ -17,11 +18,12 @@ logger = logging.getLogger(LogConfig.get_package_name(__name__))
 
 
 @rpcproxy
-class PvaCommRpcProxy:
+class RpcProxyThreads:
 
-    def __init__(self, name, errors):
+    def __init__(self, name, errors, timeout):
         self.name = name
         self.errors = errors
+        self.timeout = timeout
         self.command_map = {
             'create_graph': self.create,
             'clear_graph': self.clear,
@@ -60,6 +62,62 @@ class PvaCommRpcProxy:
         pass
 
 
+class RpcProxyAsyncio:
+
+    def __init__(self, context=None, format=None, name=None, errors=None, timeout=None):
+        assert context is not None, context
+        self.ctx = context
+        self.basepv = format
+        self.name = name
+        self.errors = errors
+        self.timeout = timeout
+        self.scheme = context.name
+        self.authority = ''
+        self.cmd_nturi = NTURI([('graph', 's')])
+        self.payload_nturi = NTURI([('graph', 's'), ('topic', 's'), ('payload', 'aB')])
+        self.command_map = {
+            # cmd name: ('pv', 'request', 'NTURI')
+            'create_graph': ('%s:create', None, self.cmd_nturi),
+            'clear_graph': ('%s:clear', None, self.cmd_nturi),
+            'reset_graph': ('%s:reset', None, self.cmd_nturi),
+        }
+
+    def wrap(self, nturi, path, *args, **kwargs):
+        return nturi.wrap(path, args, kwargs, scheme=self.scheme, authority=self.authority)
+
+    def parse_cmd(self, cmd):
+        pvfmt, req, nturi = self.command_map[cmd]
+        pvname = pvfmt % self.basepv
+        return pvname, req, self.wrap(nturi, pvname, graph=self.name)
+
+    async def payload(self, cmd, payload):
+        try:
+            pvname = '%s:post' % self.basepv
+            uri = self.wrap(self.payload_nturi, pvname, graph=self.name, topic=cmd, payload=payload)
+            return await asyncio.wait_for(self.ctx.rpc(pvname, uri, request=None), timeout=self.timeout)
+        except self.errors:
+            return False
+
+    async def command(self, cmd):
+        if cmd in self.command_map:
+            try:
+                pvname, req, uri = self.parse_cmd(cmd)
+                return await asyncio.wait_for(self.ctx.rpc(pvname, uri, request=req), timeout=self.timeout)
+            except self.errors:
+                return False
+        else:
+            return False
+
+
+def PvaCommRpcProxy(ctx, **kwargs):
+    if isinstance(ctx, pct.Context):
+        return RpcProxyThreads(context=ctx, **kwargs)
+    elif isinstance(ctx, pca.Context):
+        return RpcProxyAsyncio(context=ctx, **kwargs)
+    else:
+        raise TypeError("Shared context of type %s not supported!")
+
+
 class PvaCommHandler(CommHandler):
 
     def __init__(self, name, addr, use_types, ctx, errors, owner, timeout=1.0):
@@ -69,7 +127,7 @@ class PvaCommHandler(CommHandler):
         self._addr = addr
         self._owner = owner
         self._timeout = timeout
-        self._proxy = PvaCommRpcProxy(context=ctx, format="%s:cmd" % addr, name=name, errors=errors)
+        self._proxy = PvaCommRpcProxy(ctx, format="%s:cmd" % addr, name=name, errors=errors, timeout=timeout)
         self._feature_req = re.compile("(?P<type>fetch|lookup):(?P<name>.*)")
         self._pvinfomap = {
             'list_graphs': '%s:info:graphs',
@@ -289,14 +347,19 @@ class AsyncGraphCommHandler(PvaCommHandler):
         return reply
 
     async def _command(self, cmd):
-        return await self._checked_put("%s:graph:command" % self._name, cmd)
+        return await self._proxy.command(cmd)
+
+    async def _query(self, cmd):
+        pvname = self._get_pvname(cmd)
+        if pvname is not None:
+            return await self._checked_get(pvname)
 
     async def _try_request(self, cmd):
         try:
             matched = self._feature_req.match(cmd)
             if matched:
                 if matched.group('type') == 'fetch':
-                    return True, await self._unchecked_get('%s:%s' % (self._name, matched.group('name')))
+                    return True, await self._unchecked_get(self._get_data_pvname(matched.group('name')))
                 elif matched.group('type') == 'lookup':
                     reply = await self._unchecked_get(self._get_pvname('get_types'))
                     if matched.group('name') in reply:
@@ -346,11 +409,7 @@ class AsyncGraphCommHandler(PvaCommHandler):
                 return self._deserialize(reply)
 
     async def _post_dill(self, cmd, payload):
-        pvname = self._get_pvname(cmd)
-        if pvname is not None:
-            return await self._checked_put(pvname, self._serialize(payload))
-        else:
-            return False
+        return await self._proxy.payload(cmd, self._serialize(payload))
 
     async def _view(self, names):
         nodes = []
@@ -360,6 +419,16 @@ class AsyncGraphCommHandler(PvaCommHandler):
             nodes.append(self._make_view_node(name, view_name, var_type))
 
         return await self.add(nodes)
+
+    async def _get_current(self):
+        return self._name
+
+    async def _set_current(self, name):
+        self._set_name(name)
+        if name in self.active:
+            return True
+        else:
+            return await self.create()
 
     async def _load(self, filename):
         with open(filename, 'rb') as cnf:

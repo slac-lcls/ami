@@ -11,8 +11,8 @@ logger = logging.getLogger(__name__)
 
 
 def run_export(name, comm_addr, export_addr, aggregate=False):
-    export = server.PvaExportServer(name, comm_addr, export_addr, aggregate)
-    return export.run()
+    with server.PvaExportServer(name, comm_addr, export_addr, aggregate) as export:
+        return export.run()
 
 
 def main():

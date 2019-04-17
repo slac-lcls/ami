@@ -56,7 +56,7 @@ class PvaExportRpcHandler:
     @rpc(NTScalar('?'))
     def reset(self, graph):
         self._check_comm(graph)
-        return self.comm[graph].reset()
+        return self.comms[graph].reset()
 
     @rpc(NTScalar('?'))
     def post(self, graph, topic, payload):
@@ -100,6 +100,15 @@ class PvaExportServer:
         self.info_pvbase = "info"
         self.cmd_pvs = {'command'}
         self.payload_cmd_pvs = {'add', 'set', 'del'}
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc_value, traceback):
+        self.close()
+
+    def close(self):
+        self.ctx.destroy()
 
     @staticmethod
     def join_pv(*args):
