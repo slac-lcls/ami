@@ -27,7 +27,8 @@ class WaveformViewer(CtrlNode):
     desc = "WaveformViewer"
 
     def __init__(self, name):
-        super(WaveformViewer, self).__init__(name, terminals={"In": {"io": "in", "type": np.ndarray}}, viewable=True)
+        super(WaveformViewer, self).__init__(name, terminals={"In": {"io": "in", "type": (list, np.ndarray)}},
+                                             viewable=True)
 
     def display(self, topics, addr, win, **kwargs):
         return super(WaveformViewer, self).display(topics, addr, win, WaveformWidget, **kwargs)
@@ -108,6 +109,8 @@ class LinePlot(CtrlNode):
 
     def to_operation(self, inputs, conditions={}):
         outputs = [gn.Var(name=self.name(), type=list)]
+        print(conditions)
+        print(inputs)
         node = gn.RollingBuffer(name=self.name()+"_operation", N=self.Num_Points,
                                 conditions_needs=list(conditions.values()), inputs=list(inputs.values()),
                                 outputs=outputs)

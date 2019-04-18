@@ -506,7 +506,6 @@ class ConnectionItem(GraphicsObject):
 
 
 def checkType(t1, t2):
-
     if not type(t1) == tuple:
         t1 = (t1, )
 
@@ -516,7 +515,7 @@ def checkType(t1, t2):
     t1 = set(t1)
     t2 = set(t2)
 
-    if t1.issubset(t2) or t2.issubset(t1):
+    if t1.intersection(t2) or t2.intersection(t1):
         return True
     elif object in t1 or object in t2:
         return True

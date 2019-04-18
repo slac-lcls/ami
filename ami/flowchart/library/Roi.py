@@ -9,9 +9,9 @@ class Roi(CtrlNode):
 
     nodeName = "Roi"
     uiTemplate = [('origin x',  'intSpin', {'value': 0, 'min': 0, 'max': 2147483647}),
-                  ('extent x',  'intSpin', {'value': 0, 'min': 0, 'max': 2147483647}),
+                  ('extent x',  'intSpin', {'value': 10, 'min': 1, 'max': 2147483647}),
                   ('origin y',  'intSpin', {'value': 0, 'min': 0, 'max': 2147483647}),
-                  ('extent y',  'intSpin', {'value': 0, 'min': 0, 'max': 2147483647})]
+                  ('extent y',  'intSpin', {'value': 10, 'min': 1, 'max': 2147483647})]
     desc = "Region of Interest"
 
     def __init__(self, name):
@@ -25,7 +25,9 @@ class Roi(CtrlNode):
         if self.widget is None:
             self.widget = AreaDetWidget(topics, addr, win)
             self.widget.roi.sigRegionChangeFinished.connect(self.setValues)
-
+            self.widget.ui.roiBtn.setChecked(True)
+            self.widget.ui.roiBtn.hide()
+            self.widget.roiClicked()
         if self.task is None:
             self.task = asyncio.ensure_future(self.widget.update())
 
@@ -54,6 +56,9 @@ class Roi(CtrlNode):
         self.extent_x = self.ctrls['extent x'].value()
         self.extent_y = self.ctrls['extent y'].value()
         self.setFunc()
+        if self.widget:
+            self.widget.roi.setPos(self.origin_x, y=self.origin_y, finish=False)
+            self.widget.roi.setSize((self.extent_x, self.extent_y), finish=False)
 
     def setFunc(self):
         origin_x = self.origin_x
