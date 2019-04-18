@@ -109,8 +109,6 @@ class LinePlot(CtrlNode):
 
     def to_operation(self, inputs, conditions={}):
         outputs = [gn.Var(name=self.name(), type=list)]
-        print(conditions)
-        print(inputs)
         node = gn.RollingBuffer(name=self.name()+"_operation", N=self.Num_Points,
                                 conditions_needs=list(conditions.values()), inputs=list(inputs.values()),
                                 outputs=outputs)

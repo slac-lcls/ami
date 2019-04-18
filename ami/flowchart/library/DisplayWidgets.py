@@ -88,7 +88,8 @@ class HistogramWidget(pg.GraphicsLayoutWidget):
     async def update(self):
         while True:
             await self.fetcher.fetch()
-            self.histogram_updated(self.fetcher.reply)
+            if self.fetcher.reply:
+                self.histogram_updated(self.fetcher.reply)
 
     def histogram_updated(self, data):
         i = 0
@@ -159,12 +160,11 @@ class WaveformWidget(pg.GraphicsLayoutWidget):
     async def update(self):
         while True:
             await self.fetcher.fetch()
-            if self.fetcher.reply is not None:
+            if self.fetcher.reply:
                 self.waveform_updated(self.fetcher.reply)
 
     def waveform_updated(self, data):
         i = 0
-
         for term, var in self.terms.items():
             name = var.name
 

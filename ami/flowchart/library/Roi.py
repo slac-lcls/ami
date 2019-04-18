@@ -1,5 +1,6 @@
-from ami.flowchart.library.DisplayWidgets import AreaDetWidget
+from ami.flowchart.library.DisplayWidgets import AreaDetWidget, WaveformWidget
 from ami.flowchart.library.common import CtrlNode
+import pyqtgraph as pg
 import ami.graph_nodes as gn
 import asyncio
 import numpy as np
@@ -24,7 +25,7 @@ class Roi(CtrlNode):
     def display(self, topics, addr, win, **kwargs):
         if self.widget is None:
             self.widget = AreaDetWidget(topics, addr, win)
-            self.widget.roi.sigRegionChangeFinished.connect(self.setValues)
+            self.widget.roi.sigRegionChangeFinished.connect(self.set_values)
             self.widget.ui.roiBtn.setChecked(True)
             self.widget.ui.roiBtn.hide()
             self.widget.roiClicked()
@@ -33,7 +34,7 @@ class Roi(CtrlNode):
 
         return self.widget
 
-    def setValues(self, *args, **kwargs):
+    def set_values(self, *args, **kwargs):
         # need to block signals to the stateGroup otherwise stateGroup.sigChanged
         # will be emmitted by setValue causing update to be called
         self.stateGroup.blockSignals(True)
@@ -47,7 +48,7 @@ class Roi(CtrlNode):
         self.ctrls['extent x'].setValue(self.extent_x)
         self.ctrls['origin y'].setValue(self.origin_y)
         self.ctrls['extent y'].setValue(self.extent_y)
-        self.setFunc()
+        self.set_func()
         self.stateGroup.blockSignals(False)
 
     def update(self, *args, **kwargs):
@@ -55,12 +56,12 @@ class Roi(CtrlNode):
         self.origin_y = self.ctrls['origin y'].value()
         self.extent_x = self.ctrls['extent x'].value()
         self.extent_y = self.ctrls['extent y'].value()
-        self.setFunc()
+        self.set_func()
         if self.widget:
             self.widget.roi.setPos(self.origin_x, y=self.origin_y, finish=False)
             self.widget.roi.setSize((self.extent_x, self.extent_y), finish=False)
 
-    def setFunc(self):
+    def set_func(self):
         origin_x = self.origin_x
         origin_y = self.origin_y
         extent_x = self.extent_x
@@ -77,3 +78,70 @@ class Roi(CtrlNode):
                       condition_needs=list(conditions.values()), inputs=list(inputs.values()), outputs=outputs,
                       func=self.func)
         return node
+
+
+class Roi1D(CtrlNode):
+
+    nodeName = "Roi1D"
+    uiTemplate = [("Num Points", 'intSpin', {'value': 100, 'min': 1, 'max': 2147483647}),
+                  ('origin',  'intSpin', {'value': 0, 'min': 0, 'max': 2147483647}),
+                  ('extent',  'intSpin', {'value': 10, 'min': 1, 'max': 2147483647})]
+    desc = "Region of Interest"
+
+    def __init__(self, name):
+        super(Roi1D, self).__init__(name, terminals={"In": {"io": "in", "type": (int, np.float64)},
+                                                     "Out": {"io": "out", "type": np.ndarray}},
+                                    buffered=True)
+        self.func = lambda img: img
+
+    def display(self, topics, addr, win, **kwargs):
+        if self.widget is None:
+            self.widget = WaveformWidget(topics, addr, win, **kwargs)
+            self.widget.roi = pg.LinearRegionItem((0, 10), swapMode='block')
+            self.widget.roi.setBounds((0, None))
+            self.widget.plot_view.addItem(self.widget.roi)
+            self.widget.roi.sigRegionChangeFinished.connect(self.set_values)
+        if self.task is None and self.widget:
+            self.task = asyncio.ensure_future(self.widget.update())
+
+        return self.widget
+
+    def set_values(self, *args, **kwargs):
+        # need to block signals to the stateGroup otherwise stateGroup.sigChanged
+        # will be emmitted by setValue causing update to be called
+        self.stateGroup.blockSignals(True)
+        roi = args[0]
+        origin, extent = roi.getRegion()
+        self.origin = int(origin)
+        self.extent = int(extent)
+        self.ctrls['origin'].setValue(self.origin)
+        self.ctrls['extent'].setValue(self.extent)
+        self.set_func()
+        self.stateGroup.blockSignals(False)
+
+    def update(self, *args, **kwargs):
+        self.origin = self.ctrls['origin'].value()
+        self.extent = self.ctrls['extent'].value()
+        self.set_func()
+        if self.widget:
+            self.widget.roi.setRegion((self.origin, self.extent))
+
+    def set_func(self):
+        origin = self.origin
+        extent = self.extent
+
+        def func(arr):
+            return arr[slice(origin, extent)]
+
+        self.func = func
+
+    def to_operation(self, inputs, conditions={}):
+        outputs = self.output_vars()
+        buffer_outputs = [gn.Var(name=self.name()+"_buffered", type=np.ndarray)]
+
+        nodes = [gn.RollingBuffer(name=self.name()+"_buffer", N=self.Num_Points, use_numpy=True,
+                                  conditions_needs=list(conditions.values()), inputs=list(inputs.values()),
+                                  outputs=buffer_outputs),
+                 gn.Map(name=self.name()+"_map", inputs=buffer_outputs, outputs=outputs, func=self.func)]
+
+        return nodes

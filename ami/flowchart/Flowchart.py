@@ -597,7 +597,7 @@ class FlowchartWidget(dockarea.DockArea):
                 val = str(val)
                 if len(val) > 400:
                     val = val[:400] + "..."
-            self.hoverText.setPlainText("%s.%s = %s" % (term.node().name(), term.name(), val))
+            self.hoverText.setPlainText("%s.%s Type(%s)" % (term.node().name(), term.name(), term.type()))
             # self.hoverLabel.setCursorPosition(0)
 
     def clear(self):
