@@ -76,10 +76,12 @@ class NodeWindow(QtGui.QMainWindow):
 
 class NodeProcess(QtCore.QObject):
 
-    def __init__(self, msg, broker_addr, graphmgr_addr, editor_addr, checkpoint_addr):
+    def __init__(self, msg=None, broker_addr="", graphmgr_addr="", editor_addr="", checkpoint_addr="", loop=None):
         super(NodeProcess, self).__init__()
-        self.app = QtGui.QApplication([])
-        loop = QEventLoop(self.app)
+
+        if loop is None:
+            self.app = QtGui.QApplication([])
+            loop = QEventLoop(self.app)
         asyncio.set_event_loop(loop)
 
         self.win = NodeWindow(self)
@@ -104,7 +106,8 @@ class NodeProcess(QtCore.QObject):
         self.ctrlWidget = self.node.ctrlWidget()
         self.widget = None
         self.show = False
-        self.win.setWindowTitle(msg.name)
+        if msg:
+            self.win.setWindowTitle(msg.name)
 
         with loop:
             loop.run_until_complete(asyncio.gather(self.process(), self.monitor_node_task()))
@@ -220,8 +223,6 @@ class MessageBroker(object):
 
         self.checkpoint_pub_sock = self.ctx.socket(zmq.PUB)
         self.checkpoint_pub_sock.bind(self.checkpoint_pub_addr)
-
-        self.launch_editor_window()
 
     def launch_editor_window(self):
         editor_proc = mp.Process(
@@ -355,7 +356,7 @@ class MessageBroker(object):
 
 def run_client(graphmgr_addr, graphinfo_addr, load):
     mb = MessageBroker(graphmgr_addr, load)
-
+    mb.launch_editor_window()
     loop = asyncio.get_event_loop()
     task = asyncio.ensure_future(mb.run())
 

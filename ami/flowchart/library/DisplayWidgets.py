@@ -64,6 +64,8 @@ class AreaDetWidget(pg.ImageView):
     def __init__(self, topics, addr, parent=None, **kwargs):
         super(AreaDetWidget, self).__init__(parent)
         self.fetcher = AsyncFetcher(topics, addr)
+        handles = self.roi.getHandles()
+        self.roi.removeHandle(handles[1])
 
     async def update(self):
         while True:

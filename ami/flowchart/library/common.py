@@ -18,6 +18,7 @@ def generateUi(opts):
     widget.setLayout(layout)
     ctrls = {}
     row = 0
+    group = WidgetGroup()
     for opt in opts:
         if len(opt) == 2:
             k, t = opt
@@ -71,10 +72,11 @@ def generateUi(opts):
             label = layout.labelForField(w)
             label.hide()
 
-        ctrls[k] = w
         w.rowNum = row
+        ctrls[k] = w
+        group.addWidget(w, k)
         row += 1
-    group = WidgetGroup(widget)
+
     return widget, group, ctrls
 
 
