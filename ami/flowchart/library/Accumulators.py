@@ -5,8 +5,13 @@ import ami.graph_nodes as gn
 
 class Pick1(Node):
 
+    """
+    Pick1 collects one of its input.
+
+    Accepts any type and returns one of that type.
+    """
+
     nodeName = "Pick1"
-    desc = "Pick1"
 
     def __init__(self, name):
         super(Pick1, self).__init__(name,
@@ -23,9 +28,14 @@ class Pick1(Node):
 
 class PickN(CtrlNode):
 
+    """
+    PickN collects N of its input.
+
+    Accepts any type and returns either None, list, or a tuple of the type of its input.
+    """
+
     nodeName = "PickN"
     uiTemplate = [('N', 'intSpin', {'value': 2, 'min': 2, 'max': 4096})]
-    desc = "PickN"
 
     def __init__(self, name):
         super(PickN, self).__init__(name,

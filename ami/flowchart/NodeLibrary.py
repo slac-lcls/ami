@@ -1,3 +1,4 @@
+import re
 from collections import OrderedDict
 from ami.flowchart.Node import Node
 
@@ -66,7 +67,14 @@ class NodeLibrary:
             return self.labelTree
 
         for root, children in self.nodeTree.items():
-            items = {name: child.desc for name, child in children.items()}
+            items = {}
+            for name, child in children.items():
+                doc = child.__doc__
+                assert doc, f"Node {name} has no documentation!"
+                doc = doc.lstrip().rstrip()
+                doc = re.sub(r'(\t+)|(  )+', '', doc)
+                items[name] = doc
+
             items = list(items.items())
             self.labelTree[root] = items
 

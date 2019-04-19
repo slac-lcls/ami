@@ -16,8 +16,11 @@ class Filter(Node):
 
 class FilterOff(Filter):
 
+    """
+    FilterOff
+    """
+
     nodeName = "FilterOff"
-    desc = "FilterOff"
 
     def __init__(self, name):
         super(FilterOff, self).__init__(name)
@@ -30,8 +33,11 @@ class FilterOff(Filter):
 
 class FilterOn(Filter):
 
+    """
+    FilterOn
+    """
+
     nodeName = "FilterOn"
-    desc = "FilterOn"
 
     def __init__(self, name):
         super(FilterOn, self).__init__(name)

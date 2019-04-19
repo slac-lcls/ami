@@ -6,8 +6,11 @@ import numpy as np
 
 class Sum(Node):
 
+    """
+    Sum returns the sum of an array or list.
+    """
+
     nodeName = "Sum"
-    desc = "Sum"
 
     def __init__(self, name):
         super(Sum, self).__init__(name, terminals={
@@ -25,9 +28,14 @@ class Sum(Node):
 
 class Projection(CtrlNode):
 
+    """
+    Projection projects a 2d array along the selected axis.
+
+    Returns 1d array.
+    """
+
     nodeName = "Projection"
     uiTemplate = [('axis', 'intSpin', {'value': 0, 'min': 0, 'max': 1})]
-    desc = "Projection"
 
     def __init__(self, name):
         super(Projection, self).__init__(name, terminals={
@@ -46,8 +54,14 @@ class Projection(CtrlNode):
 
 class BinByVar(Node):
 
+    """
+    BinByVar creates a histogram using a variable number of bins.
+
+    Accepts np.float64 as values, and int as Bins.
+    Returns a dict with keys Bins and values mean of bins.
+    """
+
     nodeName = "BinByVar"
-    desc = "BinByVar"
 
     def __init__(self, name):
         super(BinByVar, self).__init__(name, terminals={
@@ -66,11 +80,16 @@ class BinByVar(Node):
 
 class Binning(CtrlNode):
 
+    """
+    Binning creates a histogram with a fixed number of bins.
+
+    Accepts int, np.float64. Returns dict.
+    """
+
     nodeName = "Binning"
     uiTemplate = [('bins', 'intSpin', {'value': 10, 'min': 1, 'max': 2147483647}),
                   ('range min', 'intSpin', {'value': 1, 'min': 1, 'max': 2147483647}),
                   ('range max', 'intSpin', {'value': 100, 'min': 2, 'max': 2147483647})]
-    desc = "Binning"
 
     def __init__(self, name):
         super(Binning, self).__init__(name, terminals={

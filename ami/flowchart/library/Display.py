@@ -7,9 +7,14 @@ import ami.graph_nodes as gn
 
 class ScalarViewer(CtrlNode):
 
+    """
+    ScalarViewer displays the value of a scalar.
+
+    Accepts float, int, bool, and np.float64.
+    """
+
     nodeName = "ScalarViewer"
     uiTemplate = []
-    desc = "ScalarViewer"
 
     def __init__(self, name):
         super(ScalarViewer, self).__init__(name,
@@ -22,9 +27,14 @@ class ScalarViewer(CtrlNode):
 
 class WaveformViewer(CtrlNode):
 
+    """
+    WaveformViewer displays 1D arrays.
+
+    Accepts list and np.ndarray.
+    """
+
     nodeName = "WaveformViewer"
     uiTemplate = []
-    desc = "WaveformViewer"
 
     def __init__(self, name):
         super(WaveformViewer, self).__init__(name, terminals={"In": {"io": "in", "type": (list, np.ndarray)}},
@@ -36,9 +46,14 @@ class WaveformViewer(CtrlNode):
 
 class ImageViewer(CtrlNode):
 
+    """
+    ImageViewer displays 2D arrays.
+
+    Accepts np.ndarray.
+    """
+
     nodeName = "ImageViewer"
     uiTemplate = []
-    desc = "ImageViewer"
 
     def __init__(self, name):
         super(ImageViewer, self).__init__(name, terminals={"In": {"io": "in", "type": np.ndarray}}, viewable=True)
@@ -49,9 +64,14 @@ class ImageViewer(CtrlNode):
 
 class Histogram(CtrlNode):
 
+    """
+    Histogram plots a histogram created from either Binning or BinByVar.
+
+    Accepts dict.
+    """
+
     nodeName = "Histogram"
     uiTemplate = []
-    desc = "Histogram"
 
     def __init__(self, name):
         super(Histogram, self).__init__(name,
@@ -65,9 +85,14 @@ class Histogram(CtrlNode):
 
 class ScatterPlot(CtrlNode):
 
+    """
+    Scatter Plot collects two scalars and plots them against each other.
+
+    Accepts int, np.float64.
+    """
+
     nodeName = "ScatterPlot"
     uiTemplate = [("Num Points", 'intSpin', {'value': 100, 'min': 1, 'max': 2147483647})]
-    desc = "Scatter Plot"
 
     def __init__(self, name):
         super(ScatterPlot, self).__init__(name, terminals={"X": {"io": "in", "type": (int, np.float64)},
@@ -92,9 +117,14 @@ class ScatterPlot(CtrlNode):
 
 class LinePlot(CtrlNode):
 
+    """
+    Line Plot collects scalars and plots them.
+
+    Accepts int, np.float64.
+    """
+
     nodeName = "LinePlot"
     uiTemplate = [("Num Points", 'intSpin', {'value': 100, 'min': 1, 'max': 2147483647})]
-    desc = "Line Plot"
 
     def __init__(self, name):
         super(LinePlot, self).__init__(name, terminals={"Y": {"io": "in", "type": (int, np.float64)}},

@@ -8,6 +8,12 @@ import numpy as np
 
 class Roi(CtrlNode):
 
+    """
+    Region of Interest of image.
+
+    Accepts 2D array.
+    """
+
     nodeName = "Roi"
     uiTemplate = [('origin x',  'intSpin', {'value': 0, 'min': 0, 'max': 2147483647}),
                   ('extent x',  'intSpin', {'value': 10, 'min': 1, 'max': 2147483647}),
@@ -81,6 +87,12 @@ class Roi(CtrlNode):
 
 
 class Roi1D(CtrlNode):
+
+    """
+    Collects scalars into array and returns selected region of interest.
+
+    Accepts int, np.float64. Returns np.ndarray.
+    """
 
     nodeName = "Roi1D"
     uiTemplate = [("Num Points", 'intSpin', {'value': 100, 'min': 1, 'max': 2147483647}),

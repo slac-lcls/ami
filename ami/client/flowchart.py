@@ -210,18 +210,18 @@ class MessageBroker(object):
 
         self.ctx = zmq.asyncio.Context()
 
-        self.broker_sub_sock = self.ctx.socket(zmq.SUB)
+        self.broker_sub_sock = self.ctx.socket(zmq.SUB)                # receives messages from editor
         self.broker_sub_sock.setsockopt_string(zmq.SUBSCRIBE, '')
         self.broker_sub_sock.bind(self.broker_sub_addr)
 
-        self.broker_pub_sock = self.ctx.socket(zmq.XPUB)
+        self.broker_pub_sock = self.ctx.socket(zmq.XPUB)               # sends messages to node process
         self.broker_pub_sock.bind(self.broker_pub_addr)
 
-        self.checkpoint_sub_sock = self.ctx.socket(zmq.SUB)
+        self.checkpoint_sub_sock = self.ctx.socket(zmq.SUB)            # receives messages from node process
         self.checkpoint_sub_sock.setsockopt_string(zmq.SUBSCRIBE, '')
         self.checkpoint_sub_sock.bind(self.checkpoint_sub_addr)
 
-        self.checkpoint_pub_sock = self.ctx.socket(zmq.PUB)
+        self.checkpoint_pub_sock = self.ctx.socket(zmq.PUB)            # sends messages to editor
         self.checkpoint_pub_sock.bind(self.checkpoint_pub_addr)
 
     def launch_editor_window(self):
