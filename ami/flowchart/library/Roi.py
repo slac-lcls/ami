@@ -95,22 +95,18 @@ class Roi1D(CtrlNode):
     """
 
     nodeName = "Roi1D"
-    uiTemplate = [("Num Points", 'intSpin', {'value': 100, 'min': 1, 'max': 2147483647}),
-                  ('origin',  'intSpin', {'value': 0, 'min': 0, 'max': 2147483647}),
+    uiTemplate = [('origin',  'intSpin', {'value': 0, 'min': 0, 'max': 2147483647}),
                   ('extent',  'intSpin', {'value': 10, 'min': 1, 'max': 2147483647})]
     desc = "Region of Interest"
 
     def __init__(self, name):
-        super(Roi1D, self).__init__(name, terminals={"In": {"io": "in", "type": (int, np.float64)},
+        super(Roi1D, self).__init__(name, terminals={"In": {"io": "in", "type": (list, np.ndarray)},
                                                      "Out": {"io": "out", "type": np.ndarray}},
-                                    buffered=True)
+                                    viewable=True)
         self.func = lambda img: img
 
     def display(self, topics, addr, win, **kwargs):
         if self.widget is None:
-            k, v = topics.popitem()
-            v = v+"_picked1"
-            topics = {k: v}
             self.widget = WaveformWidget(topics, addr, win, **kwargs)
             self.widget.roi = pg.LinearRegionItem((0, 10), swapMode='block')
             self.widget.roi.setBounds((0, None))
@@ -152,13 +148,7 @@ class Roi1D(CtrlNode):
 
     def to_operation(self, inputs, conditions={}):
         outputs = self.output_vars()
-        buffer_outputs = [gn.Var(name=self.name()+"_buffered", type=np.ndarray)]
-        pick1_outputs = [gn.Var(name=self.name()+"_picked1", type=object)]
-
-        nodes = [gn.RollingBuffer(name=self.name()+"_buffer", N=self.Num_Points, use_numpy=True,
-                                  conditions_needs=list(conditions.values()), inputs=list(inputs.values()),
-                                  outputs=buffer_outputs),
-                 gn.PickN(name=self.name()+"_pick1", inputs=buffer_outputs, outputs=pick1_outputs),
-                 gn.Map(name=self.name()+"_map", inputs=buffer_outputs, outputs=outputs, func=self.func)]
-
-        return nodes
+        node = gn.Map(name=self.name()+"_operation",
+                      condition_needs=list(conditions.values()), inputs=list(inputs.values()), outputs=outputs,
+                      func=self.func)
+        return node
