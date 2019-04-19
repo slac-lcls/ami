@@ -96,6 +96,9 @@ class Roi1D(CtrlNode):
 
     def display(self, topics, addr, win, **kwargs):
         if self.widget is None:
+            k, v = topics.popitem()
+            v = v+"_picked1"
+            topics = {k: v}
             self.widget = WaveformWidget(topics, addr, win, **kwargs)
             self.widget.roi = pg.LinearRegionItem((0, 10), swapMode='block')
             self.widget.roi.setBounds((0, None))
@@ -138,10 +141,12 @@ class Roi1D(CtrlNode):
     def to_operation(self, inputs, conditions={}):
         outputs = self.output_vars()
         buffer_outputs = [gn.Var(name=self.name()+"_buffered", type=np.ndarray)]
+        pick1_outputs = [gn.Var(name=self.name()+"_picked1", type=object)]
 
         nodes = [gn.RollingBuffer(name=self.name()+"_buffer", N=self.Num_Points, use_numpy=True,
                                   conditions_needs=list(conditions.values()), inputs=list(inputs.values()),
                                   outputs=buffer_outputs),
+                 gn.PickN(name=self.name()+"_pick1", inputs=buffer_outputs, outputs=pick1_outputs),
                  gn.Map(name=self.name()+"_map", inputs=buffer_outputs, outputs=outputs, func=self.func)]
 
         return nodes
