@@ -153,6 +153,8 @@ class PvaExportServer:
     def get_pv_type(self, data):
         if isinstance(data, np.ndarray):
             return NTNDArray()
+        elif isinstance(data, bool):
+            return NTScalar('?')
         elif isinstance(data, int):
             return NTScalar('l')
         elif isinstance(data, float):
