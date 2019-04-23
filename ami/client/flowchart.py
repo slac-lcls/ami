@@ -240,6 +240,7 @@ class MessageBroker(object):
 
         while True:
             topic = await self.broker_pub_sock.recv_string()
+            print(topic)
 
             if topic.startswith('\x01'):
                 topic = topic.lstrip('\x01')
