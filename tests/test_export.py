@@ -3,10 +3,11 @@ import re
 import zmq
 import dill
 import subprocess
+import numpy as np
 import multiprocessing as mp
 import ami.graph_nodes as gn
 
-from p4p.client.thread import Context
+from p4p.client.thread import Context, RemoteError
 from ami.export import run_export
 from ami.export.nt import CUSTOM_TYPE_WRAPPERS
 
@@ -94,7 +95,25 @@ def exporter(ipc_dir):
         assert injector.wait()
         injector.send('info', '', {'graphs': ['test']})
         injector.send('store', 'test', {'version': 1, 'features': {'delta_t': float, 'laser': bool}})
-
+        injector.send('graph',
+                      'test',
+                      {
+                        'names': ['delta_t', 'laser', 'sum'],
+                        'types': {'delta_t': float, 'laser': bool, 'sum': (np.ndarray, 2)},
+                        'sources': {'delta_t': float, 'laser': bool},
+                        'version': 0,
+                        'dill': dill.dumps(None),
+                      })
+        injector.send('data',
+                      'test',
+                      {
+                        'laser': True,
+                        'delta_t': 3,
+                        'ebeam': 10.1,
+                        'vals': ['foo', 'bar', 'baz'],
+                        'wave8': np.zeros(20),
+                        'cspad': np.zeros((10, 10)),
+                      })
         yield pvbase, injector
 
         # cleanup the manager process
@@ -118,6 +137,23 @@ def test_active_graphs(exporter, pvactx):
         assert False, "timeout getting %s:info:graphs" % pvbase
 
 
+def test_data_pvs(exporter, pvactx):
+    pvbase, injector = exporter
+
+    # check that there are no active graphs
+    try:
+        for graph, data in injector.cache['data'].items():
+            # test the individual pvs
+            for key, expected in data.items():
+                value = pvactx.get("%s:ana:%s:data:%s" % (pvbase, graph, key))
+                if isinstance(value, np.ndarray):
+                    assert np.array_equal(value, expected)
+                else:
+                    assert value == expected
+    except TimeoutError:
+        assert False, "timeout getting pvs from exporter"
+
+
 def test_store_pvs(exporter, pvactx):
     pvbase, injector = exporter
 
@@ -130,6 +166,46 @@ def test_store_pvs(exporter, pvactx):
                 assert pvactx.get("%s:ana:%s:store:%s" % (pvbase, graph, key)) == value
     except TimeoutError:
         assert False, "timeout getting pvs from exporter"
+
+
+def test_graph_pvs(exporter, pvactx):
+    pvbase, injector = exporter
+
+    try:
+        for graph, data in injector.cache['graph'].items():
+            # test the aggregated pv
+            assert pvactx.get("%s:ana:%s" % (pvbase, graph)) == data
+            # test the individual pvs
+            for key, value in data.items():
+                assert pvactx.get("%s:ana:%s:%s" % (pvbase, graph, key)) == value
+    except TimeoutError:
+        assert False, "timeout getting pvs from exporter"
+
+
+def test_delete_graph(exporter, pvactx):
+    pvbase, injector = exporter
+
+    graph_name = 'test'
+
+    try:
+        # test that the graph is there
+        assert pvactx.get("%s:ana:%s" % (pvbase, graph_name)) is not None
+    except TimeoutError:
+        assert False, "timeout getting pvs from exporter"
+
+    # inject the delete message
+    injector.send('destroy', graph_name, None)
+
+    try:
+        retries = 5
+        while retries:
+            pvactx.get("%s:ana:%s" % (pvbase, graph_name), timeout=0.25)
+            retries -= 1
+        assert False, "graph pvs deletion failed"
+    except TimeoutError:
+        assert True, "graph pvs deleted"
+    except RemoteError as err:
+        assert str(err) == 'Disconnect'
 
 
 @pytest.mark.parametrize('command',
