@@ -39,39 +39,38 @@ class PvaExportRpcHandler:
         self.addr = addr
         self.comms = {}
 
-    def _check_comm(self, graph):
+    def _get_comm(self, graph):
         if graph not in self.comms:
             self.comms[graph] = ami.comm.GraphCommHandler(graph, self.addr, ctx=self.ctx)
+        return self.comms[graph]
 
     @rpc(NTScalar('?'))
     def create(self, graph):
-        self._check_comm(graph)
-        return self.comms[graph].create()
+        return self._get_comm(graph).create()
+
+    @rpc(NTScalar('?'))
+    def destroy(self, graph):
+        return self._get_comm(graph).destroy()
 
     @rpc(NTScalar('?'))
     def clear(self, graph):
-        self._check_comm(graph)
-        return self.comms[graph].clear()
+        return self._get_comm(graph).clear()
 
     @rpc(NTScalar('?'))
     def reset(self, graph):
-        self._check_comm(graph)
-        return self.comms[graph].reset()
+        return self._get_comm(graph).reset()
 
     @rpc(NTScalar('?'))
     def post(self, graph, topic, payload):
-        self._check_comm(graph)
-        return self.comms[graph]._post_dill(topic, dill.loads(payload.tobytes()))
+        return self._get_comm(graph)._post_dill(topic, dill.loads(payload.tobytes()))
 
     @rpc(NTScalar('as'))
     def names(self, graph):
-        self._check_comm(graph)
-        return self.comms[graph].names
+        return self._get_comm(graph).names
 
     @rpc(NTScalar('?'))
     def view(self, graph, name):
-        self._check_comm(graph)
-        return self.comms[graph].view(name)
+        return self._get_comm(graph).view(name)
 
 
 class PvaExportServer:

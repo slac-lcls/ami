@@ -28,6 +28,7 @@ class RpcProxyThreads:
             'create_graph': self.create,
             'clear_graph': self.clear,
             'reset_graph': self.reset,
+            'destroy_graph': self.destroy,
         }
 
     def payload(self, cmd, payload):
@@ -47,6 +48,10 @@ class RpcProxyThreads:
 
     @rpccall('%s:create')
     def create(graph='s'):
+        pass
+
+    @rpccall('%s:destroy')
+    def destroy(graph='s'):
         pass
 
     @rpccall('%s:clear')
@@ -80,6 +85,7 @@ class RpcProxyAsyncio:
             'create_graph': ('%s:create', None, self.cmd_nturi),
             'clear_graph': ('%s:clear', None, self.cmd_nturi),
             'reset_graph': ('%s:reset', None, self.cmd_nturi),
+            'destroy_graph': ('%s:destroy', None, self.cmd_nturi),
         }
 
     def wrap(self, nturi, path, *args, **kwargs):
