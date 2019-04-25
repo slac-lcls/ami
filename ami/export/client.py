@@ -27,7 +27,7 @@ class RpcProxyThreads:
         self.command_map = {
             'create_graph': self.create,
             'clear_graph': self.clear,
-            'reset_graph': self.reset,
+            'reset_features': self.reset,
             'destroy_graph': self.destroy,
         }
 
@@ -84,7 +84,7 @@ class RpcProxyAsyncio:
             # cmd name: ('pv', 'request', 'NTURI')
             'create_graph': ('%s:create', None, self.cmd_nturi),
             'clear_graph': ('%s:clear', None, self.cmd_nturi),
-            'reset_graph': ('%s:reset', None, self.cmd_nturi),
+            'reset_features': ('%s:reset', None, self.cmd_nturi),
             'destroy_graph': ('%s:destroy', None, self.cmd_nturi),
         }
 
@@ -144,8 +144,10 @@ class PvaCommHandler(CommHandler):
             'get_sources': '%s:ana:%s:sources',
             'get_versions': ['%s:ana:%s:version', '%s:ana:%s:store:version'],
             'get_graph_version': '%s:ana:%s:version',
+            'get_heartbeat': '%s:ana:%s:heartbeat',
             'get_features_version': '%s:ana:%s:store:version',
             'get_features': '%s:ana:%s:store:features',
+            'get_graph': '%s:ana:%s:dill',
         }
 
     @staticmethod
