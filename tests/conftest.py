@@ -10,6 +10,10 @@ try:
     import psana
 except ImportError:
     psana = None
+try:
+    import p4p
+except ImportError:
+    p4p = None
 
 from ami.graphkit_wrapper import Graph
 from ami.graph_nodes import Map, FilterOn, FilterOff, Binning, PickN, Var
@@ -17,9 +21,10 @@ from ami.local import build_parser, run_ami
 from ami.comm import Ports, GraphCommHandler
 
 
-@pytest.fixture(scope='session')
-def use_psana():
-    return psana is not None
+psanatest = pytest.mark.skipif(psana is None, reason="psana not avaliable")
+
+
+epicstest = pytest.mark.skipif(p4p is None, reason="p4p not avaliable")
 
 
 @pytest.fixture(scope='session')
@@ -118,12 +123,7 @@ def complex_graph(complex_graph_file):
 
 
 @pytest.fixture(scope='function')
-def start_ami(request, workerjson, use_psana):
-
-    # don't run the fixture if psana is not installed
-    if not use_psana and request.param == "psana":
-        yield None
-        return
+def start_ami(request, workerjson):
 
     parser = build_parser()
     args = parser.parse_args(["-n", "1", '-t', '--headless',

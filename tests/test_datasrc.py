@@ -1,6 +1,7 @@
 import pytest
 import numpy as np
 
+from conftest import psanatest
 from ami.data import MsgTypes, Source, Transition, Transitions
 
 
@@ -30,10 +31,8 @@ def test_find_source():
     assert src_cls is None
 
 
+@psanatest
 def test_psana_source(xtcwriter):
-    # don't run the test if psana is not installed
-    if xtcwriter is None:
-        return
     psana_src_cls = Source.find_source('psana')
     assert psana_src_cls is not None
     idnum = 0

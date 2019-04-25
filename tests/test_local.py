@@ -11,6 +11,8 @@ To use:
 import pytest
 import time
 
+from conftest import psanatest
+
 
 @pytest.mark.parametrize('start_ami', ['static'], indirect=True)
 def test_complex_graph(complex_graph_file, start_ami):
@@ -25,12 +27,9 @@ def test_complex_graph(complex_graph_file, start_ami):
     assert sig == {1: 10000.0}
 
 
+@psanatest
 @pytest.mark.parametrize('start_ami', ['psana'], indirect=True)
-def test_psana_graph(psana_graph, start_ami, use_psana):
-
-    # don't run the test if psana is not installed
-    if not use_psana:
-        return
+def test_psana_graph(psana_graph, start_ami):
 
     comm_handler = start_ami
     comm_handler.load(psana_graph)

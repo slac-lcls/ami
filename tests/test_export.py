@@ -8,11 +8,14 @@ import numpy as np
 import multiprocessing as mp
 import ami.graph_nodes as gn
 
-from p4p.client.thread import Context, RemoteError
 from ami.graphkit_wrapper import Graph
-from ami.export import run_export
-from ami.export.nt import CUSTOM_TYPE_WRAPPERS
-from ami.export.client import GraphCommHandler, AsyncGraphCommHandler
+try:
+    from ami.export import run_export
+    from ami.export.nt import CUSTOM_TYPE_WRAPPERS
+    from ami.export.client import GraphCommHandler, AsyncGraphCommHandler
+    from p4p2.client.thread import Context, RemoteError
+except ImportError:
+    pytest.skip("skipping EPICS PVA tests", allow_module_level=True)
 
 
 class ExportInjector:
