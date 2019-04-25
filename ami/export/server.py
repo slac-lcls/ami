@@ -199,6 +199,13 @@ class PvaExportServer:
             else:
                 self.pvs[pvname].post(data)
 
+    def update_heartbeat(self, graph, heartbeat):
+        pvname = self.graph_pvname(graph, 'heartbeat')
+        if pvname not in self.pvs:
+            self.create_pv(pvname, NTScalar('d'), heartbeat)
+        else:
+            self.pvs[pvname].post(heartbeat)
+
     def update_info(self, data):
         # add the unaggregated version of the pvs
         for key, value in data.items():
@@ -259,6 +266,8 @@ class PvaExportServer:
                 self.update_graph(graph, exports)
             elif topic == 'store':
                 self.update_store(graph, exports)
+            elif topic == 'heartbeat':
+                self.update_heartbeat(graph, exports)
             elif topic == 'info':
                 self.update_info(exports)
             elif topic == 'destroy':

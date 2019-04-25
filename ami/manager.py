@@ -101,6 +101,8 @@ class Manager(Collector):
                 self.export_data(msg.name, msg.payload)
                 # update the latest heartbeat indicator
                 self.heartbeats[msg.name] = msg.heartbeat
+                # export the heartbeat to epics
+                self.export_heartbeat(msg.name)
         elif (msg.mtype == MsgTypes.Transition) and (msg.payload.ttype == Transitions.Configure):
             self.partition = msg.payload.payload
             # export the partition info to epics
@@ -441,6 +443,12 @@ class Manager(Collector):
             self.export.send_string('data', zmq.SNDMORE)
             self.export.send_string(name, zmq.SNDMORE)
             self.export.send_pyobj(data)
+
+    def export_heartbeat(self, name):
+        if self.export is not None:
+            self.export.send_string('heartbeat', zmq.SNDMORE)
+            self.export.send_string(name, zmq.SNDMORE)
+            self.export.send_pyobj(self.heartbeats[name])
 
 
 def run_manager(num_workers, num_nodes, results_addr, graph_addr, comm_addr, msg_addr, info_addr, export_addr=None):
