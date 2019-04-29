@@ -39,7 +39,7 @@ def ipc_dir(tmpdir_factory):
             os.symlink(src_path, dst_path)
             yield dst_path
     else:
-        return tmpdir_factory.mktemp("ipc", False)
+        yield tmpdir_factory.mktemp("ipc", False)
 
 
 @pytest.fixture(scope='session')
