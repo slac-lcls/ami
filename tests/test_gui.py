@@ -10,7 +10,10 @@ from asyncqt import QEventLoop
 
 class BrokerHelper:
     def __init__(self, ipcdir, comm):
-        self.loop = asyncio.get_event_loop()
+        # we are in a forked process so create a new event loop (needed in some cases).
+        self.loop = asyncio.new_event_loop()
+        # set this new event loop as the default one so zmq picks it up
+        asyncio.set_event_loop(self.loop)
         self.broker = MessageBroker("", "", ipcdir=ipcdir)
         self.comm = comm
         self.loop.run_until_complete(self.run())
@@ -54,15 +57,16 @@ def broker(ipc_dir):
     proc = mp.Process(
         name='broker',
         target=BrokerHelper.execute,
-        args=(ipc_dir, child_comm)
+        args=(ipc_dir, child_comm),
+        daemon=False
     )
-    proc.daemon = False
     proc.start()
 
     yield BrokerProxy(parent_comm)
 
     # cleanup the manager process
     proc.terminate()
+    proc.join()
     return proc.exitcode
 
 

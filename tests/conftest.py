@@ -1,7 +1,10 @@
 import pytest
+import os
+import sys
 import dill
 import json
 import shutil
+import tempfile
 import subprocess
 import signal
 import multiprocessing as mp
@@ -29,7 +32,14 @@ epicstest = pytest.mark.skipif(p4p is None, reason="p4p not avaliable")
 
 @pytest.fixture(scope='session')
 def ipc_dir(tmpdir_factory):
-    return tmpdir_factory.mktemp("ipc_tests", False)
+    if sys.platform == 'darwin':
+        src_path = tmpdir_factory.mktemp("ipc", False)
+        with tempfile.TemporaryDirectory(dir='/tmp') as short_tmp:
+            dst_path = os.path.join(short_tmp, 'ipc')
+            os.symlink(src_path, dst_path)
+            yield dst_path
+    else:
+        return tmpdir_factory.mktemp("ipc", False)
 
 
 @pytest.fixture(scope='session')

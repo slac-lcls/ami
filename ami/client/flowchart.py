@@ -240,7 +240,6 @@ class MessageBroker(object):
 
         while True:
             topic = await self.broker_pub_sock.recv_string()
-            print(topic)
 
             if topic.startswith('\x01'):
                 topic = topic.lstrip('\x01')
@@ -345,6 +344,7 @@ class MessageBroker(object):
                     if topic in self.widget_procs:
                         logger.info("deleting process: %s pid: %d", topic, proc.pid)
                         _, proc = self.widget_procs[topic]
+                        proc.terminate()
                         proc.join()
                         del self.widget_procs[topic]
 
