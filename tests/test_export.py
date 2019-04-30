@@ -13,7 +13,7 @@ try:
     from ami.export import run_export
     from ami.export.nt import CUSTOM_TYPE_WRAPPERS
     from ami.export.client import GraphCommHandler, AsyncGraphCommHandler
-    from p4p2.client.thread import Context, RemoteError
+    from p4p.client.thread import Context, RemoteError
 except ImportError:
     pytest.skip("skipping EPICS PVA tests", allow_module_level=True)
 
@@ -167,11 +167,29 @@ def pvacomm():
 
 
 @pytest.fixture(scope='function')
+def pvacomm_tmo(request):
+    graph_name = 'test'
+    pvbase = "testing:ami"
+
+    with GraphCommHandler(graph_name, pvbase, timeout=request.param) as comm:
+        yield comm
+
+
+@pytest.fixture(scope='function')
 def pvacomm_async(event_loop):
     graph_name = 'test'
     pvbase = "testing:ami"
 
     with AsyncGraphCommHandler(graph_name, pvbase) as comm:
+        yield comm
+
+
+@pytest.fixture(scope='function')
+def pvacomm_tmo_async(request, event_loop):
+    graph_name = 'test'
+    pvbase = "testing:ami"
+
+    with AsyncGraphCommHandler(graph_name, pvbase, timeout=request.param) as comm:
         yield comm
 
 
@@ -355,6 +373,59 @@ async def test_comm_active_graphs_async(exporter, pvacomm_async):
     assert await comm.active == injector.cache['info']['']['graphs']
 
 
+def test_comm_select_graph(exporter, pvacomm):
+    comm = pvacomm
+    injector = exporter[1]
+
+    new_graph_name = 'new_test_graph'
+
+    # check that the current is one of the active ones
+    assert comm.current in injector.cache['info']['']['graphs']
+
+    # prep the injector to respond to the request
+    injector.recv_start()
+    # switch to the new graph and check result
+    assert comm.select(new_graph_name)
+    assert comm.current == new_graph_name
+    # check request the injector received
+    assert injector.recv_wait() == ('create_graph', new_graph_name, None)
+
+    # prep the injector to respond to the request (want the change to fail)
+    injector.recv_start(fail=True)
+    # switch to the new graph and check result
+    assert not comm.select(new_graph_name)
+    assert comm.current == new_graph_name
+    # check request the injector received
+    assert injector.recv_wait() == ('create_graph', new_graph_name, None)
+
+
+@pytest.mark.asyncio
+async def test_comm_select_graph_async(exporter, pvacomm_async):
+    comm = pvacomm_async
+    injector = exporter[1]
+
+    new_graph_name = 'new_test_graph'
+
+    # check that the current is one of the active ones
+    assert await comm.current in injector.cache['info']['']['graphs']
+
+    # prep the injector to respond to the request
+    injector.recv_start()
+    # switch to the new graph and check result
+    assert await comm.select(new_graph_name)
+    assert await comm.current == new_graph_name
+    # check request the injector received
+    assert injector.recv_wait() == ('create_graph', new_graph_name, None)
+
+    # prep the injector to respond to the request (want the change to fail)
+    injector.recv_start(fail=True)
+    # switch to the new graph and check result
+    assert not await comm.select(new_graph_name)
+    assert await comm.current == new_graph_name
+    # check request the injector received
+    assert injector.recv_wait() == ('create_graph', new_graph_name, None)
+
+
 @pytest.mark.parametrize('command, expected',
                          [
                             ('create',  'create_graph'),
@@ -438,6 +509,152 @@ def test_comm_graph_view(exporter, pvacomm, views):
         assert payload[0].name == comm.auto(views) + '_view'
 
 
+def test_comm_graph_add(exporter, pvacomm):
+    comm = pvacomm
+    injector = exporter[1]
+
+    graph_name = comm.current
+
+    # prep the injector to respond to the request
+    injector.recv_start()
+    # add a map to the graph
+    assert comm.addMap('test_map', inputs=[gn.Var('foo')], outputs=[gn.Var('bar')], func=lambda x: x*2)
+    # check request the injector received
+    cmd, name, payload = injector.recv_wait()
+    assert cmd == 'add_graph'
+    assert name == graph_name
+    assert isinstance(payload, gn.Map)
+    assert payload.name == 'test_map'
+
+    # prep the injector to respond to the request - have it return a failure
+    injector.recv_start(fail=True)
+    # add a map to the graph
+    assert not comm.addMap('test_map2', inputs=[gn.Var('foo')], outputs=[gn.Var('bar')], func=lambda x: x*3)
+    # check request the injector received
+    cmd, name, payload = injector.recv_wait()
+    assert cmd == 'add_graph'
+    assert name == graph_name
+    assert isinstance(payload, gn.Map)
+    assert payload.name == 'test_map2'
+
+    # prep the injector to respond to the request
+    injector.recv_start()
+    # add multiple maps to the graph
+    nodes = [
+        gn.Map(name='test_mapA', inputs=[gn.Var('foo')], outputs=[gn.Var('bar')], func=lambda x: x),
+        gn.Map(name='test_mapB', inputs=[gn.Var('foo')], outputs=[gn.Var('bar')], func=lambda x: x*2),
+    ]
+    assert comm.add(nodes)
+    # check request the injector received
+    cmd, name, payload = injector.recv_wait()
+    assert cmd == 'add_graph'
+    assert name == graph_name
+    assert isinstance(payload, list)
+    assert all(isinstance(node, gn.Map) for node in payload)
+
+
+@pytest.mark.asyncio
+async def test_comm_graph_add_async(exporter, pvacomm_async):
+    comm = pvacomm_async
+    injector = exporter[1]
+
+    graph_name = await comm.current
+
+    # prep the injector to respond to the request
+    injector.recv_start()
+    # add a map to the graph
+    assert await comm.addMap('test_map', inputs=[gn.Var('foo')], outputs=[gn.Var('bar')], func=lambda x: x*2)
+    # check request the injector received
+    cmd, name, payload = injector.recv_wait()
+    assert cmd == 'add_graph'
+    assert name == graph_name
+    assert isinstance(payload, gn.Map)
+    assert payload.name == 'test_map'
+
+    # prep the injector to respond to the request - have it return a failure
+    injector.recv_start(fail=True)
+    # add a map to the graph
+    assert not await comm.addMap('test_map2', inputs=[gn.Var('foo')], outputs=[gn.Var('bar')], func=lambda x: x*3)
+    # check request the injector received
+    cmd, name, payload = injector.recv_wait()
+    assert cmd == 'add_graph'
+    assert name == graph_name
+    assert isinstance(payload, gn.Map)
+    assert payload.name == 'test_map2'
+
+    # prep the injector to respond to the request
+    injector.recv_start()
+    # add multiple maps to the graph
+    nodes = [
+        gn.Map(name='test_mapA', inputs=[gn.Var('foo')], outputs=[gn.Var('bar')], func=lambda x: x),
+        gn.Map(name='test_mapB', inputs=[gn.Var('foo')], outputs=[gn.Var('bar')], func=lambda x: x*2),
+    ]
+    assert await comm.add(nodes)
+    # check request the injector received
+    cmd, name, payload = injector.recv_wait()
+    assert cmd == 'add_graph'
+    assert name == graph_name
+    assert isinstance(payload, list)
+    assert all(isinstance(node, gn.Map) for node in payload)
+
+
+@pytest.mark.parametrize('nodes', ['test_node', ['test_node', 'another_test_node']])
+def test_comm_graph_remove(exporter, pvacomm, nodes):
+    comm = pvacomm
+    injector = exporter[1]
+
+    graph_name = comm.current
+
+    # generate expected reply
+    if isinstance(nodes, str):
+        expected_reply = ('del_graph', graph_name, [nodes])
+    else:
+        expected_reply = ('del_graph', graph_name, nodes)
+
+    # prep the injector to respond to the request
+    injector.recv_start()
+    # add remove a node from the graph
+    assert comm.remove(nodes)
+    # check request the injector received
+    assert injector.recv_wait() == expected_reply
+
+    # prep the injector to respond to the request but make it fail
+    injector.recv_start(fail=True)
+    # add remove a node from the graph
+    assert not comm.remove(nodes)
+    # check request the injector received
+    assert injector.recv_wait() == expected_reply
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('nodes', ['test_node', ['test_node', 'another_test_node']])
+async def test_comm_graph_remove_async(exporter, pvacomm_async, nodes):
+    comm = pvacomm_async
+    injector = exporter[1]
+
+    graph_name = await comm.current
+
+    # generate expected reply
+    if isinstance(nodes, str):
+        expected_reply = ('del_graph', graph_name, [nodes])
+    else:
+        expected_reply = ('del_graph', graph_name, nodes)
+
+    # prep the injector to respond to the request
+    injector.recv_start()
+    # add remove a node from the graph
+    assert await comm.remove(nodes)
+    # check request the injector received
+    assert injector.recv_wait() == expected_reply
+
+    # prep the injector to respond to the request but make it fail
+    injector.recv_start(fail=True)
+    # add remove a node from the graph
+    assert not await comm.remove(nodes)
+    # check request the injector received
+    assert injector.recv_wait() == expected_reply
+
+
 @pytest.mark.asyncio
 @pytest.mark.parametrize('views', ['delta_t', ['delta_t'], ['delta_t', 'laser']])
 async def test_comm_graph_view_async(exporter, pvacomm_async, views):
@@ -463,6 +680,71 @@ async def test_comm_graph_view_async(exporter, pvacomm_async, views):
     else:
         assert len(payload) == 1
         assert payload[0].name == comm.auto(views) + '_view'
+
+
+@pytest.mark.parametrize('pvacomm_tmo', [0.25], indirect=True)
+@pytest.mark.parametrize('names',
+                         [
+                            'laser',
+                            'delta_t',
+                            'vals',
+                            'wave8',
+                            'notadet',
+                            ['notadet'],
+                            ['laser', 'delta_t'],
+                            ['notadet1', 'notadet2'],
+                            ['notadet', 'laser'],
+                         ])
+def test_comm_graph_fetch(exporter, pvacomm_tmo, names):
+    comm = pvacomm_tmo
+    injector = exporter[1]
+
+    graph_name = comm.current
+
+    fetched = comm.fetch(names)
+    if isinstance(names, list):
+        results = [injector.cache['data'][graph_name].get(name) for name in names]
+        if all(res is None for res in results):
+            assert fetched is None
+        else:
+            assert fetched == results
+    elif isinstance(fetched, np.ndarray):
+        assert np.array_equal(fetched, injector.cache['data'][graph_name].get(names))
+    else:
+        assert fetched == injector.cache['data'][graph_name].get(names)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('pvacomm_tmo_async', [0.25], indirect=True)
+@pytest.mark.parametrize('names',
+                         [
+                            'laser',
+                            'delta_t',
+                            'vals',
+                            'wave8',
+                            'notadet',
+                            ['notadet'],
+                            ['laser', 'delta_t'],
+                            ['notadet1', 'notadet2'],
+                            ['notadet', 'laser'],
+                         ])
+async def test_comm_graph_fetch_async(exporter, pvacomm_tmo_async, names):
+    comm = pvacomm_tmo_async
+    injector = exporter[1]
+
+    graph_name = await comm.current
+
+    fetched = await comm.fetch(names)
+    if isinstance(names, list):
+        results = [injector.cache['data'][graph_name].get(name) for name in names]
+        if all(res is None for res in results):
+            assert fetched is None
+        else:
+            assert fetched == results
+    elif isinstance(fetched, np.ndarray):
+        assert np.array_equal(fetched, injector.cache['data'][graph_name].get(names))
+    else:
+        assert fetched == injector.cache['data'][graph_name].get(names)
 
 
 def test_comm_graph_info(exporter, pvacomm):
@@ -504,3 +786,45 @@ def test_comm_graph_info(exporter, pvacomm):
     # check the get_type call
     for name, dtype in injector.cache['graph'][graph_name]['types'].items():
         assert comm.get_type(name) == dtype
+
+
+@pytest.mark.asyncio
+async def test_comm_graph_info_async(exporter, pvacomm_async):
+    comm = pvacomm_async
+    injector = exporter[1]
+
+    graph_name = await comm.current
+
+    # check fetching the heartbeat
+    assert await comm.heartbeat == injector.cache['heartbeat'][graph_name]
+
+    # check that fetching the graph works
+    graph = await comm.graph
+    assert isinstance(graph, Graph)
+    assert graph.name == dill.loads(injector.cache['graph'][graph_name]['dill']).name
+
+    # check fetching feature info works
+    assert await comm.features == injector.cache['store'][graph_name]['features']
+
+    # check fetching names info works
+    assert await comm.names == injector.cache['graph'][graph_name]['names']
+
+    # check fetching types info works
+    assert await comm.types == injector.cache['graph'][graph_name]['types']
+
+    # check fetching sources info works
+    assert await comm.sources == injector.cache['graph'][graph_name]['sources']
+
+    # check the graph and store versions
+    assert await comm.versions == [injector.cache['graph'][graph_name]['version'],
+                                   injector.cache['store'][graph_name]['version']]
+
+    # check the graph version
+    assert await  comm.graphVersion == injector.cache['graph'][graph_name]['version']
+
+    # check the feature store version
+    assert await comm.featuresVersion == injector.cache['store'][graph_name]['version']
+
+    # check the get_type call
+    for name, dtype in injector.cache['graph'][graph_name]['types'].items():
+        assert await comm.get_type(name) == dtype
