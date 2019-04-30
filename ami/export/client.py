@@ -433,7 +433,7 @@ class AsyncGraphCommHandler(PvaCommHandler):
 
     async def _set_current(self, name):
         self._set_name(name)
-        if name in self.active:
+        if name in await self.active:
             return True
         else:
             return await self.create()
