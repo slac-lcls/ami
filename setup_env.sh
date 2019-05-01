@@ -13,7 +13,7 @@ unset PYTHONPATH
 source /reg/g/psdm/sw/conda2/inst/etc/profile.d/conda.sh
 
 # user can pick up python2 by adding "-py2" option to setup_env.sh
-conda activate ps-1.0.3$@
+conda activate ps-2.0.1$@
 
 # workaround for problem entering data in QT windows.  ideally
 # this would perhaps go into the qt-specific environment setup
