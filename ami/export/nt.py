@@ -52,6 +52,40 @@ def _generate_schema(graph=True):
     return schema, flat_schema, byte_fields, object_fields
 
 
+class ntbool(int):
+    """
+    Augmented boolean with additional attributes
+    * .severity
+    * .status
+    * .timestamp - Seconds since 1 Jan 1970 UTC as a float
+    * .raw_stamp - A tuple (seconds, nanoseconds)
+    * .raw - The underlying :py:class:`p4p.Value`.
+    """
+    raw = timestamp = None
+
+    def __new__(cls, value):
+        return int.__new__(cls, bool(value))
+
+    def _store(self, value):
+        assert isinstance(value, Value), value
+        self.raw = value
+        self.severity = value.get('alarm.severity', 0)
+        self.status = value.get('alarm.status', 0)
+        S, NS = value.get('timeStamp.secondsPastEpoch', 0), value.get('timeStamp.nanoseconds', 0)
+        self.raw_stamp = S, NS
+        self.timestamp = S + NS * 1e-9
+        # TODO: unpack display/control
+        return self
+
+    def __repr__(self):
+        return bool(self).__repr__()
+
+    def __str__(self):
+        return '%s %s' % (time.ctime(self.timestamp), self.__repr__())
+
+    tostr = __str__
+
+
 class NTBytes:
 
     @classmethod
@@ -236,3 +270,7 @@ CUSTOM_TYPE_WRAPPERS = {
     'ami:export/NTGraph:1.0': NTGraph,
     'ami:export/NTStore:1.0': NTStore,
 }
+
+
+if bool not in NTScalar.typeMap:
+    NTScalar.typeMap[bool] = ntbool
