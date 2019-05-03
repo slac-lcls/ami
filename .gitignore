@@ -2,6 +2,8 @@ build
 install
 .eggs/
 .pytest_cache/
+.mypy_cache/
+.coverage
 *.pyc
 *.egg-info/
 *~
@@ -13,4 +15,3 @@ install
 *.fc
 *.last
 *.swp
-

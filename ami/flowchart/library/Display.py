@@ -1,7 +1,8 @@
 from ami.flowchart.library.DisplayWidgets import ScalarWidget, ScatterWidget, WaveformWidget, AreaDetWidget
 from ami.flowchart.library.DisplayWidgets import HistogramWidget
 from ami.flowchart.library.common import CtrlNode
-import numpy as np
+from ami.nptype import Array1d, Array2d
+from numbers import Real
 import ami.graph_nodes as gn
 
 
@@ -18,7 +19,7 @@ class ScalarViewer(CtrlNode):
 
     def __init__(self, name):
         super(ScalarViewer, self).__init__(name,
-                                           terminals={"In": {"io": "in", "type": (float, int, bool, np.float64)}},
+                                           terminals={"In": {"io": "in", "type": Real}},
                                            viewable=True)
 
     def display(self, topics, addr, win, **kwargs):
@@ -37,7 +38,7 @@ class WaveformViewer(CtrlNode):
     uiTemplate = []
 
     def __init__(self, name):
-        super(WaveformViewer, self).__init__(name, terminals={"In": {"io": "in", "type": (list, np.ndarray)}},
+        super(WaveformViewer, self).__init__(name, terminals={"In": {"io": "in", "type": Array1d}},
                                              viewable=True)
 
     def display(self, topics, addr, win, **kwargs):
@@ -56,7 +57,7 @@ class ImageViewer(CtrlNode):
     uiTemplate = []
 
     def __init__(self, name):
-        super(ImageViewer, self).__init__(name, terminals={"In": {"io": "in", "type": np.ndarray}}, viewable=True)
+        super(ImageViewer, self).__init__(name, terminals={"In": {"io": "in", "type": Array2d}}, viewable=True)
 
     def display(self, topics, addr, win, **kwargs):
         return super(ImageViewer, self).display(topics, addr, win, AreaDetWidget, **kwargs)
@@ -95,8 +96,8 @@ class ScatterPlot(CtrlNode):
     uiTemplate = [("Num Points", 'intSpin', {'value': 100, 'min': 1, 'max': 2147483647})]
 
     def __init__(self, name):
-        super(ScatterPlot, self).__init__(name, terminals={"X": {"io": "in", "type": (int, np.float64)},
-                                                           "Y": {"io": "in", "type": (int, np.float64)}},
+        super(ScatterPlot, self).__init__(name, terminals={"X": {"io": "in", "type": Real},
+                                                           "Y": {"io": "in", "type": Real}},
                                           allowAddInput=True,
                                           buffered=True)
 
@@ -127,7 +128,7 @@ class LinePlot(CtrlNode):
     uiTemplate = [("Num Points", 'intSpin', {'value': 100, 'min': 1, 'max': 2147483647})]
 
     def __init__(self, name):
-        super(LinePlot, self).__init__(name, terminals={"Y": {"io": "in", "type": (int, np.float64)}},
+        super(LinePlot, self).__init__(name, terminals={"Y": {"io": "in", "type": Real}},
                                        allowAddInput=True,
                                        buffered=True)
 

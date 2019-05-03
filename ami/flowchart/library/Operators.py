@@ -1,5 +1,7 @@
 from ami.flowchart.library.common import CtrlNode
 from ami.flowchart.Node import Node
+from ami.nptype import Array, Array1d, Array2d
+from numbers import Real
 import ami.graph_nodes as gn
 import numpy as np
 
@@ -14,8 +16,8 @@ class Sum(Node):
 
     def __init__(self, name):
         super(Sum, self).__init__(name, terminals={
-            'In': {'io': 'in', 'type': (type(None), np.ndarray, list)},
-            'Out': {'io': 'out', 'type': np.float64}
+            'In': {'io': 'in', 'type': Array},
+            'Out': {'io': 'out', 'type': Real}
         })
 
     def to_operation(self, inputs, conditions={}):
@@ -39,8 +41,8 @@ class Projection(CtrlNode):
 
     def __init__(self, name):
         super(Projection, self).__init__(name, terminals={
-            'In': {'io': 'in', 'type': (type(None), np.ndarray)},
-            'Out': {'io': 'out', 'type': np.ndarray}
+            'In': {'io': 'in', 'type': Array2d},
+            'Out': {'io': 'out', 'type': Array1d}
         })
 
     def to_operation(self, inputs, conditions={}):

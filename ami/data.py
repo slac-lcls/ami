@@ -10,6 +10,7 @@ except ImportError:
     psana = None
 import numpy as np
 from enum import Enum
+from ami.nptype import Array1d, Array2d
 
 
 logger = logging.getLogger(__name__)
@@ -348,8 +349,10 @@ class SimSource(Source):
                 return int
             else:
                 return float
-        elif config['dtype'] == 'Waveform' or config['dtype'] == 'Image':
-            return np.ndarray
+        elif config['dtype'] == 'Waveform':
+            return Array1d
+        elif config['dtype'] == 'Image':
+            return Array2d
         else:
             return None
 

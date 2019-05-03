@@ -3,6 +3,8 @@ from pyqtgraph.Qt import QtCore, QtGui
 from pyqtgraph.graphicsItems.GraphicsObject import GraphicsObject
 from pyqtgraph import functions as fn
 from pyqtgraph.Point import Point
+import subprocess
+import inspect
 import weakref
 
 
@@ -114,13 +116,20 @@ class Terminal(object):
                 raise Exception('Not connecting terminal to self')
             if term.node() is self.node():
                 raise Exception("Can't connect to terminal on same node.")
+
+            types = {}
             for t in [self, term]:
-                if t.isInput() and len(t.connections()) > 0:
-                    raise Exception(
-                        "Cannot connect %s <-> %s: Terminal %s is already connected to %s \
-                        (and does not allow multiple connections)" % (self, term, t, list(t.connections().keys())))
-            self.propagateType(term)
-            if not checkType(self.type(), term.type()):
+                if t.isInput():
+                    types["Input"] = t.type()
+
+                    if len(t.connections()) > 0:
+                        raise Exception(
+                            "Cannot connect %s <-> %s: Terminal %s is already connected to %s \
+                            (and does not allow multiple connections)" % (self, term, t, list(t.connections().keys())))
+                elif t.isOutput():
+                    types["Output"] = t.type()
+
+            if not checkType(types):
                 raise Exception("Invalid types. Expected: %s Got: %s", self.type(), term.type())
         except Exception:
             if connectionItem is not None:
@@ -140,37 +149,6 @@ class Terminal(object):
 
         return connectionItem
 
-    def propagateType(self, term):
-        if self.isCondition() or term.isCondition():
-            return
-
-        if self.type() == object:
-            self.setType(term.type())
-            terms = self.node().terminals
-            if self.isInput():
-                if 'Out' in terms and terms["Out"].type() == object:
-                    terms["Out"].setType(term.type())
-                    terms["Out"]._propagatedType = True
-            elif self.isOutput():
-                if 'In' in terms:
-                    terms["In"].setType(term.type())
-                    terms["In"]._propagatedType = True
-            self._propagatedType = True
-
-        elif term.type() == object:
-            term.setType(self.type())
-            terms = term.node().terminals
-            if term.isInput():
-                if 'Out' in terms and terms["Out"].type() == object:
-                    terms["Out"].setType(self.type())
-                    terms["Out"]._propagatedType = True
-            elif term.isOutput():
-                if 'In' in terms:
-                    terms["In"].setType(term.type())
-                    terms["In"]._propagatedType = True
-
-            term._propagatedType = True
-
     def disconnectFrom(self, term):
         if not self.connectedTo(term):
             return
@@ -180,9 +158,6 @@ class Terminal(object):
         del term._connections[self]
         self.recolor()
         term.recolor()
-
-        # if self._propagatedType:
-        #     self.term.setType(object)
 
         self.disconnected(term)
         term.disconnected(self)
@@ -505,19 +480,34 @@ class ConnectionItem(GraphicsObject):
         p.drawPath(self.path)
 
 
-def checkType(t1, t2):
-    if not type(t1) == tuple:
-        t1 = (t1, )
+def checkType(types):
 
-    if not type(t2) == tuple:
-        t2 = (t2, )
+    t_in = types["Input"]
+    t_out = types["Output"]
 
-    t1 = set(t1)
-    t2 = set(t2)
+    def f_in(t):
+        pass
 
-    if t1.intersection(t2) or t2.intersection(t1):
-        return True
-    elif object in t1 or object in t2:
+    f_in.__annotations__ = {'t': t_in}
+    f_in = str(inspect.signature(f_in))
+
+    def f_out():
+        pass
+
+    f_out.__annotations__ = {'return': t_out}
+    f_out = str(inspect.signature(f_out))
+
+    with open('test.py', 'w') as f:
+        f.write("from typing import *\n")
+        f.write("import numbers\n")
+        f.write("import ami.nptype\n")
+        f.write(f"def f_in{f_in}:\n\tpass\n")
+        f.write(f"def f_out{f_out}:\n\tpass")
+        f.write("\nf_in(f_out())")
+
+    status = subprocess.run(["mypy", "--follow-imports", "silent", "test.py"])
+
+    if status.returncode == 0:
         return True
 
     return False

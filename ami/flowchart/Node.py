@@ -217,7 +217,7 @@ class Node(QtCore.QObject):
 
         output_vars = []
         for name, output in self._outputs.items():
-            output_vars.append(Var(name=self.name(), type=output.type()))
+            output_vars.append(Var(name=self.name(), type=object))
         return output_vars
 
     def condition_vars(self):
@@ -275,7 +275,7 @@ class Node(QtCore.QObject):
         """Called whenever one of this node's terminals is connected elsewhere."""
         node = remoteTerm.node()
         if localTerm.isInput() and remoteTerm.isOutput():
-            self._input_vars[localTerm.name()] = Var(name=node.name(), type=remoteTerm.type())
+            self._input_vars[localTerm.name()] = Var(name=node.name(), type=object)
         elif localTerm.isCondition():
             self._condition_vars[localTerm.name()] = node.name()
         self.sigTerminalConnected.emit(self)

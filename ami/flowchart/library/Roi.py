@@ -1,9 +1,9 @@
 from ami.flowchart.library.DisplayWidgets import AreaDetWidget, WaveformWidget
 from ami.flowchart.library.common import CtrlNode
+from ami.nptype import Array2d, Array1d
 import pyqtgraph as pg
 import ami.graph_nodes as gn
 import asyncio
-import numpy as np
 
 
 class Roi(CtrlNode):
@@ -23,8 +23,8 @@ class Roi(CtrlNode):
 
     def __init__(self, name):
         super(Roi, self).__init__(name,
-                                  terminals={'In': {'io': 'in', 'type': np.ndarray},
-                                             'Out': {'io': 'out', 'type': np.ndarray}},
+                                  terminals={'In': {'io': 'in', 'type': Array2d},
+                                             'Out': {'io': 'out', 'type': Array2d}},
                                   viewable=True)
         self.func = lambda img: img
 
@@ -100,8 +100,8 @@ class Roi1D(CtrlNode):
     desc = "Region of Interest"
 
     def __init__(self, name):
-        super(Roi1D, self).__init__(name, terminals={"In": {"io": "in", "type": (list, np.ndarray)},
-                                                     "Out": {"io": "out", "type": np.ndarray}},
+        super(Roi1D, self).__init__(name, terminals={"In": {"io": "in", "type": Array1d},
+                                                     "Out": {"io": "out", "type": Array1d}},
                                     viewable=True)
         self.func = lambda img: img
 
