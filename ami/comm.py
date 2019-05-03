@@ -939,16 +939,14 @@ class CommHandler(abc.ABC):
 
     Args:
         name(str): the name of the graph instance in the manager to use
-        use_types (bool): if True types are required for node inputs and outputs
 
     Raises:
         TypeError: if `name` is an unacceptable type.
     """
 
-    def __init__(self, name, use_types):
+    def __init__(self, name):
         self._name = name
         self._allocated = False
-        self._use_types = use_types
         self._prune_keys = ['condition_needs', 'condition', 'reduction']
         self._expand_keys = ['inputs', 'outputs', 'condition_needs']
 
@@ -988,12 +986,6 @@ class CommHandler(abc.ABC):
             if key in kwargs:
                 if not isinstance(kwargs[key], list):
                     kwargs[key] = [kwargs[key]]
-                converted_vars = []
-                for var in kwargs[key]:
-                    if isinstance(var, str):
-                        converted_vars.append(var)
-
-                kwargs[key] = converted_vars
 
         return node(**kwargs)
 
@@ -1092,20 +1084,6 @@ class CommHandler(abc.ABC):
         return self._request('get_names')
 
     @property
-    def types(self):
-        """
-        A dictionary with type information on all of the user-defined output
-        names in the graph that can be used as inputs for nodes in the graph,
-        where the key is the name of the output and the value is the type of
-        the output.
-
-        Returns:
-            A dictionary with type information on all of the outputs in the
-            graph.
-        """
-        return self._request('get_types')
-
-    @property
     def sources(self):
         """
         A dictionary with information on all of the external data sources that
@@ -1146,22 +1124,6 @@ class CommHandler(abc.ABC):
             The current version of the feature store.
         """
         return self._request('get_features_version')
-
-    def get_type(self, names):
-        """
-        Lookups of the type of a `Var` node in the graph by its name field.
-
-        Args:
-            names (str or list): the name of the node. List of node names also
-                                accepted.
-
-        Returns:
-            The types of the nodes if they are found in the graph
-        """
-        if isinstance(names, list):
-            return self._request_batch(cmds=["lookup:%s" % name for name in names], check=True)
-        else:
-            return self._request("lookup:%s" % names, check=True)
 
     def fetch(self, names):
         """
@@ -1513,14 +1475,13 @@ class ZmqCommHandler(CommHandler):
     Args:
         name (str): the name of the graph instance in the manager to use
         addr (str): the zmq address of the graph manager (e.g. tcp://localhost:5555)
-        use_types (bool): if True types are required for node inputs and outputs
         async_mode (bool): if True the asyncio version of zmq is used
         ctx (zmq.Context): zmq context for the node to use.
         owner (bool): if True this class is the owner of the context
     """
 
-    def __init__(self, name, addr, use_types, ctx, owner):
-        super().__init__(name, use_types)
+    def __init__(self, name, addr, ctx, owner):
+        super().__init__(name)
         self._ctx = ctx
         self._addr = addr
         self._owner = owner
@@ -1543,14 +1504,13 @@ class AsyncGraphCommHandler(ZmqCommHandler):
     Args:
         name (str): the name of the graph instance in the manager to use
         addr (str): the zmq address of the graph manager (e.g. tcp://localhost:5555)
-        use_types (bool): if True types are required for node inputs and outputs
         ctx (zmq.Context): optional shared zmq context for the node to use.
 
     Raises:
         TypeError: if `ctx` is an unacceptable type.
     """
 
-    def __init__(self, name, addr, use_types=False, ctx=None):
+    def __init__(self, name, addr, ctx=None):
         if ctx is None:
             ctx = zmq.asyncio.Context()
             owner = True
@@ -1559,7 +1519,7 @@ class AsyncGraphCommHandler(ZmqCommHandler):
                             % (__class__, zmq.asyncio.Context, type(ctx)))
         else:
             owner = False
-        super().__init__(name, addr, use_types, ctx, owner)
+        super().__init__(name, addr, ctx, owner)
         self.lock = asyncio.Lock()
 
     async def _header(self, cmd, flags=0):
@@ -1658,14 +1618,13 @@ class GraphCommHandler(ZmqCommHandler):
     Args:
         name (str): the name of the graph instance in the manager to use
         addr (str): the zmq address of the graph manager (e.g. tcp://localhost:5555)
-        use_types (bool): if True types are required for node inputs and outputs
         ctx (zmq.Context): optional shared zmq context for the node to use.
 
     Raises:
         TypeError: if `ctx` is an unacceptable type.
     """
 
-    def __init__(self, name, addr, use_types=False, ctx=None):
+    def __init__(self, name, addr, ctx=None):
         if ctx is None:
             ctx = zmq.Context()
             owner = True
@@ -1674,7 +1633,7 @@ class GraphCommHandler(ZmqCommHandler):
                             % (__class__, zmq.Context, type(ctx)))
         else:
             owner = False
-        super().__init__(name, addr, use_types, ctx, owner)
+        super().__init__(name, addr, ctx, owner)
 
     def _header(self, cmd, flags=0):
         if self._name:

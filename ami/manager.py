@@ -41,7 +41,7 @@ class Manager(Collector):
         self.heartbeats = {}
         self.partition = {}
         self.feature_stores = {}
-        self.feature_req = re.compile("(?P<type>fetch|lookup):(?P<name>.*)")
+        self.feature_req = re.compile("(?P<type>fetch):(?P<name>.*)")
         self.graphs = {}
         self.versions = {}
         self.purged = set()
@@ -148,15 +148,6 @@ class Manager(Collector):
             name_set.update(self.graphs[name].names)
         return name_set
 
-    def types(self, name):
-        if self.graphs[name] is not None:
-            types_dict = {var.name: var.type for var in self.graphs[name].variables
-                          if self.graphs[name].name_is_valid(var.name)}
-        else:
-            types_dict = {}
-        types_dict.update(self.partition)
-        return types_dict
-
     def features(self, name):
         return self.feature_stores[name].types
 
@@ -167,13 +158,6 @@ class Manager(Collector):
                 if matched.group('name') in self.feature_stores[name].namespace:
                     self.comm.send_string('ok', zmq.SNDMORE)
                     self.comm.send_pyobj(self.feature_stores[name].get(matched.group('name')))
-                else:
-                    self.comm.send_string('error')
-            elif matched.group('type') == 'lookup':
-                var_type = self.types(name).get(matched.group('name'))
-                if var_type is not None:
-                    self.comm.send_string('ok', zmq.SNDMORE)
-                    self.comm.send_pyobj(var_type)
                 else:
                     self.comm.send_string('error')
             else:
@@ -227,9 +211,6 @@ class Manager(Collector):
 
     def cmd_get_names(self, name):
         self.comm.send_pyobj(self.names(name))
-
-    def cmd_get_types(self, name):
-        self.comm.send_pyobj(self.types(name))
 
     def cmd_get_sources(self, name):
         self.comm.send_pyobj(self.partition)
@@ -391,7 +372,6 @@ class Manager(Collector):
         if self.export is not None:
             data = {
                 'names': self.names(name),
-                'types': self.types(name),
                 'sources': self.partition,
                 'version': self.versions[name],
                 'dill': dill.dumps(self.graphs[name])

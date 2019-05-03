@@ -275,55 +275,6 @@ def test_list_graphs(graph_comm):
 @pytest.mark.asyncio
 @pytest.mark.parametrize('graph_comm',
                          [
-                            (True, {'lookup': {'cspad': int, 'opal': float}}),
-                            (True, {'lookup': {'cspad': object, 'opal': type(None)}})
-                         ],
-                         indirect=True)
-async def test_get_type_async(graph_comm):
-    comm, conf = graph_comm
-
-    # test looking up the types of names that exist
-    assert await comm.get_type('cspad') == conf['lookup']['cspad']
-    assert await comm.get_type('opal') == conf['lookup']['opal']
-    # test looking up the types of names that do not exist
-    assert await comm.get_type('laser') is None
-    # test batch lookup of types
-    names_to_lookup = ['cspad', 'opal']
-    assert await comm.get_type(names_to_lookup) == [conf['lookup'][name] for name in names_to_lookup]
-    # test batch lookup of types where they don't exist
-    assert await comm.get_type(['laser', 'delta_t']) is None
-    # test batch lookup of types where some names don't exist
-    names_to_lookup = ['cspad', 'opal', 'delta_t']
-    assert await comm.get_type(names_to_lookup) == [conf['lookup'].get(name) for name in names_to_lookup]
-
-
-@pytest.mark.parametrize('graph_comm',
-                         [
-                            {'lookup': {'cspad': int, 'opal': float}},
-                            {'lookup': {'cspad': object, 'opal': type(None)}},
-                         ],
-                         indirect=True)
-def test_get_type(graph_comm):
-    comm, conf = graph_comm
-
-    # test looking up the types of names that exist
-    assert comm.get_type('cspad') == conf['lookup']['cspad']
-    assert comm.get_type('opal') == conf['lookup']['opal']
-    # test looking up the types of names that do not exist
-    assert comm.get_type('laser') is None
-    # test batch lookup of types
-    names_to_lookup = ['cspad', 'opal']
-    assert comm.get_type(names_to_lookup) == [conf['lookup'][name] for name in names_to_lookup]
-    # test batch lookup of types where they don't exist
-    assert comm.get_type(['laser', 'delta_t']) is None
-    # test batch lookup of types where some names don't exist
-    names_to_lookup = ['cspad', 'opal', 'delta_t']
-    assert comm.get_type(names_to_lookup) == [conf['lookup'].get(name) for name in names_to_lookup]
-
-
-@pytest.mark.asyncio
-@pytest.mark.parametrize('graph_comm',
-                         [
                             (True, {'get_versions': (3, 0), 'get_graph_version': 3, 'get_features_version': 0}),
                             (True, {'get_versions': (0, 0), 'get_graph_version': 0, 'get_features_version': 0}),
                          ],
@@ -359,12 +310,11 @@ def test_versions(graph_comm):
                                 True,
                                 {
                                     'get_names': {'cspad', 'delta_t', 'laser'},
-                                    'get_types': {'cspad': float, 'delta_t': int, 'laser': int, 'img': np.ndarray},
                                     'get_sources': {'cspad': float, 'delta_t': int, 'laser': int},
                                     'get_features': {'cspad_img': np.ndarray}
                                 }
                             ),
-                            (True, {'get_names': set(), 'get_types': {}, 'get_sources':  {}, 'get_features': {}}),
+                            (True, {'get_names': set(), 'get_sources':  {}, 'get_features': {}}),
                          ],
                          indirect=True)
 async def test_names_async(graph_comm):
@@ -372,7 +322,6 @@ async def test_names_async(graph_comm):
 
     # test the names of features property give the expected value
     assert await comm.names == conf['get_names']
-    assert await comm.types == conf['get_types']
     assert await comm.sources == conf['get_sources']
     assert await comm.features == conf['get_features']
 
@@ -381,11 +330,10 @@ async def test_names_async(graph_comm):
                          [
                             {
                                 'get_names': {'cspad', 'delta_t', 'laser'},
-                                'get_types': {'cspad': float, 'delta_t': int, 'laser': int, 'img': np.ndarray},
                                 'get_sources': {'cspad': float, 'delta_t': int, 'laser': int},
                                 'get_features': {'cspad_img': np.ndarray}
                             },
-                            {'get_names': set(), 'get_types': {}, 'get_sources':  {}, 'get_features': {}},
+                            {'get_names': set(), 'get_sources':  {}, 'get_features': {}},
                          ],
                          indirect=True)
 def test_names(graph_comm):
@@ -393,7 +341,6 @@ def test_names(graph_comm):
 
     # test the names of features property give the expected value
     assert comm.names == conf['get_names']
-    assert comm.types == conf['get_types']
     assert comm.sources == conf['get_sources']
     assert comm.features == conf['get_features']
 

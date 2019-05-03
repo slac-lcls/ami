@@ -45,16 +45,6 @@ class Graph():
             return False
 
     @property
-    def variables(self):
-        """
-        Returns a set of all nodes of type `Var` in the graph.
-
-        Returns:
-            A set of all `Var` nodes.
-        """
-        return {node for node in self.graph.nodes if type(node) is str}
-
-    @property
     def names(self):
         """
         Returns a set of all user-defined names in the graph that can be used
@@ -64,7 +54,7 @@ class Graph():
         Returns:
             The set of user-defined names
         """
-        return {node for node in self.variables if self.name_is_valid(node)}
+        return {node for node in self.graph.nodes if self.name_is_valid(node)}
 
     @property
     def sources(self):
@@ -82,20 +72,6 @@ class Graph():
                 sources.add(var)
 
         return sources
-
-    # def get_type(self, name):
-    #     """
-    #     Returns the type of a Var node in the graph
-
-    #     Args:
-    #         name (str): The name field of the Var node in graph
-
-    #     Returns:
-    #         The type of the Var node if found
-    #     """
-    #     for node in self.graph.nodes:
-    #         if isinstance(node, Var) and node.name == name:
-    #             return node.type
 
     def add(self, ops):
         """
