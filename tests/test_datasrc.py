@@ -1,4 +1,5 @@
 import pytest
+import numpy as np
 
 from conftest import psanatest
 from ami.data import MsgTypes, Source, Transition, Transitions
@@ -182,7 +183,14 @@ def test_random_source(sim_src_cfg):
         if msg.mtype == MsgTypes.Datagram:
             for name in expected_names:
                 assert name in msg.payload
-                assert type(msg.payload[name]) == expected_dtypes[name]
+                if expected_dtypes[name] == Array1d:
+                    assert type(msg.payload[name]) == np.ndarray
+                    assert msg.payload[name].ndim == 1
+                elif expected_dtypes[name] == Array2d:
+                    assert type(msg.payload[name]) == np.ndarray
+                    assert msg.payload[name].ndim == 2
+                else:
+                    assert type(msg.payload[name]) == expected_dtypes[name]
             break
 
 
