@@ -997,24 +997,20 @@ class CommHandler(abc.ABC):
 
         return node(**kwargs)
 
-    def _make_view_node(self, name, view_name, var_type):
+    def _make_view_node(self, name, view_name):
         """
         Constructs a special graph view node of the requested type.
 
         Args:
             name (str): the name of the input to this view node.
             view_name (str): the name of the output of this view node:
-            var_type (type): the optional type of the input to this node.
 
         Returns:
             The constructed graph view node.
         """
         node_name = '%s_view' % view_name
-        if var_type is None or not self._use_types:
-            inputs = name
-            outputs = view_name
 
-        return self._make_node(gn.PickN, name=node_name, inputs=inputs, outputs=outputs, N=1)
+        return self._make_node(gn.PickN, name=node_name, inputs=name, outputs=view_name, N=1)
 
     def auto(self, name):
         """
@@ -1625,9 +1621,7 @@ class AsyncGraphCommHandler(ZmqCommHandler):
     async def _view(self, names):
         nodes = []
         for name in names:
-            view_name = self.auto(name)
-            var_type = await self.get_type(name)
-            nodes.append(self._make_view_node(name, view_name, var_type))
+            nodes.append(self._make_view_node(name, self.auto(name)))
 
         return await self.add(nodes)
 
@@ -1736,9 +1730,7 @@ class GraphCommHandler(ZmqCommHandler):
     def _view(self, names):
         nodes = []
         for name in names:
-            view_name = self.auto(name)
-            var_type = self.get_type(name)
-            nodes.append(self._make_view_node(name, view_name, var_type))
+            nodes.append(self._make_view_node(name, self.auto(name)))
 
         return self.add(nodes)
 
