@@ -682,7 +682,7 @@ async def test_comm_graph_view_async(exporter, pvacomm_async, views):
         assert payload[0].name == comm.auto(views) + '_view'
 
 
-@pytest.mark.parametrize('pvacomm_tmo', [0.25], indirect=True)
+@pytest.mark.parametrize('pvacomm_tmo', [0.5], indirect=True)
 @pytest.mark.parametrize('names',
                          [
                             'laser',
@@ -715,7 +715,7 @@ def test_comm_graph_fetch(exporter, pvacomm_tmo, names):
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize('pvacomm_tmo_async', [0.25], indirect=True)
+@pytest.mark.parametrize('pvacomm_tmo_async', [0.5], indirect=True)
 @pytest.mark.parametrize('names',
                          [
                             'laser',
