@@ -1,4 +1,3 @@
-from networkfox import Var
 from PyQt5 import QtCore
 from ami.flowchart.library.Operators import Projection, Binning
 from ami.flowchart.library.Accumulators import PickN
@@ -19,12 +18,12 @@ def test_projection(qtbot):
     qtbot.keyPress(node.ctrls['axis'], QtCore.Qt.Key_Up)
     assert node.axis == 1
 
-    inputs = {"In": Var(name=node.name(), type=object)}
+    inputs = {"In": node.name()}
     op = node.to_operation(inputs)
     mop = gn.Map(name="projection_operation",
                  conditions_needs=[],
                  inputs=list(inputs.values()),
-                 outputs=[Var(name=node.name(), type=object)],
+                 outputs=[node.name()],
                  func=lambda a: np.sum(a, axis=1))
 
     assert op.name == mop.name
@@ -44,12 +43,12 @@ def test_pickn(qtbot):
     qtbot.keyPress(node.ctrls['N'], QtCore.Qt.Key_Up)
     assert node.N == 3
 
-    inputs = {"In": Var(name=node.name(), type=object)}
+    inputs = {"In": node.name()}
     op = node.to_operation(inputs)
     pop = gn.PickN(name="pickn_operation",
                    condition_needs=[],
                    inputs=list(inputs.values()),
-                   outputs=[Var(name=node.name(), type=object)],
+                   outputs=[node.name()],
                    N=3)
 
     assert op.name == pop.name
@@ -80,7 +79,7 @@ def test_binning(qtbot):
         qtbot.keyPress(node.ctrls['range max'], QtCore.Qt.Key_Up)
     assert node.range_max == 110
 
-    op = node.to_operation(inputs={"In": Var(name=node.name(), type=int)})
+    op = node.to_operation(inputs={"In": node.name()})
     assert len(op) == 2
     assert type(op[0]) == gn.Map
     assert type(op[1]) == gn.ReduceByKey
@@ -97,8 +96,8 @@ def test_scatterplot(qtbot):
     qtbot.keyPress(node.ctrls['Num Points'], QtCore.Qt.Key_Up)
     assert node.Num_Points == 101
 
-    inputs = {"X": Var(name="X", type=np.ndarray),
-              "Y": Var(name="Y", type=np.ndarray)}
+    inputs = {"X": "X",
+              "Y": "Y"}
     op = node.to_operation(inputs)
     assert type(op) == gn.RollingBuffer
     assert op.N == 101
@@ -127,7 +126,7 @@ def test_lineplot(qtbot):
     qtbot.keyPress(node.ctrls['Num Points'], QtCore.Qt.Key_Down)
     assert node.Num_Points == 98
 
-    inputs = {"Y": Var(name="Y", type=np.ndarray)}
+    inputs = {"Y": "Y"}
     op = node.to_operation(inputs)
     assert type(op) == gn.RollingBuffer
     assert op.N == 98

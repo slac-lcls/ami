@@ -1,6 +1,6 @@
 import dill
 import numpy as np
-from ami.graph_nodes import PickN, Var
+from ami.graph_nodes import PickN
 
 
 def test_filter_on(complex_graph):
@@ -33,8 +33,8 @@ def test_filter_off(complex_graph):
 def test_add(complex_graph):
     complex_graph.compile(num_workers=4, num_local_collectors=2)
     complex_graph.add(PickN(name='pickReferenceOne',
-                            inputs=[Var(name='reference', type=dict)],
-                            outputs=[Var(name='referenceOne', type=dict)]))
+                            inputs=['reference'],
+                            outputs=['referenceOne']))
     complex_graph.compile(num_workers=4, num_local_collectors=2)
 
     complex_graph({'cspad': np.ones((200, 200)), 'laser': False, 'delta_t': 4}, color='worker')

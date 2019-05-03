@@ -1,7 +1,7 @@
 import abc
 import operator
 import numpy as np
-from networkfox import operation, If, Else, Var
+from networkfox import operation, If, Else
 
 
 class Transformation(abc.ABC):
@@ -342,8 +342,8 @@ def Binning(name="", inputs=[], outputs=[], condition_needs=[]):
 
     k, v = inputs
     outputs = outputs[0]
-    map_outputs = [Var(name=outputs.name+'_count', type=tuple)]
-    reduce_outputs = [Var(name=outputs.name+'_reduce', type=dict)]
+    map_outputs = [outputs+'_count']
+    reduce_outputs = [outputs+'_reduce']
 
     def mean(d):
         res = {}

@@ -1,6 +1,6 @@
 import pytest
 import numpy as np
-from ami.graphkit_wrapper import Graph, Var
+from ami.graphkit_wrapper import Graph
 from ami.graph_nodes import PickN, RollingBuffer
 
 
@@ -8,8 +8,8 @@ from ami.graph_nodes import PickN, RollingBuffer
 def pickN_graph():
     graph = Graph(name='graph')
     graph.add(PickN(name='cspad_pickN', N=9,
-                    inputs=[Var(name='cspad', type=int)],
-                    outputs=[Var(name='ncspads', type=(list, type(None)))]))
+                    inputs=['cspad'],
+                    outputs=['ncspads']))
     graph.compile(num_workers=4, num_local_collectors=2)
     return graph
 
@@ -37,8 +37,8 @@ def test_pickn(pickN_graph):
 def pickMultiple_graph():
     graph = Graph(name='graph')
     graph.add(PickN(name='cspad_pickN', N=9,
-                    inputs=[Var(name='cspad', type=int), Var(name='delta_t', type=int)],
-                    outputs=[Var(name='ncspads', type=(type(None), list))]))
+                    inputs=['cspad', 'delta_t'],
+                    outputs=['ncspads']))
     graph.compile(num_workers=4, num_local_collectors=2)
     return graph
 
@@ -66,8 +66,8 @@ def test_pickMultiple(pickMultiple_graph):
 def pickList_graph():
     graph = Graph(name='graph')
     graph.add(PickN(name='cspad_pickN', N=9,
-                    inputs=[Var(name='cspad', type=list)],
-                    outputs=[Var(name='ncspads', type=(type(None), list))]))
+                    inputs=['cspad'],
+                    outputs=['ncspads']))
     graph.compile(num_workers=4, num_local_collectors=2)
     return graph
 
@@ -97,8 +97,8 @@ def rollingBuffer_graph(request):
 
     graph = Graph(name='graph')
     graph.add(RollingBuffer(name='cspad_rollingBuffer', N=N,
-                            inputs=[Var(name='cspad', type=int)],
-                            outputs=[Var(name='ncspads', type=list)]))
+                            inputs=['cspad'],
+                            outputs=['ncspads']))
     graph.compile(num_workers=nworkers, num_local_collectors=ncollectors)
     return graph, expected
 
@@ -154,8 +154,8 @@ def rollingBufferNumpy_graph(request):
 
     graph = Graph(name='graph')
     graph.add(RollingBuffer(name='cspad_rollingBuffer', N=N,
-                            inputs=[Var(name='cspad', type=int)],
-                            outputs=[Var(name='ncspads', type=np.ndarray)],
+                            inputs=['cspad'],
+                            outputs=['ncspads'],
                             use_numpy=True))
     graph.compile(num_workers=nworkers, num_local_collectors=ncollectors)
     return graph, expected

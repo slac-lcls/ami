@@ -109,7 +109,7 @@ class ScatterPlot(CtrlNode):
         self.addTerminal(name="Y", io='in', **args)
 
     def to_operation(self, inputs, conditions={}):
-        outputs = [gn.Var(name=self.name(), type=list)]
+        outputs = [self.name()]
         node = gn.RollingBuffer(name=self.name()+"_operation", N=self.Num_Points,
                                 conditions_needs=list(conditions.values()), inputs=list(inputs.values()),
                                 outputs=outputs)
@@ -139,7 +139,7 @@ class LinePlot(CtrlNode):
         return super(LinePlot, self).display(topics, addr, win, WaveformWidget, **kwargs)
 
     def to_operation(self, inputs, conditions={}):
-        outputs = [gn.Var(name=self.name(), type=list)]
+        outputs = [self.name()]
         node = gn.RollingBuffer(name=self.name()+"_operation", N=self.Num_Points,
                                 conditions_needs=list(conditions.values()), inputs=list(inputs.values()),
                                 outputs=outputs)

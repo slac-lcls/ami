@@ -5,7 +5,7 @@ import dill
 from ami.data import MsgTypes, Transitions, Message, CollectorMessage
 from ami.comm import Colors, ContributionBuilder, TransitionBuilder, EventBuilder
 from ami.graphkit_wrapper import Graph
-from ami.graph_nodes import PickN, Var
+from ami.graph_nodes import PickN
 
 
 class FakeBuilder(ContributionBuilder):
@@ -26,8 +26,8 @@ class FakeBuilder(ContributionBuilder):
 def eb_graph():
     graph = Graph(name='graph')
     graph.add(PickN(name='pick1_values', N=1,
-                    inputs=[Var(name='values', type=int)],
-                    outputs=[Var(name='value', type=int)]))
+                    inputs=['values'],
+                    outputs=['value']))
     return dill.dumps(graph)
 
 

@@ -101,7 +101,7 @@ class Binning(CtrlNode):
 
     def to_operation(self, inputs, conditions={}):
         outputs = self.output_vars()
-        map_outputs = [gn.Var(name=self.name()+"_hist", type=object)]
+        map_outputs = [self.name()+"_hist"]
         nbins = self.bins
         rmin = self.range_min
         rmax = self.range_max

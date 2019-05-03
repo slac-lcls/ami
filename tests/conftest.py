@@ -19,7 +19,7 @@ except ImportError:
     p4p = None
 
 from ami.graphkit_wrapper import Graph
-from ami.graph_nodes import Map, FilterOn, FilterOff, Binning, PickN, Var
+from ami.graph_nodes import Map, FilterOn, FilterOff, Binning, PickN
 from ami.local import build_parser, run_ami
 from ami.comm import Ports, GraphCommHandler
 
@@ -50,13 +50,13 @@ def complex_graph_file(tmpdir_factory):
         return cspad[:100, :100]
 
     graph.add(Map(name='Roi',
-                  inputs=[Var(name='cspad', type=np.ndarray)],
-                  outputs=[Var(name='roi', type=np.ndarray)],
+                  inputs=['cspad'],
+                  outputs=['roi'],
                   func=roi))
 
     graph.add(Map(name='Sum',
-                  inputs=[Var(name='roi', type=np.ndarray)],
-                  outputs=[Var(name='sum', type=np.float64)],
+                  inputs=['roi'],
+                  outputs=['sum'],
                   func=np.sum))
 
     graph.add(FilterOn(name='FilterOn',
@@ -65,8 +65,8 @@ def complex_graph_file(tmpdir_factory):
 
     graph.add(Binning(name='BinningOn',
                       condition_needs=['laseron'],
-                      inputs=[Var(name='delta_t', type=int), Var(name='sum', type=np.float64)],
-                      outputs=[Var(name='signal', type=dict)]))
+                      inputs=['delta_t', 'sum'],
+                      outputs=['signal']))
 
     graph.add(FilterOff(name='FilterOff',
                         condition_needs=['laser'],
@@ -74,8 +74,8 @@ def complex_graph_file(tmpdir_factory):
 
     graph.add(Binning(name='BinningOff',
                       condition_needs=['laseroff'],
-                      inputs=[Var('delta_t', type=int), Var(name='sum', type=np.float64)],
-                      outputs=[Var(name='reference', type=dict)]))
+                      inputs=['delta_t', 'sum'],
+                      outputs=['reference']))
 
     fname = tmpdir_factory.mktemp("complex_graph", False).join("complex_graph.dill")
 
@@ -88,8 +88,8 @@ def complex_graph_file(tmpdir_factory):
 def psana_graph(tmpdir_factory):
     graph = Graph(name='graph')
     graph.add(PickN(name='picker',
-                    inputs=[Var(name='xppcspad:raw:image', type=np.ndarray)],
-                    outputs=[Var(name='picked', type=np.ndarray)]))
+                    inputs=['xppcspad:raw:image'],
+                    outputs=['picked']))
     fname = tmpdir_factory.mktemp("psana_graph", False).join("psana_graph.dill")
     with open(fname, 'wb') as fd:
         dill.dump(graph, fd)

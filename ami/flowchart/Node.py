@@ -5,7 +5,6 @@ from pyqtgraph import functions as fn
 from pyqtgraph.pgcollections import OrderedDict
 from pyqtgraph.debug import printExc
 from ami.flowchart.Terminal import Terminal
-from networkfox import Var
 
 
 def strDict(d):
@@ -217,7 +216,7 @@ class Node(QtCore.QObject):
 
         output_vars = []
         for name, output in self._outputs.items():
-            output_vars.append(Var(name=self.name(), type=object))
+            output_vars.append(self.name())
         return output_vars
 
     def condition_vars(self):
@@ -275,7 +274,7 @@ class Node(QtCore.QObject):
         """Called whenever one of this node's terminals is connected elsewhere."""
         node = remoteTerm.node()
         if localTerm.isInput() and remoteTerm.isOutput():
-            self._input_vars[localTerm.name()] = Var(name=node.name(), type=object)
+            self._input_vars[localTerm.name()] = node.name()
         elif localTerm.isCondition():
             self._condition_vars[localTerm.name()] = node.name()
         self.sigTerminalConnected.emit(self)

@@ -1,7 +1,7 @@
 import networkx as nx
 import itertools as it
 import collections
-from networkfox import compose, Var
+from networkfox import compose
 import ami.graph_nodes
 
 
@@ -52,7 +52,7 @@ class Graph():
         Returns:
             A set of all `Var` nodes.
         """
-        return {node for node in self.graph.nodes if isinstance(node, Var)}
+        return {node for node in self.graph.nodes if type(node) is str}
 
     @property
     def names(self):
@@ -64,7 +64,7 @@ class Graph():
         Returns:
             The set of user-defined names
         """
-        return {node.name for node in self.variables if self.name_is_valid(node.name)}
+        return {node for node in self.variables if self.name_is_valid(node)}
 
     @property
     def sources(self):
@@ -78,26 +78,24 @@ class Graph():
         sources = set()
 
         for var in self.inputs['worker']:
-            if isinstance(var, Var):
-                var = var.name
             if self.name_is_valid(var):
                 sources.add(var)
 
         return sources
 
-    def get_type(self, name):
-        """
-        Returns the type of a Var node in the graph
+    # def get_type(self, name):
+    #     """
+    #     Returns the type of a Var node in the graph
 
-        Args:
-            name (str): The name field of the Var node in graph
+    #     Args:
+    #         name (str): The name field of the Var node in graph
 
-        Returns:
-            The type of the Var node if found
-        """
-        for node in self.graph.nodes:
-            if isinstance(node, Var) and node.name == name:
-                return node.type
+    #     Returns:
+    #         The type of the Var node if found
+    #     """
+    #     for node in self.graph.nodes:
+    #         if isinstance(node, Var) and node.name == name:
+    #             return node.type
 
     def add(self, ops):
         """
@@ -251,7 +249,7 @@ class Graph():
 
                 color = 'worker'
                 for node in nodes:
-                    if type(node) is str or isinstance(node, Var):
+                    if type(node) is str:
                         continue
 
                     if node in self.global_operations or node in self.expanded_global_operations:
@@ -289,7 +287,7 @@ class Graph():
             for color in color_order:
 
                 if color == 'worker':
-                    worker_outputs = list(map(lambda o: Var(name=o.name+'_worker', type=o.type), node.outputs))
+                    worker_outputs = list(map(lambda o: o+'_worker', node.outputs))
 
                     worker_N = 1
                     if hasattr(node, 'N'):
@@ -311,8 +309,7 @@ class Graph():
 
                 elif color == 'localCollector':
                     self.inputs[color].update(worker_outputs)
-                    local_collector_outputs = list(map(lambda o: Var(name=o.name+'_localCollector', type=o.type),
-                                                       node.outputs))
+                    local_collector_outputs = list(map(lambda o: o+'_localCollector', node.outputs))
 
                     local_collector_N = 1
                     workers_per_local_collector = None
@@ -370,7 +367,7 @@ class Graph():
         inputs = [n for n, d in subgraph.in_degree() if d == 0]
         inputs = list(it.chain.from_iterable([i.inputs for i in inputs]))
         outputs = [n for n, d in subgraph.out_degree() if d == 0]
-        nodes = list(filter(lambda node: not isinstance(node, Var), nodes))
+        nodes = list(filter(lambda node: not isinstance(node, str), nodes))
         nodes = list(map(lambda node: node.to_operation(), nodes))
         node = filter_node.to_operation()
         if hasattr(filter_node, 'condition'):
@@ -399,9 +396,7 @@ class Graph():
                 continue
             for i in node.inputs:
                 if i in inputs:
-                    pickone = ami.graph_nodes.PickN(name=i.name+"_pick1",
-                                                    inputs=[i],
-                                                    outputs=[Var(name="one_"+i.name, type=i.type)])
+                    pickone = ami.graph_nodes.PickN(name=i.name+"_pick1", inputs=[i], outputs=["one_"+i.name])
                     self.global_operations.add(pickone)
                     self.add(pickone)
                     update_inputs = True
@@ -431,7 +426,7 @@ class Graph():
         self._expand_global_operations(num_workers, num_local_collectors)
 
         seen = set()
-        branch_merge_candidates = [n for n, d in self.graph.in_degree() if d >= 2 and isinstance(n, Var)]
+        branch_merge_candidates = [n for n, d in self.graph.in_degree() if d >= 2 and type(n) is str]
         graph_filters = list(filter(lambda node: isinstance(node, ami.graph_nodes.Filter), self.graph.nodes))
         outputs = [n for n, d in self.graph.out_degree() if d == 0]
         body = []
@@ -463,7 +458,7 @@ class Graph():
         for node in self.graph.nodes:
             if node in seen:
                 continue
-            if type(node) is str or isinstance(node, Var):
+            if type(node) is str:
                 continue
             body.append(node.to_operation())
 
@@ -508,4 +503,4 @@ class Graph():
         assert color is not None
         result = self.graphkit(*args, **kwargs)
         outputs = self.outputs[color]
-        return {k.name: result[k.name] for k in outputs if k.name in result}
+        return {k: result[k] for k in outputs if k in result}

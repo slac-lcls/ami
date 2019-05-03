@@ -1,5 +1,5 @@
 import numpy as np
-from ami.graph_nodes import Map, Var
+from ami.graph_nodes import Map
 
 
 def test_replace(complex_graph):
@@ -7,8 +7,8 @@ def test_replace(complex_graph):
         return cspad[:10, :10]
 
     complex_graph.replace(Map(name='Roi',
-                              inputs=[Var(name='cspad', type=np.ndarray)],
-                              outputs=[Var(name='roi', type=np.ndarray)],
+                              inputs=['cspad'],
+                              outputs=['roi'],
                               func=roi))
     complex_graph.compile(num_workers=4, num_local_collectors=2)
     complex_graph({'cspad': np.ones((200, 200)), 'laser': False, 'delta_t': 4}, color='worker')
