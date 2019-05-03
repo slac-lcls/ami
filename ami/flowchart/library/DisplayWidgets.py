@@ -93,8 +93,8 @@ class HistogramWidget(pg.GraphicsLayoutWidget):
 
     def histogram_updated(self, data):
         i = 0
-        for term, var in self.terms.items():
-            name = var.name
+        for term, name in self.terms.items():
+
             x, y = map(list, zip(*sorted(data[name].items())))
 
             if name not in self.plot:
@@ -132,8 +132,8 @@ class ScatterWidget(pg.GraphicsLayoutWidget):
             if i > 0:
                 x += ".%d" % i
                 y += ".%d" % i
-            x = self.terms[x].name
-            y = self.terms[y].name
+            x = self.terms[x]
+            y = self.terms[y]
             name = " vs ".join((x, y))
             x = data[x]
             y = data[y]
@@ -165,8 +165,7 @@ class WaveformWidget(pg.GraphicsLayoutWidget):
 
     def waveform_updated(self, data):
         i = 0
-        for term, var in self.terms.items():
-            name = var.name
+        for term, name in self.terms.items():
 
             if name not in self.plot:
                 symbol, color = symbols_colors[i]

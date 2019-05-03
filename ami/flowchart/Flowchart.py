@@ -386,9 +386,9 @@ class FlowchartCtrlWidget(QtGui.QWidget):
         async with self.features_lock:
             for name, node in self.chart.nodes().items():
                 for term, in_var in node.input_vars().items():
-                    if in_var.name in self.features:
-                        features[in_var.name] = self.features[in_var.name]
-                        await self.graphCommHandler.view(in_var.name)
+                    if in_var in self.features:
+                        features[in_var] = self.features[in_var]
+                        await self.graphCommHandler.view(in_var)
             self.features = features
 
     def reloadClicked(self):
@@ -536,7 +536,7 @@ class FlowchartWidget(dockarea.DockArea):
             topics = []
 
             for term, in_var in node.input_vars().items():
-                topics.append((in_var.name, node.name()))
+                topics.append((in_var, node.name()))
 
             await self.chart.broker.send_string(node.name(), zmq.SNDMORE)
             await self.chart.broker.send_pyobj(fcMsgs.DisplayNode(node.name(), dict(topics)))
@@ -551,22 +551,22 @@ class FlowchartWidget(dockarea.DockArea):
 
             for term, in_var in node.input_vars().items():
 
-                if in_var.name in self.ctrl.features:
-                    topic = self.ctrl.features[in_var.name]
+                if in_var in self.ctrl.features:
+                    topic = self.ctrl.features[in_var]
                 else:
-                    topic = self.ctrl.graphCommHandler.auto(in_var.name)
+                    topic = self.ctrl.graphCommHandler.auto(in_var)
 
                 request_view = False
 
                 async with self.ctrl.features_lock:
-                    if in_var.name not in self.ctrl.features:
-                        self.ctrl.features[in_var.name] = topic
+                    if in_var not in self.ctrl.features:
+                        self.ctrl.features[in_var] = topic
                         request_view = True
 
                 if request_view:
-                    views.append(in_var.name)
+                    views.append(in_var)
 
-                topics.append((in_var.name, topic))
+                topics.append((in_var, topic))
 
             if views:
                 await self.ctrl.graphCommHandler.view(views)

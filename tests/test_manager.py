@@ -211,16 +211,16 @@ def test_manager_add_view(manager_ctrl, names):
                             ('addMap',
                              {
                                 'name': 'test_map',
-                                'inputs': gn.Var('inval', int),
-                                'outputs': gn.Var('outval', float),
+                                'inputs': 'inval',
+                                'outputs': 'outval',
                                 'func': lambda x: float(x),
                              },
                              gn.Map),
                             ('addPickN',
                              {
                                 'name': 'test_map',
-                                'inputs': gn.Var('inval', int),
-                                'outputs': gn.Var('outval', float),
+                                'inputs': 'inval',
+                                'outputs': 'outval',
                                 'N': 5,
                              },
                              gn.PickN),
@@ -234,8 +234,8 @@ def test_manager_add_node(manager_ctrl, node_info):
     assert getattr(comm, func)(**kwargs)
 
     # check that the node is in the graph
-    assert kwargs['inputs'].name in comm.graph.names
-    assert kwargs['outputs'].name in comm.graph.names
+    assert kwargs['inputs'] in comm.graph.names
+    assert kwargs['outputs'] in comm.graph.names
 
     # check that the change is in the received graph object
     assert injector.wait_graph(timeout=1.0)
@@ -402,15 +402,8 @@ def test_manager_graphinfo(manager_ctrl, complex_graph):
     # check that the graph is not None
     assert comm.graph is not None
 
-    expected_types = {var.name: var.type for var in complex_graph.variables}
-
     # check the names in the graph
     assert comm.names == complex_graph.names
-    assert comm.types == expected_types
-
-    # check getting the types individually
-    for name in complex_graph.names:
-        assert comm.get_type(name) == complex_graph.get_type(name)
 
 
 def test_manager_versions(manager_ctrl):

@@ -990,12 +990,8 @@ class CommHandler(abc.ABC):
                     kwargs[key] = [kwargs[key]]
                 converted_vars = []
                 for var in kwargs[key]:
-                    if isinstance(var, gn.Var):
+                    if isinstance(var, str):
                         converted_vars.append(var)
-                    elif self._use_types:
-                        raise TypeError("node inputs/outputs must be of type %s not %s" % (gn.Var, type(var)))
-                    else:
-                        converted_vars.append(gn.Var(var))
 
                 kwargs[key] = converted_vars
 
@@ -1015,11 +1011,9 @@ class CommHandler(abc.ABC):
         """
         node_name = '%s_view' % view_name
         if var_type is None or not self._use_types:
-            inputs = gn.Var(name)
-            outputs = gn.Var(view_name)
-        else:
-            inputs = gn.Var(name, var_type)
-            outputs = gn.Var(view_name, var_type)
+            inputs = name
+            outputs = view_name
+
         return self._make_node(gn.PickN, name=node_name, inputs=inputs, outputs=outputs, N=1)
 
     def auto(self, name):
