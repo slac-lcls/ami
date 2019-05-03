@@ -126,8 +126,8 @@ def PvaCommRpcProxy(ctx, **kwargs):
 
 class PvaCommHandler(CommHandler):
 
-    def __init__(self, name, addr, use_types, ctx, errors, owner, timeout=1.0):
-        super().__init__(name, use_types)
+    def __init__(self, name, addr, ctx, errors, owner, timeout=1.0):
+        super().__init__(name)
         self._ctx = ctx
         self._errors = errors
         self._addr = addr
@@ -140,7 +140,6 @@ class PvaCommHandler(CommHandler):
         }
         self._pvmap = {
             'get_names': '%s:ana:%s:names',
-            'get_types': '%s:ana:%s:types',
             'get_sources': '%s:ana:%s:sources',
             'get_versions': ['%s:ana:%s:version', '%s:ana:%s:store:version'],
             'get_graph_version': '%s:ana:%s:version',
@@ -201,7 +200,7 @@ class PvaCommHandler(CommHandler):
 
 class GraphCommHandler(PvaCommHandler):
 
-    def __init__(self, name, addr, use_types=True, ctx=None, timeout=1.0):
+    def __init__(self, name, addr, ctx=None, timeout=1.0):
         errors = (TimeoutError, pct.RemoteError)
         if ctx is None:
             ctx = pct.Context('pva', nt=CUSTOM_TYPE_WRAPPERS)
@@ -211,7 +210,7 @@ class GraphCommHandler(PvaCommHandler):
                             % (__class__, pct.Context, type(ctx)))
         else:
             owner = False
-        super().__init__(name, addr, use_types, ctx, errors, owner, timeout=timeout)
+        super().__init__(name, addr, ctx, errors, owner, timeout=timeout)
 
     def _checked_put(self, pvname, value):
         try:
@@ -244,10 +243,6 @@ class GraphCommHandler(PvaCommHandler):
             if matched:
                 if matched.group('type') == 'fetch':
                     return True, self._unchecked_get(self._get_data_pvname(matched.group('name')))
-                elif matched.group('type') == 'lookup':
-                    reply = self._unchecked_get(self._get_pvname('get_types'))
-                    if matched.group('name') in reply:
-                        return True, reply[matched.group('name')]
             else:
                 pvname = self._get_pvname(cmd)
                 if pvname is not None:
@@ -298,9 +293,7 @@ class GraphCommHandler(PvaCommHandler):
     def _view(self, names):
         nodes = []
         for name in names:
-            view_name = self.auto(name)
-            var_type = self.get_type(name)
-            nodes.append(self._make_view_node(name, view_name, var_type))
+            nodes.append(self._make_view_node(name, self.auto(name)))
 
         return self.add(nodes)
 
@@ -325,7 +318,7 @@ class GraphCommHandler(PvaCommHandler):
 
 class AsyncGraphCommHandler(PvaCommHandler):
 
-    def __init__(self, name, addr, use_types=True, ctx=None, timeout=1.0):
+    def __init__(self, name, addr, ctx=None, timeout=1.0):
         errors = (asyncio.TimeoutError, pca.RemoteError)
         if ctx is None:
             ctx = pca.Context('pva', nt=CUSTOM_TYPE_WRAPPERS)
@@ -335,7 +328,7 @@ class AsyncGraphCommHandler(PvaCommHandler):
                             % (__class__, pca.Context, type(ctx)))
         else:
             owner = False
-        super().__init__(name, addr, use_types, ctx, errors, owner, timeout=timeout)
+        super().__init__(name, addr, ctx, errors, owner, timeout=timeout)
 
     async def _checked_put(self, pvname, value):
         try:
@@ -368,10 +361,6 @@ class AsyncGraphCommHandler(PvaCommHandler):
             if matched:
                 if matched.group('type') == 'fetch':
                     return True, await self._unchecked_get(self._get_data_pvname(matched.group('name')))
-                elif matched.group('type') == 'lookup':
-                    reply = await self._unchecked_get(self._get_pvname('get_types'))
-                    if matched.group('name') in reply:
-                        return True, reply[matched.group('name')]
             else:
                 pvname = self._get_pvname(cmd)
                 if pvname is not None:
@@ -422,9 +411,7 @@ class AsyncGraphCommHandler(PvaCommHandler):
     async def _view(self, names):
         nodes = []
         for name in names:
-            view_name = self.auto(name)
-            var_type = await self.get_type(name)
-            nodes.append(self._make_view_node(name, view_name, var_type))
+            nodes.append(self._make_view_node(name, self.auto(name)))
 
         return await self.add(nodes)
 

@@ -132,7 +132,6 @@ def exporter(ipc_dir):
                       'test',
                       {
                         'names': ['delta_t', 'laser', 'sum'],
-                        'types': {'delta_t': float, 'laser': bool, 'sum': (np.ndarray, 2)},
                         'sources': {'delta_t': float, 'laser': bool},
                         'version': 0,
                         'dill': dill.dumps(Graph('test')),
@@ -333,11 +332,6 @@ def test_graph_view(exporter, pvactx):
                             stderr=subprocess.PIPE, stdout=subprocess.PIPE)
     # check that the exporter returned the expected zmq messages
     try:
-        # see response from lookup cmd
-        cmd, gname, payload = injector.recv(reply=float)
-        assert cmd == 'lookup:%s' % view_name
-        assert gname == graph_name
-        assert payload is None
         # see the node add
         cmd, gname, payload = injector.recv()
         assert cmd == 'add_graph'
@@ -518,7 +512,7 @@ def test_comm_graph_add(exporter, pvacomm):
     # prep the injector to respond to the request
     injector.recv_start()
     # add a map to the graph
-    assert comm.addMap('test_map', inputs=[gn.Var('foo')], outputs=[gn.Var('bar')], func=lambda x: x*2)
+    assert comm.addMap('test_map', inputs=['foo'], outputs=['bar'], func=lambda x: x*2)
     # check request the injector received
     cmd, name, payload = injector.recv_wait()
     assert cmd == 'add_graph'
@@ -529,7 +523,7 @@ def test_comm_graph_add(exporter, pvacomm):
     # prep the injector to respond to the request - have it return a failure
     injector.recv_start(fail=True)
     # add a map to the graph
-    assert not comm.addMap('test_map2', inputs=[gn.Var('foo')], outputs=[gn.Var('bar')], func=lambda x: x*3)
+    assert not comm.addMap('test_map2', inputs=['foo'], outputs=['bar'], func=lambda x: x*3)
     # check request the injector received
     cmd, name, payload = injector.recv_wait()
     assert cmd == 'add_graph'
@@ -541,8 +535,8 @@ def test_comm_graph_add(exporter, pvacomm):
     injector.recv_start()
     # add multiple maps to the graph
     nodes = [
-        gn.Map(name='test_mapA', inputs=[gn.Var('foo')], outputs=[gn.Var('bar')], func=lambda x: x),
-        gn.Map(name='test_mapB', inputs=[gn.Var('foo')], outputs=[gn.Var('bar')], func=lambda x: x*2),
+        gn.Map(name='test_mapA', inputs=['foo'], outputs=['bar'], func=lambda x: x),
+        gn.Map(name='test_mapB', inputs=['foo'], outputs=['bar'], func=lambda x: x*2),
     ]
     assert comm.add(nodes)
     # check request the injector received
@@ -563,7 +557,7 @@ async def test_comm_graph_add_async(exporter, pvacomm_async):
     # prep the injector to respond to the request
     injector.recv_start()
     # add a map to the graph
-    assert await comm.addMap('test_map', inputs=[gn.Var('foo')], outputs=[gn.Var('bar')], func=lambda x: x*2)
+    assert await comm.addMap('test_map', inputs=['foo'], outputs=['bar'], func=lambda x: x*2)
     # check request the injector received
     cmd, name, payload = injector.recv_wait()
     assert cmd == 'add_graph'
@@ -574,7 +568,7 @@ async def test_comm_graph_add_async(exporter, pvacomm_async):
     # prep the injector to respond to the request - have it return a failure
     injector.recv_start(fail=True)
     # add a map to the graph
-    assert not await comm.addMap('test_map2', inputs=[gn.Var('foo')], outputs=[gn.Var('bar')], func=lambda x: x*3)
+    assert not await comm.addMap('test_map2', inputs=['foo'], outputs=['bar'], func=lambda x: x*3)
     # check request the injector received
     cmd, name, payload = injector.recv_wait()
     assert cmd == 'add_graph'
@@ -586,8 +580,8 @@ async def test_comm_graph_add_async(exporter, pvacomm_async):
     injector.recv_start()
     # add multiple maps to the graph
     nodes = [
-        gn.Map(name='test_mapA', inputs=[gn.Var('foo')], outputs=[gn.Var('bar')], func=lambda x: x),
-        gn.Map(name='test_mapB', inputs=[gn.Var('foo')], outputs=[gn.Var('bar')], func=lambda x: x*2),
+        gn.Map(name='test_mapA', inputs=['foo'], outputs=['bar'], func=lambda x: x),
+        gn.Map(name='test_mapB', inputs=['foo'], outputs=['bar'], func=lambda x: x*2),
     ]
     assert await comm.add(nodes)
     # check request the injector received
@@ -767,9 +761,6 @@ def test_comm_graph_info(exporter, pvacomm):
     # check fetching names info works
     assert comm.names == injector.cache['graph'][graph_name]['names']
 
-    # check fetching types info works
-    assert comm.types == injector.cache['graph'][graph_name]['types']
-
     # check fetching sources info works
     assert comm.sources == injector.cache['graph'][graph_name]['sources']
 
@@ -782,10 +773,6 @@ def test_comm_graph_info(exporter, pvacomm):
 
     # check the feature store version
     assert comm.featuresVersion == injector.cache['store'][graph_name]['version']
-
-    # check the get_type call
-    for name, dtype in injector.cache['graph'][graph_name]['types'].items():
-        assert comm.get_type(name) == dtype
 
 
 @pytest.mark.asyncio
@@ -809,9 +796,6 @@ async def test_comm_graph_info_async(exporter, pvacomm_async):
     # check fetching names info works
     assert await comm.names == injector.cache['graph'][graph_name]['names']
 
-    # check fetching types info works
-    assert await comm.types == injector.cache['graph'][graph_name]['types']
-
     # check fetching sources info works
     assert await comm.sources == injector.cache['graph'][graph_name]['sources']
 
@@ -824,7 +808,3 @@ async def test_comm_graph_info_async(exporter, pvacomm_async):
 
     # check the feature store version
     assert await comm.featuresVersion == injector.cache['store'][graph_name]['version']
-
-    # check the get_type call
-    for name, dtype in injector.cache['graph'][graph_name]['types'].items():
-        assert await comm.get_type(name) == dtype

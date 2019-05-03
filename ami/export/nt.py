@@ -10,17 +10,15 @@ def _generate_schema(graph=True):
     if graph:
         fields = collections.OrderedDict([
             ('names', 'as'),
-            ('types', 'aB'),
             ('sources', 'aB'),
             ('version', 'l'),
             ('dill', 'aB'),
         ])
         schema = [(k, v) for k, v in fields.items()]
         byte_fields = {'dill'}
-        object_fields = {'sources', 'types'}
+        object_fields = {'sources'}
         flat_names = {
             'names':    'names',
-            'types':    'types',
             'sources':  'sources',
             'version':  'version',
             'dill':     'dill',
