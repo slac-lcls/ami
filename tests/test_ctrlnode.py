@@ -19,12 +19,12 @@ def test_projection(qtbot):
     qtbot.keyPress(node.ctrls['axis'], QtCore.Qt.Key_Up)
     assert node.axis == 1
 
-    inputs = {"In": Var(name=node.name(), type=np.ndarray)}
+    inputs = {"In": Var(name=node.name(), type=object)}
     op = node.to_operation(inputs)
     mop = gn.Map(name="projection_operation",
                  conditions_needs=[],
                  inputs=list(inputs.values()),
-                 outputs=[Var(name=node.name(), type=np.ndarray)],
+                 outputs=[Var(name=node.name(), type=object)],
                  func=lambda a: np.sum(a, axis=1))
 
     assert op.name == mop.name
@@ -44,12 +44,12 @@ def test_pickn(qtbot):
     qtbot.keyPress(node.ctrls['N'], QtCore.Qt.Key_Up)
     assert node.N == 3
 
-    inputs = {"In": Var(name=node.name(), type=int)}
+    inputs = {"In": Var(name=node.name(), type=object)}
     op = node.to_operation(inputs)
     pop = gn.PickN(name="pickn_operation",
                    condition_needs=[],
                    inputs=list(inputs.values()),
-                   outputs=[Var(name=node.name(), type=(type(None), list, tuple))],
+                   outputs=[Var(name=node.name(), type=object)],
                    N=3)
 
     assert op.name == pop.name

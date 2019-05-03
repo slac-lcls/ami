@@ -1,8 +1,8 @@
 import pytest
-import numpy as np
 
 from conftest import psanatest
 from ami.data import MsgTypes, Source, Transition, Transitions
+from ami.nptype import Array1d, Array2d
 
 
 @pytest.fixture(scope='function')
@@ -73,8 +73,10 @@ def test_static_source(sim_src_cfg):
                 expected_dtypes[name] = int
             else:
                 expected_dtypes[name] = float
-        elif cfg["dtype"] == "Image" or cfg["dtype"] == "Waveform":
-            expected_dtypes[name] = np.ndarray
+        elif cfg["dtype"] == "Waveform":
+            expected_dtypes[name] = Array1d
+        elif cfg["dtype"] == "Image":
+            expected_dtypes[name] = Array2d
         else:
             expected_dtypes[name] = None
     assert source.types == expected_dtypes
@@ -146,8 +148,10 @@ def test_random_source(sim_src_cfg):
                 expected_dtypes[name] = int
             else:
                 expected_dtypes[name] = float
-        elif cfg["dtype"] == "Image" or cfg["dtype"] == "Waveform":
-            expected_dtypes[name] = np.ndarray
+        elif cfg["dtype"] == "Waveform":
+            expected_dtypes[name] = Array1d
+        elif cfg["dtype"] == "Image":
+            expected_dtypes[name] = Array2d
         else:
             expected_dtypes[name] = None
     assert source.types == expected_dtypes
