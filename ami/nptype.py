@@ -1,6 +1,5 @@
 import numpy as np
 from typing import Union, List
-from numbers import Real
 
 
 class Array1d(type):
@@ -29,4 +28,4 @@ class Array2d(type):
         return True
 
 
-Array = Union[Array2d, Array1d, List[Real]]
+Array = Union[Array2d, Array1d, List[float]]

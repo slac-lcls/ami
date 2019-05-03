@@ -1,8 +1,8 @@
 from ami.flowchart.library.common import CtrlNode
 from ami.flowchart.Node import Node
 from ami.nptype import Array, Array1d, Array2d
-from numbers import Real
 import ami.graph_nodes as gn
+from typing import Dict
 import numpy as np
 
 
@@ -17,7 +17,7 @@ class Sum(Node):
     def __init__(self, name):
         super(Sum, self).__init__(name, terminals={
             'In': {'io': 'in', 'type': Array},
-            'Out': {'io': 'out', 'type': Real}
+            'Out': {'io': 'out', 'type': float}
         })
 
     def to_operation(self, inputs, conditions={}):
@@ -67,9 +67,9 @@ class BinByVar(Node):
 
     def __init__(self, name):
         super(BinByVar, self).__init__(name, terminals={
-            'Values': {'io': 'in', 'type': np.float64},
-            'Bins': {'io': 'in', 'type': (int, np.float64)},
-            'Out': {'io': 'out', 'type': dict}
+            'Values': {'io': 'in', 'type': float},
+            'Bins': {'io': 'in', 'type': float},
+            'Out': {'io': 'out', 'type': Dict[float, float]}
         })
 
     def to_operation(self, inputs, conditions={}):
@@ -95,13 +95,13 @@ class Binning(CtrlNode):
 
     def __init__(self, name):
         super(Binning, self).__init__(name, terminals={
-            'In': {'io': 'in', 'type': (int, np.float64)},
-            'Out': {'io': 'out', 'type': dict}
+            'In': {'io': 'in', 'type': float},
+            'Out': {'io': 'out', 'type': Dict[float, float]}
         })
 
     def to_operation(self, inputs, conditions={}):
         outputs = self.output_vars()
-        map_outputs = [gn.Var(name=self.name()+"_hist", type=dict)]
+        map_outputs = [gn.Var(name=self.name()+"_hist", type=object)]
         nbins = self.bins
         rmin = self.range_min
         rmax = self.range_max

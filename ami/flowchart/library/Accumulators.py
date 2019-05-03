@@ -1,6 +1,9 @@
+from typing import TypeVar, List
 from ami.flowchart.Node import Node
 from ami.flowchart.library.common import CtrlNode
 import ami.graph_nodes as gn
+
+T = TypeVar('T')
 
 
 class Pick1(Node):
@@ -15,8 +18,8 @@ class Pick1(Node):
 
     def __init__(self, name):
         super(Pick1, self).__init__(name,
-                                    terminals={'In': {'io': 'in', 'type': object},
-                                               'Out': {'io': 'out', 'type': object}})
+                                    terminals={'In': {'io': 'in', 'type': T},
+                                               'Out': {'io': 'out', 'type': T}})
 
     def to_operation(self, inputs, conditions={}):
         outputs = self.output_vars()
@@ -39,8 +42,8 @@ class PickN(CtrlNode):
 
     def __init__(self, name):
         super(PickN, self).__init__(name,
-                                    terminals={'In': {'io': 'in', 'type': object},
-                                               'Out': {'io': 'out', 'type': (type(None), list, tuple)}},
+                                    terminals={'In': {'io': 'in', 'type': T},
+                                               'Out': {'io': 'out', 'type': List[T]}},
                                     allowAddInput=True)
         self.N = 2
 

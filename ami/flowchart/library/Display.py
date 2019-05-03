@@ -1,8 +1,8 @@
+from typing import Dict
 from ami.flowchart.library.DisplayWidgets import ScalarWidget, ScatterWidget, WaveformWidget, AreaDetWidget
 from ami.flowchart.library.DisplayWidgets import HistogramWidget
 from ami.flowchart.library.common import CtrlNode
 from ami.nptype import Array1d, Array2d
-from numbers import Real
 import ami.graph_nodes as gn
 
 
@@ -19,7 +19,7 @@ class ScalarViewer(CtrlNode):
 
     def __init__(self, name):
         super(ScalarViewer, self).__init__(name,
-                                           terminals={"In": {"io": "in", "type": Real}},
+                                           terminals={"In": {"io": "in", "type": float}},
                                            viewable=True)
 
     def display(self, topics, addr, win, **kwargs):
@@ -76,7 +76,7 @@ class Histogram(CtrlNode):
 
     def __init__(self, name):
         super(Histogram, self).__init__(name,
-                                        terminals={"In": {"io": "in", "type": dict}},
+                                        terminals={"In": {"io": "in", "type": Dict[float, float]}},
                                         allowAddInput=True,
                                         viewable=True)
 
@@ -96,8 +96,8 @@ class ScatterPlot(CtrlNode):
     uiTemplate = [("Num Points", 'intSpin', {'value': 100, 'min': 1, 'max': 2147483647})]
 
     def __init__(self, name):
-        super(ScatterPlot, self).__init__(name, terminals={"X": {"io": "in", "type": Real},
-                                                           "Y": {"io": "in", "type": Real}},
+        super(ScatterPlot, self).__init__(name, terminals={"X": {"io": "in", "type": float},
+                                                           "Y": {"io": "in", "type": float}},
                                           allowAddInput=True,
                                           buffered=True)
 
@@ -128,7 +128,7 @@ class LinePlot(CtrlNode):
     uiTemplate = [("Num Points", 'intSpin', {'value': 100, 'min': 1, 'max': 2147483647})]
 
     def __init__(self, name):
-        super(LinePlot, self).__init__(name, terminals={"Y": {"io": "in", "type": Real}},
+        super(LinePlot, self).__init__(name, terminals={"Y": {"io": "in", "type": float}},
                                        allowAddInput=True,
                                        buffered=True)
 

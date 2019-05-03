@@ -1560,7 +1560,7 @@ class AsyncGraphCommHandler(ZmqCommHandler):
         TypeError: if `ctx` is an unacceptable type.
     """
 
-    def __init__(self, name, addr, use_types=True, ctx=None):
+    def __init__(self, name, addr, use_types=False, ctx=None):
         if ctx is None:
             ctx = zmq.asyncio.Context()
             owner = True
@@ -1677,7 +1677,7 @@ class GraphCommHandler(ZmqCommHandler):
         TypeError: if `ctx` is an unacceptable type.
     """
 
-    def __init__(self, name, addr, use_types=True, ctx=None):
+    def __init__(self, name, addr, use_types=False, ctx=None):
         if ctx is None:
             ctx = zmq.Context()
             owner = True

@@ -490,17 +490,20 @@ def checkType(types):
 
     f_in.__annotations__ = {'t': t_in}
     f_in = str(inspect.signature(f_in))
+    f_in = f_in.replace('~', '')
 
     def f_out():
         pass
 
     f_out.__annotations__ = {'return': t_out}
     f_out = str(inspect.signature(f_out))
+    f_out = f_out.replace('~', '')
 
     with open('test.py', 'w') as f:
         f.write("from typing import *\n")
         f.write("import numbers\n")
         f.write("import ami.nptype\n")
+        f.write("T = TypeVar('T')\n")
         f.write(f"def f_in{f_in}:\n\tpass\n")
         f.write(f"def f_out{f_out}:\n\tpass")
         f.write("\nf_in(f_out())")
