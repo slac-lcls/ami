@@ -6,10 +6,11 @@ from pyqtgraph.Point import Point
 import subprocess
 import inspect
 import weakref
+import tempfile
 
 
 class Terminal(object):
-    def __init__(self, node, name, io, type=object, pos=None, removable=False):
+    def __init__(self, node, name, io, type, pos=None, removable=False):
         """
         Construct a new terminal.
 
@@ -205,9 +206,17 @@ class Terminal(object):
             item.scene().removeItem(item)
 
     def saveState(self):
+        def f():
+            pass
+        f.__annotations__ = {'return': self._type}
+        f = str(inspect.signature(f))
+        f = f.replace('~', '')
+        f = f.split(" ")
+
         return {
             'io': self._io,
             'removable': self._removable,
+            'type': f[-1]
         }
 
 
@@ -499,7 +508,7 @@ def checkType(types):
     f_out = str(inspect.signature(f_out))
     f_out = f_out.replace('~', '')
 
-    with open('test.py', 'w') as f:
+    with tempfile.NamedTemporaryFile(mode='w') as f:
         f.write("from typing import *\n")
         f.write("import numbers\n")
         f.write("import ami.nptype\n")
@@ -507,10 +516,6 @@ def checkType(types):
         f.write(f"def f_in{f_in}:\n\tpass\n")
         f.write(f"def f_out{f_out}:\n\tpass")
         f.write("\nf_in(f_out())")
-
-    status = subprocess.run(["mypy", "--follow-imports", "silent", "test.py"])
-
-    if status.returncode == 0:
-        return True
-
-    return False
+        f.flush()
+        status = subprocess.run(["mypy", "--follow-imports", "silent", f.name])
+        return status.returncode == 0
