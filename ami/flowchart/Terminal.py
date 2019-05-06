@@ -3,6 +3,7 @@ from pyqtgraph.Qt import QtCore, QtGui
 from pyqtgraph.graphicsItems.GraphicsObject import GraphicsObject
 from pyqtgraph import functions as fn
 from pyqtgraph.Point import Point
+import ami.nptype  # noqa
 import subprocess
 import inspect
 import weakref
@@ -10,7 +11,7 @@ import tempfile
 
 
 class Terminal(object):
-    def __init__(self, node, name, io, type, pos=None, removable=False):
+    def __init__(self, node, name, io, ttype, pos=None, removable=False):
         """
         Construct a new terminal.
 
@@ -19,7 +20,7 @@ class Terminal(object):
         node            the node to which this terminal belongs
         name            string, the name of the terminal
         io              'in', 'out', or 'condition'
-        typ             type terminal expects/returns
+        ttype           type terminal expects/returns
         pos             [x, y], the position of the terminal within its node's boundaries
         removable       (bool) Whether the terminal can be removed by the user
         ==============  =================================================================================
@@ -29,7 +30,11 @@ class Terminal(object):
         self._name = name
         self._removable = removable
         self._connections = {}
-        self._type = type
+
+        if type(ttype) is str:
+            ttype = eval(ttype)
+
+        self._type = ttype
         self._propagatedType = False
 
         self._graphicsItem = TerminalGraphicsItem(self, parent=self._node().graphicsItem())
@@ -120,7 +125,7 @@ class Terminal(object):
 
             types = {}
             for t in [self, term]:
-                if t.isInput():
+                if t.isInput() or t.isCondition():
                     types["Input"] = t.type()
 
                     if len(t.connections()) > 0:
@@ -216,7 +221,7 @@ class Terminal(object):
         return {
             'io': self._io,
             'removable': self._removable,
-            'type': f[-1]
+            'ttype': "".join(f[2:])
         }
 
 

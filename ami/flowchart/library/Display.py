@@ -19,7 +19,7 @@ class ScalarViewer(CtrlNode):
 
     def __init__(self, name):
         super(ScalarViewer, self).__init__(name,
-                                           terminals={"In": {"io": "in", "type": float}},
+                                           terminals={"In": {"io": "in", "ttype": float}},
                                            viewable=True)
 
     def display(self, topics, addr, win, **kwargs):
@@ -38,7 +38,7 @@ class WaveformViewer(CtrlNode):
     uiTemplate = []
 
     def __init__(self, name):
-        super(WaveformViewer, self).__init__(name, terminals={"In": {"io": "in", "type": Array1d}},
+        super(WaveformViewer, self).__init__(name, terminals={"In": {"io": "in", "ttype": Array1d}},
                                              viewable=True)
 
     def display(self, topics, addr, win, **kwargs):
@@ -57,7 +57,7 @@ class ImageViewer(CtrlNode):
     uiTemplate = []
 
     def __init__(self, name):
-        super(ImageViewer, self).__init__(name, terminals={"In": {"io": "in", "type": Array2d}}, viewable=True)
+        super(ImageViewer, self).__init__(name, terminals={"In": {"io": "in", "ttype": Array2d}}, viewable=True)
 
     def display(self, topics, addr, win, **kwargs):
         return super(ImageViewer, self).display(topics, addr, win, AreaDetWidget, **kwargs)
@@ -76,7 +76,7 @@ class Histogram(CtrlNode):
 
     def __init__(self, name):
         super(Histogram, self).__init__(name,
-                                        terminals={"In": {"io": "in", "type": Dict[float, float]}},
+                                        terminals={"In": {"io": "in", "ttype": Dict[float, float]}},
                                         allowAddInput=True,
                                         viewable=True)
 
@@ -96,8 +96,8 @@ class ScatterPlot(CtrlNode):
     uiTemplate = [("Num Points", 'intSpin', {'value': 100, 'min': 1, 'max': 2147483647})]
 
     def __init__(self, name):
-        super(ScatterPlot, self).__init__(name, terminals={"X": {"io": "in", "type": float},
-                                                           "Y": {"io": "in", "type": float}},
+        super(ScatterPlot, self).__init__(name, terminals={"X": {"io": "in", "ttype": float},
+                                                           "Y": {"io": "in", "ttype": float}},
                                           allowAddInput=True,
                                           buffered=True)
 
@@ -105,8 +105,8 @@ class ScatterPlot(CtrlNode):
         return super(ScatterPlot, self).display(topics, addr, win, ScatterWidget, **kwargs)
 
     def addInput(self, **args):
-        self.addTerminal(name="X", io='in', **args)
-        self.addTerminal(name="Y", io='in', **args)
+        self.addTerminal(name="X", io='in', ttype=float, **args)
+        self.addTerminal(name="Y", io='in', ttype=float, **args)
 
     def to_operation(self, inputs, conditions={}):
         outputs = [self.name()]
@@ -128,12 +128,12 @@ class LinePlot(CtrlNode):
     uiTemplate = [("Num Points", 'intSpin', {'value': 100, 'min': 1, 'max': 2147483647})]
 
     def __init__(self, name):
-        super(LinePlot, self).__init__(name, terminals={"Y": {"io": "in", "type": float}},
+        super(LinePlot, self).__init__(name, terminals={"Y": {"io": "in", "ttype": float}},
                                        allowAddInput=True,
                                        buffered=True)
 
     def addInput(self, **args):
-        self.addTerminal(name="Y", io='in', **args)
+        self.addTerminal(name="Y", io='in', ttype=float, **args)
 
     def display(self, topics, addr, win, **kwargs):
         return super(LinePlot, self).display(topics, addr, win, WaveformWidget, **kwargs)

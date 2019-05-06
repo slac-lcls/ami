@@ -18,8 +18,8 @@ class Pick1(Node):
 
     def __init__(self, name):
         super(Pick1, self).__init__(name,
-                                    terminals={'In': {'io': 'in', 'type': T},
-                                               'Out': {'io': 'out', 'type': T}})
+                                    terminals={'In': {'io': 'in', 'ttype': T},
+                                               'Out': {'io': 'out', 'ttype': T}})
 
     def to_operation(self, inputs, conditions={}):
         outputs = self.output_vars()
@@ -42,8 +42,8 @@ class PickN(CtrlNode):
 
     def __init__(self, name):
         super(PickN, self).__init__(name,
-                                    terminals={'In': {'io': 'in', 'type': T},
-                                               'Out': {'io': 'out', 'type': List[T]}},
+                                    terminals={'In': {'io': 'in', 'ttype': T},
+                                               'Out': {'io': 'out', 'ttype': List[T]}},
                                     allowAddInput=True)
         self.N = 2
 

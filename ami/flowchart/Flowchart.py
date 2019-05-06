@@ -10,7 +10,7 @@ from ami.flowchart.FlowchartGraphicsView import FlowchartGraphicsView
 from ami.flowchart.Terminal import Terminal
 from ami.flowchart.library import LIBRARY
 from ami.flowchart.library.common import CtrlNode
-from ami.flowchart.Node import Node
+from ami.flowchart.Node import Node, find_nearest
 from ami.comm import AsyncGraphCommHandler
 from ami.graphkit_wrapper import Graph
 from ami.client import flowchart_messages as fcMsgs
@@ -63,7 +63,7 @@ class Flowchart(Node):
         self.widget()
 
         # self.viewBox.autoRange(padding=0.04)
-        self.viewBox.enableAutoRange()
+        # self.viewBox.enableAutoRange()
 
         self.sigChartLoaded.connect(self.chartLoaded)
 
@@ -84,7 +84,6 @@ class Flowchart(Node):
                 if name not in self._nodes:
                     break
                 n += 1
-
         # create an instance of the node
         node = self.library.getNodeType(nodeType)(name)
         self.addNode(node, name, pos)
@@ -108,6 +107,7 @@ class Flowchart(Node):
         item.setZValue(self.nextZVal*2)
         self.nextZVal += 1
         self.viewBox.addItem(item)
+        pos = (find_nearest(pos[0]), find_nearest(pos[1]))
         item.moveBy(*pos)
         self._nodes[name] = node
         node.sigClosed.connect(self.nodeClosed)
@@ -275,7 +275,8 @@ class Flowchart(Node):
             return
         if not fileName.endswith('.fc'):
             fileName += ".fc"
-        configfile.writeConfigFile(self.saveState(), fileName)
+        state = self.saveState()
+        configfile.writeConfigFile(state, fileName)
         self.sigFileSaved.emit(fileName)
 
     def clear(self):

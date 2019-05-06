@@ -1,6 +1,7 @@
 from pyqtgraph.Qt import QtGui, QtCore
 from pyqtgraph.widgets.GraphicsView import GraphicsView
 from pyqtgraph.graphicsItems.ViewBox import ViewBox
+from pyqtgraph import GridItem
 from ami.flowchart.Node import Node
 
 
@@ -28,7 +29,10 @@ class FlowchartViewBox(ViewBox):
     def __init__(self, widget, *args, **kwargs):
         ViewBox.__init__(self, *args, **kwargs)
         self.widget = widget
+        self.setLimits(minXRange=200, minYRange=200)
+        self.addItem(GridItem())
         self.setAcceptDrops(True)
+        self.setRange(xRange=(0, 800), yRange=(0, 800))
 
     def getMenu(self, ev):
         # called by ViewBox to create a new context menu
@@ -79,7 +83,7 @@ class FlowchartViewBox(ViewBox):
 
             try:
                 node = self.widget.chart.source_library.getSourceType(nodeType)
-                node = Node(name=nodeType, terminals={'Out': {'io': 'out', 'type': node}})
+                node = Node(name=nodeType, terminals={'Out': {'io': 'out', 'ttype': node}})
                 self.widget.chart.addNode(node, name=nodeType, pos=self.mapToView(ev.pos()))
                 ev.accept()
                 return

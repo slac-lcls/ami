@@ -23,8 +23,8 @@ class Roi(CtrlNode):
 
     def __init__(self, name):
         super(Roi, self).__init__(name,
-                                  terminals={'In': {'io': 'in', 'type': Array2d},
-                                             'Out': {'io': 'out', 'type': Array2d}},
+                                  terminals={'In': {'io': 'in', 'ttype': Array2d},
+                                             'Out': {'io': 'out', 'ttype': Array2d}},
                                   viewable=True)
         self.func = lambda img: img
 
@@ -100,8 +100,8 @@ class Roi1D(CtrlNode):
     desc = "Region of Interest"
 
     def __init__(self, name):
-        super(Roi1D, self).__init__(name, terminals={"In": {"io": "in", "type": Array1d},
-                                                     "Out": {"io": "out", "type": Array1d}},
+        super(Roi1D, self).__init__(name, terminals={"In": {"io": "in", "ttype": Array1d},
+                                                     "Out": {"io": "out", "ttype": Array1d}},
                                     viewable=True)
         self.func = lambda img: img
 

@@ -16,8 +16,8 @@ class Sum(Node):
 
     def __init__(self, name):
         super(Sum, self).__init__(name, terminals={
-            'In': {'io': 'in', 'type': Array},
-            'Out': {'io': 'out', 'type': float}
+            'In': {'io': 'in', 'ttype': Array},
+            'Out': {'io': 'out', 'ttype': float}
         })
 
     def to_operation(self, inputs, conditions={}):
@@ -41,8 +41,8 @@ class Projection(CtrlNode):
 
     def __init__(self, name):
         super(Projection, self).__init__(name, terminals={
-            'In': {'io': 'in', 'type': Array2d},
-            'Out': {'io': 'out', 'type': Array1d}
+            'In': {'io': 'in', 'ttype': Array2d},
+            'Out': {'io': 'out', 'ttype': Array1d}
         })
 
     def to_operation(self, inputs, conditions={}):
@@ -67,9 +67,9 @@ class BinByVar(Node):
 
     def __init__(self, name):
         super(BinByVar, self).__init__(name, terminals={
-            'Values': {'io': 'in', 'type': float},
-            'Bins': {'io': 'in', 'type': float},
-            'Out': {'io': 'out', 'type': Dict[float, float]}
+            'Values': {'io': 'in', 'ttype': float},
+            'Bins': {'io': 'in', 'ttype': float},
+            'Out': {'io': 'out', 'ttype': Dict[float, float]}
         })
 
     def to_operation(self, inputs, conditions={}):
@@ -95,8 +95,8 @@ class Binning(CtrlNode):
 
     def __init__(self, name):
         super(Binning, self).__init__(name, terminals={
-            'In': {'io': 'in', 'type': float},
-            'Out': {'io': 'out', 'type': Dict[float, float]}
+            'In': {'io': 'in', 'ttype': float},
+            'Out': {'io': 'out', 'ttype': Dict[float, float]}
         })
 
     def to_operation(self, inputs, conditions={}):

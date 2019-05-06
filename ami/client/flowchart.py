@@ -57,8 +57,14 @@ def run_editor_window(broker_addr, graphmgr_addr, node_addr, checkpoint_addr):
     layout.addWidget(fc.widget(), 0, 0, 2, 1)
 
     win.show()
-    with loop:
+
+    try:
+        task = asyncio.ensure_future(fc.updateState())
         loop.run_forever()
+    finally:
+        if not task.done():
+            task.cancel()
+        loop.close()
 
 
 class NodeWindow(QtGui.QMainWindow):

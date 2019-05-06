@@ -5,10 +5,18 @@ from pyqtgraph import functions as fn
 from pyqtgraph.pgcollections import OrderedDict
 from pyqtgraph.debug import printExc
 from ami.flowchart.Terminal import Terminal
+from typing import Any
 
 
 def strDict(d):
     return dict([(str(k), v) for k, v in d.items()])
+
+
+def find_nearest(x):
+    gs = 100
+    low = (x // gs) * gs
+    hi = low + 100
+    return hi if x - low > hi - x else low
 
 
 class Node(QtCore.QObject):
@@ -130,21 +138,21 @@ class Node(QtCore.QObject):
 
         This is a convenience function that just calls addTerminal(io='in', ...)"""
         # print "Node.addInput called."
-        return self.addTerminal(name, io='in', **args)
+        return self.addTerminal(name, io='in', ttype=self.terminals["In"].type(), **args)
 
     def addOutput(self, name="Out", **args):
         """Add a new output terminal to this Node with the given name. Extra
         keyword arguments are passed to Terminal.__init__.
 
         This is a convenience function that just calls addTerminal(io='out', ...)"""
-        return self.addTerminal(name, io='out', **args)
+        return self.addTerminal(name, io='out', ttype=self.terminals["Out"].type(), **args)
 
     def addCondition(self, name="Condition", **args):
         """Add a new condition terminal to this Node with the given name. Extra
         keyword arguments are passed to Terminal.__init__.
 
         This is a convenience function that just calls addTerminal(io='condition', ...)"""
-        return self.addTerminal(name, io='condition', **args)
+        return self.addTerminal(name, io='condition', ttype=Any, **args)
 
     def removeTerminal(self, term):
         """Remove the specified terminal from this Node. May specify either the
@@ -488,10 +496,12 @@ class NodeGraphicsItem(GraphicsObject):
             # self.menu.popup(QtCore.QPoint(pos.x(), pos.y()))
 
     def mouseDragEvent(self, ev):
-        # print "Node.mouseDrag"
         if ev.button() == QtCore.Qt.LeftButton:
             ev.accept()
-            self.setPos(self.pos()+self.mapToParent(ev.pos())-self.mapToParent(ev.lastPos()))
+            pos = self.pos()+self.mapToParent(ev.pos())-self.mapToParent(ev.lastPos())
+            if ev.isFinish():
+                pos = (find_nearest(pos.x()), find_nearest(pos.y()))
+            self.setPos(*pos)
 
     def hoverEvent(self, ev):
         if not ev.isExit() and ev.acceptClicks(QtCore.Qt.LeftButton):
@@ -507,6 +517,22 @@ class NodeGraphicsItem(GraphicsObject):
             if not self.node._allowRemove:
                 return
             self.node.close()
+        elif ev.key() == QtCore.Qt.Key_Up:
+            ev.accept()
+            pos = self.pos() + (0, -100)
+            self.setPos(*pos)
+        elif ev.key() == QtCore.Qt.Key_Down:
+            ev.accept()
+            pos = self.pos() + (0, 100)
+            self.setPos(*pos)
+        elif ev.key() == QtCore.Qt.Key_Left:
+            ev.accept()
+            pos = self.pos() + (-100, 0)
+            self.setPos(*pos)
+        elif ev.key() == QtCore.Qt.Key_Right:
+            ev.accept()
+            pos = self.pos() + (100, 0)
+            self.setPos(*pos)
         else:
             ev.ignore()
 
@@ -514,6 +540,7 @@ class NodeGraphicsItem(GraphicsObject):
         if change == self.ItemPositionHasChanged:
             for k, t in self.terminals.items():
                 t[1].nodeMoved()
+
         return GraphicsObject.itemChange(self, change, val)
 
     def getMenu(self):

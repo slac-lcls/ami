@@ -1,3 +1,4 @@
+from typing import Any
 from ami.flowchart.Node import Node
 import ami.graph_nodes as gn
 
@@ -6,8 +7,8 @@ class Filter(Node):
 
     def __init__(self, name):
         super(Filter, self).__init__(name, terminals={
-            'Condition': {'io': 'condition'},
-            'Out': {'io': 'out', 'type': bool}
+            'Condition': {'io': 'condition', 'ttype': Any},
+            'Out': {'io': 'out', 'ttype': bool}
         })
 
     def output_vars(self):
