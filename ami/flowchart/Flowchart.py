@@ -3,7 +3,6 @@ from pyqtgraph.Qt import QtCore, QtGui, QtWidgets
 from pyqtgraph.pgcollections import OrderedDict
 from pyqtgraph import FileDialog
 from pyqtgraph.debug import printExc
-from pyqtgraph import configfile as configfile
 from pyqtgraph import dockarea as dockarea
 from numpy import ndarray
 from ami.flowchart.FlowchartGraphicsView import FlowchartGraphicsView
@@ -20,6 +19,7 @@ import asyncio
 import asyncqt
 import zmq.asyncio
 import dill
+import json
 
 
 class Flowchart(Node):
@@ -253,7 +253,10 @@ class Flowchart(Node):
             return
             #  NOTE: was previously using a real widget for the file dialog's parent,
             #        but this caused weird mouse event bugs..
-        state = configfile.readConfigFile(fileName)
+
+        with open(fileName, 'r') as f:
+            state = json.load(f)
+
         self.restoreState(state, clear=True)
         self.viewBox.autoRange()
         self.sigFileLoaded.emit(fileName)
@@ -273,10 +276,16 @@ class Flowchart(Node):
             self.fileDialog.show()
             self.fileDialog.fileSelected.connect(self.saveFile)
             return
+
         if not fileName.endswith('.fc'):
             fileName += ".fc"
+
         state = self.saveState()
-        configfile.writeConfigFile(state, fileName)
+
+        with open(fileName, 'w') as f:
+            json.dump(state, f, indent=2, separators=(',', ': '), sort_keys=True)
+            f.write('\n')
+
         self.sigFileSaved.emit(fileName)
 
     def clear(self):
