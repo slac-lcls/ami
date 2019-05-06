@@ -500,7 +500,10 @@ class NodeGraphicsItem(GraphicsObject):
             ev.accept()
             pos = self.pos()+self.mapToParent(ev.pos())-self.mapToParent(ev.lastPos())
             if ev.isFinish():
-                pos = (find_nearest(pos.x()), find_nearest(pos.y()))
+                pos = [find_nearest(pos.x()), find_nearest(pos.y())]
+
+            pos[0] = max(min(pos[0], 5e3), 0)
+            pos[1] = max(min(pos[1], 5e3), 0)
             self.setPos(*pos)
 
     def hoverEvent(self, ev):
