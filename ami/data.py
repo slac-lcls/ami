@@ -283,6 +283,7 @@ class PsanaSource(Source):
             'xppcspad:raw:image': np.ndarray,
             'xpphsd:raw:waveform': np.ndarray,
             'xpplaser:raw:laserOn': bool,
+            'xpphsd:hsd:peaks': dict, # todo change to TypedDict
         }
         return types.get(detname, object)
 
