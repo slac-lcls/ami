@@ -20,6 +20,9 @@ import asyncqt
 import zmq.asyncio
 import dill
 import json
+import subprocess
+import re
+import tempfile
 
 
 class Flowchart(Node):
@@ -136,9 +139,9 @@ class Flowchart(Node):
         self.broker.send_string(node.name(), zmq.SNDMORE)
         self.broker.send_pyobj(fcMsgs.CloseNode())
 
-    def connectTerminals(self, term1, term2):
+    def connectTerminals(self, term1, term2, type_file=None):
         """Connect two terminals together within this flowchart."""
-        term1.connectTo(term2)
+        term1.connectTo(term2, type_file=type_file)
 
     def chartGraphicsItem(self):
         """
@@ -224,13 +227,54 @@ class Flowchart(Node):
                         printExc("Error creating node %s: (continuing anyway)" % n['name'])
 
             # self.restoreTerminals(state['terminals'])
-            for n1, t1, n2, t2 in state['connects']:
-                try:
-                    self.connectTerminals(self._nodes[n1][t1], self._nodes[n2][t2])
-                except Exception:
-                    print(self._nodes[n1].terminals)
-                    print(self._nodes[n2].terminals)
-                    printExc("Error connecting terminals %s.%s - %s.%s:" % (n1, t1, n2, t2))
+
+            connections = {}
+            with tempfile.NamedTemporaryFile(mode='w') as type_file:
+                type_file.write("from typing import *\n")
+                type_file.write("import numbers\n")
+                type_file.write("import ami.nptype\n")
+                type_file.write("T = TypeVar('T')\n\n")
+
+                for n1, t1, n2, t2 in state['connects']:
+                    try:
+                        self.connectTerminals(self._nodes[n1][t1], self._nodes[n2][t2], type_file)
+                        node1 = self._nodes[n1]
+                        term1 = self._nodes[n1][t1]
+                        node2 = self._nodes[n2]
+                        term2 = self._nodes[n2][t2]
+                        if term1.isInput() or term1.isCondition:
+                            in_name = node1.name() + '_' + term1.name()
+                            in_name = in_name.replace('.', '_')
+                            out_name = node2.name() + '_' + term2.name()
+                            out_name = out_name.replace('.', '_')
+                        else:
+                            in_name = node2.name() + '_' + term2.name()
+                            in_name = in_name.replace('.', '_')
+                            out_name = node1.name() + '_' + term1.name()
+                            out_name = out_name.replace('.', '_')
+
+                        connections[(in_name, out_name)] = (term1, term2)
+                    except Exception:
+                        print(self._nodes[n1].terminals)
+                        print(self._nodes[n2].terminals)
+                        printExc("Error connecting terminals %s.%s - %s.%s:" % (n1, t1, n2, t2))
+
+                status = subprocess.run(["mypy", "--follow-imports", "silent", type_file.name],
+                                        capture_output=True, text=True)
+                if status.returncode != 0:
+                    lines = status.stdout.split('\n')[:-1]
+                    for line in lines:
+                        m = re.search(r"\"+(\w+)\"+", line)
+                        m = m.group().replace('"', '')
+                        for i in connections:
+                            if i[0] == m:
+                                term1, term2 = connections[i]
+                                term1.disconnectFrom(term2)
+                                break
+                            elif i[1] == m:
+                                term1, term2 = connections[i]
+                                term1.disconnectFrom(term2)
+                                break
 
         finally:
             self.blockSignals(False)

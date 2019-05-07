@@ -35,8 +35,6 @@ class Terminal(object):
             ttype = eval(ttype)
 
         self._type = ttype
-        self._propagatedType = False
-
         self._graphicsItem = TerminalGraphicsItem(self, parent=self._node().graphicsItem())
 
         self._value = None
@@ -114,7 +112,7 @@ class Terminal(object):
         """Return the list of nodes which receive input from this terminal."""
         return set([t.node() for t in self.connections() if t.isInput()])
 
-    def connectTo(self, term, connectionItem=None):
+    def connectTo(self, term, connectionItem=None, type_file=None):
         try:
             if self.connectedTo(term):
                 raise Exception('Already connected')
@@ -126,16 +124,16 @@ class Terminal(object):
             types = {}
             for t in [self, term]:
                 if t.isInput() or t.isCondition():
-                    types["Input"] = t.type()
+                    types["Input"] = t
 
                     if len(t.connections()) > 0:
                         raise Exception(
                             "Cannot connect %s <-> %s: Terminal %s is already connected to %s \
                             (and does not allow multiple connections)" % (self, term, t, list(t.connections().keys())))
                 elif t.isOutput():
-                    types["Output"] = t.type()
+                    types["Output"] = t
 
-            if not checkType(types):
+            if not checkType(types, type_file):
                 raise Exception("Invalid types. Expected: %s Got: %s", self.type(), term.type())
         except Exception:
             if connectionItem is not None:
@@ -494,33 +492,56 @@ class ConnectionItem(GraphicsObject):
         p.drawPath(self.path)
 
 
-def checkType(types):
+checked = []
 
-    t_in = types["Input"]
-    t_out = types["Output"]
+
+def checkType(terminals, type_file=None):
+
+    t_in = terminals["Input"]
+    t_out = terminals["Output"]
 
     def f_in(t):
         pass
 
-    f_in.__annotations__ = {'t': t_in}
+    f_in_name = t_in.node().name() + '_' + t_in.name()
+    f_in_name = f_in_name.replace('.', '_')
+    f_in.__annotations__ = {'t': t_in.type()}
     f_in = str(inspect.signature(f_in))
     f_in = f_in.replace('~', '')
+    f_in = f_in_name + f_in
 
     def f_out():
         pass
 
-    f_out.__annotations__ = {'return': t_out}
+    f_out_name = t_out.node().name() + '_' + t_out.name()
+    f_out_name = f_out_name.replace('.', '_')
+    f_out.__annotations__ = {'return': t_out.type()}
     f_out = str(inspect.signature(f_out))
     f_out = f_out.replace('~', '')
+    f_out = f_out_name + f_out
 
-    with tempfile.NamedTemporaryFile(mode='w') as f:
-        f.write("from typing import *\n")
-        f.write("import numbers\n")
-        f.write("import ami.nptype\n")
-        f.write("T = TypeVar('T')\n")
-        f.write(f"def f_in{f_in}:\n\tpass\n")
-        f.write(f"def f_out{f_out}:\n\tpass")
-        f.write("\nf_in(f_out())")
-        f.flush()
-        status = subprocess.run(["mypy", "--follow-imports", "silent", f.name])
-        return status.returncode == 0
+    if type_file:
+        # this case is for reloading a saved file, we want to just run mypy on a single file
+        # we return true always and then deal with disconnecting invalid connections later
+        if f_in_name not in checked:
+            type_file.write(f"def {f_in}:\n\tpass\n\n")
+            checked.append(f_in_name)
+
+        if f_out_name not in checked:
+            type_file.write(f"def {f_out}:\n\tpass\n")
+            checked.append(f_out_name)
+
+        type_file.write(f"\n{f_in_name}({f_out_name}())\n\n")
+        return True
+    else:
+        with tempfile.NamedTemporaryFile(mode='w') as f:
+            f.write("from typing import *\n")
+            f.write("import numbers\n")
+            f.write("import ami.nptype\n")
+            f.write("T = TypeVar('T')\n")
+            f.write(f"def {f_in}:\n\tpass\n")
+            f.write(f"def {f_out}:\n\tpass")
+            f.write(f"\n{f_in_name}({f_out_name}())")
+            f.flush()
+            status = subprocess.run(["mypy", "--follow-imports", "silent", f.name])
+            return status.returncode == 0
