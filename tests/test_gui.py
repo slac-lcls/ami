@@ -178,3 +178,6 @@ def test_editor(qtbot, broker, start_ami):
     fc.createNode('Roi')
     nodes = fc.nodes()
     assert 'Roi.0' in nodes
+
+    # cleanup zmq context
+    fc.ctx.destroy()

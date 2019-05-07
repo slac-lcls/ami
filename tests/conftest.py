@@ -161,8 +161,11 @@ def start_ami(request, workerjson):
         yield None
     finally:
         queue.put(None)
-        ami.terminate()
         ami.join(1)
+        # if ami still hasn't exitted then kill it
+        if ami.is_alive():
+            ami.terminate()
+            ami.join(1)
 
         if ami.exitcode == 0 or ami.exitcode == -signal.SIGTERM:
             return 0

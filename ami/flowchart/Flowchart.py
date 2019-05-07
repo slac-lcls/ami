@@ -366,7 +366,7 @@ class FlowchartCtrlWidget(QtGui.QWidget):
     def __init__(self, chart, graphmgr_addr):
         super(FlowchartCtrlWidget, self).__init__()
 
-        self.graphCommHandler = AsyncGraphCommHandler(graphmgr_addr.name, graphmgr_addr.uri)
+        self.graphCommHandler = AsyncGraphCommHandler(graphmgr_addr.name, graphmgr_addr.uri, ctx=chart.ctx)
 
         self.currentFileName = None
         self.chart = chart
