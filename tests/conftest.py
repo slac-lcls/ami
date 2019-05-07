@@ -134,6 +134,11 @@ def complex_graph(complex_graph_file):
 
 @pytest.fixture(scope='function')
 def start_ami(request, workerjson):
+    try:
+        from pytest_cov.embed import cleanup_on_sigterm
+        cleanup_on_sigterm()
+    except ImportError:
+        pass
 
     parser = build_parser()
     args = parser.parse_args(["-n", "1", '-t', '--headless',
@@ -156,7 +161,8 @@ def start_ami(request, workerjson):
         yield None
     finally:
         queue.put(None)
-        ami.join()
+        ami.terminate()
+        ami.join(1)
 
         if ami.exitcode == 0 or ami.exitcode == -signal.SIGTERM:
             return 0

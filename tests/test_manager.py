@@ -109,6 +109,12 @@ def result_data():
 
 @pytest.fixture(scope='function')
 def manager_proc(ipc_dir):
+    try:
+        from pytest_cov.embed import cleanup_on_sigterm
+        cleanup_on_sigterm()
+    except ImportError:
+        pass
+
     addrs = {
         'results': 'ipc://%s/manager_results' % ipc_dir,
         'comm': 'ipc://%s/manager_comm' % ipc_dir,
@@ -130,6 +136,7 @@ def manager_proc(ipc_dir):
 
     # cleanup the manager process
     proc.terminate()
+    proc.join(1)
     return proc.exitcode
 
 

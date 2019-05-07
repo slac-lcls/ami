@@ -3,9 +3,13 @@ import pytest
 import zmq
 import time
 import multiprocessing as mp
-import ami.client.flowchart_messages as fcMsgs
+from ami.client import GraphAddress
 from ami.client.flowchart import MessageBroker
-from asyncqt import QEventLoop
+import ami.client.flowchart_messages as fcMsgs
+from ami.flowchart.Flowchart import Flowchart
+from ami.flowchart.NodeLibrary import SourceLibrary
+from ami.nptype import Array2d
+from collections import OrderedDict
 
 
 class BrokerHelper:
@@ -42,16 +46,14 @@ class BrokerProxy:
         return self.comm.recv()
 
 
-@pytest.yield_fixture()
-def q_event_loop(qapp):
-    loop = QEventLoop(qapp)
-    asyncio.set_event_loop(loop)
-    yield loop
-    loop.close()
-
-
 @pytest.fixture(scope='function')
 def broker(ipc_dir):
+    try:
+        from pytest_cov.embed import cleanup_on_sigterm
+        cleanup_on_sigterm()
+    except ImportError:
+        pass
+
     parent_comm, child_comm = mp.Pipe()
     # start the manager process
     proc = mp.Process(
@@ -66,7 +68,7 @@ def broker(ipc_dir):
 
     # cleanup the manager process
     proc.terminate()
-    proc.join()
+    proc.join(1)
     return proc.exitcode
 
 
@@ -101,3 +103,78 @@ def test_broker_sub(broker):
     # check the msg
     assert name in msgs
     assert isinstance(msgs[name], fcMsgs.CloseNode)
+
+
+@pytest.mark.parametrize('start_ami', ['static'], indirect=True)
+def test_source_library(complex_graph_file, start_ami):
+    comm_handler = start_ami
+    comm_handler.load(complex_graph_file)
+
+    start = time.time()
+    while comm_handler.graphVersion != comm_handler.featuresVersion:
+        end = time.time()
+        if end - start > 10:
+            raise TimeoutError
+
+    sources = comm_handler.sources
+    source_library = SourceLibrary()
+
+    for source, node_type in sources.items():
+        root, *_ = source.split(':')
+        source_library.addNodeType(source, node_type, [[root]])
+
+    assert source_library.sourceList == {'cspad': Array2d, 'delta_t': int,
+                                         'heartbeat': int, 'laser': int, 'timestamp': int}
+    assert source_library.getSourceType('cspad') == Array2d
+
+    try:
+        source_library.addNodeType('cspad', Array2d, [[]])
+    except Exception:
+        pass
+
+    try:
+        source_library.getSourceType('')
+    except Exception:
+        pass
+
+    assert source_library.getSourceTree() == OrderedDict([('delta_t', OrderedDict([('delta_t', 'delta_t')])),
+                                                          ('cspad', OrderedDict([('cspad', 'cspad')])),
+                                                          ('laser', OrderedDict([('laser', 'laser')])),
+                                                          ('timestamp', OrderedDict([('timestamp', 'timestamp')])),
+                                                          ('heartbeat', OrderedDict([('heartbeat', 'heartbeat')]))])
+
+    labelTree = OrderedDict([('delta_t', [('delta_t', "<class 'int'>")]),
+                             ('cspad', [('cspad', "<class 'ami.nptype.Array2d'>")]),
+                             ('laser', [('laser', "<class 'int'>")]),
+                             ('timestamp', [('timestamp', "<class 'int'>")]),
+                             ('heartbeat', [('heartbeat', "<class 'int'>")])])
+
+    assert source_library.getLabelTree() == labelTree
+    assert source_library.getLabelTree() == labelTree
+
+
+@pytest.mark.parametrize('start_ami', ['static'], indirect=True)
+def test_editor(qtbot, broker, start_ami):
+
+    comm_handler = start_ami
+    time.sleep(1)
+    sources = comm_handler.sources
+
+    source_library = SourceLibrary()
+    for source, node_type in sources.items():
+        root, *_ = source.split(':')
+        source_library.addNodeType(source, node_type, [[root]])
+
+    graphmgr = GraphAddress("graph", comm_handler._addr)
+
+    fc = Flowchart(broker_addr=broker.broker_sub_addr,
+                   graphmgr_addr=graphmgr,
+                   node_addr=broker.node_addr,
+                   checkpoint_addr=broker.checkpoint_pub_addr,
+                   source_library=source_library)
+
+    qtbot.addWidget(fc.widget())
+
+    fc.createNode('Roi')
+    nodes = fc.nodes()
+    assert 'Roi.0' in nodes
