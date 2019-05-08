@@ -9,7 +9,7 @@ import numpy as np
 class Sum(Node):
 
     """
-    Sum returns the sum of an array or list.
+    Sum returns the sum of an array.
     """
 
     nodeName = "Sum"
@@ -32,8 +32,6 @@ class Projection(CtrlNode):
 
     """
     Projection projects a 2d array along the selected axis.
-
-    Returns 1d array.
     """
 
     nodeName = "Projection"
@@ -59,7 +57,6 @@ class BinByVar(Node):
     """
     BinByVar creates a histogram using a variable number of bins.
 
-    Accepts np.float64 as values, and int as Bins.
     Returns a dict with keys Bins and values mean of bins.
     """
 
@@ -84,8 +81,6 @@ class Binning(CtrlNode):
 
     """
     Binning creates a histogram with a fixed number of bins.
-
-    Accepts int, np.float64. Returns dict.
     """
 
     nodeName = "Binning"

@@ -230,6 +230,7 @@ class Flowchart(Node):
 
             connections = {}
             with tempfile.NamedTemporaryFile(mode='w') as type_file:
+                type_file.write("from mypy_extensions import TypedDict\n")
                 type_file.write("from typing import *\n")
                 type_file.write("import numbers\n")
                 type_file.write("import ami.nptype\n")

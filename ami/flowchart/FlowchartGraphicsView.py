@@ -79,7 +79,7 @@ class FlowchartViewBox(ViewBox):
                 self.widget.chart.createNode(nodeType, pos=self.mapToView(ev.pos()))
                 ev.accept()
                 return
-            except Exception:
+            except KeyError:
                 pass
 
             try:
@@ -88,7 +88,8 @@ class FlowchartViewBox(ViewBox):
                 self.widget.chart.addNode(node, name=nodeType, pos=self.mapToView(ev.pos()))
                 ev.accept()
                 return
-            except Exception:
+            except KeyError:
                 pass
+
         else:
             ev.ignore()

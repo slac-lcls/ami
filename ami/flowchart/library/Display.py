@@ -1,17 +1,16 @@
 from typing import Dict
-from ami.flowchart.library.DisplayWidgets import ScalarWidget, ScatterWidget, WaveformWidget, AreaDetWidget
+from ami.flowchart.library.DisplayWidgets import ScalarWidget, ScatterWidget, WaveformWidget, AreaDetWidget, LineWidget
 from ami.flowchart.library.DisplayWidgets import HistogramWidget
 from ami.flowchart.library.common import CtrlNode
-from ami.nptype import Array1d, Array2d
+from ami.nptype import Array1d, Array2d, HSDWaveforms
 import ami.graph_nodes as gn
+import asyncio
 
 
 class ScalarViewer(CtrlNode):
 
     """
     ScalarViewer displays the value of a scalar.
-
-    Accepts float, int, bool, and np.float64.
     """
 
     nodeName = "ScalarViewer"
@@ -30,8 +29,6 @@ class WaveformViewer(CtrlNode):
 
     """
     WaveformViewer displays 1D arrays.
-
-    Accepts list and np.ndarray.
     """
 
     nodeName = "WaveformViewer"
@@ -49,8 +46,6 @@ class ImageViewer(CtrlNode):
 
     """
     ImageViewer displays 2D arrays.
-
-    Accepts np.ndarray.
     """
 
     nodeName = "ImageViewer"
@@ -67,8 +62,6 @@ class Histogram(CtrlNode):
 
     """
     Histogram plots a histogram created from either Binning or BinByVar.
-
-    Accepts dict.
     """
 
     nodeName = "Histogram"
@@ -88,8 +81,6 @@ class ScatterPlot(CtrlNode):
 
     """
     Scatter Plot collects two scalars and plots them against each other.
-
-    Accepts int, np.float64.
     """
 
     nodeName = "ScatterPlot"
@@ -120,8 +111,6 @@ class LinePlot(CtrlNode):
 
     """
     Line Plot collects scalars and plots them.
-
-    Accepts int, np.float64.
     """
 
     nodeName = "LinePlot"
@@ -144,3 +133,25 @@ class LinePlot(CtrlNode):
                                 conditions_needs=list(conditions.values()), inputs=list(inputs.values()),
                                 outputs=outputs)
         return node
+
+
+class HSDViewer(CtrlNode):
+
+    """
+    HSDViewer
+    """
+
+    nodeName = "HSDViewer"
+    uiTemplate = [("Key", 'intSpin', {'value': 0, 'min': 0, 'max': 4})]
+
+    def __init__(self, name):
+        super(HSDViewer, self).__init__(name, terminals={"In": {"io": "in", "ttype": HSDWaveforms}},
+                                        viewable=True)
+
+    def display(self, topics, addr, win, **kwargs):
+        if self.widget is None:
+            self.widget = LineWidget(topics, addr, win, terms={'l': ('times', self.Key)})
+        if self.task is None:
+            self.task = asyncio.ensure_future(self.widget.update())
+
+        return self.widget

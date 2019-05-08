@@ -1,5 +1,6 @@
 import numpy as np
 from typing import Union, List
+from mypy_extensions import TypedDict
 
 
 class Array1d(type):
@@ -29,3 +30,4 @@ class Array2d(type):
 
 
 Array = Union[Array2d, Array1d, List[float]]
+HSDWaveforms = TypedDict("HSDWaveforms", {'times': Array1d, '0': Array1d})

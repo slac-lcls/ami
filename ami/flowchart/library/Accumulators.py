@@ -10,8 +10,6 @@ class Pick1(Node):
 
     """
     Pick1 collects one of its input.
-
-    Accepts any type and returns one of that type.
     """
 
     nodeName = "Pick1"
@@ -33,8 +31,6 @@ class PickN(CtrlNode):
 
     """
     PickN collects N of its input.
-
-    Accepts any type and returns either None, list, or a tuple of the type of its input.
     """
 
     nodeName = "PickN"

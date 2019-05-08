@@ -10,7 +10,7 @@ except ImportError:
     psana = None
 import numpy as np
 from enum import Enum
-from ami.nptype import Array1d, Array2d
+from ami.nptype import Array1d, Array2d, HSDWaveforms
 
 
 logger = logging.getLogger(__name__)
@@ -283,7 +283,7 @@ class PsanaSource(Source):
             'xppcspad:raw:image': np.ndarray,
             'xpphsd:raw:waveform': np.ndarray,
             'xpplaser:raw:laserOn': bool,
-            'xpphsd:hsd:peaks': dict, # todo change to TypedDict
+            'xpphsd:hsd:waveforms': HSDWaveforms,
         }
         return types.get(detname, object)
 

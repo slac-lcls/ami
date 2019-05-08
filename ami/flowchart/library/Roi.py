@@ -10,8 +10,6 @@ class Roi(CtrlNode):
 
     """
     Region of Interest of image.
-
-    Accepts 2D array.
     """
 
     nodeName = "Roi"
@@ -89,9 +87,7 @@ class Roi(CtrlNode):
 class Roi1D(CtrlNode):
 
     """
-    Collects scalars into array and returns selected region of interest.
-
-    Accepts int, np.float64. Returns np.ndarray.
+    Region of Interest of 1d array.
     """
 
     nodeName = "Roi1D"

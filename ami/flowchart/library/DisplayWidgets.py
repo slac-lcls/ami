@@ -174,3 +174,34 @@ class WaveformWidget(pg.GraphicsLayoutWidget):
                                                       symbol=symbol, symbolBrush=color)
             else:
                 self.plot[name].setData(y=np.array(data[name]))
+
+
+class LineWidget(pg.GraphicsLayoutWidget):
+
+    def __init__(self, topics, addr, parent=None, **kwargs):
+        super(LineWidget, self).__init__(parent)
+        self.fetcher = AsyncFetcher(topics, addr, buffered=True)
+        self.plot_view = self.addPlot()
+        self.plot_view.addLegend()
+        self.plot = {}
+        self.terms = kwargs.get('terms', {})
+
+    async def update(self):
+        while True:
+            await self.fetcher.fetch()
+            if self.fetcher.reply:
+                self.line_updated(self.fetcher.reply)
+
+    def line_updated(self, data):
+        i = 0
+        data = data['xpphsd:hsd:waveforms']  # TODO Fix this
+        for l, x_y in self.terms.items():
+            x, y = x_y
+            name = " vs ".join([x, str(y)])
+            if (x, y) not in self.plot:
+                symbol, color = symbols_colors[i]
+                i += 1
+                self.plot[(x, y)] = self.plot_view.plot(x=data[x], y=data[y],
+                                                        name=name, symbol=symbol, symbolBrush=color)
+            else:
+                self.plot[(x, y)].setData(x=data[x], y=data[y])

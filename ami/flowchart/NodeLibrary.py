@@ -57,7 +57,7 @@ class NodeLibrary:
         try:
             return self.nodeList[name]
         except KeyError:
-            raise Exception("No node type called '%s'" % name)
+            raise KeyError("No node type called '%s'" % name)
 
     def getNodeTree(self):
         return self.nodeTree
@@ -128,7 +128,7 @@ class SourceLibrary:
         try:
             return self.sourceList[name]
         except KeyError:
-            raise Exception("No node type called '%s'" % name)
+            raise KeyError("No node type called '%s'" % name)
 
     def getSourceTree(self):
         return self.sourceTree
