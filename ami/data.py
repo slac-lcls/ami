@@ -268,7 +268,10 @@ class PsanaSource(Source):
         self.xtcdata_names = []
         self.xtcdata_types = {}
         if psana is not None:
-            self.ds = psana.DataSource(src_cfg['filename'])
+            if 'filename' in self.flags:
+                self.ds = psana.DataSource(self.flags['filename'])
+            else:
+                self.ds = psana.DataSource(src_cfg['filename'])
         else:
             raise NotImplementedError("psana is not available!")
 
