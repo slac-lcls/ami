@@ -8,7 +8,7 @@ from ami.client.flowchart import MessageBroker
 import ami.client.flowchart_messages as fcMsgs
 from ami.flowchart.Flowchart import Flowchart
 from ami.flowchart.NodeLibrary import SourceLibrary
-from ami.nptype import Array2d
+from amityping import Array2d
 from collections import OrderedDict
 
 
@@ -144,7 +144,7 @@ def test_source_library(complex_graph_file, start_ami):
                                                           ('heartbeat', OrderedDict([('heartbeat', 'heartbeat')]))])
 
     labelTree = OrderedDict([('delta_t', [('delta_t', "<class 'int'>")]),
-                             ('cspad', [('cspad', "<class 'ami.nptype.Array2d'>")]),
+                             ('cspad', [('cspad', "<class 'amityping.Array2d'>")]),
                              ('laser', [('laser', "<class 'int'>")]),
                              ('timestamp', [('timestamp', "<class 'int'>")]),
                              ('heartbeat', [('heartbeat', "<class 'int'>")])])

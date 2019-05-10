@@ -3,7 +3,7 @@ from pyqtgraph.Qt import QtCore, QtGui
 from pyqtgraph.graphicsItems.GraphicsObject import GraphicsObject
 from pyqtgraph import functions as fn
 from pyqtgraph.Point import Point
-import ami.nptype  # noqa
+import amityping  # noqa
 import subprocess
 import inspect
 import weakref
@@ -540,7 +540,7 @@ def checkType(terminals, type_file=None):
             f.write("from typing import *\n")
             f.write("from mypy_extensions import TypedDict\n")
             f.write("import numbers\n")
-            f.write("import ami.nptype\n")
+            f.write("import amityping\n")
             f.write("T = TypeVar('T')\n")
             f.write(f"def {f_in}:\n\tpass\n")
             f.write(f"def {f_out}:\n\tpass")

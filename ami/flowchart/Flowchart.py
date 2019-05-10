@@ -233,7 +233,7 @@ class Flowchart(Node):
                 type_file.write("from mypy_extensions import TypedDict\n")
                 type_file.write("from typing import *\n")
                 type_file.write("import numbers\n")
-                type_file.write("import ami.nptype\n")
+                type_file.write("import amityping\n")
                 type_file.write("T = TypeVar('T')\n\n")
 
                 for n1, t1, n2, t2 in state['connects']:

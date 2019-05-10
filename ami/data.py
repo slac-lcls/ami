@@ -2,6 +2,7 @@ import sys
 import abc
 import zmq
 import time
+import typing
 import inspect
 import logging
 try:
@@ -10,7 +11,7 @@ except ImportError:
     psana = None
 import numpy as np
 from enum import Enum
-from ami.nptype import Array1d, Array2d, HSDWaveforms
+from amityping import Array1d, Array2d, HSDWaveforms
 
 
 logger = logging.getLogger(__name__)
@@ -265,6 +266,7 @@ class PsanaSource(Source):
         super(__class__, self).__init__(idnum, num_workers, heartbeat_period, src_cfg, flags)
         self.delimiter = ":"
         self.xtcdata_names = []
+        self.xtcdata_types = {}
         if psana is not None:
             self.ds = psana.DataSource(src_cfg['filename'])
         else:
@@ -273,8 +275,21 @@ class PsanaSource(Source):
     def _update_xtcdata_names(self, run):
         detinfo = run.detinfo
         self.xtcdata_names = []
+        self.xtcdata_types = {}
         for (detname, det_xface_name), det_attr_list in detinfo.items():
-            self.xtcdata_names += [self.delimiter.join((detname, det_xface_name, attr)) for attr in det_attr_list]
+            for attr in det_attr_list:
+                attr_name = self.delimiter.join((detname, det_xface_name, attr))
+                det_interface = run.Detector(detname)
+                try:
+                    attr_sig = inspect.signature(getattr(getattr(det_interface, det_xface_name), attr))
+                    if attr_sig.return_annotation is attr_sig.empty:
+                        attr_type = typing.Any
+                    else:
+                        attr_type = attr_sig.return_annotation
+                except ValueError:
+                    attr_type = typing.Any
+                self.xtcdata_names.append(attr_name)
+                self.xtcdata_types[attr_name] = attr_type
         return
 
     def _fake_detector_types(self, detname):
@@ -291,7 +306,7 @@ class PsanaSource(Source):
         return set(self.xtcdata_names)
 
     def _types(self):
-        return {detname: self._fake_detector_types(detname) for detname in self.xtcdata_names}
+        return self.xtcdata_types
 
     def events(self):
 
