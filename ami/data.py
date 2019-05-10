@@ -292,16 +292,6 @@ class PsanaSource(Source):
                 self.xtcdata_types[attr_name] = attr_type
         return
 
-    def _fake_detector_types(self, detname):
-        types = {
-            'EBeam:raw:energy': np.float64,
-            'xppcspad:raw:image': np.ndarray,
-            'xpphsd:raw:waveform': np.ndarray,
-            'xpplaser:raw:laserOn': bool,
-            'xpphsd:hsd:waveforms': HSDWaveforms,
-        }
-        return types.get(detname, object)
-
     def _names(self):
         return set(self.xtcdata_names)
 
