@@ -11,7 +11,7 @@ except ImportError:
     psana = None
 import numpy as np
 from enum import Enum
-from amityping import Array1d, Array2d, HSDWaveforms
+from amityping import Array1d, Array2d
 
 
 logger = logging.getLogger(__name__)
