@@ -35,12 +35,18 @@ setup(
         'networkfox',
         'ipython',
         'asyncqt',
+        'amityping',
+        'mypy',
     ],
     tests_require=[
         'pytest',
         'pytest-asyncio',
         'pytest-qt'
     ],
+    extras_require={
+        'pva': ['p4p'],
+        'lcls': ['psana'],
+    },
     entry_points={
         'console_scripts': [
             'ami-worker = ami.worker:main',

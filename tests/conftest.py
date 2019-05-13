@@ -154,8 +154,8 @@ def start_ami(request, workerjson):
     try:
         host = "127.0.0.1"
         comm_addr = "tcp://%s:%d" % (host, Ports.Comm)
-        comm_handler = GraphCommHandler(args.graph_name, comm_addr)
-        yield comm_handler
+        with GraphCommHandler(args.graph_name, comm_addr) as comm_handler:
+            yield comm_handler
     except Exception:
         # let the fixture exit 'gracefully' if it fails
         yield None

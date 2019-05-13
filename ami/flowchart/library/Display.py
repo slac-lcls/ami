@@ -2,7 +2,7 @@ from typing import Dict
 from ami.flowchart.library.DisplayWidgets import ScalarWidget, ScatterWidget, WaveformWidget, AreaDetWidget, LineWidget
 from ami.flowchart.library.DisplayWidgets import HistogramWidget
 from ami.flowchart.library.common import CtrlNode
-from ami.nptype import Array1d, Array2d, HSDWaveforms
+from amityping import Array1d, Array2d, HSDWaveforms
 import ami.graph_nodes as gn
 import asyncio
 
