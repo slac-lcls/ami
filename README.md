@@ -32,6 +32,15 @@ To use psana a working release need to be added to the python path
 
 # Status/To-do
 
+13 MAY 19:
+- Multiple runs/changing sources
+- status messages from worker
+- split complex types into multiple boxes
+- tags in load/save
+- alert nodes
+- gui regression tests
+- psana type annotations
+
 8 MAR 19:
 - Status messages from worker
 - Dynamic Menus
