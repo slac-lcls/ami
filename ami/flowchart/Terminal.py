@@ -506,11 +506,8 @@ def checkType(terminals, type_file=None):
     f_in_name = t_in.node().name() + '_' + t_in.name()
     f_in_name = f_in_name.replace('.', '_')
     f_in_name = f_in_name.replace(':', '_')
-    print(t_in.type())
     f_in.__annotations__ = {'t': t_in.type()}
-    print(f_in.__annotations__)
     f_in = str(inspect.signature(f_in))
-    print(f_in)
     f_in = f_in.replace('~', '')
     f_in = f_in_name + f_in
 
