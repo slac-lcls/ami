@@ -1,6 +1,6 @@
 from ami.flowchart.library.common import CtrlNode
 from ami.flowchart.Node import Node
-from amityping import Array, Array1d, Array2d
+from amitypes import Array, Array1d, Array2d
 import ami.graph_nodes as gn
 from typing import Dict
 import numpy as np

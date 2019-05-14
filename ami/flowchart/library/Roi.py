@@ -1,6 +1,6 @@
 from ami.flowchart.library.DisplayWidgets import AreaDetWidget, WaveformWidget
 from ami.flowchart.library.common import CtrlNode
-from amityping import Array2d, Array1d
+from amitypes import Array2d, Array1d
 import pyqtgraph as pg
 import ami.graph_nodes as gn
 import asyncio

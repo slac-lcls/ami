@@ -11,7 +11,7 @@ except ImportError:
     psana = None
 import numpy as np
 from enum import Enum
-from amityping import Array1d, Array2d
+from amitypes import Array1d, Array2d
 
 
 logger = logging.getLogger(__name__)
@@ -294,6 +294,12 @@ class PsanaSource(Source):
                         attr_type = attr_sig.return_annotation
                 except ValueError:
                     attr_type = typing.Any
+                #if hasattr(attr_type, '__annotations__'):
+                #    for sub_attr_name, sub_attr_type in attr_type.__annotations__.items():
+                #        sub_attr_name = self.delimiter.join((attr_name, sub_attr_name))
+                #        self.xtcdata_names.append(sub_attr_name)
+                #        self.xtcdata_types[sub_attr_name] = sub_attr_type
+                #else:
                 self.xtcdata_names.append(attr_name)
                 self.xtcdata_types[attr_name] = attr_type
         return

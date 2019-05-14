@@ -3,7 +3,7 @@ import numpy as np
 
 from conftest import psanatest
 from ami.data import MsgTypes, Source, Transition, Transitions
-from amityping import Array1d, Array2d
+from amitypes import Array1d, Array2d
 
 
 @pytest.fixture(scope='function')
