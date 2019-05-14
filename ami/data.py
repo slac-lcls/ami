@@ -95,11 +95,13 @@ class Source(abc.ABC):
         self.init_time = src_cfg.get('init_time', 0)
         self.config = src_cfg.get('config', {})
         self.requested_names = set()
+        self.requested_data = set()
         self.flags = flags or {}
         self._base_types = {
             'timestamp': int,
             'heartbeat': int,
         }
+        self._base_names = set(self._base_types)
 
     def check_heartbeat_boundary(self, timestamp):
         """
@@ -251,6 +253,7 @@ class Source(abc.ABC):
             names (list): names of the data being requested
         """
         self.requested_names = set(names)
+        self.requested_data = self.requested_names.difference(self._base_names)
 
     @abc.abstractmethod
     def events(self):
@@ -319,7 +322,7 @@ class PsanaSource(Source):
                     if self.check_heartbeat_boundary(timestamp):
                         yield self.heartbeat_msg()
 
-                    for name in self.requested_names:
+                    for name in self.requested_data:
 
                         # each name is like "detname:drp_class_name:attrN"
                         namesplit = name.split(':')
@@ -396,7 +399,7 @@ class RandomSource(SimSource):
             if self.check_heartbeat_boundary(timestamp):
                 yield self.heartbeat_msg()
             for name, config in self.config.items():
-                if name in self.requested_names:
+                if name in self.requested_data:
                     if config['dtype'] == 'Scalar':
                         value = config['range'][0] + (config['range'][1] - config['range'][0]) * np.random.rand(1)[0]
                         if config.get('integer', False):
@@ -427,7 +430,7 @@ class StaticSource(SimSource):
             if self.check_heartbeat_boundary(timestamp):
                 yield self.heartbeat_msg()
             for name, config in self.config.items():
-                if name in self.requested_names:
+                if name in self.requested_data:
                     if config['dtype'] == 'Scalar':
                         event[name] = 1
                     elif config['dtype'] == 'Waveform' or config['dtype'] == 'Image':
