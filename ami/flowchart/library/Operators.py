@@ -1,4 +1,4 @@
-from ami.flowchart.library.common import CtrlNode
+from ami.flowchart.library.common import CtrlNode, MAX
 from ami.flowchart.Node import Node
 from amitypes import Array, Array1d, Array2d
 import ami.graph_nodes as gn
@@ -84,9 +84,9 @@ class Binning(CtrlNode):
     """
 
     nodeName = "Binning"
-    uiTemplate = [('bins', 'intSpin', {'value': 10, 'min': 1, 'max': 2147483647}),
-                  ('range min', 'intSpin', {'value': 1, 'min': 1, 'max': 2147483647}),
-                  ('range max', 'intSpin', {'value': 100, 'min': 2, 'max': 2147483647})]
+    uiTemplate = [('bins', 'intSpin', {'value': 10, 'min': 1, 'max': MAX}),
+                  ('range min', 'intSpin', {'value': 1, 'min': 1, 'max': MAX}),
+                  ('range max', 'intSpin', {'value': 100, 'min': 2, 'max': MAX})]
 
     def __init__(self, name):
         super(Binning, self).__init__(name, terminals={

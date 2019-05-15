@@ -1,10 +1,9 @@
 from typing import Dict
 from ami.flowchart.library.DisplayWidgets import ScalarWidget, ScatterWidget, WaveformWidget, AreaDetWidget, LineWidget
 from ami.flowchart.library.DisplayWidgets import HistogramWidget
-from ami.flowchart.library.common import CtrlNode
+from ami.flowchart.library.common import CtrlNode, MAX
 from amitypes import Array1d, Array2d, HSDWaveforms
 import ami.graph_nodes as gn
-import asyncio
 
 
 class ScalarViewer(CtrlNode):
@@ -84,7 +83,7 @@ class ScatterPlot(CtrlNode):
     """
 
     nodeName = "ScatterPlot"
-    uiTemplate = [("Num Points", 'intSpin', {'value': 100, 'min': 1, 'max': 2147483647})]
+    uiTemplate = [("Num Points", 'intSpin', {'value': 100, 'min': 1, 'max': MAX})]
 
     def __init__(self, name):
         super(ScatterPlot, self).__init__(name, terminals={"X": {"io": "in", "ttype": float},
@@ -107,25 +106,25 @@ class ScatterPlot(CtrlNode):
         return node
 
 
-class LinePlot(CtrlNode):
+class ScalarPlot(CtrlNode):
 
     """
-    Line Plot collects scalars and plots them.
+    Scalar Plot collects scalars and plots them.
     """
 
-    nodeName = "LinePlot"
-    uiTemplate = [("Num Points", 'intSpin', {'value': 100, 'min': 1, 'max': 2147483647})]
+    nodeName = "ScalarPlot"
+    uiTemplate = [("Num Points", 'intSpin', {'value': 100, 'min': 1, 'max': MAX})]
 
     def __init__(self, name):
-        super(LinePlot, self).__init__(name, terminals={"Y": {"io": "in", "ttype": float}},
-                                       allowAddInput=True,
-                                       buffered=True)
+        super(ScalarPlot, self).__init__(name, terminals={"Y": {"io": "in", "ttype": float}},
+                                         allowAddInput=True,
+                                         buffered=True)
 
     def addInput(self, **args):
         self.addTerminal(name="Y", io='in', ttype=float, **args)
 
     def display(self, topics, addr, win, **kwargs):
-        return super(LinePlot, self).display(topics, addr, win, WaveformWidget, **kwargs)
+        return super(ScalarPlot, self).display(topics, addr, win, WaveformWidget, **kwargs)
 
     def to_operation(self, inputs, conditions={}):
         outputs = [self.name()]
@@ -135,6 +134,29 @@ class LinePlot(CtrlNode):
         return node
 
 
+class LinePlot(CtrlNode):
+
+    """
+    Line Plot plots arrays.
+    """
+
+    nodeName = "LinePlot"
+    uiTemplate = []
+
+    def __init__(self, name):
+        super(LinePlot, self).__init__(name, terminals={"X": {"io": "in", "ttype": Array1d},
+                                                        "Y": {"io": "in", "ttype": Array1d}},
+                                       allowAddInput=True,
+                                       buffered=True)
+
+    def display(self, topics, addr, win, **kwargs):
+        return super(LinePlot, self).display(topics, addr, win, LineWidget, **kwargs)
+
+    def addInput(self, **args):
+        self.addTerminal(name="X", io='in', ttype=Array1d, **args)
+        self.addTerminal(name="Y", io='in', ttype=Array1d, **args)
+
+
 class HSDViewer(CtrlNode):
 
     """
@@ -142,16 +164,23 @@ class HSDViewer(CtrlNode):
     """
 
     nodeName = "HSDViewer"
-    uiTemplate = [("Key", 'intSpin', {'value': 0, 'min': 0, 'max': 4})]
+    uiTemplate = [("Channel", 'combo', {'values': ["0", "1", "2", "3", "4"], 'index': 0})]
 
     def __init__(self, name):
         super(HSDViewer, self).__init__(name, terminals={"In": {"io": "in", "ttype": HSDWaveforms}},
-                                        viewable=True)
+                                        buffered=True)
 
     def display(self, topics, addr, win, **kwargs):
-        if self.widget is None:
-            self.widget = LineWidget(topics, addr, win, terms={'l': ('times', self.Key)})
-        if self.task is None:
-            self.task = asyncio.ensure_future(self.widget.update())
+        return super(HSDViewer, self).display(topics, addr, win, LineWidget, **kwargs)
 
-        return self.widget
+    def to_operation(self, inputs, conditions={}):
+        map_outputs = [self.name()+"_map"]
+        outputs = [self.name()]
+        k = int(self.Channel)
+
+        node = [gn.Map(name=self.name()+"_operation",
+                       condition_needs=list(conditions.values()), inputs=list(inputs.values()), outputs=map_outputs,
+                       func=lambda d: {'x': d['times'], 'y': d[k]} if k in d else {}),
+                gn.PickN(name=self.name()+"_picked",
+                         inputs=map_outputs, outputs=outputs)]
+        return node

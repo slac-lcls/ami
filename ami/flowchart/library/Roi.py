@@ -1,5 +1,5 @@
 from ami.flowchart.library.DisplayWidgets import AreaDetWidget, WaveformWidget
-from ami.flowchart.library.common import CtrlNode
+from ami.flowchart.library.common import CtrlNode, MAX
 from amitypes import Array2d, Array1d
 import pyqtgraph as pg
 import ami.graph_nodes as gn
@@ -13,10 +13,10 @@ class Roi(CtrlNode):
     """
 
     nodeName = "Roi"
-    uiTemplate = [('origin x',  'intSpin', {'value': 0, 'min': 0, 'max': 2147483647}),
-                  ('extent x',  'intSpin', {'value': 10, 'min': 1, 'max': 2147483647}),
-                  ('origin y',  'intSpin', {'value': 0, 'min': 0, 'max': 2147483647}),
-                  ('extent y',  'intSpin', {'value': 10, 'min': 1, 'max': 2147483647})]
+    uiTemplate = [('origin x',  'intSpin', {'value': 0, 'min': 0, 'max': MAX}),
+                  ('extent x',  'intSpin', {'value': 10, 'min': 1, 'max': MAX}),
+                  ('origin y',  'intSpin', {'value': 0, 'min': 0, 'max': MAX}),
+                  ('extent y',  'intSpin', {'value': 10, 'min': 1, 'max': MAX})]
     desc = "Region of Interest"
 
     def __init__(self, name):
@@ -91,8 +91,8 @@ class Roi1D(CtrlNode):
     """
 
     nodeName = "Roi1D"
-    uiTemplate = [('origin',  'intSpin', {'value': 0, 'min': 0, 'max': 2147483647}),
-                  ('extent',  'intSpin', {'value': 10, 'min': 1, 'max': 2147483647})]
+    uiTemplate = [('origin',  'intSpin', {'value': 0, 'min': 0, 'max': MAX}),
+                  ('extent',  'intSpin', {'value': 10, 'min': 1, 'max': MAX})]
     desc = "Region of Interest"
 
     def __init__(self, name):

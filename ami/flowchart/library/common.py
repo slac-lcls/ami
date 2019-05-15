@@ -7,6 +7,9 @@ from ami.flowchart.Node import Node
 import asyncio
 
 
+MAX = 2147483647
+
+
 def generateUi(opts):
     """Convenience function for generating common UI types"""
     if len(opts) == 0:
@@ -112,6 +115,8 @@ class CtrlNode(Node):
             if 'value' in o:
                 k = k.replace(" ", "_")
                 setattr(self, k, o['value'])
+            elif 'index' in o:
+                setattr(self, k, o['values'][o['index']])
 
     def ctrlWidget(self):
         return self.ui

@@ -1,0 +1,2 @@
+[run]
+omit = ami/forkedpdb.py,ami/client/legacy.py

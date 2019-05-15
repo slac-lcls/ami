@@ -1,7 +1,7 @@
 from PyQt5 import QtCore
 from ami.flowchart.library.Operators import Projection, Binning
 from ami.flowchart.library.Accumulators import PickN
-from ami.flowchart.library.Display import ScatterPlot, LinePlot
+from ami.flowchart.library.Display import ScatterPlot, ScalarPlot
 import ami.graph_nodes as gn
 import numpy as np
 
@@ -114,9 +114,9 @@ def test_scatterplot(qtbot):
     assert node.terminals["Y.1"].isRemovable()
 
 
-def test_lineplot(qtbot):
+def test_scalarplot(qtbot):
 
-    node = LinePlot('line')
+    node = ScalarPlot('scalar')
     widget = node.ctrlWidget()
     # widget.show()
     qtbot.addWidget(widget)

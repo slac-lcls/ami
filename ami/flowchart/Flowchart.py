@@ -260,6 +260,7 @@ class Flowchart(Node):
                         print(self._nodes[n2].terminals)
                         printExc("Error connecting terminals %s.%s - %s.%s:" % (n1, t1, n2, t2))
 
+                type_file.flush()
                 status = subprocess.run(["mypy", "--follow-imports", "silent", type_file.name],
                                         capture_output=True, text=True)
                 if status.returncode != 0:

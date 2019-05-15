@@ -116,7 +116,7 @@
           "Out": {
             "io": "out",
             "removable": false,
-            "ttype": "'ami.nptype.Array2d'"
+            "ttype": "'amitypes.Array2d'"
           }
         }
       }
@@ -150,7 +150,7 @@
           "In": {
             "io": "in",
             "removable": false,
-            "ttype": "ami.nptype.Array2d"
+            "ttype": "amitypes.Array2d"
           }
         }
       }
@@ -173,12 +173,12 @@
           "In": {
             "io": "in",
             "removable": false,
-            "ttype": "ami.nptype.Array2d"
+            "ttype": "amitypes.Array2d"
           },
           "Out": {
             "io": "out",
             "removable": false,
-            "ttype": "ami.nptype.Array2d"
+            "ttype": "amitypes.Array2d"
           }
         }
       }
@@ -259,7 +259,7 @@
           "In": {
             "io": "in",
             "removable": false,
-            "ttype": "Union[ami.nptype.Array2d,ami.nptype.Array1d,List[float]]"
+            "ttype": "Union[amitypes.Array2d,amitypes.Array1d,List[float]]"
           },
           "Out": {
             "io": "out",

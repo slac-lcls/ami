@@ -121,6 +121,13 @@ class Terminal(object):
             if term.node() is self.node():
                 raise Exception("Can't connect to terminal on same node.")
 
+            if self.isInput() and term.isInput():
+                raise Exception("Can't connect input to input.")
+            elif self.isOutput() and term.isOutput():
+                raise Exception("Can't connect output to output.")
+            elif self.isCondition() and term.isCondition():
+                raise Exception("Can't connect condition to condition.")
+
             types = {}
             for t in [self, term]:
                 if t.isInput() or t.isCondition():

@@ -194,14 +194,20 @@ class LineWidget(pg.GraphicsLayoutWidget):
 
     def line_updated(self, data):
         i = 0
-        data = data['xpphsd:hsd:waveforms']  # TODO Fix this
-        for l, x_y in self.terms.items():
-            x, y = x_y
-            name = " vs ".join([x, str(y)])
-            if (x, y) not in self.plot:
+
+        for term, name in self.terms.items():
+            x = []
+            y = []
+
+            if 'x' in data[name]:
+                x = data[name]['x']
+
+            if 'y' in data[name]:
+                y = data[name]['y']
+
+            if name not in self.plot:
                 symbol, color = symbols_colors[i]
                 i += 1
-                self.plot[(x, y)] = self.plot_view.plot(x=data[x], y=data[y],
-                                                        name=name, symbol=symbol, symbolBrush=color)
+                self.plot[name] = self.plot_view.plot(x=x, y=y, name=name, symbol=symbol, symbolBrush=color)
             else:
-                self.plot[(x, y)].setData(x=data[x], y=data[y])
+                self.plot[name].setData(x=y, y=y)
