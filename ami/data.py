@@ -11,7 +11,7 @@ except ImportError:
     psana = None
 import numpy as np
 from enum import Enum
-from amitypes import Array1d, Array2d
+from amitypes import Array1d, Array2d, HSDTypes
 
 
 logger = logging.getLogger(__name__)
@@ -94,8 +94,10 @@ class Source(abc.ABC):
         self.interval = src_cfg.get('interval', 0)
         self.init_time = src_cfg.get('init_time', 0)
         self.config = src_cfg.get('config', {})
+        self.special_names = {}
         self.requested_names = set()
         self.requested_data = set()
+        self.requested_special = {}
         self.flags = flags or {}
         self._base_types = {
             'timestamp': int,
@@ -253,7 +255,16 @@ class Source(abc.ABC):
             names (list): names of the data being requested
         """
         self.requested_names = set(names)
-        self.requested_data = self.requested_names.difference(self._base_names)
+        self.requested_data = set()
+        self.requested_special = {}
+        for name in self.requested_names:
+            if name in self.special_names:
+                sub_name, info = self.special_names[name]
+                if sub_name not in self.requested_special:
+                    self.requested_special[sub_name] = {}
+                self.requested_special[sub_name][name] = info
+            elif name not in self._base_names:
+                self.requested_data.add(name)
 
     @abc.abstractmethod
     def events(self):
@@ -282,6 +293,7 @@ class PsanaSource(Source):
         detinfo = run.detinfo
         self.xtcdata_names = []
         self.xtcdata_types = {}
+        self.special_names = {}
         for (detname, det_xface_name), det_attr_list in detinfo.items():
             for attr in det_attr_list:
                 attr_name = self.delimiter.join((detname, det_xface_name, attr))
@@ -294,15 +306,20 @@ class PsanaSource(Source):
                         attr_type = attr_sig.return_annotation
                 except ValueError:
                     attr_type = typing.Any
-                #if hasattr(attr_type, '__annotations__'):
-                #    for sub_attr_name, sub_attr_type in attr_type.__annotations__.items():
-                #        sub_attr_name = self.delimiter.join((attr_name, sub_attr_name))
-                #        self.xtcdata_names.append(sub_attr_name)
-                #        self.xtcdata_types[sub_attr_name] = sub_attr_type
-                #else:
-                self.xtcdata_names.append(attr_name)
-                self.xtcdata_types[attr_name] = attr_type
-        return
+                if attr_type in HSDTypes:
+                    for sub_attr_key, sub_attr_type in attr_type.__annotations__.items():
+                        sub_attr_name = self.delimiter.join((attr_name, sub_attr_key))
+                        # for the HSD cast the channel ids to ints
+                        try:
+                            args = (int(sub_attr_key), )
+                        except ValueError:
+                            args = (sub_attr_key, )
+                        self.xtcdata_names.append(sub_attr_name)
+                        self.xtcdata_types[sub_attr_name] = sub_attr_type
+                        self.special_names[sub_attr_name] = (attr_name, (attr_type.get, args, {}))
+                else:
+                    self.xtcdata_names.append(attr_name)
+                    self.xtcdata_types[attr_name] = attr_type
 
     def _names(self):
         return set(self.xtcdata_names)
@@ -344,6 +361,27 @@ class PsanaSource(Source):
                         for token in namesplit[1:]:
                             obj = getattr(obj, token)
                         event[name] = obj(evt)
+
+                    for name, sub_names in self.requested_special.items():
+                        namesplit = name.split(':')
+                        detname = namesplit[0]
+
+                        # if this is the first time we request a detector,
+                        # make & cache the psana Detector object
+                        if detname not in self.detectors:
+                            self.detectors[detname] = run.Detector(detname)
+
+                        # loop to the bottom level of the Det obj and get data
+                        obj = self.detectors[detname]
+                        for token in namesplit[1:]:
+                            obj = getattr(obj, token)
+                        data = obj(evt)
+                        # access the requested methods of the object returned by the det interface
+                        for sub_name, (meth, args, kwargs) in sub_names.items():
+                            if data is None:
+                                event[sub_name] = None
+                            else:
+                                event[sub_name] = meth(data, *args, **kwargs)
 
                     yield from self.event(timestamp, event)
                     timestamp += 1
