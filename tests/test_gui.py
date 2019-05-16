@@ -20,17 +20,22 @@ class BrokerHelper:
         asyncio.set_event_loop(self.loop)
         self.broker = MessageBroker("", "", ipcdir=ipcdir)
         self.comm = comm
-        self.loop.run_until_complete(self.run())
-        self.loop.close()
+        self.task = asyncio.ensure_future(self.broker.run())
 
-    async def run(self):
-        await asyncio.gather(self.broker.run(),
-                             self.loop.run_in_executor(None, self.communicate))
+        self.loop.run_until_complete(self.loop.run_in_executor(None, self.communicate))
+
+        # if the message brokers task is still running cancel it
+        if not self.task.done():
+            self.task.cancel()
+        self.comm.send('exit')
 
     def communicate(self):
         while True:
-            name = self.comm.recv()
-            self.comm.send(getattr(self.broker, name))
+            request = self.comm.recv()
+            if request is None:
+                break
+            else:
+                self.comm.send(getattr(self.broker, request))
 
     @staticmethod
     def execute(ipcdir, comm):
@@ -40,6 +45,10 @@ class BrokerHelper:
 class BrokerProxy:
     def __init__(self, comm):
         self.comm = comm
+
+    def exit(self):
+        self.comm.send(None)
+        return self.comm.recv() == 'exit'
 
     def __getattr__(self, name):
         self.comm.send(name)
@@ -64,11 +73,16 @@ def broker(ipc_dir):
     )
     proc.start()
 
-    yield BrokerProxy(parent_comm)
+    broker = BrokerProxy(parent_comm)
+    yield broker
 
     # cleanup the manager process
-    proc.terminate()
-    proc.join(1)
+    broker.exit()
+    proc.join(2)
+    # if ami still hasn't exitted then kill it
+    if proc.is_alive():
+        proc.terminate()
+        proc.join(1)
     return proc.exitcode
 
 
