@@ -47,7 +47,7 @@ def test_psana_source(xtcwriter):
     psana_source = psana_src_cls(idnum, num_workers, heartbeat_period, src_cfg)
     evtgen = psana_source.events()
     next(evtgen)  # first event is the config
-    psana_source.requested_names = psana_source.xtcdata_names
+    psana_source.request(['xppcspad:raw:raw'])
     evt = next(evtgen)
     assert evt.payload['xppcspad:raw:raw'].shape == (2, 3, 6)
 
