@@ -68,6 +68,7 @@ class NodeLibrary:
 
         for root, children in self.nodeTree.items():
             items = {}
+
             for name, child in children.items():
                 doc = child.__doc__
                 assert doc, f"Node {name} has no documentation!"
@@ -75,7 +76,6 @@ class NodeLibrary:
                 doc = re.sub(r'(\t+)|(  )+', '', doc)
                 items[name] = doc
 
-            items = list(items.items())
             self.labelTree[root] = items
 
         return self.labelTree
@@ -133,13 +133,32 @@ class SourceLibrary:
     def getSourceTree(self):
         return self.sourceTree
 
+    def _getLabelTree(self, children, items):
+        for root, child in sorted(children.items()):
+            if root not in items:
+                items[root] = {}
+
+            if type(child) == OrderedDict:
+                self._getLabelTree(child, items[root])
+            else:
+                items[child] = str(self.getSourceType(child))
+
+        return items
+
     def getLabelTree(self):
         if self.labelTree:
             return self.labelTree
 
-        for root, children in self.sourceTree.items():
-            items = {name: str(self.getSourceType(child)) for name, child in children.items()}
-            items = list(items.items())
+        for root, children in sorted(self.sourceTree.items()):
+            if root not in self.labelTree:
+                self.labelTree[root] = {}
+
+            items = self.labelTree[root]
+            if root not in children:
+                items = self._getLabelTree(children, items)
+            else:
+                items = str(self.getSourceType(root))
+
             self.labelTree[root] = items
 
         return self.labelTree

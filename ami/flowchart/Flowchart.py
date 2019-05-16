@@ -41,13 +41,13 @@ class Flowchart(Node):
         self.source_library = source_library
 
         self.ctx = zmq.asyncio.Context()
-        self.broker = self.ctx.socket(zmq.PUB)
+        self.broker = self.ctx.socket(zmq.PUB)  # used to create new node processes
         self.broker.connect(broker_addr)
 
-        self.node = self.ctx.socket(zmq.PULL)
+        self.node = self.ctx.socket(zmq.PULL)  # used to receive to_operation() from processes
         self.node.bind(node_addr)
 
-        self.checkpoint = self.ctx.socket(zmq.SUB)
+        self.checkpoint = self.ctx.socket(zmq.SUB)  # used to receive ctrlnode updates from processes
         self.checkpoint.setsockopt_string(zmq.SUBSCRIBE, '')
         self.checkpoint.connect(checkpoint_addr)
 

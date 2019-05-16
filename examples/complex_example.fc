@@ -1,16 +1,10 @@
 {
   "connects": [
     [
-      "cspad",
+      "laser",
       "Out",
-      "ImageViewer.0",
-      "In"
-    ],
-    [
-      "Roi.0",
-      "Out",
-      "Sum.0",
-      "In"
+      "FilterOff.0",
+      "Condition"
     ],
     [
       "FilterOn.0",
@@ -19,6 +13,12 @@
       "Condition"
     ],
     [
+      "Sum.0",
+      "Out",
+      "BinByVar.0",
+      "Values"
+    ],
+    [
       "delta_t",
       "Out",
       "BinByVar.0",
@@ -29,6 +29,24 @@
       "Out",
       "BinByVar.1",
       "Bins"
+    ],
+    [
+      "cspad",
+      "Out",
+      "ImageViewer.0",
+      "In"
+    ],
+    [
+      "FilterOff.0",
+      "Out",
+      "BinByVar.0",
+      "Condition"
+    ],
+    [
+      "Sum.0",
+      "Out",
+      "ScatterPlot.0",
+      "Y"
     ],
     [
       "BinByVar.1",
@@ -37,9 +55,21 @@
       "In.1"
     ],
     [
-      "cspad",
+      "laser",
       "Out",
+      "FilterOn.0",
+      "Condition"
+    ],
+    [
+      "laser",
+      "Out",
+      "ScalarPlot.0",
+      "Y"
+    ],
+    [
       "Roi.0",
+      "Out",
+      "Sum.0",
       "In"
     ],
     [
@@ -47,24 +77,6 @@
       "Out",
       "BinByVar.1",
       "Values"
-    ],
-    [
-      "laser",
-      "Out",
-      "FilterOff.0",
-      "Condition"
-    ],
-    [
-      "Sum.0",
-      "Out",
-      "BinByVar.0",
-      "Values"
-    ],
-    [
-      "Sum.0",
-      "Out",
-      "ScatterPlot.0",
-      "Y"
     ],
     [
       "Sum.0",
@@ -79,28 +91,16 @@
       "X"
     ],
     [
+      "cspad",
+      "Out",
+      "Roi.0",
+      "In"
+    ],
+    [
       "BinByVar.0",
       "Out",
       "Histogram.0",
       "In"
-    ],
-    [
-      "laser",
-      "Out",
-      "FilterOn.0",
-      "Condition"
-    ],
-    [
-      "laser",
-      "Out",
-      "LinePlot.0",
-      "Y"
-    ],
-    [
-      "FilterOff.0",
-      "Out",
-      "BinByVar.0",
-      "Condition"
     ]
   ],
   "nodes": [
@@ -223,26 +223,6 @@
             "io": "out",
             "removable": false,
             "ttype": "bool"
-          }
-        }
-      }
-    },
-    {
-      "class": "LinePlot",
-      "name": "LinePlot.0",
-      "state": {
-        "ctrl": {
-          "Num Points": 100
-        },
-        "pos": [
-          300.0,
-          600.0
-        ],
-        "terminals": {
-          "Y": {
-            "io": "in",
-            "removable": false,
-            "ttype": "float"
           }
         }
       }
@@ -410,6 +390,26 @@
             "io": "in",
             "removable": true,
             "ttype": "'Dict[float,float]'"
+          }
+        }
+      }
+    },
+    {
+      "class": "ScalarPlot",
+      "name": "ScalarPlot.0",
+      "state": {
+        "ctrl": {
+          "Num Points": 100
+        },
+        "pos": [
+          300.0,
+          600.0
+        ],
+        "terminals": {
+          "Y": {
+            "io": "in",
+            "removable": false,
+            "ttype": "float"
           }
         }
       }

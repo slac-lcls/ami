@@ -124,7 +124,6 @@ class ScatterWidget(pg.GraphicsLayoutWidget):
                 self.scatter_updated(self.fetcher.reply)
 
     def scatter_updated(self, data):
-
         num_terms = int(len(self.terms)/2)
         for i in range(0, num_terms):
             x = "X"
@@ -180,7 +179,7 @@ class LineWidget(pg.GraphicsLayoutWidget):
 
     def __init__(self, topics, addr, parent=None, **kwargs):
         super(LineWidget, self).__init__(parent)
-        self.fetcher = AsyncFetcher(topics, addr, buffered=True)
+        self.fetcher = AsyncFetcher(topics, addr)
         self.plot_view = self.addPlot()
         self.plot_view.addLegend()
         self.plot = {}
@@ -193,17 +192,18 @@ class LineWidget(pg.GraphicsLayoutWidget):
                 self.line_updated(self.fetcher.reply)
 
     def line_updated(self, data):
-        i = 0
-
-        for term, name in self.terms.items():
-            x = []
-            y = []
-
-            if 'x' in data[name]:
-                x = data[name]['x']
-
-            if 'y' in data[name]:
-                y = data[name]['y']
+        num_terms = int(len(self.terms)/2)
+        for i in range(0, num_terms):
+            x = "X"
+            y = "Y"
+            if i > 0:
+                x += ".%d" % i
+                y += ".%d" % i
+            x = self.terms[x]
+            y = self.terms[y]
+            name = " vs ".join((x, y))
+            x = data[x]
+            y = data[y]
 
             if name not in self.plot:
                 symbol, color = symbols_colors[i]

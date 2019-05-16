@@ -43,8 +43,10 @@ def run_editor_window(broker_addr, graphmgr_addr, node_addr, checkpoint_addr):
     source_library = SourceLibrary()
 
     for source, node_type in sources.items():
-        root, *_ = source.split(':')
-        source_library.addNodeType(source, node_type, [[root]])
+        pth = source.split(':')
+        if len(pth) > 2:
+            pth = pth[:-1]
+        source_library.addNodeType(source, node_type, [pth])
 
     # Create flowchart, define input/output terminals
     fc = Flowchart(broker_addr=broker_addr,

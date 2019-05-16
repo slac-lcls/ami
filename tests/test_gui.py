@@ -143,11 +143,11 @@ def test_source_library(complex_graph_file, start_ami):
                                                           ('timestamp', OrderedDict([('timestamp', 'timestamp')])),
                                                           ('heartbeat', OrderedDict([('heartbeat', 'heartbeat')]))])
 
-    labelTree = OrderedDict([('delta_t', [('delta_t', "<class 'int'>")]),
-                             ('cspad', [('cspad', "<class 'amitypes.Array2d'>")]),
-                             ('laser', [('laser', "<class 'int'>")]),
-                             ('timestamp', [('timestamp', "<class 'int'>")]),
-                             ('heartbeat', [('heartbeat', "<class 'int'>")])])
+    labelTree = OrderedDict([('cspad', "<class 'amitypes.Array2d'>"),
+                             ('delta_t', "<class 'int'>"),
+                             ('heartbeat', "<class 'int'>"),
+                             ('laser', "<class 'int'>"),
+                             ('timestamp', "<class 'int'>")])
 
     assert source_library.getLabelTree() == labelTree
     assert source_library.getLabelTree() == labelTree

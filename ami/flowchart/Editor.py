@@ -118,14 +118,16 @@ class Ui_Toolbar(object):
 
     def populate_tree(self, children, parent):
         for child in sorted(children):
-            if type(child) is tuple:
-                node = QtGui.QStandardItem(child[0])
-                node.setToolTip(child[1])
+            if type(children[child]) is str:
+                node = QtGui.QStandardItem(child)
+                node.setToolTip(children[child])
+                recurse = False
             else:
+                recurse = True
                 node = QtGui.QStandardItem(child)
             parent.appendRow(node)
 
-            if isinstance(children, dict):
+            if recurse:
                 self.populate_tree(children[child], node)
 
     def create_model(self, tree, data):
