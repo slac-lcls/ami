@@ -804,7 +804,7 @@ async def test_comm_graph_info_async(exporter, pvacomm_async):
                                    injector.cache['store'][graph_name]['version']]
 
     # check the graph version
-    assert await  comm.graphVersion == injector.cache['graph'][graph_name]['version']
+    assert await comm.graphVersion == injector.cache['graph'][graph_name]['version']
 
     # check the feature store version
     assert await comm.featuresVersion == injector.cache['store'][graph_name]['version']

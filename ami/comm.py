@@ -1416,9 +1416,9 @@ class CommHandler(abc.ABC):
             try:
                 return self._load(filename)
             except OSError:
-                    logger.exception("Problem opening saved graph configuration file:")
+                logger.exception("Problem opening saved graph configuration file:")
             except dill.UnpicklingError:
-                    logger.exception("Problem parsing saved graph configuration file (%s):", filename)
+                logger.exception("Problem parsing saved graph configuration file (%s):", filename)
 
     @abc.abstractmethod
     def _command(self, cmd):
