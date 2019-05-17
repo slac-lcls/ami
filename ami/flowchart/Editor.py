@@ -103,7 +103,7 @@ class Ui_Toolbar(object):
 
         self.node_model = build_model()
         self.node_search = QtGui.QLineEdit()
-        self.node_search.setPlaceholderText('Search Nodes...')
+        self.node_search.setPlaceholderText('Search Operations...')
         self.node_tree = build_tree(self.node_model)
 
         self.gridLayout.addWidget(self.toolBar, 0, 0, 1, -1)
