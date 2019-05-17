@@ -10,12 +10,12 @@ import threading
 import numpy as np
 import multiprocessing as mp
 
-from PyQt5.QtWidgets import QWidget, QHBoxLayout, QFileDialog, \
-                            QApplication, QMainWindow, QPushButton, \
-                            QLabel, QListWidgetItem, QLineEdit, \
-                            QVBoxLayout, QListWidget, QLCDNumber, \
-                            QGroupBox, QTabWidget, QPlainTextEdit
-from PyQt5.QtCore import pyqtSlot, pyqtSignal, QTimer, QRect, QThread
+from qtpy.QtWidgets import QWidget, QHBoxLayout, QFileDialog, \
+                           QApplication, QMainWindow, QPushButton, \
+                           QLabel, QListWidgetItem, QLineEdit, \
+                           QVBoxLayout, QListWidget, QLCDNumber, \
+                           QGroupBox, QTabWidget, QPlainTextEdit
+from qtpy.QtCore import Slot, Signal, QTimer, QRect, QThread
 
 import pyqtgraph as pg
 
@@ -108,7 +108,7 @@ class HistogramWidget(pg.GraphicsLayoutWidget):
 
 class AreaDetWidget(pg.ImageView):
 
-    roiUpdate = pyqtSignal(object, name='roiUpdate')
+    roiUpdate = Signal(object, name='roiUpdate')
 
     def __init__(self, name, topic, addr, parent=None):
         super(AreaDetWidget, self).__init__(parent)
@@ -132,7 +132,7 @@ class AreaDetWidget(pg.ImageView):
     def image_updated(self, data):
         self.setImage(data)
 
-    @pyqtSlot(object)
+    @Slot(object)
     def roi_updated(self, roi):
         shape, vector, origin = roi.getAffineSliceParams(self.image, self.getImageItem())
 
@@ -210,7 +210,7 @@ class ScanPlot(TabPlot):
 
 class Env(QWidget):
 
-    makePlot = pyqtSignal(int, object, object, name='makePlot')
+    makePlot = Signal(int, object, object, name='makePlot')
 
     def __init__(self, comm, plot_spawner, parent=None):
         super(__class__, self).__init__(parent)
@@ -251,7 +251,7 @@ class Env(QWidget):
         for i in range(self.tabs.count()):
             self.makePlot.connect(self.tabs.widget(i).request_plot)
 
-    @pyqtSlot()
+    @Slot()
     def on_click(self):
         src = self.srcBox.text()
         post = self.postBox.text()
@@ -262,7 +262,7 @@ class Env(QWidget):
 
 class Calculator(QWidget):
 
-    calcUpdated = pyqtSignal(str, object, object, name='calcUpdated')
+    calcUpdated = Signal(str, object, object, name='calcUpdated')
 
     def __init__(self, comm, parent=None):
         super(__class__, self).__init__(parent)
@@ -315,7 +315,7 @@ class Calculator(QWidget):
                     imports.append((imp, imp))
         return imports
 
-    @pyqtSlot()
+    @Slot()
     def on_click(self):
         name = self.nameBox.text()
         inputs = self.parse_inputs()
@@ -458,7 +458,7 @@ class QtSignalLogHandler(logging.StreamHandler):
 
 class AmiInfo(QThread):
 
-    sig = pyqtSignal(str, str)
+    sig = Signal(str, str)
 
     def __init__(self, addr, slot, parent=None):
         super(__class__, self).__init__(parent)
@@ -472,9 +472,9 @@ class AmiInfo(QThread):
 
 class AmiGui(QWidget):
 
-    loadFile = pyqtSignal(str, name='loadFile')
-    saveFile = pyqtSignal(str, name='saveFile')
-    statusUpdate = pyqtSignal(str, name='statusUpdate')
+    loadFile = Signal(str, name='loadFile')
+    saveFile = Signal(str, name='saveFile')
+    statusUpdate = Signal(str, name='statusUpdate')
 
     def __init__(self, queue, graph_addr, info_addr, ami_save, parent=None):
         super(__class__, self).__init__(parent)
@@ -529,13 +529,13 @@ class AmiGui(QWidget):
         self.info_thread = AmiInfo(info_addr, self.log_message)
         self.info_thread.start()
 
-    @pyqtSlot(str, str)
+    @Slot(str, str)
     def log_message(self, topic, msg):
         # see if the topic name is a log level then use that otherwise use info
         log_func = getattr(logger, topic, 'info')
         log_func(msg)
 
-    @pyqtSlot()
+    @Slot()
     def load(self):
         load_file = QFileDialog.getOpenFileName(
             self, "Open file", "", "AMI Autosave files (*.ami);;All Files (*)")
@@ -543,7 +543,7 @@ class AmiGui(QWidget):
             logger.info("Loading graph configuration from file (%s)", load_file[0])
             self.loadFile.emit(load_file[0])
 
-    @pyqtSlot()
+    @Slot()
     def save(self):
         save_file = QFileDialog.getSaveFileName(
             self, "Save file", "autosave.ami", "AMI Autosave files (*.ami);;All Files (*)")
