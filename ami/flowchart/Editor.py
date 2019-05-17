@@ -1,4 +1,5 @@
 from PyQt5 import QtGui, QtWidgets, QtCore
+from pyqtgraph import dockarea
 
 
 class SearchProxyModel(QtCore.QSortFilterProxyModel):
@@ -106,10 +107,16 @@ class Ui_Toolbar(object):
         self.node_tree = build_tree(self.node_model)
 
         self.gridLayout.addWidget(self.toolBar, 0, 0, 1, -1)
-        self.gridLayout.addWidget(self.source_search, 1, 0, 1, 1)
-        self.gridLayout.addWidget(self.source_tree, 2, 0, 1, 1)
-        self.gridLayout.addWidget(self.node_search, 3, 0, 1, 1)
-        self.gridLayout.addWidget(self.node_tree, 4, 0, 1, 1)
+
+        self.node_dock = dockarea.Dock('nodes', size=(400, 1000))
+        self.node_dock.hideTitleBar()
+        self.node_dock.setOrientation('vertical')
+        self.node_dock.addWidget(self.source_search, 1, 0, 1, 1)
+        self.node_dock.addWidget(self.source_tree, 2, 0, 1, 1)
+        self.node_dock.addWidget(self.node_search, 3, 0, 1, 1)
+        self.node_dock.addWidget(self.node_tree, 4, 0, 1, 1)
+        chart.addDock(self.node_dock, 'left')
+
         self.gridLayout.addWidget(chart, 1, 1, -1, -1)
         self.gridLayout.setColumnStretch(1, 10)
 
