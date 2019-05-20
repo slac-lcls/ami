@@ -1,7 +1,7 @@
 # ref: http://stackoverflow.com/questions/4716533/how-to-attach-debugger-to-a-python-subproccess
 import sys
 import pdb
-import PyQt5
+from qtpy import QtCore
 
 
 class ForkedPdb(pdb.Pdb):
@@ -12,11 +12,11 @@ class ForkedPdb(pdb.Pdb):
         _stdin = sys.stdin
         try:
             sys.stdin = open('/dev/stdin')
-            PyQt5.QtCore.pyqtRemoveInputHook()
+            QtCore.pyqtRemoveInputHook()
             pdb.Pdb.interaction(self, *args, **kwargs)
         finally:
             sys.stdin = _stdin
-            PyQt5.QtCore.pyqtRestoreInputHook()
+            QtCore.pyqtRestoreInputHook()
 
 # Use it the same way you might use the classic Pdb:
 # ForkedPdb().set_trace()

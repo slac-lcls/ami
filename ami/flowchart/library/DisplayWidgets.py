@@ -3,8 +3,8 @@ import asyncio
 import itertools as it
 import numpy as np
 import pyqtgraph as pg
-from PyQt5.QtWidgets import QLCDNumber
-from PyQt5.QtCore import QRect
+from qtpy.QtWidgets import QLCDNumber
+from qtpy.QtCore import QRect
 from ami import LogConfig
 from ami.comm import AsyncGraphCommHandler
 

@@ -1,4 +1,4 @@
-from PyQt5 import QtCore
+from qtpy import QtCore
 from ami.flowchart.library.Operators import Projection, Binning
 from ami.flowchart.library.Accumulators import PickN
 from ami.flowchart.library.Display import ScatterPlot, ScalarPlot
