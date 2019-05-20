@@ -31,6 +31,14 @@ To load a graph, add this flag to ami-local:
 To use psana a working release need to be added to the python path
 
 # Status/To-do
+20 MAY 19:
+- status messages from worker
+- tags in load/save
+TODO for beta:
+- Multiple runs/changing sources
+- gui regression test
+- load/save bug
+- add/remove terminals to views
 
 13 MAY 19:
 - Multiple runs/changing sources

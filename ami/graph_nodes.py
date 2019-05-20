@@ -1,7 +1,7 @@
 import abc
 import operator
 import numpy as np
-from networkfox import operation, If, Else
+from networkfox import operation, If
 
 
 class Transformation(abc.ABC):
@@ -113,13 +113,14 @@ class FilterOff(Filter):
             condition_needs (list): List of condition needs
             outputs (list): List of outputs
         """
+        self.condition = kwargs.get('condition', lambda cond: not cond)
         super(FilterOff, self).__init__(**kwargs)
 
     def to_operation(self):
         """
         Return NetworkFoX Else node.
         """
-        return Else
+        return If
 
 
 class StatefulTransformation(Transformation):
