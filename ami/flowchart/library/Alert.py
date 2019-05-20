@@ -1,4 +1,4 @@
-from PyQt5 import QtWidgets
+from qtpy import QtWidgets
 from ami.flowchart.library.common import CtrlNode, MAX
 from ami.flowchart.library.DisplayWidgets import AsyncFetcher
 import ami.graph_nodes as gn
