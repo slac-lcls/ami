@@ -2,6 +2,7 @@ import sys
 import glob
 import logging
 import IPython
+import tempfile
 import argparse
 
 from traitlets.config.loader import Config
@@ -96,7 +97,7 @@ def main():
     logging.basicConfig(format=LogConfig.BasicFormat, level=log_level, handlers=log_handlers)
 
     if args.ipc:
-        ipc_list = glob.glob('/tmp/*/comm')
+        ipc_list = glob.glob(tempfile.gettempdir() + '/*/comm')
         if ipc_list:
             if len(ipc_list) == 1:
                 addr = "ipc://%s" % ipc_list[0]
@@ -118,7 +119,7 @@ def main():
             logger.critical("No manager ipc file descriptors found!")
             return 1
     elif args.ipc_dir is not None:
-        addr = "ipc://%s/comm" % args.ipc_addr
+        addr = "ipc://%s/comm" % args.ipc_dir
     else:
         addr = "tcp://%s:%d" % (args.host, args.port)
 

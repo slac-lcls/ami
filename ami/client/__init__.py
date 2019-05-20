@@ -3,6 +3,7 @@ import sys
 import glob
 import logging
 import argparse
+import tempfile
 import collections
 from ami import LogConfig, Defaults
 from ami.comm import Ports
@@ -105,8 +106,8 @@ def main():
     logging.basicConfig(format=LogConfig.Format, level=log_level, handlers=log_handlers)
 
     if args.ipc:
-        ipc_comm_set = {os.path.dirname(ipc) for ipc in glob.glob('/tmp/*/comm')}
-        ipc_info_set = {os.path.dirname(ipc) for ipc in glob.glob('/tmp/*/info')}
+        ipc_comm_set = {os.path.dirname(ipc) for ipc in glob.glob(tempfile.gettempdir() + '/*/comm')}
+        ipc_info_set = {os.path.dirname(ipc) for ipc in glob.glob(tempfile.gettempdir() + '/*/info')}
         ipc_list = list(ipc_comm_set.intersection(ipc_info_set))
         if ipc_list and ipc_list:
             if len(ipc_list) == 1:
@@ -131,8 +132,8 @@ def main():
             logger.critical("No manager ipc file descriptors found!")
             return 1
     elif args.ipc_dir is not None:
-        comm_addr = "ipc://%s/comm" % args.ipc_addr
-        info_addr = "ipc://%s/info" % args.ipc_addr
+        comm_addr = "ipc://%s/comm" % args.ipc_dir
+        info_addr = "ipc://%s/info" % args.ipc_dir
     else:
         comm, info = args.port
         comm_addr = "tcp://%s:%d" % (args.host, comm)
