@@ -156,6 +156,24 @@ def manager_ctrl(manager_proc):
         ctx.destroy()
 
 
+@pytest.fixture(scope='function')
+def manager_info(request, manager_proc):
+    ctx = zmq.Context()
+    name = "graph"
+    try:
+        with ctx.socket(zmq.SUB) as info, ResultsInjector(manager_proc, ctx, 0, name) as inject:
+            info.setsockopt_string(zmq.SUBSCRIBE, request.param)
+            info.connect(manager_proc['info'])
+
+            # wait for the graph subscription to finish setting up
+            inject.graph_comm.recv()
+
+            yield info, inject
+    finally:
+        # clean up the shared zmq Context
+        ctx.destroy()
+
+
 @pytest.mark.parametrize('partition', [{'cspad': np.ndarray, 'delta_t': float}, {'laser': True}, {}])
 def test_manager_partition(manager_ctrl, partition):
     comm, injector = manager_ctrl
@@ -169,6 +187,29 @@ def test_manager_partition(manager_ctrl, partition):
     # check that we have the correct partition data from the manager
     assert comm.sources == partition
     assert comm.names == set(partition)
+
+
+@pytest.mark.parametrize('manager_info, partition',
+                         [
+                            ('sources', {'cspad': np.ndarray, 'delta_t': float})
+                         ],
+                         indirect=['manager_info'])
+def test_manager_partition_updates(manager_info, partition):
+    info, injector = manager_info
+
+    # inject a partition change into the manager
+    injector.partition(partition, wait=True)
+
+    # receive the data from the info socket
+    topic = info.recv_string()
+    node = info.recv_string()
+    payload = info.recv_pyobj()
+    # check that the topic of the message is as expected
+    assert topic == 'sources'
+    # check that the message came from the manager
+    assert node == 'manager'
+    # check that the expected partition/source info was attached
+    assert payload == partition
 
 
 @pytest.mark.parametrize('names',
