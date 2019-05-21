@@ -31,9 +31,6 @@ class Terminal(object):
         self._removable = removable
         self._connections = {}
 
-        if type(ttype) is str:
-            ttype = eval(ttype)
-
         self._type = ttype
         self._graphicsItem = TerminalGraphicsItem(self, parent=self._node().graphicsItem())
 
@@ -216,17 +213,11 @@ class Terminal(object):
             item.scene().removeItem(item)
 
     def saveState(self):
-        def f():
-            pass
-        f.__annotations__ = {'return': self._type}
-        f = str(inspect.signature(f))
-        f = f.replace('~', '')
-        f = f.split(" ")
 
         return {
             'io': self._io,
             'removable': self._removable,
-            'ttype': "".join(f[2:])
+            'ttype': self._type
         }
 
 

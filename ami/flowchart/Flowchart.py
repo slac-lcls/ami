@@ -10,6 +10,7 @@ from ami.flowchart.Terminal import Terminal
 from ami.flowchart.library import LIBRARY
 from ami.flowchart.library.common import CtrlNode
 from ami.flowchart.Node import Node, find_nearest
+from ami.flowchart.TypeEncoder import TypeEncoder
 from ami.comm import AsyncGraphCommHandler
 from ami.graphkit_wrapper import Graph
 from ami.client import flowchart_messages as fcMsgs
@@ -329,7 +330,7 @@ class Flowchart(Node):
         state = self.saveState()
 
         with open(fileName, 'w') as f:
-            json.dump(state, f, indent=2, separators=(',', ': '), sort_keys=True)
+            json.dump(state, f, indent=2, separators=(',', ': '), sort_keys=True, cls=TypeEncoder)
             f.write('\n')
 
         self.sigFileSaved.emit(fileName)

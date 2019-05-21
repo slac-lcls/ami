@@ -1,4 +1,314 @@
-pos: (0.0, 0.0)
-terminals:
-nodes: [{'class': 'Node', 'name': 'xppcspad:raw:image', 'state': {'pos': (-0.1812039312039312, 0.3525798525798526), 'terminals': OrderedDict([('Out', {'io': 'out', 'removable': False})])}}, {'class': 'Node', 'name': 'EBeam:raw:energy', 'state': {'pos': (176.70130307841293, 275.83989932699086), 'terminals': OrderedDict([('Out', {'io': 'out', 'removable': False})])}}, {'class': 'Node', 'name': 'xpplaser:raw:laserOn', 'state': {'pos': (-8.307537556233058, 265.44614423515713), 'terminals': OrderedDict([('Out', {'io': 'out', 'removable': False})])}}, {'class': 'Roi', 'name': 'Roi.0', 'state': {'pos': (176.7013030784129, 0.0589308903278436), 'terminals': OrderedDict([('In', {'io': 'in', 'removable': False}), ('Out', {'io': 'out', 'removable': False})]), 'ctrl': {'origin x': 0, 'origin y': 0, 'extent x': 0, 'extent y': 0}}}, {'class': 'Sum', 'name': 'Sum.0', 'state': {'pos': (355.47389065795846, 1.4447649025723877), 'terminals': OrderedDict([('In', {'io': 'in', 'removable': False}), ('Out', {'io': 'out', 'removable': False})])}}, {'class': 'FilterOn', 'name': 'FilterOn.0', 'state': {'pos': (176.00838607229062, 148.34317020049372), 'terminals': OrderedDict([('Condition', {'io': 'condition', 'removable': False}), ('Out', {'io': 'out', 'removable': False})])}}, {'class': 'FilterOff', 'name': 'FilterOff.0', 'state': {'pos': (175.31546906616825, 416.50205156981195), 'terminals': OrderedDict([('Condition', {'io': 'condition', 'removable': False}), ('Out', {'io': 'out', 'removable': False})])}}, {'class': 'BinByVar', 'name': 'BinByVar.0', 'state': {'pos': (526.3335442082459, 123.39815798009175), 'terminals': OrderedDict([('Values', {'io': 'in', 'removable': False}), ('Bins', {'io': 'in', 'removable': False}), ('Out', {'io': 'out', 'removable': False}), ('Condition', {'io': 'condition', 'removable': True})])}}, {'class': 'BinByVar', 'name': 'BinByVar.1', 'state': {'pos': (539.3618345826776, 395.0965809789888), 'terminals': OrderedDict([('Values', {'io': 'in', 'removable': False}), ('Bins', {'io': 'in', 'removable': False}), ('Out', {'io': 'out', 'removable': False}), ('Condition', {'io': 'condition', 'removable': True})])}}, {'class': 'Histogram', 'name': 'Histogram.0', 'state': {'pos': (718.1288950028461, 257.63027544237286), 'terminals': OrderedDict([('In', {'io': 'in', 'removable': False}), ('In.1', {'io': 'in', 'removable': True})])}}]
-connects: [('xpplaser:raw:laserOn', 'Out', 'FilterOn.0', 'Condition'), ('BinByVar.0', 'Out', 'Histogram.0', 'In'), ('EBeam:raw:energy', 'Out', 'BinByVar.0', 'Bins'), ('Roi.0', 'Out', 'Sum.0', 'In'), ('FilterOn.0', 'Out', 'BinByVar.0', 'Condition'), ('FilterOff.0', 'Out', 'BinByVar.1', 'Condition'), ('BinByVar.1', 'Out', 'Histogram.0', 'In.1'), ('EBeam:raw:energy', 'Out', 'BinByVar.1', 'Bins'), ('Sum.0', 'Out', 'BinByVar.0', 'Values'), ('Sum.0', 'Out', 'BinByVar.1', 'Values'), ('xppcspad:raw:image', 'Out', 'Roi.0', 'In'), ('xpplaser:raw:laserOn', 'Out', 'FilterOff.0', 'Condition')]
+{
+  "connects": [
+    [
+      "Roi.0",
+      "Out",
+      "Sum.0",
+      "In"
+    ],
+    [
+      "BinByVar.1",
+      "Out",
+      "Histogram.0",
+      "In.1"
+    ],
+    [
+      "Sum.0",
+      "Out",
+      "BinByVar.1",
+      "Values"
+    ],
+    [
+      "FilterOn.0",
+      "Out",
+      "BinByVar.0",
+      "Condition"
+    ],
+    [
+      "EBeam:raw:energy",
+      "Out",
+      "BinByVar.0",
+      "Bins"
+    ],
+    [
+      "EBeam:raw:energy",
+      "Out",
+      "BinByVar.1",
+      "Bins"
+    ],
+    [
+      "BinByVar.0",
+      "Out",
+      "Histogram.0",
+      "In"
+    ],
+    [
+      "xpplaser:raw:laserOn",
+      "Out",
+      "FilterOn.0",
+      "Condition"
+    ],
+    [
+      "Sum.0",
+      "Out",
+      "BinByVar.0",
+      "Values"
+    ],
+    [
+      "xppcspad:raw:image",
+      "Out",
+      "Roi.0",
+      "In"
+    ],
+    [
+      "xpplaser:raw:laserOn",
+      "Out",
+      "FilterOff.0",
+      "Condition"
+    ],
+    [
+      "FilterOff.0",
+      "Out",
+      "BinByVar.1",
+      "Condition"
+    ]
+  ],
+  "nodes": [
+    {
+      "class": "Node",
+      "name": "xppcspad:raw:image",
+      "state": {
+        "pos": [
+          100.0,
+          100.0
+        ],
+        "terminals": {
+          "Out": {
+            "io": "out",
+            "removable": false,
+            "ttype": "amitypes.Array2d"
+          }
+        }
+      }
+    },
+    {
+      "class": "Roi",
+      "name": "Roi.0",
+      "state": {
+        "ctrl": {
+          "extent x": 10,
+          "extent y": 10,
+          "origin x": 0,
+          "origin y": 0
+        },
+        "pos": [
+          300.0,
+          100.0
+        ],
+        "terminals": {
+          "In": {
+            "io": "in",
+            "removable": false,
+            "ttype": "amitypes.Array2d"
+          },
+          "Out": {
+            "io": "out",
+            "removable": false,
+            "ttype": "amitypes.Array2d"
+          }
+        }
+      }
+    },
+    {
+      "class": "Sum",
+      "name": "Sum.0",
+      "state": {
+        "pos": [
+          500.0,
+          100.0
+        ],
+        "terminals": {
+          "In": {
+            "io": "in",
+            "removable": false,
+            "ttype": "Union[amitypes.Array2d,amitypes.Array1d,List[float]]"
+          },
+          "Out": {
+            "io": "out",
+            "removable": false,
+            "ttype": "float"
+          }
+        }
+      }
+    },
+    {
+      "class": "Node",
+      "name": "xpplaser:raw:laserOn",
+      "state": {
+        "pos": [
+          100.0,
+          400.0
+        ],
+        "terminals": {
+          "Out": {
+            "io": "out",
+            "removable": false,
+            "ttype": "int"
+          }
+        }
+      }
+    },
+    {
+      "class": "FilterOn",
+      "name": "FilterOn.0",
+      "state": {
+        "pos": [
+          300.0,
+          300.0
+        ],
+        "terminals": {
+          "Condition": {
+            "io": "condition",
+            "removable": false,
+            "ttype": "Any"
+          },
+          "Out": {
+            "io": "out",
+            "removable": false,
+            "ttype": "bool"
+          }
+        }
+      }
+    },
+    {
+      "class": "FilterOff",
+      "name": "FilterOff.0",
+      "state": {
+        "pos": [
+          300.0,
+          500.0
+        ],
+        "terminals": {
+          "Condition": {
+            "io": "condition",
+            "removable": false,
+            "ttype": "Any"
+          },
+          "Out": {
+            "io": "out",
+            "removable": false,
+            "ttype": "bool"
+          }
+        }
+      }
+    },
+    {
+      "class": "Node",
+      "name": "EBeam:raw:energy",
+      "state": {
+        "pos": [
+          500.0,
+          400.0
+        ],
+        "terminals": {
+          "Out": {
+            "io": "out",
+            "removable": false,
+            "ttype": "float"
+          }
+        }
+      }
+    },
+    {
+      "class": "BinByVar",
+      "name": "BinByVar.0",
+      "state": {
+        "pos": [
+          700.0,
+          300.0
+        ],
+        "terminals": {
+          "Bins": {
+            "io": "in",
+            "removable": false,
+            "ttype": "float"
+          },
+          "Condition": {
+            "io": "condition",
+            "removable": true,
+            "ttype": "Any"
+          },
+          "Out": {
+            "io": "out",
+            "removable": false,
+            "ttype": "Dict[float,float]"
+          },
+          "Values": {
+            "io": "in",
+            "removable": false,
+            "ttype": "float"
+          }
+        }
+      }
+    },
+    {
+      "class": "BinByVar",
+      "name": "BinByVar.1",
+      "state": {
+        "pos": [
+          700.0,
+          500.0
+        ],
+        "terminals": {
+          "Bins": {
+            "io": "in",
+            "removable": false,
+            "ttype": "float"
+          },
+          "Condition": {
+            "io": "condition",
+            "removable": true,
+            "ttype": "Any"
+          },
+          "Out": {
+            "io": "out",
+            "removable": false,
+            "ttype": "Dict[float,float]"
+          },
+          "Values": {
+            "io": "in",
+            "removable": false,
+            "ttype": "float"
+          }
+        }
+      }
+    },
+    {
+      "class": "Histogram",
+      "name": "Histogram.0",
+      "state": {
+        "pos": [
+          900.0,
+          400.0
+        ],
+        "terminals": {
+          "In": {
+            "io": "in",
+            "removable": false,
+            "ttype": "Dict[float,float]"
+          },
+          "In.1": {
+            "io": "in",
+            "removable": true,
+            "ttype": "Dict[float,float]"
+          }
+        }
+      }
+    }
+  ],
+  "pos": [
+    0.0,
+    0.0
+  ],
+  "terminals": {}
+}
