@@ -105,6 +105,8 @@ class Manager(Collector):
                 self.export_heartbeat(msg.name)
         elif (msg.mtype == MsgTypes.Transition) and (msg.payload.ttype == Transitions.Configure):
             self.partition = msg.payload.payload
+            # publish the updated partition over the info socket
+            self.publish_sources()
             # export the partition info to epics
             self.export_config()
 
@@ -346,6 +348,11 @@ class Manager(Collector):
         except Exception:
             logger.exception("Failed to send graph (%s v%d) -", name, self.versions[name])
             self.comm.send_string('error')
+
+    def publish_sources(self):
+        self.info_comm.send_string("sources", zmq.SNDMORE)
+        self.info_comm.send_string("manager", zmq.SNDMORE)
+        self.info_comm.send_pyobj(self.partition)
 
     def graph_request(self):
         request = self.graph_comm.recv_string()
