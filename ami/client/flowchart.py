@@ -152,6 +152,13 @@ class NodeProcess(QtCore.QObject):
         self.conditions = msg.conditions
 
     def display(self, msg):
+        if self.show and msg.redisplay:
+            self.widget.terms = self.inputs
+            self.widget.fetcher.update_topics(msg.topics)
+            return
+        elif not self.show and msg.redisplay:
+            return
+
         if self.widget is None:
             self.widget = self.node.display(msg.topics, self.graphmgr_addr, self.win, terms=self.inputs)
 

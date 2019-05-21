@@ -28,6 +28,13 @@ class AsyncFetcher(object):
         self.buffered = buffered
         self.reply = {}
 
+    def update_topics(self, topics={}):
+        self.names = list(topics.keys())
+        if self.buffered:
+            self.topics = list(topics.values())[0]
+        else:
+            self.topics = list(topics.values())
+
     async def fetch(self):
         await asyncio.sleep(1)
         reply = await self.comm_handler.fetch(self.topics)

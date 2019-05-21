@@ -268,16 +268,17 @@ class Flowchart(Node):
                     lines = status.stdout.split('\n')[:-1]
                     for line in lines:
                         m = re.search(r"\"+(\w+)\"+", line)
-                        m = m.group().replace('"', '')
-                        for i in connections:
-                            if i[0] == m:
-                                term1, term2 = connections[i]
-                                term1.disconnectFrom(term2)
-                                break
-                            elif i[1] == m:
-                                term1, term2 = connections[i]
-                                term1.disconnectFrom(term2)
-                                break
+                        if m:
+                            m = m.group().replace('"', '')
+                            for i in connections:
+                                if i[0] == m:
+                                    term1, term2 = connections[i]
+                                    term1.disconnectFrom(term2)
+                                    break
+                                elif i[1] == m:
+                                    term1, term2 = connections[i]
+                                    term1.disconnectFrom(term2)
+                                    break
 
         finally:
             self.blockSignals(False)
@@ -396,15 +397,18 @@ class FlowchartCtrlWidget(QtGui.QWidget):
     async def applyClicked(self):
         graph_nodes = []
         disconnectedNodes = []
+        displays = []
 
         for name, gnode in self.chart.nodes().items():
-
             if not gnode.isConnected():
                 disconnectedNodes.append(gnode)
                 continue
             elif gnode.exception:
                 gnode.clearException()
                 gnode.recolor()
+
+            if gnode.buffered() or gnode.viewable():
+                displays.append(gnode)
 
             if not hasattr(gnode, 'to_operation'):
                 continue
@@ -434,18 +438,50 @@ class FlowchartCtrlWidget(QtGui.QWidget):
 
         await self.graphCommHandler.update(graph)
 
-        if not self.features:
-            return
-
         # reinsert pick ones if they are still in the graph
         features = {}
+        for node in displays:
+            if node.buffered():
+                topics = []
+
+                for term, in_var in node.input_vars().items():
+                    topics.append((in_var, node.name()))
+
+                await self.chart.broker.send_string(node.name(), zmq.SNDMORE)
+                await self.chart.broker.send_pyobj(fcMsgs.DisplayNode(node.name(), dict(topics), redisplay=True))
+
+            elif node.viewable():
+
+                topics = []
+                views = []
+
+                if len(node.inputs()) != len(node.input_vars()):
+                    return
+
+                for term, in_var in node.input_vars().items():
+
+                    if in_var in features:
+                        topic = features[in_var]
+                    else:
+                        topic = self.graphCommHandler.auto(in_var)
+
+                    request_view = False
+
+                    if in_var not in features:
+                        features[in_var] = topic
+                        request_view = True
+
+                    if request_view:
+                        views.append(in_var)
+
+                    topics.append((in_var, topic))
+
+                if views:
+                    await self.graphCommHandler.view(views)
+                await self.chart.broker.send_string(node.name(), zmq.SNDMORE)
+                await self.chart.broker.send_pyobj(fcMsgs.DisplayNode(node.name(), dict(topics), redisplay=True))
 
         async with self.features_lock:
-            for name, node in self.chart.nodes().items():
-                for term, in_var in node.input_vars().items():
-                    if in_var in self.features:
-                        features[in_var] = self.features[in_var]
-                        await self.graphCommHandler.view(in_var)
             self.features = features
 
     def reloadClicked(self):

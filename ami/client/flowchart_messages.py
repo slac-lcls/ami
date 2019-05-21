@@ -30,6 +30,9 @@ class CreateNode(BrokerMsg):
         super(CreateNode, self).__init__(name)
         self.node_type = node_type
 
+    def __repr__(self):
+        return f"CreateNode(name={self.name}, node_type={self.node_type})"
+
 
 class CloseNode(NodeMsg):
 
@@ -39,9 +42,13 @@ class CloseNode(NodeMsg):
 
 class DisplayNode(NodeMsg):
 
-    def __init__(self, name, topics):
+    def __init__(self, name, topics, redisplay=False):
         super(DisplayNode, self).__init__(name)
         self.topics = topics
+        self.redisplay = redisplay
+
+    def __repr__(self):
+        return f"DisplayNode(name={self.name}, topics={self.topics}, redisplay={self.redisplay})"
 
 
 class UpdateNodeAttributes(NodeMsg):
@@ -50,6 +57,9 @@ class UpdateNodeAttributes(NodeMsg):
         super(UpdateNodeAttributes, self).__init__(node_name)
         self.inputs = inputs
         self.conditions = conditions
+
+    def __repr__(self):
+        return f"UpdateNodeAttributes(name={self.name}, inputs={self.inputs}, conditions={self.conditions})"
 
 
 class NodeCheckpoint(NodeMsg):

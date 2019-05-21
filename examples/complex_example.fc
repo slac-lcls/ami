@@ -1,9 +1,39 @@
 {
   "connects": [
     [
+      "delta_t",
+      "Out",
+      "BinByVar.0",
+      "Bins"
+    ],
+    [
+      "cspad",
+      "Out",
+      "Roi.0",
+      "In"
+    ],
+    [
       "laser",
       "Out",
       "FilterOff.0",
+      "Condition"
+    ],
+    [
+      "Sum.0",
+      "Out",
+      "BinByVar.1",
+      "Values"
+    ],
+    [
+      "delta_t",
+      "Out",
+      "BinByVar.1",
+      "Bins"
+    ],
+    [
+      "FilterOff.0",
+      "Out",
+      "BinByVar.0",
       "Condition"
     ],
     [
@@ -13,52 +43,16 @@
       "Condition"
     ],
     [
-      "Sum.0",
-      "Out",
       "BinByVar.0",
-      "Values"
-    ],
-    [
-      "delta_t",
       "Out",
-      "BinByVar.0",
-      "Bins"
-    ],
-    [
-      "delta_t",
-      "Out",
-      "BinByVar.1",
-      "Bins"
-    ],
-    [
-      "cspad",
-      "Out",
-      "ImageViewer.0",
+      "Histogram.0",
       "In"
-    ],
-    [
-      "FilterOff.0",
-      "Out",
-      "BinByVar.0",
-      "Condition"
-    ],
-    [
-      "Sum.0",
-      "Out",
-      "ScatterPlot.0",
-      "Y"
     ],
     [
       "BinByVar.1",
       "Out",
       "Histogram.0",
       "In.1"
-    ],
-    [
-      "laser",
-      "Out",
-      "FilterOn.0",
-      "Condition"
     ],
     [
       "laser",
@@ -75,14 +69,20 @@
     [
       "Sum.0",
       "Out",
-      "BinByVar.1",
-      "Values"
+      "ScatterPlot.0",
+      "Y"
     ],
     [
       "Sum.0",
       "Out",
       "ScalarViewer.0",
       "In"
+    ],
+    [
+      "Sum.0",
+      "Out",
+      "BinByVar.0",
+      "Values"
     ],
     [
       "delta_t",
@@ -93,14 +93,14 @@
     [
       "cspad",
       "Out",
-      "Roi.0",
+      "ImageViewer.0",
       "In"
     ],
     [
-      "BinByVar.0",
+      "laser",
       "Out",
-      "Histogram.0",
-      "In"
+      "FilterOn.0",
+      "Condition"
     ]
   ],
   "nodes": [
@@ -116,7 +116,7 @@
           "Out": {
             "io": "out",
             "removable": false,
-            "ttype": "'amitypes.Array2d'"
+            "ttype": "amitypes.Array2d"
           }
         }
       }
@@ -133,7 +133,7 @@
           "Out": {
             "io": "out",
             "removable": false,
-            "ttype": "'int'"
+            "ttype": "int"
           }
         }
       }
@@ -228,6 +228,26 @@
       }
     },
     {
+      "class": "ScalarPlot",
+      "name": "ScalarPlot.0",
+      "state": {
+        "ctrl": {
+          "Num Points": 100
+        },
+        "pos": [
+          300.0,
+          600.0
+        ],
+        "terminals": {
+          "Y": {
+            "io": "in",
+            "removable": false,
+            "ttype": "float"
+          }
+        }
+      }
+    },
+    {
       "class": "Sum",
       "name": "Sum.0",
       "state": {
@@ -261,7 +281,7 @@
           "Out": {
             "io": "out",
             "removable": false,
-            "ttype": "'int'"
+            "ttype": "int"
           }
         }
       }
@@ -300,7 +320,7 @@
           "Condition": {
             "io": "condition",
             "removable": true,
-            "ttype": "'Any'"
+            "ttype": "Any"
           },
           "Out": {
             "io": "out",
@@ -332,7 +352,7 @@
           "Condition": {
             "io": "condition",
             "removable": true,
-            "ttype": "'Any'"
+            "ttype": "Any"
           },
           "Out": {
             "io": "out",
@@ -389,27 +409,7 @@
           "In.1": {
             "io": "in",
             "removable": true,
-            "ttype": "'Dict[float,float]'"
-          }
-        }
-      }
-    },
-    {
-      "class": "ScalarPlot",
-      "name": "ScalarPlot.0",
-      "state": {
-        "ctrl": {
-          "Num Points": 100
-        },
-        "pos": [
-          300.0,
-          600.0
-        ],
-        "terminals": {
-          "Y": {
-            "io": "in",
-            "removable": false,
-            "ttype": "float"
+            "ttype": "Dict[float,float]"
           }
         }
       }
