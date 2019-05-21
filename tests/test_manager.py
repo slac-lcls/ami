@@ -1,6 +1,7 @@
 import pytest
 import zmq
 import time
+import dill
 import numpy as np
 import multiprocessing as mp
 import ami.graph_nodes as gn
@@ -203,7 +204,7 @@ def test_manager_partition_updates(manager_info, partition):
     # receive the data from the info socket
     topic = info.recv_string()
     node = info.recv_string()
-    payload = info.recv_pyobj()
+    payload = dill.loads(info.recv())
     # check that the topic of the message is as expected
     assert topic == 'sources'
     # check that the message came from the manager

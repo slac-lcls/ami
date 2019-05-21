@@ -106,7 +106,7 @@ class Manager(Collector):
         elif (msg.mtype == MsgTypes.Transition) and (msg.payload.ttype == Transitions.Configure):
             self.partition = msg.payload.payload
             # publish the updated partition over the info socket
-            self.publish_sources()
+            self.publish_message("sources", "manager", dill.dumps(self.partition))
             # export the partition info to epics
             self.export_config()
 
@@ -349,10 +349,10 @@ class Manager(Collector):
             logger.exception("Failed to send graph (%s v%d) -", name, self.versions[name])
             self.comm.send_string('error')
 
-    def publish_sources(self):
-        self.info_comm.send_string("sources", zmq.SNDMORE)
-        self.info_comm.send_string("manager", zmq.SNDMORE)
-        self.info_comm.send_pyobj(self.partition)
+    def publish_message(self, topic, node, payload):
+        self.info_comm.send_string(topic, zmq.SNDMORE)
+        self.info_comm.send_string(node, zmq.SNDMORE)
+        self.info_comm.send(payload)
 
     def graph_request(self):
         request = self.graph_comm.recv_string()
@@ -371,9 +371,7 @@ class Manager(Collector):
         node = self.node_msg_comm.recv_string()
         payload = self.node_msg_comm.recv()
 
-        self.info_comm.send_string(topic, zmq.SNDMORE)
-        self.info_comm.send_string(node, zmq.SNDMORE)
-        self.info_comm.send(payload)
+        self.publish_message(topic, node, payload)
 
     def export_graph(self, name):
         if self.export is not None:
