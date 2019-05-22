@@ -91,19 +91,52 @@ class Source(abc.ABC):
         self.heartbeat_period = heartbeat_period
         self.heartbeat = None
         self.old_heartbeat = None
-        self.interval = src_cfg.get('interval', 0)
-        self.init_time = src_cfg.get('init_time', 0)
-        self.config = src_cfg.get('config', {})
         self.special_names = {}
         self.requested_names = set()
         self.requested_data = set()
         self.requested_special = {}
+        self.config = src_cfg
         self.flags = flags or {}
         self._base_types = {
             'timestamp': int,
             'heartbeat': int,
         }
         self._base_names = set(self._base_types)
+        self._flag_types = {
+            'interval': float,
+            'init_time': float,
+            'bound': int,
+        }
+        # Apply flags to the config dictionary
+        for flag, value in self.flags.items():
+            # if there is type info for a flag cast before adding it
+            if flag in self._flag_types:
+                self.config[flag] = self._flag_types[flag](value)
+            else:
+                self.config[flag] = value
+
+    @property
+    def interval(self):
+        """
+        Getter for the interval value set in the source configuration. This is
+        used as interval to wait (in seconds) before fetching the next event.
+
+        Returns:
+            The interval value set in the source configuration.
+        """
+        return self.config.get('interval', 0)
+
+    @property
+    def init_time(self):
+        """
+        Getter for the init_time value set in the source configuration. This is
+        used as to tell the source how long to wait (in seconds) before sending
+        event data after coming online.
+
+        Returns:
+            The init_time value set in the source configuration.
+        """
+        return self.config.get('init_time', 0)
 
     def check_heartbeat_boundary(self, timestamp):
         """
@@ -282,10 +315,7 @@ class PsanaSource(Source):
         self.xtcdata_names = []
         self.xtcdata_types = {}
         if psana is not None:
-            if 'filename' in self.flags:
-                self.ds = psana.DataSource(self.flags['filename'])
-            else:
-                self.ds = psana.DataSource(src_cfg['filename'])
+            self.ds = psana.DataSource(self.config['filename'])
         else:
             raise NotImplementedError("psana is not available!")
 
@@ -393,10 +423,10 @@ class SimSource(Source):
         super(__class__, self).__init__(idnum, num_workers, heartbeat_period, src_cfg, flags)
         self.count = 0
         self.synced = False
-        if 'sync' in self.flags:
+        if 'sync' in self.config:
             self.ctx = zmq.Context()
             self.ts_src = self.ctx.socket(zmq.REQ)
-            self.ts_src.connect(self.flags['sync'])
+            self.ts_src.connect(self.config['sync'])
             self.synced = True
 
     def _map_dtype(self, config):
@@ -413,10 +443,14 @@ class SimSource(Source):
             return None
 
     def _names(self):
-        return set(self.config.keys())
+        return set(self.simulated.keys())
 
     def _types(self):
-        return {name: self._map_dtype(config) for name, config in self.config.items()}
+        return {name: self._map_dtype(config) for name, config in self.simulated.items()}
+
+    @property
+    def simulated(self):
+        return self.config.get('config', {})
 
     @property
     def timestamp(self):
@@ -442,7 +476,7 @@ class RandomSource(SimSource):
             timestamp = self.timestamp
             if self.check_heartbeat_boundary(timestamp):
                 yield self.heartbeat_msg()
-            for name, config in self.config.items():
+            for name, config in self.simulated.items():
                 if name in self.requested_data:
                     if config['dtype'] == 'Scalar':
                         value = config['range'][0] + (config['range'][1] - config['range'][0]) * np.random.rand(1)[0]
@@ -461,7 +495,7 @@ class RandomSource(SimSource):
 class StaticSource(SimSource):
     def __init__(self, idnum, num_workers, heartbeat_period, src_cfg, flags=None):
         super(__class__, self).__init__(idnum, num_workers, heartbeat_period, src_cfg, flags)
-        self.bound = src_cfg.get('bound', np.inf)
+        self.bound = self.config.get('bound', np.inf)
 
     def events(self):
         count = 0
@@ -473,7 +507,7 @@ class StaticSource(SimSource):
             timestamp = self.timestamp
             if self.check_heartbeat_boundary(timestamp):
                 yield self.heartbeat_msg()
-            for name, config in self.config.items():
+            for name, config in self.simulated.items():
                 if name in self.requested_data:
                     if config['dtype'] == 'Scalar':
                         event[name] = 1
