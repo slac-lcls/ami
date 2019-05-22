@@ -198,6 +198,17 @@ def test_manager_partition(manager_ctrl, partition):
 def test_manager_partition_updates(manager_info, partition):
     info, injector = manager_info
 
+    # receive the data from the info socket (sent on sub connect)
+    topic = info.recv_string()
+    node = info.recv_string()
+    payload = dill.loads(info.recv())
+    # check that the topic of the message is as expected
+    assert topic == 'sources'
+    # check that the message came from the manager
+    assert node == 'manager'
+    # check that the expected partition/source info was empty
+    assert not payload
+
     # inject a partition change into the manager
     injector.partition(partition, wait=True)
 

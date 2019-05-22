@@ -61,11 +61,13 @@ class Manager(Collector):
         self.graph_comm.setsockopt(zmq.XPUB_VERBOSE, True)
         self.graph_comm.bind(graph_addr)
         self.register(self.graph_comm, self.graph_request)
-        self.info_comm = self.ctx.socket(zmq.PUB)
+        self.info_comm = self.ctx.socket(zmq.XPUB)
+        self.info_comm.setsockopt(zmq.XPUB_VERBOSE, True)
         self.info_comm.bind(info_addr)
         self.node_msg_comm = self.ctx.socket(zmq.PULL)
         self.node_msg_comm.bind(msg_addr)
         self.register(self.node_msg_comm, self.node_request)
+        self.register(self.info_comm, self.info_request)
 
     def __enter__(self):
         return self
@@ -372,6 +374,12 @@ class Manager(Collector):
         payload = self.node_msg_comm.recv()
 
         self.publish_message(topic, node, payload)
+
+    def info_request(self):
+        request = self.info_comm.recv_string()
+
+        if request == "\x01sources":
+            self.publish_message("sources", "manager", dill.dumps(self.partition))
 
     def export_graph(self, name):
         if self.export is not None:
