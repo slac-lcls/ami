@@ -106,9 +106,12 @@ class Manager(Collector):
                 # export the heartbeat to epics
                 self.export_heartbeat(msg.name)
         elif (msg.mtype == MsgTypes.Transition) and (msg.payload.ttype == Transitions.Configure):
+            changed = (msg.payload.payload != self.partition)
             self.partition = msg.payload.payload
-            # publish the updated partition over the info socket
-            self.publish_message("sources", "manager", dill.dumps(self.partition))
+            # if the partition has changed then publish a message about this
+            if changed:
+                # publish the updated partition over the info socket
+                self.publish_message("sources", "manager", dill.dumps(self.partition))
             # export the partition info to epics
             self.export_config()
 
