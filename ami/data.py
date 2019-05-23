@@ -247,6 +247,7 @@ class Source(abc.ABC):
             An object of type `Message` which includes a list of
             names of the currently available detectors/data.
         """
+        self.request(self.requested_names)
         return Message(MsgTypes.Transition,
                        self.idnum,
                        Transition(Transitions.Configure, self.types))
@@ -297,7 +298,10 @@ class Source(abc.ABC):
                     self.requested_special[sub_name] = {}
                 self.requested_special[sub_name][name] = info
             elif name not in self._base_names:
-                self.requested_data.add(name)
+                if name in self.names:
+                    self.requested_data.add(name)
+                else:
+                    logger.debug("DataSrc: requested source \'%s\' is not available", name)
 
     @abc.abstractmethod
     def events(self):
@@ -376,7 +380,6 @@ class PsanaSource(Source):
                         yield self.heartbeat_msg()
 
                     for name in self.requested_data:
-
                         # each name is like "detname:drp_class_name:attrN"
                         namesplit = name.split(':')
                         detname = namesplit[0]

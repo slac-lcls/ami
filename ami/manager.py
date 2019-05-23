@@ -41,7 +41,7 @@ class Manager(Collector):
         self.heartbeats = {}
         self.partition = {}
         self.feature_stores = {}
-        self.feature_req = re.compile("(?P<type>fetch):(?P<name>.*)")
+        self.feature_req = re.compile(r"(?P<type>fetch):(?P<name>.*)")
         self.graphs = {}
         self.versions = {}
         self.purged = set()
@@ -381,7 +381,7 @@ class Manager(Collector):
     def info_request(self):
         request = self.info_comm.recv_string()
 
-        if request == "\x01":
+        if request == "\x01" or request == "\x01sources":
             self.publish_message("sources", "manager", dill.dumps(self.partition))
 
     def export_graph(self, name):

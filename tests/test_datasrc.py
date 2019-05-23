@@ -242,3 +242,28 @@ def test_source_request(sim_src_cfg):
             assert set(msg.payload.keys()) == source.requested_names
         elif msg.mtype == MsgTypes.Heartbeat:
             source.request(expected_names[msg.payload])
+
+
+def test_source_badrequest(sim_src_cfg):
+    src_cls = Source.find_source('static')
+    assert src_cls is not None
+
+    sim_src_cfg['bound'] = 10
+
+    idnum = 0
+    num_workers = 1
+    heartbeat_period = 3
+
+    requested_names = [
+        ('cspad', True),
+        ('notthere', False),
+    ]
+
+    source = src_cls(idnum, num_workers, heartbeat_period, sim_src_cfg)
+    source.request(entry[0] for entry in requested_names)
+
+    for name, present in requested_names:
+        # check that the requested names are there
+        assert name in source.requested_names
+        # check that the bad names are not in requested_data
+        assert (name in source.requested_data) is present
