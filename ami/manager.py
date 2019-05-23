@@ -381,7 +381,7 @@ class Manager(Collector):
     def info_request(self):
         request = self.info_comm.recv_string()
 
-        if request == "\x01sources":
+        if request == "\x01":
             self.publish_message("sources", "manager", dill.dumps(self.partition))
 
     def export_graph(self, name):

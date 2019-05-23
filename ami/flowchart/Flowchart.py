@@ -48,7 +48,7 @@ class Flowchart(Node):
         self.broker.connect(broker_addr)
 
         self.graphinfo = self.ctx.socket(zmq.SUB)
-        self.graphinfo.setsockopt_string(zmq.SUBSCRIBE, 'sources')
+        self.graphinfo.setsockopt_string(zmq.SUBSCRIBE, '')
         self.graphinfo.connect(graphinfo_addr)
 
         self.node = self.ctx.socket(zmq.PULL)  # used to receive to_operation() from processes
@@ -353,27 +353,31 @@ class Flowchart(Node):
 
     async def updateSources(self, init=False):
         while True:
-            await self.graphinfo.recv_string()
-            await self.graphinfo.recv_string()
+            topic = await self.graphinfo.recv_string()
+            source = await self.graphinfo.recv_string()
             msg = await self.graphinfo.recv_pyobj()
 
-            source_library = SourceLibrary()
-            for source, node_type in msg.items():
-                pth = source.split(':')
-                if len(pth) > 2:
-                    pth = pth[:-1]
-                source_library.addNodeType(source, node_type, [pth])
+            if topic == 'sources':
+                source_library = SourceLibrary()
+                for source, node_type in msg.items():
+                    pth = source.split(':')
+                    if len(pth) > 2:
+                        pth = pth[:-1]
+                    source_library.addNodeType(source, node_type, [pth])
 
-            async with self.source_lock:
-                self.source_library = source_library
+                async with self.source_lock:
+                    self.source_library = source_library
 
-                if init:
-                    break
+                    if init:
+                        break
 
+                    ctrl = self.widget()
+                    tree = ctrl.ui.source_tree
+                    ctrl.ui.clear_model(tree)
+                    ctrl.ui.create_model(ctrl.ui.source_tree, self.source_library.getLabelTree())
+            elif topic == 'error':
                 ctrl = self.widget()
-                tree = ctrl.ui.source_tree
-                ctrl.ui.clear_model(tree)
-                ctrl.ui.create_model(ctrl.ui.source_tree, self.source_library.getLabelTree())
+                ctrl.chartWidget.statusText.append(f"{source}: {msg}")
 
     @asyncqt.asyncSlot()
     async def chartLoaded(self):
@@ -590,6 +594,12 @@ class FlowchartWidget(dockarea.DockArea):
         self.hoverDock = dockarea.Dock('Hover Info', size=(1000, 20))
         self.hoverDock.addWidget(self.hoverText)
         self.addDock(self.hoverDock, 'bottom')
+
+        self.statusText = QtGui.QTextEdit()
+        self.statusText.setReadOnly(True)
+        self.statusDock = dockarea.Dock('Status', size=(1000, 20))
+        self.statusDock.addWidget(self.statusText)
+        self.addDock(self.statusDock, 'bottom')
 
         self._scene = self.view.scene()
         self._viewBox = self.view.viewBox()
