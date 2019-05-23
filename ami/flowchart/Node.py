@@ -352,7 +352,7 @@ class Node(QtCore.QObject):
                 term.setOpts(**opts)
                 continue
             try:
-                opts = strDict(opts)
+                # opts = strDict(opts)
                 self.addTerminal(name, **opts)
             except Exception:
                 printExc("Error restoring terminal %s (%s):" % (str(name), str(opts)))

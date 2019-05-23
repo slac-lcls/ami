@@ -3,25 +3,34 @@ from pyqtgraph.widgets.GraphicsView import GraphicsView
 from pyqtgraph.graphicsItems.ViewBox import ViewBox
 from pyqtgraph import GridItem
 from ami.flowchart.Node import Node
+import asyncqt
 
 
 class FlowchartGraphicsView(GraphicsView):
 
     sigHoverOver = QtCore.Signal(object)
     sigClicked = QtCore.Signal(object)
+    sigDragEnter = QtCore.Signal()
 
     def __init__(self, widget, *args):
         GraphicsView.__init__(self, *args, useOpenGL=False, background=0.5)
+        self.widget = widget
         self.setAcceptDrops(True)
         self._vb = FlowchartViewBox(widget, lockAspect=True, invertY=True)
         self.setCentralItem(self._vb)
         self.setRenderHint(QtGui.QPainter.Antialiasing, True)
+        self.sigDragEnter.connect(self.dragEnter)
 
     def viewBox(self):
         return self._vb
 
     def dragEnterEvent(self, ev):
         ev.accept()
+        self.sigDragEnter.emit()
+
+    @asyncqt.asyncSlot()
+    async def dragEnter(self):
+        await self.widget.chart.source_lock.acquire()
 
 
 class FlowchartViewBox(ViewBox):
@@ -78,6 +87,7 @@ class FlowchartViewBox(ViewBox):
             try:
                 self.widget.chart.createNode(nodeType, pos=self.mapToView(ev.pos()))
                 ev.accept()
+                self.widget.chart.source_lock.release()
                 return
             except KeyError:
                 pass
@@ -87,9 +97,12 @@ class FlowchartViewBox(ViewBox):
                 node = Node(name=nodeType, terminals={'Out': {'io': 'out', 'ttype': node}})
                 self.widget.chart.addNode(node, name=nodeType, pos=self.mapToView(ev.pos()))
                 ev.accept()
+                self.widget.chart.source_lock.release()
                 return
             except KeyError:
                 pass
 
         else:
             ev.ignore()
+
+        self.widget.chart.source_lock.release()

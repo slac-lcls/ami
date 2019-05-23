@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-from pyqtgraph.Qt import QtCore, QtGui, QtWidgets
+from pyqtgraph.Qt import QtCore, QtGui
 from pyqtgraph.pgcollections import OrderedDict
 from pyqtgraph import FileDialog
 from pyqtgraph.debug import printExc
@@ -10,6 +10,7 @@ from ami.flowchart.Terminal import Terminal
 from ami.flowchart.library import LIBRARY
 from ami.flowchart.library.common import CtrlNode
 from ami.flowchart.Node import Node, find_nearest
+from ami.flowchart.NodeLibrary import SourceLibrary
 from ami.flowchart.TypeEncoder import TypeEncoder
 from ami.comm import AsyncGraphCommHandler
 from ami.graphkit_wrapper import Graph
@@ -34,16 +35,21 @@ class Flowchart(Node):
     # called when output is expected to have changed
     sigStateChanged = QtCore.Signal()
 
-    def __init__(self, name=None, filePath=None, library=None, source_library=None,
-                 broker_addr="", graphmgr_addr="", node_addr="", checkpoint_addr=""):
+    def __init__(self, name=None, filePath=None, library=None,
+                 broker_addr="", graphmgr_addr="", graphinfo_addr="", node_addr="", checkpoint_addr=""):
         super(Flowchart, self).__init__(name)
         self.library = library or LIBRARY
         self.graphmgr_addr = graphmgr_addr
-        self.source_library = source_library
+        self.source_library = None
+        self.source_lock = asyncio.Lock()
 
         self.ctx = zmq.asyncio.Context()
         self.broker = self.ctx.socket(zmq.PUB)  # used to create new node processes
         self.broker.connect(broker_addr)
+
+        self.graphinfo = self.ctx.socket(zmq.SUB)
+        self.graphinfo.setsockopt_string(zmq.SUBSCRIBE, 'sources')
+        self.graphinfo.connect(graphinfo_addr)
 
         self.node = self.ctx.socket(zmq.PULL)  # used to receive to_operation() from processes
         self.node.bind(node_addr)
@@ -51,8 +57,6 @@ class Flowchart(Node):
         self.checkpoint = self.ctx.socket(zmq.SUB)  # used to receive ctrlnode updates from processes
         self.checkpoint.setsockopt_string(zmq.SUBSCRIBE, '')
         self.checkpoint.connect(checkpoint_addr)
-
-        self.undoStack = QtWidgets.QUndoStack(self)
 
         if name is None:
             name = "Flowchart"
@@ -63,11 +67,6 @@ class Flowchart(Node):
         self.nextZVal = 10
         self._widget = None
         self._scene = None
-
-        self.widget()
-
-        # self.viewBox.autoRange(padding=0.04)
-        # self.viewBox.enableAutoRange()
 
         self.sigChartLoaded.connect(self.chartLoaded)
 
@@ -352,6 +351,30 @@ class Flowchart(Node):
             new_node_state['pos'] = current_node_state['pos']
             self._nodes[node_name].restoreState(new_node_state)
 
+    async def updateSources(self, init=False):
+        while True:
+            await self.graphinfo.recv_string()
+            await self.graphinfo.recv_string()
+            msg = await self.graphinfo.recv_pyobj()
+
+            source_library = SourceLibrary()
+            for source, node_type in msg.items():
+                pth = source.split(':')
+                if len(pth) > 2:
+                    pth = pth[:-1]
+                source_library.addNodeType(source, node_type, [pth])
+
+            async with self.source_lock:
+                self.source_library = source_library
+
+                if init:
+                    break
+
+                ctrl = self.widget()
+                tree = ctrl.ui.source_tree
+                ctrl.ui.clear_model(tree)
+                ctrl.ui.create_model(ctrl.ui.source_tree, self.source_library.getLabelTree())
+
     @asyncqt.asyncSlot()
     async def chartLoaded(self):
         for name, node in self.nodes().items():
@@ -359,6 +382,10 @@ class Flowchart(Node):
                                         state=node.saveState())
             await self.broker.send_string(node.name(), zmq.SNDMORE)
             await self.broker.send_pyobj(msg)
+
+    async def run(self):
+        await asyncio.gather(self.updateState(),
+                             self.updateSources())
 
 
 class FlowchartCtrlWidget(QtGui.QWidget):

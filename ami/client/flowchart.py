@@ -1,7 +1,6 @@
 #!/usr/bin/env python
 import logging
 import multiprocessing as mp
-import time
 import dill
 import tempfile
 import asyncio
@@ -11,9 +10,7 @@ import zmq.asyncio
 from ami.client import flowchart_messages as fcMsgs
 from ami.flowchart.Flowchart import Flowchart
 from ami.flowchart.library import LIBRARY
-from ami.flowchart.NodeLibrary import SourceLibrary
 from ami import LogConfig
-from ami.comm import GraphCommHandler
 from pyqtgraph.Qt import QtGui, QtCore
 from asyncqt import QEventLoop, asyncSlot
 
@@ -21,7 +18,7 @@ from asyncqt import QEventLoop, asyncSlot
 logger = logging.getLogger(LogConfig.get_package_name(__name__))
 
 
-def run_editor_window(broker_addr, graphmgr_addr, node_addr, checkpoint_addr):
+def run_editor_window(broker_addr, graphmgr_addr, graphinfo_addr, node_addr, checkpoint_addr):
     app = QtGui.QApplication([])
 
     loop = QEventLoop(app)
@@ -35,33 +32,21 @@ def run_editor_window(broker_addr, graphmgr_addr, node_addr, checkpoint_addr):
     layout = QtGui.QGridLayout()
     cw.setLayout(layout)
 
-    # TODO fix this
-    time.sleep(2)
-    comm = GraphCommHandler(graphmgr_addr.name, graphmgr_addr.uri)
-
-    sources = comm.sources
-    source_library = SourceLibrary()
-
-    for source, node_type in sources.items():
-        pth = source.split(':')
-        if len(pth) > 2:
-            pth = pth[:-1]
-        source_library.addNodeType(source, node_type, [pth])
-
     # Create flowchart, define input/output terminals
     fc = Flowchart(broker_addr=broker_addr,
                    graphmgr_addr=graphmgr_addr,
+                   graphinfo_addr=graphinfo_addr,
                    node_addr=node_addr,
-                   checkpoint_addr=checkpoint_addr,
-                   source_library=source_library)
+                   checkpoint_addr=checkpoint_addr)
+
+    loop.run_until_complete(fc.updateSources(init=True))
 
     # Add flowchart control panel to the main window
     layout.addWidget(fc.widget(), 0, 0, 2, 1)
-
     win.show()
 
     try:
-        task = asyncio.ensure_future(fc.updateState())
+        task = asyncio.ensure_future(fc.run())
         loop.run_forever()
     finally:
         if not task.done():
@@ -205,12 +190,13 @@ class NodeProcess(QtCore.QObject):
 
 class MessageBroker(object):
 
-    def __init__(self, graphmgr_addr, load, ipcdir=None):
+    def __init__(self, graphmgr_addr, graphinfo_addr, load, ipcdir=None):
 
         if ipcdir is None:
             ipcdir = tempfile.mkdtemp()
 
         self.graphmgr_addr = graphmgr_addr
+        self.graphinfo_addr = graphinfo_addr
         self.broker_sub_addr = "ipc://%s/broker_sub" % ipcdir
         self.broker_pub_addr = "ipc://%s/broker_pub" % ipcdir
         self.node_addr = "ipc://%s/nodes" % ipcdir
@@ -242,7 +228,11 @@ class MessageBroker(object):
     def launch_editor_window(self):
         editor_proc = mp.Process(
             target=run_editor_window,
-            args=(self.broker_sub_addr, self.graphmgr_addr, self.node_addr, self.checkpoint_pub_addr),
+            args=(self.broker_sub_addr,
+                  self.graphmgr_addr,
+                  self.graphinfo_addr,
+                  self.node_addr,
+                  self.checkpoint_pub_addr),
             daemon=True)
         editor_proc.start()
 
@@ -371,7 +361,7 @@ class MessageBroker(object):
 
 
 def run_client(graphmgr_addr, graphinfo_addr, load):
-    mb = MessageBroker(graphmgr_addr, load)
+    mb = MessageBroker(graphmgr_addr, graphinfo_addr, load)
     mb.launch_editor_window()
     loop = asyncio.get_event_loop()
     task = asyncio.ensure_future(mb.run())

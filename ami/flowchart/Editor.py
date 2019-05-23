@@ -143,6 +143,10 @@ class Ui_Toolbar(object):
         tree.sortByColumn(0, QtCore.Qt.AscendingOrder)
         tree.expandAll()
 
+    def clear_model(self, tree):
+        model = tree.model().sourceModel()
+        model.clear()
+
     def node_search_text_changed(self):
         self.search_text_changed(self.node_tree, self.node_model, self.node_search.text())
 
