@@ -192,7 +192,7 @@ def test_manager_partition(manager_ctrl, partition):
 
 @pytest.mark.parametrize('manager_info, partition',
                          [
-                            ('sources', {'cspad': np.ndarray, 'delta_t': float})
+                            ('', {'cspad': np.ndarray, 'delta_t': float})
                          ],
                          indirect=['manager_info'])
 def test_manager_partition_updates(manager_info, partition):
