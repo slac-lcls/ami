@@ -34,6 +34,7 @@ setup(
         'pyqtgraph',
         'networkfox',
         'ipython',
+        'qtpy',
         'asyncqt',
         'amityping',
         'mypy',
