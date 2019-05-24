@@ -5,6 +5,7 @@ from pyqtgraph import FileDialog
 from pyqtgraph.debug import printExc
 from pyqtgraph import dockarea as dockarea
 from numpy import ndarray
+from ami import asyncqt
 from ami.flowchart.FlowchartGraphicsView import FlowchartGraphicsView
 from ami.flowchart.Terminal import Terminal
 from ami.flowchart.library import LIBRARY
@@ -18,7 +19,6 @@ from ami.client import flowchart_messages as fcMsgs
 
 import ami.flowchart.Editor as EditorTemplate
 import asyncio
-import asyncqt
 import zmq.asyncio
 import dill
 import json

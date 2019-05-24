@@ -4,7 +4,6 @@ import sys
 import dill
 import logging
 import asyncio
-import asyncqt
 import importlib
 import threading
 import numpy as np
@@ -20,6 +19,7 @@ from qtpy.QtCore import Slot, Signal, QTimer, QRect, QThread
 import pyqtgraph as pg
 
 from ami import LogConfig
+from ami import asyncqt
 from ami.comm import AsyncGraphCommHandler, GraphInfoReceiver
 
 

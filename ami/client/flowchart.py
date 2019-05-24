@@ -12,7 +12,7 @@ from ami.flowchart.Flowchart import Flowchart
 from ami.flowchart.library import LIBRARY
 from ami import LogConfig
 from pyqtgraph.Qt import QtGui, QtCore
-from asyncqt import QEventLoop, asyncSlot
+from ami.asyncqt import QEventLoop, asyncSlot
 
 
 logger = logging.getLogger(LogConfig.get_package_name(__name__))
