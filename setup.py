@@ -58,6 +58,7 @@ setup(
             'ami-console = ami.console:main',
             'ami-local = ami.local:main',
             'ami-export = ami.export:main',
+            'ami-syncer = ami.sync:main',
         ]
     },
     classifiers=[

@@ -31,6 +31,7 @@ class Ports(IntEnum):
     Export = 5560
     Message = 5561
     Info = 5562
+    Sync = 5600
 
 
 class Store:
