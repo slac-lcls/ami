@@ -319,7 +319,7 @@ class PsanaSource(Source):
         self.xtcdata_names = []
         self.xtcdata_types = {}
         if psana is not None:
-            self.ds = psana.DataSource(self.config['filename'])
+            self.ds = psana.DataSource(files=self.config['filename'].split(','))
         else:
             raise NotImplementedError("psana is not available!")
 
@@ -341,16 +341,25 @@ class PsanaSource(Source):
                 except ValueError:
                     attr_type = typing.Any
                 if attr_type in HSDTypes:
-                    for sub_attr_key, sub_attr_type in attr_type.__annotations__.items():
-                        sub_attr_name = self.delimiter.join((attr_name, sub_attr_key))
-                        # for the HSD cast the channel ids to ints
-                        try:
-                            args = (int(sub_attr_key), )
-                        except ValueError:
-                            args = (sub_attr_key, )
-                        self.xtcdata_names.append(sub_attr_name)
-                        self.xtcdata_types[sub_attr_name] = sub_attr_type
-                        self.special_names[sub_attr_name] = (attr_name, (attr_type.get, args, {}))
+                    # ignore things which are not derived from typing.Dict
+                    if not isinstance(attr_type, typing._GenericAlias) or attr_type._name != 'Dict':
+                        continue
+                    seg_chans = getattr(det_interface, det_xface_name)._seg_chans()
+                    for seg_attr_key, chanlist in seg_chans.items():
+                        seg_attr_key_name = str(seg_attr_key)
+                        attr_key_type, seg_attr_type = attr_type.__args__
+                        for chan_attr_key_name, chan_attr_type in typing.get_type_hints(seg_attr_type).items():
+                            sub_attr_name = self.delimiter.join((attr_name, seg_attr_key_name, chan_attr_key_name))
+                            # for the HSD cast the channel ids to ints
+                            try:
+                                chan_attr_key = attr_key_type(chan_attr_key_name)
+                            except ValueError:
+                                chan_attr_key = chan_attr_key_name
+                            if not isinstance(chan_attr_key, attr_key_type) or chan_attr_key in chanlist:
+                                accessor = (lambda o, s, c: o.get(s, {}).get(c), (seg_attr_key, chan_attr_key), {})
+                                self.xtcdata_names.append(sub_attr_name)
+                                self.xtcdata_types[sub_attr_name] = chan_attr_type
+                                self.special_names[sub_attr_name] = (attr_name, accessor)
                 else:
                     self.xtcdata_names.append(attr_name)
                     self.xtcdata_types[attr_name] = attr_type
