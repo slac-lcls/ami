@@ -42,7 +42,7 @@ def test_psana_source(xtcwriter):
     src_cfg = {
         'interval':  0,
         'init_time':  0,
-        'filename': xtcwriter,
+        'filename': str(xtcwriter),
     }
     psana_source = psana_src_cls(idnum, num_workers, heartbeat_period, src_cfg)
     evtgen = psana_source.events()
