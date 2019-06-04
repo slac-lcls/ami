@@ -10,8 +10,8 @@ try:
 except ImportError:
     psana = None
 import numpy as np
+import amitypes as at
 from enum import Enum
-from amitypes import Array1d, Array2d, HSDTypes
 
 
 logger = logging.getLogger(__name__)
@@ -237,7 +237,7 @@ class Source(abc.ABC):
         """
         subclass_types = self._types()
         subclass_types.update(self._base_types)
-        return subclass_types
+        return {name: at.dumps(dtype) for name, dtype in subclass_types.items()}
 
     def configure(self):
         """
@@ -323,6 +323,23 @@ class PsanaSource(Source):
         else:
             raise NotImplementedError("psana is not available!")
 
+    def _update_hsd_segment_names(self, seg_name, seg_type, seg_chans):
+        for seg_key, chanlist in seg_chans.items():
+            seg_key_name = str(seg_key)
+            seg_key_type, seg_value_type = seg_type.__args__
+            for chan_key_name, chan_type in typing.get_type_hints(seg_value_type).items():
+                chan_name = self.delimiter.join((seg_name, seg_key_name, chan_key_name))
+                # for the HSD cast the channel ids to expected type
+                try:
+                    chan_key = seg_key_type(chan_key_name)
+                except ValueError:
+                    chan_key = chan_key_name
+                if not isinstance(chan_key, seg_key_type) or chan_key in chanlist:
+                    accessor = (lambda o, s, c: o.get(s, {}).get(c), (seg_key, chan_key), {})
+                    self.xtcdata_names.append(chan_name)
+                    self.xtcdata_types[chan_name] = chan_type
+                    self.special_names[chan_name] = (seg_name, accessor)
+
     def _update_xtcdata_names(self, run):
         detinfo = run.detinfo
         self.xtcdata_names = []
@@ -340,26 +357,13 @@ class PsanaSource(Source):
                         attr_type = attr_sig.return_annotation
                 except ValueError:
                     attr_type = typing.Any
-                if attr_type in HSDTypes:
+                if attr_type in at.HSDTypes:
                     # ignore things which are not derived from typing.Dict
-                    if not isinstance(attr_type, typing._GenericAlias) or attr_type._name != 'Dict':
-                        continue
-                    seg_chans = getattr(det_interface, det_xface_name)._seg_chans()
-                    for seg_attr_key, chanlist in seg_chans.items():
-                        seg_attr_key_name = str(seg_attr_key)
-                        attr_key_type, seg_attr_type = attr_type.__args__
-                        for chan_attr_key_name, chan_attr_type in typing.get_type_hints(seg_attr_type).items():
-                            sub_attr_name = self.delimiter.join((attr_name, seg_attr_key_name, chan_attr_key_name))
-                            # for the HSD cast the channel ids to ints
-                            try:
-                                chan_attr_key = attr_key_type(chan_attr_key_name)
-                            except ValueError:
-                                chan_attr_key = chan_attr_key_name
-                            if not isinstance(chan_attr_key, attr_key_type) or chan_attr_key in chanlist:
-                                accessor = (lambda o, s, c: o.get(s, {}).get(c), (seg_attr_key, chan_attr_key), {})
-                                self.xtcdata_names.append(sub_attr_name)
-                                self.xtcdata_types[sub_attr_name] = chan_attr_type
-                                self.special_names[sub_attr_name] = (attr_name, accessor)
+                    if str(attr_type).startswith('typing.Dict'):
+                        seg_chans = getattr(det_interface, det_xface_name)._seg_chans()
+                        self._update_hsd_segment_names(attr_name, attr_type, seg_chans)
+                    else:
+                        logger.debug("DataSrc: unsupported HSDType: %s", attr_type)
                 else:
                     self.xtcdata_names.append(attr_name)
                     self.xtcdata_types[attr_name] = attr_type
@@ -448,9 +452,9 @@ class SimSource(Source):
             else:
                 return float
         elif config['dtype'] == 'Waveform':
-            return Array1d
+            return at.Array1d
         elif config['dtype'] == 'Image':
-            return Array2d
+            return at.Array2d
         else:
             return None
 
