@@ -193,9 +193,24 @@ def main(color, upstream_port, downstream_port):
     logging.basicConfig(format=LogConfig.Format, level=log_level, handlers=log_handlers)
 
     try:
-        run_collector(args.node_num, args.num_contribs, color, collector_addr, downstream_addr, graph_addr, msg_addr)
+        if color == Colors.LocalCollector:
+            return run_node_collector(args.node_num,
+                                      args.num_contribs,
+                                      collector_addr,
+                                      downstream_addr,
+                                      graph_addr,
+                                      msg_addr)
+        elif color == Colors.GlobalCollector:
+            return run_global_collector(args.node_num,
+                                        args.num_contribs,
+                                        collector_addr,
+                                        downstream_addr,
+                                        graph_addr,
+                                        msg_addr)
+        else:
+            logger.critical("Invalid option collector color '%s' chosen!", color)
+            return 1
 
-        return 0
     except KeyboardInterrupt:
         logger.info("Worker killed by user...")
         return 0
