@@ -2,13 +2,13 @@ import asyncio
 import pytest
 import zmq
 import time
+import amitypes as at
 import multiprocessing as mp
 # from ami.client import GraphAddress
 from ami.client.flowchart import MessageBroker
 import ami.client.flowchart_messages as fcMsgs
 # from ami.flowchart.Flowchart import Flowchart
 from ami.flowchart.NodeLibrary import SourceLibrary
-from amitypes import Array2d
 from collections import OrderedDict
 
 
@@ -135,14 +135,14 @@ def test_source_library(complex_graph_file, start_ami):
 
     for source, node_type in sources.items():
         root, *_ = source.split(':')
-        source_library.addNodeType(source, node_type, [[root]])
+        source_library.addNodeType(source, at.loads(node_type), [[root]])
 
-    assert source_library.sourceList == {'cspad': Array2d, 'delta_t': int,
+    assert source_library.sourceList == {'cspad': at.Array2d, 'delta_t': int,
                                          'heartbeat': int, 'laser': int, 'timestamp': int}
-    assert source_library.getSourceType('cspad') == Array2d
+    assert source_library.getSourceType('cspad') == at.Array2d
 
     try:
-        source_library.addNodeType('cspad', Array2d, [[]])
+        source_library.addNodeType('cspad', at.Array2d, [[]])
     except Exception:
         pass
 

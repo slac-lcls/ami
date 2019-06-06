@@ -120,17 +120,22 @@ def run_worker(num, num_workers, hb_period, source, collector_addr, graph_addr, 
 
     logger.info('Starting worker # %d, sending to collector at %s', num, collector_addr)
 
-    try:
-        with open(source[1], 'r') as cnf:
-            src_cfg = json.load(cnf)
-    except OSError:
-        logger.exception("worker%03d: problem opening json file:", num)
-        return 1
-    except json.decoder.JSONDecodeError:
-        logger.exception("worker%03d: problem parsing json file (%s):", num, source[1])
-        return 1
+    if source is not None:
+        src_type = source[0]
+        try:
+            with open(source[1], 'r') as cnf:
+                src_cfg = json.load(cnf)
+        except OSError:
+            logger.exception("worker%03d: problem opening json file:", num)
+            return 1
+        except json.decoder.JSONDecodeError:
+            logger.exception("worker%03d: problem parsing json file (%s):", num, source[1])
+            return 1
+    else:
+        src_type = Defaults.SourceType
+        src_cfg = Defaults.SourceConfig
 
-    src_cls = Source.find_source(source[0])
+    src_cls = Source.find_source(src_type)
     if src_cls is not None:
         src = src_cls(num,
                       num_workers,
@@ -223,6 +228,7 @@ def main():
 
     parser.add_argument(
         'source',
+        nargs='?',
         metavar='SOURCE',
         help='data source configuration (exampes: static://test.json, random://test.json, psana://exp=xcsdaq13:run=14)'
     )
@@ -247,12 +253,15 @@ def main():
             except ValueError:
                 logger.exception("Problem parsing data source flag %s", flag)
 
-        src_url_match = re.match('(?P<prot>.*)://(?P<body>.*)', args.source)
-        if src_url_match:
-            src_cfg = src_url_match.groups()
+        if args.source is not None:
+            src_url_match = re.match('(?P<prot>.*)://(?P<body>.*)', args.source)
+            if src_url_match:
+                src_cfg = src_url_match.groups()
+            else:
+                logger.critical("Invalid data source config string: %s", args.source)
+                return 1
         else:
-            logger.critical("Invalid data source config string: %s", args.source)
-            return 1
+            src_cfg = None
 
         run_worker(args.node_num,
                    args.num_workers,

@@ -134,6 +134,7 @@ def build_parser():
 
     parser.add_argument(
         'source',
+        nargs='?',
         metavar='SOURCE',
         help='data source configuration (exampes: static://test.json, psana://exp=xcsdaq13:run=14)'
     )
@@ -189,12 +190,15 @@ def run_ami(args, queue=mp.Queue()):
             except ValueError:
                 logger.exception("Problem parsing data source flag %s", flag)
 
-        src_url_match = re.match('(?P<prot>.*)://(?P<body>.*)', args.source)
-        if src_url_match:
-            src_cfg = src_url_match.groups()
+        if args.source is not None:
+            src_url_match = re.match('(?P<prot>.*)://(?P<body>.*)', args.source)
+            if src_url_match:
+                src_cfg = src_url_match.groups()
+            else:
+                logger.critical("Invalid data source config string: %s", args.source)
+                return 1
         else:
-            logger.critical("Invalid data source config string: %s", args.source)
-            return 1
+            src_cfg = None
 
         for i in range(args.num_workers):
             proc = mp.Process(

@@ -106,6 +106,7 @@ class Source(abc.ABC):
             'interval': float,
             'init_time': float,
             'bound': int,
+            'repeat': lambda s: s.lower() == 'true',
         }
         # Apply flags to the config dictionary
         for flag, value in self.flags.items():
@@ -237,7 +238,7 @@ class Source(abc.ABC):
         """
         subclass_types = self._types()
         subclass_types.update(self._base_types)
-        return {name: at.dumps(dtype) for name, dtype in subclass_types.items()}
+        return subclass_types
 
     def configure(self):
         """
@@ -248,9 +249,10 @@ class Source(abc.ABC):
             names of the currently available detectors/data.
         """
         self.request(self.requested_names)
+        flatten_types = {name: at.dumps(dtype) for name, dtype in self.types.items()}
         return Message(MsgTypes.Transition,
                        self.idnum,
-                       Transition(Transitions.Configure, self.types))
+                       Transition(Transitions.Configure, flatten_types))
 
     def heartbeat_msg(self):
         """
@@ -315,6 +317,7 @@ class PsanaSource(Source):
 
     def __init__(self, idnum, num_workers, heartbeat_period, src_cfg, flags=None):
         super(__class__, self).__init__(idnum, num_workers, heartbeat_period, src_cfg, flags)
+        self.ds_loop_count = 0
         self.delimiter = ":"
         self.xtcdata_names = []
         self.xtcdata_types = {}
@@ -374,12 +377,20 @@ class PsanaSource(Source):
     def _types(self):
         return self.xtcdata_types
 
+    @property
+    def repeat(self):
+        if self.ds_loop_count and not self.config.get('repeat', False):
+            return False
+        else:
+            self.ds_loop_count += 1
+            return True
+
     def events(self):
 
         timestamp = 0
         time.sleep(self.init_time)
 
-        while True:
+        while self.repeat:
             event = {}
             for run in self.ds.runs():
                 self._update_xtcdata_names(run)

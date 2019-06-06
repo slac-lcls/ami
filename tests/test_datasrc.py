@@ -1,9 +1,9 @@
 import pytest
 import numpy as np
+import amitypes as at
 
 from conftest import psanatest
 from ami.data import MsgTypes, Source, Transition, Transitions
-from amitypes import Array1d, Array2d
 
 
 @pytest.fixture(scope='function')
@@ -75,9 +75,9 @@ def test_static_source(sim_src_cfg):
             else:
                 expected_dtypes[name] = float
         elif cfg["dtype"] == "Waveform":
-            expected_dtypes[name] = Array1d
+            expected_dtypes[name] = at.Array1d
         elif cfg["dtype"] == "Image":
-            expected_dtypes[name] = Array2d
+            expected_dtypes[name] = at.Array2d
         else:
             expected_dtypes[name] = None
     assert source.types == expected_dtypes
@@ -90,7 +90,7 @@ def test_static_source(sim_src_cfg):
     assert config.payload.ttype == Transitions.Configure
     assert set(config.payload.payload) == expected_names
     for name, dtype in config.payload.payload.items():
-        assert dtype == expected_dtypes[name]
+        assert at.loads(dtype) == expected_dtypes[name]
 
     # do a first loop over the data (events should be empty)
     count = 0
@@ -150,9 +150,9 @@ def test_random_source(sim_src_cfg):
             else:
                 expected_dtypes[name] = float
         elif cfg["dtype"] == "Waveform":
-            expected_dtypes[name] = Array1d
+            expected_dtypes[name] = at.Array1d
         elif cfg["dtype"] == "Image":
-            expected_dtypes[name] = Array2d
+            expected_dtypes[name] = at.Array2d
         else:
             expected_dtypes[name] = None
     assert source.types == expected_dtypes
@@ -165,7 +165,7 @@ def test_random_source(sim_src_cfg):
     assert config.payload.ttype == Transitions.Configure
     assert set(config.payload.payload) == expected_names
     for name, dtype in config.payload.payload.items():
-        assert dtype == expected_dtypes[name]
+        assert at.loads(dtype) == expected_dtypes[name]
 
     # do a first loop over the data (events should be empty)
     for msg in source.events():
@@ -183,10 +183,10 @@ def test_random_source(sim_src_cfg):
         if msg.mtype == MsgTypes.Datagram:
             for name in expected_names:
                 assert name in msg.payload
-                if expected_dtypes[name] == Array1d:
+                if expected_dtypes[name] == at.Array1d:
                     assert type(msg.payload[name]) == np.ndarray
                     assert msg.payload[name].ndim == 1
-                elif expected_dtypes[name] == Array2d:
+                elif expected_dtypes[name] == at.Array2d:
                     assert type(msg.payload[name]) == np.ndarray
                     assert msg.payload[name].ndim == 2
                 else:

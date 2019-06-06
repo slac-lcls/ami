@@ -112,6 +112,7 @@ def workerjson(tmpdir_factory, xtcwriter):
         "interval": 0.01,
         "init_time": 0.1,
         "bound": 100,
+        "repeat": True,
         "filename": "data.xtc2" if xtcwriter is None else str(xtcwriter),
         "config": {
             "delta_t": {"dtype": "Scalar", "range": [0, 10], "integer": True},

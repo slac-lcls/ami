@@ -18,6 +18,7 @@ from ami.graphkit_wrapper import Graph
 from ami.client import flowchart_messages as fcMsgs
 
 import ami.flowchart.Editor as EditorTemplate
+import amitypes as at
 import asyncio
 import zmq.asyncio
 import dill
@@ -363,7 +364,7 @@ class Flowchart(Node):
                     pth = source.split(':')
                     if len(pth) > 2:
                         pth = pth[:-1]
-                    source_library.addNodeType(source, node_type, [pth])
+                    source_library.addNodeType(source, at.loads(node_type), [pth])
 
                 async with self.source_lock:
                     self.source_library = source_library
