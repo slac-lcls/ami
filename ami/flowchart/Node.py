@@ -5,6 +5,7 @@ from pyqtgraph import functions as fn
 from pyqtgraph.pgcollections import OrderedDict
 from pyqtgraph.debug import printExc
 from ami.flowchart.Terminal import Terminal
+from ami.flowchart.Editor import NoteEditor
 from typing import Any
 
 
@@ -90,6 +91,8 @@ class Node(QtCore.QObject):
         self._allowRemove = allowRemove
         self._viewable = viewable
         self._buffered = buffered
+        self._note = ""
+        self._editor = None
 
         self.exception = None
 
@@ -153,6 +156,19 @@ class Node(QtCore.QObject):
 
         This is a convenience function that just calls addTerminal(io='condition', ...)"""
         return self.addTerminal(name, io='condition', ttype=Any, **args)
+
+    def editNote(self):
+        if self._editor is None:
+            self.editor = NoteEditor(self)
+
+        if self._note:
+            self.editor.set_text(self._note)
+
+        self.editor.show()
+
+    def setNote(self, text):
+        self._note = text
+        self.graphicsItem().setNote(text)
 
     def removeTerminal(self, term):
         """Remove the specified terminal from this Node. May specify either the
@@ -405,10 +421,21 @@ class NodeGraphicsItem(GraphicsObject):
         self.nameItem = QtGui.QGraphicsTextItem(self.node.name(), self)
         self.nameItem.setDefaultTextColor(QtGui.QColor(50, 50, 50))
         self.nameItem.moveBy(self.bounds.width()/2. - self.nameItem.boundingRect().width()/2., 0)
+
+        self.noteItem = QtGui.QGraphicsTextItem("", self)
+        self.noteItem.setTextInteractionFlags(QtCore.Qt.TextEditorInteraction)
+        self.noteItem.setDefaultTextColor(QtGui.QColor(50, 50, 50))
+        self.noteItem.setTextWidth(self.bounds.width()/2.)
+        self.noteItem.moveBy(self.bounds.width()/2. - self.noteItem.boundingRect().width()/2.,
+                             self.noteItem.boundingRect().height() + 40)
+
         self.updateTerminals()
 
         self.menu = None
         self.buildMenu()
+
+    def setNote(self, text):
+        self.noteItem.setPlainText(text)
 
     def setPen(self, *args, **kwargs):
         self.pen = fn.mkPen(*args, **kwargs)
@@ -558,6 +585,7 @@ class NodeGraphicsItem(GraphicsObject):
         if self.menu is None:
             self.menu = QtGui.QMenu()
             self.menu.setTitle("Node")
+            self.menu.addAction("Edit note", self.node.editNote)
             if self.node._allowAddInput:
                 self.menu.addAction("Add input", self.addInputFromMenu)
             if self.node._allowAddOutput:

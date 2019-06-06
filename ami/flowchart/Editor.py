@@ -156,3 +156,25 @@ class Ui_Toolbar(object):
     def search_text_changed(self, tree, model, text):
         model.setFilterRegExp(text)
         tree.expandAll()
+
+
+class NoteEditor(QtWidgets.QWidget):
+
+    def __init__(self, node, parent=None, text=""):
+        super(NoteEditor, self).__init__(parent)
+
+        self.node = node
+
+        self.textbox = QtWidgets.QLineEdit(self)
+        self.textbox.move(20, 20)
+        self.textbox.resize(280, 40)
+
+        self.button = QtWidgets.QPushButton("Save", self)
+        self.button.move(20, 80)
+        self.button.clicked.connect(self.clicked)
+
+    def set_text(self, text):
+        self.textbox.setText(text)
+
+    def clicked(self):
+        self.node.setNote(self.textbox.text())
