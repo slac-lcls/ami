@@ -340,7 +340,7 @@ class Node(QtCore.QObject):
         Subclasses may want to extend this method, adding extra keys to the returned
         dict."""
         pos = self.graphicsItem().pos()
-        state = {'pos': (pos.x(), pos.y())}
+        state = {'pos': (pos.x(), pos.y()), 'note': self._note}
         state['terminals'] = self.saveTerminals()
         return state
 
@@ -349,6 +349,8 @@ class Node(QtCore.QObject):
         by saveState(). """
         pos = state.get('pos', (0, 0))
         self.graphicsItem().setPos(*pos)
+        note = state.get('note')
+        self.setNote(note)
         if 'terminals' in state:
             self.restoreTerminals(state['terminals'])
 
@@ -423,7 +425,6 @@ class NodeGraphicsItem(GraphicsObject):
         self.nameItem.moveBy(self.bounds.width()/2. - self.nameItem.boundingRect().width()/2., 0)
 
         self.noteItem = QtGui.QGraphicsTextItem("", self)
-        self.noteItem.setTextInteractionFlags(QtCore.Qt.TextEditorInteraction)
         self.noteItem.setDefaultTextColor(QtGui.QColor(50, 50, 50))
         self.noteItem.setTextWidth(self.bounds.width()/2.)
         self.noteItem.moveBy(self.bounds.width()/2. - self.noteItem.boundingRect().width()/2.,
