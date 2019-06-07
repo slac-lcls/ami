@@ -107,6 +107,7 @@ class Source(abc.ABC):
             'init_time': float,
             'bound': int,
             'repeat': lambda s: s.lower() == 'true',
+            'files': lambda f: f.split(','),
         }
         # Apply flags to the config dictionary
         for flag, value in self.flags.items():
@@ -318,11 +319,16 @@ class PsanaSource(Source):
     def __init__(self, idnum, num_workers, heartbeat_period, src_cfg, flags=None):
         super(__class__, self).__init__(idnum, num_workers, heartbeat_period, src_cfg, flags)
         self.ds_loop_count = 0
+        self.ds_keys = {
+            'exp', 'dir', 'files', 'shmem', 'filter', 'batch_size', 'max_events', 'sel_det_ids', 'det_name'
+        }
+        self.repeat_mode = self.config.get('repeat', False) and (not self.config.get('shmem', False))
         self.delimiter = ":"
         self.xtcdata_names = []
         self.xtcdata_types = {}
         if psana is not None:
-            self.ds = psana.DataSource(files=self.config['filename'].split(','))
+            ps_kwargs = {k: self.config[k] for k in self.ds_keys if k in self.config}
+            self.ds = psana.DataSource(**ps_kwargs)
         else:
             raise NotImplementedError("psana is not available!")
 
@@ -379,7 +385,7 @@ class PsanaSource(Source):
 
     @property
     def repeat(self):
-        if self.ds_loop_count and not self.config.get('repeat', False):
+        if self.ds_loop_count and not self.repeat_mode:
             return False
         else:
             self.ds_loop_count += 1
@@ -387,7 +393,7 @@ class PsanaSource(Source):
 
     def events(self):
 
-        timestamp = 0
+        counter = 0
         time.sleep(self.init_time)
 
         while self.repeat:
@@ -398,9 +404,8 @@ class PsanaSource(Source):
                 yield self.configure()
 
                 for evt in run.events():
-                    # FIXME: when we move to real timestamps we should use this line
-                    # timestamp = evt.seq.timestamp()
-                    if self.check_heartbeat_boundary(timestamp):
+                    # If in repeat mode (a.k.a. looping forever over the same events) then use fake ts for heartbeats
+                    if self.check_heartbeat_boundary(counter if self.repeat_mode else evt.timestamp):
                         yield self.heartbeat_msg()
 
                     for name in self.requested_data:
@@ -440,8 +445,8 @@ class PsanaSource(Source):
                             else:
                                 event[sub_name] = meth(data, *args, **kwargs)
 
-                    yield from self.event(timestamp, event)
-                    timestamp += 1
+                    yield from self.event(evt.timestamp, event)
+                    counter += 1
                     time.sleep(self.interval)
 
 

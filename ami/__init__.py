@@ -29,7 +29,7 @@ class Defaults:
         "init_time": 0.5,
         "bound": 12,
         "repeat": True,
-        "filename": "data.xtc2",
+        "files": "data.xtc2",
         "config": {
             "delta_t": {"dtype": "Scalar", "range": [0, 10], "integer": True},
             "cspad": {"dtype": "Image", "pedestal": 5, "width": 1, "shape": [512, 512]},
