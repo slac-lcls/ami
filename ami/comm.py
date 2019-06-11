@@ -8,6 +8,7 @@ import numpy as np
 import zmq.asyncio
 from enum import IntEnum
 
+import amitypes as at
 import ami.graph_nodes as gn
 from ami.graphkit_wrapper import Graph
 from ami.data import MsgTypes, Message, Transition, CollectorMessage, Datagram
@@ -969,6 +970,52 @@ class CommHandler(abc.ABC):
     def __exit__(self, exc_type, exc_value, traceback):
         self.close()
 
+    @staticmethod
+    def _process(func, value):
+        """
+        Helper method for post-processing on data returned from the manager
+
+        Args:
+            func (function): the post-processing function.
+            value (object): the data to pass to the post-processing function.
+
+        Returns:
+            The original data if the passed processing function is None,
+            otherwise the return value of the function acting on the data is
+            returned.
+
+        Raises:
+            TypeError: if `func` is not callable or None
+        """
+        if func is None:
+            return value
+        elif callable(func):
+            return func(value)
+        else:
+            raise TypeError("The 'func' parameter must be a callable")
+
+    @staticmethod
+    def _sources(srcs):
+        """
+        Helper function for deserializing the type-annotations in the sources
+        dictionary.
+
+        Args:
+            srcs (dict): the dictionary of sources that needs to be
+                         deserialized.
+
+        Returns:
+            The deserialized version of sources dictionary.
+        """
+        if srcs is not None:
+            loaded_srcs = {}
+            for n, t in srcs.items():
+                if isinstance(t, str):
+                    loaded_srcs[n] = at.loads(t)
+                else:
+                    loaded_srcs[n] = t
+            return loaded_srcs
+
     def _make_node(self, node, **kwargs):
         """
         Constructs a graph node of the requested type.
@@ -1094,7 +1141,7 @@ class CommHandler(abc.ABC):
         Returns:
             A dictionary with information on all of the external data sources.
         """
-        return self._request('get_sources')
+        return self._request('get_sources', processing=self._sources)
 
     @property
     def versions(self):
@@ -1430,7 +1477,7 @@ class CommHandler(abc.ABC):
         pass
 
     @abc.abstractmethod
-    def _request(self, cmd, check=False, retry=None):
+    def _request(self, cmd, check=False, retry=None, processing=None):
         pass
 
     @abc.abstractmethod
@@ -1540,20 +1587,20 @@ class AsyncGraphCommHandler(ZmqCommHandler):
             await self._sock.send_string(cmd)
             return await self._sock.recv_pyobj()
 
-    async def _request(self, cmd, check=False, retry=None):
+    async def _request(self, cmd, check=False, retry=None, processing=None):
         async with self.lock:
             await self._header(cmd)
             if check:
                 reply = await self._sock.recv_string()
                 if reply == 'ok':
-                    return await self._sock.recv_pyobj()
+                    return self._process(processing, await self._sock.recv_pyobj())
                 elif retry is not None:
                     await self._header(retry)
                     reply = await self._sock.recv_string()
                     if reply == 'ok':
-                        return await self._sock.recv_pyobj()
+                        return self._process(processing, await self._sock.recv_pyobj())
             else:
-                return await self._sock.recv_pyobj()
+                return self._process(processing, await self._sock.recv_pyobj())
 
     async def _request_batch(self, cmds, check=False, retries=None):
         results = []
@@ -1651,19 +1698,19 @@ class GraphCommHandler(ZmqCommHandler):
         self._sock.send_string(cmd)
         return self._sock.recv_pyobj()
 
-    def _request(self, cmd, check=False, retry=None):
+    def _request(self, cmd, check=False, retry=None, processing=None):
         self._header(cmd)
         if check:
             reply = self._sock.recv_string()
             if reply == 'ok':
-                return self._sock.recv_pyobj()
+                return self._process(processing, self._sock.recv_pyobj())
             elif retry is not None:
                 self._header(retry)
                 reply = self._sock.recv_string()
                 if reply == 'ok':
-                    return self._sock.recv_pyobj()
+                    return self._process(processing, self._sock.recv_pyobj())
         else:
-            return self._sock.recv_pyobj()
+            return self._process(processing, self._sock.recv_pyobj())
 
     def _request_batch(self, cmds, check=False, retries=None):
         results = []

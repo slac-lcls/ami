@@ -253,19 +253,19 @@ class GraphCommHandler(PvaCommHandler):
         except self._errors:
             return False, None
 
-    def _request(self, cmd, check=False, retry=None):
+    def _request(self, cmd, check=False, retry=None, processing=None):
         if check:
             status, reply = self._try_request(cmd)
             if status:
-                return reply
+                return self._process(processing, reply)
             elif retry is not None:
                 status, reply = self._try_request(retry)
                 if status:
-                    return reply
+                    return self._process(processing, reply)
         else:
             pvname = self._get_pvname(cmd)
             if pvname is not None:
-                return self._checked_get(pvname)
+                return self._process(processing, self._checked_get(pvname))
 
     def _request_batch(self, cmds, check=False, retries=None):
         results = []
@@ -371,19 +371,19 @@ class AsyncGraphCommHandler(PvaCommHandler):
         except self._errors:
             return False, None
 
-    async def _request(self, cmd, check=False, retry=None):
+    async def _request(self, cmd, check=False, retry=None, processing=None):
         if check:
             status, reply = await self._try_request(cmd)
             if status:
-                return reply
+                return self._process(processing, reply)
             elif retry is not None:
                 status, reply = await self._try_request(retry)
                 if status:
-                    return reply
+                    return self._process(processing, reply)
         else:
             pvname = self._get_pvname(cmd)
             if pvname is not None:
-                return await self._checked_get(pvname)
+                return self._process(processing, await self._checked_get(pvname))
 
     async def _request_batch(self, cmds, check=False, retries=None):
         results = []

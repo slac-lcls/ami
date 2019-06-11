@@ -135,7 +135,7 @@ def test_source_library(complex_graph_file, start_ami):
 
     for source, node_type in sources.items():
         root, *_ = source.split(':')
-        source_library.addNodeType(source, at.loads(node_type), [[root]])
+        source_library.addNodeType(source, node_type, [[root]])
 
     assert source_library.sourceList == {'cspad': at.Array2d, 'delta_t': int,
                                          'heartbeat': int, 'laser': int, 'timestamp': int}
