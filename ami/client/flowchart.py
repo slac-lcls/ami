@@ -361,14 +361,15 @@ class MessageBroker(object):
 
 
 def run_client(graphmgr_addr, graphinfo_addr, load):
-    mb = MessageBroker(graphmgr_addr, graphinfo_addr, load)
-    mb.launch_editor_window()
-    loop = asyncio.get_event_loop()
-    task = asyncio.ensure_future(mb.run())
+    with tempfile.TemporaryDirectory() as ipcdir:
+        mb = MessageBroker(graphmgr_addr, graphinfo_addr, load, ipcdir=ipcdir)
+        mb.launch_editor_window()
+        loop = asyncio.get_event_loop()
+        task = asyncio.ensure_future(mb.run())
 
-    # wait for the editor window to exit
-    loop.run_until_complete(loop.run_in_executor(None, mb.wait_editor_exit))
+        # wait for the editor window to exit
+        loop.run_until_complete(loop.run_in_executor(None, mb.wait_editor_exit))
 
-    # if the message brokers task is still running cancel it
-    if not task.done():
-        task.cancel()
+        # if the message brokers task is still running cancel it
+        if not task.done():
+            task.cancel()
