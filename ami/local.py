@@ -6,6 +6,7 @@ import signal
 import logging
 import tempfile
 import argparse
+import subprocess
 import multiprocessing as mp
 
 from ami import LogConfig, Defaults
@@ -144,6 +145,7 @@ def build_parser():
 
 def run_ami(args, queue=mp.Queue()):
 
+    xtcdir = None
     ipcdir = None
     export_addr = None
     flags = {}
@@ -199,6 +201,17 @@ def run_ami(args, queue=mp.Queue()):
                 return 1
         else:
             src_cfg = None
+            # if using the psana source generate some data for it
+            if Defaults.SourceType == 'psana':
+                xtcdir = tempfile.mkdtemp()
+                xtcfile = os.path.join(xtcdir, Defaults.SourceConfig['files'])
+                xtcevents = str(Defaults.SourceConfig['nevents'])
+                # generate an xtc file
+                if subprocess.call(["amiwriter", "-f", xtcfile, "-n", xtcevents]) != 0:
+                    logger.critical("Failed to generate requested xtc2 data for the psana source!")
+                    return 1
+                # point the default configuration settings to the generated file
+                Defaults.SourceConfig['files'] = xtcfile
 
         for i in range(args.num_workers):
             proc = mp.Process(
@@ -289,6 +302,8 @@ def run_ami(args, queue=mp.Queue()):
     finally:
         if ipcdir is not None and os.path.exists(ipcdir):
             shutil.rmtree(ipcdir)
+        if xtcdir is not None and os.path.exists(xtcdir):
+            shutil.rmtree(xtcdir)
 
 
 def main():

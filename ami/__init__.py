@@ -30,6 +30,7 @@ class Defaults:
         "bound": 12,
         "repeat": True,
         "files": "data.xtc2",
+        "nevents": 500,
         "config": {
             "delta_t": {"dtype": "Scalar", "range": [0, 10], "integer": True},
             "cspad": {"dtype": "Image", "pedestal": 5, "width": 1, "shape": [512, 512]},
