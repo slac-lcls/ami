@@ -18,7 +18,7 @@ from ami.asyncqt import QEventLoop, asyncSlot
 logger = logging.getLogger(LogConfig.get_package_name(__name__))
 
 
-def run_editor_window(broker_addr, graphmgr_addr, graphinfo_addr, node_addr, checkpoint_addr):
+def run_editor_window(broker_addr, graphmgr_addr, graphinfo_addr, node_addr, checkpoint_addr, load=None):
     app = QtGui.QApplication([])
 
     loop = QEventLoop(app)
@@ -44,6 +44,10 @@ def run_editor_window(broker_addr, graphmgr_addr, graphinfo_addr, node_addr, che
     # Add flowchart control panel to the main window
     layout.addWidget(fc.widget(), 0, 0, 2, 1)
     win.show()
+
+    # Load a flowchart chart into the editor window
+    if load:
+        fc.loadFile(load)
 
     try:
         task = asyncio.ensure_future(fc.run())
@@ -204,6 +208,8 @@ class MessageBroker(object):
         self.checkpoint_sub_addr = "ipc://%s/checkpoint_sub" % ipcdir
         self.checkpoint_pub_addr = "ipc://%s/checkpoint_pub" % ipcdir
 
+        self.load = load
+
         self.lock = asyncio.Lock()
         self.msgs = {}
         self.checkpoints = {}
@@ -232,7 +238,8 @@ class MessageBroker(object):
                   self.graphmgr_addr,
                   self.graphinfo_addr,
                   self.node_addr,
-                  self.checkpoint_pub_addr),
+                  self.checkpoint_pub_addr,
+                  self.load),
             daemon=True)
         editor_proc.start()
 
