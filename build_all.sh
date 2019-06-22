@@ -3,7 +3,11 @@
 set -e
 
 # choose local directory where packages will be installed
-export INSTDIR=`pwd`/install
+if [ -z "$TESTRELDIR" ]; then
+  export INSTDIR=`pwd`/install
+else
+  export INSTDIR="$TESTRELDIR"
+fi
 
 cmake_option="Debug"
 pyInstallStyle="develop"
