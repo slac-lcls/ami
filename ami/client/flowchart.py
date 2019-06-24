@@ -10,6 +10,7 @@ import zmq.asyncio
 from ami.client import flowchart_messages as fcMsgs
 from ami.flowchart.Flowchart import Flowchart
 from ami.flowchart.library import LIBRARY
+from ami.flowchart.library.common import SourceNode
 from ami import LogConfig
 from pyqtgraph.Qt import QtGui, QtCore
 from ami.asyncqt import QEventLoop, asyncSlot
@@ -83,9 +84,14 @@ class NodeProcess(QtCore.QObject):
 
         self.win = NodeWindow(self)
 
-        self.node = LIBRARY.getNodeType(msg.node_type)(msg.name)
+        try:
+            self.node = LIBRARY.getNodeType(msg.node_type)(msg.name)
+            self.inputs = {}
+        except KeyError:
+            self.node = SourceNode(name=msg.name, terminals={'Out': {'io': 'out', 'ttype': msg.node_type}})
+            self.inputs = {"In": msg.name}
+
         self.graphmgr_addr = graphmgr_addr
-        self.inputs = []
         self.conditions = []
 
         self.ctx = zmq.asyncio.Context()

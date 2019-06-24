@@ -4,6 +4,8 @@ from pyqtgraph.widgets.SpinBox import SpinBox
 from pyqtgraph.WidgetGroup import WidgetGroup
 from pyqtgraph.widgets.ColorButton import ColorButton
 from ami.flowchart.Node import Node
+from ami.flowchart.library.DisplayWidgets import ScalarWidget, WaveformWidget, AreaDetWidget
+import amitypes
 import asyncio
 
 
@@ -88,7 +90,8 @@ class CtrlNode(Node):
 
     sigStateChanged = QtCore.Signal(object)
 
-    def __init__(self, name, ui=None, terminals=None, **kwargs):
+    def __init__(self, name, ui=None, terminals={}, **kwargs):
+        super(CtrlNode, self).__init__(name=name, terminals=terminals, **kwargs)
         self.widget = None
         self.task = None
 
@@ -97,9 +100,6 @@ class CtrlNode(Node):
                 ui = self.uiTemplate
             else:
                 ui = []
-        if terminals is None:
-            terminals = {'In': {'io': 'in'}, 'Out': {'io': 'out'}}
-        super(CtrlNode, self).__init__(name=name, terminals=terminals, **kwargs)
 
         self.init_values(ui)
         self.ui, self.stateGroup, self.ctrls = generateUi(ui)
@@ -167,3 +167,28 @@ class CtrlNode(Node):
             self.task = asyncio.ensure_future(self.widget.update())
 
         return self.widget
+
+
+class SourceNode(CtrlNode):
+
+    def __init__(self, **kwargs):
+        kwargs['viewable'] = True
+        super(SourceNode, self).__init__(**kwargs)
+
+        self.widgetType = None
+
+        terminals = kwargs['terminals']
+        ttype = terminals['Out']['ttype']
+
+        if ttype is int or ttype is float or ttype is bool:
+            self.widgetType = ScalarWidget
+        elif ttype is amitypes.Array1d:
+            self.widgetType = WaveformWidget
+        elif ttype is amitypes.Array2d:
+            self.widgetType = AreaDetWidget
+
+        self._input_vars["In"] = self.name()
+
+    def display(self, topics, addr, win, **kwargs):
+        if self.widgetType:
+            return super(SourceNode, self).display(topics, addr, win, self.widgetType, **kwargs)

@@ -9,7 +9,7 @@ from ami import asyncqt
 from ami.flowchart.FlowchartGraphicsView import FlowchartGraphicsView
 from ami.flowchart.Terminal import Terminal
 from ami.flowchart.library import LIBRARY
-from ami.flowchart.library.common import CtrlNode
+from ami.flowchart.library.common import SourceNode, CtrlNode
 from ami.flowchart.Node import Node, find_nearest
 from ami.flowchart.NodeLibrary import SourceLibrary
 from ami.flowchart.TypeEncoder import TypeEncoder
@@ -78,7 +78,7 @@ class Flowchart(Node):
     def nodes(self):
         return self._nodes
 
-    def createNode(self, nodeType, name=None, pos=None):
+    def createNode(self, nodeType=None, name=None, node=None, pos=None):
         """Create a new Node and add it to this flowchart.
         """
         if name is None:
@@ -89,7 +89,9 @@ class Flowchart(Node):
                     break
                 n += 1
         # create an instance of the node
-        node = self.library.getNodeType(nodeType)(name)
+        if node is None:
+            node = self.library.getNodeType(nodeType)(name)
+
         self.addNode(node, name, pos)
 
         msg = fcMsgs.CreateNode(name, nodeType)
@@ -673,12 +675,12 @@ class FlowchartWidget(dockarea.DockArea):
             await self.chart.broker.send_pyobj(fcMsgs.DisplayNode(node.name(), dict(topics)))
 
         elif isinstance(item.node, Node) and item.node.viewable():
-
             topics = []
             views = []
 
-            if len(node.inputs()) != len(node.input_vars()):
-                return
+            if not isinstance(node, SourceNode):
+                if len(node.inputs()) != len(node.input_vars()):
+                    return
 
             for term, in_var in node.input_vars().items():
 

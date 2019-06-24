@@ -2,7 +2,7 @@ from pyqtgraph.Qt import QtGui, QtCore
 from pyqtgraph.widgets.GraphicsView import GraphicsView
 from pyqtgraph.graphicsItems.ViewBox import ViewBox
 from pyqtgraph import GridItem
-from ami.flowchart.Node import Node
+from ami.flowchart.library.common import SourceNode
 import asyncqt
 
 
@@ -83,9 +83,9 @@ class FlowchartViewBox(ViewBox):
     def dropEvent(self, ev):
         if ev.mimeData().hasFormat('application/x-qabstractitemmodeldatalist'):
             arr = ev.mimeData().data('application/x-qabstractitemmodeldatalist')
-            nodeType = self.decode_data(arr)[0][0].value()
+            node = self.decode_data(arr)[0][0].value()
             try:
-                self.widget.chart.createNode(nodeType, pos=self.mapToView(ev.pos()))
+                self.widget.chart.createNode(node, pos=self.mapToView(ev.pos()))
                 ev.accept()
                 self.widget.chart.source_lock.release()
                 return
@@ -93,9 +93,10 @@ class FlowchartViewBox(ViewBox):
                 pass
 
             try:
-                node = self.widget.chart.source_library.getSourceType(nodeType)
-                node = Node(name=nodeType, terminals={'Out': {'io': 'out', 'ttype': node}})
-                self.widget.chart.addNode(node, name=nodeType, pos=self.mapToView(ev.pos()))
+                node_type = self.widget.chart.source_library.getSourceType(node)
+                node = SourceNode(name=node, terminals={'Out': {'io': 'out', 'ttype': node_type}})
+                # self.widget.chart.addNode(node, name=nodeType, pos=self.mapToView(ev.pos()))
+                self.widget.chart.createNode(node_type, name=node.name(), node=node, pos=self.mapToView(ev.pos()))
                 ev.accept()
                 self.widget.chart.source_lock.release()
                 return
