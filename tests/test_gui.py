@@ -134,6 +134,9 @@ def flowchart(request, workerjson, broker):
         print(e)
         yield None
     finally:
+        # cleanup the zmq context
+        fc.ctx.destroy()
+        # stop the ami process
         queue.put(None)
         ami.join(1)
         # if ami still hasn't exitted then kill it
