@@ -2,6 +2,7 @@ import asyncio
 import pytest
 import zmq
 import time
+import os
 import signal
 import amitypes as at
 import multiprocessing as mp
@@ -208,7 +209,7 @@ def test_sources(qtbot, flowchart):
 
 
 @pytest.mark.parametrize('flowchart', ['static'], indirect=True)
-def test_editor(qtbot, flowchart):
+def test_editor(qtbot, flowchart, tmp_path):
     flowchart, broker = flowchart
 
     qtbot.addWidget(flowchart.widget())
@@ -227,3 +228,16 @@ def test_editor(qtbot, flowchart):
     roi_in = roi_node._inputs['In']
 
     cspad_out.connectTo(roi_in)
+    assert len(flowchart.listConnections()) == 1
+
+    widget = flowchart.widget()
+
+    pth = os.path.join(tmp_path, 'graph.fc')
+    widget.setCurrentFile(pth)
+    widget.saveClicked()
+
+    flowchart.clear()
+    assert len(flowchart.listConnections()) == 0
+
+    flowchart.loadFile(pth)
+    assert len(flowchart.listConnections()) == 1
