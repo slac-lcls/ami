@@ -2,13 +2,15 @@ import asyncio
 import pytest
 import zmq
 import time
+import signal
 import amitypes as at
 import multiprocessing as mp
-# from ami.client import GraphAddress
-from ami.client.flowchart import MessageBroker
 import ami.client.flowchart_messages as fcMsgs
-# from ami.flowchart.Flowchart import Flowchart
-from ami.flowchart.NodeLibrary import SourceLibrary
+from ami.client import GraphAddress
+from ami.local import build_parser, run_ami
+from ami.client.flowchart import MessageBroker
+from ami.flowchart.Flowchart import Flowchart
+from ami.comm import Ports
 from collections import OrderedDict
 
 
@@ -27,7 +29,6 @@ class BrokerHelper:
         # if the message brokers task is still running cancel it
         if not self.task.done():
             self.task.cancel()
-        self.comm.send('exit')
 
     def communicate(self):
         while True:
@@ -48,7 +49,6 @@ class BrokerProxy:
 
     def exit(self):
         self.comm.send(None)
-        return self.comm.recv() == 'exit'
 
     def __getattr__(self, name):
         self.comm.send(name)
@@ -86,6 +86,65 @@ def broker(ipc_dir):
     return proc.exitcode
 
 
+@pytest.fixture(scope='function')
+def flowchart(request, workerjson, broker):
+    try:
+        from pytest_cov.embed import cleanup_on_sigterm
+        cleanup_on_sigterm()
+    except ImportError:
+        pass
+
+    parser = build_parser()
+    args = parser.parse_args(["-n", "1", '-t', '--headless',
+                              '%s://%s' %
+                              (request.param, workerjson)])
+
+    queue = mp.Queue()
+    ami = mp.Process(name='ami',
+                     target=run_ami,
+                     args=(args, queue))
+    ami.start()
+
+    try:
+        host = "127.0.0.1"
+        comm_addr = "tcp://%s:%d" % (host, Ports.Comm)
+        graphinfo_addr = "tcp://%s:%d" % (host, Ports.Info)
+
+        graphmgr = GraphAddress("graph", comm_addr)
+
+        fc = Flowchart(broker_addr=broker.broker_sub_addr,
+                       graphmgr_addr=graphmgr,
+                       graphinfo_addr=graphinfo_addr,
+                       node_addr=broker.node_addr,
+                       checkpoint_addr=broker.checkpoint_pub_addr)
+
+        loop = asyncio.get_event_loop()
+
+        # need to call twice because the first time we get an empty dict
+        loop.run_until_complete(fc.updateSources(init=True))
+        loop.run_until_complete(fc.updateSources(init=True))
+
+        yield (fc, broker)
+
+    except Exception as e:
+        # let the fixture exit 'gracefully' if it fails
+        print(e)
+        yield None
+    finally:
+        queue.put(None)
+        ami.join(1)
+        # if ami still hasn't exitted then kill it
+        if ami.is_alive():
+            ami.terminate()
+            ami.join(1)
+
+        if ami.exitcode == 0 or ami.exitcode == -signal.SIGTERM:
+            return 0
+        else:
+            print('AMI exited with non-zero status code: %d' % ami.exitcode)
+            return 1
+
+
 def test_broker_sub(broker):
     ctx = zmq.Context()
     socket = ctx.socket(zmq.XPUB)
@@ -119,78 +178,28 @@ def test_broker_sub(broker):
     assert isinstance(msgs[name], fcMsgs.CloseNode)
 
 
-@pytest.mark.parametrize('start_ami', ['static'], indirect=True)
-def test_source_library(complex_graph_file, start_ami):
-    comm_handler = start_ami
-    comm_handler.load(complex_graph_file)
+@pytest.mark.parametrize('flowchart', ['static'], indirect=True)
+def test_sources(qtbot, flowchart):
 
-    start = time.time()
-    while comm_handler.graphVersion != comm_handler.featuresVersion:
-        end = time.time()
-        if end - start > 10:
-            raise TimeoutError
+    flowchart = flowchart[0]
+    source_library = flowchart.source_library
 
-    sources = comm_handler.sources
-    source_library = SourceLibrary()
+    source_tree = source_library.getSourceTree()
+    sources = set(source_tree.keys())
+    assert sources == set(['delta_t', 'cspad', 'laser', 'timestamp', 'heartbeat'])
 
-    for source, node_type in sources.items():
-        root, *_ = source.split(':')
-        source_library.addNodeType(source, node_type, [[root]])
+    label_tree = OrderedDict([('cspad', "<class 'amitypes.Array2d'>"),
+                              ('delta_t', "<class 'int'>"),
+                              ('heartbeat', "<class 'int'>"),
+                              ('laser', "<class 'int'>"),
+                              ('timestamp', "<class 'int'>")])
+    assert source_library.getLabelTree() == label_tree
+    # test cached version
+    assert source_library.getLabelTree() == label_tree
 
-    assert source_library.sourceList == {'cspad': at.Array2d, 'delta_t': int,
-                                         'heartbeat': int, 'laser': int, 'timestamp': int}
     assert source_library.getSourceType('cspad') == at.Array2d
 
     try:
-        source_library.addNodeType('cspad', at.Array2d, [[]])
-    except Exception:
-        pass
-
-    try:
         source_library.getSourceType('')
-    except Exception:
+    except KeyError:
         pass
-
-    assert source_library.getSourceTree() == OrderedDict([('delta_t', OrderedDict([('delta_t', 'delta_t')])),
-                                                          ('cspad', OrderedDict([('cspad', 'cspad')])),
-                                                          ('laser', OrderedDict([('laser', 'laser')])),
-                                                          ('timestamp', OrderedDict([('timestamp', 'timestamp')])),
-                                                          ('heartbeat', OrderedDict([('heartbeat', 'heartbeat')]))])
-
-    labelTree = OrderedDict([('cspad', "<class 'amitypes.Array2d'>"),
-                             ('delta_t', "<class 'int'>"),
-                             ('heartbeat', "<class 'int'>"),
-                             ('laser', "<class 'int'>"),
-                             ('timestamp', "<class 'int'>")])
-
-    assert source_library.getLabelTree() == labelTree
-    assert source_library.getLabelTree() == labelTree
-
-
-# @pytest.mark.parametrize('start_ami', ['static'], indirect=True)
-# def test_editor(qtbot, broker, start_ami):
-
-#     comm_handler = start_ami
-#     time.sleep(1)
-#     sources = comm_handler.sources
-
-#     source_library = SourceLibrary()
-#     for source, node_type in sources.items():
-#         root, *_ = source.split(':')
-#         source_library.addNodeType(source, node_type, [[root]])
-
-#     graphmgr = GraphAddress("graph", comm_handler._addr)
-
-#     fc = Flowchart(broker_addr=broker.broker_sub_addr,
-#                    graphmgr_addr=graphmgr,
-#                    node_addr=broker.node_addr,
-#                    checkpoint_addr=broker.checkpoint_pub_addr)
-
-#     qtbot.addWidget(fc.widget())
-
-#     fc.createNode('Roi')
-#     nodes = fc.nodes()
-#     assert 'Roi.0' in nodes
-
-#     # cleanup zmq context
-#     fc.ctx.destroy()

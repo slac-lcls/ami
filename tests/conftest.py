@@ -157,8 +157,9 @@ def start_ami(request, workerjson):
         comm_addr = "tcp://%s:%d" % (host, Ports.Comm)
         with GraphCommHandler(args.graph_name, comm_addr) as comm_handler:
             yield comm_handler
-    except Exception:
+    except Exception as e:
         # let the fixture exit 'gracefully' if it fails
+        print(e)
         yield None
     finally:
         queue.put(None)
