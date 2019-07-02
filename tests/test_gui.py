@@ -7,10 +7,12 @@ import amitypes as at
 import multiprocessing as mp
 import ami.client.flowchart_messages as fcMsgs
 from ami.client import GraphAddress
-from ami.local import build_parser, run_ami
 from ami.client.flowchart import MessageBroker
 from ami.flowchart.Flowchart import Flowchart
+from ami.flowchart.library.common import SourceNode
+from ami.local import build_parser, run_ami
 from ami.comm import Ports
+
 from collections import OrderedDict
 
 
@@ -203,3 +205,25 @@ def test_sources(qtbot, flowchart):
         source_library.getSourceType('')
     except KeyError:
         pass
+
+
+@pytest.mark.parametrize('flowchart', ['static'], indirect=True)
+def test_editor(qtbot, flowchart):
+    flowchart, broker = flowchart
+
+    qtbot.addWidget(flowchart.widget())
+
+    flowchart.createNode('Roi')
+    roi_node = flowchart._nodes['Roi.0']
+
+    node_name = 'cspad'
+    node_type = flowchart.source_library.getSourceType(node_name)
+    node = SourceNode(name=node_name, terminals={'Out': {'io': 'out', 'ttype': node_type}})
+
+    flowchart.createNode(nodeType=node_type, name=node_name, node=node)
+    cspad_node = flowchart._nodes['cspad']
+
+    cspad_out = cspad_node._outputs['Out']
+    roi_in = roi_node._inputs['In']
+
+    cspad_out.connectTo(roi_in)
