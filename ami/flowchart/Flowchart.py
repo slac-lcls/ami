@@ -71,6 +71,15 @@ class Flowchart(Node):
 
         self.sigChartLoaded.connect(self.chartLoaded)
 
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc_value, traceback):
+        self.close()
+
+    def close(self):
+        self.ctx.destroy()
+
     def setLibrary(self, lib):
         self.library = lib
         self.widget().chartWidget.buildMenu()

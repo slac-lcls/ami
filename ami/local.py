@@ -55,11 +55,19 @@ def build_parser():
         help='aggregates graph and store related variables into structured data when exporting'
     )
 
-    parser.add_argument(
+    comm_group = parser.add_mutually_exclusive_group()
+
+    comm_group.add_argument(
         '-t',
         '--tcp',
         action='store_true',
         help='use tcp instead of ipc for communication'
+    )
+
+    comm_group.add_argument(
+        '-i',
+        '--ipc',
+        help='ipc dir to use for communication'
     )
 
     parser.add_argument(
@@ -148,6 +156,7 @@ def run_ami(args, queue=mp.Queue()):
     xtcdir = None
     ipcdir = None
     export_addr = None
+    owns_ipcdir = True
     flags = {}
     if args.tcp:
         host = "127.0.0.1"
@@ -161,7 +170,12 @@ def run_ami(args, queue=mp.Queue()):
         msg_addr = "tcp://%s:%d" % (host, args.port+6)
         info_addr = "tcp://%s:%d" % (host, args.port+7)
     else:
-        ipcdir = tempfile.mkdtemp()
+        if args.ipc:
+            ipcdir = args.ipc
+            owns_ipcdir = False
+        else:
+            ipcdir = tempfile.mkdtemp()
+            owns_ipcdir = True
         collector_addr = "ipc://%s/node_collector" % ipcdir
         globalcol_addr = "ipc://%s/collector" % ipcdir
         graph_addr = "ipc://%s/graph" % ipcdir
@@ -300,7 +314,7 @@ def run_ami(args, queue=mp.Queue()):
         logger.info("Worker killed by user...")
         return 0
     finally:
-        if ipcdir is not None and os.path.exists(ipcdir):
+        if owns_ipcdir and ipcdir is not None and os.path.exists(ipcdir):
             shutil.rmtree(ipcdir)
         if xtcdir is not None and os.path.exists(xtcdir):
             shutil.rmtree(xtcdir)

@@ -12,7 +12,7 @@ from ami.client.flowchart import MessageBroker
 from ami.flowchart.Flowchart import Flowchart
 from ami.flowchart.library.common import SourceNode
 from ami.local import build_parser, run_ami
-from ami.comm import Ports
+from ami.comm import GraphCommHandler
 
 from collections import OrderedDict
 
@@ -32,6 +32,9 @@ class BrokerHelper:
         # if the message brokers task is still running cancel it
         if not self.task.done():
             self.task.cancel()
+
+        # cleanup the broker
+        self.broker.close()
 
     def communicate(self):
         while True:
@@ -90,7 +93,7 @@ def broker(ipc_dir):
 
 
 @pytest.fixture(scope='function')
-def flowchart(request, workerjson, broker):
+def flowchart(request, workerjson, broker, ipc_dir, qevent_loop):
     try:
         from pytest_cov.embed import cleanup_on_sigterm
         cleanup_on_sigterm()
@@ -98,7 +101,7 @@ def flowchart(request, workerjson, broker):
         pass
 
     parser = build_parser()
-    args = parser.parse_args(["-n", "1", '-t', '--headless',
+    args = parser.parse_args(["-n", "1", '--ipc', str(ipc_dir), '--headless',
                               '%s://%s' %
                               (request.param, workerjson)])
 
@@ -109,34 +112,31 @@ def flowchart(request, workerjson, broker):
     ami.start()
 
     try:
-        host = "127.0.0.1"
-        comm_addr = "tcp://%s:%d" % (host, Ports.Comm)
-        graphinfo_addr = "tcp://%s:%d" % (host, Ports.Info)
+        comm_addr = "ipc://%s/comm" % ipc_dir
+        graphinfo_addr = "ipc://%s/info" % ipc_dir
 
         graphmgr = GraphAddress("graph", comm_addr)
 
-        fc = Flowchart(broker_addr=broker.broker_sub_addr,
+        # wait for ami to be fully up before updating the sources
+        with GraphCommHandler(*graphmgr) as comm:
+            while not comm.sources:
+                time.sleep(0.1)
+
+        with Flowchart(broker_addr=broker.broker_sub_addr,
                        graphmgr_addr=graphmgr,
                        graphinfo_addr=graphinfo_addr,
                        node_addr=broker.node_addr,
-                       checkpoint_addr=broker.checkpoint_pub_addr)
+                       checkpoint_addr=broker.checkpoint_pub_addr) as fc:
 
-        loop = asyncio.get_event_loop()
+            qevent_loop.run_until_complete(fc.updateSources(init=True))
 
-        # need to call twice because the first time we get an empty dict
-        loop.run_until_complete(fc.updateSources(init=True))
-        loop.run_until_complete(fc.updateSources(init=True))
-
-        yield (fc, broker)
+            yield (fc, broker)
 
     except Exception as e:
         # let the fixture exit 'gracefully' if it fails
-        print(e)
+        print("error setting up flowchart fixture:", e)
         yield None
     finally:
-        # cleanup the zmq context
-        fc.ctx.destroy()
-        # stop the ami process
         queue.put(None)
         ami.join(1)
         # if ami still hasn't exitted then kill it
@@ -183,10 +183,12 @@ def test_broker_sub(broker):
     assert name in msgs
     assert isinstance(msgs[name], fcMsgs.CloseNode)
 
+    # cleanup the zmq context
+    ctx.destroy()
+
 
 @pytest.mark.parametrize('flowchart', ['static'], indirect=True)
 def test_sources(qtbot, flowchart):
-
     flowchart = flowchart[0]
     source_library = flowchart.source_library
 

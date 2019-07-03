@@ -220,6 +220,7 @@ class MessageBroker(object):
         self.msgs = {}
         self.checkpoints = {}
         self.widget_procs = {}
+        self.editor = None
 
         self.ctx = zmq.asyncio.Context()
 
@@ -236,6 +237,23 @@ class MessageBroker(object):
 
         self.checkpoint_pub_sock = self.ctx.socket(zmq.PUB)            # sends messages to editor
         self.checkpoint_pub_sock.bind(self.checkpoint_pub_addr)
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc_value, traceback):
+        self.close()
+
+    def close(self):
+        for name, (node_type, proc) in self.widget_procs.items():
+            logger.info("terminating widget proc %s of type %s", name, node_type)
+            proc.terminate()
+            proc.join()
+            logger.info("terminated widget proc %s", name)
+        if self.editor is not None:
+            self.editor.terminate()
+            self.editor.join()
+        self.ctx.destroy()
 
     def launch_editor_window(self):
         editor_proc = mp.Process(

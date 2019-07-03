@@ -4,7 +4,9 @@ import sys
 import dill
 import json
 import shutil
+import asyncio
 import tempfile
+import itertools
 import subprocess
 import signal
 import multiprocessing as mp
@@ -18,6 +20,7 @@ try:
 except ImportError:
     p4p = None
 
+from ami.asyncqt import QEventLoop
 from ami.graphkit_wrapper import Graph
 from ami.graph_nodes import Map, FilterOn, FilterOff, Binning, PickN
 from ami.local import build_parser, run_ami
@@ -174,3 +177,19 @@ def start_ami(request, workerjson):
         else:
             print('AMI exited with non-zero status code: %d' % ami.exitcode)
             return 1
+
+
+@pytest.fixture(scope='session')
+def qevent_loop_gbl(qapp):
+    with QEventLoop(qapp) as loop:
+        yield loop
+
+
+@pytest.fixture(scope='function')
+def qevent_loop(qevent_loop_gbl):
+    loop = qevent_loop_gbl
+    asyncio.set_event_loop(loop)
+    yield loop
+    # clean out the old socket notifiers
+    for notifier in itertools.chain(loop._read_notifiers.values(), loop._write_notifiers.values()):
+        notifier.setEnabled(False)
