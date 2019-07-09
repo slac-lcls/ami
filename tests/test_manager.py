@@ -140,7 +140,7 @@ def manager_proc(ipc_dir):
     proc.join(1)
     if proc.is_alive():
         proc.kill()
-        proc.join(1)
+        proc.join()
 
     return proc.exitcode
 

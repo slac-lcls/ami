@@ -88,7 +88,7 @@ def broker(ipc_dir):
     # if ami still hasn't exitted then kill it
     if proc.is_alive():
         proc.terminate()
-        proc.join(1)
+        proc.join()
     return proc.exitcode
 
 
@@ -142,7 +142,7 @@ def flowchart(request, workerjson, broker, ipc_dir, qevent_loop):
         # if ami still hasn't exitted then kill it
         if ami.is_alive():
             ami.terminate()
-            ami.join(1)
+            ami.join()
 
         if ami.exitcode == 0 or ami.exitcode == -signal.SIGTERM:
             return 0
