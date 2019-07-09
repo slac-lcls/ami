@@ -138,7 +138,7 @@ def flowchart(request, workerjson, broker, ipc_dir, qevent_loop):
         yield None
     finally:
         queue.put(None)
-        ami.join(1)
+        ami.join(2)
         # if ami still hasn't exitted then kill it
         if ami.is_alive():
             ami.terminate()

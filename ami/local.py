@@ -297,7 +297,13 @@ def run_ami(args, queue=mp.Queue()):
 
         for proc in procs:
             proc.terminate()
-            proc.join()
+
+        for proc in procs:
+            proc.join(1)
+            if proc.is_alive():
+                proc.kill()
+                proc.join(1)
+
             if proc.exitcode == 0 or proc.exitcode == -signal.SIGTERM:
                 logger.info('%s exited successfully', proc.name)
             else:

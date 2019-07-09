@@ -43,6 +43,7 @@ def sync_proc(request, ipc_dir):
 
     # cleanup the syncer
     comm.send_string('exit')
+
     ret = comm.recv_pyobj()
     # join syncer thread
     sync_proc.join(2)
@@ -52,8 +53,12 @@ def sync_proc(request, ipc_dir):
         sync_proc.terminate()
         sync_proc.join(1)
 
+    for sync in syncs:
+        sync.close()
     # cleanup zmq
-    ctx.destroy()
+    comm.close()
+    ctx.term()
+    # ctx.destroy()
 
     return ret
 
