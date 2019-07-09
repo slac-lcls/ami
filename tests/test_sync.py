@@ -53,12 +53,11 @@ def sync_proc(request, ipc_dir):
         sync_proc.terminate()
         sync_proc.join(1)
 
+    # cleanup zmq
     for sync in syncs:
         sync.close()
-    # cleanup zmq
     comm.close()
     ctx.term()
-    # ctx.destroy()
 
     return ret
 

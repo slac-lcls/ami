@@ -190,6 +190,6 @@ def qevent_loop(qevent_loop_gbl):
     loop = qevent_loop_gbl
     asyncio.set_event_loop(loop)
     yield loop
-    # clean out the old socket notifiers
+    # clean out the old socket notifiers - not necessary if zmq sockets are explicitly closed
     for notifier in itertools.chain(loop._read_notifiers.values(), loop._write_notifiers.values()):
         notifier.setEnabled(False)

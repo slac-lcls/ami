@@ -137,10 +137,7 @@ def manager_proc(ipc_dir):
 
     # cleanup the manager process
     proc.terminate()
-    proc.join(1)
-    if proc.is_alive():
-        proc.kill()
-        proc.join()
+    proc.join()
 
     return proc.exitcode
 

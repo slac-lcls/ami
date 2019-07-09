@@ -6,6 +6,7 @@ import signal
 import logging
 import tempfile
 import argparse
+import functools
 import subprocess
 import multiprocessing as mp
 
@@ -151,6 +152,32 @@ def build_parser():
     return parser
 
 
+def _sig_handler(procs, signum, frame):
+    logger.debug('Caught signal %d', signum)
+    sys.exit(cleanup(procs))
+
+
+def cleanup(procs):
+    failed_proc = False
+
+    for proc in procs:
+        proc.terminate()
+
+    for proc in procs:
+        proc.join(1)
+        if proc.is_alive():
+            proc.kill()
+            proc.join()
+
+        if proc.exitcode == 0 or proc.exitcode == -signal.SIGTERM:
+            logger.info('%s exited successfully', proc.name)
+        else:
+            failed_proc = True
+            logger.error('%s exited with non-zero status code: %d', proc.name, proc.exitcode)
+
+    return failed_proc
+
+
 def run_ami(args, queue=mp.Queue()):
 
     xtcdir = None
@@ -187,7 +214,7 @@ def run_ami(args, queue=mp.Queue()):
         info_addr = "ipc://%s/info" % ipcdir
 
     procs = []
-    failed_proc = False
+    client_proc = None
 
     log_handlers = [logging.StreamHandler()]
     if args.headless or args.console:
@@ -277,6 +304,19 @@ def run_ami(args, queue=mp.Queue()):
             export_proc.start()
             procs.append(export_proc)
 
+        if not (args.console or args.headless):
+            client_proc = mp.Process(
+                name='client',
+                target=run_client,
+                args=(args.graph_name, comm_addr, info_addr, args.load, args.gui_mode)
+            )
+            client_proc.daemon = False
+            client_proc.start()
+            procs.append(client_proc)
+
+        # register a signal handler for cleanup on sigterm
+        signal.signal(signal.SIGTERM, functools.partial(_sig_handler, procs))
+
         if args.console:
             run_console(args.graph_name, comm_addr, args.load)
         elif args.headless:
@@ -286,44 +326,22 @@ def run_ami(args, queue=mp.Queue()):
             while queue.empty():
                 pass
         else:
-            client_proc = mp.Process(
-                name='client',
-                target=run_client,
-                args=(args.graph_name, comm_addr, info_addr, args.load, args.gui_mode)
-            )
-            client_proc.daemon = False
-            client_proc.start()
             client_proc.join()
-
-        for proc in procs:
-            proc.terminate()
-
-        for proc in procs:
-            proc.join(1)
-            if proc.is_alive():
-                proc.kill()
-                proc.join()
-
-            if proc.exitcode == 0 or proc.exitcode == -signal.SIGTERM:
-                logger.info('%s exited successfully', proc.name)
-            else:
-                failed_proc = True
-                logger.error('%s exited with non-zero status code: %d', proc.name, proc.exitcode)
-
-        # return a non-zero status code if any workerss died
-        if not (args.console or args.headless) and client_proc.exitcode != 0:
-            return client_proc.exitcode
-        elif failed_proc:
-            return 1
 
     except KeyboardInterrupt:
         logger.info("Worker killed by user...")
-        return 0
     finally:
+        failed_proc = cleanup(procs)
+        # cleanup ipc directories
         if owns_ipcdir and ipcdir is not None and os.path.exists(ipcdir):
             shutil.rmtree(ipcdir)
         if xtcdir is not None and os.path.exists(xtcdir):
             shutil.rmtree(xtcdir)
+        # return a non-zero status code if any workerss died
+        if client_proc is not None and client_proc.exitcode != 0:
+            return client_proc.exitcode
+        elif failed_proc:
+            return 1
 
 
 def main():

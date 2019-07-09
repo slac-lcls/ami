@@ -39,6 +39,7 @@ class Flowchart(Node):
     def __init__(self, name=None, filePath=None, library=None,
                  broker_addr="", graphmgr_addr="", graphinfo_addr="", node_addr="", checkpoint_addr=""):
         super(Flowchart, self).__init__(name)
+        self.socks = []
         self.library = library or LIBRARY
         self.graphmgr_addr = graphmgr_addr
         self.source_library = None
@@ -47,17 +48,21 @@ class Flowchart(Node):
         self.ctx = zmq.asyncio.Context()
         self.broker = self.ctx.socket(zmq.PUB)  # used to create new node processes
         self.broker.connect(broker_addr)
+        self.socks.append(self.broker)
 
         self.graphinfo = self.ctx.socket(zmq.SUB)
         self.graphinfo.setsockopt_string(zmq.SUBSCRIBE, '')
         self.graphinfo.connect(graphinfo_addr)
+        self.socks.append(self.graphinfo)
 
         self.node = self.ctx.socket(zmq.PULL)  # used to receive to_operation() from processes
         self.node.bind(node_addr)
+        self.socks.append(self.node)
 
         self.checkpoint = self.ctx.socket(zmq.SUB)  # used to receive ctrlnode updates from processes
         self.checkpoint.setsockopt_string(zmq.SUBSCRIBE, '')
         self.checkpoint.connect(checkpoint_addr)
+        self.socks.append(self.checkpoint)
 
         if name is None:
             name = "Flowchart"
@@ -78,7 +83,11 @@ class Flowchart(Node):
         self.close()
 
     def close(self):
-        self.ctx.destroy()
+        for sock in self.socks:
+            sock.close(linger=0)
+        if self._widget is not None:
+            self._widget.graphCommHandler.close()
+        self.ctx.term()
 
     def setLibrary(self, lib):
         self.library = lib
