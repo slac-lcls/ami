@@ -1,6 +1,6 @@
 import os
 import re
-from setuptools import setup
+from setuptools import setup, find_packages
 
 
 def get_version(pkg):
@@ -22,8 +22,7 @@ setup(
     author='Daniel Damiani',
     author_email='ddamiani@slac.stanford.edu',
     url='https://confluence.slac.stanford.edu/display/PSDMInternal/AMI+Replacement',
-    package_dir={'ami.examples': 'examples'},
-    packages=['ami', 'ami.examples'],
+    packages=find_packages(),
     setup_requires=[
         'pytest-runner'
     ],
