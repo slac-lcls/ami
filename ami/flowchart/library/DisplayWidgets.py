@@ -1,5 +1,6 @@
 import logging
 import asyncio
+import datetime as dt
 import itertools as it
 import numpy as np
 import pyqtgraph as pg
@@ -27,6 +28,7 @@ class AsyncFetcher(object):
         self.comm_handler = AsyncGraphCommHandler(addr.name, addr.uri)
         self.buffered = buffered
         self.reply = {}
+        self.last_updated = "Last Updated: None"
 
     def update_topics(self, topics={}):
         self.names = list(topics.keys())
@@ -40,6 +42,9 @@ class AsyncFetcher(object):
         reply = await self.comm_handler.fetch(self.topics)
 
         if reply is not None:
+            now = dt.datetime.now()
+            now = now.strftime("%H:%M:%S")
+            self.last_updated = f"Last Updated: {now}"
             if self.buffered and len(self.names) > 1:
                 self.reply = dict(zip(self.names, zip(*reply)))
             elif self.buffered:
@@ -73,10 +78,12 @@ class AreaDetWidget(pg.ImageView):
         self.fetcher = AsyncFetcher(topics, addr)
         handles = self.roi.getHandles()
         self.roi.removeHandle(handles[1])
+        self.last_updated = pg.LabelItem(parent=self.getView())
 
     async def update(self):
         while True:
             await self.fetcher.fetch()
+            self.last_updated.setText(self.fetcher.last_updated)
             for k, v in self.fetcher.reply.items():
                 v = v.astype(np.float, copy=False)
                 self.setImage(v)
@@ -91,10 +98,12 @@ class HistogramWidget(pg.GraphicsLayoutWidget):
         self.plot_view.addLegend()
         self.plot = {}
         self.terms = kwargs.get('terms', {})
+        self.last_updated = pg.LabelItem(parent=self.plot_view.getViewBox())
 
     async def update(self):
         while True:
             await self.fetcher.fetch()
+            self.last_updated.setText(self.fetcher.last_updated)
             if self.fetcher.reply:
                 self.histogram_updated(self.fetcher.reply)
 
@@ -123,10 +132,12 @@ class ScatterWidget(pg.GraphicsLayoutWidget):
         self.plot_view.addLegend()
         self.plot = {}
         self.terms = kwargs.get('terms', {})
+        self.last_updated = pg.LabelItem(parent=self.plot_view.getViewBox())
 
     async def update(self):
         while True:
             await self.fetcher.fetch()
+            self.last_updated.setText(self.fetcher.last_updated)
             if self.fetcher.reply:
                 self.scatter_updated(self.fetcher.reply)
 
@@ -162,10 +173,12 @@ class WaveformWidget(pg.GraphicsLayoutWidget):
         self.plot_view.addLegend()
         self.plot = {}
         self.terms = kwargs.get('terms', {})
+        self.last_updated = pg.LabelItem(parent=self.plot_view.getViewBox())
 
     async def update(self):
         while True:
             await self.fetcher.fetch()
+            self.last_updated.setText(self.fetcher.last_updated)
             if self.fetcher.reply:
                 self.waveform_updated(self.fetcher.reply)
 
@@ -191,10 +204,12 @@ class LineWidget(pg.GraphicsLayoutWidget):
         self.plot_view.addLegend()
         self.plot = {}
         self.terms = kwargs.get('terms', {})
+        self.last_updated = pg.LabelItem(parent=self.plot_view.getViewBox())
 
     async def update(self):
         while True:
             await self.fetcher.fetch()
+            self.last_updated.setText(self.fetcher.last_updated)
             if self.fetcher.reply:
                 self.line_updated(self.fetcher.reply)
 
