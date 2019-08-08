@@ -5,7 +5,7 @@ import itertools as it
 import numpy as np
 import pyqtgraph as pg
 from qtpy.QtWidgets import QLCDNumber
-from qtpy.QtCore import QRect
+from qtpy.QtCore import QRect, Qt, Signal
 from ami import LogConfig
 from ami.comm import AsyncGraphCommHandler
 
@@ -87,6 +87,44 @@ class AreaDetWidget(pg.ImageView):
             for k, v in self.fetcher.reply.items():
                 v = v.astype(np.float, copy=False)
                 self.setImage(v)
+
+
+class PixelDetWidget(pg.ImageView):
+
+    sigClicked = Signal(object, object)
+
+    def __init__(self, topics, addr, parent=None, **kwargs):
+        self.plot = pg.PlotItem()
+        self.plot.hideAxis('left')
+        self.plot.hideAxis('bottom')
+        super(PixelDetWidget, self).__init__(parent=parent, view=self.plot)
+        self.fetcher = AsyncFetcher(topics, addr)
+        self.last_updated = pg.LabelItem(parent=self.plot)
+        self.point = self.plot.plot([0], [0], symbolBrush=(200, 0, 0), symbol='+', symbolSize=25)
+
+    async def update(self):
+        while True:
+            await self.fetcher.fetch()
+            self.last_updated.setText(self.fetcher.last_updated)
+            for k, v in self.fetcher.reply.items():
+                v = v.astype(np.float, copy=False)
+                self.setImage(v)
+
+    def mousePressEvent(self, ev):
+        if ev.button() == Qt.LeftButton:
+            ev.accept()
+            view = self.plot.getViewBox()
+            pos = view.mapSceneToView(ev.pos())
+            x = max(int(pos.x()), 0)
+            y = max(int(pos.y()), 0)
+            self.update_cursor(x, y)
+            self.sigClicked.emit(x, y)
+        else:
+            ev.ignore()
+
+    def update_cursor(self, x, y):
+        self.plot.removeItem(self.point)
+        self.point = self.plot.plot([x], [y], symbolBrush=(200, 0, 0), symbol='+', symbolSize=25)
 
 
 class HistogramWidget(pg.GraphicsLayoutWidget):

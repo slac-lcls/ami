@@ -1,4 +1,4 @@
-from ami.flowchart.library.DisplayWidgets import AreaDetWidget, WaveformWidget
+from ami.flowchart.library.DisplayWidgets import AreaDetWidget, WaveformWidget, PixelDetWidget
 from ami.flowchart.library.common import CtrlNode, MAX
 from amitypes import Array2d, Array1d
 import pyqtgraph as pg
@@ -146,5 +146,66 @@ class Roi1D(CtrlNode):
         outputs = self.output_vars()
         node = gn.Map(name=self.name()+"_operation",
                       condition_needs=list(conditions.values()), inputs=list(inputs.values()), outputs=outputs,
+                      func=self.func)
+        return node
+
+
+class Roi0D(CtrlNode):
+
+    """
+    Selects single pixel from image.
+    """
+
+    nodeName = "Roi0D"
+    uiTemplate = [('x', 'intSpin', {'value': 0, 'min': 0, 'max': MAX}),
+                  ('y', 'intSpin', {'value': 0, 'min': 0, 'max': MAX})]
+    desc = "Single pixel ROI"
+
+    def __init__(self, name):
+        super(Roi0D, self).__init__(name,
+                                    terminals={'In': {'io': 'in', 'ttype': Array2d},
+                                               'Out': {'io': 'out', 'ttype': float}},
+                                    viewable=True)
+        self.func = lambda img: img[0, 0]
+
+    def display(self, topics, addr, win, **kwargs):
+        if self.widget is None:
+            self.widget = PixelDetWidget(topics, addr, win)
+            self.widget.sigClicked.connect(self.set_values)
+        if self.task is None:
+            self.task = asyncio.ensure_future(self.widget.update())
+
+        return self.widget
+
+    def set_values(self, *args, **kwargs):
+        # need to block signals to the stateGroup otherwise stateGroup.sigChanged
+        # will be emmitted by setValue causing update to be called
+        self.stateGroup.blockSignals(True)
+        self.x, self.y = args
+        self.ctrls['x'].setValue(self.x)
+        self.ctrls['y'].setValue(self.y)
+        self.set_func()
+        self.stateGroup.blockSignals(False)
+
+    def update(self, *args, **kwargs):
+        self.x = self.ctrls['x'].value()
+        self.y = self.ctrls['y'].value()
+        self.set_func()
+        if self.widget:
+            self.widget.update_cursor(self.x, self.y)
+
+    def set_func(self):
+        x = self.x
+        y = self.y
+
+        def func(img):
+            return img[x, y]
+
+        self.func = func
+
+    def to_operation(self, inputs, conditions={}):
+        outputs = self.output_vars()
+        node = gn.Map(name=self.name()+"_operation",
+                      conditions_needs=list(conditions.values()), inputs=list(inputs.values()), outputs=outputs,
                       func=self.func)
         return node
