@@ -35,6 +35,7 @@ class WaveformViewer(CtrlNode):
 
     def __init__(self, name):
         super(WaveformViewer, self).__init__(name, terminals={"In": {"io": "in", "ttype": Array1d}},
+                                             allowAddInput=True,
                                              viewable=True)
 
     def display(self, topics, addr, win, **kwargs):

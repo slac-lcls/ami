@@ -235,12 +235,11 @@ class Node(QtCore.QObject):
         return self._input_vars
 
     def output_vars(self):
-        # TODO fix this for nodes with multiple outputs
-        # can't use self.name() for output
-
         output_vars = []
+
         for name, output in self._outputs.items():
-            output_vars.append(self.name())
+            output_vars.append('.'.join([self.name(), name]))
+
         return output_vars
 
     def condition_vars(self):
@@ -298,7 +297,10 @@ class Node(QtCore.QObject):
         """Called whenever one of this node's terminals is connected elsewhere."""
         node = remoteTerm.node()
         if localTerm.isInput() and remoteTerm.isOutput():
-            self._input_vars[localTerm.name()] = node.name()
+            if node.isSource():
+                self._input_vars[localTerm.name()] = node.name()
+            else:
+                self._input_vars[localTerm.name()] = '.'.join([node.name(), remoteTerm.name()])
         elif localTerm.isCondition():
             self._condition_vars[localTerm.name()] = node.name()
         self.sigTerminalConnected.emit(self)
@@ -399,6 +401,9 @@ class Node(QtCore.QObject):
     def disconnectAll(self):
         for t in self.terminals.values():
             t.disconnectAll()
+
+    def isSource(self):
+        return False
 
 
 class NodeGraphicsItem(GraphicsObject):

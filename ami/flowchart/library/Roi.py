@@ -17,7 +17,6 @@ class Roi(CtrlNode):
                   ('extent x',  'intSpin', {'value': 10, 'min': 1, 'max': MAX}),
                   ('origin y',  'intSpin', {'value': 0, 'min': 0, 'max': MAX}),
                   ('extent y',  'intSpin', {'value': 10, 'min': 1, 'max': MAX})]
-    desc = "Region of Interest"
 
     def __init__(self, name):
         super(Roi, self).__init__(name,
@@ -93,7 +92,6 @@ class Roi1D(CtrlNode):
     nodeName = "Roi1D"
     uiTemplate = [('origin',  'intSpin', {'value': 0, 'min': 0, 'max': MAX}),
                   ('extent',  'intSpin', {'value': 10, 'min': 1, 'max': MAX})]
-    desc = "Region of Interest"
 
     def __init__(self, name):
         super(Roi1D, self).__init__(name, terminals={"In": {"io": "in", "ttype": Array1d},
@@ -159,7 +157,6 @@ class Roi0D(CtrlNode):
     nodeName = "Roi0D"
     uiTemplate = [('x', 'intSpin', {'value': 0, 'min': 0, 'max': MAX}),
                   ('y', 'intSpin', {'value': 0, 'min': 0, 'max': MAX})]
-    desc = "Single pixel ROI"
 
     def __init__(self, name):
         super(Roi0D, self).__init__(name,

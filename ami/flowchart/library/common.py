@@ -192,3 +192,6 @@ class SourceNode(CtrlNode):
     def display(self, topics, addr, win, **kwargs):
         if self.widgetType:
             return super(SourceNode, self).display(topics, addr, win, self.widgetType, **kwargs)
+
+    def isSource(self):
+        return True

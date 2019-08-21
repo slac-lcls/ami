@@ -23,7 +23,7 @@ def test_projection(qtbot):
     mop = gn.Map(name="projection_operation",
                  conditions_needs=[],
                  inputs=list(inputs.values()),
-                 outputs=[node.name()],
+                 outputs=[node.name()+'.Out'],
                  func=lambda a: np.sum(a, axis=1))
 
     assert op.name == mop.name
@@ -48,7 +48,7 @@ def test_pickn(qtbot):
     pop = gn.PickN(name="pickn_operation",
                    condition_needs=[],
                    inputs=list(inputs.values()),
-                   outputs=[node.name()],
+                   outputs=[node.name()+'.Out'],
                    N=3)
 
     assert op.name == pop.name
