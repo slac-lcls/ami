@@ -4,7 +4,8 @@ import datetime as dt
 import itertools as it
 import numpy as np
 import pyqtgraph as pg
-from qtpy.QtWidgets import QLCDNumber
+from qtpy.QtGui import QGridLayout
+from qtpy.QtWidgets import QLCDNumber, QLabel, QWidget
 from qtpy.QtCore import QRect, Qt, Signal
 from ami import LogConfig
 from ami.comm import AsyncGraphCommHandler
@@ -271,3 +272,31 @@ class LineWidget(pg.GraphicsLayoutWidget):
                 self.plot[name] = self.plot_view.plot(x=x, y=y, name=name, symbol=symbol, symbolBrush=color)
             else:
                 self.plot[name].setData(x=y, y=y)
+
+
+class ArrayWidget(QWidget):
+
+    def __init__(self, topics, addr, parent=None, **kwargs):
+        super(ArrayWidget, self).__init__(parent)
+        self.fetcher = AsyncFetcher(topics, addr)
+        self.terms = kwargs.get('terms', {})
+        self.update_rate = kwargs.get('update_rate', 30)
+        self.grid = QGridLayout(self)
+        self.table = pg.TableWidget()
+        self.last_updated = QLabel(parent=self)
+        self.grid.addWidget(self.table, 0, 0)
+        self.grid.setRowStretch(0, 10)
+        self.grid.addWidget(self.last_updated, 1, 0)
+
+    async def update(self):
+        while True:
+            print(self.update_rate)
+            await self.fetcher.fetch()
+            self.last_updated.setText(self.fetcher.last_updated)
+            if self.fetcher.reply:
+                self.array_updated(self.fetcher.reply)
+            await asyncio.sleep(self.update_rate)
+
+    def array_updated(self, data):
+        for term, name in self.terms.items():
+            self.table.setData(data[name])

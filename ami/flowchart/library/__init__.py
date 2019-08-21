@@ -2,6 +2,14 @@
 from ami.flowchart.NodeLibrary import NodeLibrary, isNodeClass
 from ami.flowchart.library import Roi, Filter, Operators, Display, Accumulators, Alert
 
+modules = [Roi, Filter, Operators, Display, Accumulators, Alert]
+
+try:
+    from ami.flowchart.library import Scipy
+    modules.append(Scipy)
+except ImportError:
+    pass
+
 # Build default library
 LIBRARY = NodeLibrary()
 
@@ -14,7 +22,7 @@ getNodeType = LIBRARY.getNodeType
 
 # Add all nodes to the default library
 
-for mod in [Roi, Filter, Operators, Display, Accumulators, Alert]:
+for mod in modules:
     nodes = [getattr(mod, name) for name in dir(mod) if isNodeClass(getattr(mod, name))]
 
     for node in nodes:

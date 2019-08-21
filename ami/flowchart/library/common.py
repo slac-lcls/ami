@@ -108,12 +108,13 @@ class CtrlNode(Node):
 
     def init_values(self, opts):
         for opt in opts:
+
             if len(opt) != 3:
                 continue
             k, t, o = opt
+            k = k.replace(" ", "_")
 
             if 'value' in o:
-                k = k.replace(" ", "_")
                 setattr(self, k, o['value'])
             elif 'index' in o:
                 setattr(self, k, o['values'][o['index']])

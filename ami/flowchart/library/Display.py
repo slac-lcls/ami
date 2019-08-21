@@ -1,9 +1,10 @@
 from typing import Dict
-from ami.flowchart.library.DisplayWidgets import ScalarWidget, ScatterWidget, WaveformWidget, AreaDetWidget, LineWidget
-from ami.flowchart.library.DisplayWidgets import HistogramWidget
+from ami.flowchart.library.DisplayWidgets import ScalarWidget, ScatterWidget, WaveformWidget, \
+    AreaDetWidget, LineWidget, ArrayWidget, HistogramWidget
 from ami.flowchart.library.common import CtrlNode, MAX
-from amitypes import Array1d, Array2d
+from amitypes import Array, Array1d, Array2d
 import ami.graph_nodes as gn
+import asyncio
 
 
 class ScalarViewer(CtrlNode):
@@ -156,3 +157,36 @@ class LinePlot(CtrlNode):
     def addInput(self, **args):
         self.addTerminal(name="X", io='in', ttype=Array1d, **args)
         self.addTerminal(name="Y", io='in', ttype=Array1d, **args)
+
+
+class TableView(CtrlNode):
+
+    """
+    Display array values in a table.
+    """
+
+    nodeName = "TableView"
+    uiTemplate = [("Update Rate", 'combo', {'values': list(map(str, range(60, 0, -10))), 'index': 0})]
+
+    def __init__(self, name):
+        super(TableView, self).__init__(name, terminals={"In": {"io": "in", "ttype": Array}},
+                                        viewable=True)
+
+    def display(self, topics, addr, win, **kwargs):
+        if self.widget is None:
+            kwargs['update_rate'] = int(self.Update_Rate)
+            self.widget = ArrayWidget(topics, addr, win, **kwargs)
+
+        if self.task is None:
+            self.task = asyncio.ensure_future(self.widget.update())
+
+        return self.widget
+
+    def update(self, *args, **kwargs):
+        super(TableView, self).update(*args, **kwargs)
+        if self.widget:
+            self.widget.update_rate = int(self.Update_Rate)
+
+        if self.task:
+            self.task.cancel()
+            self.task = asyncio.ensure_future(self.widget.update())
