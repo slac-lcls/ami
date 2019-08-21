@@ -10,6 +10,12 @@ try:
 except ImportError:
     pass
 
+try:
+    from ami.flowchart.library import Psalg
+    modules.append(Psalg)
+except ImportError:
+    pass
+
 # Build default library
 LIBRARY = NodeLibrary()
 
