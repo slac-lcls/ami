@@ -202,12 +202,9 @@ class Flowchart(Node):
         state = Node.saveState(self)
         state['nodes'] = []
         state['connects'] = []
-
         for name, node in self._nodes.items():
             cls = type(node)
-            clsName = "Node"
-            if hasattr(cls, 'nodeName'):
-                clsName = cls.nodeName
+            clsName = cls.__name__
             ns = {'class': clsName, 'name': name, 'state': node.saveState()}
             state['nodes'].append(ns)
 
@@ -233,9 +230,9 @@ class Flowchart(Node):
                 if n['name'] in self._nodes:
                     self._nodes[n['name']].restoreState(n['state'])
                     continue
-                if n['class'] == "Node":
+                if n['class'] == 'SourceNode':
                     try:
-                        node = Node(name=n['name'], terminals=n['state'].get('terminals', {}))
+                        node = SourceNode(name=n['name'], terminals=n['state'].get('terminals', {}))
                         node.restoreState(n['state'])
                         self.addNode(node, n['name'])
                     except Exception:

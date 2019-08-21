@@ -105,7 +105,7 @@
   ],
   "nodes": [
     {
-      "class": "Node",
+      "class": "SourceNode",
       "name": "cspad",
       "state": {
         "pos": [
@@ -122,7 +122,7 @@
       }
     },
     {
-      "class": "Node",
+      "class": "SourceNode",
       "name": "laser",
       "state": {
         "pos": [
@@ -270,7 +270,7 @@
       }
     },
     {
-      "class": "Node",
+      "class": "SourceNode",
       "name": "delta_t",
       "state": {
         "pos": [
