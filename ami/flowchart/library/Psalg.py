@@ -1,7 +1,7 @@
 from ami.flowchart.library.common import CtrlNode, MAX
 from amitypes import Array1d
 import ami.graph_nodes as gn
-import cfd
+import constFracDiscrim as cfd
 
 
 class CFD(CtrlNode):
