@@ -23,13 +23,10 @@ class BlobFinder(CtrlNode):
             'Y': {'io': 'out', 'ttype': Array1d},
             'Sum': {'io': 'out', 'ttype': Array1d}
         })
-        self.set_func()
 
-    def update(self, *args, **kwargs):
-        super(BlobFinder, self).update(*args, **kwargs)
-        self.set_func()
+    def to_operation(self, inputs, conditions={}):
+        outputs = self.output_vars()
 
-    def set_func(self):
         threshold = self.threshold
         min_sum = self.min_sum
 
@@ -53,11 +50,7 @@ class BlobFinder(CtrlNode):
                 adu_sum = np.zeros(0, dtype=np.float32)
             return nblobs, x, y, adu_sum
 
-        self.func = find_blobs
-
-    def to_operation(self, inputs, conditions={}):
-        outputs = self.output_vars()
         node = gn.Map(name=self.name()+"_operation",
                       condition_needs=list(conditions.values()), inputs=list(inputs.values()), outputs=outputs,
-                      func=self.func)
+                      func=find_blobs)
         return node

@@ -290,7 +290,6 @@ class ArrayWidget(QWidget):
 
     async def update(self):
         while True:
-            print(self.update_rate)
             await self.fetcher.fetch()
             self.last_updated.setText(self.fetcher.last_updated)
             if self.fetcher.reply:
