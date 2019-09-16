@@ -4,6 +4,7 @@ from amitypes import Array, Array1d, Array2d
 from typing import Dict
 import ami.graph_nodes as gn
 import numpy as np
+import functools
 
 
 class Sum(Node):
@@ -109,4 +110,31 @@ class Binning(CtrlNode):
                        conditions_needs=list(conditions.values()), inputs=list(inputs.values()), outputs=map_outputs,
                        func=bin),
                 gn.ReduceByKey(name=self.name()+"_reduce", inputs=map_outputs, outputs=outputs)]
+        return node
+
+
+class Add(Node):
+
+    """
+    Adds together waveforms, images, or a waveform to an image.
+    """
+
+    nodeName = "Add"
+
+    def __init__(self, name):
+        super(Add, self).__init__(name,
+                                  terminals={'In': {'io': 'in', 'ttype': Array},
+                                             'In.1': {'io': 'in', 'ttype': Array},
+                                             'Out': {'io': 'out', 'ttype': Array}},
+                                  allowAddInput=True)
+
+    def to_operation(self, inputs, conditions={}):
+        outputs = self.output_vars()
+
+        def func(*args):
+            return functools.reduce(lambda x, y: x+y, args)
+
+        node = gn.Map(name=self.name()+"_operation",
+                      conditions_needs=list(conditions.values()), inputs=list(inputs.values()), outputs=outputs,
+                      func=func)
         return node

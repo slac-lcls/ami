@@ -41,9 +41,9 @@ class GraphCollector(Node, Collector):
     def recv_handler(self):
         try:
             self.graph_comm.recv()
-        except (AssertionError, TypeError):
+        except (AssertionError, TypeError) as e:
             logger.exception("Failure encountered updating graph:")
-            self.report("error", "Fatal error encountered updating graph!")
+            self.report("error", e)
             self.exitcode = 1
             self.running = False
 

@@ -395,7 +395,13 @@ class Flowchart(Node):
                     ctrl.ui.create_model(ctrl.ui.source_tree, self.source_library.getLabelTree())
             elif topic == 'error':
                 ctrl = self.widget()
-                ctrl.chartWidget.statusText.append(f"{source}: {msg}")
+                if hasattr(msg, 'node_name'):
+                    node_name = ctrl.node_map[msg.node_name]
+                    node = self._nodes[node_name]
+                    node.setException(msg)
+                    ctrl.chartWidget.statusText.append(f"{source} {node.name()}: {msg}")
+                else:
+                    ctrl.chartWidget.statusText.append(f"{source}: {msg}")
 
     @asyncqt.asyncSlot()
     async def chartLoaded(self):
@@ -432,6 +438,8 @@ class FlowchartCtrlWidget(QtGui.QWidget):
 
         self.features_lock = asyncio.Lock()
         self.features = {}
+
+        self.node_map = {}  # { graphkit_node_name : gui_node_name }
 
         self.ui.actionOpen.triggered.connect(self.openClicked)
         self.ui.actionSave.triggered.connect(self.saveClicked)
@@ -470,8 +478,11 @@ class FlowchartCtrlWidget(QtGui.QWidget):
 
             if type(node) is list:
                 graph_nodes.extend(node)
+                for n in node:
+                    self.node_map[n.name] = name
             else:
                 graph_nodes.append(node)
+                self.node_map[node.name] = name
 
         if disconnectedNodes:
             for node in disconnectedNodes:

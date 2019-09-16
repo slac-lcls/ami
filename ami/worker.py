@@ -98,9 +98,9 @@ class Worker(Node):
                         self.graph_comm.recv(False)
                     except zmq.Again:
                         break
-                    except (AssertionError, TypeError):
+                    except (AssertionError, TypeError) as e:
                         logger.exception("Failure encountered updating graph:")
-                        self.report("error", "Fatal error encountered updating graph!")
+                        self.report("error", e)
                         return 1
             elif msg.mtype == MsgTypes.Datagram:
                 try:
@@ -108,9 +108,9 @@ class Worker(Node):
                         if graph:
                             graph_result = graph(msg.payload, color=Colors.Worker)
                             self.store.update(name, graph_result)
-                except Exception:
+                except Exception as e:
                     logger.exception("%s: Failure encountered executing graph:", self.name)
-                    self.report("error", "Fatal error encountered executing graph!")
+                    self.report("error", e)
                     return 1
             else:
                 self.store.send(msg)
