@@ -1,7 +1,8 @@
-from ami.flowchart.library.common import CtrlNode, MAX
-from ami.flowchart.Node import Node
-from amitypes import Array, Array1d, Array2d
+from pyqtgraph import QtGui
 from typing import Dict
+from amitypes import Array, Array1d, Array2d
+from ami.flowchart.library.common import CtrlNode, MAX
+from ami.flowchart.Node import Node, NodeGraphicsItem
 import ami.graph_nodes as gn
 import numpy as np
 import functools
@@ -113,6 +114,24 @@ class Binning(CtrlNode):
         return node
 
 
+class AddGraphicsItem(NodeGraphicsItem):
+
+    def buildMenu(self):
+        super(AddGraphicsItem, self).buildMenu()
+        actions = self.menu.actions()
+        addInput = actions[1]
+
+        addWaveform = QtGui.QAction("Add waveform", self.menu)
+        addWaveform.triggered.connect(self.node.addWaveform)
+        self.menu.insertAction(addInput, addWaveform)
+
+        addImage = QtGui.QAction("Add image", self.menu)
+        addImage.triggered.connect(self.node.addImage)
+        self.menu.insertAction(addWaveform, addImage)
+
+        self.menu.removeAction(addInput)
+
+
 class Add(Node):
 
     """
@@ -123,10 +142,42 @@ class Add(Node):
 
     def __init__(self, name):
         super(Add, self).__init__(name,
-                                  terminals={'In': {'io': 'in', 'ttype': Array},
-                                             'In.1': {'io': 'in', 'ttype': Array},
-                                             'Out': {'io': 'out', 'ttype': Array}},
+                                  terminals={'Image': {'io': 'in', 'ttype': Array2d, 'removable': True},
+                                             'Out': {'io': 'out', 'ttype': Array2d}},
                                   allowAddInput=True)
+        self.sigTerminalAdded.connect(self.setOutput)
+        self.sigTerminalRemoved.connect(self.setOutput)
+
+    def graphicsItem(self, brush=None):
+        if self._graphicsItem is None:
+            self._graphicsItem = AddGraphicsItem(self, brush)
+        return self._graphicsItem
+
+    def isConnected(self):
+        if len(self.terminals) < 3:
+            return False
+
+        return super(Add, self).isConnected()
+
+    def addWaveform(self):
+        self.addTerminal('Waveform', io='in', ttype=Array1d, removable=True)
+
+    def addImage(self):
+        self.addTerminal('Image', io='in', ttype=Array2d, removable=True)
+
+    def setOutput(self):
+        inputs = set()
+
+        for name, term in self._inputs.items():
+            inputs.add(term._type)
+
+        if Array2d in inputs:
+            output_type = Array2d
+        elif inputs == {Array1d}:
+            output_type = Array1d
+
+        self._outputs['Out']._type = output_type
+        self.terminals['Out']._type = output_type
 
     def to_operation(self, inputs, conditions={}):
         outputs = self.output_vars()
