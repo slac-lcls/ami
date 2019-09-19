@@ -27,7 +27,6 @@ getNodeTree = LIBRARY.getNodeTree
 getNodeType = LIBRARY.getNodeType
 
 # Add all nodes to the default library
-
 for mod in modules:
     nodes = [getattr(mod, name) for name in dir(mod) if isNodeClass(getattr(mod, name))]
 

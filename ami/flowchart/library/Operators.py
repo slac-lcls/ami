@@ -114,10 +114,10 @@ class Binning(CtrlNode):
         return node
 
 
-class AddGraphicsItem(NodeGraphicsItem):
+class MathGraphicsItem(NodeGraphicsItem):
 
     def buildMenu(self):
-        super(AddGraphicsItem, self).buildMenu()
+        super(MathGraphicsItem, self).buildMenu()
         actions = self.menu.actions()
         addInput = actions[1]
 
@@ -132,32 +132,26 @@ class AddGraphicsItem(NodeGraphicsItem):
         self.menu.removeAction(addInput)
 
 
-class Add(Node):
-
-    """
-    Adds together waveforms, images, or a waveform to an image.
-    """
-
-    nodeName = "Add"
+class MathNode(Node):
 
     def __init__(self, name):
-        super(Add, self).__init__(name,
-                                  terminals={'Image': {'io': 'in', 'ttype': Array2d, 'removable': True},
-                                             'Out': {'io': 'out', 'ttype': Array2d}},
-                                  allowAddInput=True)
+        super(MathNode, self).__init__(name,
+                                       terminals={'Image': {'io': 'in', 'ttype': Array2d, 'removable': True},
+                                                  'Out': {'io': 'out', 'ttype': Array2d}},
+                                       allowAddInput=True)
         self.sigTerminalAdded.connect(self.setOutput)
         self.sigTerminalRemoved.connect(self.setOutput)
 
     def graphicsItem(self, brush=None):
         if self._graphicsItem is None:
-            self._graphicsItem = AddGraphicsItem(self, brush)
+            self._graphicsItem = MathGraphicsItem(self, brush)
         return self._graphicsItem
 
     def isConnected(self):
         if len(self.terminals) < 3:
             return False
 
-        return super(Add, self).isConnected()
+        return super(MathNode, self).isConnected()
 
     def addWaveform(self):
         self.addTerminal('Waveform', io='in', ttype=Array1d, removable=True)
@@ -179,11 +173,40 @@ class Add(Node):
         self._outputs['Out']._type = output_type
         self.terminals['Out']._type = output_type
 
+
+class Add(MathNode):
+
+    """
+    Add waveforms and images.
+    """
+
+    nodeName = "Add"
+
     def to_operation(self, inputs, conditions={}):
         outputs = self.output_vars()
 
         def func(*args):
             return functools.reduce(lambda x, y: x+y, args)
+
+        node = gn.Map(name=self.name()+"_operation",
+                      conditions_needs=list(conditions.values()), inputs=list(inputs.values()), outputs=outputs,
+                      func=func)
+        return node
+
+
+class Subtract(MathNode):
+
+    """
+    Subtract waveforms and images.
+    """
+
+    nodeName = "Subtract"
+
+    def to_operation(self, inputs, conditions={}):
+        outputs = self.output_vars()
+
+        def func(*args):
+            return functools.reduce(lambda x, y: x-y, args)
 
         node = gn.Map(name=self.name()+"_operation",
                       conditions_needs=list(conditions.values()), inputs=list(inputs.values()), outputs=outputs,
