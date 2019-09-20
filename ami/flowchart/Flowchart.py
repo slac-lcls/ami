@@ -457,6 +457,7 @@ class FlowchartCtrlWidget(QtGui.QWidget):
         displays = []
 
         for name, gnode in self.chart.nodes().items():
+
             if not gnode.isConnected():
                 disconnectedNodes.append(gnode)
                 continue
@@ -500,7 +501,9 @@ class FlowchartCtrlWidget(QtGui.QWidget):
 
         # reinsert pick ones if they are still in the graph
         features = {}
+
         for node in displays:
+
             if node.buffered():
                 topics = []
 
@@ -511,28 +514,18 @@ class FlowchartCtrlWidget(QtGui.QWidget):
                 await self.chart.broker.send_pyobj(fcMsgs.DisplayNode(node.name(), dict(topics), redisplay=True))
 
             elif node.viewable():
-
                 topics = []
                 views = []
 
-                if len(node.inputs()) != len(node.input_vars()):
-                    return
-
                 for term, in_var in node.input_vars().items():
 
-                    if in_var in features:
-                        topic = features[in_var]
+                    if in_var in self.features:
+                        topic = self.features[in_var]
+                        if in_var not in features:
+                            features[in_var] = topic
+                            views.append(in_var)
                     else:
-                        topic = self.graphCommHandler.auto(in_var)
-
-                    request_view = False
-
-                    if in_var not in features:
-                        features[in_var] = topic
-                        request_view = True
-
-                    if request_view:
-                        views.append(in_var)
+                        continue
 
                     topics.append((in_var, topic))
 
@@ -714,15 +707,8 @@ class FlowchartWidget(dockarea.DockArea):
                     topic = self.ctrl.features[in_var]
                 else:
                     topic = self.ctrl.graphCommHandler.auto(in_var)
-
-                request_view = False
-
-                async with self.ctrl.features_lock:
-                    if in_var not in self.ctrl.features:
+                    async with self.ctrl.features_lock:
                         self.ctrl.features[in_var] = topic
-                        request_view = True
-
-                if request_view:
                     views.append(in_var)
 
                 topics.append((in_var, topic))
