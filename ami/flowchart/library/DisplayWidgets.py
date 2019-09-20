@@ -80,6 +80,22 @@ class AreaDetWidget(pg.ImageView):
         handles = self.roi.getHandles()
         self.roi.removeHandle(handles[1])
         self.last_updated = pg.LabelItem(parent=self.getView())
+        self.pixel_value = pg.LabelItem(parent=self.getView())
+        self.proxy = pg.SignalProxy(self.scene.sigMouseMoved,
+                                    rateLimit=30,
+                                    slot=self.cursor_hover_evt)
+
+    def cursor_hover_evt(self, evt):
+        pos = evt[0]
+        pos = self.view.mapSceneToView(pos)
+        if self.imageItem.image is not None:
+            shape = self.imageItem.image.shape
+            if 0 <= pos.x() <= shape[0] and 0 <= pos.y() <= shape[1]:
+                x = int(pos.x())
+                y = int(pos.y())
+                z = self.imageItem.image[x, y]
+                self.pixel_value.setText(f"x={x}, y={y}, z={z:.5g}")
+                self.pixel_value.item.moveBy(0, 12)
 
     async def update(self):
         while True:
@@ -102,6 +118,22 @@ class PixelDetWidget(pg.ImageView):
         self.fetcher = AsyncFetcher(topics, addr)
         self.last_updated = pg.LabelItem(parent=self.plot)
         self.point = self.plot.plot([0], [0], symbolBrush=(200, 0, 0), symbol='+', symbolSize=25)
+        self.pixel_value = pg.LabelItem(parent=self.getView())
+        self.proxy = pg.SignalProxy(self.scene.sigMouseMoved,
+                                    rateLimit=30,
+                                    slot=self.cursor_hover_evt)
+
+    def cursor_hover_evt(self, evt):
+        pos = evt[0]
+        pos = self.plot.getViewBox().mapSceneToView(pos)
+        if self.imageItem.image is not None:
+            shape = self.imageItem.image.shape
+            if 0 <= pos.x() <= shape[0] and 0 <= pos.y() <= shape[1]:
+                x = int(pos.x())
+                y = int(pos.y())
+                z = self.imageItem.image[x, y]
+                self.pixel_value.setText(f"x={x}, y={y}, z={z:.5g}")
+                self.pixel_value.item.moveBy(0, 12)
 
     async def update(self):
         while True:
@@ -115,11 +147,14 @@ class PixelDetWidget(pg.ImageView):
         if ev.button() == Qt.LeftButton:
             ev.accept()
             view = self.plot.getViewBox()
-            pos = view.mapSceneToView(ev.pos())
-            x = max(int(pos.x()), 0)
-            y = max(int(pos.y()), 0)
-            self.update_cursor(x, y)
-            self.sigClicked.emit(x, y)
+            if self.imageItem.image is not None:
+                shape = self.imageItem.image.shape
+                pos = view.mapSceneToView(ev.pos())
+                if 0 <= pos.x() <= shape[0] and 0 <= pos.y() <= shape[1]:
+                    x = int(pos.x())
+                    y = int(pos.y())
+                    self.update_cursor(x, y)
+                    self.sigClicked.emit(x, y)
         else:
             ev.ignore()
 

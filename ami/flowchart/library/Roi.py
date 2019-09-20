@@ -6,23 +6,23 @@ import ami.graph_nodes as gn
 import asyncio
 
 
-class Roi(CtrlNode):
+class Roi2D(CtrlNode):
 
     """
     Region of Interest of image.
     """
 
-    nodeName = "Roi"
+    nodeName = "Roi2D"
     uiTemplate = [('origin x',  'intSpin', {'value': 0, 'min': 0, 'max': MAX}),
                   ('extent x',  'intSpin', {'value': 10, 'min': 1, 'max': MAX}),
                   ('origin y',  'intSpin', {'value': 0, 'min': 0, 'max': MAX}),
                   ('extent y',  'intSpin', {'value': 10, 'min': 1, 'max': MAX})]
 
     def __init__(self, name):
-        super(Roi, self).__init__(name,
-                                  terminals={'In': {'io': 'in', 'ttype': Array2d},
-                                             'Out': {'io': 'out', 'ttype': Array2d}},
-                                  viewable=True)
+        super(Roi2D, self).__init__(name,
+                                    terminals={'In': {'io': 'in', 'ttype': Array2d},
+                                               'Out': {'io': 'out', 'ttype': Array2d}},
+                                    viewable=True)
         self.func = lambda img: img
 
     def display(self, topics, addr, win, **kwargs):

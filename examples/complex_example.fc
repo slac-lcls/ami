@@ -9,7 +9,7 @@
     [
       "cspad",
       "Out",
-      "Roi.0",
+      "Roi2D.0",
       "In"
     ],
     [
@@ -61,7 +61,7 @@
       "Y"
     ],
     [
-      "Roi.0",
+      "Roi2D.0",
       "Out",
       "Sum.0",
       "In"
@@ -156,8 +156,8 @@
       }
     },
     {
-      "class": "Roi",
-      "name": "Roi.0",
+      "class": "Roi2D",
+      "name": "Roi2D.0",
       "state": {
         "ctrl": {
           "extent x": 200,

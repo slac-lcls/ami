@@ -219,8 +219,8 @@ def test_editor(qtbot, flowchart, tmp_path):
 
     qtbot.addWidget(flowchart.widget())
 
-    flowchart.createNode('Roi')
-    roi_node = flowchart._nodes['Roi.0']
+    flowchart.createNode('Roi2D')
+    roi_node = flowchart._nodes['Roi2D.0']
 
     node_name = 'cspad'
     node_type = flowchart.source_library.getSourceType(node_name)
