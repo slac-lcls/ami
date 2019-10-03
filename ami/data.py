@@ -445,7 +445,7 @@ class PsanaSource(Source):
                             else:
                                 event[sub_name] = meth(data, *args, **kwargs)
 
-                    yield from self.event(evt.timestamp, event)
+                    yield from self.event(counter if self.repeat_mode else evt.timestamp, event)
                     counter += 1
                     time.sleep(self.interval)
 
