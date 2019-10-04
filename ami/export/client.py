@@ -297,6 +297,13 @@ class GraphCommHandler(PvaCommHandler):
 
         return self.add(nodes)
 
+    def _export(self, names, aliases):
+        nodes = []
+        for name, alias in zip(names, aliases):
+            nodes.append(self._make_export_node(name, self._alias(name, alias)))
+
+        return self.add(nodes)
+
     def _get_current(self):
         return self._name
 
@@ -412,6 +419,13 @@ class AsyncGraphCommHandler(PvaCommHandler):
         nodes = []
         for name in names:
             nodes.append(self._make_view_node(name, self.auto(name)))
+
+        return await self.add(nodes)
+
+    async def _export(self, names, aliases):
+        nodes = []
+        for name, alias in zip(names, aliases):
+            nodes.append(self._make_export_node(name, self._alias(name, alias)))
 
         return await self.add(nodes)
 

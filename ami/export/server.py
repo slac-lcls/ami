@@ -142,13 +142,6 @@ class PvaExportServer:
     def valid(self, name, group=None):
         return not name.startswith('_')
 
-    def unmangle(self, name):
-        prefix = '_auto_'
-        if name.startswith(prefix):
-            return name[len(prefix):]
-        else:
-            return name
-
     def get_pv_type(self, data):
         if isinstance(data, np.ndarray):
             return NTNDArray()
@@ -257,9 +250,8 @@ class PvaExportServer:
             graph = self.export.recv_string()
             exports = self.export.recv_pyobj()
             if topic == 'data':
-                for raw, data in exports.items():
-                    name = self.unmangle(raw)
-                    # ignore names starting with '_' after unmangling - these are private
+                for name, data in exports.items():
+                    # ignore names starting with '_' - these are private
                     if self.valid(name):
                         self.update_data(graph, name, data)
             elif topic == 'graph':

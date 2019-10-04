@@ -6,7 +6,7 @@ import dill
 import logging
 import argparse
 from ami import LogConfig
-from ami.comm import Ports, Collector, Store
+from ami.comm import Ports, AutoExport, Collector, Store
 from ami.data import MsgTypes, Transitions
 from ami.graphkit_wrapper import Graph
 
@@ -120,7 +120,7 @@ class Manager(Collector):
         return {'num_workers': self.num_workers, 'num_local_collectors': self.num_nodes}
 
     def exists(self, name):
-        return all(name in val for val in [self.feature_stores, self.graphs, self.versions])
+        return all(name in val for val in [self.feature_stores, self.graphs, self.versions, self.heartbeats])
 
     def create(self, name):
         if self.exists(name):
@@ -154,6 +154,12 @@ class Manager(Collector):
         if self.graphs[name] is not None:
             name_set.update(self.graphs[name].names)
         return name_set
+
+    def exports(self, name):
+        if self.graphs[name] is not None:
+            return AutoExport.select(self.graphs[name].names)
+        else:
+            return set()
 
     def features(self, name):
         return self.feature_stores[name].types
@@ -218,6 +224,9 @@ class Manager(Collector):
 
     def cmd_get_names(self, name):
         self.comm.send_pyobj(self.names(name))
+
+    def cmd_get_exports(self, name):
+        self.comm.send_pyobj(self.exports(name))
 
     def cmd_get_sources(self, name):
         self.comm.send_pyobj(self.partition)
@@ -436,9 +445,13 @@ class Manager(Collector):
 
     def export_data(self, name, data):
         if self.export is not None:
+            export_data = {}
+            for key, val in data.items():
+                if AutoExport.is_auto(key):
+                    export_data[AutoExport.unmangle(key)] = val
             self.export.send_string('data', zmq.SNDMORE)
             self.export.send_string(name, zmq.SNDMORE)
-            self.export.send_pyobj(data)
+            self.export.send_pyobj(export_data)
 
     def export_heartbeat(self, name):
         if self.export is not None:

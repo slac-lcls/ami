@@ -183,12 +183,16 @@ def test_manager_partition(manager_ctrl, partition):
     # test that names and sources are empty
     assert not comm.sources
     assert not comm.names
+    # test that the exports are empty
+    assert not comm.exports
 
     injector.partition(partition, wait=True)
 
     # check that we have the correct partition data from the manager
     assert comm.sources == partition
     assert comm.names == set(partition)
+    # test that the exports are still empty
+    assert not comm.exports
 
 
 @pytest.mark.parametrize('manager_info, partition',
@@ -265,6 +269,52 @@ def test_manager_add_view(manager_ctrl, names):
     removes = injector.graphs[comm.current][comm.graphVersion]
     for name, remove in zip(names, removes):
         assert remove == "%s_view" % comm.auto(name)
+
+
+@pytest.mark.parametrize('exports',
+                         [
+                            (["cspad"], [None]),
+                            (["delta_t"], ["t_atled"]),
+                            (["test"], [None]),
+                            (["cspad", "delta_t"], [None, "t_atled"]),
+                         ])
+def test_manager_add_export(manager_ctrl, exports):
+    names, aliases = exports
+    comm, injector = manager_ctrl
+
+    # create a fake partition
+    partition = {'cspad': np.ndarray, 'delta_t': float}
+    injector.partition(partition, wait=True)
+
+    # add a export to the graph
+    version = comm.graphVersion
+
+    assert comm.export(names, aliases=aliases)
+    assert comm.graphVersion == version + 1
+    for name, alias in zip(names, aliases):
+        assert comm.alias(name, alias=alias) in comm.names
+        assert (alias or name) in comm.exports
+
+    # check that the change is in the received graph object
+    assert injector.wait_graph(timeout=1.0)
+    nodes = injector.graphs[comm.current][comm.graphVersion]
+    assert len(nodes) == len(names)
+    for name, alias, node in zip(names, aliases, nodes):
+        assert node.name == "%s_export" % comm.alias(name, alias=alias)
+
+    # remove the export from the graph
+    version = comm.graphVersion
+    assert comm.unexport(names, aliases=aliases)
+    assert comm.graphVersion == version + 1
+    for name in names:
+        assert comm.alias(name, alias=alias) not in comm.names
+        assert (alias or name) not in comm.exports
+
+    # check that the change is in the received graph object
+    assert injector.wait_graph(timeout=1.0)
+    removes = injector.graphs[comm.current][comm.graphVersion]
+    for name, alias, remove in zip(names, aliases, removes):
+        assert remove == "%s_export" % comm.alias(name, alias=alias)
 
 
 @pytest.mark.parametrize('node_info',

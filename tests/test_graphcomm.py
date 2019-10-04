@@ -311,10 +311,11 @@ def test_versions(graph_comm):
                                 {
                                     'get_names': {'cspad', 'delta_t', 'laser'},
                                     'get_sources': {'cspad': float, 'delta_t': int, 'laser': int},
-                                    'get_features': {'cspad_img': np.ndarray}
+                                    'get_features': {'cspad_img': np.ndarray},
+                                    'get_exports': {'cspad', 'delta_t', 'laser'},
                                 }
                             ),
-                            (True, {'get_names': set(), 'get_sources':  {}, 'get_features': {}}),
+                            (True, {'get_names': set(), 'get_sources':  {}, 'get_features': {}, 'get_exports': set()}),
                          ],
                          indirect=True)
 async def test_names_async(graph_comm):
@@ -324,6 +325,7 @@ async def test_names_async(graph_comm):
     assert await comm.names == conf['get_names']
     assert await comm.sources == conf['get_sources']
     assert await comm.features == conf['get_features']
+    assert await comm.exports == conf['get_exports']
 
 
 @pytest.mark.parametrize('graph_comm',
@@ -331,9 +333,10 @@ async def test_names_async(graph_comm):
                             {
                                 'get_names': {'cspad', 'delta_t', 'laser'},
                                 'get_sources': {'cspad': float, 'delta_t': int, 'laser': int},
-                                'get_features': {'cspad_img': np.ndarray}
+                                'get_features': {'cspad_img': np.ndarray},
+                                'get_exports': {'cspad', 'delta_t', 'laser'},
                             },
-                            {'get_names': set(), 'get_sources':  {}, 'get_features': {}},
+                            {'get_names': set(), 'get_sources':  {}, 'get_features': {}, 'get_exports': set()},
                          ],
                          indirect=True)
 def test_names(graph_comm):
@@ -343,6 +346,7 @@ def test_names(graph_comm):
     assert comm.names == conf['get_names']
     assert comm.sources == conf['get_sources']
     assert comm.features == conf['get_features']
+    assert comm.exports == conf['get_exports']
 
 
 @pytest.mark.asyncio
