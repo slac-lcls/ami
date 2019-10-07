@@ -2,6 +2,7 @@ import pytest
 import zmq
 import time
 import dill
+import functools
 import numpy as np
 import multiprocessing as mp
 import ami.graph_nodes as gn
@@ -9,6 +10,43 @@ import ami.graph_nodes as gn
 from ami.data import MsgTypes, Transitions, Transition
 from ami.comm import Node, ZmqHandler, GraphCommHandler
 from ami.manager import run_manager
+
+
+class ExportHelper:
+    def __init__(self, addr, ctx):
+        self.ctx = ctx
+        self.sock = self.ctx.socket(zmq.SUB)
+        self.sock.setsockopt_string(zmq.SUBSCRIBE, "")
+        self.sock.connect(addr)
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc_value, traceback):
+        self.close()
+
+    def close(self):
+        self.sock.close()
+
+    def recv(self):
+        topic = self.sock.recv_string()
+        graph = self.sock.recv_string()
+        data = self.sock.recv_pyobj()
+        return topic, graph, data
+
+    @staticmethod
+    def store(version=0, features=None):
+        if features is None:
+            features = {}
+        return {'version': version, 'features': features}
+
+    @staticmethod
+    def graph(version=0, names=None, sources=None, graph=None):
+        if names is None:
+            names = set()
+        if sources is None:
+            sources = {}
+        return {'version': version, 'names': names, 'sources': sources, 'dill': dill.dumps(graph)}
 
 
 class ResultsInjector(Node, ZmqHandler):
@@ -122,13 +160,14 @@ def manager_proc(ipc_dir):
         'graph': 'ipc://%s/manager_graph' % ipc_dir,
         'msg': 'ipc://%s/manager_msg' % ipc_dir,
         'info': 'ipc://%s/manager_info' % ipc_dir,
+        'export': 'ipc://%s/manager_export' % ipc_dir,
     }
 
     # start the manager process
     proc = mp.Process(
         name='manager',
         target=run_manager,
-        args=(1, 1, addrs['results'], addrs['graph'], addrs['comm'], addrs['msg'], addrs['info'])
+        args=(1, 1, addrs['results'], addrs['graph'], addrs['comm'], addrs['msg'], addrs['info'], addrs['export'])
     )
     proc.daemon = False
     proc.start()
@@ -146,13 +185,28 @@ def manager_proc(ipc_dir):
 def manager_ctrl(manager_proc):
     ctx = zmq.Context()
     name = "graph"
-    addr = manager_proc['comm']
     try:
-        with GraphCommHandler(name, addr, ctx=ctx) as comm, ResultsInjector(manager_proc, ctx, 0, name) as inject:
+        with ResultsInjector(manager_proc, ctx, 0, name) as inject:
             # wait for the graph subscription to finish setting up
             inject.graph_comm.recv()
 
-            yield comm, inject
+            yield inject.comm, inject
+    finally:
+        # clean up the shared zmq Context
+        ctx.destroy()
+
+
+@pytest.fixture(scope='function')
+def manager_export(manager_proc):
+    ctx = zmq.Context()
+    name = "graph"
+    addr = manager_proc['export']
+    try:
+        with ExportHelper(addr, ctx) as export, ResultsInjector(manager_proc, ctx, 0, name) as inject:
+            # wait for the graph subscription to finish setting up
+            inject.graph_comm.recv()
+
+            yield export, inject
     finally:
         # clean up the shared zmq Context
         ctx.destroy()
@@ -177,6 +231,59 @@ def manager_info(request, manager_proc):
 
 
 @pytest.mark.parametrize('partition', [{'cspad': np.ndarray, 'delta_t': float}, {'laser': True}, {}])
+def test_manager_export_config(manager_export, partition):
+    export, injector = manager_export
+
+    # Get the set of expected graph names
+    expected_names = {injector.comm.current}
+
+    # commands to run before checking the export output
+    cmds = [
+        None,
+        injector.comm.create,
+        functools.partial(injector.partition, partition, wait=True),
+        injector.comm.destroy,
+    ]
+    replies = [
+        [
+            ('info', '', {'graphs': set()}, 'initial info message'),
+        ],
+        [
+            ('info', '', {'graphs': expected_names}, 'info after create is called'),
+            ('store', injector.comm.current, export.store(), 'store after create is called'),
+            ('graph', injector.comm.current, export.graph(), 'graph after create is called'),
+        ],
+        [
+            ('info', '', {'graphs': expected_names}, 'info after configure'),
+            ('store', injector.comm.current, export.store(), 'store after configure'),
+            ('graph', injector.comm.current, export.graph(names=set(partition), sources=partition),
+             'graph after configure'),
+            ('data', injector.comm.current, {}, 'data after configure'),
+            ('heartbeat', injector.comm.current, 0, 'hb after configure'),
+        ],
+        [
+            ('graph', injector.comm.current, export.graph(version=1, names=set(partition), sources=partition),
+             'graph after destroy is called'),
+            ('info', '', {'graphs': set()}, 'info after destroy is called'),
+            ('destroy', injector.comm.current, None, 'destroy after destroy is called'),
+        ],
+    ]
+
+    for cmd, reply in zip(cmds, replies):
+        if callable(cmd):
+            cmd()
+        for exp_topic, exp_graph, exp_data, test_name in reply:
+            print(exp_topic, exp_graph, exp_data)
+            # Wait for a message on the export socket
+            topic, graph, data = export.recv()
+            print(topic, graph, data)
+            # check the contents of the message
+            assert topic == exp_topic, "checking topic of %s" % test_name
+            assert graph == exp_graph, "checking graph of %s" % test_name
+            assert data == exp_data, "checking data of %s" % test_name
+
+
+@pytest.mark.parametrize('partition', [{'cspad': np.ndarray, 'delta_t': float}, {'laser': bool}, {}])
 def test_manager_partition(manager_ctrl, partition):
     comm, injector = manager_ctrl
 

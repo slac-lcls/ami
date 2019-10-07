@@ -51,8 +51,10 @@ class Manager(Collector):
         if export_addr is None:
             self.export = None
         else:
-            self.export = self.ctx.socket(zmq.PUB)
+            self.export = self.ctx.socket(zmq.XPUB)
+            self.export.setsockopt(zmq.XPUB_VERBOSE, True)
             self.export.bind(export_addr)
+            self.register(self.export, self.export_request)
 
         self.comm = self.ctx.socket(zmq.REP)
         self.comm.bind(comm_addr)
@@ -392,6 +394,12 @@ class Manager(Collector):
 
         if request == "\x01" or request == "\x01sources":
             self.publish_message("sources", "manager", dill.dumps(self.partition))
+
+    def export_request(self):
+        request = self.export.recv_string()
+
+        if request == "\x01" or request == "\x01info":
+            self.export_config()
 
     def export_graph(self, name):
         if self.export is not None:
