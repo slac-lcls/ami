@@ -8,7 +8,7 @@ import multiprocessing as mp
 import ami.graph_nodes as gn
 
 from ami.data import MsgTypes, Transitions, Transition
-from ami.comm import Node, ZmqHandler, GraphCommHandler
+from ami.comm import AutoExport, Store, Node, ZmqHandler, GraphCommHandler
 from ami.manager import run_manager
 
 
@@ -230,7 +230,7 @@ def manager_info(request, manager_proc):
         ctx.destroy()
 
 
-@pytest.mark.parametrize('partition', [{'cspad': np.ndarray, 'delta_t': float}, {'laser': True}, {}])
+@pytest.mark.parametrize('partition', [{'cspad': np.ndarray, 'delta_t': float}, {'laser': bool}, {}])
 def test_manager_export_config(manager_export, partition):
     export, injector = manager_export
 
@@ -273,14 +273,96 @@ def test_manager_export_config(manager_export, partition):
         if callable(cmd):
             cmd()
         for exp_topic, exp_graph, exp_data, test_name in reply:
-            print(exp_topic, exp_graph, exp_data)
             # Wait for a message on the export socket
             topic, graph, data = export.recv()
-            print(topic, graph, data)
             # check the contents of the message
             assert topic == exp_topic, "checking topic of %s" % test_name
             assert graph == exp_graph, "checking graph of %s" % test_name
             assert data == exp_data, "checking data of %s" % test_name
+
+
+@pytest.mark.parametrize('exports',
+                         [
+                            [],
+                            ['cspad'],
+                            ['delta_t'],
+                            ['cspad', 'delta_t'],
+                            ['laser'],
+                            ['fake'],
+                            ['fake', 'laser'],
+                         ])
+@pytest.mark.parametrize('inputs', [{'cspad': [0, 1, 2, 3], 'delta_t': 10.1}, {'laser': True}, {}])
+def test_manager_export_data(manager_export, inputs, exports):
+    export, injector = manager_export
+
+    # construct the input data
+    input_data = {AutoExport.mangle(k): v for k, v in inputs.items() if k in exports}
+    input_data.update(inputs)
+    # Get the set of expected graph names
+    expected_hb = 1
+    expected_names = {injector.comm.current}
+    expected_features = {
+        'version': injector.version,
+        'features': {k: Store.get_type(v) for k, v in input_data.items()},
+    }
+    expected_data = {k: v for k, v in inputs.items() if k in exports}
+
+    # commands to run before checking the export output
+    commands = [
+        [],
+        [injector.comm.create],
+    ]
+    replies = [
+        [
+            ('info', '', {'graphs': set()}, 'initial info message'),
+        ],
+        [
+            ('info', '', {'graphs': expected_names}, 'info after create is called'),
+            ('store', injector.comm.current, export.store(), 'store after create is called'),
+            ('graph', injector.comm.current, export.graph(), 'graph after create is called'),
+        ],
+    ]
+
+    # deal with the initial flood of export message at startup/graph creation
+    for cmds, reply in zip(commands, replies):
+        for cmd in cmds:
+            cmd()
+        for exp_topic, exp_graph, exp_data, test_name in reply:
+            # Wait for a message on the export socket
+            topic, graph, data = export.recv()
+            # check the contents of the message
+            assert topic == exp_topic, "checking topic of %s" % test_name
+            assert graph == exp_graph, "checking graph of %s" % test_name
+            assert data == exp_data, "checking data of %s" % test_name
+
+    # send the names to export to the manager
+    injector.comm.export(exports)
+    # check that the change is in the received graph object
+    if exports:
+        assert injector.wait_graph(timeout=1.0)
+        # check the graph message
+        topic, graph, data = export.recv()
+        assert topic == 'graph'
+        assert graph == injector.comm.current
+        for name in exports:
+            assert AutoExport.mangle(name) in data['names']
+
+    # inject some data
+    injector.data(expected_hb, input_data, wait=True)
+
+    # check if the inputs dictionary is non-empty
+    if inputs:
+        # check the updated features list
+        topic, graph, data = export.recv()
+        assert topic == 'store'
+        assert graph == injector.comm.current
+        assert data == expected_features
+
+    # check the data message
+    topic, graph, data = export.recv()
+    assert topic == 'data'
+    assert graph == injector.comm.current
+    assert data == expected_data
 
 
 @pytest.mark.parametrize('partition', [{'cspad': np.ndarray, 'delta_t': float}, {'laser': bool}, {}])

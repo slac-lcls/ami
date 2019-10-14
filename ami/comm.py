@@ -1388,7 +1388,9 @@ class CommHandler(abc.ABC):
         """
         if not isinstance(names, list):
             names = [names]
-        if not isinstance(aliases, list):
+        if aliases is None:
+            aliases = [aliases] * len(names)
+        elif not isinstance(aliases, list):
             aliases = [aliases]
 
         if len(names) != len(aliases):
