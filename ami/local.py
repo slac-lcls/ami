@@ -10,7 +10,7 @@ import functools
 import subprocess
 import multiprocessing as mp
 
-from ami import LogConfig, Defaults
+from ami import LogConfig, Defaults, check_mp_start_method
 from ami.comm import Ports, GraphCommHandler
 from ami.manager import run_manager
 from ami.worker import run_worker
@@ -178,13 +178,15 @@ def cleanup(procs):
     return failed_proc
 
 
-def run_ami(args, queue=mp.Queue()):
+def run_ami(args, queue=None):
 
     xtcdir = None
     ipcdir = None
     export_addr = None
     owns_ipcdir = True
     flags = {}
+    if queue is None:
+        queue = mp.Queue()
     if args.tcp:
         host = "127.0.0.1"
         comm_addr = "tcp://%s:%d" % (host, args.port)
@@ -241,7 +243,6 @@ def run_ami(args, queue=mp.Queue()):
                 logger.critical("Invalid data source config string: %s", args.source)
                 return 1
         else:
-            src_cfg = None
             # if using the psana source generate some data for it
             if Defaults.SourceType == 'psana':
                 xtcdir = tempfile.mkdtemp()
@@ -253,6 +254,7 @@ def run_ami(args, queue=mp.Queue()):
                     return 1
                 # point the default configuration settings to the generated file
                 Defaults.SourceConfig['files'] = xtcfile
+            src_cfg = (Defaults.SourceType, Defaults.SourceConfig)
 
         for i in range(args.num_workers):
             proc = mp.Process(
@@ -345,6 +347,10 @@ def run_ami(args, queue=mp.Queue()):
 
 
 def main():
+    # Check the mp start method and fix for platforms that need it
+    check_mp_start_method()
+
+    # start the ami processes
     parser = build_parser()
     args = parser.parse_args()
     run_ami(args)

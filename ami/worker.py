@@ -122,15 +122,18 @@ def run_worker(num, num_workers, hb_period, source, collector_addr, graph_addr, 
 
     if source is not None:
         src_type = source[0]
-        try:
-            with open(source[1], 'r') as cnf:
-                src_cfg = json.load(cnf)
-        except OSError:
-            logger.exception("worker%03d: problem opening json file:", num)
-            return 1
-        except json.decoder.JSONDecodeError:
-            logger.exception("worker%03d: problem parsing json file (%s):", num, source[1])
-            return 1
+        if isinstance(source[1], dict):
+            src_cfg = source[1]
+        else:
+            try:
+                with open(source[1], 'r') as cnf:
+                    src_cfg = json.load(cnf)
+            except OSError:
+                logger.exception("worker%03d: problem opening json file:", num)
+                return 1
+            except json.decoder.JSONDecodeError:
+                logger.exception("worker%03d: problem parsing json file (%s):", num, source[1])
+                return 1
     else:
         src_type = Defaults.SourceType
         src_cfg = Defaults.SourceConfig

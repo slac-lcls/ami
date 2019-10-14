@@ -9,6 +9,18 @@ def psana_available():
         return False
 
 
+def check_mp_start_method():
+    import sys
+    import warnings
+    import multiprocessing as mp
+    if sys.platform == 'darwin':
+        method = mp.get_start_method(allow_none=True)
+        if method is None:
+            mp.set_start_method('spawn')
+        elif method != 'spawn':
+            warnings.warn("AMI may not work properly on macOS with the %s start method" % mp.get_start_method())
+
+
 class LogConfig:
     BasicFormat = '%(message)s'
     Format = '[ %(asctime)s | %(levelname)-8s] %(message)s'

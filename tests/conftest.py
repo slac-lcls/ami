@@ -20,6 +20,7 @@ try:
 except ImportError:
     p4p = None
 
+from ami import check_mp_start_method
 from ami.asyncqt import QEventLoop
 from ami.graphkit_wrapper import Graph
 from ami.graph_nodes import Map, FilterOn, FilterOff, Binning, PickN
@@ -193,3 +194,7 @@ def qevent_loop(qevent_loop_gbl):
     # clean out the old socket notifiers - not necessary if zmq sockets are explicitly closed
     for notifier in itertools.chain(loop._read_notifiers.values(), loop._write_notifiers.values()):
         notifier.setEnabled(False)
+
+
+# fix the mp start method for platforms that need it
+check_mp_start_method()
