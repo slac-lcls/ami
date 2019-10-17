@@ -7,6 +7,7 @@ from pyqtgraph.debug import printExc
 from ami.flowchart.Terminal import Terminal
 from ami.flowchart.Editor import NoteEditor
 from typing import Any
+import weakref
 
 
 def strDict(d):
@@ -203,11 +204,11 @@ class Node(QtCore.QObject):
         term = Terminal(self, name, **opts)
         self.terminals[name] = term
         if term.isInput():
-            self._inputs[name] = term
+            self._inputs[name] = weakref.ref(self.terminals[name])
         elif term.isOutput():
-            self._outputs[name] = term
+            self._outputs[name] = weakref.ref(self.terminals[name])
         elif term.isCondition():
-            self._conditions[name] = term
+            self._conditions[name] = weakref.ref(self.terminals[name])
         self.graphicsItem().updateTerminals()
         self.sigTerminalAdded.emit(self, term)
         return term
@@ -461,28 +462,28 @@ class NodeGraphicsItem(GraphicsObject):
         dy = bounds.height() / (len(inp)+len(conds)+1)
         y = dy
         for i, t in inp.items():
+            t = t()
             item = t.graphicsItem()
             item.setParentItem(self)
             item.setAnchor(0, y)
-            self.terminals[i] = (t, item)
             y += dy
 
         for i, t in conds.items():
+            t = t()
             item = t.graphicsItem()
             item.setParentItem(self)
             item.setAnchor(0, y)
-            self.terminals[i] = (t, item)
             y += dy
 
         out = self.node.outputs()
         dy = bounds.height() / (len(out)+1)
         y = dy
         for i, t in out.items():
+            t = t()
             item = t.graphicsItem()
             item.setParentItem(self)
             item.setZValue(self.zValue())
             item.setAnchor(bounds.width(), y)
-            self.terminals[i] = (t, item)
             y += dy
 
     def boundingRect(self):

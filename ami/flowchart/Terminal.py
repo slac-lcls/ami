@@ -34,7 +34,6 @@ class Terminal(object):
         self._type = ttype
         self._graphicsItem = TerminalGraphicsItem(self, parent=self._node().graphicsItem())
 
-        self._value = None
         self.recolor()
 
     def setOpts(self, **opts):
@@ -60,10 +59,6 @@ class Terminal(object):
 
     def setType(self, type):
         self._type = type
-
-    def value(self, term=None):
-        """Return the value this terminal provides for the connected terminal"""
-        return self._value
 
     def connections(self):
         return self._connections
@@ -108,6 +103,10 @@ class Terminal(object):
     def dependentNodes(self):
         """Return the list of nodes which receive input from this terminal."""
         return set([t.node() for t in self.connections() if t.isInput()])
+
+    def dependentTerms(self):
+        """Return the list of terms which receive input from this terminal."""
+        return set([t for t in self.connections() if t.isInput()])
 
     def connectTo(self, term, connectionItem=None, type_file=None):
         try:
@@ -182,18 +181,9 @@ class Terminal(object):
             elif self.isInput() and not self.hasInput():
                 # input terminal with no connected output terminals
                 color = QtGui.QColor(200, 200, 0)
-            elif self._value is None or fn.eq(self._value, {}):
-                # terminal is connected but has no data (possibly due to processing error)
-                color = QtGui.QColor(255, 255, 255)
-            elif self.valueIsAcceptable() is None:
-                # terminal has data, but it is unknown if the data is ok
-                color = QtGui.QColor(200, 200, 0)
-            elif self.valueIsAcceptable() is True:
-                # terminal has good input, all ok
-                color = QtGui.QColor(0, 200, 0)
             else:
-                # terminal has bad input
-                color = QtGui.QColor(200, 0, 0)
+                # terminal has bad
+                color = QtGui.QColor(255, 255, 255)
         self.graphicsItem().setBrush(QtGui.QBrush(color))
 
         if recurse:

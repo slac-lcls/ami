@@ -4,7 +4,6 @@ from pyqtgraph.pgcollections import OrderedDict
 from pyqtgraph import FileDialog
 from pyqtgraph.debug import printExc
 from pyqtgraph import dockarea as dockarea
-from numpy import ndarray
 from ami import asyncqt
 from ami.flowchart.FlowchartGraphicsView import FlowchartGraphicsView
 from ami.flowchart.Terminal import Terminal
@@ -191,6 +190,7 @@ class Flowchart(Node):
         for n in self._nodes.values():
             terms = n.outputs()
             for n, t in terms.items():
+                t = t()
                 for c in t.connections():
                     conn.add((t, c))
         return conn
@@ -732,17 +732,26 @@ class FlowchartWidget(dockarea.DockArea):
             if hasattr(item, 'term') and isinstance(item.term, Terminal):
                 term = item.term
                 break
+
         if term is None:
             self.hoverText.setPlainText("")
         else:
-            val = term.value()
-            if isinstance(val, ndarray):
-                val = "%s %s %s" % (type(val).__name__, str(val.shape), str(val.dtype))
-            else:
-                val = str(val)
-                if len(val) > 400:
-                    val = val[:400] + "..."
-            self.hoverText.setPlainText("%s.%s Type(%s)" % (term.node().name(), term.name(), term.type()))
+            type_text = f"Term: {term.node().name()}.{term.name()}\nType: {term.type()}"
+            terms = None
+
+            if (term.isOutput or term.isCondition) and term.dependentTerms():
+                terms = term.dependentTerms()
+            elif term.isInput and term.inputTerminals():
+                terms = term.inputTerminals()
+
+            if terms:
+                connections = ["Connected to:"]
+                for in_term in terms:
+                    connections.append(f"{in_term.node().name()}.{in_term.name()}")
+                connections = ' '.join(connections)
+                type_text = type_text + '\n' + connections
+
+            self.hoverText.setPlainText(type_text)
             # self.hoverLabel.setCursorPosition(0)
 
     def clear(self):

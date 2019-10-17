@@ -11,7 +11,7 @@ import functools
 class Sum(Node):
 
     """
-    Sum returns the sum of an array.
+    Returns the sum of an array.
     """
 
     nodeName = "Sum"
@@ -163,15 +163,16 @@ class MathNode(Node):
         inputs = set()
 
         for name, term in self._inputs.items():
-            inputs.add(term._type)
+            inputs.add(term()._type)
 
         if Array2d in inputs:
             output_type = Array2d
         elif inputs == {Array1d}:
             output_type = Array1d
+        else:
+            return
 
-        self._outputs['Out']._type = output_type
-        self.terminals['Out']._type = output_type
+        self._outputs['Out']()._type = output_type
 
 
 class Add(MathNode):
@@ -212,3 +213,24 @@ class Subtract(MathNode):
                       conditions_needs=list(conditions.values()), inputs=list(inputs.values()), outputs=outputs,
                       func=func)
         return node
+
+
+class Constant(CtrlNode, MathNode):
+
+    """
+    Add/Subtract/Multiply/Divide waveform and images by constant.
+    """
+
+    nodeName = "Constant"
+    uiTemplate = [('operation', 'combo', {'values': ['Add', 'Subtract', 'Multiply', 'Divide']})]
+
+    def __init__(self, name):
+        CtrlNode.__init__(name,
+                          terminals={'Image': {'io': 'in', 'ttype': Array2d, 'removable': True},
+                                     'Out': {'io': 'out', 'ttype': Array2d}},
+                          allowAddInput=True)
+        self.sigTerminalAdded.connect(self.setOutput)
+        self.sigTerminalRemoved.connect(self.setOutput)
+
+    def to_operation(self, inputs, conditions={}):
+        pass

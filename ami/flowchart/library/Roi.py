@@ -53,6 +53,7 @@ class Roi2D(CtrlNode):
         self.ctrls['extent y'].setValue(self.extent_y)
         self.set_func()
         self.stateGroup.blockSignals(False)
+        self.sigStateChanged.emit(self)
 
     def update(self, *args, **kwargs):
         self.origin_x = self.ctrls['origin x'].value()
@@ -123,6 +124,7 @@ class Roi1D(CtrlNode):
         self.ctrls['extent'].setValue(self.extent)
         self.set_func()
         self.stateGroup.blockSignals(False)
+        self.sigStateChanged.emit(self)
 
     def update(self, *args, **kwargs):
         self.origin = self.ctrls['origin'].value()
@@ -183,6 +185,7 @@ class Roi0D(CtrlNode):
         self.ctrls['y'].setValue(self.y)
         self.set_func()
         self.stateGroup.blockSignals(False)
+        self.sigStateChanged.emit(self)
 
     def update(self, *args, **kwargs):
         self.x = self.ctrls['x'].value()

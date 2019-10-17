@@ -232,7 +232,7 @@ def test_editor(qtbot, flowchart, tmp_path):
     cspad_out = cspad_node._outputs['Out']
     roi_in = roi_node._inputs['In']
 
-    cspad_out.connectTo(roi_in)
+    cspad_out().connectTo(roi_in())
     assert len(flowchart.listConnections()) == 1
 
     widget = flowchart.widget()
