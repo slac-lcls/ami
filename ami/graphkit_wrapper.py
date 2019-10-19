@@ -480,3 +480,11 @@ class Graph():
         result = self.graphkit(*args, **kwargs)
         outputs = self.outputs[color]
         return {k: result[k] for k in outputs if k in result}
+
+    def times(self):
+        """
+        Return time per execution of graphkit node.
+        """
+        if self.graphkit is not None:
+            return self.graphkit.times()
+        return {}

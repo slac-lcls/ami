@@ -11,7 +11,7 @@ from enum import IntEnum
 import amitypes as at
 import ami.graph_nodes as gn
 from ami.graphkit_wrapper import Graph
-from ami.data import MsgTypes, Message, Transition, CollectorMessage, Datagram
+from ami.data import MsgTypes, Message, Transition, CollectorMessage, Datagram, ArrowSerializer, ArrowDeserializer
 
 
 logger = logging.getLogger(__name__)
@@ -312,16 +312,18 @@ class ZmqHandler:
             self.ctx = ctx
         self.collector = self.ctx.socket(zmq.PUSH)
         self.collector.connect(addr)
+        self.serializer = ArrowSerializer()
 
     def send(self, msg):
-        self.collector.send_pyobj(msg)
+        self.collector.send_serialized(msg, self.serializer, flags=zmq.NOBLOCK, copy=False)
 
     def message(self, mtype, identity, payload):
-        msg = Message(mtype, identity, payload)
+        msg = Message(mtype=mtype, identity=identity, payload=payload)
         self.send(msg)
 
     def collector_message(self, identity, heartbeat, name, version, payload):
-        msg = CollectorMessage(MsgTypes.Datagram, identity, heartbeat, name, version, payload)
+        msg = CollectorMessage(mtype=MsgTypes.Datagram, identity=identity, heartbeat=heartbeat,
+                               name=name, version=version, payload=payload)
         self.send(msg)
 
 
@@ -761,6 +763,7 @@ class Collector(abc.ABC):
         self.handlers = {}
         self.running = True
         self.exitcode = 0
+        self.deserializer = ArrowDeserializer()
 
     def register(self, sock, handler):
         """
@@ -815,7 +818,7 @@ class Collector(abc.ABC):
                 if flag != zmq.POLLIN:
                     continue
                 if sock is self.collector:
-                    msg = self.collector.recv_pyobj()
+                    msg = self.collector.recv_serialized(self.deserializer, copy=False)
                     self.process_msg(msg)
                 elif sock in self.handlers:
                     self.handlers[sock]()

@@ -9,6 +9,7 @@ from ami import LogConfig
 from ami.comm import Ports, AutoExport, Collector, Store
 from ami.data import MsgTypes, Transitions
 from ami.graphkit_wrapper import Graph
+# import time
 
 
 logger = logging.getLogger(__name__)
@@ -171,8 +172,13 @@ class Manager(Collector):
         if matched:
             if matched.group('type') == 'fetch':
                 if matched.group('name') in self.feature_stores[name].namespace:
+                    # start = time.time()
                     self.comm.send_string('ok', zmq.SNDMORE)
                     self.comm.send_pyobj(self.feature_stores[name].get(matched.group('name')))
+                    # stop = time.time()
+                    # print(matched.group('name'),
+                    #       type(self.feature_stores[name].get(matched.group('name'))),
+                    #       stop - start)
                 else:
                     self.comm.send_string('error')
             else:

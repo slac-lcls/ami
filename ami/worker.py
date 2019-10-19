@@ -5,10 +5,12 @@ import zmq
 import json
 import logging
 import argparse
+# import collections
 from ami import LogConfig, Defaults
 from ami.comm import Ports, Colors, ResultStore, Node
 from ami.data import MsgTypes, Source
 from ami.graphkit_wrapper import Graph
+import time
 
 
 logger = logging.getLogger(__name__)
@@ -86,7 +88,9 @@ class Worker(Node):
         self.update_requests()
 
     def run(self):
+        # times = collections.defaultdict(list)
         for msg in self.src.events():
+            start = time.time()
             # check to see if the graph has been reconfigured after update
             if msg.mtype == MsgTypes.Heartbeat:
                 self.store.collect(self.node, msg.payload)
@@ -102,18 +106,26 @@ class Worker(Node):
                         logger.exception("Failure encountered updating graph:")
                         self.report("error", e)
                         return 1
+                # if times:
+                #     self.report("times", times)
+                #     times = collections.defaultdict(list)
             elif msg.mtype == MsgTypes.Datagram:
                 try:
                     for name, graph in self.graphs.items():
                         if graph:
                             graph_result = graph(msg.payload, color=Colors.Worker)
                             self.store.update(name, graph_result)
+                            # times[name].append(graph.times())
                 except Exception as e:
                     logger.exception("%s: Failure encountered executing graph:", self.name)
                     self.report("error", e)
                     return 1
             else:
                 self.store.send(msg)
+            end = time.time()
+
+            if self.graphs and msg.mtype == MsgTypes.Heartbeat:
+                print(msg.mtype, end - start)
 
 
 def run_worker(num, num_workers, hb_period, source, collector_addr, graph_addr, msg_addr, flags=None):
@@ -148,6 +160,7 @@ def run_worker(num, num_workers, hb_period, source, collector_addr, graph_addr, 
     else:
         logger.critical("worker%03d: unknown data source type: %s", num, source[0])
         return 1
+
     with Worker(num, src, collector_addr, graph_addr, msg_addr) as worker:
         return worker.run()
 

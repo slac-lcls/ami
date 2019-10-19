@@ -402,6 +402,9 @@ class Flowchart(Node):
                     ctrl.chartWidget.statusText.append(f"{source} {node.name()}: {msg}")
                 else:
                     ctrl.chartWidget.statusText.append(f"{source}: {msg}")
+            elif topic == "times":
+                pass
+                # print(source, msg)
 
     @asyncqt.asyncSlot()
     async def chartLoaded(self):

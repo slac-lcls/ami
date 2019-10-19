@@ -5,13 +5,16 @@ import time
 import typing
 import inspect
 import logging
+import pickle
 try:
     import psana
 except ImportError:
     psana = None
 import numpy as np
+import pyarrow as pa
 import amitypes as at
 from enum import Enum
+from dataclasses import dataclass, asdict, field
 
 
 logger = logging.getLogger(__name__)
@@ -23,6 +26,12 @@ class MsgTypes(Enum):
     Datagram = 2
     Graph = 3
 
+    def _serialize(msgType):
+        return {'type': msgType.value}
+
+    def _deserialize(data):
+        return MsgTypes(data['type'])
+
 
 class Transitions(Enum):
     Allocate = 0
@@ -30,49 +39,123 @@ class Transitions(Enum):
     Enable = 2
     Disable = 3
 
+    def _serialize(transitionType):
+        return {'type': transitionType.value}
 
-class Transition(object):
-    def __init__(self, ttype, payload):
-        self.ttype = ttype
-        self.payload = payload
-
-    def __str__(self):
-        return "Transition:\n type: %s\n data: %s" % (self.ttype, self.payload)
+    def _deserialize(data):
+        return Transitions(data['type'])
 
 
-class Datagram(object):
-    def __init__(self, name, dtype, data=None):
-        self.name = name
-        self.dtype = dtype
-        self.data = data
+@dataclass
+class Transition:
+    ttype: Transitions
+    payload: dict
 
-    def __str__(self):
-        return "Datagram:\n dtype: %s\n data: %s" % (self.dtype, self.data)
+    def _serialize(transition):
+        return asdict(transition)
 
-
-class Message(object):
-    def __init__(self, mtype, identity, payload):
-        """
-        Message container
-
-        Args:
-            mtype (MsgTypes): Message type
-
-            identity (int): Message id number
-
-            payload (dict): Message payload
-        """
-        self.mtype = mtype
-        self.identity = identity
-        self.payload = payload
+    def _deserialize(data):
+        return Transition(**data)
 
 
+@dataclass
+class Datagram:
+    name: str
+    dtype: type
+    data: dict = field(default_factory=dict)
+
+    def _serialize(datagram):
+        return asdict(datagram)
+
+    def _deserialize(data):
+        return Datagram(**data)
+
+
+@dataclass
+class Message:
+    """
+    Message container
+
+    Args:
+        mtype (MsgTypes): Message type
+
+        identity (int): Message id number
+
+        payload (dict): Message payload
+    """
+    mtype: MsgTypes
+    identity: int
+    payload: dict
+    timestamp: int = 0
+
+    def _serialize(msg):
+        return asdict(msg)
+
+    def _deserialize(data):
+        if data['mtype'] == MsgTypes.Transition:
+            data['payload'] = Transition(**data['payload'])
+        return Message(**data)
+
+
+@dataclass
 class CollectorMessage(Message):
-    def __init__(self, mtype, identity, heartbeat, name, version, payload):
-        super(__class__, self).__init__(mtype, identity, payload)
-        self.heartbeat = heartbeat
-        self.name = name
-        self.version = version
+    """
+    Collector message
+
+    Args:
+        heartbeat (int): heartbeat
+
+        name (str): name
+
+        version (int): version
+    """
+    heartbeat: int = 0
+    name: str = ""
+    version: int = 0
+
+    def _serialize(msg):
+        return asdict(msg)
+
+    def _deserialize(data):
+        return CollectorMessage(**data)
+
+
+def build_serialization_context():
+    def register(ctx, cls):
+        ctx.register_type(cls, cls.__name__,
+                          custom_serializer=cls._serialize,
+                          custom_deserializer=cls._deserialize)
+
+    context = pa.SerializationContext()
+    for cls in [MsgTypes, Transitions, Message, CollectorMessage, Transition, Datagram]:
+        register(context, cls)
+    return context
+
+
+class ArrowSerializer(object):
+
+    context = build_serialization_context()
+
+    def __call__(self, msg):
+        serialized_msg = []
+        ser = pa.serialize(msg, context=ArrowSerializer.context)
+        comp = ser.to_components()
+        metadata = {k: comp[k] for k in ['num_tensors', 'num_ndarrays', 'num_buffers']}
+        serialized_msg.append(pickle.dumps(metadata))
+        views = list(map(memoryview, comp['data']))
+        serialized_msg.extend(views)
+        return serialized_msg
+
+
+class ArrowDeserializer(object):
+
+    context = build_serialization_context()
+
+    def __call__(self, data):
+        components = pickle.loads(data[0])
+        data = list(map(pa.py_buffer, data[1:]))
+        components['data'] = data
+        return pa.deserialize_components(components, context=ArrowDeserializer.context)
 
 
 class Source(abc.ABC):
@@ -279,8 +362,7 @@ class Source(abc.ABC):
         """
         base = [('timestamp', timestamp), ('heartbeat', self.heartbeat)]
         data.update({k: v for k, v in base if k in self.requested_names})
-        msg = Message(MsgTypes.Datagram, self.idnum, data)
-        msg.timestamp = timestamp
+        msg = Message(mtype=MsgTypes.Datagram, identity=self.idnum, payload=data, timestamp=timestamp)
         yield msg
 
     def request(self, names):
