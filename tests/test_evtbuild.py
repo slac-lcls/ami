@@ -2,7 +2,7 @@ import pytest
 import zmq
 import dill
 
-from ami.data import MsgTypes, Transitions, Message, CollectorMessage
+from ami.data import MsgTypes, Transitions, Message, CollectorMessage, ArrowDeserializer
 from ami.comm import Colors, ContributionBuilder, TransitionBuilder, EventBuilder
 from ami.graphkit_wrapper import Graph
 from ami.graph_nodes import PickN
@@ -150,8 +150,9 @@ def test_tb_comp(transition_builder, ttype):
     # complete the transition
     tb.complete(ttype, idnum)
 
+    deserializer = ArrowDeserializer()
     try:
-        msg = sock.recv_pyobj(zmq.NOBLOCK)
+        msg = sock.recv_serialized(deserializer, zmq.NOBLOCK)
     except zmq.Again:
         msg = None
     # test that the sock recv worked
@@ -258,8 +259,9 @@ def test_comp_graph(event_builder, eb_graph):
     assert graph_version not in event_builder.pending_graphs(graph_name)
     assert event_builder.version(graph_name) == graph_version
 
+    deserializer = ArrowDeserializer()
     try:
-        msg = sock.recv_pyobj(zmq.NOBLOCK)
+        msg = sock.recv_serialized(deserializer, zmq.NOBLOCK)
     except zmq.Again:
         msg = None
     # test that the sock recv worked

@@ -2,7 +2,7 @@ import pytest
 import zmq
 import numpy as np
 
-from ami.data import MsgTypes, Datagram, CollectorMessage
+from ami.data import MsgTypes, Datagram, CollectorMessage, ArrowDeserializer
 from ami.comm import Store, ResultStore
 
 
@@ -247,6 +247,7 @@ def test_store_collect(obj, expected, store):
     # create the fake collector
     collector = store.ctx.socket(zmq.PULL)
     collector.bind(addr)
+    deserializer = ArrowDeserializer()
 
     store.update(name, obj)
 
@@ -255,7 +256,7 @@ def test_store_collect(obj, expected, store):
         store.configure(name, i // 2)
         store.collect(0, i)
 
-        msg = collector.recv_pyobj()
+        msg = collector.recv_serialized(deserializer)
         # check that we get a collector message
         assert isinstance(msg, CollectorMessage)
         assert msg.mtype == MsgTypes.Datagram

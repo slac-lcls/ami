@@ -6,6 +6,7 @@ import functools
 import numpy as np
 import multiprocessing as mp
 import ami.graph_nodes as gn
+import amitypes as at
 
 from ami.data import MsgTypes, Transitions, Transition
 from ami.comm import AutoExport, Store, Node, ZmqHandler, GraphCommHandler
@@ -46,6 +47,8 @@ class ExportHelper:
             names = set()
         if sources is None:
             sources = {}
+        else:
+            sources = {src: at.dumps(typ) for src, typ in sources.items()}
         return {'version': version, 'names': names, 'sources': sources, 'dill': dill.dumps(graph)}
 
 
@@ -102,6 +105,7 @@ class ResultsInjector(Node, ZmqHandler):
         return count
 
     def partition(self, payload, wait=False):
+        payload = {src: at.dumps(typ) for src, typ in payload.items()}
         self.message(MsgTypes.Transition, self.node, Transition(Transitions.Configure, payload))
         if wait:
             self.wait_for(self.mark())
@@ -140,7 +144,7 @@ class ResultsInjector(Node, ZmqHandler):
 def result_data():
     return {
         'laser': True,
-        'delta_t': np.random.rand(1)[0],
+        'delta_t': np.random.random(),
         'wave8': np.random.normal(0, 20.0, 100),
         'cspad': np.random.normal(30, 5.0, (10, 10)),
     }
@@ -365,7 +369,7 @@ def test_manager_export_data(manager_export, inputs, exports):
     assert data == expected_data
 
 
-@pytest.mark.parametrize('partition', [{'cspad': np.ndarray, 'delta_t': float}, {'laser': bool}, {}])
+@pytest.mark.parametrize('partition', [{'cspad': at.Array2d, 'delta_t': float}, {'laser': bool}, {}])
 def test_manager_partition(manager_ctrl, partition):
     comm, injector = manager_ctrl
 
@@ -386,7 +390,7 @@ def test_manager_partition(manager_ctrl, partition):
 
 @pytest.mark.parametrize('manager_info, partition',
                          [
-                            ('', {'cspad': np.ndarray, 'delta_t': float})
+                            ('', {'cspad': at.Array2d, 'delta_t': float})
                          ],
                          indirect=['manager_info'])
 def test_manager_partition_updates(manager_info, partition):
@@ -415,6 +419,7 @@ def test_manager_partition_updates(manager_info, partition):
     # check that the message came from the manager
     assert node == 'manager'
     # check that the expected partition/source info was attached
+    payload = {src: at.loads(typ) for src, typ in payload.items()}
     assert payload == partition
 
 
