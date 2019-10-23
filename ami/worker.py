@@ -5,7 +5,6 @@ import zmq
 import json
 import logging
 import argparse
-# import collections
 from ami import LogConfig, Defaults
 from ami.comm import Ports, Colors, ResultStore, Node
 from ami.data import MsgTypes, Source
