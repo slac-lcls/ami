@@ -10,7 +10,6 @@ from ami import LogConfig, Defaults
 from ami.comm import Ports, Colors, ResultStore, Node
 from ami.data import MsgTypes, Source
 from ami.graphkit_wrapper import Graph
-import time
 
 
 logger = logging.getLogger(__name__)
@@ -93,10 +92,7 @@ class Worker(Node):
 
             # check to see if the graph has been reconfigured after update
             if msg.mtype == MsgTypes.Heartbeat:
-                start = time.time()
                 self.store.collect(self.node, msg.payload)
-                end = time.time()
-                print(msg.mtype, end - start)
 
                 # clear the data from the store after collecting
                 self.store.clear()
