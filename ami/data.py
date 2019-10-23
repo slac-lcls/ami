@@ -51,11 +51,12 @@ class Transition:
     ttype: Transitions
     payload: dict
 
-    def _serialize(transition):
-        return asdict(transition)
+    def _serialize(self):
+        return asdict(self)
 
-    def _deserialize(data):
-        return Transition(**data)
+    @classmethod
+    def _deserialize(cls, data):
+        return cls(**data)
 
 
 @dataclass
@@ -64,11 +65,12 @@ class Datagram:
     dtype: type
     data: dict = field(default_factory=dict)
 
-    def _serialize(datagram):
-        return asdict(datagram)
+    def _serialize(self):
+        return self.__dict__
 
-    def _deserialize(data):
-        return Datagram(**data)
+    @classmethod
+    def _deserialize(cls, data):
+        return cls(**data)
 
 
 @dataclass
@@ -88,8 +90,8 @@ class Message:
     payload: dict
     timestamp: int = 0
 
-    def _serialize(msg):
-        return asdict(msg)
+    def _serialize(self):
+        return asdict(self)
 
     def _deserialize(data):
         if data['mtype'] == MsgTypes.Transition:
@@ -113,11 +115,12 @@ class CollectorMessage(Message):
     name: str = ""
     version: int = 0
 
-    def _serialize(msg):
-        return asdict(msg)
+    def _serialize(self):
+        return self.__dict__
 
-    def _deserialize(data):
-        return CollectorMessage(**data)
+    @classmethod
+    def _deserialize(cls, data):
+        return cls(**data)
 
 
 def build_serialization_context():
@@ -134,11 +137,12 @@ def build_serialization_context():
 
 class ArrowSerializer(object):
 
-    context = build_serialization_context()
+    def __init__(self):
+        self.context = build_serialization_context()
 
     def __call__(self, msg):
         serialized_msg = []
-        ser = pa.serialize(msg, context=ArrowSerializer.context)
+        ser = pa.serialize(msg, context=self.context)
         comp = ser.to_components()
         metadata = {k: comp[k] for k in ['num_tensors', 'num_ndarrays', 'num_buffers']}
         serialized_msg.append(pickle.dumps(metadata))
@@ -149,13 +153,14 @@ class ArrowSerializer(object):
 
 class ArrowDeserializer(object):
 
-    context = build_serialization_context()
+    def __init__(self):
+        self.context = build_serialization_context()
 
     def __call__(self, data):
         components = pickle.loads(data[0])
         data = list(map(pa.py_buffer, data[1:]))
         components['data'] = data
-        return pa.deserialize_components(components, context=ArrowDeserializer.context)
+        return pa.deserialize_components(components, context=self.context)
 
 
 class Source(abc.ABC):

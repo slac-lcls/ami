@@ -90,10 +90,14 @@ class Worker(Node):
     def run(self):
         # times = collections.defaultdict(list)
         for msg in self.src.events():
-            start = time.time()
+
             # check to see if the graph has been reconfigured after update
             if msg.mtype == MsgTypes.Heartbeat:
+                start = time.time()
                 self.store.collect(self.node, msg.payload)
+                end = time.time()
+                print(msg.mtype, end - start)
+
                 # clear the data from the store after collecting
                 self.store.clear()
                 # check if there are graph updates
@@ -122,10 +126,6 @@ class Worker(Node):
                     return 1
             else:
                 self.store.send(msg)
-            end = time.time()
-
-            if self.graphs and msg.mtype == MsgTypes.Heartbeat:
-                print(msg.mtype, end - start)
 
 
 def run_worker(num, num_workers, hb_period, source, collector_addr, graph_addr, msg_addr, flags=None):
