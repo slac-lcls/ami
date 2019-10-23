@@ -358,11 +358,19 @@ def test_manager_export_data(manager_export, inputs, exports):
         assert graph == injector.comm.current
         assert data == expected_features
 
-    # check the data message
+    # check for data if the exports and input names overlap
+    if set(exports) & set(inputs):
+        # check the data message
+        topic, graph, data = export.recv()
+        assert topic == 'data'
+        assert graph == injector.comm.current
+        assert data == expected_data
+
+    # check the heartbeat message
     topic, graph, data = export.recv()
-    assert topic == 'data'
+    assert topic == 'heartbeat'
     assert graph == injector.comm.current
-    assert data == expected_data
+    assert data == expected_hb
 
 
 @pytest.mark.parametrize('partition', [{'cspad': np.ndarray, 'delta_t': float}, {'laser': bool}, {}])

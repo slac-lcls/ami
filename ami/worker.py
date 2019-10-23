@@ -15,20 +15,22 @@ logger = logging.getLogger(__name__)
 
 
 class Worker(Node):
-    def __init__(self, node, src, collector_addr, graph_addr, msg_addr):
+    def __init__(self, node, src, collector_addr, graph_addr, msg_addr, export_addr):
         """
         node : int
             a unique integer identifying this worker
         src : object
             object with an events() method that is an iterable (like psana.DataSource)
         """
-        super(__class__, self).__init__(node, graph_addr, msg_addr)
+        super(__class__, self).__init__(node, graph_addr, msg_addr, export_addr)
 
         self.src = src
 
         self.store = ResultStore(collector_addr, self.ctx)
 
         self.graph_comm.add_command("config", self.send_configure)
+
+        self.exports = {}
 
     def __enter__(self):
         return self
@@ -102,10 +104,18 @@ class Worker(Node):
                         logger.exception("Failure encountered updating graph:")
                         self.report("error", e)
                         return 1
+                while True:
+                    try:
+                        name, data = self.export_comm.recv(False)
+                        self.exports[name] = {k: v for k, v in data.items() if k in self.src.requested_names}
+                    except zmq.Again:
+                        break
             elif msg.mtype == MsgTypes.Datagram:
                 try:
                     for name, graph in self.graphs.items():
                         if graph:
+                            if name in self.exports:
+                                msg.payload.update(self.exports[name])
                             graph_result = graph(msg.payload, color=Colors.Worker)
                             self.store.update(name, graph_result)
                 except Exception as e:
@@ -116,7 +126,7 @@ class Worker(Node):
                 self.store.send(msg)
 
 
-def run_worker(num, num_workers, hb_period, source, collector_addr, graph_addr, msg_addr, flags=None):
+def run_worker(num, num_workers, hb_period, source, collector_addr, graph_addr, msg_addr, export_addr, flags=None):
 
     logger.info('Starting worker # %d, sending to collector at %s', num, collector_addr)
 
@@ -148,7 +158,7 @@ def run_worker(num, num_workers, hb_period, source, collector_addr, graph_addr, 
     else:
         logger.critical("worker%03d: unknown data source type: %s", num, source[0])
         return 1
-    with Worker(num, src, collector_addr, graph_addr, msg_addr) as worker:
+    with Worker(num, src, collector_addr, graph_addr, msg_addr, export_addr) as worker:
         return worker.run()
 
 
@@ -176,6 +186,14 @@ def main():
         type=int,
         default=Ports.NodeCollector,
         help='port for node collector (default: %d)' % Ports.NodeCollector
+    )
+
+    parser.add_argument(
+        '-e',
+        '--export',
+        type=int,
+        default=Ports.Export,
+        help='port for receiving exported graph results (default: %d)' % Ports.Export
     )
 
     parser.add_argument(
@@ -240,6 +258,7 @@ def main():
     collector_addr = "tcp://localhost:%d" % args.collector
     graph_addr = "tcp://%s:%d" % (args.host, args.graph)
     msg_addr = "tcp://%s:%d" % (args.host, args.message)
+    export_addr = "tcp://%s:%d" % (args.host, args.export)
     flags = {}
 
     log_handlers = [logging.StreamHandler()]
@@ -273,6 +292,7 @@ def main():
                    collector_addr,
                    graph_addr,
                    msg_addr,
+                   export_addr,
                    flags)
 
         return 0
