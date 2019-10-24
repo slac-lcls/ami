@@ -198,6 +198,7 @@ def run_ami(args, queue=None):
             export_addr = "tcp://%s:%d" % (host, args.port+5)
         msg_addr = "tcp://%s:%d" % (host, args.port+6)
         info_addr = "tcp://%s:%d" % (host, args.port+7)
+        profile_addr = "tcp://%s:%d" % (host, args.port+8)
     else:
         if args.ipc:
             ipcdir = args.ipc
@@ -214,6 +215,7 @@ def run_ami(args, queue=None):
             export_addr = "ipc://%s/export" % ipcdir
         msg_addr = "ipc://%s/message" % ipcdir
         info_addr = "ipc://%s/info" % ipcdir
+        profile_addr = "ipc://%s/profile" % ipcdir
 
     procs = []
     client_proc = None
@@ -287,7 +289,8 @@ def run_ami(args, queue=None):
         manager_proc = mp.Process(
             name='manager',
             target=run_manager,
-            args=(args.num_workers, 1, results_addr, graph_addr, comm_addr, msg_addr, info_addr, export_addr)
+            args=(args.num_workers, 1, results_addr, graph_addr, comm_addr, msg_addr, info_addr, profile_addr,
+                  export_addr)
         )
         manager_proc.daemon = True
         manager_proc.start()

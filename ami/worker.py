@@ -86,7 +86,7 @@ class Worker(Node):
         self.update_requests()
 
     def run(self):
-        # times = collections.defaultdict(list)
+        times = {}
         for msg in self.src.events():
 
             # check to see if the graph has been reconfigured after update
@@ -105,16 +105,19 @@ class Worker(Node):
                         logger.exception("Failure encountered updating graph:")
                         self.report("error", e)
                         return 1
-                # if times:
-                #     self.report("times", times)
-                #     times = collections.defaultdict(list)
+                if times:
+                    self.report("profile", times)
+                    times = {}
+
             elif msg.mtype == MsgTypes.Datagram:
                 try:
                     for name, graph in self.graphs.items():
                         if graph:
                             graph_result = graph(msg.payload, color=Colors.Worker)
                             self.store.update(name, graph_result)
-                            # times[name].append(graph.times())
+                            if name not in times:
+                                times[name] = []
+                            times[name].append(graph.times())
                 except Exception as e:
                     logger.exception("%s: Failure encountered executing graph:", self.name)
                     self.report("error", e)

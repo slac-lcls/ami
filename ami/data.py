@@ -132,6 +132,7 @@ def build_serialization_context():
     context = pa.SerializationContext()
     for cls in [MsgTypes, Transitions, Message, CollectorMessage, Transition, Datagram]:
         register(context, cls)
+
     return context
 
 

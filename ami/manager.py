@@ -7,9 +7,8 @@ import logging
 import argparse
 from ami import LogConfig
 from ami.comm import Ports, AutoExport, Collector, Store
-from ami.data import MsgTypes, Transitions
+from ami.data import MsgTypes, Transitions, ArrowSerializer, ArrowDeserializer
 from ami.graphkit_wrapper import Graph
-# import time
 
 
 logger = logging.getLogger(__name__)
@@ -32,6 +31,7 @@ class Manager(Collector):
                  comm_addr,
                  msg_addr,
                  info_addr,
+                 profile_addr,
                  export_addr=None):
         """
         protocol right now only tells you how to communicate with workers
@@ -57,6 +57,8 @@ class Manager(Collector):
             self.export.bind(export_addr)
             self.register(self.export, self.export_request)
 
+        self.serializer = ArrowSerializer()
+        self.deserializer = ArrowDeserializer()
         self.comm = self.ctx.socket(zmq.REP)
         self.comm.bind(comm_addr)
         self.register(self.comm, self.client_request)
@@ -69,6 +71,9 @@ class Manager(Collector):
         self.info_comm.bind(info_addr)
         self.node_msg_comm = self.ctx.socket(zmq.PULL)
         self.node_msg_comm.bind(msg_addr)
+        self.profile_comm = self.ctx.socket(zmq.XPUB)
+        self.profile_comm.setsockopt(zmq.XPUB_VERBOSE, True)
+        self.profile_comm.bind(profile_addr)
         self.register(self.node_msg_comm, self.node_request)
         self.register(self.info_comm, self.info_request)
 
@@ -391,9 +396,15 @@ class Manager(Collector):
     def node_request(self):
         topic = self.node_msg_comm.recv_string()
         node = self.node_msg_comm.recv_string()
-        payload = self.node_msg_comm.recv()
 
-        self.publish_message(topic, node, payload)
+        if topic == "error":
+            payload = self.node_msg_comm.recv(copy=False)
+            self.publish_message(topic, node, payload)
+        elif topic == "profile":
+            payload = self.node_msg_comm.recv_multipart(copy=False)
+            self.profile_comm.send_string(topic, zmq.SNDMORE)
+            self.profile_comm.send_string(node, zmq.SNDMORE)
+            self.profile_comm.send_multipart(payload, copy=False)
 
     def info_request(self):
         request = self.info_comm.recv_string()
@@ -474,7 +485,8 @@ class Manager(Collector):
             self.export.send_pyobj(self.heartbeats[name])
 
 
-def run_manager(num_workers, num_nodes, results_addr, graph_addr, comm_addr, msg_addr, info_addr, export_addr=None):
+def run_manager(num_workers, num_nodes, results_addr, graph_addr, comm_addr, msg_addr, info_addr, profile_addr,
+                export_addr=None):
     logger.info('Starting manager, controlling %d workers on %d nodes', num_workers, num_nodes)
     with Manager(
             num_workers,
@@ -484,6 +496,7 @@ def run_manager(num_workers, num_nodes, results_addr, graph_addr, comm_addr, msg
             comm_addr,
             msg_addr,
             info_addr,
+            profile_addr,
             export_addr) as manager:
         return manager.run()
 
@@ -580,6 +593,12 @@ def main():
         help='an optional file to write the log output to'
     )
 
+    parser.add_argument('-P',
+                        '--profile',
+                        type=int,
+                        default=Ports.Profile,
+                        help='port for profiling inforation communication (default: %d)' % Ports.Profile)
+
     args = parser.parse_args()
 
     results_addr = "tcp://%s:%d" % (args.host, args.results)
@@ -587,6 +606,7 @@ def main():
     comm_addr = "tcp://%s:%d" % (args.host, args.port)
     msg_addr = "tcp://%s:%d" % (args.host, args.message)
     info_addr = "tcp://%s:%d" % (args.host, args.info)
+    profile_addr = "tcp://%s:%d" % (args.host, args.profile)
     if args.enable_export:
         export_addr = "tcp://%s:%d" % (args.host, args.export)
     else:
@@ -606,6 +626,7 @@ def main():
                            comm_addr,
                            msg_addr,
                            info_addr,
+                           profile_addr,
                            export_addr)
     except KeyboardInterrupt:
         logger.info("Manager killed by user...")

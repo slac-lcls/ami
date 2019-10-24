@@ -6,12 +6,11 @@ import logging
 import functools
 import numpy as np
 import zmq.asyncio
-from enum import IntEnum
-
 import amitypes as at
 import ami.graph_nodes as gn
 from ami.graphkit_wrapper import Graph
 from ami.data import MsgTypes, Message, Transition, CollectorMessage, Datagram, ArrowSerializer, ArrowDeserializer
+from enum import IntEnum
 
 
 logger = logging.getLogger(__name__)
@@ -32,6 +31,7 @@ class Ports(IntEnum):
     Export = 5560
     Message = 5561
     Info = 5562
+    Profile = 5563
     Sync = 5600
 
 
@@ -385,10 +385,11 @@ class ContributionBuilder(abc.ABC):
 
     def complete(self, eb_key, identity):
         if eb_key in self.pending:
-            self._complete(eb_key, identity)
+            times = self._complete(eb_key, identity)
             del self.pending[eb_key]
             del self.contribs[eb_key]
             logger.debug("Completed key %s", eb_key)
+            return times
 
     def mark(self, eb_key, eb_id):
         if 0 <= eb_id < self.num_contribs:
@@ -421,6 +422,7 @@ class GraphBuilder(ContributionBuilder):
         self.pending_graphs = {}
         self.version = None
         self.completion = completion
+        self.times = None
 
     def _init(self, name):
         if self.graph is None:
@@ -485,9 +487,13 @@ class GraphBuilder(ContributionBuilder):
             if self.graph:
                 for data in contribs.values():
                     self.pending[eb_key].update(self.graph(data, color=self.color))
+                    self.times = self.graph.times()
         else:
             self.pending[eb_key].clear()
+            self.times = None
+
         self.completion(eb_key, identity, self.pending[eb_key])
+        return self.times
 
     def _update(self, eb_key, eb_id, ver_key, data):
         if eb_key not in self.pending:
@@ -559,7 +565,7 @@ class EventBuilder(ZmqHandler):
             self.destroy(name)
 
     def complete(self, name, eb_key, identity):
-        self.builders[name].complete(eb_key, identity)
+        return self.builders[name].complete(eb_key, identity)
 
     def completion(self, name, eb_key, identity, payload):
         self.collector_message(identity, eb_key, name, payload.version, payload.namespace)
@@ -631,6 +637,7 @@ class Node(abc.ABC):
 
         self.node_msg_comm = self.ctx.socket(zmq.PUSH)
         self.node_msg_comm.connect(msg_addr)
+        self.serializer = ArrowSerializer()
 
     @property
     @abc.abstractmethod
@@ -730,7 +737,10 @@ class Node(abc.ABC):
         """
         self.node_msg_comm.send_string(topic, zmq.SNDMORE)
         self.node_msg_comm.send_string(self.name, zmq.SNDMORE)
-        self.node_msg_comm.send(dill.dumps(payload))
+        if topic == "profile":
+            self.node_msg_comm.send_serialized(payload, self.serializer, copy=False)
+        else:
+            self.node_msg_comm.send(dill.dumps(payload), copy=False)
 
 
 class Collector(abc.ABC):

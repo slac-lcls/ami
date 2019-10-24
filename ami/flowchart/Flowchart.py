@@ -455,6 +455,7 @@ class FlowchartCtrlWidget(QtGui.QWidget):
 
     @asyncqt.asyncSlot()
     async def applyClicked(self):
+        node_map = {}
         graph_nodes = []
         disconnectedNodes = []
         displays = []
@@ -483,10 +484,10 @@ class FlowchartCtrlWidget(QtGui.QWidget):
             if type(node) is list:
                 graph_nodes.extend(node)
                 for n in node:
-                    self.node_map[n.name] = name
+                    node_map[n.name] = name
             else:
                 graph_nodes.append(node)
-                self.node_map[node.name] = name
+                node_map[node.name] = name
 
         if disconnectedNodes:
             for node in disconnectedNodes:
@@ -527,6 +528,7 @@ class FlowchartCtrlWidget(QtGui.QWidget):
                         if in_var not in features:
                             features[in_var] = topic
                             views.append(in_var)
+                        node_map[node.name()] = topic
                     else:
                         continue
 
@@ -537,6 +539,8 @@ class FlowchartCtrlWidget(QtGui.QWidget):
                 await self.chart.broker.send_string(node.name(), zmq.SNDMORE)
                 await self.chart.broker.send_pyobj(fcMsgs.DisplayNode(node.name(), dict(topics), redisplay=True))
 
+        self.node_map = node_map
+        print(node_map)
         async with self.features_lock:
             self.features = features
 
@@ -710,6 +714,7 @@ class FlowchartWidget(dockarea.DockArea):
                     topic = self.ctrl.features[in_var]
                 else:
                     topic = self.ctrl.graphCommHandler.auto(in_var)
+                    self.ctrl.node_map[node.name] = topic
                     async with self.ctrl.features_lock:
                         self.ctrl.features[in_var] = topic
                     views.append(in_var)
