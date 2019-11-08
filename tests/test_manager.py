@@ -161,13 +161,15 @@ def manager_proc(ipc_dir):
         'msg': 'ipc://%s/manager_msg' % ipc_dir,
         'info': 'ipc://%s/manager_info' % ipc_dir,
         'export': 'ipc://%s/manager_export' % ipc_dir,
+        'view': 'ipc://%s/manager_view' % ipc_dir,
     }
 
     # start the manager process
     proc = mp.Process(
         name='manager',
         target=run_manager,
-        args=(1, 1, addrs['results'], addrs['graph'], addrs['comm'], addrs['msg'], addrs['info'], addrs['export'])
+        args=(1, 1, addrs['results'], addrs['graph'], addrs['comm'],
+              addrs['msg'], addrs['info'], addrs['export'], addrs['view'])
     )
     proc.daemon = False
     proc.start()
@@ -258,7 +260,6 @@ def test_manager_export_config(manager_export, partition):
             ('store', injector.comm.current, export.store(), 'store after configure'),
             ('graph', injector.comm.current, export.graph(names=set(partition), sources=partition),
              'graph after configure'),
-            ('data', injector.comm.current, {}, 'data after configure'),
             ('heartbeat', injector.comm.current, 0, 'hb after configure'),
         ],
         [

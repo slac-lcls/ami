@@ -35,7 +35,7 @@ class ScalarWidget(QLCDNumber):
         self.setGeometry(QRect(320, 180, 191, 81))
         self.setDigitCount(10)
         self.setObjectName(topic)
-        self.comm_handler = AsyncGraphCommHandler(addr.name, addr.uri)
+        self.comm_handler = AsyncGraphCommHandler(addr.name, addr.comm)
         self.timer.timeout.connect(self.get_scalar)
         self.timer.start(1000)
 
@@ -57,7 +57,7 @@ class WaveformWidget(pg.GraphicsLayoutWidget):
         self.name = name
         self.topic = topic
         self.timer = QTimer()
-        self.comm_handler = AsyncGraphCommHandler(addr.name, addr.uri)
+        self.comm_handler = AsyncGraphCommHandler(addr.name, addr.comm)
         self.plot_view = self.addPlot()
         self.plot = None
         self.timer.timeout.connect(self.get_waveform)
@@ -84,7 +84,7 @@ class HistogramWidget(pg.GraphicsLayoutWidget):
         self.name = name
         self.topic = topic
         self.timer = QTimer()
-        self.comm_handler = AsyncGraphCommHandler(addr.name, addr.uri)
+        self.comm_handler = AsyncGraphCommHandler(addr.name, addr.comm)
         self.plot_view = self.addPlot()
         self.plot = None
         self.timer.timeout.connect(self.get_waveform)
@@ -114,7 +114,7 @@ class AreaDetWidget(pg.ImageView):
         super(AreaDetWidget, self).__init__(parent)
         self.name = name
         self.topic = topic
-        self.comm_handler = AsyncGraphCommHandler(addr.name, addr.uri)
+        self.comm_handler = AsyncGraphCommHandler(addr.name, addr.comm)
         self.timer = QTimer()
         self.timer.timeout.connect(self.get_image)
         self.timer.start(1000)
@@ -476,10 +476,10 @@ class AmiGui(QWidget):
     saveFile = Signal(str, name='saveFile')
     statusUpdate = Signal(str, name='statusUpdate')
 
-    def __init__(self, queue, graph_addr, info_addr, ami_save, parent=None):
+    def __init__(self, queue, graphmgr_addr, ami_save, parent=None):
         super(__class__, self).__init__(parent)
         self.setWindowTitle("AMI Client")
-        self.comm_handler = AsyncGraphCommHandler(graph_addr.name, graph_addr.uri)
+        self.comm_handler = AsyncGraphCommHandler(graphmgr_addr.name, graphmgr_addr.comm)
 
         self.save_button = QPushButton('Save', self)
         self.save_button.clicked.connect(self.save)
@@ -526,7 +526,7 @@ class AmiGui(QWidget):
         add_logging_handler(self.statusUpdate)
 
         # create a qthread that listens for info messages from the cluster to log them.
-        self.info_thread = AmiInfo(info_addr, self.log_message)
+        self.info_thread = AmiInfo(graphmgr_addr.info, self.log_message)
         self.info_thread.start()
 
     @Slot(str, str)
@@ -574,11 +574,11 @@ def add_logging_handler(signal):
     logger.addHandler(QtSignalLogHandler(signal))
 
 
-def run_main_window(queue, graph_addr, info_addr, ami_save):
+def run_main_window(queue, graphmgr_addr, ami_save):
     app = QApplication(sys.argv)
     loop = asyncqt.QEventLoop(app)
     asyncio.set_event_loop(loop)
-    gui = AmiGui(queue, graph_addr, info_addr, ami_save)
+    gui = AmiGui(queue, graphmgr_addr, ami_save)
     gui.show()
 
     # wait for the qt app to exit
@@ -619,7 +619,7 @@ def run_widget(queue, window_type, name, topic, addr):
     return app.exec_()
 
 
-def run_client(graph_addr, info_addr, load):
+def run_client(graphmgr_addr, load):
     saved_cfg = None
     if load is not None:
         try:
@@ -635,7 +635,7 @@ def run_client(graph_addr, info_addr, load):
     queue = mp.Queue()
     list_proc = mp.Process(
         target=run_main_window, args=(
-            queue, graph_addr, info_addr, saved_cfg))
+            queue, graphmgr_addr, saved_cfg))
     list_proc.start()
     widget_procs = []
 
@@ -647,6 +647,6 @@ def run_client(graph_addr, info_addr, load):
         logger.debug("opening new widget: %s %s %s", window_type, name, topic)
         proc = mp.Process(
             target=run_widget, args=(
-                queue, window_type, name, topic, graph_addr))
+                queue, window_type, name, topic, graphmgr_addr))
         proc.start()
         widget_procs.append(proc)

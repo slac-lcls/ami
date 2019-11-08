@@ -1,5 +1,7 @@
+import zmq
 import logging
 import asyncio
+import zmq.asyncio
 import datetime as dt
 import itertools as it
 import numpy as np
@@ -8,7 +10,6 @@ from qtpy.QtGui import QGridLayout
 from qtpy.QtWidgets import QLCDNumber, QLabel, QWidget
 from qtpy.QtCore import QRect, Qt, Signal
 from ami import LogConfig
-from ami.comm import AsyncGraphCommHandler
 
 
 logger = logging.getLogger(LogConfig.get_package_name(__name__))
@@ -21,40 +22,65 @@ symbols_colors = list(it.product(symbols, colors))
 class AsyncFetcher(object):
 
     def __init__(self, topics={}, addr=None, buffered=False):
-        self.names = list(topics.keys())
-        if buffered:
-            self.topics = list(topics.values())[0]
-        else:
-            self.topics = list(topics.values())
-        self.comm_handler = AsyncGraphCommHandler(addr.name, addr.uri)
+        self.addr = addr
+        self.ctx = zmq.asyncio.Context()
+        self.poller = zmq.asyncio.Poller()
+        self.sockets = []
         self.buffered = buffered
-        self.reply = {}
+        self.data = {}
         self.last_updated = "Last Updated: None"
+        self.update_topics(topics)
+
+    @property
+    def reply(self):
+        if self.data.keys() == set(self.subs):
+            if self.buffered and len(self.names) > 1:
+                reply = {}
+                for topic, value in self.data.items():
+                    names = [name for name in self.names if self.topics[name] == topic]
+                    reply.update(dict(zip(names, zip(*self.data[topic]))))
+                return reply
+            else:
+                return {name: self.data[topic] for name, topic in self.topics.items()}
+        else:
+            return {}
 
     def update_topics(self, topics={}):
         self.names = list(topics.keys())
+        self.topics = topics
         if self.buffered:
-            self.topics = list(topics.values())[0]
+            self.subs = set(topics.values())
         else:
-            self.topics = list(topics.values())
+            self.subs = list(topics.values())
+
+        for sock in self.sockets:
+            self.poller.unregister(sock)
+            sock.close()
+
+        self.sockets = []
+        self.view_subs = {}
+
+        for topic in self.subs:
+            sub_topic = "view:%s:%s" % (self.addr.name, topic)
+            self.view_subs[sub_topic] = topic
+            sock = self.ctx.socket(zmq.SUB)
+            sock.setsockopt_string(zmq.SUBSCRIBE, sub_topic)
+            sock.connect(self.addr.view)
+            self.poller.register(sock, zmq.POLLIN)
+            self.sockets.append(sock)
 
     async def fetch(self):
-        await asyncio.sleep(1)
-        reply = await self.comm_handler.fetch(self.topics)
+        for sock, flag in await self.poller.poll():
+            if flag != zmq.POLLIN:
+                continue
+            topic = await sock.recv_string()
+            await sock.recv_pyobj()
+            reply = await sock.recv_pyobj()
 
-        if reply is not None:
             now = dt.datetime.now()
             now = now.strftime("%H:%M:%S")
             self.last_updated = f"Last Updated: {now}"
-            if self.buffered and len(self.names) > 1:
-                self.reply = dict(zip(self.names, zip(*reply)))
-            elif self.buffered:
-                self.reply = {self.names[0]: reply}
-            else:
-                self.reply = dict(zip(self.names, reply))
-        else:
-            self.reply = {}
-            logger.warn("failed to fetch %s from manager!" % self.topics)
+            self.data[self.view_subs[topic]] = reply
 
 
 class ScalarWidget(QLCDNumber):

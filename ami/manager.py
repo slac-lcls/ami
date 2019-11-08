@@ -31,7 +31,8 @@ class Manager(Collector):
                  comm_addr,
                  msg_addr,
                  info_addr,
-                 export_addr=None):
+                 export_addr,
+                 view_addr):
         """
         protocol right now only tells you how to communicate with workers
         """
@@ -42,34 +43,40 @@ class Manager(Collector):
         self.partition = {}
         self.feature_stores = {}
         self.feature_req = re.compile(r"(?P<type>fetch):(?P<name>.*)")
+        self.view_req = re.compile(r"view:(?P<graph>.*):(?P<name>.*)")
         self.graphs = {}
         self.versions = {}
         self.purged = set()
         self.global_cmds = {"list_graphs"}
         self.no_auto_create_cmds = {"create_graph", "destroy_graph"}
 
-        if export_addr is None:
-            self.export = None
-        else:
-            self.export = self.ctx.socket(zmq.XPUB)
-            self.export.setsockopt(zmq.XPUB_VERBOSE, True)
-            self.export.bind(export_addr)
-            self.register(self.export, self.export_request)
+        self.export = self.ctx.socket(zmq.XPUB)
+        self.export.setsockopt(zmq.XPUB_VERBOSE, True)
+        self.export.bind(export_addr)
+        self.register(self.export, self.export_request)
 
         self.comm = self.ctx.socket(zmq.REP)
         self.comm.bind(comm_addr)
         self.register(self.comm, self.client_request)
+
         self.graph_comm = self.ctx.socket(zmq.XPUB)
         self.graph_comm.setsockopt(zmq.XPUB_VERBOSE, True)
         self.graph_comm.bind(graph_addr)
         self.register(self.graph_comm, self.graph_request)
+
         self.info_comm = self.ctx.socket(zmq.XPUB)
         self.info_comm.setsockopt(zmq.XPUB_VERBOSE, True)
         self.info_comm.bind(info_addr)
+        self.register(self.info_comm, self.info_request)
+
         self.node_msg_comm = self.ctx.socket(zmq.PULL)
         self.node_msg_comm.bind(msg_addr)
         self.register(self.node_msg_comm, self.node_request)
-        self.register(self.info_comm, self.info_request)
+
+        self.view_comm = self.ctx.socket(zmq.XPUB)
+        self.view_comm.setsockopt(zmq.XPUB_VERBOSE, True)
+        self.view_comm.bind(view_addr)
+        self.register(self.view_comm, self.view_request)
 
     def __enter__(self):
         return self
@@ -107,6 +114,8 @@ class Manager(Collector):
                 self.heartbeats[msg.name] = msg.heartbeat
                 # export the heartbeat to epics
                 self.export_heartbeat(msg.name)
+                # export data for viewing in the AMI GUI
+                self.export_view(msg.name)
         elif (msg.mtype == MsgTypes.Transition) and (msg.payload.ttype == Transitions.Configure):
             changed = (msg.payload.payload != self.partition)
             self.partition = msg.payload.payload
@@ -170,7 +179,7 @@ class Manager(Collector):
         matched = self.feature_req.match(request)
         if matched:
             if matched.group('type') == 'fetch':
-                if matched.group('name') in self.feature_stores[name].namespace:
+                if matched.group('name') in self.feature_stores[name]:
                     self.comm.send_string('ok', zmq.SNDMORE)
                     self.comm.send_pyobj(self.feature_stores[name].get(matched.group('name')))
                 else:
@@ -370,6 +379,11 @@ class Manager(Collector):
         self.info_comm.send_string(node, zmq.SNDMORE)
         self.info_comm.send(payload)
 
+    def publish_view(self, topic, timestamp, data):
+        self.view_comm.send_string(topic, zmq.SNDMORE)
+        self.view_comm.send_pyobj(timestamp, zmq.SNDMORE)
+        self.view_comm.send_pyobj(data)
+
     def graph_request(self):
         request = self.graph_comm.recv_string()
 
@@ -395,6 +409,30 @@ class Manager(Collector):
         if request == "\x01" or request == "\x01sources":
             self.publish_message("sources", "manager", dill.dumps(self.partition))
 
+    def view_request(self):
+        request = self.view_comm.recv_string()
+
+        if request.startswith("\x01"):
+            request = request.strip('\x01')
+            matched = self.view_req.match(request)
+            if matched:
+                graph = matched.group('graph')
+                name = matched.group('name')
+                if self.exists(graph) and name in self.feature_stores[graph]:
+                    self.publish_view("view:%s:%s" % (graph, name),
+                                      self.heartbeats[graph],
+                                      self.feature_stores[graph].get(name))
+                else:
+                    logger.debug("Received view request for unknown graph/feature: %s", request)
+            else:
+                logger.warn("Received invalid view request: %s", request)
+
+    def export_view(self, name):
+        for key, value in self.feature_stores[name].namespace.items():
+            self.publish_view("view:%s:%s" % (name, key),
+                              self.heartbeats[name],
+                              value)
+
     def export_request(self):
         request = self.export.recv_string()
 
@@ -402,35 +440,32 @@ class Manager(Collector):
             self.export_config()
 
     def export_graph(self, name):
-        if self.export is not None:
-            data = {
-                'names': self.names(name),
-                'sources': self.partition,
-                'version': self.versions[name],
-                'dill': dill.dumps(self.graphs[name])
-            }
-            self.export.send_string('graph', zmq.SNDMORE)
-            self.export.send_string(name, zmq.SNDMORE)
-            self.export.send_pyobj(data)
+        data = {
+            'names': self.names(name),
+            'sources': self.partition,
+            'version': self.versions[name],
+            'dill': dill.dumps(self.graphs[name])
+        }
+        self.export.send_string('graph', zmq.SNDMORE)
+        self.export.send_string(name, zmq.SNDMORE)
+        self.export.send_pyobj(data)
 
     def export_store(self, name):
-        if self.export is not None:
-            data = {
-                'version': self.feature_stores[name].version,
-                'features': self.features(name),
-            }
-            self.export.send_string('store', zmq.SNDMORE)
-            self.export.send_string(name, zmq.SNDMORE)
-            self.export.send_pyobj(data)
+        data = {
+            'version': self.feature_stores[name].version,
+            'features': self.features(name),
+        }
+        self.export.send_string('store', zmq.SNDMORE)
+        self.export.send_string(name, zmq.SNDMORE)
+        self.export.send_pyobj(data)
 
     def export_info(self):
-        if self.export is not None:
-            data = {
-                'graphs': set(self.graphs),
-            }
-            self.export.send_string('info', zmq.SNDMORE)
-            self.export.send_string("", zmq.SNDMORE)
-            self.export.send_pyobj(data)
+        data = {
+            'graphs': set(self.graphs),
+        }
+        self.export.send_string('info', zmq.SNDMORE)
+        self.export.send_string("", zmq.SNDMORE)
+        self.export.send_pyobj(data)
 
     def export_config(self):
         self.export_info()
@@ -446,31 +481,36 @@ class Manager(Collector):
 
     def export_destroy(self, name):
         self.export_info()
-        if self.export is not None:
-            self.export.send_string('destroy', zmq.SNDMORE)
-            self.export.send_string(name, zmq.SNDMORE)
-            self.export.send_pyobj(None)
+        self.export.send_string('destroy', zmq.SNDMORE)
+        self.export.send_string(name, zmq.SNDMORE)
+        self.export.send_pyobj(None)
 
     def export_data(self, name, data):
-        if self.export is not None:
-            export_data = {}
-            for key, val in data.items():
-                if AutoExport.is_auto(key):
-                    export_data[AutoExport.unmangle(key)] = val
-            # Only export the dictionary if it is non-empty
-            if export_data:
-                self.export.send_string('data', zmq.SNDMORE)
-                self.export.send_string(name, zmq.SNDMORE)
-                self.export.send_pyobj(export_data)
+        export_data = {}
+        for key, val in data.items():
+            if AutoExport.is_auto(key):
+                export_data[AutoExport.unmangle(key)] = val
+        # Only export the dictionary if it is non-empty
+        if export_data:
+            self.export.send_string('data', zmq.SNDMORE)
+            self.export.send_string(name, zmq.SNDMORE)
+            self.export.send_pyobj(export_data)
 
     def export_heartbeat(self, name):
-        if self.export is not None:
-            self.export.send_string('heartbeat', zmq.SNDMORE)
-            self.export.send_string(name, zmq.SNDMORE)
-            self.export.send_pyobj(self.heartbeats[name])
+        self.export.send_string('heartbeat', zmq.SNDMORE)
+        self.export.send_string(name, zmq.SNDMORE)
+        self.export.send_pyobj(self.heartbeats[name])
 
 
-def run_manager(num_workers, num_nodes, results_addr, graph_addr, comm_addr, msg_addr, info_addr, export_addr):
+def run_manager(num_workers,
+                num_nodes,
+                results_addr,
+                graph_addr,
+                comm_addr,
+                msg_addr,
+                info_addr,
+                export_addr,
+                view_addr):
     logger.info('Starting manager, controlling %d workers on %d nodes', num_workers, num_nodes)
     with Manager(
             num_workers,
@@ -480,7 +520,8 @@ def run_manager(num_workers, num_nodes, results_addr, graph_addr, comm_addr, msg
             comm_addr,
             msg_addr,
             info_addr,
-            export_addr) as manager:
+            export_addr,
+            view_addr) as manager:
         return manager.run()
 
 
@@ -535,6 +576,14 @@ def main():
     )
 
     parser.add_argument(
+        '-V',
+        '--view',
+        type=int,
+        default=Ports.View,
+        help='port for sending data to the AMI GUI for viewing (default: %d)' % Ports.View
+    )
+
+    parser.add_argument(
         '-r',
         '--results',
         type=int,
@@ -577,6 +626,7 @@ def main():
     msg_addr = "tcp://%s:%d" % (args.host, args.message)
     info_addr = "tcp://%s:%d" % (args.host, args.info)
     export_addr = "tcp://%s:%d" % (args.host, args.export)
+    view_addr = "tcp://%s:%d" % (args.host, args.view)
 
     log_handlers = [logging.StreamHandler()]
     if args.log_file is not None:
@@ -592,7 +642,8 @@ def main():
                            comm_addr,
                            msg_addr,
                            info_addr,
-                           export_addr)
+                           export_addr,
+                           view_addr)
     except KeyboardInterrupt:
         logger.info("Manager killed by user...")
         return 0

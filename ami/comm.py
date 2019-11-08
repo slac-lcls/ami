@@ -32,6 +32,7 @@ class Ports(IntEnum):
     Export = 5560
     Message = 5561
     Info = 5562
+    View = 5563
     Sync = 5600
 
 
@@ -149,6 +150,15 @@ class Store:
             return True
         else:
             return False
+
+    def __contains__(self, name):
+        """
+        Checks if a key is in the store class.
+
+        Returns:
+            True if the key is in the store False otherwise.
+        """
+        return name in self._store
 
     @staticmethod
     def get_type(data):

@@ -19,7 +19,7 @@ from ami.asyncqt import QEventLoop, asyncSlot
 logger = logging.getLogger(LogConfig.get_package_name(__name__))
 
 
-def run_editor_window(broker_addr, graphmgr_addr, graphinfo_addr, node_addr, checkpoint_addr, load=None):
+def run_editor_window(broker_addr, graphmgr_addr, node_addr, checkpoint_addr, load=None):
     app = QtGui.QApplication([])
 
     loop = QEventLoop(app)
@@ -36,7 +36,6 @@ def run_editor_window(broker_addr, graphmgr_addr, graphinfo_addr, node_addr, che
     # Create flowchart, define input/output terminals
     fc = Flowchart(broker_addr=broker_addr,
                    graphmgr_addr=graphmgr_addr,
-                   graphinfo_addr=graphinfo_addr,
                    node_addr=node_addr,
                    checkpoint_addr=checkpoint_addr)
 
@@ -200,13 +199,12 @@ class NodeProcess(QtCore.QObject):
 
 class MessageBroker(object):
 
-    def __init__(self, graphmgr_addr, graphinfo_addr, load, ipcdir=None):
+    def __init__(self, graphmgr_addr, load, ipcdir=None):
 
         if ipcdir is None:
             ipcdir = tempfile.mkdtemp()
 
         self.graphmgr_addr = graphmgr_addr
-        self.graphinfo_addr = graphinfo_addr
         self.broker_sub_addr = "ipc://%s/broker_sub" % ipcdir
         self.broker_pub_addr = "ipc://%s/broker_pub" % ipcdir
         self.node_addr = "ipc://%s/nodes" % ipcdir
@@ -260,7 +258,6 @@ class MessageBroker(object):
             target=run_editor_window,
             args=(self.broker_sub_addr,
                   self.graphmgr_addr,
-                  self.graphinfo_addr,
                   self.node_addr,
                   self.checkpoint_pub_addr,
                   self.load),
@@ -391,9 +388,9 @@ class MessageBroker(object):
                              self.monitor_processes())
 
 
-def run_client(graphmgr_addr, graphinfo_addr, load):
+def run_client(graphmgr_addr, load):
     with tempfile.TemporaryDirectory() as ipcdir:
-        mb = MessageBroker(graphmgr_addr, graphinfo_addr, load, ipcdir=ipcdir)
+        mb = MessageBroker(graphmgr_addr, load, ipcdir=ipcdir)
         mb.launch_editor_window()
         loop = asyncio.get_event_loop()
         task = asyncio.ensure_future(mb.run())
