@@ -37,7 +37,7 @@ class Flowchart(Node):
     sigStateChanged = QtCore.Signal()
 
     def __init__(self, name=None, filePath=None, library=None,
-                 broker_addr="", graphmgr_addr="", graphinfo_addr="", node_addr="", checkpoint_addr=""):
+                 broker_addr="", graphmgr_addr="", node_addr="", checkpoint_addr=""):
         super(Flowchart, self).__init__(name)
         self.socks = []
         self.library = library or LIBRARY
@@ -52,7 +52,7 @@ class Flowchart(Node):
 
         self.graphinfo = self.ctx.socket(zmq.SUB)
         self.graphinfo.setsockopt_string(zmq.SUBSCRIBE, '')
-        self.graphinfo.connect(graphinfo_addr)
+        self.graphinfo.connect(graphmgr_addr.info)
         self.socks.append(self.graphinfo)
 
         self.node = self.ctx.socket(zmq.PULL)  # used to receive to_operation() from processes
@@ -433,7 +433,7 @@ class FlowchartCtrlWidget(QtGui.QWidget):
     def __init__(self, chart, graphmgr_addr):
         super(FlowchartCtrlWidget, self).__init__()
 
-        self.graphCommHandler = AsyncGraphCommHandler(graphmgr_addr.name, graphmgr_addr.uri, ctx=chart.ctx)
+        self.graphCommHandler = AsyncGraphCommHandler(graphmgr_addr.name, graphmgr_addr.comm, ctx=chart.ctx)
 
         self.currentFileName = None
         self.chart = chart

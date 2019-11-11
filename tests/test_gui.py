@@ -7,7 +7,7 @@ import signal
 import amitypes as at
 import multiprocessing as mp
 import ami.client.flowchart_messages as fcMsgs
-from ami.client import GraphAddress
+from ami.client import GraphMgrAddress
 from ami.client.flowchart import MessageBroker
 from ami.flowchart.Flowchart import Flowchart
 from ami.flowchart.library.common import SourceNode
@@ -23,7 +23,7 @@ class BrokerHelper:
         self.loop = asyncio.new_event_loop()
         # set this new event loop as the default one so zmq picks it up
         asyncio.set_event_loop(self.loop)
-        self.broker = MessageBroker("", "", "", ipcdir=ipcdir)
+        self.broker = MessageBroker("", "", ipcdir=ipcdir)
         self.comm = comm
         self.task = asyncio.ensure_future(self.broker.run())
 
@@ -115,16 +115,15 @@ def flowchart(request, workerjson, broker, ipc_dir, qevent_loop):
         comm_addr = "ipc://%s/comm" % ipc_dir
         graphinfo_addr = "ipc://%s/info" % ipc_dir
 
-        graphmgr = GraphAddress("graph", comm_addr)
+        graphmgr = GraphMgrAddress("graph", comm_addr, None, graphinfo_addr)
 
         # wait for ami to be fully up before updating the sources
-        with GraphCommHandler(*graphmgr) as comm:
+        with GraphCommHandler(graphmgr.name, graphmgr.comm) as comm:
             while not comm.sources:
                 time.sleep(0.1)
 
         with Flowchart(broker_addr=broker.broker_sub_addr,
                        graphmgr_addr=graphmgr,
-                       graphinfo_addr=graphinfo_addr,
                        node_addr=broker.node_addr,
                        checkpoint_addr=broker.checkpoint_pub_addr) as fc:
 

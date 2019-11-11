@@ -107,7 +107,6 @@ class Worker(Node):
                         logger.exception("Failure encountered updating graph:")
                         self.report("error", e)
                         return 1
-
                 if times:
                     self.report("profile", times)
                     times = {}
@@ -119,14 +118,12 @@ class Worker(Node):
                                               for k, v in data.items() if k in self.src.requested_names}
                     except zmq.Again:
                         break
-
             elif msg.mtype == MsgTypes.Datagram:
                 try:
                     for name, graph in self.graphs.items():
                         if graph:
                             if name in self.exports:
                                 msg.payload.update(self.exports[name])
-
                             graph_result = graph(msg.payload, color=Colors.Worker)
                             self.store.update(name, graph_result)
                             if name not in times:

@@ -13,15 +13,15 @@ from ami.client import flowchart, legacy
 logger = logging.getLogger(__name__)
 
 
-GraphAddress = collections.namedtuple('GraphAddress', ['name', 'uri'])
+GraphMgrAddress = collections.namedtuple('GraphMgrAddress', ['name', 'comm', 'view', 'info'])
 
 
-def run_client(graph_name, comm_addr, info_addr, load, use_legacy=True):
-    graph_addr = GraphAddress(graph_name, comm_addr)
+def run_client(graph_name, comm_addr, info_addr, view_addr, load, use_legacy=True):
+    graphmgr_addr = GraphMgrAddress(graph_name, comm_addr, view_addr, info_addr)
     if use_legacy:
-        return legacy.run_client(graph_addr, info_addr, load)
+        return legacy.run_client(graphmgr_addr, load)
     else:
-        return flowchart.run_client(graph_addr, info_addr, load)
+        return flowchart.run_client(graphmgr_addr, load)
 
 
 def main():
