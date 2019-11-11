@@ -101,7 +101,7 @@ class ScalarWidget(QLCDNumber):
 class AreaDetWidget(pg.ImageView):
 
     def __init__(self, topics, addr, parent=None, **kwargs):
-        super(AreaDetWidget, self).__init__(parent)
+        super().__init__(parent)
         self.fetcher = AsyncFetcher(topics, addr)
         handles = self.roi.getHandles()
         self.roi.removeHandle(handles[1])
@@ -128,7 +128,6 @@ class AreaDetWidget(pg.ImageView):
             await self.fetcher.fetch()
             self.last_updated.setText(self.fetcher.last_updated)
             for k, v in self.fetcher.reply.items():
-                v = v.astype(np.float, copy=False)
                 self.setImage(v)
 
 
@@ -140,7 +139,7 @@ class PixelDetWidget(pg.ImageView):
         self.plot = pg.PlotItem()
         self.plot.hideAxis('left')
         self.plot.hideAxis('bottom')
-        super(PixelDetWidget, self).__init__(parent=parent, view=self.plot)
+        super().__init__(parent=parent, view=self.plot)
         self.fetcher = AsyncFetcher(topics, addr)
         self.last_updated = pg.LabelItem(parent=self.plot)
         self.point = self.plot.plot([0], [0], symbolBrush=(200, 0, 0), symbol='+', symbolSize=25)
@@ -166,7 +165,6 @@ class PixelDetWidget(pg.ImageView):
             await self.fetcher.fetch()
             self.last_updated.setText(self.fetcher.last_updated)
             for k, v in self.fetcher.reply.items():
-                v = v.astype(np.float, copy=False)
                 self.setImage(v)
 
     def mousePressEvent(self, ev):
@@ -192,7 +190,7 @@ class PixelDetWidget(pg.ImageView):
 class HistogramWidget(pg.GraphicsLayoutWidget):
 
     def __init__(self, topics, addr, parent=None, **kwargs):
-        super(HistogramWidget, self).__init__(parent)
+        super().__init__(parent)
         self.fetcher = AsyncFetcher(topics, addr)
         self.plot_view = self.addPlot()
         self.plot_view.addLegend()
@@ -234,10 +232,57 @@ class HistogramWidget(pg.GraphicsLayoutWidget):
                 self.plot[name].setData(x=x, y=y)
 
 
+class Histogram2DWidget(pg.ImageView):
+
+    def __init__(self, topics, addr, parent=None, **kwargs):
+        self.plot = pg.PlotItem()
+        super().__init__(parent, view=self.plot)
+        self.fetcher = AsyncFetcher(topics, addr)
+        self.terms = kwargs.get('terms', {})
+        self.last_updated = pg.LabelItem(parent=self.plot)
+        self.pixel_value = pg.LabelItem(parent=self.plot)
+        self.proxy = pg.SignalProxy(self.scene.sigMouseMoved,
+                                    rateLimit=30,
+                                    slot=self.cursor_hover_evt)
+        self.xbins = None
+        self.ybins = None
+
+    def cursor_hover_evt(self, evt):
+        pos = evt[0]
+        pos = self.plot.getViewBox().mapSceneToView(pos)
+        if self.imageItem.image is not None:
+            shape = self.imageItem.image.shape
+            if self.xbins[0] <= pos.x() <= self.xbins[-1] and \
+               self.ybins[0] <= pos.y() <= self.ybins[-1]:
+                idxx = int(pos.x() - self.xbins[0]) % shape[0]
+                idxy = int(pos.y() - self.ybins[0]) % shape[1]
+                z = self.imageItem.image[idxx, idxy]
+                self.pixel_value.setText(f"x={int(pos.x())}, y={int(pos.y())}, z={z:.5g}")
+                self.pixel_value.item.moveBy(0, 12)
+
+    async def update(self):
+        while True:
+            await self.fetcher.fetch()
+            self.last_updated.setText(self.fetcher.last_updated)
+            if self.fetcher.reply:
+                data = self.fetcher.reply
+
+                xbins = self.terms['XBins']
+                ybins = self.terms['YBins']
+                counts = self.terms['Counts']
+
+                self.xbins = data[xbins]
+                self.ybins = data[ybins]
+                counts = data[counts]
+                xscale = self.xbins[1] - self.xbins[0]
+                yscale = self.ybins[1] - self.ybins[0]
+                self.setImage(counts, pos=(self.xbins[0], self.ybins[0]), scale=(xscale, yscale))
+
+
 class ScatterWidget(pg.GraphicsLayoutWidget):
 
     def __init__(self, topics, addr, parent=None, **kwargs):
-        super(ScatterWidget, self).__init__(parent)
+        super().__init__(parent)
         self.fetcher = AsyncFetcher(topics, addr, buffered=True)
         self.plot_view = self.addPlot()
         self.plot_view.addLegend()
@@ -278,7 +323,7 @@ class ScatterWidget(pg.GraphicsLayoutWidget):
 class WaveformWidget(pg.GraphicsLayoutWidget):
 
     def __init__(self, topics, addr, parent=None, **kwargs):
-        super(WaveformWidget, self).__init__(parent)
+        super().__init__(parent)
         self.fetcher = AsyncFetcher(topics, addr, buffered=True)
         self.plot_view = self.addPlot()
         self.plot_view.addLegend()
@@ -296,7 +341,6 @@ class WaveformWidget(pg.GraphicsLayoutWidget):
     def waveform_updated(self, data):
         i = 0
         for term, name in self.terms.items():
-
             if name not in self.plot:
                 symbol, color = symbols_colors[i]
                 i += 1
@@ -309,7 +353,7 @@ class WaveformWidget(pg.GraphicsLayoutWidget):
 class LineWidget(pg.GraphicsLayoutWidget):
 
     def __init__(self, topics, addr, parent=None, **kwargs):
-        super(LineWidget, self).__init__(parent)
+        super().__init__(parent)
         self.fetcher = AsyncFetcher(topics, addr)
         self.plot_view = self.addPlot()
         self.plot_view.addLegend()
@@ -348,7 +392,7 @@ class LineWidget(pg.GraphicsLayoutWidget):
 class ArrayWidget(QWidget):
 
     def __init__(self, topics, addr, parent=None, **kwargs):
-        super(ArrayWidget, self).__init__(parent)
+        super().__init__(parent)
         self.fetcher = AsyncFetcher(topics, addr)
         self.terms = kwargs.get('terms', {})
         self.update_rate = kwargs.get('update_rate', 30)

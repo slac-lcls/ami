@@ -1,5 +1,5 @@
 from ami.flowchart.library.DisplayWidgets import ScalarWidget, ScatterWidget, WaveformWidget, \
-    AreaDetWidget, LineWidget, ArrayWidget, HistogramWidget
+    AreaDetWidget, LineWidget, ArrayWidget, HistogramWidget, Histogram2DWidget
 from ami.flowchart.library.common import CtrlNode, MAX
 from amitypes import Array, Array1d, Array2d
 import ami.graph_nodes as gn
@@ -61,25 +61,45 @@ class ImageViewer(CtrlNode):
 class Histogram(CtrlNode):
 
     """
-    Histogram plots a histogram created from either Binning or BinByVar.
+    Histogram plots a histogram created from Binning.
     """
 
     nodeName = "Histogram"
     uiTemplate = []
 
     def __init__(self, name):
-        super(Histogram, self).__init__(name,
-                                        terminals={"Bins": {"io": "in", "ttype": Array1d},
-                                                   "Counts": {"io": "in", "ttype": Array1d}},
-                                        allowAddInput=True,
-                                        viewable=True)
+        super().__init__(name,
+                         terminals={"Bins": {"io": "in", "ttype": Array1d},
+                                    "Counts": {"io": "in", "ttype": Array1d}},
+                         allowAddInput=True,
+                         viewable=True)
 
     def display(self, topics, addr, win, **kwargs):
-        return super(Histogram, self).display(topics, addr, win, HistogramWidget, **kwargs)
+        return super().display(topics, addr, win, HistogramWidget, **kwargs)
 
     def addInput(self, **args):
         self.addTerminal(name="Bins", io='in', ttype=Array1d, **args)
         self.addTerminal(name="Counts", io='in', ttype=Array1d, **args)
+
+
+class Histogram2D(CtrlNode):
+
+    """
+    Histogram2D plots a 2d histogram created from Binning2D.
+    """
+
+    nodeName = "Histogram2D"
+    uiTemplate = []
+
+    def __init__(self, name):
+        super().__init__(name,
+                         terminals={"XBins": {"io": "in", "ttype": Array1d},
+                                    "YBins": {"io": "in", "ttype": Array1d},
+                                    "Counts": {"io": "in", "ttype": Array2d}},
+                         viewable=True)
+
+    def display(self, topics, addr, win, **kwargs):
+        return super().display(topics, addr, win, Histogram2DWidget, **kwargs)
 
 
 class ScatterPlot(CtrlNode):

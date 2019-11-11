@@ -100,7 +100,7 @@ class MeanVsScan(Node):
 class Binning(CtrlNode):
 
     """
-    Binning creates a histogram with a fixed number of bins.
+    Binning creates a histogram with a fixed number of bins using numpy.histogram.
     """
 
     nodeName = "Binning"
@@ -137,6 +137,55 @@ class Binning(CtrlNode):
                          N=self.num_events, parent=self.name()),
                 gn.Map(name=self.name()+"_operation", inputs=accumulated_outputs, outputs=outputs,
                        func=lambda h: functools.reduce(lambda x, y: (y[0], x[1]+y[1]), h), parent=self.name())]
+        return node
+
+
+class Binning2D(CtrlNode):
+
+    """
+    Binning2D creates a 2d histogram with a fixed number of bins using numpy.histogram2d.
+    """
+
+    nodeName = "Binning2D"
+    uiTemplate = [('bins', 'intSpin', {'value': 10, 'min': 1, 'max': MAX}),
+                  ('range x min', 'intSpin', {'value': 1, 'min': 1, 'max': MAX}),
+                  ('range x max', 'intSpin', {'value': 100, 'min': 2, 'max': MAX}),
+                  ('range y min', 'intSpin', {'value': 1, 'min': 1, 'max': MAX}),
+                  ('range y max', 'intSpin', {'value': 100, 'min': 2, 'max': MAX}),
+                  ('density', 'check', {'checked': False}),
+                  ('num events', 'intSpin', {'value': 10, 'min': 1, 'max': MAX})]
+
+    def __init__(self, name):
+        super().__init__(name, terminals={
+            'X': {'io': 'in', 'ttype': Union[float, Array1d]},
+            'Y': {'io': 'in', 'ttype': Union[float, Array1d]},
+            'XBins': {'io': 'out', 'ttype': Array1d},
+            'YBins': {'io': 'out', 'ttype': Array1d},
+            'Counts': {'io': 'out', 'ttype': Array2d}
+        })
+
+    def to_operation(self, inputs, conditions={}):
+        outputs = self.output_vars()
+        map_outputs = [self.name()+"_hist"]
+        accumulated_outputs = [self.name()+"_sum"]
+        nbins = self.bins
+        xmin = self.range_x_min
+        xmax = self.range_x_max
+        ymin = self.range_y_min
+        ymax = self.range_y_max
+        density = self.density
+
+        def bin(x, y):
+            counts, xbins, ybins = np.histogram2d(x, y, bins=nbins, range=[[xmin, xmax], [ymin, ymax]], density=density)
+            return xbins, ybins, counts
+
+        node = [gn.Map(name=self.name()+"_map",
+                       condition_needs=list(conditions.values()), inputs=list(inputs.values()), outputs=map_outputs,
+                       func=bin, parent=self.name()),
+                gn.PickN(name=self.name()+"_accumulated", inputs=map_outputs, outputs=accumulated_outputs,
+                         N=self.num_events, parent=self.name()),
+                gn.Map(name=self.name()+"_operation", inputs=accumulated_outputs, outputs=outputs,
+                       func=lambda h: functools.reduce(lambda x, y: (y[0], y[1], x[2]+y[2]), h), parent=self.name())]
         return node
 
 
