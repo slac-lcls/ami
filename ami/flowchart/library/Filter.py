@@ -9,7 +9,8 @@ class Filter(Node):
         super(Filter, self).__init__(name, terminals={
             'Condition': {'io': 'condition', 'ttype': Any},
             'Out': {'io': 'out', 'ttype': bool}
-        })
+        },
+                                     filter=True)
 
     def output_vars(self):
         return [self.name()]
@@ -28,7 +29,8 @@ class FilterOff(Filter):
 
     def to_operation(self, inputs, conditions=[]):
         outputs = self.output_vars()
-        node = gn.FilterOff(name=self.name()+'_operation', condition_needs=list(conditions.values()), outputs=outputs)
+        node = gn.FilterOff(name=self.name()+'_operation', condition_needs=list(conditions.values()), outputs=outputs,
+                            parent=self.name())
         return node
 
 
@@ -45,5 +47,6 @@ class FilterOn(Filter):
 
     def to_operation(self, inputs, conditions=[]):
         outputs = self.output_vars()
-        node = gn.FilterOn(name=self.name()+'_operation', condition_needs=list(conditions.values()), outputs=outputs)
+        node = gn.FilterOn(name=self.name()+'_operation', condition_needs=list(conditions.values()), outputs=outputs,
+                           parent=self.name())
         return node

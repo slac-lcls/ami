@@ -10,6 +10,7 @@ To use:
 
 import pytest
 import time
+import numpy as np
 
 from conftest import psanatest
 
@@ -23,8 +24,11 @@ def test_complex_graph(complex_graph_file, start_ami):
         end = time.time()
         if end - start > 10:
             raise TimeoutError
-    sig = comm_handler.fetch('signal')
-    assert sig == {1: 10000.0}
+
+    bins = comm_handler.fetch('BinningOn.Bins')
+    counts = comm_handler.fetch('BinningOn.Counts')
+    np.testing.assert_equal(bins, np.array([1]))
+    np.testing.assert_equal(counts, np.array([10000.0]))
 
 
 @psanatest
@@ -36,7 +40,7 @@ def test_psana_graph(psana_graph, start_ami):
     start = time.time()
     while comm_handler.graphVersion != comm_handler.featuresVersion:
         end = time.time()
-        if end - start > 10:
+        if end - start > 1000:
             raise TimeoutError
     picked_cspad = comm_handler.fetch('picked')
     assert picked_cspad.shape == (6, 6)

@@ -1,4 +1,3 @@
-from typing import Dict
 from ami.flowchart.library.DisplayWidgets import ScalarWidget, ScatterWidget, WaveformWidget, \
     AreaDetWidget, LineWidget, ArrayWidget, HistogramWidget
 from ami.flowchart.library.common import CtrlNode, MAX
@@ -70,12 +69,17 @@ class Histogram(CtrlNode):
 
     def __init__(self, name):
         super(Histogram, self).__init__(name,
-                                        terminals={"In": {"io": "in", "ttype": Dict[float, float]}},
+                                        terminals={"Bins": {"io": "in", "ttype": Array1d},
+                                                   "Counts": {"io": "in", "ttype": Array1d}},
                                         allowAddInput=True,
                                         viewable=True)
 
     def display(self, topics, addr, win, **kwargs):
         return super(Histogram, self).display(topics, addr, win, HistogramWidget, **kwargs)
+
+    def addInput(self, **args):
+        self.addTerminal(name="Bins", io='in', ttype=Array1d, **args)
+        self.addTerminal(name="Counts", io='in', ttype=Array1d, **args)
 
 
 class ScatterPlot(CtrlNode):

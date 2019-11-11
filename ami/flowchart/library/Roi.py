@@ -80,7 +80,8 @@ class Roi2D(CtrlNode):
         outputs = self.output_vars()
         node = gn.Map(name=self.name()+"_operation",
                       condition_needs=list(conditions.values()), inputs=list(inputs.values()), outputs=outputs,
-                      func=self.func)
+                      func=self.func,
+                      parent=self.name())
         return node
 
 
@@ -146,7 +147,8 @@ class Roi1D(CtrlNode):
         outputs = self.output_vars()
         node = gn.Map(name=self.name()+"_operation",
                       condition_needs=list(conditions.values()), inputs=list(inputs.values()), outputs=outputs,
-                      func=self.func)
+                      func=self.func,
+                      parent=self.name())
         return node
 
 
@@ -207,5 +209,6 @@ class Roi0D(CtrlNode):
         outputs = self.output_vars()
         node = gn.Map(name=self.name()+"_operation",
                       conditions_needs=list(conditions.values()), inputs=list(inputs.values()), outputs=outputs,
-                      func=self.func)
+                      func=self.func,
+                      parent=self.name())
         return node

@@ -41,5 +41,6 @@ class CFD(CtrlNode):
 
         node = gn.Map(name=self.name()+"_operation",
                       condition_needs=list(conditions.values()), inputs=list(inputs.values()), outputs=outputs,
-                      func=cfd_func)
+                      func=cfd_func,
+                      parent=self.name())
         return node

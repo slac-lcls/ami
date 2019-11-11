@@ -110,6 +110,7 @@ class NodeProcess(QtCore.QObject):
         self.widget = None
         self.show = False
         if msg:
+            self.name = msg.name
             self.win.setWindowTitle(msg.name)
 
         with loop:

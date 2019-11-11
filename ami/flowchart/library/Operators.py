@@ -1,5 +1,5 @@
 from pyqtgraph import QtGui
-from typing import Dict
+from typing import Any, Union
 from amitypes import Array, Array1d, Array2d
 from ami.flowchart.library.common import CtrlNode, MAX
 from ami.flowchart.Node import Node, NodeGraphicsItem
@@ -26,7 +26,7 @@ class Sum(Node):
         outputs = self.output_vars()
         node = gn.Map(name=self.name()+"_operation",
                       condition_needs=list(conditions.values()), inputs=list(inputs.values()), outputs=outputs,
-                      func=lambda a: np.sum(a, dtype=np.float64))
+                      func=lambda a: np.sum(a, dtype=np.float64), parent=self.name())
         return node
 
 
@@ -50,33 +50,51 @@ class Projection(CtrlNode):
         axis = self.axis
         node = gn.Map(name=self.name()+"_operation",
                       condition_needs=list(conditions.values()), inputs=list(inputs.values()), outputs=outputs,
-                      func=lambda a: np.sum(a, axis=axis))
+                      func=lambda a: np.sum(a, axis=axis), parent=self.name())
         return node
 
 
-class BinByVar(Node):
+class MeanVsScan(Node):
 
     """
-    BinByVar creates a histogram using a variable number of bins.
+    MeanVsScan creates a histogram using a variable number of bins.
 
     Returns a dict with keys Bins and values mean of bins.
     """
 
-    nodeName = "BinByVar"
+    nodeName = "MeanVsScan"
 
     def __init__(self, name):
-        super(BinByVar, self).__init__(name, terminals={
-            'Values': {'io': 'in', 'ttype': float},
-            'Bins': {'io': 'in', 'ttype': float},
-            'Out': {'io': 'out', 'ttype': Dict[float, float]}
+        super().__init__(name, terminals={
+            'Bin': {'io': 'in', 'ttype': float},
+            'Value': {'io': 'in', 'ttype': float},
+            'Bins': {'io': 'out', 'ttype': Array1d},
+            'Counts': {'io': 'out', 'ttype': Array1d}
         })
 
     def to_operation(self, inputs, conditions={}):
         outputs = self.output_vars()
-        ordered_inputs = [inputs['Bins'], inputs['Values']]
-        node = gn.Binning(name=self.name()+"_operation",
-                          condition_needs=list(conditions.values()), inputs=ordered_inputs, outputs=outputs)
-        return node
+
+        map_outputs = [self.name()+'_map_count']
+        reduce_outputs = [self.name()+'_reduce_count']
+
+        def mean(d):
+            res = {}
+            for k, v in d.items():
+                res[k] = v[0]/v[1]
+            keys, values = zip(*sorted(res.items()))
+            return np.array(keys), np.array(values)
+
+        nodes = [
+            gn.Map(name=self.name()+'_map', inputs=[inputs['Value']], outputs=map_outputs,
+                   condition_needs=list(conditions.values()), func=lambda a: (a, 1), parent=self.name()),
+            gn.ReduceByKey(name=self.name()+'_reduce', inputs=[inputs['Bin']]+map_outputs, outputs=reduce_outputs,
+                           reduction=lambda cv, v: (cv[0]+v[0], cv[1]+v[1]), parent=self.name()),
+            gn.Map(name=self.name()+'_mean', inputs=reduce_outputs, outputs=outputs, func=mean,
+                   parent=self.name())
+        ]
+
+        return nodes
 
 
 class Binning(CtrlNode):
@@ -88,29 +106,37 @@ class Binning(CtrlNode):
     nodeName = "Binning"
     uiTemplate = [('bins', 'intSpin', {'value': 10, 'min': 1, 'max': MAX}),
                   ('range min', 'intSpin', {'value': 1, 'min': 1, 'max': MAX}),
-                  ('range max', 'intSpin', {'value': 100, 'min': 2, 'max': MAX})]
+                  ('range max', 'intSpin', {'value': 100, 'min': 2, 'max': MAX}),
+                  ('density', 'check', {'checked': False}),
+                  ('num events', 'intSpin', {'value': 10, 'min': 1, 'max': MAX})]
 
     def __init__(self, name):
-        super(Binning, self).__init__(name, terminals={
-            'In': {'io': 'in', 'ttype': float},
-            'Out': {'io': 'out', 'ttype': Dict[float, float]}
+        super().__init__(name, terminals={
+            'In': {'io': 'in', 'ttype': Union[float, Array1d]},
+            'Bins': {'io': 'out', 'ttype': Array1d},
+            'Counts': {'io': 'out', 'ttype': Array1d}
         })
 
     def to_operation(self, inputs, conditions={}):
         outputs = self.output_vars()
         map_outputs = [self.name()+"_hist"]
+        accumulated_outputs = [self.name()+"_sum"]
         nbins = self.bins
         rmin = self.range_min
         rmax = self.range_max
+        density = self.density
 
         def bin(arr):
-            counts, bins = np.histogram(arr, bins=nbins, range=(rmin, rmax))
-            return dict(zip(bins, counts))
+            counts, bins = np.histogram(arr, bins=nbins, range=(rmin, rmax), density=density)
+            return bins, counts
 
         node = [gn.Map(name=self.name()+"_map",
-                       conditions_needs=list(conditions.values()), inputs=list(inputs.values()), outputs=map_outputs,
-                       func=bin),
-                gn.ReduceByKey(name=self.name()+"_reduce", inputs=map_outputs, outputs=outputs)]
+                       condition_needs=list(conditions.values()), inputs=list(inputs.values()), outputs=map_outputs,
+                       func=bin, parent=self.name()),
+                gn.PickN(name=self.name()+"_accumulated", inputs=map_outputs, outputs=accumulated_outputs,
+                         N=self.num_events, parent=self.name()),
+                gn.Map(name=self.name()+"_operation", inputs=accumulated_outputs, outputs=outputs,
+                       func=lambda h: functools.reduce(lambda x, y: (y[0], x[1]+y[1]), h), parent=self.name())]
         return node
 
 
@@ -191,7 +217,7 @@ class Add(MathNode):
 
         node = gn.Map(name=self.name()+"_operation",
                       conditions_needs=list(conditions.values()), inputs=list(inputs.values()), outputs=outputs,
-                      func=func)
+                      func=func, parent=self.name())
         return node
 
 
@@ -211,7 +237,7 @@ class Subtract(MathNode):
 
         node = gn.Map(name=self.name()+"_operation",
                       conditions_needs=list(conditions.values()), inputs=list(inputs.values()), outputs=outputs,
-                      func=func)
+                      func=func, parent=self.name())
         return node
 
 
@@ -234,3 +260,17 @@ class Constant(CtrlNode, MathNode):
 
     def to_operation(self, inputs, conditions={}):
         pass
+
+
+class Export(Node):
+
+    """
+    Send data back to worker.
+    """
+
+    nodeName = "Export"
+
+    def __init__(self, name):
+        super().__init__(name, terminals={"In": {'io': 'in', 'ttype': Any},
+                                          "Out": {'io': 'out', 'ttype': Any}},
+                         exportable=True)

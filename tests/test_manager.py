@@ -364,11 +364,19 @@ def test_manager_export_data(manager_export, inputs, exports):
         assert graph == injector.comm.current
         assert data == expected_features
 
-    # check the data message
+    # check for data if the exports and input names overlap
+    if set(exports) & set(inputs):
+        # check the data message
+        topic, graph, data = export.recv()
+        assert topic == 'data'
+        assert graph == injector.comm.current
+        assert data == expected_data
+
+    # check the heartbeat message
     topic, graph, data = export.recv()
-    assert topic == 'data'
+    assert topic == 'heartbeat'
     assert graph == injector.comm.current
-    assert data == expected_data
+    assert data == expected_hb
 
 
 @pytest.mark.parametrize('partition', [{'cspad': at.Array2d, 'delta_t': float}, {'laser': bool}, {}])
@@ -427,10 +435,10 @@ def test_manager_partition_updates(manager_info, partition):
 
 @pytest.mark.parametrize('names',
                          [
-                            ["cspad"],
-                            ["delta_t"],
-                            ["test"],
-                            ["cspad", "delta_t"],
+                            {"cspad": None},
+                            {"delta_t": None},
+                            {"test": None},
+                            {"cspad": None, "delta_t": None},
                          ])
 def test_manager_add_view(manager_ctrl, names):
     comm, injector = manager_ctrl
@@ -455,7 +463,7 @@ def test_manager_add_view(manager_ctrl, names):
 
     # remove the view from the graph
     version = comm.graphVersion
-    assert comm.unview(names)
+    assert comm.unview(list(names.keys()))
     assert comm.graphVersion == version + 1
     for name in names:
         assert comm.auto(name) not in comm.names

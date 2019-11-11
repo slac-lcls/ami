@@ -52,5 +52,6 @@ class BlobFinder(CtrlNode):
 
         node = gn.Map(name=self.name()+"_operation",
                       condition_needs=list(conditions.values()), inputs=list(inputs.values()), outputs=outputs,
-                      func=find_blobs)
+                      func=find_blobs,
+                      parent=self.name())
         return node

@@ -436,13 +436,13 @@ async def test_modify_graph_async(graph_comm, complex_graph):
     assert comm.auto('cspad') not in (await comm.graph).names
 
     # add multiple views to the graph
-    names_to_view = ['cspad', 'delta_t']
+    names_to_view = {'cspad': None, 'delta_t': None}
     assert await comm.view(names_to_view)
     # check that the views are in the graph
     assert comm.auto('cspad') in (await comm.graph).names
     assert comm.auto('delta_t') in (await comm.graph).names
     # remove the views
-    assert await comm.unview(names_to_view)
+    assert await comm.unview(list(names_to_view.keys()))
     assert comm.auto('cspad') not in (await comm.graph).names
     assert comm.auto('delta_t') not in (await comm.graph).names
 
@@ -488,13 +488,13 @@ def test_modify_graph(graph_comm, complex_graph):
     assert comm.auto('cspad') not in comm.graph.names
 
     # add multiple views to the graph
-    names_to_view = ['cspad', 'delta_t']
+    names_to_view = {'cspad': None, 'delta_t': None}
     assert comm.view(names_to_view)
     # check that the views are in the graph
     assert comm.auto('cspad') in comm.graph.names
     assert comm.auto('delta_t') in comm.graph.names
     # remove the views
-    assert comm.unview(names_to_view)
+    assert comm.unview(list(names_to_view.keys()))
     assert comm.auto('cspad') not in comm.graph.names
     assert comm.auto('delta_t') not in comm.graph.names
 

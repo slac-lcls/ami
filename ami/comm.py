@@ -120,6 +120,9 @@ AutoView = AutoName("_auto_")
 AutoExport = AutoName("_export_")
 
 
+AutoImport = AutoName("_import_")
+
+
 class Store:
     """Class for holding data as key value pairs.
 
@@ -613,11 +616,12 @@ class Node(abc.ABC):
         graph_addr (str): the zmq address of the graph manager update socket
         msg_addr (str): the zmq address of the graph manager out-of-band
             message socket.
+        export_addr (str): the zmq address of the graph manager export socket.
         ctx (zmq.Context): optional zmq context for the node to use. If none is
             passed it creates one.
     """
 
-    def __init__(self, node, graph_addr, msg_addr, ctx=None):
+    def __init__(self, node, graph_addr, msg_addr, export_addr=None, ctx=None):
         self.node = node
         if ctx is None:
             self.ctx = zmq.Context()
@@ -634,6 +638,11 @@ class Node(abc.ABC):
         self.graph_comm.add_handler("add", self.recv_graph_add)
         self.graph_comm.add_handler("del", self.recv_graph_del)
         self.graph_comm.add_handler("purge", self.recv_graph_purge)
+
+        if export_addr is None:
+            self.export_comm = None
+        else:
+            self.export_comm = ExportReceiver(export_addr, ctx)
 
         self.node_msg_comm = self.ctx.socket(zmq.PUSH)
         self.node_msg_comm.connect(msg_addr)
@@ -836,21 +845,22 @@ class Collector(abc.ABC):
         return self.exitcode
 
 
-class GraphReceiver:
-    """Class for handling graph updates from the AMI graph manager.
+class BaseReceiver(abc.ABC):
+    """Class for handling messages sent by the AMI graph manager.
 
-    This class is intended to handle graph update information published by the
-    AMI graph manager. It allows handler functions to be set for certain topics
-    or commands published by the graph manager. When a particular topic or
-    command is received the corresponding handler function is called.
+    This class is intended as an abstract base class for handling message
+    subscriptions from the AMI graph manager.
 
     Args:
-        addr (str): the zmq address of the graph manager (e.g. tcp://localhost:5555)
+        addr (str): the zmq address of the graph manager info service
+            (e.g. tcp://localhost:5555)
+        subscriptions (str): the subscription string used for topic filtering
+            of the messages by zmq.
         ctx (zmq.Context): optional zmq context for the node to use. If none is
             passed it creates one.
     """
 
-    def __init__(self, addr, ctx=None):
+    def __init__(self, addr, subscriptions, ctx=None):
         if ctx is None:
             self.ctx = zmq.Context()
             self.owner = True
@@ -858,11 +868,8 @@ class GraphReceiver:
             self.ctx = ctx
             self.owner = False
         self.sock = self.ctx.socket(zmq.SUB)
-        self.sock.setsockopt_string(zmq.SUBSCRIBE, "")
+        self.sock.setsockopt_string(zmq.SUBSCRIBE, subscriptions)
         self.sock.connect(addr)
-        self.handlers = {"cmd": self.command}
-        self.commands = {}
-        self.special = set(self.handlers.keys())
 
     def close(self):
         """
@@ -879,6 +886,38 @@ class GraphReceiver:
 
     def __exit__(self, exc_type, exc_value, traceback):
         self.close()
+
+    @abc.abstractmethod
+    def recv(self, block=True):
+        """
+        Low level function for receiving a raw message from the graph manager.
+
+        Keyword Arguments:
+            block (bool): determines if the function call should block. Defaults
+                to True.
+        """
+        pass
+
+
+class GraphReceiver(BaseReceiver):
+    """Class for handling graph updates from the AMI graph manager.
+
+    This class is intended to handle graph update information published by the
+    AMI graph manager. It allows handler functions to be set for certain topics
+    or commands published by the graph manager. When a particular topic or
+    command is received the corresponding handler function is called.
+
+    Args:
+        addr (str): the zmq address of the graph manager (e.g. tcp://localhost:5555)
+        ctx (zmq.Context): optional zmq context for the node to use. If none is
+            passed it creates one.
+    """
+
+    def __init__(self, addr, ctx=None):
+        super().__init__(addr, "", ctx=ctx)
+        self.handlers = {"cmd": self.command}
+        self.commands = {}
+        self.special = set(self.handlers.keys())
 
     def command(self):
         """
@@ -955,13 +994,11 @@ class GraphReceiver:
                 self.handlers[topic](name, version, args, payload)
 
 
-class GraphInfoReceiver:
-    """Class for handling information messages sent by the AMI graph manager.
+class BaseReceiver(abc.ABC):
+    """Class for handling messages sent by the AMI graph manager.
 
-    This class is intended to handle status information published by the
-    AMI graph manager. The graph manager publishes status information such as
-    node failures via zmq pub/sub. This class is intended as a helper for
-    receiving these messages.
+    This class is intended as an abstract base class for handling message
+    subscriptions from the AMI graph manager.
 
     Args:
         addr (str): the zmq address of the graph manager info service
@@ -972,7 +1009,7 @@ class GraphInfoReceiver:
             passed it creates one.
     """
 
-    def __init__(self, addr, subscriptions="", ctx=None):
+    def __init__(self, addr, subscriptions, ctx=None):
         if ctx is None:
             self.ctx = zmq.Context()
             self.owner = True
@@ -999,16 +1036,94 @@ class GraphInfoReceiver:
     def __exit__(self, exc_type, exc_value, traceback):
         self.close()
 
-    def recv(self):
+    @abc.abstractmethod
+    def recv(self, block=True):
+        """
+        Low level function for receiving a raw message from the graph manager.
+
+        Keyword Arguments:
+            block (bool): determines if the function call should block. Defaults
+                to True.
+        """
+        pass
+
+
+class ExportReceiver(BaseReceiver):
+    """Class for handling export messages sent by the AMI graph manager.
+
+    This class is intended to exported data published by the AMI graph manager.
+    The graph manager publishes data from the final results of a graoh as a
+    zmq pub/sub. This class is intended as a helper for receiving these messages.
+
+    Args:
+        addr (str): the zmq address of the graph manager exprot service
+            (e.g. tcp://localhost:5555)
+        ctx (zmq.Context): optional zmq context for the node to use. If none is
+            passed it creates one.
+    """
+
+    def __init__(self, addr, ctx=None):
+        super().__init__(addr, "data", ctx=ctx)
+
+    def recv(self, block=True):
+        """
+        Low level function for receiving a raw message from the graph manager
+        export service.
+
+        Keyword Arguments:
+            block (bool): determines if the function call should block. Defaults
+                to True.
+
+        Returns:
+            A tuple containing the message topic, the name of the graph that
+                generated the message, and the raw payload of the message.
+        """
+        if block:
+            self.sock.recv_string()
+        else:
+            self.sock.recv_string(flags=zmq.NOBLOCK)
+        name = self.sock.recv_string()
+        payload = self.sock.recv_pyobj()
+        return name, payload
+
+
+class GraphInfoReceiver(BaseReceiver):
+    """Class for handling information messages sent by the AMI graph manager.
+
+    This class is intended to handle status information published by the
+    AMI graph manager. The graph manager publishes status information such as
+    node failures via zmq pub/sub. This class is intended as a helper for
+    receiving these messages.
+
+    Args:
+        addr (str): the zmq address of the graph manager info service
+            (e.g. tcp://localhost:5555)
+        subscriptions (str): the subscription string used for topic filtering
+            of the messages by zmq.
+        ctx (zmq.Context): optional zmq context for the node to use. If none is
+            passed it creates one.
+    """
+
+    def __init__(self, addr, subscriptions="", ctx=None):
+        super().__init__(addr, subscriptions, ctx=ctx)
+
+    def recv(self, block=True):
         """
         Low level function for receiving a raw message from the graph manager
         info service.
+
+        Keyword Arguments:
+            block (bool): determines if the function call should block. Defaults
+                to True.
 
         Returns:
             A tuple containing the message topic, the name of the node that
                 generated the message, and the raw payload of the message.
         """
-        topic = self.sock.recv_string()
+        if block:
+            topic = self.sock.recv_string()
+        else:
+            topic = self.sock.recv_string(flags=zmq.NOBLOCK)
         node = self.sock.recv_string()
         payload = dill.loads(self.sock.recv())
         return topic, node, payload
@@ -1135,7 +1250,7 @@ class CommHandler(abc.ABC):
 
         return node(**kwargs)
 
-    def _make_view_node(self, name, view_name):
+    def _make_view_node(self, name, view_name, parent):
         """
         Constructs a special graph view node of the requested type.
 
@@ -1148,7 +1263,7 @@ class CommHandler(abc.ABC):
         """
         node_name = '%s_view' % view_name
 
-        return self._make_node(gn.PickN, name=node_name, inputs=name, outputs=view_name, N=1)
+        return self._make_node(gn.PickN, name=node_name, inputs=name, outputs=view_name, N=1, parent=parent)
 
     def _make_export_node(self, name, export_name):
         """
@@ -1317,6 +1432,16 @@ class CommHandler(abc.ABC):
         """
         return self._request('get_features_version')
 
+    @property
+    def metadata(self):
+        """
+        The current graph's metadata.
+
+        Returns:
+            A dict of graph metadata.
+        """
+        return self._request_dill('get_metadata')
+
     def fetch(self, names):
         """
         Attempts to fetch a feature with the requested name from the global
@@ -1363,8 +1488,8 @@ class CommHandler(abc.ABC):
         Returns:
             True if the graph change was successful, False otherwise.
         """
-        if not isinstance(names, list):
-            names = [names]
+        if not isinstance(names, dict):
+            names = {names: None}
 
         return self._view(names)
 
@@ -1825,8 +1950,8 @@ class AsyncGraphCommHandler(ZmqCommHandler):
 
     async def _view(self, names):
         nodes = []
-        for name in names:
-            nodes.append(self._make_view_node(name, self.auto(name)))
+        for name, parent in names.items():
+            nodes.append(self._make_view_node(name, self.auto(name), parent))
 
         return await self.add(nodes)
 
@@ -1940,8 +2065,8 @@ class GraphCommHandler(ZmqCommHandler):
 
     def _view(self, names):
         nodes = []
-        for name in names:
-            nodes.append(self._make_view_node(name, self.auto(name)))
+        for name, parent in names.items():
+            nodes.append(self._make_view_node(name, self.auto(name), parent))
 
         return self.add(nodes)
 

@@ -47,7 +47,7 @@ class Node(QtCore.QObject):
     sigTerminalDisconnected = QtCore.Signal(object)  # self
 
     def __init__(self, name, terminals={}, allowAddInput=False, allowAddOutput=False, allowAddCondition=True,
-                 allowRemove=True, viewable=False, buffered=False):
+                 allowRemove=True, viewable=False, buffered=False, exportable=False, filter=False):
         """
         ==============  ============================================================
         **Arguments:**
@@ -76,6 +76,8 @@ class Node(QtCore.QObject):
                         view node inputs
         buffered        bool; whether a node has a to_operation which returns a rolling
                         buffer
+        exportable      bool; whether export should be called
+        filter          bool; whether a node is a filter
         ==============  ============================================================
 
         """
@@ -92,6 +94,8 @@ class Node(QtCore.QObject):
         self._allowRemove = allowRemove
         self._viewable = viewable
         self._buffered = buffered
+        self._exportable = exportable
+        self._filter = filter
         self._note = ""
         self._editor = None
 
@@ -232,6 +236,12 @@ class Node(QtCore.QObject):
     def buffered(self):
         return self._buffered
 
+    def exportable(self):
+        return self._exportable
+
+    def filter(self):
+        return self._filter
+
     def input_vars(self):
         return self._input_vars
 
@@ -297,7 +307,10 @@ class Node(QtCore.QObject):
     def connected(self, localTerm, remoteTerm, pos=None):
         """Called whenever one of this node's terminals is connected elsewhere."""
         node = remoteTerm.node()
+
         if localTerm.isInput() and remoteTerm.isOutput():
+            # if node.exportable():
+            #     self._input_vars[localTerm.name()] = AutoExport.mangle('.'.join([node.name(), remoteTerm.name()]))
             if node.isSource():
                 self._input_vars[localTerm.name()] = node.name()
             else:
@@ -316,7 +329,17 @@ class Node(QtCore.QObject):
 
     def isConnected(self):
         for name, term in self.terminals.items():
-            if (term.isInput() or term.isCondition()) and not term.hasInput():
+            if not term.isConnected():
+                return False
+        return True
+
+    def hasInput(self):
+        for name, term in self.inputs().items():
+            if not term().isConnected():
+                return False
+
+        for name, term in self.conditions().items():
+            if not term().isConnected():
                 return False
 
         return True
@@ -466,6 +489,7 @@ class NodeGraphicsItem(GraphicsObject):
             item = t.graphicsItem()
             item.setParentItem(self)
             item.setAnchor(0, y)
+            self.terminals[i] = (t, item)
             y += dy
 
         for i, t in conds.items():
@@ -473,6 +497,7 @@ class NodeGraphicsItem(GraphicsObject):
             item = t.graphicsItem()
             item.setParentItem(self)
             item.setAnchor(0, y)
+            self.terminals[i] = (t, item)
             y += dy
 
         out = self.node.outputs()
@@ -484,6 +509,7 @@ class NodeGraphicsItem(GraphicsObject):
             item.setParentItem(self)
             item.setZValue(self.zValue())
             item.setAnchor(bounds.width(), y)
+            self.terminals[i] = (t, item)
             y += dy
 
     def boundingRect(self):

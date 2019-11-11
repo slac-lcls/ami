@@ -15,10 +15,12 @@ class Transformation(abc.ABC):
             func (function): Function node will call
             condition_needs (list): List of condition needs
         """
+
         self.name = kwargs['name']
         self.inputs = kwargs['inputs']
         self.outputs = kwargs['outputs']
         self.func = kwargs['func']
+        self.parent = kwargs.get('parent', None)
         self.condition_needs = kwargs.get('condition_needs', [])
         self.color = ""
         self.is_global_operation = False
@@ -37,13 +39,15 @@ class Transformation(abc.ABC):
                     self.name == getattr(other, 'name', None))
 
     def __repr__(self):
-        return u"%s(name='%s', color='%s')" % (self.__class__.__name__, self.name, self.color)
+        return u"%s(name='%s', color='%s', inputs=%s, outputs=%s, condition_needs=%s)" % \
+            (self.__class__.__name__, self.name, self.color, self.inputs, self.outputs, self.condition_needs)
 
     def to_operation(self):
         """
         Return NetworkFoX operation node.
         """
-        return operation(name=self.name, needs=self.inputs, provides=self.outputs, color=self.color)(self.func)
+        return operation(name=self.name, needs=self.inputs, provides=self.outputs, color=self.color,
+                         metadata={'parent': self.parent})(self.func)
 
 
 class Map(Transformation):
@@ -74,6 +78,7 @@ class Filter(abc.ABC):
         self.condition_needs = kwargs['condition_needs']
         self.inputs = []
         self.outputs = kwargs['outputs']
+        self.parent = kwargs.get('parent', None)
         self.color = ""
 
     @abc.abstractmethod
@@ -156,7 +161,8 @@ class StatefulTransformation(Transformation):
         return
 
     def to_operation(self):
-        return operation(name=self.name, needs=self.inputs, provides=self.outputs, color=self.color)(self)
+        return operation(name=self.name, needs=self.inputs, provides=self.outputs,
+                         color=self.color, metadata={'parent': self.parent})(self)
 
 
 class GlobalTransformation(StatefulTransformation):
@@ -192,7 +198,7 @@ class GlobalTransformation(StatefulTransformation):
             Dictionary of keyword arguments to pass when constructing the
             globally expanded version of this operation
         """
-        return {}
+        return {"parent": self.parent}
 
 
 class ReduceByKey(GlobalTransformation):
@@ -203,13 +209,16 @@ class ReduceByKey(GlobalTransformation):
         self.res = {}
 
     def __call__(self, *args, **kwargs):
+
         if len(args) == 2:
+            # worker
             k, v = args
             if k in self.res:
                 self.res[k] = self.reduction(self.res[k], v)
             else:
                 self.res[k] = v
         else:
+            # localCollector, globalCollector
             for r in args:
                 for k, v in r.items():
                     if k in self.res:
@@ -222,17 +231,23 @@ class ReduceByKey(GlobalTransformation):
         self.res = {}
 
 
-class Accumulator(StatefulTransformation):
+class Accumulator(GlobalTransformation):
 
     def __init__(self, **kwargs):
-        super(Accumulator, self).__init__(**kwargs)
+        N = kwargs.pop('N', 1)
+        super().__init__(**kwargs)
+        self.N = N
         self.res = []
 
     def __call__(self, *args, **kwargs):
+        if len(self.res) > self.N:
+            self.res = []
+
         self.res.extend(args)
 
         if self.reduction:
             return self.reduction(self.res)
+
         return self.res
 
     def reset(self):
@@ -327,36 +342,7 @@ class RollingBuffer(GlobalTransformation):
         return self.res[-self.idx:]
 
     def on_expand(self):
-        return {'use_numpy': self.use_numpy}
+        return {'parent': self.parent, 'use_numpy': self.use_numpy}
 
     def reset(self):
         self.idx = 0
-
-
-def Binning(name="", inputs=[], outputs=[], condition_needs=[]):
-    """
-
-    """
-
-    assert len(inputs) == 2
-    assert len(outputs) == 1
-
-    k, v = inputs
-    outputs = outputs[0]
-    map_outputs = [outputs+'_count']
-    reduce_outputs = [outputs+'_reduce']
-
-    def mean(d):
-        res = {}
-        for k, v in d.items():
-            res[k] = v[0]/v[1]
-        return res
-
-    nodes = [
-        Map(name=name+'_map', inputs=[v], outputs=map_outputs, condition_needs=condition_needs, func=lambda a: (a, 1)),
-        ReduceByKey(name=name+'_reduce', inputs=[k]+map_outputs, outputs=reduce_outputs,
-                    reduction=lambda cv, v: (cv[0]+v[0], cv[1]+v[1])),
-        Map(name=name+'_mean', inputs=reduce_outputs, outputs=[outputs], func=mean)
-    ]
-
-    return nodes

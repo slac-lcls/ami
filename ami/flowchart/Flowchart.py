@@ -1,4 +1,5 @@
 # -*- coding: utf-8 -*-
+from datetime import datetime
 from pyqtgraph.Qt import QtCore, QtGui
 from pyqtgraph.pgcollections import OrderedDict
 from pyqtgraph import FileDialog
@@ -6,10 +7,10 @@ from pyqtgraph.debug import printExc
 from pyqtgraph import dockarea as dockarea
 from ami import asyncqt
 from ami.flowchart.FlowchartGraphicsView import FlowchartGraphicsView
-from ami.flowchart.Terminal import Terminal
+from ami.flowchart.Terminal import Terminal, TerminalGraphicsItem, ConnectionItem
 from ami.flowchart.library import LIBRARY
 from ami.flowchart.library.common import SourceNode, CtrlNode
-from ami.flowchart.Node import Node, find_nearest
+from ami.flowchart.Node import Node, NodeGraphicsItem, find_nearest
 from ami.flowchart.NodeLibrary import SourceLibrary
 from ami.flowchart.TypeEncoder import TypeEncoder
 from ami.comm import AsyncGraphCommHandler
@@ -364,10 +365,13 @@ class Flowchart(Node):
     async def updateState(self):
         while True:
             node_name = await self.checkpoint.recv_string()
+            # there is something wrong with this
+            # in ami.client.flowchart.NodeProcess.send_checkpoint we send a
+            # fcMsgs.NodeCheckPoint but we are only ever receiving the state
             new_node_state = await self.checkpoint.recv_pyobj()
             current_node_state = self._nodes[node_name].saveState()
-            new_node_state['pos'] = current_node_state['pos']
-            self._nodes[node_name].restoreState(new_node_state)
+            current_node_state['ctrl'] = new_node_state['ctrl']
+            self._nodes[node_name].restoreState(current_node_state)
 
     async def updateSources(self, init=False):
         while True:
@@ -395,13 +399,14 @@ class Flowchart(Node):
                     ctrl.ui.create_model(ctrl.ui.source_tree, self.source_library.getLabelTree())
             elif topic == 'error':
                 ctrl = self.widget()
+                now = datetime.now()
                 if hasattr(msg, 'node_name'):
                     node_name = ctrl.node_map[msg.node_name]
                     node = self._nodes[node_name]
                     node.setException(msg)
-                    ctrl.chartWidget.statusText.append(f"{source} {node.name()}: {msg}")
+                    ctrl.chartWidget.statusText.append(f"[{now.strftime('%H:%M:%S')}] {source} {node.name()}: {msg}")
                 else:
-                    ctrl.chartWidget.statusText.append(f"{source}: {msg}")
+                    ctrl.chartWidget.statusText.append(f"[{now.strftime('%H:%M:%S')}] {source}: {msg}")
             elif topic == "times":
                 pass
                 # print(source, msg)
@@ -459,17 +464,18 @@ class FlowchartCtrlWidget(QtGui.QWidget):
         graph_nodes = []
         disconnectedNodes = []
         displays = []
+        now = datetime.now().strftime('%H:%M:%S')
 
         for name, gnode in self.chart.nodes().items():
 
-            if not gnode.isConnected():
+            if not gnode.hasInput():
                 disconnectedNodes.append(gnode)
                 continue
             elif gnode.exception:
                 gnode.clearException()
                 gnode.recolor()
 
-            if gnode.buffered() or gnode.viewable():
+            if gnode.buffered() or gnode.viewable() or gnode.exportable():
                 displays.append(gnode)
 
             if not hasattr(gnode, 'to_operation'):
@@ -491,6 +497,7 @@ class FlowchartCtrlWidget(QtGui.QWidget):
 
         if disconnectedNodes:
             for node in disconnectedNodes:
+                self.chartWidget.statusText.append(f"[{now}] {node.name()} disconnected!")
                 node.setException(True)
                 node.recolor()
             return
@@ -498,11 +505,11 @@ class FlowchartCtrlWidget(QtGui.QWidget):
         if not graph_nodes:
             return
 
-        graph = Graph(name=str(self.chart.name))
+        graph = Graph(name=str(self.chart.name()))
         graph.add(graph_nodes)
 
         await self.graphCommHandler.update(graph)
-
+        self.chartWidget.statusText.append(f"[{now}] Submitted graph")
         # reinsert pick ones if they are still in the graph
         features = {}
 
@@ -519,7 +526,7 @@ class FlowchartCtrlWidget(QtGui.QWidget):
 
             elif node.viewable():
                 topics = []
-                views = []
+                views = {}
 
                 for term, in_var in node.input_vars().items():
 
@@ -527,8 +534,8 @@ class FlowchartCtrlWidget(QtGui.QWidget):
                         topic = self.features[in_var]
                         if in_var not in features:
                             features[in_var] = topic
-                            views.append(in_var)
-                        node_map[node.name()] = topic
+                            views[in_var] = node.name()
+
                     else:
                         continue
 
@@ -536,11 +543,15 @@ class FlowchartCtrlWidget(QtGui.QWidget):
 
                 if views:
                     await self.graphCommHandler.view(views)
+
                 await self.chart.broker.send_string(node.name(), zmq.SNDMORE)
                 await self.chart.broker.send_pyobj(fcMsgs.DisplayNode(node.name(), dict(topics), redisplay=True))
 
+            elif node.exportable():
+                await self.graphCommHandler.export(node.input_vars()['In'], node.name())
+
         self.node_map = node_map
-        print(node_map)
+
         async with self.features_lock:
             self.features = features
 
@@ -702,7 +713,7 @@ class FlowchartWidget(dockarea.DockArea):
 
         elif isinstance(item.node, Node) and item.node.viewable():
             topics = []
-            views = []
+            views = {}
 
             if not isinstance(node, SourceNode):
                 if len(node.inputs()) != len(node.input_vars()):
@@ -717,7 +728,7 @@ class FlowchartWidget(dockarea.DockArea):
                     self.ctrl.node_map[node.name] = topic
                     async with self.ctrl.features_lock:
                         self.ctrl.features[in_var] = topic
-                    views.append(in_var)
+                    views[in_var] = node.name()
 
                 topics.append((in_var, topic))
 
@@ -732,19 +743,66 @@ class FlowchartWidget(dockarea.DockArea):
 
     def hoverOver(self, items):
         # print "FlowchartWidget.hoverOver called."
-        term = None
+        obj = None
+
         for item in items:
-            if item is self.hoverItem:
-                return
-            self.hoverItem = item
-            if hasattr(item, 'term') and isinstance(item.term, Terminal):
-                term = item.term
+            # if item is self.hoverItem:
+            #     return
+            # self.hoverItem = item
+            if isinstance(item, NodeGraphicsItem):
+                obj = item.node
+            if isinstance(item, TerminalGraphicsItem):
+                obj = item.term
+                break
+            elif isinstance(item, ConnectionItem):
+                obj = item
                 break
 
-        if term is None:
-            self.hoverText.setPlainText("")
-        else:
-            type_text = f"Term: {term.node().name()}.{term.name()}\nType: {term.type()}"
+        text = ""
+
+        if isinstance(obj, Node) and not obj.isSource():
+            node = obj
+            doc = node.__doc__
+            doc = doc.lstrip().rstrip()
+            doc = re.sub(r'(\t+)|(  )+', '', doc)
+            text = [doc]
+
+            if node.inputs():
+                text.append("\nInputs:")
+
+            for name, term in node.inputs().items():
+                term = term()
+                connections = []
+                connections.append(f"{node.name()}.{name}")
+                if term.inputTerminals():
+                    connections.append("connected to:")
+                else:
+                    connections.append(f"accepts type: {term.type()}")
+                for in_term in term.inputTerminals():
+                    connections.append(f"{in_term.node().name()}.{in_term.name()}")
+                text.append(' '.join(connections))
+
+            if node.outputs():
+                text.append("\nOutputs:")
+
+            for name, term in node.outputs().items():
+                term = term()
+                connections = []
+                connections.append(f"{node.name()}.{name}")
+                if term.dependentTerms():
+                    connections.append("connected to:")
+                else:
+                    connections.append(f"emits type: {term.type()}")
+                for in_term in term.dependentTerms():
+                    connections.append(f"{in_term.node().name()}.{in_term.name()}")
+                text.append(' '.join(connections))
+
+            text = '\n'.join(text)
+
+        elif isinstance(obj, Terminal):
+            term = obj
+            node = obj.node()
+            text = f"Term: {node.name()}.{term.name()}\nType: {term.type()}"
             terms = None
 
             if (term.isOutput or term.isCondition) and term.dependentTerms():
@@ -757,10 +815,24 @@ class FlowchartWidget(dockarea.DockArea):
                 for in_term in terms:
                     connections.append(f"{in_term.node().name()}.{in_term.name()}")
                 connections = ' '.join(connections)
-                type_text = type_text + '\n' + connections
-
-            self.hoverText.setPlainText(type_text)
+                text = '\n'.join([text, connections])
             # self.hoverLabel.setCursorPosition(0)
+        elif isinstance(obj, ConnectionItem):
+            connection = obj
+            source = None
+            target = None
+
+            if isinstance(connection.source, TerminalGraphicsItem):
+                source = connection.source.term
+            if isinstance(connection.target, TerminalGraphicsItem):
+                target = connection.target.term
+
+            if source and target:
+                source = f"from {source.node().name()}.{source.name()}"
+                target = f"to {target.node().name()}.{target.name()}"
+                text = ' '.join(["Connection", source, target])
+
+        self.hoverText.setPlainText(text)
 
     def clear(self):
         # self.outputTree.setData(None)

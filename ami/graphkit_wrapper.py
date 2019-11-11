@@ -260,6 +260,7 @@ class Graph():
             worker_outputs = None
             local_collector_outputs = None
             extras = node.on_expand()
+
             for color in color_order:
 
                 if color == 'worker':
@@ -384,6 +385,18 @@ class Graph():
                 node.inputs = new_inputs
             self.add(node)
 
+    def _find_intersecting_path(self, filters_targets, path):
+        diffs = set()
+
+        for f, t in filters_targets:
+            paths = list(nx.algorithms.all_simple_paths(self.graph, f, t))
+            for parent in paths:
+                parent = set(parent)
+                if parent.intersection(path) and path != parent:
+                    diffs.update(parent.difference(path))
+
+        return diffs
+
     def compile(self, num_workers=1, num_local_collectors=1):
         """
         Convert an AMI graph to a networkfox graph. This function must be called after any function which modifies the
@@ -428,6 +441,9 @@ class Graph():
                 if seen.issuperset(nodes):
                     continue
 
+                diffs = self._find_intersecting_path(filters_targets, nodes)
+                nodes.extend(diffs)
+
                 filter_node = self._generate_filter_node(seen, f, nodes)
                 body.append(filter_node)
 
@@ -439,7 +455,6 @@ class Graph():
             body.append(node.to_operation())
 
         self.outputs['globalCollector'].update(outputs)
-
         self.graphkit = compose(name=self.name)(*body)
 
     def nxplot(self, filename=None):
@@ -474,7 +489,6 @@ class Graph():
         :raises AssertionError: if compile() has not been falled first or if color is None.
         """
         assert self.graphkit is not None, "call compile first"
-
         color = kwargs.get('color', None)
         assert color is not None
         result = self.graphkit(*args, **kwargs)
@@ -485,6 +499,12 @@ class Graph():
         """
         Return time per execution of graphkit node.
         """
-        if self.graphkit is not None:
-            return self.graphkit.times()
-        return {}
+        assert self.graphkit is not None, "call compile first"
+        return self.graphkit.times()
+
+    def metadata(self):
+        """
+        Return dictionary of node metadata.
+        """
+        assert self.graphkit is not None, "call compile first"
+        return self.graphkit.node_metadata()

@@ -123,6 +123,11 @@ class Terminal(object):
                 raise Exception("Can't connect output to output.")
             elif self.isCondition() and term.isCondition():
                 raise Exception("Can't connect condition to condition.")
+            elif (not self.isCondition() and not self.node().filter() and
+                  term.isCondition() and not term.node().filter()) or \
+                 (self.isCondition() and not self.node().filter() and
+                  not term.isCondition() and not term.node().filter()):
+                raise Exception("Condition must be connected to filter.")
 
             types = {}
             for t in [self, term]:
@@ -282,8 +287,15 @@ class TerminalGraphicsItem(GraphicsObject):
             self.menu = QtGui.QMenu()
             self.menu.setTitle("Terminal")
 
+            def disconnect(term, connections):
+                for conn in connections:
+                    term.disconnectFrom(conn)
+
             disconAct = QtGui.QAction("Disconnect", self.menu)
-            disconAct.triggered.connect(lambda: self.term.disconnectFrom(self.term.inputTerminals()[0]))
+            if self.term.inputTerminals():
+                disconAct.triggered.connect(lambda: disconnect(self.term, self.term.inputTerminals()))
+            elif self.term.dependentTerms():
+                disconAct.triggered.connect(lambda: disconnect(self.term, self.term.dependentTerms()))
             self.menu.addAction(disconAct)
             self.menu.disconAct = disconAct
             if not self.term.isConnected():
@@ -306,6 +318,7 @@ class TerminalGraphicsItem(GraphicsObject):
             return
 
         ev.accept()
+
         if ev.isStart():
             if self.newConnection is None:
                 self.newConnection = ConnectionItem(self)
@@ -372,8 +385,8 @@ class ConnectionItem(GraphicsObject):
             'shape': 'cubic',
             'color': (100, 100, 250),
             'width': 10.0,
-            'hoverColor': (150, 150, 250),
-            'hoverWidth': 1.0,
+            'hoverColor': (255, 0, 0),
+            'hoverWidth': 10.0,
             'selectedColor': (200, 200, 0),
             'selectedWidth': 3.0,
             }

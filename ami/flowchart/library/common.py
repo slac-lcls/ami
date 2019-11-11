@@ -118,6 +118,8 @@ class CtrlNode(Node):
                 setattr(self, k, o['value'])
             elif 'index' in o:
                 setattr(self, k, o['values'][o['index']])
+            elif 'checked' in o:
+                setattr(self, k, o['checked'])
 
     def ctrlWidget(self):
         return self.ui

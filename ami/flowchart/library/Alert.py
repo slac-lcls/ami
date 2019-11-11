@@ -8,7 +8,6 @@ import asyncio
 class DialogWidget:
 
     def __init__(self, topics, addr, parent=None, **kwargs):
-        # super(DialogWidget, self).__init__(parent)
         self.parent = parent
         self.fetcher = AsyncFetcher(topics, addr)
         self.terms = kwargs.get('terms', {})
@@ -56,8 +55,6 @@ class Threshold(CtrlNode):
         nodes = [gn.Map(name=self.name()+"_operation",
                         condition_needs=list(conditions.values()),
                         inputs=list(inputs.values()), outputs=map_outputs,
-                        func=lambda i: i > threshold),
-                 gn.PickN(name=self.name()+"_pickN",
-                          inputs=map_outputs,
-                          outputs=outputs)]
+                        func=lambda i: i > threshold, parent=self.name()),
+                 gn.PickN(name=self.name()+"_pickN", inputs=map_outputs, outputs=outputs, parent=self.name())]
         return nodes

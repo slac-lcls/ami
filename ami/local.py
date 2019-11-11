@@ -182,7 +182,6 @@ def run_ami(args, queue=None):
 
     xtcdir = None
     ipcdir = None
-    export_addr = None
     owns_ipcdir = True
     flags = {}
     if queue is None:
@@ -194,8 +193,7 @@ def run_ami(args, queue=None):
         collector_addr = "tcp://%s:%d" % (host, args.port+2)
         globalcol_addr = "tcp://%s:%d" % (host, args.port+3)
         results_addr = "tcp://%s:%d" % (host, args.port+4)
-        if args.export is not None:
-            export_addr = "tcp://%s:%d" % (host, args.port+5)
+        export_addr = "tcp://%s:%d" % (host, args.port+5)
         msg_addr = "tcp://%s:%d" % (host, args.port+6)
         info_addr = "tcp://%s:%d" % (host, args.port+7)
         profile_addr = "tcp://%s:%d" % (host, args.port+8)
@@ -211,8 +209,7 @@ def run_ami(args, queue=None):
         graph_addr = "ipc://%s/graph" % ipcdir
         comm_addr = "ipc://%s/comm" % ipcdir
         results_addr = "ipc://%s/results" % ipcdir
-        if args.export is not None:
-            export_addr = "ipc://%s/export" % ipcdir
+        export_addr = "ipc://%s/export" % ipcdir
         msg_addr = "ipc://%s/message" % ipcdir
         info_addr = "ipc://%s/info" % ipcdir
         profile_addr = "ipc://%s/profile" % ipcdir
@@ -262,7 +259,8 @@ def run_ami(args, queue=None):
             proc = mp.Process(
                 name='worker%03d-n0' % i,
                 target=run_worker,
-                args=(i, args.num_workers, args.heartbeat, src_cfg, collector_addr, graph_addr, msg_addr, flags)
+                args=(i, args.num_workers, args.heartbeat, src_cfg,
+                      collector_addr, graph_addr, msg_addr, export_addr, flags)
             )
             proc.daemon = True
             proc.start()

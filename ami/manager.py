@@ -216,6 +216,7 @@ class Manager(Collector):
         """
         graph = dill.loads(dill.dumps(self.graphs[name]))
         graph.compile(**self.compilier_args)
+        return graph
 
     def cmd_unknown(self, name=None):
         self.comm.send_string('error')
@@ -329,6 +330,11 @@ class Manager(Collector):
             self.graphs[name] = dill.loads(backup)
             logger.info("Restored previous version of the graph (%s v%d)", name, self.versions[name])
             self.comm.send_string('error')
+
+    def cmd_get_metadata(self, name):
+        graph = self.compile_graph(name)
+        metadata = graph.metadata()
+        self.comm.send(dill.dumps(metadata))
 
     def publish_info(self, name):
         return name, self.versions[name], self.compilier_args
@@ -474,9 +480,11 @@ class Manager(Collector):
             for key, val in data.items():
                 if AutoExport.is_auto(key):
                     export_data[AutoExport.unmangle(key)] = val
-            self.export.send_string('data', zmq.SNDMORE)
-            self.export.send_string(name, zmq.SNDMORE)
-            self.export.send_pyobj(export_data)
+            # Only export the dictionary if it is non-empty
+            if export_data:
+                self.export.send_string('data', zmq.SNDMORE)
+                self.export.send_string(name, zmq.SNDMORE)
+                self.export.send_pyobj(export_data)
 
     def export_heartbeat(self, name):
         if self.export is not None:
@@ -486,7 +494,8 @@ class Manager(Collector):
 
 
 def run_manager(num_workers, num_nodes, results_addr, graph_addr, comm_addr, msg_addr, info_addr, profile_addr,
-                export_addr=None):
+                export_addr):
+
     logger.info('Starting manager, controlling %d workers on %d nodes', num_workers, num_nodes)
     with Manager(
             num_workers,
@@ -576,13 +585,6 @@ def main():
     )
 
     parser.add_argument(
-        '-E',
-        '--enable-export',
-        action='store_true',
-        help='enable the data export service'
-    )
-
-    parser.add_argument(
         '--log-level',
         default=LogConfig.Level,
         help='the logging level of the application (default %s)' % LogConfig.Level
@@ -607,10 +609,7 @@ def main():
     msg_addr = "tcp://%s:%d" % (args.host, args.message)
     info_addr = "tcp://%s:%d" % (args.host, args.info)
     profile_addr = "tcp://%s:%d" % (args.host, args.profile)
-    if args.enable_export:
-        export_addr = "tcp://%s:%d" % (args.host, args.export)
-    else:
-        export_addr = None
+    export_addr = "tcp://%s:%d" % (args.host, args.export)
 
     log_handlers = [logging.StreamHandler()]
     if args.log_file is not None:

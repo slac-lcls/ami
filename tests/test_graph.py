@@ -11,9 +11,10 @@ def test_filter_on(complex_graph):
     localCollector = complex_graph(worker, color='localCollector')
     globalCollector = complex_graph(localCollector, color='globalCollector')
 
-    assert worker == {'signal_reduce_worker': {8: (10000.0, 1), 3: (10000.0, 1)}}
-    assert localCollector == {'signal_reduce_localCollector': {8: (20000.0, 2), 3: (20000.0, 2)}}
-    assert globalCollector == {'signal': {8: 10000.0, 3: 10000.0}}
+    assert worker == {'BinningOn_reduce_count_worker': {8: (10000.0, 1), 3: (10000.0, 1)}}
+    assert localCollector == {'BinningOn_reduce_count_localCollector': {8: (20000.0, 2), 3: (20000.0, 2)}}
+    np.testing.assert_equal(globalCollector['BinningOn.Bins'], np.array([3, 8]))
+    np.testing.assert_equal(globalCollector['BinningOn.Counts'], np.array([10000., 10000.]))
 
 
 def test_filter_off(complex_graph):
@@ -24,16 +25,16 @@ def test_filter_off(complex_graph):
     localCollector = complex_graph(worker, color='localCollector')
     globalCollector = complex_graph(localCollector, color='globalCollector')
 
-    assert worker == {'reference_reduce_worker': {4: (10000.0, 1), 5: (10000.0, 1)}}
-    assert localCollector == {'reference_reduce_localCollector': {4: (20000.0, 2), 5: (20000.0, 2)}}
-    assert globalCollector == {'reference': {4: 10000.0, 5: 10000.0}}
-    complex_graph.reset()
+    assert worker == {'BinningOff_reduce_count_worker': {4: (10000.0, 1), 5: (10000.0, 1)}}
+    assert localCollector == {'BinningOff_reduce_count_localCollector': {4: (20000.0, 2), 5: (20000.0, 2)}}
+    np.testing.assert_equal(globalCollector['BinningOff.Bins'], np.array([4, 5]))
+    np.testing.assert_equal(globalCollector['BinningOff.Counts'], np.array([10000., 10000.]))
 
 
 def test_add(complex_graph):
     complex_graph.compile(num_workers=4, num_local_collectors=2)
     complex_graph.add(PickN(name='pickReferenceOne',
-                            inputs=['reference'],
+                            inputs=['BinningOff.Bins', 'BinningOff.Counts'],
                             outputs=['referenceOne']))
     complex_graph.compile(num_workers=4, num_local_collectors=2)
 
@@ -43,9 +44,10 @@ def test_add(complex_graph):
     localCollector = complex_graph(worker, color='localCollector')
     globalCollector = complex_graph(localCollector, color='globalCollector')
 
-    assert worker == {'reference_reduce_worker': {4: (10000.0, 1), 5: (10000.0, 1)}}
-    assert localCollector == {'reference_reduce_localCollector': {4: (20000.0, 2), 5: (20000.0, 2)}}
-    assert globalCollector == {'referenceOne': {4: 10000.0, 5: 10000.0}, 'reference': {4: 10000.0, 5: 10000.0}}
+    assert worker == {'BinningOff_reduce_count_worker': {4: (10000.0, 1), 5: (10000.0, 1)}}
+    assert localCollector == {'BinningOff_reduce_count_localCollector': {4: (20000.0, 2), 5: (20000.0, 2)}}
+    np.testing.assert_equal(globalCollector['referenceOne'][0], np.array([4, 5]))
+    np.testing.assert_equal(globalCollector['referenceOne'][1], np.array([10000., 10000.]))
 
 
 def test_dill(complex_graph):
@@ -60,6 +62,7 @@ def test_dill(complex_graph):
     localCollector = complex_graph(worker, color='localCollector')
     globalCollector = complex_graph(localCollector, color='globalCollector')
 
-    assert worker == {'signal_reduce_worker': {8: (10000.0, 1), 3: (10000.0, 1)}}
-    assert localCollector == {'signal_reduce_localCollector': {8: (20000.0, 2), 3: (20000.0, 2)}}
-    assert globalCollector == {'signal': {8: 10000.0, 3: 10000.0}}
+    assert worker == {'BinningOn_reduce_count_worker': {3: (10000.0, 1), 8: (10000.0, 1)}}
+    assert localCollector == {'BinningOn_reduce_count_localCollector': {3: (20000.0, 2), 8: (20000.0, 2)}}
+    np.testing.assert_equal(globalCollector['BinningOn.Bins'], np.array([3, 8]))
+    np.testing.assert_equal(globalCollector['BinningOn.Counts'], np.array([10000., 10000.]))

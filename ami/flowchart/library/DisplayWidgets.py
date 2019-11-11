@@ -183,16 +183,27 @@ class HistogramWidget(pg.GraphicsLayoutWidget):
 
     def histogram_updated(self, data):
         i = 0
-        for term, name in self.terms.items():
 
-            x, y = map(list, zip(*sorted(data[name].items())))
+        num_terms = int(len(self.terms)/2)
+        for i in range(0, num_terms):
+            x = "Bins"
+            y = "Counts"
+
+            if i > 0:
+                x += f".{i}"
+                y += f".{i}"
+
+            x = self.terms[x]
+            y = self.terms[y]
+            name = y
+
+            x = data[x]
+            y = data[y]
 
             if name not in self.plot:
-                symbol, color = symbols_colors[i]
-                i += 1
-                self.plot[name] = self.plot_view.plot(x, y, name=name,
-                                                      symbol=symbol,
-                                                      symbolBrush=color)
+                _, color = symbols_colors[i]
+                self.plot[name] = self.plot_view.plot(x, y, name=name, brush=color,
+                                                      stepMode=True, fillLevel=0)
             else:
                 self.plot[name].setData(x=x, y=y)
 
@@ -300,13 +311,12 @@ class LineWidget(pg.GraphicsLayoutWidget):
             name = " vs ".join((x, y))
             x = data[x]
             y = data[y]
-
             if name not in self.plot:
                 symbol, color = symbols_colors[i]
                 i += 1
                 self.plot[name] = self.plot_view.plot(x=x, y=y, name=name, symbol=symbol, symbolBrush=color)
             else:
-                self.plot[name].setData(x=y, y=y)
+                self.plot[name].setData(x=x, y=y)
 
 
 class ArrayWidget(QWidget):
