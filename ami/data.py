@@ -406,20 +406,43 @@ class Source(abc.ABC):
         pass
 
 
-class FileSource(Source):
+class RunAndEventSource(Source):
     def __init__(self, idnum, num_workers, heartbeat_period, src_cfg, flags=None):
-        super(__class__, self).__init__(idnum, num_workers, heartbeat_period, src_cfg, flags)
-        self.counter = None
+        super().__init__(idnum, num_workers, heartbeat_period, src_cfg, flags)
+        self._counter = None
         self.loop_count = 0
-        self.repeat_mode = False
         self.delimiter = ":"
         self.data_types = {}
+        self.special_types = {}
 
     def _names(self):
         return set(self.data_types)
 
     def _types(self):
         return self.data_types
+
+    @abc.abstractmethod
+    def _runs(self):
+        pass
+
+    @abc.abstractmethod
+    def _events(self, run):
+        pass
+
+    @abc.abstractmethod
+    def _update(self, run):
+        pass
+
+    @abc.abstractmethod
+    def _process(self, run):
+        pass
+
+    def timestamp(self, evt):
+        return self.counter
+
+    @property
+    def repeat_mode(self):
+        return self.config.get('repeat', False)
 
     @property
     def repeat(self):
@@ -430,33 +453,70 @@ class FileSource(Source):
             return True
 
     @property
-    def timestamp(self):
-        if self.counter is None:
-            self.counter = self.idnum
+    def counter(self):
+        if self._counter is None:
+            self._counter = self.idnum
         else:
-            self.counter += self.num_workers
+            self._counter += self.num_workers
 
-        return self.counter
+        return self._counter
+
+    def events(self):
+        self._counter = None
+        time.sleep(self.init_time)
+
+        while self.repeat:
+            for run in self._runs():
+                # clear type info from previous runs
+                self.data_types = {}
+                self.special_types = {}
+                # call the subclasses update function then emit the configure message
+                self._update(run)
+                yield self.configure()
+
+                for evt in self._events(run):
+                    # get the subclasses timestamp implementation
+                    timestamp = self.timestamp(evt)
+                    # check the heartbeat
+                    if self.check_heartbeat_boundary(timestamp):
+                        yield self.heartbeat_msg()
+
+                    # emit the processed event data
+                    yield from self.event(timestamp, self._process(evt))
+                    time.sleep(self.interval)
 
 
-class PsanaSource(Source):
+class PsanaSource(RunAndEventSource):
 
     def __init__(self, idnum, num_workers, heartbeat_period, src_cfg, flags=None):
-        super(__class__, self).__init__(idnum, num_workers, heartbeat_period, src_cfg, flags)
-        self.ds_loop_count = 0
+        super().__init__(idnum, num_workers, heartbeat_period, src_cfg, flags)
         self.ds_keys = {
             'exp', 'dir', 'files', 'shmem', 'filter', 'batch_size', 'max_events', 'sel_det_ids', 'det_name'
         }
-        self.repeat_mode = self.config.get('repeat', False) and (not self.config.get('shmem', False))
-        self.delimiter = ":"
-        self.xtcdata_types = {}
         if psana is not None:
             ps_kwargs = {k: self.config[k] for k in self.ds_keys if k in self.config}
             self.ds = psana.DataSource(**ps_kwargs)
         else:
             raise NotImplementedError("psana is not available!")
 
-    def _update_hsd_segment_names(self, seg_name, seg_type, seg_chans):
+    def timestamp(self, evt):
+        # If in repeat mode (a.k.a. looping forever over the same events) then use fake ts for heartbeats
+        if self.repeat_mode:
+            return self.counter
+        else:
+            return evt.timestamp
+
+    @property
+    def repeat_mode(self):
+        return super().repeat_mode and (not self.config.get('shmem', False))
+
+    def _runs(self):
+        yield from self.ds.runs()
+
+    def _events(self, run):
+        yield from run.events()
+
+    def _update_hsd_segment(self, seg_name, seg_type, seg_chans):
         for seg_key, chanlist in seg_chans.items():
             seg_key_name = str(seg_key)
             seg_key_type, seg_value_type = seg_type.__args__
@@ -469,17 +529,20 @@ class PsanaSource(Source):
                     chan_key = chan_key_name
                 if not isinstance(chan_key, seg_key_type) or chan_key in chanlist:
                     accessor = (lambda o, s, c: o.get(s, {}).get(c), (seg_key, chan_key), {})
-                    self.xtcdata_types[chan_name] = chan_type
+                    self.data_types[chan_name] = chan_type
                     self.special_names[chan_name] = (seg_name, accessor)
 
-    def _update_xtcdata_names(self, run):
+    def _update(self, run):
         detinfo = run.detinfo
-        self.xtcdata_types = {}
+        self.detectors = {}
+        self.data_types = {}
         self.special_names = {}
         for (detname, det_xface_name), det_attr_list in detinfo.items():
             for attr in det_attr_list:
                 attr_name = self.delimiter.join((detname, det_xface_name, attr))
                 det_interface = run.Detector(detname)
+                # make & cache the psana Detector object
+                self.detectors[detname] = det_interface
                 try:
                     attr_sig = inspect.signature(getattr(getattr(det_interface, det_xface_name), attr))
                     if attr_sig.return_annotation is attr_sig.empty:
@@ -492,117 +555,53 @@ class PsanaSource(Source):
                     # ignore things which are not derived from typing.Dict
                     if str(attr_type).startswith('typing.Dict'):
                         seg_chans = getattr(det_interface, det_xface_name)._seg_chans()
-                        self._update_hsd_segment_names(attr_name, attr_type, seg_chans)
+                        self._update_hsd_segment(attr_name, attr_type, seg_chans)
                     else:
                         logger.debug("DataSrc: unsupported HSDType: %s", attr_type)
                 else:
-                    self.xtcdata_types[attr_name] = attr_type
+                    self.data_types[attr_name] = attr_type
 
-    def _names(self):
-        return set(self.xtcdata_types)
+    def _process(self, evt):
+        event = {}
 
-    def _types(self):
-        return self.xtcdata_types
+        for name in self.requested_data:
+            # each name is like "detname:drp_class_name:attrN"
+            namesplit = name.split(':')
+            detname = namesplit[0]
 
-    @property
-    def repeat(self):
-        if self.ds_loop_count and not self.repeat_mode:
-            return False
-        else:
-            self.ds_loop_count += 1
-            return True
+            # loop to the bottom level of the Det obj and get data
+            obj = self.detectors[detname]
+            for token in namesplit[1:]:
+                obj = getattr(obj, token)
+            event[name] = obj(evt)
 
-    def events(self):
+        for name, sub_names in self.requested_special.items():
+            namesplit = name.split(':')
+            detname = namesplit[0]
 
-        counter = 0
-        time.sleep(self.init_time)
+            # loop to the bottom level of the Det obj and get data
+            obj = self.detectors[detname]
+            for token in namesplit[1:]:
+                obj = getattr(obj, token)
+            data = obj(evt)
+            # access the requested methods of the object returned by the det interface
+            for sub_name, (meth, args, kwargs) in sub_names.items():
+                if data is None:
+                    event[sub_name] = None
+                else:
+                    event[sub_name] = meth(data, *args, **kwargs)
 
-        while self.repeat:
-            for run in self.ds.runs():
-                self._update_xtcdata_names(run)
-                self.detectors = {}  # psana Detector object cache
-                yield self.configure()
-
-                for evt in run.events():
-                    # If in repeat mode (a.k.a. looping forever over the same events) then use fake ts for heartbeats
-                    if self.check_heartbeat_boundary(counter if self.repeat_mode else evt.timestamp):
-                        yield self.heartbeat_msg()
-
-                    event = {}
-
-                    for name in self.requested_data:
-                        # each name is like "detname:drp_class_name:attrN"
-                        namesplit = name.split(':')
-                        detname = namesplit[0]
-
-                        # if this is the first time we request a detector,
-                        # make & cache the psana Detector object
-                        if detname not in self.detectors:
-                            self.detectors[detname] = run.Detector(detname)
-
-                        # loop to the bottom level of the Det obj and get data
-                        obj = self.detectors[detname]
-                        for token in namesplit[1:]:
-                            obj = getattr(obj, token)
-                        event[name] = obj(evt)
-
-                    for name, sub_names in self.requested_special.items():
-                        namesplit = name.split(':')
-                        detname = namesplit[0]
-
-                        # if this is the first time we request a detector,
-                        # make & cache the psana Detector object
-                        if detname not in self.detectors:
-                            self.detectors[detname] = run.Detector(detname)
-
-                        # loop to the bottom level of the Det obj and get data
-                        obj = self.detectors[detname]
-                        for token in namesplit[1:]:
-                            obj = getattr(obj, token)
-                        data = obj(evt)
-                        # access the requested methods of the object returned by the det interface
-                        for sub_name, (meth, args, kwargs) in sub_names.items():
-                            if data is None:
-                                event[sub_name] = None
-                            else:
-                                event[sub_name] = meth(data, *args, **kwargs)
-
-                    yield from self.event(counter if self.repeat_mode else evt.timestamp, event)
-                    counter += 1
-                    time.sleep(self.interval)
+        return event
 
 
-class Hdf5Source(Source):
+class Hdf5Source(RunAndEventSource):
     def __init__(self, idnum, num_workers, heartbeat_period, src_cfg, flags=None):
-        super(__class__, self).__init__(idnum, num_workers, heartbeat_period, src_cfg, flags)
-        self.count = None
-        self.delimiter = ":"
-        self.loop_count = 0
-        self.repeat_mode = self.config.get('repeat', False)
+        super().__init__(idnum, num_workers, heartbeat_period, src_cfg, flags)
         self.hdf5_delim = "/"
-        self.hdf5_types = {}
-        self.hdf5_files = self.config.get('files', [])
+        self.files = self.config.get('files', [])
         self.hdf5_idx = None
         if h5py is None:
             raise NotImplementedError("h5py is not available!")
-
-    def _update_data_names(self, name, obj):
-        if isinstance(obj, h5py.Dataset):
-            self.hdf5_types[name.replace(self.hdf5_delim, self.delimiter)] = obj.dtype.type
-
-    def _names(self):
-        return set(self.hdf5_types)
-
-    def _types(self):
-        return self.hdf5_types
-
-    @property
-    def repeat(self):
-        if self.loop_count and not self.repeat_mode:
-            return False
-        else:
-            self.loop_count += 1
-            return True
 
     @property
     def index(self):
@@ -613,38 +612,40 @@ class Hdf5Source(Source):
 
         return self.hdf5_idx
 
+    def timestamp(self, evt):
+        # always use fake ts for heartbeats for hdf5
+        return self.counter
+
     @property
-    def timestamp(self):
-        if self.count is None:
-            self.count = self.idnum
-        else:
-            self.count += self.num_workers
+    def repeat_mode(self):
+        return self.config.get('repeat', False)
 
-        return self.count
-
-    def runs(self):
-        for filename in self.hdf5_files:
+    def _runs(self):
+        for filename in self.files:
             self.hdf5_idx = 0
             with h5py.File(filename, 'r') as hdf5_file:
-                hdf5_file.visititems(self._update_data_names)
                 yield hdf5_file
 
-    def events(self):
-        time.sleep(self.init_time)
+    def _events(self, run):
+        while True:
+            yield (self.index, run)
 
-        while self.repeat:
-            for run in self.runs():
-                yield self.configure()
+    def _update_data_names(self, name, obj):
+        if isinstance(obj, h5py.Dataset):
+            self.data_types[name.replace(self.hdf5_delim, self.delimiter)] = obj.dtype.type
 
-                event = {}
+    def _update(self, run):
+        run.visititems(self._update_data_names)
 
-                yield from self.event(self.timestamp, event)
-                time.sleep(self.interval)
+    def _process(self, evt):
+        event = {}
+
+        return event
 
 
 class SimSource(Source):
     def __init__(self, idnum, num_workers, heartbeat_period, src_cfg, flags=None):
-        super(__class__, self).__init__(idnum, num_workers, heartbeat_period, src_cfg, flags)
+        super().__init__(idnum, num_workers, heartbeat_period, src_cfg, flags)
         self.count = 0
         self.synced = False
         if 'sync' in self.config:
@@ -688,7 +689,7 @@ class SimSource(Source):
 
 class RandomSource(SimSource):
     def __init__(self, idnum, num_workers, heartbeat_period, src_cfg, flags=None):
-        super(__class__, self).__init__(idnum, num_workers, heartbeat_period, src_cfg, flags)
+        super().__init__(idnum, num_workers, heartbeat_period, src_cfg, flags)
         np.random.seed([idnum])
 
     def events(self):
@@ -718,7 +719,7 @@ class RandomSource(SimSource):
 
 class StaticSource(SimSource):
     def __init__(self, idnum, num_workers, heartbeat_period, src_cfg, flags=None):
-        super(__class__, self).__init__(idnum, num_workers, heartbeat_period, src_cfg, flags)
+        super().__init__(idnum, num_workers, heartbeat_period, src_cfg, flags)
         self.bound = self.config.get('bound', np.inf)
 
     def events(self):
