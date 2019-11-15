@@ -435,10 +435,10 @@ def test_manager_partition_updates(manager_info, partition):
 
 @pytest.mark.parametrize('names',
                          [
-                            {"cspad": None},
-                            {"delta_t": None},
-                            {"test": None},
-                            {"cspad": None, "delta_t": None},
+                            ["cspad"],
+                            ["delta_t"],
+                            ["test"],
+                            ["cspad", "delta_t"],
                          ])
 def test_manager_add_view(manager_ctrl, names):
     comm, injector = manager_ctrl
@@ -463,7 +463,7 @@ def test_manager_add_view(manager_ctrl, names):
 
     # remove the view from the graph
     version = comm.graphVersion
-    assert comm.unview(list(names.keys()))
+    assert comm.unview(names)
     assert comm.graphVersion == version + 1
     for name in names:
         assert comm.auto(name) not in comm.names

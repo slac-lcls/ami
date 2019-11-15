@@ -22,7 +22,7 @@ def test_complex_graph(complex_graph_file, start_ami):
     start = time.time()
     while comm_handler.graphVersion != comm_handler.featuresVersion:
         end = time.time()
-        if end - start > 10:
+        if end - start > 100:
             raise TimeoutError
 
     bins = comm_handler.fetch('BinningOn.Bins')
@@ -40,7 +40,7 @@ def test_psana_graph(psana_graph, start_ami):
     start = time.time()
     while comm_handler.graphVersion != comm_handler.featuresVersion:
         end = time.time()
-        if end - start > 1000:
+        if end - start > 100:
             raise TimeoutError
     picked_cspad = comm_handler.fetch('picked')
     assert picked_cspad.shape == (6, 6)

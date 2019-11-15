@@ -1493,11 +1493,14 @@ class CommHandler(abc.ABC):
         by calling the `auto` method of this class.
 
         Args:
-            names (str or list): The names of the graph outputs to start viewing.
-
+            names (str, list, or dict): The names of the graph outputs to start viewing.
+                                        When a dict is passed the value is treated as
+                                        the parent of the view node.
         Returns:
             True if the graph change was successful, False otherwise.
         """
+        if isinstance(names, list):
+            names = {name: None for name in names}
         if not isinstance(names, dict):
             names = {names: None}
 

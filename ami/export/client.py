@@ -292,8 +292,8 @@ class GraphCommHandler(PvaCommHandler):
 
     def _view(self, names):
         nodes = []
-        for name in names:
-            nodes.append(self._make_view_node(name, self.auto(name)))
+        for name, parent in names.items():
+            nodes.append(self._make_view_node(name, self.auto(name), parent))
 
         return self.add(nodes)
 
@@ -417,8 +417,8 @@ class AsyncGraphCommHandler(PvaCommHandler):
 
     async def _view(self, names):
         nodes = []
-        for name in names:
-            nodes.append(self._make_view_node(name, self.auto(name)))
+        for name, parent in names.items():
+            nodes.append(self._make_view_node(name, self.auto(name), parent))
 
         return await self.add(nodes)
 
