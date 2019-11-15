@@ -7,6 +7,10 @@ import inspect
 import logging
 import pickle
 try:
+    import h5py
+except ImportError:
+    h5py = None
+try:
     import psana
 except ImportError:
     psana = None
@@ -402,6 +406,39 @@ class Source(abc.ABC):
         pass
 
 
+class FileSource(Source):
+    def __init__(self, idnum, num_workers, heartbeat_period, src_cfg, flags=None):
+        super(__class__, self).__init__(idnum, num_workers, heartbeat_period, src_cfg, flags)
+        self.counter = None
+        self.loop_count = 0
+        self.repeat_mode = False
+        self.delimiter = ":"
+        self.data_types = {}
+
+    def _names(self):
+        return set(self.data_types)
+
+    def _types(self):
+        return self.data_types
+
+    @property
+    def repeat(self):
+        if self.loop_count and not self.repeat_mode:
+            return False
+        else:
+            self.loop_count += 1
+            return True
+
+    @property
+    def timestamp(self):
+        if self.counter is None:
+            self.counter = self.idnum
+        else:
+            self.counter += self.num_workers
+
+        return self.counter
+
+
 class PsanaSource(Source):
 
     def __init__(self, idnum, num_workers, heartbeat_period, src_cfg, flags=None):
@@ -412,7 +449,6 @@ class PsanaSource(Source):
         }
         self.repeat_mode = self.config.get('repeat', False) and (not self.config.get('shmem', False))
         self.delimiter = ":"
-        self.xtcdata_names = []
         self.xtcdata_types = {}
         if psana is not None:
             ps_kwargs = {k: self.config[k] for k in self.ds_keys if k in self.config}
@@ -433,13 +469,11 @@ class PsanaSource(Source):
                     chan_key = chan_key_name
                 if not isinstance(chan_key, seg_key_type) or chan_key in chanlist:
                     accessor = (lambda o, s, c: o.get(s, {}).get(c), (seg_key, chan_key), {})
-                    self.xtcdata_names.append(chan_name)
                     self.xtcdata_types[chan_name] = chan_type
                     self.special_names[chan_name] = (seg_name, accessor)
 
     def _update_xtcdata_names(self, run):
         detinfo = run.detinfo
-        self.xtcdata_names = []
         self.xtcdata_types = {}
         self.special_names = {}
         for (detname, det_xface_name), det_attr_list in detinfo.items():
@@ -462,11 +496,10 @@ class PsanaSource(Source):
                     else:
                         logger.debug("DataSrc: unsupported HSDType: %s", attr_type)
                 else:
-                    self.xtcdata_names.append(attr_name)
                     self.xtcdata_types[attr_name] = attr_type
 
     def _names(self):
-        return set(self.xtcdata_names)
+        return set(self.xtcdata_types)
 
     def _types(self):
         return self.xtcdata_types
@@ -485,7 +518,6 @@ class PsanaSource(Source):
         time.sleep(self.init_time)
 
         while self.repeat:
-            event = {}
             for run in self.ds.runs():
                 self._update_xtcdata_names(run)
                 self.detectors = {}  # psana Detector object cache
@@ -495,6 +527,8 @@ class PsanaSource(Source):
                     # If in repeat mode (a.k.a. looping forever over the same events) then use fake ts for heartbeats
                     if self.check_heartbeat_boundary(counter if self.repeat_mode else evt.timestamp):
                         yield self.heartbeat_msg()
+
+                    event = {}
 
                     for name in self.requested_data:
                         # each name is like "detname:drp_class_name:attrN"
@@ -536,6 +570,76 @@ class PsanaSource(Source):
                     yield from self.event(counter if self.repeat_mode else evt.timestamp, event)
                     counter += 1
                     time.sleep(self.interval)
+
+
+class Hdf5Source(Source):
+    def __init__(self, idnum, num_workers, heartbeat_period, src_cfg, flags=None):
+        super(__class__, self).__init__(idnum, num_workers, heartbeat_period, src_cfg, flags)
+        self.count = None
+        self.delimiter = ":"
+        self.loop_count = 0
+        self.repeat_mode = self.config.get('repeat', False)
+        self.hdf5_delim = "/"
+        self.hdf5_types = {}
+        self.hdf5_files = self.config.get('files', [])
+        self.hdf5_idx = None
+        if h5py is None:
+            raise NotImplementedError("h5py is not available!")
+
+    def _update_data_names(self, name, obj):
+        if isinstance(obj, h5py.Dataset):
+            self.hdf5_types[name.replace(self.hdf5_delim, self.delimiter)] = obj.dtype.type
+
+    def _names(self):
+        return set(self.hdf5_types)
+
+    def _types(self):
+        return self.hdf5_types
+
+    @property
+    def repeat(self):
+        if self.loop_count and not self.repeat_mode:
+            return False
+        else:
+            self.loop_count += 1
+            return True
+
+    @property
+    def index(self):
+        if self.hdf5_idx is None:
+            self.hdf5_idx = self.idnum
+        else:
+            self.hdf5_idx += self.num_workers
+
+        return self.hdf5_idx
+
+    @property
+    def timestamp(self):
+        if self.count is None:
+            self.count = self.idnum
+        else:
+            self.count += self.num_workers
+
+        return self.count
+
+    def runs(self):
+        for filename in self.hdf5_files:
+            self.hdf5_idx = 0
+            with h5py.File(filename, 'r') as hdf5_file:
+                hdf5_file.visititems(self._update_data_names)
+                yield hdf5_file
+
+    def events(self):
+        time.sleep(self.init_time)
+
+        while self.repeat:
+            for run in self.runs():
+                yield self.configure()
+
+                event = {}
+
+                yield from self.event(self.timestamp, event)
+                time.sleep(self.interval)
 
 
 class SimSource(Source):
