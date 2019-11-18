@@ -1,11 +1,6 @@
 # ami
 The LCLS-II online graphical analysis monitoring package.
 
-## Documentation
-[User documentation](doc/userdoc.md)
-[Design documentation](doc/toplevel.md)
-[Test information](doc/testing.md)
-
 # Examples
 If you use the setup.py included to set this up you should now have two console
 scripts available on your path: `ami-worker` and `ami-manager`. Several example
@@ -29,11 +24,3 @@ To load a graph, add this flag to ami-local:
 ```-l examples/basic.ami```
 
 To use psana a working release need to be added to the python path
-
-- status messages from worker
-- tags in load/save
-TODO for beta:
-- Multiple runs/changing sources
-- gui regression test
-- load/save bug
-- add/remove terminals to views

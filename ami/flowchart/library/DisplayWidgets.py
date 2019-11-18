@@ -236,6 +236,7 @@ class Histogram2DWidget(pg.ImageView):
 
     def __init__(self, topics, addr, parent=None, **kwargs):
         self.plot = pg.PlotItem()
+        self.plot.setAspectLocked(False)
         super().__init__(parent, view=self.plot)
         self.fetcher = AsyncFetcher(topics, addr)
         self.terms = kwargs.get('terms', {})
@@ -274,9 +275,9 @@ class Histogram2DWidget(pg.ImageView):
                 self.xbins = data[xbins]
                 self.ybins = data[ybins]
                 counts = data[counts]
-                xscale = self.xbins[1] - self.xbins[0]
-                yscale = self.ybins[1] - self.ybins[0]
-                self.setImage(counts, pos=(self.xbins[0], self.ybins[0]), scale=(xscale, yscale))
+                xscale = (self.xbins[1] - self.xbins[0])/self.xbins.shape
+                yscale = (self.ybins[1] - self.ybins[0])/self.ybins.shape
+                self.setImage(counts, pos=(self.xbins[0], self.ybins[0]), scale=(xscale[0], yscale[0]))
 
 
 class ScatterWidget(pg.GraphicsLayoutWidget):

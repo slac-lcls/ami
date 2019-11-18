@@ -198,6 +198,8 @@ class Node(QtCore.QObject):
             del self._conditions[name]
         self.graphicsItem().updateTerminals()
         self.sigTerminalRemoved.emit(self, term)
+        self.graphicsItem().menu = None
+        self.graphicsItem().buildMenu()
 
     def addTerminal(self, name, **opts):
         """Add a new terminal to this Node with the given name. Extra
@@ -462,6 +464,7 @@ class NodeGraphicsItem(GraphicsObject):
         self.updateTerminals()
 
         self.menu = None
+        self.add_condition = None
         self.buildMenu()
 
     def setNote(self, text):
@@ -624,7 +627,7 @@ class NodeGraphicsItem(GraphicsObject):
             if self.node._allowAddOutput:
                 self.menu.addAction("Add output", self.addOutputFromMenu)
             if self.node._allowAddCondition:
-                self.menu.addAction("Add condition", self.addConditionFromMenu)
+                self.add_condition = self.menu.addAction("Add condition", self.addConditionFromMenu)
             if self.node._allowRemove:
                 self.menu.addAction("Remove node", self.node.close)
 
@@ -638,3 +641,5 @@ class NodeGraphicsItem(GraphicsObject):
 
     def addConditionFromMenu(self):
         self.node.addCondition(removable=True)
+        self.menu.removeAction(self.add_condition)
+        self.add_condition = None
