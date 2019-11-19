@@ -88,6 +88,7 @@ class Node(QtCore.QObject):
         self._inputs = OrderedDict()
         self._outputs = OrderedDict()
         self._conditions = OrderedDict()
+        self._groups = OrderedDict()  # terminal group {"name": set(terminals)}
         self._allowAddInput = allowAddInput   # flags to allow the user to add/remove terminals
         self._allowAddOutput = allowAddOutput
         self._allowAddCondition = allowAddCondition
@@ -99,6 +100,7 @@ class Node(QtCore.QObject):
         self._note = ""
         self._editor = None
 
+        self.viewed = False
         self.exception = None
 
         self._input_vars = {}  # term:var
@@ -109,6 +111,13 @@ class Node(QtCore.QObject):
 
         for name, opts in terminals.items():
             self.addTerminal(name, **opts)
+
+    def nextGroupName(self):
+        group = "group.%d"
+        i = 1
+        while (group % i) in self._groups:
+            i += 1
+        return (group % i)
 
     def nextTerminalName(self, name):
         """Return an unused terminal name"""
@@ -198,16 +207,31 @@ class Node(QtCore.QObject):
             del self._conditions[name]
         self.graphicsItem().updateTerminals()
         self.sigTerminalRemoved.emit(self, term)
+
         self.graphicsItem().menu = None
         self.graphicsItem().buildMenu()
 
-    def addTerminal(self, name, **opts):
+        group_name = term._group
+        group = self._groups[group_name]
+        group.discard(name)
+
+        terms = []
+        for term in group:
+            terms.append(term)
+
+        for term in terms:
+            self.removeTerminal(term)
+
+        if group_name in self._groups:
+            del self._groups[group_name]
+
+    def addTerminal(self, name, group=None, **opts):
         """Add a new terminal to this Node with the given name. Extra
         keyword arguments are passed to Terminal.__init__.
 
         Causes sigTerminalAdded to be emitted."""
         name = self.nextTerminalName(name)
-        term = Terminal(self, name, **opts)
+        term = Terminal(self, name, group=group, **opts)
         self.terminals[name] = term
         if term.isInput():
             self._inputs[name] = weakref.ref(self.terminals[name])
@@ -215,6 +239,14 @@ class Node(QtCore.QObject):
             self._outputs[name] = weakref.ref(self.terminals[name])
         elif term.isCondition():
             self._conditions[name] = weakref.ref(self.terminals[name])
+
+        if group:
+            if group not in self._groups:
+                self._groups[group] = set()
+
+            group = self._groups[group]
+            group.add(name)
+
         self.graphicsItem().updateTerminals()
         self.sigTerminalAdded.emit(self, term)
         return term
@@ -264,17 +296,6 @@ class Node(QtCore.QObject):
         if self._graphicsItem is None:
             self._graphicsItem = NodeGraphicsItem(self, brush)
         return self._graphicsItem
-
-    # this is just bad planning. Causes too many bugs.
-    def __getattr__(self, attr):
-        """Return the terminal with the given name"""
-        if attr not in self.terminals:
-            raise AttributeError(attr)
-        else:
-            import traceback
-            traceback.print_stack()
-            print("Warning: use of node.terminalName is deprecated; use node['terminalName'] instead.")
-            return self.terminals[attr]
 
     def __getitem__(self, item):
         # return getattr(self, item)

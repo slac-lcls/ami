@@ -21,7 +21,6 @@ import ami.flowchart.Editor as EditorTemplate
 import amitypes as at
 import asyncio
 import zmq.asyncio
-import dill
 import json
 import subprocess
 import re
@@ -135,20 +134,6 @@ class Flowchart(Node):
         item.moveBy(*pos)
         self._nodes[name] = node
         node.sigClosed.connect(self.nodeClosed)
-        node.sigTerminalConnected.connect(self.nodeConnected)
-        node.sigTerminalDisconnected.connect(self.nodeDisconnected)
-
-    @asyncqt.asyncSlot(object)
-    async def nodeConnected(self, node):
-        msg = fcMsgs.UpdateNodeAttributes(node.name(), node.input_vars(), node.condition_vars())
-        await self.broker.send_string(msg.name, zmq.SNDMORE),
-        await self.broker.send_pyobj(msg)
-
-    @asyncqt.asyncSlot(object)
-    async def nodeDisconnected(self, node):
-        msg = fcMsgs.UpdateNodeAttributes(node.name(), node.input_vars(), node.condition_vars())
-        await self.broker.send_string(node.name(), zmq.SNDMORE),
-        await self.broker.send_pyobj(msg)
 
     def nodeClosed(self, node):
         # Qt does not like if this function is async
@@ -414,8 +399,7 @@ class Flowchart(Node):
     @asyncqt.asyncSlot()
     async def chartLoaded(self):
         for name, node in self.nodes().items():
-            msg = fcMsgs.NodeCheckpoint(node.name(), inputs=node.input_vars(), conditions=node.condition_vars(),
-                                        state=node.saveState())
+            msg = fcMsgs.NodeCheckpoint(node.name(), state=node.saveState())
             await self.broker.send_string(node.name(), zmq.SNDMORE)
             await self.broker.send_pyobj(msg)
 
@@ -447,8 +431,6 @@ class FlowchartCtrlWidget(QtGui.QWidget):
         self.features_lock = asyncio.Lock()
         self.features = {}
 
-        self.node_map = {}  # { graphkit_node_name : gui_node_name }
-
         self.ui.actionOpen.triggered.connect(self.openClicked)
         self.ui.actionSave.triggered.connect(self.saveClicked)
         # self.ui.saveAsBtn.clicked.connect(self.saveAsClicked)
@@ -460,7 +442,6 @@ class FlowchartCtrlWidget(QtGui.QWidget):
 
     @asyncqt.asyncSlot()
     async def applyClicked(self):
-        node_map = {}
         graph_nodes = []
         disconnectedNodes = []
         displays = []
@@ -475,25 +456,18 @@ class FlowchartCtrlWidget(QtGui.QWidget):
                 gnode.clearException()
                 gnode.recolor()
 
-            if gnode.buffered() or gnode.viewable() or gnode.exportable():
+            if gnode.viewed:
                 displays.append(gnode)
 
             if not hasattr(gnode, 'to_operation'):
                 continue
 
-            await self.chart.broker.send_string(name, zmq.SNDMORE),
-            await self.chart.broker.send_pyobj(fcMsgs.GetNodeOperation())
-
-            node = await self.chart.node.recv()
-            node = dill.loads(node)
+            node = gnode.to_operation(inputs=gnode.input_vars(), conditions=gnode.condition_vars())
 
             if type(node) is list:
                 graph_nodes.extend(node)
-                for n in node:
-                    node_map[n.name] = name
             else:
                 graph_nodes.append(node)
-                node_map[node.name] = name
 
         if disconnectedNodes:
             for node in disconnectedNodes:
@@ -522,7 +496,10 @@ class FlowchartCtrlWidget(QtGui.QWidget):
                     topics.append((in_var, node.name()))
 
                 await self.chart.broker.send_string(node.name(), zmq.SNDMORE)
-                await self.chart.broker.send_pyobj(fcMsgs.DisplayNode(node.name(), dict(topics), redisplay=True))
+                await self.chart.broker.send_pyobj(fcMsgs.DisplayNode(name=node.name(),
+                                                                      topics=dict(topics),
+                                                                      terms=node.input_vars(),
+                                                                      redisplay=True))
 
             elif node.viewable():
                 topics = []
@@ -545,12 +522,13 @@ class FlowchartCtrlWidget(QtGui.QWidget):
                     await self.graphCommHandler.view(views)
 
                 await self.chart.broker.send_string(node.name(), zmq.SNDMORE)
-                await self.chart.broker.send_pyobj(fcMsgs.DisplayNode(node.name(), dict(topics), redisplay=True))
+                await self.chart.broker.send_pyobj(fcMsgs.DisplayNode(name=node.name(),
+                                                                      topics=dict(topics),
+                                                                      terms=node.input_vars(),
+                                                                      redisplay=True))
 
             elif node.exportable():
                 await self.graphCommHandler.export(node.input_vars()['In'], node.name())
-
-        self.node_map = node_map
 
         async with self.features_lock:
             self.features = features
@@ -701,7 +679,7 @@ class FlowchartWidget(dockarea.DockArea):
             return
 
         node = item.node
-
+        node.viewed = True
         if isinstance(item.node, Node) and item.node.buffered():
             topics = []
 
@@ -709,7 +687,9 @@ class FlowchartWidget(dockarea.DockArea):
                 topics.append((in_var, node.name()))
 
             await self.chart.broker.send_string(node.name(), zmq.SNDMORE)
-            await self.chart.broker.send_pyobj(fcMsgs.DisplayNode(node.name(), dict(topics)))
+            await self.chart.broker.send_pyobj(fcMsgs.DisplayNode(name=node.name(),
+                                                                  topics=dict(topics),
+                                                                  terms=node.input_vars()))
 
         elif isinstance(item.node, Node) and item.node.viewable():
             topics = []
@@ -725,7 +705,6 @@ class FlowchartWidget(dockarea.DockArea):
                     topic = self.ctrl.features[in_var]
                 else:
                     topic = self.ctrl.graphCommHandler.auto(in_var)
-                    self.ctrl.node_map[node.name] = topic
                     async with self.ctrl.features_lock:
                         self.ctrl.features[in_var] = topic
                     views[in_var] = node.name()
@@ -735,11 +714,13 @@ class FlowchartWidget(dockarea.DockArea):
             if views:
                 await self.ctrl.graphCommHandler.view(views)
             await self.chart.broker.send_string(node.name(), zmq.SNDMORE)
-            await self.chart.broker.send_pyobj(fcMsgs.DisplayNode(node.name(), dict(topics)))
+            await self.chart.broker.send_pyobj(fcMsgs.DisplayNode(name=node.name(),
+                                                                  topics=dict(topics),
+                                                                  terms=node.input_vars()))
 
         elif isinstance(item.node, CtrlNode):
             await self.chart.broker.send_string(node.name(), zmq.SNDMORE)
-            await self.chart.broker.send_pyobj(fcMsgs.DisplayNode(node.name(), []))
+            await self.chart.broker.send_pyobj(fcMsgs.DisplayNode(name=node.name(), topics={}, terms={}))
 
     def hoverOver(self, items):
         # print "FlowchartWidget.hoverOver called."

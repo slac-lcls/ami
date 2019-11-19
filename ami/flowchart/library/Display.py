@@ -179,8 +179,9 @@ class LinePlot(CtrlNode):
         return super(LinePlot, self).display(topics, addr, win, LineWidget, **kwargs)
 
     def addInput(self, **args):
-        self.addTerminal(name="X", io='in', ttype=Array1d, **args)
-        self.addTerminal(name="Y", io='in', ttype=Array1d, **args)
+        group = self.nextGroupName()
+        self.addTerminal(name="X", io='in', ttype=Array1d, group=group, **args)
+        self.addTerminal(name="Y", io='in', ttype=Array1d, group=group, **args)
 
 
 class TableView(CtrlNode):

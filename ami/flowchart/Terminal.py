@@ -11,7 +11,7 @@ import tempfile
 
 
 class Terminal(object):
-    def __init__(self, node, name, io, ttype, pos=None, removable=False):
+    def __init__(self, node, name, io, ttype, group=None, pos=None, removable=False):
         """
         Construct a new terminal.
 
@@ -21,6 +21,7 @@ class Terminal(object):
         name            string, the name of the terminal
         io              'in', 'out', or 'condition'
         ttype           type terminal expects/returns
+        group           Terminal group
         pos             [x, y], the position of the terminal within its node's boundaries
         removable       (bool) Whether the terminal can be removed by the user
         ==============  =================================================================================
@@ -30,6 +31,7 @@ class Terminal(object):
         self._name = name
         self._removable = removable
         self._connections = {}
+        self._group = group
 
         self._type = ttype
         self._graphicsItem = TerminalGraphicsItem(self, parent=self._node().graphicsItem())
@@ -212,7 +214,8 @@ class Terminal(object):
         return {
             'io': self._io,
             'removable': self._removable,
-            'ttype': self._type
+            'ttype': self._type,
+            'group': self._group
         }
 
 

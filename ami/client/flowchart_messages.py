@@ -11,7 +11,7 @@ class BrokerMsg(Msg):
     """
 
     def __init__(self, name):
-        super(BrokerMsg, self).__init__(name)
+        super().__init__(name)
 
 
 class NodeMsg(Msg):
@@ -21,13 +21,13 @@ class NodeMsg(Msg):
     """
 
     def __init__(self, name):
-        super(NodeMsg, self).__init__(name)
+        super().__init__(name)
 
 
 class CreateNode(BrokerMsg):
 
     def __init__(self, name, node_type):
-        super(CreateNode, self).__init__(name)
+        super().__init__(name)
         self.node_type = node_type
 
     def __repr__(self):
@@ -37,41 +37,23 @@ class CreateNode(BrokerMsg):
 class CloseNode(NodeMsg):
 
     def __init__(self):
-        super(CloseNode, self).__init__("")
+        super().__init__("")
 
 
 class DisplayNode(NodeMsg):
 
-    def __init__(self, name, topics, redisplay=False):
-        super(DisplayNode, self).__init__(name)
+    def __init__(self, name, topics, terms, redisplay=False):
+        super().__init__(name)
         self.topics = topics
+        self.terms = terms
         self.redisplay = redisplay
 
     def __repr__(self):
-        return f"DisplayNode(name={self.name}, topics={self.topics}, redisplay={self.redisplay})"
-
-
-class UpdateNodeAttributes(NodeMsg):
-
-    def __init__(self, node_name, inputs=None, conditions=None):
-        super(UpdateNodeAttributes, self).__init__(node_name)
-        self.inputs = inputs
-        self.conditions = conditions
-
-    def __repr__(self):
-        return f"UpdateNodeAttributes(name={self.name}, inputs={self.inputs}, conditions={self.conditions})"
+        return f"DisplayNode(name={self.name}, topics={self.topics}, terms={self.terms}, redisplay={self.redisplay})"
 
 
 class NodeCheckpoint(NodeMsg):
 
-    def __init__(self, node_name, inputs=None, conditions=None, state=None):
-        super(NodeCheckpoint, self).__init__(node_name)
-        self.inputs = inputs
-        self.conditions = conditions
+    def __init__(self, name, state=None):
+        super().__init__(name)
         self.state = state
-
-
-class GetNodeOperation(NodeMsg):
-
-    def __init__(self):
-        super(GetNodeOperation, self).__init__("")

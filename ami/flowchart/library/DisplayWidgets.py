@@ -21,15 +21,15 @@ symbols_colors = list(it.product(symbols, colors))
 
 class AsyncFetcher(object):
 
-    def __init__(self, topics={}, addr=None, buffered=False):
+    def __init__(self, topics={}, addr=None, buffered=False, terms={}):
         self.addr = addr
         self.ctx = zmq.asyncio.Context()
         self.poller = zmq.asyncio.Poller()
-        self.sockets = []
+        self.sockets = {}
         self.buffered = buffered
         self.data = {}
         self.last_updated = "Last Updated: None"
-        self.update_topics(topics)
+        self.update_topics(topics, terms)
 
     @property
     def reply(self):
@@ -45,29 +45,37 @@ class AsyncFetcher(object):
         else:
             return {}
 
-    def update_topics(self, topics={}):
-        self.names = list(topics.keys())
+    def update_topics(self, topics={}, terms={}):
         self.topics = topics
+        self.terms = terms
+        self.names = list(topics.keys())
+
         if self.buffered:
             self.subs = set(topics.values())
         else:
             self.subs = list(topics.values())
 
-        for sock in self.sockets:
+        for name, sock_count in self.sockets.items():
+            sock, count = sock_count
             self.poller.unregister(sock)
             sock.close()
 
-        self.sockets = []
+        self.sockets = {}
         self.view_subs = {}
 
-        for topic in self.subs:
+        for term, name in terms.items():
+            topic = topics[name]
             sub_topic = "view:%s:%s" % (self.addr.name, topic)
             self.view_subs[sub_topic] = topic
             sock = self.ctx.socket(zmq.SUB)
             sock.setsockopt_string(zmq.SUBSCRIBE, sub_topic)
             sock.connect(self.addr.view)
             self.poller.register(sock, zmq.POLLIN)
-            self.sockets.append(sock)
+            if name not in self.sockets:
+                self.sockets[name] = (sock, 1)  # reference count
+            else:
+                sock, count = self.sockets[name]
+                self.sockets[name] = (sock, count+1)
 
     async def fetch(self):
         for sock, flag in await self.poller.poll():
@@ -87,7 +95,7 @@ class ScalarWidget(QLCDNumber):
 
     def __init__(self, topics, addr, parent=None, **kwargs):
         super(ScalarWidget, self).__init__(parent)
-        self.fetcher = AsyncFetcher(topics, addr)
+        self.fetcher = AsyncFetcher(topics, addr, **kwargs)
         self.setGeometry(QRect(320, 180, 191, 81))
         self.setDigitCount(10)
 
@@ -355,11 +363,11 @@ class LineWidget(pg.GraphicsLayoutWidget):
 
     def __init__(self, topics, addr, parent=None, **kwargs):
         super().__init__(parent)
-        self.fetcher = AsyncFetcher(topics, addr)
+        self.terms = kwargs.get('terms', {})
+        self.fetcher = AsyncFetcher(topics=topics, addr=addr, terms=self.terms)
         self.plot_view = self.addPlot()
         self.plot_view.addLegend()
         self.plot = {}
-        self.terms = kwargs.get('terms', {})
         self.last_updated = pg.LabelItem(parent=self.plot_view.getViewBox())
 
     async def update(self):
