@@ -388,7 +388,7 @@ class Flowchart(Node):
                 ctrl = self.widget()
                 now = datetime.now()
                 if hasattr(msg, 'node_name'):
-                    node_name = ctrl.node_map[msg.node_name]
+                    node_name = ctrl.metadata[msg.node_name]['parent']
                     node = self._nodes[node_name]
                     node.setException(msg)
                     ctrl.chartWidget.statusText.append(f"[{now.strftime('%H:%M:%S')}] {source} {node.name()}: {msg}")
@@ -420,6 +420,7 @@ class FlowchartCtrlWidget(QtGui.QWidget):
         super(FlowchartCtrlWidget, self).__init__()
 
         self.graphCommHandler = AsyncGraphCommHandler(graphmgr_addr.name, graphmgr_addr.comm, ctx=chart.ctx)
+        self.metadata = None
 
         self.currentFileName = None
         self.chart = chart
@@ -534,6 +535,8 @@ class FlowchartCtrlWidget(QtGui.QWidget):
 
         async with self.features_lock:
             self.features = features
+
+        self.metadata = await self.graphCommHandler.metadata
 
     def reloadClicked(self):
         try:
@@ -723,6 +726,8 @@ class FlowchartWidget(dockarea.DockArea):
         elif isinstance(item.node, CtrlNode):
             await self.chart.broker.send_string(node.name(), zmq.SNDMORE)
             await self.chart.broker.send_pyobj(fcMsgs.DisplayNode(name=node.name(), topics={}, terms={}))
+
+        self.ctrl.metadata = await self.ctrl.graphCommHandler.metadata
 
     def hoverOver(self, items):
         # print "FlowchartWidget.hoverOver called."
