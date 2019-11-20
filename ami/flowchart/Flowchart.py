@@ -18,7 +18,7 @@ from ami.graphkit_wrapper import Graph
 from ami.client import flowchart_messages as fcMsgs
 
 import ami.flowchart.Editor as EditorTemplate
-import amitypes as at
+import amitypes
 import asyncio
 import zmq.asyncio
 import json
@@ -208,7 +208,7 @@ class Flowchart(Node):
         try:
             if clear:
                 self.clear()
-            Node.restoreState(self, state)
+
             nodes = state['nodes']
             nodes.sort(key=lambda a: a['state']['pos'][0])
             for n in nodes:
@@ -218,9 +218,11 @@ class Flowchart(Node):
                     continue
                 if n['class'] == 'SourceNode':
                     try:
-                        node = SourceNode(name=n['name'], terminals=n['state'].get('terminals', {}))
+                        ttype = eval(n['state']['terminals']['Out']['ttype'])
+                        n['state']['terminals']['Out']['ttype'] = ttype
+                        node = SourceNode(name=n['name'], terminals=n['state']['terminals'])
                         node.restoreState(n['state'])
-                        self.addNode(node, n['name'])
+                        self.createNode(name=n['name'], node=node, nodeType=ttype)
                     except Exception:
                         printExc("Error creating node %s: (continuing anyway)" % n['name'])
                 else:
@@ -370,7 +372,7 @@ class Flowchart(Node):
                     pth = source.split(':')
                     if len(pth) > 2:
                         pth = pth[:-1]
-                    source_library.addNodeType(source, at.loads(node_type), [pth])
+                    source_library.addNodeType(source, amitypes.loads(node_type), [pth])
 
                 async with self.source_lock:
                     self.source_library = source_library
