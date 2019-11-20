@@ -168,6 +168,27 @@ class ArrowDeserializer(object):
         return pa.deserialize_components(components, context=self.context)
 
 
+class TimestampConverter:
+    def __init__(self, shift=32, heartbeat=1000):
+        self.shift = shift
+        self.mask = (1 << self.shift) - 1
+        self.heartbeat = heartbeat
+
+    def decode(self, raw_ts):
+        return (raw_ts >> self.shift) & self.mask, raw_ts & self.mask
+
+    def encode(self, sec, nsec):
+        return ((raw_ts & self.mask) << self.shift) | (raw_ts & self.mask)
+
+    def as_float(self, raw_ts):
+        sec, nsec = self.decode(raw_ts)
+        return sec + nsec * 1.e-9
+
+    def __call__(self, raw_ts):
+        timestamp = self.as_float(raw_ts)
+        return timestamp, int(timestamp * self.heartbeat)
+
+
 class Source(abc.ABC):
     def __init__(self, idnum, num_workers, heartbeat_period, src_cfg, flags=None):
         """
@@ -406,7 +427,7 @@ class Source(abc.ABC):
         pass
 
 
-class RunAndEventSource(Source):
+class HierarchicalDataSource(Source):
     def __init__(self, idnum, num_workers, heartbeat_period, src_cfg, flags=None):
         super().__init__(idnum, num_workers, heartbeat_period, src_cfg, flags)
         self._counter = None
@@ -438,7 +459,7 @@ class RunAndEventSource(Source):
         pass
 
     def timestamp(self, evt):
-        return self.counter
+        return self.counter, self.counter
 
     @property
     def repeat_mode(self):
@@ -476,9 +497,9 @@ class RunAndEventSource(Source):
 
                 for evt in self._events(run):
                     # get the subclasses timestamp implementation
-                    timestamp = self.timestamp(evt)
+                    timestamp, heartbeat = self.timestamp(evt)
                     # check the heartbeat
-                    if self.check_heartbeat_boundary(timestamp):
+                    if self.check_heartbeat_boundary(heartbeat):
                         yield self.heartbeat_msg()
 
                     # emit the processed event data
@@ -486,10 +507,11 @@ class RunAndEventSource(Source):
                     time.sleep(self.interval)
 
 
-class PsanaSource(RunAndEventSource):
+class PsanaSource(HierarchicalDataSource):
 
     def __init__(self, idnum, num_workers, heartbeat_period, src_cfg, flags=None):
         super().__init__(idnum, num_workers, heartbeat_period, src_cfg, flags)
+        self.ts_converter = TimestampConverter()
         self.ds_keys = {
             'exp', 'dir', 'files', 'shmem', 'filter', 'batch_size', 'max_events', 'sel_det_ids', 'det_name'
         }
@@ -502,9 +524,9 @@ class PsanaSource(RunAndEventSource):
     def timestamp(self, evt):
         # If in repeat mode (a.k.a. looping forever over the same events) then use fake ts for heartbeats
         if self.repeat_mode:
-            return self.counter
+            return self.counter, self.counter
         else:
-            return evt.timestamp
+            return self.ts_converter(evt.timestamp)
 
     @property
     def repeat_mode(self):
@@ -594,12 +616,13 @@ class PsanaSource(RunAndEventSource):
         return event
 
 
-class Hdf5Source(RunAndEventSource):
+class Hdf5Source(HierarchicalDataSource):
     def __init__(self, idnum, num_workers, heartbeat_period, src_cfg, flags=None):
         super().__init__(idnum, num_workers, heartbeat_period, src_cfg, flags)
         self.hdf5_delim = "/"
         self.files = self.config.get('files', [])
         self.hdf5_idx = None
+        self.hdf5_max_idx = self.hdf5_idx
         if h5py is None:
             raise NotImplementedError("h5py is not available!")
 
@@ -610,11 +633,26 @@ class Hdf5Source(RunAndEventSource):
         else:
             self.hdf5_idx += self.num_workers
 
-        return self.hdf5_idx
+        if self.hdf5_idx < self.hdf5_max_idx:
+            return self.hdf5_idx
+        else:
+            raise IndexError("index outside hdf5 dataset range")
 
-    def timestamp(self, evt):
-        # always use fake ts for heartbeats for hdf5
-        return self.counter
+    def check_max_index(self, idx):
+        if self.hdf5_max_idx is None:
+            self.hdf5_max_idx = idx
+        else:
+            self.hdf5_max_idx = min(self.hdf5_max_idx, idx)
+
+    def encode(self, name):
+        return name.replace(self.hdf5_delim, self.delimiter)
+
+    def decode(self, name):
+        return name.replace(self.delimiter, self.hdf5_delim)
+
+    #def timestamp(self, evt):
+    #    # always use fake ts for heartbeats for hdf5
+    #    return self.counter
 
     @property
     def repeat_mode(self):
@@ -622,23 +660,44 @@ class Hdf5Source(RunAndEventSource):
 
     def _runs(self):
         for filename in self.files:
-            self.hdf5_idx = 0
             with h5py.File(filename, 'r') as hdf5_file:
                 yield hdf5_file
 
     def _events(self, run):
         while True:
-            yield (self.index, run)
+            try:
+                yield (self.index, run)
+            except IndexError:
+                self.hdf5_idx = None
+                self.hdf5_max_idx = self.hdf5_idx
+                break
 
     def _update_data_names(self, name, obj):
         if isinstance(obj, h5py.Dataset):
-            self.data_types[name.replace(self.hdf5_delim, self.delimiter)] = obj.dtype.type
+            ndims = len(obj.shape) - 1
+            if ndims < 0:
+                logger.debug("DataSrc: ignoring empty dataset %s", name)
+            else:
+                self.check_max_index(obj.shape[0])
+                if ndims == 2:
+                    self.data_types[self.encode(name)] = at.Array2d
+                elif ndims == 1:
+                    self.data_types[self.encode(name)] = at.Array1d
+                elif ndims == 0:
+                    self.data_types[self.encode(name)] = type(obj.dtype.type(0).item())
+                else:
+                    self.data_types[self.encode(name)] = typing.Any
 
     def _update(self, run):
         run.visititems(self._update_data_names)
 
     def _process(self, evt):
+        index, run = evt
+
         event = {}
+
+        for name in self.requested_data:
+            event[name] = run[self.decode(name)][index]
 
         return event
 
