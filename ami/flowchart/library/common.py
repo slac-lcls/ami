@@ -116,6 +116,8 @@ class CtrlNode(Node):
 
             if 'value' in o:
                 setattr(self, k, o['value'])
+            elif 'values' in o:
+                setattr(self, k, o['values'][0])
             elif 'index' in o:
                 setattr(self, k, o['values'][o['index']])
             elif 'checked' in o:

@@ -3,6 +3,7 @@
     "init_time": 0.5,
     "bound": 12,
     "files": ["data.xtc2"],
+    "repeat": true,
     "config": {
         "delta_t": {"dtype": "Scalar", "range": [0,10], "integer": true},
         "cspad": {"dtype": "Image", "pedestal": 5, "width": 1, "shape": [1024, 1024]},
