@@ -458,8 +458,25 @@ class HierarchicalDataSource(Source):
     def _process(self, run):
         pass
 
+    @abc.abstractmethod
+    def _timestamp(self, evt):
+        pass
+
     def timestamp(self, evt):
-        return self.counter, self.counter
+        counter = self.counter
+        timestamp, heartbeat = self._timestamp(evt)
+        if timestamp is None:
+            # If the source does not provide timestamps use the counter
+            return counter, counter
+        elif self.repeat_mode:
+            # If in repeat mode (a.k.a. looping forever over the same events)
+            # then use fake ts for heartbeats
+            return timestamp, counter
+        elif heartbeat is None:
+            # If no heartbeat adjusted timestamp is provider just the raw timestamp
+            return timestamp, timestamp
+        else:
+            return timestamp, heartbeat
 
     @property
     def repeat_mode(self):
@@ -521,12 +538,8 @@ class PsanaSource(HierarchicalDataSource):
         else:
             raise NotImplementedError("psana is not available!")
 
-    def timestamp(self, evt):
-        # If in repeat mode (a.k.a. looping forever over the same events) then use fake ts for heartbeats
-        if self.repeat_mode:
-            return self.counter, self.counter
-        else:
-            return self.ts_converter(evt.timestamp)
+    def _timestamp(self, evt):
+        return self.ts_converter(evt.timestamp)
 
     @property
     def repeat_mode(self):
@@ -621,8 +634,10 @@ class Hdf5Source(HierarchicalDataSource):
         super().__init__(idnum, num_workers, heartbeat_period, src_cfg, flags)
         self.hdf5_delim = "/"
         self.files = self.config.get('files', [])
+        self.hdf5_ts = self.config.get('timestamp')
         self.hdf5_idx = None
         self.hdf5_max_idx = self.hdf5_idx
+        self.ts_converter = TimestampConverter()
         if h5py is None:
             raise NotImplementedError("h5py is not available!")
 
@@ -650,13 +665,16 @@ class Hdf5Source(HierarchicalDataSource):
     def decode(self, name):
         return name.replace(self.delimiter, self.hdf5_delim)
 
-    #def timestamp(self, evt):
-    #    # always use fake ts for heartbeats for hdf5
-    #    return self.counter
-
     @property
     def repeat_mode(self):
         return self.config.get('repeat', False)
+
+    def _timestamp(self, evt):
+        if self.hdf5_ts is None:
+            return None, None
+        else:
+            index, run = evt
+            return self.ts_converter(run[self.hdf5_ts][index])
 
     def _runs(self):
         for filename in self.files:
