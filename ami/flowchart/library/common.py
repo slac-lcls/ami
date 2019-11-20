@@ -165,10 +165,10 @@ class CtrlNode(Node):
 
         self.widget = None
 
-    def display(self, topics, addr, win, widget=None, **kwargs):
+    def display(self, topics, terms, addr, win, widget=None, **kwargs):
 
         if self.widget is None and widget:
-            self.widget = widget(topics, addr, win, **kwargs)
+            self.widget = widget(topics, terms, addr, win, **kwargs)
 
         if self.task is None and self.widget:
             self.task = asyncio.ensure_future(self.widget.update())
@@ -197,9 +197,9 @@ class SourceNode(CtrlNode):
 
         self._input_vars["In"] = self.name()
 
-    def display(self, topics, addr, win, **kwargs):
+    def display(self, topics, terms, addr, win, **kwargs):
         if self.widgetType:
-            return super(SourceNode, self).display(topics, addr, win, self.widgetType, **kwargs)
+            return super().display(topics, terms, addr, win, self.widgetType, **kwargs)
 
     def isSource(self):
         return True

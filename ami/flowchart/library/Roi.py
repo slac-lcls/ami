@@ -19,15 +19,15 @@ class Roi2D(CtrlNode):
                   ('extent y',  'intSpin', {'value': 10, 'min': 1, 'max': MAX})]
 
     def __init__(self, name):
-        super(Roi2D, self).__init__(name,
-                                    terminals={'In': {'io': 'in', 'ttype': Array2d},
-                                               'Out': {'io': 'out', 'ttype': Array2d}},
-                                    viewable=True)
+        super().__init__(name,
+                         terminals={'In': {'io': 'in', 'ttype': Array2d},
+                                    'Out': {'io': 'out', 'ttype': Array2d}},
+                         viewable=True)
         self.func = lambda img: img
 
-    def display(self, topics, addr, win, **kwargs):
+    def display(self, topics, terms, addr, win, **kwargs):
         if self.widget is None:
-            self.widget = AreaDetWidget(topics, addr, win)
+            self.widget = AreaDetWidget(topics, terms, addr, win)
             self.widget.roi.sigRegionChangeFinished.connect(self.set_values)
             self.widget.ui.roiBtn.setChecked(True)
             self.widget.ui.roiBtn.hide()
@@ -96,14 +96,14 @@ class Roi1D(CtrlNode):
                   ('extent',  'intSpin', {'value': 10, 'min': 1, 'max': MAX})]
 
     def __init__(self, name):
-        super(Roi1D, self).__init__(name, terminals={"In": {"io": "in", "ttype": Array1d},
-                                                     "Out": {"io": "out", "ttype": Array1d}},
-                                    viewable=True)
+        super().__init__(name, terminals={"In": {"io": "in", "ttype": Array1d},
+                                          "Out": {"io": "out", "ttype": Array1d}},
+                         viewable=True)
         self.func = lambda img: img
 
-    def display(self, topics, addr, win, **kwargs):
+    def display(self, topics, terms, addr, win, **kwargs):
         if self.widget is None:
-            self.widget = WaveformWidget(topics, addr, win, **kwargs)
+            self.widget = WaveformWidget(topics, terms, addr, win, **kwargs)
             self.widget.roi = pg.LinearRegionItem((0, 10), swapMode='block')
             self.widget.roi.setBounds((0, None))
             self.widget.plot_view.addItem(self.widget.roi)
@@ -163,15 +163,15 @@ class Roi0D(CtrlNode):
                   ('y', 'intSpin', {'value': 0, 'min': 0, 'max': MAX})]
 
     def __init__(self, name):
-        super(Roi0D, self).__init__(name,
-                                    terminals={'In': {'io': 'in', 'ttype': Array2d},
-                                               'Out': {'io': 'out', 'ttype': float}},
-                                    viewable=True)
+        super().__init__(name,
+                         terminals={'In': {'io': 'in', 'ttype': Array2d},
+                                    'Out': {'io': 'out', 'ttype': float}},
+                         viewable=True)
         self.func = lambda img: img[0, 0]
 
-    def display(self, topics, addr, win, **kwargs):
+    def display(self, topics, terms, addr, win, **kwargs):
         if self.widget is None:
-            self.widget = PixelDetWidget(topics, addr, win)
+            self.widget = PixelDetWidget(topics, terms, addr, win)
             self.widget.sigClicked.connect(self.set_values)
         if self.task is None:
             self.task = asyncio.ensure_future(self.widget.update())

@@ -21,7 +21,7 @@ symbols_colors = list(it.product(symbols, colors))
 
 class AsyncFetcher(object):
 
-    def __init__(self, topics={}, addr=None, buffered=False, terms={}):
+    def __init__(self, topics, terms, addr, buffered=False):
         self.addr = addr
         self.ctx = zmq.asyncio.Context()
         self.poller = zmq.asyncio.Poller()
@@ -45,7 +45,7 @@ class AsyncFetcher(object):
         else:
             return {}
 
-    def update_topics(self, topics={}, terms={}):
+    def update_topics(self, topics, terms):
         self.topics = topics
         self.terms = terms
         self.names = list(topics.keys())
@@ -93,9 +93,9 @@ class AsyncFetcher(object):
 
 class ScalarWidget(QLCDNumber):
 
-    def __init__(self, topics, addr, parent=None, **kwargs):
+    def __init__(self, topics, terms, addr, parent=None, **kwargs):
         super(ScalarWidget, self).__init__(parent)
-        self.fetcher = AsyncFetcher(topics, addr, **kwargs)
+        self.fetcher = AsyncFetcher(topics, terms, addr, **kwargs)
         self.setGeometry(QRect(320, 180, 191, 81))
         self.setDigitCount(10)
 
@@ -108,9 +108,9 @@ class ScalarWidget(QLCDNumber):
 
 class AreaDetWidget(pg.ImageView):
 
-    def __init__(self, topics, addr, parent=None, **kwargs):
+    def __init__(self, topics, terms, addr, parent=None, **kwargs):
         super().__init__(parent)
-        self.fetcher = AsyncFetcher(topics, addr)
+        self.fetcher = AsyncFetcher(topics, terms, addr)
         handles = self.roi.getHandles()
         self.roi.removeHandle(handles[1])
         self.last_updated = pg.LabelItem(parent=self.getView())
@@ -143,12 +143,12 @@ class PixelDetWidget(pg.ImageView):
 
     sigClicked = Signal(object, object)
 
-    def __init__(self, topics, addr, parent=None, **kwargs):
+    def __init__(self, topics, terms, addr, parent=None, **kwargs):
         self.plot = pg.PlotItem()
         self.plot.hideAxis('left')
         self.plot.hideAxis('bottom')
         super().__init__(parent=parent, view=self.plot)
-        self.fetcher = AsyncFetcher(topics, addr)
+        self.fetcher = AsyncFetcher(topics, terms, addr)
         self.last_updated = pg.LabelItem(parent=self.plot)
         self.point = self.plot.plot([0], [0], symbolBrush=(200, 0, 0), symbol='+', symbolSize=25)
         self.pixel_value = pg.LabelItem(parent=self.getView())
@@ -197,13 +197,13 @@ class PixelDetWidget(pg.ImageView):
 
 class HistogramWidget(pg.GraphicsLayoutWidget):
 
-    def __init__(self, topics, addr, parent=None, **kwargs):
+    def __init__(self, topics, terms, addr, parent=None, **kwargs):
         super().__init__(parent)
-        self.fetcher = AsyncFetcher(topics, addr)
+        self.fetcher = AsyncFetcher(topics, terms, addr)
         self.plot_view = self.addPlot()
         self.plot_view.addLegend()
         self.plot = {}
-        self.terms = kwargs.get('terms', {})
+        self.terms = terms
         self.last_updated = pg.LabelItem(parent=self.plot_view.getViewBox())
 
     async def update(self):
@@ -242,12 +242,12 @@ class HistogramWidget(pg.GraphicsLayoutWidget):
 
 class Histogram2DWidget(pg.ImageView):
 
-    def __init__(self, topics, addr, parent=None, **kwargs):
+    def __init__(self, topics, terms, addr, parent=None, **kwargs):
         self.plot = pg.PlotItem()
         self.plot.setAspectLocked(False)
         super().__init__(parent, view=self.plot)
-        self.fetcher = AsyncFetcher(topics, addr)
-        self.terms = kwargs.get('terms', {})
+        self.fetcher = AsyncFetcher(topics, terms, addr)
+        self.terms = terms
         self.last_updated = pg.LabelItem(parent=self.plot)
         self.pixel_value = pg.LabelItem(parent=self.plot)
         self.proxy = pg.SignalProxy(self.scene.sigMouseMoved,
@@ -290,13 +290,13 @@ class Histogram2DWidget(pg.ImageView):
 
 class ScatterWidget(pg.GraphicsLayoutWidget):
 
-    def __init__(self, topics, addr, parent=None, **kwargs):
+    def __init__(self, topics, terms, addr, parent=None, **kwargs):
         super().__init__(parent)
-        self.fetcher = AsyncFetcher(topics, addr, buffered=True)
+        self.fetcher = AsyncFetcher(topics, terms, addr, buffered=True)
         self.plot_view = self.addPlot()
         self.plot_view.addLegend()
         self.plot = {}
-        self.terms = kwargs.get('terms', {})
+        self.terms = terms
         self.last_updated = pg.LabelItem(parent=self.plot_view.getViewBox())
 
     async def update(self):
@@ -331,13 +331,13 @@ class ScatterWidget(pg.GraphicsLayoutWidget):
 
 class WaveformWidget(pg.GraphicsLayoutWidget):
 
-    def __init__(self, topics, addr, parent=None, **kwargs):
+    def __init__(self, topics, terms, addr, parent=None, **kwargs):
         super().__init__(parent)
-        self.fetcher = AsyncFetcher(topics, addr, buffered=True)
+        self.fetcher = AsyncFetcher(topics, terms, addr, buffered=True)
         self.plot_view = self.addPlot()
         self.plot_view.addLegend()
         self.plot = {}
-        self.terms = kwargs.get('terms', {})
+        self.terms = terms
         self.last_updated = pg.LabelItem(parent=self.plot_view.getViewBox())
 
     async def update(self):
@@ -361,13 +361,13 @@ class WaveformWidget(pg.GraphicsLayoutWidget):
 
 class LineWidget(pg.GraphicsLayoutWidget):
 
-    def __init__(self, topics, addr, parent=None, **kwargs):
+    def __init__(self, topics, terms, addr, parent=None, **kwargs):
         super().__init__(parent)
-        self.terms = kwargs.get('terms', {})
-        self.fetcher = AsyncFetcher(topics=topics, addr=addr, terms=self.terms)
+        self.fetcher = AsyncFetcher(topics, terms, addr)
         self.plot_view = self.addPlot()
         self.plot_view.addLegend()
         self.plot = {}
+        self.terms = terms
         self.last_updated = pg.LabelItem(parent=self.plot_view.getViewBox())
 
     async def update(self):
@@ -400,10 +400,10 @@ class LineWidget(pg.GraphicsLayoutWidget):
 
 class ArrayWidget(QWidget):
 
-    def __init__(self, topics, addr, parent=None, **kwargs):
+    def __init__(self, topics, terms, addr, parent=None, **kwargs):
         super().__init__(parent)
-        self.fetcher = AsyncFetcher(topics, addr)
-        self.terms = kwargs.get('terms', {})
+        self.fetcher = AsyncFetcher(topics, terms, addr)
+        self.terms = terms
         self.update_rate = kwargs.get('update_rate', 30)
         self.grid = QGridLayout(self)
         self.table = pg.TableWidget()

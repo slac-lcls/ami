@@ -64,7 +64,7 @@ class NodeWindow(QtGui.QMainWindow):
         self.proc = proc
 
     def closeEvent(self, event):
-        self.proc.node.clear(widget=True)
+        self.proc.node.clear()
         self.proc.widget = None
         self.destroy()
         event.ignore()
@@ -140,7 +140,7 @@ class NodeProcess(QtCore.QObject):
             self.widget = None
 
         if self.widget is None:
-            self.widget = self.node.display(msg.topics, self.graphmgr_addr, self.win, terms=msg.terms)
+            self.widget = self.node.display(msg.topics, msg.terms, self.graphmgr_addr, self.win)
 
             if self.ctrlWidget and self.widget:
                 cw = QtGui.QWidget()
