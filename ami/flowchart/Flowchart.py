@@ -356,9 +356,11 @@ class Flowchart(Node):
             # in ami.client.flowchart.NodeProcess.send_checkpoint we send a
             # fcMsgs.NodeCheckPoint but we are only ever receiving the state
             new_node_state = await self.checkpoint.recv_pyobj()
-            current_node_state = self._nodes[node_name].saveState()
-            current_node_state['ctrl'] = new_node_state['ctrl']
-            self._nodes[node_name].restoreState(current_node_state)
+            if 'ctrl' in new_node_state:
+                current_node_state = self._nodes[node_name].saveState()
+                current_node_state['ctrl'] = new_node_state['ctrl']
+                self._nodes[node_name].restoreState(current_node_state)
+            self._nodes[node_name].viewed = new_node_state['viewed']
 
     async def updateSources(self, init=False):
         while True:

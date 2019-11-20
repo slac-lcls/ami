@@ -1,64 +1,40 @@
 {
   "connects": [
     [
-      "cspad",
-      "Out",
-      "Roi2D.0",
-      "In"
-    ],
-    [
-      "cspad",
-      "Out",
-      "ImageViewer.0",
-      "In"
-    ],
-    [
-      "Roi2D.0",
-      "Out",
-      "Sum.0",
-      "In"
-    ],
-    [
-      "Sum.0",
-      "Out",
-      "MeanVsScan.1",
-      "Value"
-    ],
-    [
-      "Sum.0",
-      "Out",
-      "ScatterPlot.0",
-      "Y"
-    ],
-    [
       "laser",
       "Out",
       "ScalarPlot.0",
       "Y"
     ],
     [
-      "laser",
+      "cspad",
       "Out",
-      "FilterOn.0",
+      "Roi2D.0",
+      "In"
+    ],
+    [
+      "Roi2D.0",
+      "Out",
+      "Sum.0",
+      "In"
+    ],
+    [
+      "FilterOff.0",
+      "Out",
+      "MeanVsScan.0",
       "Condition"
     ],
     [
-      "MeanVsScan.0",
-      "Bins",
-      "LinePlot.0",
-      "X"
-    ],
-    [
-      "MeanVsScan.0",
-      "Counts",
-      "LinePlot.0",
-      "Y"
-    ],
-    [
-      "delta_t",
+      "FilterOn.0",
       "Out",
-      "MeanVsScan.0",
-      "Bin"
+      "MeanVsScan.1",
+      "Condition"
+    ],
+    [
+      "Sum.0",
+      "Out",
+      "ScatterPlot.0",
+      "Y"
     ],
     [
       "Sum.0",
@@ -67,16 +43,52 @@
       "In"
     ],
     [
-      "Sum.0",
-      "Out",
+      "MeanVsScan.1",
+      "Bins",
+      "LinePlot.0",
+      "X.1"
+    ],
+    [
       "MeanVsScan.0",
-      "Value"
+      "Counts",
+      "LinePlot.0",
+      "Y"
+    ],
+    [
+      "cspad",
+      "Out",
+      "ImageViewer.0",
+      "In"
+    ],
+    [
+      "laser",
+      "Out",
+      "FilterOn.0",
+      "Condition"
     ],
     [
       "laser",
       "Out",
       "FilterOff.0",
       "Condition"
+    ],
+    [
+      "Sum.0",
+      "Out",
+      "MeanVsScan.1",
+      "Value"
+    ],
+    [
+      "delta_t",
+      "Out",
+      "MeanVsScan.1",
+      "Bin"
+    ],
+    [
+      "MeanVsScan.0",
+      "Bins",
+      "LinePlot.0",
+      "X"
     ],
     [
       "delta_t",
@@ -86,32 +98,20 @@
     ],
     [
       "MeanVsScan.1",
-      "Bins",
-      "LinePlot.0",
-      "X.1"
-    ],
-    [
-      "MeanVsScan.1",
       "Counts",
       "LinePlot.0",
       "Y.1"
     ],
     [
-      "FilterOn.0",
-      "Out",
-      "MeanVsScan.1",
-      "Condition"
-    ],
-    [
-      "FilterOff.0",
+      "Sum.0",
       "Out",
       "MeanVsScan.0",
-      "Condition"
+      "Value"
     ],
     [
       "delta_t",
       "Out",
-      "MeanVsScan.1",
+      "MeanVsScan.0",
       "Bin"
     ]
   ],
@@ -127,97 +127,10 @@
         ],
         "terminals": {
           "Out": {
+            "group": null,
             "io": "out",
             "removable": false,
             "ttype": "amitypes.Array2d"
-          }
-        }
-      }
-    },
-    {
-      "class": "ImageViewer",
-      "name": "ImageViewer.0",
-      "state": {
-        "note": "",
-        "pos": [
-          300.0,
-          100.0
-        ],
-        "terminals": {
-          "In": {
-            "io": "in",
-            "removable": false,
-            "ttype": "amitypes.Array2d"
-          }
-        }
-      }
-    },
-    {
-      "class": "Roi2D",
-      "name": "Roi2D.0",
-      "state": {
-        "ctrl": {
-          "extent x": 10,
-          "extent y": 10,
-          "origin x": 0,
-          "origin y": 0
-        },
-        "note": "",
-        "pos": [
-          300.0,
-          300.0
-        ],
-        "terminals": {
-          "In": {
-            "io": "in",
-            "removable": false,
-            "ttype": "amitypes.Array2d"
-          },
-          "Out": {
-            "io": "out",
-            "removable": false,
-            "ttype": "amitypes.Array2d"
-          }
-        }
-      }
-    },
-    {
-      "class": "Sum",
-      "name": "Sum.0",
-      "state": {
-        "note": "",
-        "pos": [
-          500.0,
-          300.0
-        ],
-        "terminals": {
-          "In": {
-            "io": "in",
-            "removable": false,
-            "ttype": "Union[amitypes.Array3d,amitypes.Array2d,amitypes.Array1d,List[float]]"
-          },
-          "Out": {
-            "io": "out",
-            "removable": false,
-            "ttype": "float"
-          }
-        }
-      }
-    },
-    {
-      "class": "ScalarViewer",
-      "name": "ScalarViewer.0",
-      "state": {
-        "note": "",
-        "pos": [
-          700.0,
-          300.0
-        ],
-        "terminals": {
-          "In": {
-            "io": "in",
-            "removable": false,
-            "ttype": "float"
           }
         }
       }
@@ -233,9 +146,60 @@
         ],
         "terminals": {
           "Out": {
+            "group": null,
             "io": "out",
             "removable": false,
             "ttype": "int"
+          }
+        }
+      }
+    },
+    {
+      "class": "ImageViewer",
+      "name": "ImageViewer.0",
+      "state": {
+        "note": "",
+        "pos": [
+          300.0,
+          100.0
+        ],
+        "terminals": {
+          "In": {
+            "group": null,
+            "io": "in",
+            "removable": false,
+            "ttype": "amitypes.Array2d"
+          }
+        }
+      }
+    },
+    {
+      "class": "Roi2D",
+      "name": "Roi2D.0",
+      "state": {
+        "ctrl": {
+          "extent x": 730,
+          "extent y": 813,
+          "origin x": 98,
+          "origin y": 57
+        },
+        "note": "",
+        "pos": [
+          300.0,
+          300.0
+        ],
+        "terminals": {
+          "In": {
+            "group": null,
+            "io": "in",
+            "removable": false,
+            "ttype": "amitypes.Array2d"
+          },
+          "Out": {
+            "group": null,
+            "io": "out",
+            "removable": false,
+            "ttype": "amitypes.Array2d"
           }
         }
       }
@@ -254,6 +218,7 @@
         ],
         "terminals": {
           "Y": {
+            "group": null,
             "io": "in",
             "removable": false,
             "ttype": "float"
@@ -272,11 +237,13 @@
         ],
         "terminals": {
           "Condition": {
+            "group": null,
             "io": "condition",
             "removable": false,
             "ttype": "Any"
           },
           "Out": {
+            "group": null,
             "io": "out",
             "removable": false,
             "ttype": "bool"
@@ -295,14 +262,79 @@
         ],
         "terminals": {
           "Condition": {
+            "group": null,
             "io": "condition",
             "removable": false,
             "ttype": "Any"
           },
           "Out": {
+            "group": null,
             "io": "out",
             "removable": false,
             "ttype": "bool"
+          }
+        }
+      }
+    },
+    {
+      "class": "Sum",
+      "name": "Sum.0",
+      "state": {
+        "note": "",
+        "pos": [
+          500.0,
+          300.0
+        ],
+        "terminals": {
+          "In": {
+            "group": null,
+            "io": "in",
+            "removable": false,
+            "ttype": "Union[amitypes.Array3d,amitypes.Array2d,amitypes.Array1d,List[float]]"
+          },
+          "Out": {
+            "group": null,
+            "io": "out",
+            "removable": false,
+            "ttype": "float"
+          }
+        }
+      }
+    },
+    {
+      "class": "SourceNode",
+      "name": "delta_t",
+      "state": {
+        "note": "",
+        "pos": [
+          500.0,
+          700.0
+        ],
+        "terminals": {
+          "Out": {
+            "group": null,
+            "io": "out",
+            "removable": false,
+            "ttype": "int"
+          }
+        }
+      }
+    },
+    {
+      "class": "ScalarViewer",
+      "name": "ScalarViewer.0",
+      "state": {
+        "note": "",
+        "pos": [
+          700.0,
+          300.0
+        ],
+        "terminals": {
+          "In": {
+            "group": null,
+            "io": "in",
+            "removable": false,
+            "ttype": "float"
           }
         }
       }
@@ -318,26 +350,31 @@
         ],
         "terminals": {
           "Bin": {
+            "group": null,
             "io": "in",
             "removable": false,
             "ttype": "float"
           },
           "Bins": {
+            "group": null,
             "io": "out",
             "removable": false,
             "ttype": "amitypes.Array1d"
           },
           "Condition": {
+            "group": null,
             "io": "condition",
             "removable": true,
             "ttype": "Any"
           },
           "Counts": {
+            "group": null,
             "io": "out",
             "removable": false,
             "ttype": "amitypes.Array1d"
           },
           "Value": {
+            "group": null,
             "io": "in",
             "removable": false,
             "ttype": "float"
@@ -356,47 +393,34 @@
         ],
         "terminals": {
           "Bin": {
+            "group": null,
             "io": "in",
             "removable": false,
             "ttype": "float"
           },
           "Bins": {
+            "group": null,
             "io": "out",
             "removable": false,
             "ttype": "amitypes.Array1d"
           },
           "Condition": {
+            "group": null,
             "io": "condition",
             "removable": true,
             "ttype": "Any"
           },
           "Counts": {
+            "group": null,
             "io": "out",
             "removable": false,
             "ttype": "amitypes.Array1d"
           },
           "Value": {
+            "group": null,
             "io": "in",
             "removable": false,
             "ttype": "float"
-          }
-        }
-      }
-    },
-    {
-      "class": "SourceNode",
-      "name": "delta_t",
-      "state": {
-        "note": "",
-        "pos": [
-          500.0,
-          700.0
-        ],
-        "terminals": {
-          "Out": {
-            "io": "out",
-            "removable": false,
-            "ttype": "int"
           }
         }
       }
@@ -415,11 +439,13 @@
         ],
         "terminals": {
           "X": {
+            "group": null,
             "io": "in",
             "removable": false,
             "ttype": "float"
           },
           "Y": {
+            "group": null,
             "io": "in",
             "removable": false,
             "ttype": "float"
@@ -438,21 +464,25 @@
         ],
         "terminals": {
           "X": {
+            "group": null,
             "io": "in",
             "removable": false,
             "ttype": "amitypes.Array1d"
           },
           "X.1": {
+            "group": null,
             "io": "in",
             "removable": true,
             "ttype": "amitypes.Array1d"
           },
           "Y": {
+            "group": null,
             "io": "in",
             "removable": false,
             "ttype": "amitypes.Array1d"
           },
           "Y.1": {
+            "group": null,
             "io": "in",
             "removable": true,
             "ttype": "amitypes.Array1d"

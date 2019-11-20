@@ -66,6 +66,8 @@ class NodeWindow(QtGui.QMainWindow):
     def closeEvent(self, event):
         self.proc.node.clear()
         self.proc.widget = None
+        self.proc.show = False
+        self.proc.node.sigStateChanged.emit(self.proc.node)
         self.destroy()
         event.ignore()
 
@@ -135,7 +137,7 @@ class NodeProcess(QtCore.QObject):
                 return
 
     def display(self, msg):
-        if msg.redisplay:
+        if self.show and msg.redisplay:
             self.node.clear()
             self.widget = None
 
@@ -150,13 +152,13 @@ class NodeProcess(QtCore.QObject):
                 layout.addWidget(self.ctrlWidget, 0, 0)
                 layout.addWidget(self.widget, 0, 1, -1, -1)
                 layout.setColumnStretch(1, 10)
+                self.node.update()
             elif self.ctrlWidget:
                 self.win.setCentralWidget(self.ctrlWidget)
             elif self.widget:
                 self.win.setCentralWidget(self.widget)
 
-            if self.ctrlWidget:
-                self.node.sigStateChanged.connect(self.send_checkpoint)
+            self.node.sigStateChanged.connect(self.send_checkpoint)
 
         if not msg.redisplay:
             self.show = not self.show
@@ -167,8 +169,10 @@ class NodeProcess(QtCore.QObject):
 
     @asyncSlot(object)
     async def send_checkpoint(self, node):
+        state = node.saveState()
+        state['viewed'] = self.show
         msg = fcMsgs.NodeCheckpoint(node.name(),
-                                    state=node.saveState())
+                                    state=state)
         await self.checkpoint.send_string(node.name(), zmq.SNDMORE)
         await self.checkpoint.send_pyobj(msg)
 
