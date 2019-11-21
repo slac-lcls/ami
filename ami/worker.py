@@ -52,6 +52,13 @@ class Worker(Node):
         if name not in self.graphs or self.graphs[name] is None:
             self.graphs[name] = Graph(name)
 
+    def clear_graph(self, name):
+        if name in self.graphs:
+            self.graphs[name] = Graph(name)
+        if name in self.store:
+            self.store.clear(name)
+        self.update_requests()
+
     def update_requests(self):
         requests = set()
         for graph in self.graphs.values():
@@ -119,8 +126,8 @@ class Worker(Node):
                     except zmq.Again:
                         break
             elif msg.mtype == MsgTypes.Datagram:
-                try:
-                    for name, graph in self.graphs.items():
+                for name, graph in self.graphs.items():
+                    try:
                         if graph:
                             if name in self.exports:
                                 msg.payload.update(self.exports[name])
@@ -129,10 +136,10 @@ class Worker(Node):
                             if name not in times:
                                 times[name] = []
                             times[name].append(graph.times())
-                except Exception as e:
-                    logger.exception("%s: Failure encountered executing graph:", self.name)
-                    self.report("error", e)
-                    return 1
+                    except Exception as e:
+                        self.clear_graph(name)
+                        logger.exception("%s: Failure encountered on executing graph %s:", self.name, name)
+                        self.report("error", e)
             else:
                 self.store.send(msg)
 

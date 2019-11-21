@@ -174,18 +174,19 @@ class TimestampConverter:
         self.mask = (1 << self.shift) - 1
         self.heartbeat = heartbeat
 
-    def decode(self, raw_ts):
-        return (raw_ts >> self.shift) & self.mask, raw_ts & self.mask
+    def decode(self, raw_ts, as_float=False):
+        sec = (raw_ts >> self.shift) & self.mask
+        nsec = raw_ts & self.mask
+        if as_float:
+            return sec + nsec * 1.e-9
+        else:
+            return sec, nsec
 
     def encode(self, sec, nsec):
         return ((raw_ts & self.mask) << self.shift) | (raw_ts & self.mask)
 
-    def as_float(self, raw_ts):
-        sec, nsec = self.decode(raw_ts)
-        return sec + nsec * 1.e-9
-
     def __call__(self, raw_ts):
-        timestamp = self.as_float(raw_ts)
+        timestamp = self.decode(raw_ts, as_float=True)
         return timestamp, int(timestamp * self.heartbeat)
 
 
@@ -702,7 +703,7 @@ class Hdf5Source(HierarchicalDataSource):
                 elif ndims == 1:
                     self.data_types[self.encode(name)] = at.Array1d
                 elif ndims == 0:
-                    self.data_types[self.encode(name)] = type(obj.dtype.type(0).item())
+                    self.data_types[self.encode(name)] = at.NumPyTypeDict.get(obj.dtype.type, typing.Any)
                 else:
                     self.data_types[self.encode(name)] = typing.Any
 
