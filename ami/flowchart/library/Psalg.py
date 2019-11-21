@@ -63,7 +63,7 @@ try:
         uiTemplate = [('num chans', 'combo', {'values': ["5", "7", "16"]}),
                       ('num hits', 'intSpin', {'value': 16, 'min': 1, 'max': MAX}),
                       ('base', 'doubleSpin', {'value': 0., 'min': 0., 'max': MAX}),
-                      ('thr', 'doubleSpin', {'value': -0.05, 'max': MAX}),
+                      ('thr', 'doubleSpin', {'value': -0.05, 'min': -MAX, 'max': MAX}),
                       ('cfr', 'doubleSpin', {'value': 0.85, 'max': MAX}),
                       ('deadtime', 'doubleSpin', {'value': 10.0, 'max': MAX}),
                       ('leadingedge', 'check', {'checked': True}),

@@ -508,6 +508,7 @@ def checkType(terminals, type_file=None):
         pass
 
     f_in_name = t_in.node().name() + '_' + t_in.name()
+    f_in_name = f_in_name.replace(' ', '_')
     f_in_name = f_in_name.replace('.', '_')
     f_in_name = f_in_name.replace(':', '_')
     f_in.__annotations__ = {'t': t_in.type()}
@@ -519,6 +520,7 @@ def checkType(terminals, type_file=None):
         pass
 
     f_out_name = t_out.node().name() + '_' + t_out.name()
+    f_out_name = f_out_name.replace(' ', '_')
     f_out_name = f_out_name.replace('.', '_')
     f_out_name = f_out_name.replace(':', '_')
     f_out.__annotations__ = {'return': t_out.type()}

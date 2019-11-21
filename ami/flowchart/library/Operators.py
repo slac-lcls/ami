@@ -290,25 +290,25 @@ class Subtract(MathNode):
         return node
 
 
-class Constant(CtrlNode, MathNode):
+# class Constant(CtrlNode, MathNode):
 
-    """
-    Add/Subtract/Multiply/Divide waveform and images by constant.
-    """
+#     """
+#     Add/Subtract/Multiply/Divide waveform and images by constant.
+#     """
 
-    nodeName = "Constant"
-    uiTemplate = [('operation', 'combo', {'values': ['Add', 'Subtract', 'Multiply', 'Divide']})]
+#     nodeName = "Constant"
+#     uiTemplate = [('operation', 'combo', {'values': ['Add', 'Subtract', 'Multiply', 'Divide']})]
 
-    def __init__(self, name):
-        CtrlNode.__init__(name,
-                          terminals={'Image': {'io': 'in', 'ttype': Array2d, 'removable': True},
-                                     'Out': {'io': 'out', 'ttype': Array2d}},
-                          allowAddInput=True)
-        self.sigTerminalAdded.connect(self.setOutput)
-        self.sigTerminalRemoved.connect(self.setOutput)
+#     def __init__(self, name):
+#         CtrlNode.__init__(name,
+#                           terminals={'Image': {'io': 'in', 'ttype': Array2d, 'removable': True},
+#                                      'Out': {'io': 'out', 'ttype': Array2d}},
+#                           allowAddInput=True)
+#         self.sigTerminalAdded.connect(self.setOutput)
+#         self.sigTerminalRemoved.connect(self.setOutput)
 
-    def to_operation(self, inputs, conditions={}):
-        pass
+#     def to_operation(self, inputs, conditions={}):
+#         pass
 
 
 class Export(Node):
