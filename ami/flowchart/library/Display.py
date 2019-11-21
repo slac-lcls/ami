@@ -125,11 +125,13 @@ class ScatterPlot(CtrlNode):
         self.addTerminal(name="Y", io='in', ttype=float, **args)
 
     def to_operation(self, inputs, conditions={}):
-        outputs = [self.name()]
-        node = gn.RollingBuffer(name=self.name()+"_operation", N=self.Num_Points,
-                                conditions_needs=list(conditions.values()), inputs=list(inputs.values()),
-                                outputs=outputs)
-        return node
+        outputs = [self.name()+'.'+i for i in inputs.keys()]
+        buffer_output = [self.name()]
+        nodes = [gn.RollingBuffer(name=self.name()+"_buffer", N=self.Num_Points,
+                                  conditions_needs=list(conditions.values()), inputs=list(inputs.values()),
+                                  outputs=buffer_output),
+                 gn.Map(name=self.name()+"_operation", inputs=buffer_output, outputs=outputs, func=lambda a: zip(*a))]
+        return nodes
 
 
 class ScalarPlot(CtrlNode):
@@ -153,7 +155,7 @@ class ScalarPlot(CtrlNode):
         return super().display(topics, terms, addr, win, WaveformWidget, **kwargs)
 
     def to_operation(self, inputs, conditions={}):
-        outputs = [self.name()]
+        outputs = [self.name()+'.'+i for i in inputs.keys()]
         node = gn.RollingBuffer(name=self.name()+"_operation", N=self.Num_Points,
                                 conditions_needs=list(conditions.values()), inputs=list(inputs.values()),
                                 outputs=outputs)

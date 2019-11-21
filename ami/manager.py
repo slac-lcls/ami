@@ -340,9 +340,12 @@ class Manager(Collector):
             self.comm.send_string('error')
 
     def cmd_get_metadata(self, name):
-        graph = self.compile_graph(name)
-        metadata = graph.metadata()
-        self.comm.send(dill.dumps(metadata))
+        if name in self.graphs and self.graphs[name]:
+            graph = self.compile_graph(name)
+            metadata = graph.metadata()
+            self.comm.send(dill.dumps(metadata))
+        else:
+            self.comm.send(dill.dumps({}))
 
     def publish_info(self, name):
         return name, self.versions[name], self.compilier_args

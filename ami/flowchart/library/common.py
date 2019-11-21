@@ -131,9 +131,10 @@ class CtrlNode(Node):
         self.sigStateChanged.emit(self)
 
     def update(self, *args, **kwargs):
-        name, val = args
-        name = name.replace(" ", "_")
-        setattr(self, name, val)
+        if args:
+            name, val = args
+            name = name.replace(" ", "_")
+            setattr(self, name, val)
 
     def saveState(self):
         state = Node.saveState(self)

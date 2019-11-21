@@ -691,7 +691,7 @@ class FlowchartWidget(dockarea.DockArea):
             topics = []
 
             for term, in_var in node.input_vars().items():
-                topics.append((in_var, node.name()))
+                topics.append((in_var, node.name()+'.'+term))
 
             await self.chart.broker.send_string(node.name(), zmq.SNDMORE)
             await self.chart.broker.send_pyobj(fcMsgs.DisplayNode(name=node.name(),

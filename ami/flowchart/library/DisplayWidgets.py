@@ -21,12 +21,11 @@ symbols_colors = list(it.product(symbols, colors))
 
 class AsyncFetcher(object):
 
-    def __init__(self, topics, terms, addr, buffered=False):
+    def __init__(self, topics, terms, addr):
         self.addr = addr
         self.ctx = zmq.asyncio.Context()
         self.poller = zmq.asyncio.Poller()
         self.sockets = {}
-        self.buffered = buffered
         self.data = {}
         self.last_updated = "Last Updated: None"
         self.update_topics(topics, terms)
@@ -34,14 +33,7 @@ class AsyncFetcher(object):
     @property
     def reply(self):
         if self.data.keys() == set(self.subs):
-            if self.buffered and len(self.names) > 1:
-                reply = {}
-                for topic, value in self.data.items():
-                    names = [name for name in self.names if self.topics[name] == topic]
-                    reply.update(dict(zip(names, zip(*self.data[topic]))))
-                return reply
-            else:
-                return {name: self.data[topic] for name, topic in self.topics.items()}
+            return {name: self.data[topic] for name, topic in self.topics.items()}
         else:
             return {}
 
@@ -49,11 +41,7 @@ class AsyncFetcher(object):
         self.topics = topics
         self.terms = terms
         self.names = list(topics.keys())
-
-        if self.buffered:
-            self.subs = set(topics.values())
-        else:
-            self.subs = list(topics.values())
+        self.subs = list(topics.values())
 
         for name, sock_count in self.sockets.items():
             sock, count = sock_count
@@ -64,14 +52,14 @@ class AsyncFetcher(object):
         self.view_subs = {}
 
         for term, name in terms.items():
-            topic = topics[name]
-            sub_topic = "view:%s:%s" % (self.addr.name, topic)
-            self.view_subs[sub_topic] = topic
-            sock = self.ctx.socket(zmq.SUB)
-            sock.setsockopt_string(zmq.SUBSCRIBE, sub_topic)
-            sock.connect(self.addr.view)
-            self.poller.register(sock, zmq.POLLIN)
             if name not in self.sockets:
+                topic = topics[name]
+                sub_topic = "view:%s:%s" % (self.addr.name, topic)
+                self.view_subs[sub_topic] = topic
+                sock = self.ctx.socket(zmq.SUB)
+                sock.setsockopt_string(zmq.SUBSCRIBE, sub_topic)
+                sock.connect(self.addr.view)
+                self.poller.register(sock, zmq.POLLIN)
                 self.sockets[name] = (sock, 1)  # reference count
             else:
                 sock, count = self.sockets[name]
@@ -84,7 +72,6 @@ class AsyncFetcher(object):
             topic = await sock.recv_string()
             await sock.recv_pyobj()
             reply = await sock.recv_pyobj()
-
             now = dt.datetime.now()
             now = now.strftime("%H:%M:%S")
             self.last_updated = f"Last Updated: {now}"
@@ -292,7 +279,7 @@ class ScatterWidget(pg.GraphicsLayoutWidget):
 
     def __init__(self, topics, terms, addr, parent=None, **kwargs):
         super().__init__(parent)
-        self.fetcher = AsyncFetcher(topics, terms, addr, buffered=True)
+        self.fetcher = AsyncFetcher(topics, terms, addr)
         self.plot_view = self.addPlot()
         self.plot_view.addLegend()
         self.plot = {}
@@ -333,7 +320,7 @@ class WaveformWidget(pg.GraphicsLayoutWidget):
 
     def __init__(self, topics, terms, addr, parent=None, **kwargs):
         super().__init__(parent)
-        self.fetcher = AsyncFetcher(topics, terms, addr, buffered=True)
+        self.fetcher = AsyncFetcher(topics, terms, addr)
         self.plot_view = self.addPlot()
         self.plot_view.addLegend()
         self.plot = {}

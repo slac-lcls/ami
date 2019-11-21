@@ -323,3 +323,62 @@ class Export(Node):
         super().__init__(name, terminals={"In": {'io': 'in', 'ttype': Any},
                                           "Out": {'io': 'out', 'ttype': Any}},
                          exportable=True)
+
+
+class Split(CtrlNode):
+
+    """
+    Split a 2d array into 1d arrays using np.split.
+    """
+
+    nodeName = "Split"
+    uiTemplate = [('axis', 'intSpin', {'value': 0, 'min': 0, 'max': 1})]
+
+    def __init__(self, name):
+        super().__init__(name, terminals={"In": {'io': 'in', 'ttype': Array2d},
+                                          "Out": {'io': 'out', 'ttype': Array1d}},
+                         allowAddOutput=True)
+
+    def to_operation(self, inputs, conditions={}):
+        outputs = self.output_vars()
+
+        axis = self.axis
+        sections = len(outputs)
+
+        def split(arr):
+            splits = np.split(arr, sections, axis=axis)
+            if axis == 0:
+                splits = map(lambda a: a[0, :], splits)
+            elif axis == 1:
+                splits = map(lambda a: a[:, 0], splits)
+            return list(splits)
+
+        node = gn.Map(name=self.name()+"_operation",
+                      condition_needs=list(conditions.values()), inputs=list(inputs.values()), outputs=outputs,
+                      func=split, parent=self.name())
+        return node
+
+
+class Stack(CtrlNode):
+
+    """
+    Stacks 1d arrays into 2d array using np.stack
+    """
+
+    nodeName = "Stack"
+    uiTemplate = [('axis', 'intSpin', {'value': 0, 'min': 0, 'max': 1})]
+
+    def __init__(self, name):
+        super().__init__(name, terminals={"In": {'io': 'in', 'ttype': Array1d},
+                                          "Out": {'io': 'out', 'ttype': Array2d}},
+                         allowAddInput=True)
+
+    def to_operation(self, inputs, conditions={}):
+        outputs = self.output_vars()
+
+        axis = self.axis
+
+        node = gn.Map(name=self.name()+"_operation",
+                      condition_needs=list(conditions.values()), inputs=list(inputs.values()), outputs=outputs,
+                      func=lambda *arr: np.stack(arr, axis=axis), parent=self.name())
+        return node

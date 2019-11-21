@@ -1,7 +1,6 @@
 from ami.flowchart.library.common import CtrlNode, MAX
-from amitypes import Array1d
+from amitypes import Array1d, Array2d
 import ami.graph_nodes as gn
-import numpy as np
 
 
 try:
@@ -53,7 +52,6 @@ except ImportError:
 
 try:
     import psana.hexanode.WFPeaks as psWFPeaks
-    from typing import Any
 
     class WFPeaks(CtrlNode):
 
@@ -62,12 +60,12 @@ try:
         """
 
         nodeName = "WFPeaks"
-        uiTemplate = [('num chans', 'combo', {'values': ["5", "7"]}),
+        uiTemplate = [('num chans', 'combo', {'values': ["5", "7", "16"]}),
                       ('num hits', 'intSpin', {'value': 16, 'min': 1, 'max': MAX}),
                       ('base', 'doubleSpin', {'value': 0., 'min': 0., 'max': MAX}),
-                      ('thr', 'doubleSpin', {'value': -0.05}),
-                      ('cfr', 'doubleSpin', {'value': 0.85}),
-                      ('deadtime', 'doubleSpin', {'value': 10.0}),
+                      ('thr', 'doubleSpin', {'value': -0.05, 'max': MAX}),
+                      ('cfr', 'doubleSpin', {'value': 0.85, 'max': MAX}),
+                      ('deadtime', 'doubleSpin', {'value': 10.0, 'max': MAX}),
                       ('leadingedge', 'check', {'checked': True}),
                       ('ioffsetbeg', 'intSpin', {'value': 1000, 'min': 0, 'max': MAX}),
                       ('ioffsetend', 'intSpin', {'value': 2000, 'min': 0, 'max': MAX}),
@@ -75,21 +73,17 @@ try:
                       ('wfbinend', 'intSpin', {'value': 22000, 'min': 0, 'max': MAX})]
 
         def __init__(self, name):
-            super().__init__(name, terminals={'Waveform.1': {'io': 'in', 'ttype': Array1d},
-                                              'Waveform.2': {'io': 'in', 'ttype': Array1d},
-                                              'Waveform.3': {'io': 'in', 'ttype': Array1d},
-                                              'Waveform.4': {'io': 'in', 'ttype': Array1d},
-                                              'Waveform.5': {'io': 'in', 'ttype': Array1d},
-                                              'Times': {'io': 'in', 'ttype': Array1d},
-                                              'Num of Hits': {'io': 'out', 'ttype': float},
-                                              'Kinds': {'io': 'out', 'ttype': Any},
-                                              'Values': {'io': 'out', 'ttype': Array1d},
-                                              'Peak Times': {'io': 'out', 'ttype': Array1d}})
+            super().__init__(name, terminals={'Waveform': {'io': 'in', 'ttype': Array2d},
+                                              'Times': {'io': 'in', 'ttype': Array2d},
+                                              'Num of Hits': {'io': 'out', 'ttype': Array1d},
+                                              'Index': {'io': 'out', 'ttype': Array2d},
+                                              'Values': {'io': 'out', 'ttype': Array2d},
+                                              'Peak Times': {'io': 'out', 'ttype': Array2d}})
 
         def to_operation(self, inputs, conditions={}):
             outputs = self.output_vars()
 
-            cfdpars = {'numchs': self.num_chans,
+            cfdpars = {'numchs': int(self.num_chans),
                        'numhits': self.num_hits,
                        'cfd_base':  self.base,
                        'cfd_thr': self.thr,
@@ -101,8 +95,7 @@ try:
                        'cfd_wfbinbeg':  self.wfbinbeg,
                        'cfd_wfbinend': self.wfbinend}
 
-            def peakFinder(wfs0, wfs1, wfs2, wfs3, wfs4, wfs5, wts):
-                wfs = np.vstack((wfs0, wfs1, wfs2, wfs3, wfs4, wfs5))
+            def peakFinder(wfs, wts):
                 wfpeaks = psWFPeaks.WFPeaks(**cfdpars)
                 peaks = wfpeaks(wfs, wts)
                 return peaks
@@ -110,7 +103,6 @@ try:
             node = gn.Map(name=self.name()+"_operation",
                           condition_needs=list(conditions.values()), inputs=list(inputs.values()), outputs=outputs,
                           func=peakFinder, parent=self.name())
-            print(node)
             return node
 
 except ImportError:

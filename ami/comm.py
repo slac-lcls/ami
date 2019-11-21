@@ -499,7 +499,8 @@ class GraphBuilder(ContributionBuilder):
             self.pending[eb_key].clear()
             if self.graph:
                 for data in contribs.values():
-                    self.pending[eb_key].update(self.graph(data, color=self.color))
+                    res = self.graph(data, color=self.color)
+                    self.pending[eb_key].update(res)
                     self.times = self.graph.times()
         else:
             self.pending[eb_key].clear()
