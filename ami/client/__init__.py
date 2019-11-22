@@ -40,9 +40,10 @@ def main():
         '-p',
         '--port',
         type=int,
-        nargs=2,
-        default=(Ports.Comm, Ports.Info),
-        help='port for manager/client (GUI) communication and status info (default: %d, %d)' % (Ports.Comm, Ports.Info)
+        nargs=3,
+        default=(Ports.Comm, Ports.Info, Ports.View),
+        help='port for manager/client (GUI) communication and status info (default: %d, %d, %d)' %
+             (Ports.Comm, Ports.Info, Ports.View)
     )
 
     addr_group.add_argument(
@@ -113,6 +114,7 @@ def main():
             if len(ipc_list) == 1:
                 comm_addr = "ipc://%s/comm" % ipc_list[0]
                 info_addr = "ipc://%s/info" % ipc_list[0]
+                view_addr = "ipc://%s/view" % ipc_list[0]
             else:
                 prompt = "Found %d ipc file descriptors:\n" % len(ipc_list)
                 for i, ipc_name in enumerate(ipc_list):
@@ -122,6 +124,7 @@ def main():
                 try:
                     comm_addr = "ipc://%s/comm" % ipc_list[int(choice)]
                     info_addr = "ipc://%s/info" % ipc_list[int(choice)]
+                    view_addr = "ipc://%s/view" % ipc_list[int(choice)]
                 except ValueError:
                     logger.critical("Invalid option '%s' chosen!", choice)
                     return 1
@@ -134,13 +137,15 @@ def main():
     elif args.ipc_dir is not None:
         comm_addr = "ipc://%s/comm" % args.ipc_dir
         info_addr = "ipc://%s/info" % args.ipc_dir
+        view_addr = "ipc://%s/view" % args.ipc_dir
     else:
-        comm, info = args.port
+        comm, info, view = args.port
         comm_addr = "tcp://%s:%d" % (args.host, comm)
         info_addr = "tcp://%s:%d" % (args.host, info)
+        view_addr = "tcp://%s:%d" % (args.host, view)
 
     try:
-        return run_client(args.graph_name, comm_addr, info_addr, args.load, args.gui_mode)
+        return run_client(args.graph_name, comm_addr, info_addr, view_addr, args.load, args.gui_mode)
     except KeyboardInterrupt:
         logger.info("Client killed by user...")
         return 0
