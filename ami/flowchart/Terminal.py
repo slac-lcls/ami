@@ -41,6 +41,7 @@ class Terminal(object):
     def setOpts(self, **opts):
         self._removable = opts.get('removable', self._removable)
         self._type = opts.get('type', self._type)
+        self._group = opts.get('group', None)
 
     def connected(self, term):
         """

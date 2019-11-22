@@ -1,58 +1,10 @@
 {
   "connects": [
     [
-      "laser",
-      "Out",
-      "ScalarPlot.0",
-      "Y"
-    ],
-    [
       "cspad",
       "Out",
       "Roi2D.0",
       "In"
-    ],
-    [
-      "Roi2D.0",
-      "Out",
-      "Sum.0",
-      "In"
-    ],
-    [
-      "FilterOff.0",
-      "Out",
-      "MeanVsScan.0",
-      "Condition"
-    ],
-    [
-      "FilterOn.0",
-      "Out",
-      "MeanVsScan.1",
-      "Condition"
-    ],
-    [
-      "Sum.0",
-      "Out",
-      "ScatterPlot.0",
-      "Y"
-    ],
-    [
-      "Sum.0",
-      "Out",
-      "ScalarViewer.0",
-      "In"
-    ],
-    [
-      "MeanVsScan.1",
-      "Bins",
-      "LinePlot.0",
-      "X.1"
-    ],
-    [
-      "MeanVsScan.0",
-      "Counts",
-      "LinePlot.0",
-      "Y"
     ],
     [
       "cspad",
@@ -63,20 +15,74 @@
     [
       "laser",
       "Out",
-      "FilterOn.0",
+      "FilterOff.0",
       "Condition"
     ],
     [
       "laser",
       "Out",
-      "FilterOff.0",
+      "ScalarPlot.0",
+      "Y"
+    ],
+    [
+      "laser",
+      "Out",
+      "FilterOn.0",
       "Condition"
+    ],
+    [
+      "Roi2D.0",
+      "Out",
+      "Sum.0",
+      "In"
+    ],
+    [
+      "FilterOff.0",
+      "Out",
+      "MeanVsScan.0",
+      "Condition"
+    ],
+    [
+      "FilterOn.0",
+      "Out",
+      "MeanVsScan.1",
+      "Condition"
+    ],
+    [
+      "Sum.0",
+      "Out",
+      "ScalarViewer.0",
+      "In"
+    ],
+    [
+      "Sum.0",
+      "Out",
+      "MeanVsScan.0",
+      "Value"
+    ],
+    [
+      "Sum.0",
+      "Out",
+      "ScatterPlot.0",
+      "Y"
     ],
     [
       "Sum.0",
       "Out",
       "MeanVsScan.1",
       "Value"
+    ],
+    [
+      "delta_t",
+      "Out",
+      "MeanVsScan.0",
+      "Bin"
+    ],
+    [
+      "delta_t",
+      "Out",
+      "ScatterPlot.0",
+      "X"
     ],
     [
       "delta_t",
@@ -91,28 +97,22 @@
       "X"
     ],
     [
-      "delta_t",
-      "Out",
-      "ScatterPlot.0",
-      "X"
+      "MeanVsScan.0",
+      "Counts",
+      "LinePlot.0",
+      "Y"
+    ],
+    [
+      "MeanVsScan.1",
+      "Bins",
+      "LinePlot.0",
+      "X.1"
     ],
     [
       "MeanVsScan.1",
       "Counts",
       "LinePlot.0",
       "Y.1"
-    ],
-    [
-      "Sum.0",
-      "Out",
-      "MeanVsScan.0",
-      "Value"
-    ],
-    [
-      "delta_t",
-      "Out",
-      "MeanVsScan.0",
-      "Bin"
     ]
   ],
   "nodes": [
@@ -122,8 +122,8 @@
       "state": {
         "note": "",
         "pos": [
-          100.0,
-          300.0
+          0.0,
+          200.0
         ],
         "terminals": {
           "Out": {
@@ -141,8 +141,8 @@
       "state": {
         "note": "",
         "pos": [
-          100.0,
-          700.0
+          0.0,
+          600.0
         ],
         "terminals": {
           "Out": {
@@ -155,38 +155,19 @@
       }
     },
     {
-      "class": "ImageViewer",
-      "name": "ImageViewer.0",
-      "state": {
-        "note": "",
-        "pos": [
-          300.0,
-          100.0
-        ],
-        "terminals": {
-          "In": {
-            "group": null,
-            "io": "in",
-            "removable": false,
-            "ttype": "amitypes.Array2d"
-          }
-        }
-      }
-    },
-    {
       "class": "Roi2D",
       "name": "Roi2D.0",
       "state": {
         "ctrl": {
-          "extent x": 730,
-          "extent y": 813,
-          "origin x": 98,
-          "origin y": 57
+          "extent x": 571,
+          "extent y": 589,
+          "origin x": 140,
+          "origin y": 193
         },
         "note": "",
         "pos": [
-          300.0,
-          300.0
+          200.0,
+          200.0
         ],
         "terminals": {
           "In": {
@@ -205,23 +186,20 @@
       }
     },
     {
-      "class": "ScalarPlot",
-      "name": "ScalarPlot.0",
+      "class": "ImageViewer",
+      "name": "ImageViewer.0",
       "state": {
-        "ctrl": {
-          "Num Points": 100
-        },
         "note": "",
         "pos": [
-          300.0,
-          700.0
+          200.0,
+          0.0
         ],
         "terminals": {
-          "Y": {
+          "In": {
             "group": null,
             "io": "in",
             "removable": false,
-            "ttype": "float"
+            "ttype": "amitypes.Array2d"
           }
         }
       }
@@ -232,8 +210,8 @@
       "state": {
         "note": "",
         "pos": [
-          300.0,
-          500.0
+          200.0,
+          400.0
         ],
         "terminals": {
           "Condition": {
@@ -252,13 +230,35 @@
       }
     },
     {
+      "class": "ScalarPlot",
+      "name": "ScalarPlot.0",
+      "state": {
+        "ctrl": {
+          "Num Points": 50
+        },
+        "note": "",
+        "pos": [
+          200.0,
+          600.0
+        ],
+        "terminals": {
+          "Y": {
+            "group": null,
+            "io": "in",
+            "removable": false,
+            "ttype": "float"
+          }
+        }
+      }
+    },
+    {
       "class": "FilterOn",
       "name": "FilterOn.0",
       "state": {
         "note": "",
         "pos": [
-          300.0,
-          900.0
+          200.0,
+          800.0
         ],
         "terminals": {
           "Condition": {
@@ -282,8 +282,8 @@
       "state": {
         "note": "",
         "pos": [
-          500.0,
-          300.0
+          400.0,
+          200.0
         ],
         "terminals": {
           "In": {
@@ -307,8 +307,8 @@
       "state": {
         "note": "",
         "pos": [
-          500.0,
-          700.0
+          400.0,
+          600.0
         ],
         "terminals": {
           "Out": {
@@ -326,8 +326,8 @@
       "state": {
         "note": "",
         "pos": [
-          700.0,
-          300.0
+          600.0,
+          200.0
         ],
         "terminals": {
           "In": {
@@ -345,51 +345,8 @@
       "state": {
         "note": "",
         "pos": [
-          700.0,
-          500.0
-        ],
-        "terminals": {
-          "Bin": {
-            "group": null,
-            "io": "in",
-            "removable": false,
-            "ttype": "float"
-          },
-          "Bins": {
-            "group": null,
-            "io": "out",
-            "removable": false,
-            "ttype": "amitypes.Array1d"
-          },
-          "Condition": {
-            "group": null,
-            "io": "condition",
-            "removable": true,
-            "ttype": "Any"
-          },
-          "Counts": {
-            "group": null,
-            "io": "out",
-            "removable": false,
-            "ttype": "amitypes.Array1d"
-          },
-          "Value": {
-            "group": null,
-            "io": "in",
-            "removable": false,
-            "ttype": "float"
-          }
-        }
-      }
-    },
-    {
-      "class": "MeanVsScan",
-      "name": "MeanVsScan.1",
-      "state": {
-        "note": "",
-        "pos": [
-          700.0,
-          900.0
+          600.0,
+          400.0
         ],
         "terminals": {
           "Bin": {
@@ -434,8 +391,8 @@
         },
         "note": "",
         "pos": [
-          700.0,
-          700.0
+          600.0,
+          600.0
         ],
         "terminals": {
           "X": {
@@ -454,13 +411,56 @@
       }
     },
     {
+      "class": "MeanVsScan",
+      "name": "MeanVsScan.1",
+      "state": {
+        "note": "",
+        "pos": [
+          600.0,
+          800.0
+        ],
+        "terminals": {
+          "Bin": {
+            "group": null,
+            "io": "in",
+            "removable": false,
+            "ttype": "float"
+          },
+          "Bins": {
+            "group": null,
+            "io": "out",
+            "removable": false,
+            "ttype": "amitypes.Array1d"
+          },
+          "Condition": {
+            "group": null,
+            "io": "condition",
+            "removable": true,
+            "ttype": "Any"
+          },
+          "Counts": {
+            "group": null,
+            "io": "out",
+            "removable": false,
+            "ttype": "amitypes.Array1d"
+          },
+          "Value": {
+            "group": null,
+            "io": "in",
+            "removable": false,
+            "ttype": "float"
+          }
+        }
+      }
+    },
+    {
       "class": "LinePlot",
       "name": "LinePlot.0",
       "state": {
         "note": "",
         "pos": [
-          900.0,
-          700.0
+          800.0,
+          600.0
         ],
         "terminals": {
           "X": {
@@ -470,7 +470,7 @@
             "ttype": "amitypes.Array1d"
           },
           "X.1": {
-            "group": null,
+            "group": "group.1",
             "io": "in",
             "removable": true,
             "ttype": "amitypes.Array1d"
@@ -482,7 +482,7 @@
             "ttype": "amitypes.Array1d"
           },
           "Y.1": {
-            "group": null,
+            "group": "group.1",
             "io": "in",
             "removable": true,
             "ttype": "amitypes.Array1d"

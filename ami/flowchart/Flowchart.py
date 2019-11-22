@@ -25,6 +25,7 @@ import json
 import subprocess
 import re
 import tempfile
+import networkx as nx
 
 
 class Flowchart(Node):
@@ -68,7 +69,8 @@ class Flowchart(Node):
 
         self.filePath = filePath
 
-        self._nodes = {}
+        self._graph = nx.MultiDiGraph()
+
         self.nextZVal = 10
         self._widget = None
         self._scene = None
@@ -92,8 +94,8 @@ class Flowchart(Node):
         self.library = lib
         self.widget().chartWidget.buildMenu()
 
-    def nodes(self):
-        return self._nodes
+    def nodes(self, **kwargs):
+        return self._graph.nodes(**kwargs)
 
     def createNode(self, nodeType=None, name=None, node=None, pos=None):
         """Create a new Node and add it to this flowchart.
@@ -102,7 +104,7 @@ class Flowchart(Node):
             n = 0
             while True:
                 name = "%s.%d" % (nodeType, n)
-                if name not in self._nodes:
+                if name not in self._graph.nodes():
                     break
                 n += 1
         # create an instance of the node
@@ -132,18 +134,44 @@ class Flowchart(Node):
         self.viewBox.addItem(item)
         pos = (find_nearest(pos[0]), find_nearest(pos[1]))
         item.moveBy(*pos)
-        self._nodes[name] = node
+        self._graph.add_node(name, node=node)
         node.sigClosed.connect(self.nodeClosed)
+        node.sigTerminalConnected.connect(self.nodeConnected)
+        node.sigTerminalDisconnected.connect(self.nodeDisconnected)
 
     def nodeClosed(self, node):
         # Qt does not like if this function is async
-        del self._nodes[node.name()]
+        self._graph.remove_node(node.name())
         try:
             getattr(node, 'sigClosed').disconnect(self.nodeClosed)
         except (TypeError, RuntimeError):
             pass
         self.broker.send_string(node.name(), zmq.SNDMORE)
         self.broker.send_pyobj(fcMsgs.CloseNode())
+
+    def nodeConnected(self, localTerm, remoteTerm):
+        if remoteTerm.isOutput() or localTerm.isCondition():
+            t = remoteTerm
+            remoteTerm = localTerm
+            localTerm = t
+
+        localNode = localTerm.node().name()
+        remoteNode = remoteTerm.node().name()
+        key = localNode + '.' + localTerm.name() + '->' + remoteNode + '.' + remoteTerm.name()
+        if not self._graph.has_edge(localNode, remoteNode, key=key):
+            self._graph.add_edge(localNode, remoteNode, key=key, from_term=localTerm.name(), to_term=remoteTerm.name())
+
+    def nodeDisconnected(self, localTerm, remoteTerm):
+        if remoteTerm.isOutput() or localTerm.isCondition():
+            t = remoteTerm
+            remoteTerm = localTerm
+            localTerm = t
+
+        localNode = localTerm.node().name()
+        remoteNode = remoteTerm.node().name()
+        key = localNode + '.' + localTerm.name() + '->' + remoteNode + '.' + remoteTerm.name()
+        if not self._graph.has_edge(localNode, remoteNode, key=key):
+            self._graph.remove_edge(localNode, remoteNode, key=key)
 
     def connectTerminals(self, term1, term2, type_file=None):
         """Connect two terminals together within this flowchart."""
@@ -171,16 +199,6 @@ class Flowchart(Node):
             self.viewBox = self._widget.viewBox()
         return self._widget
 
-    def listConnections(self):
-        conn = set()
-        for n in self._nodes.values():
-            terms = n.outputs()
-            for n, t in terms.items():
-                t = t()
-                for c in t.connections():
-                    conn.add((t, c))
-        return conn
-
     def saveState(self):
         """
         Return a serializable data structure representing the current state of this flowchart.
@@ -188,15 +206,16 @@ class Flowchart(Node):
         state = Node.saveState(self)
         state['nodes'] = []
         state['connects'] = []
-        for name, node in self._nodes.items():
+        for name, node in self.nodes(data='node'):
             cls = type(node)
             clsName = cls.__name__
             ns = {'class': clsName, 'name': name, 'state': node.saveState()}
             state['nodes'].append(ns)
 
-        conn = self.listConnections()
-        for a, b in conn:
-            state['connects'].append((a.node().name(), a.name(), b.node().name(), b.name()))
+        for from_node, to_node, data in self._graph.edges(data=True):
+            from_term = data['from_term']
+            to_term = data['to_term']
+            state['connects'].append((from_node, from_term, to_node, to_term))
 
         return state
 
@@ -213,9 +232,6 @@ class Flowchart(Node):
             nodes.sort(key=lambda a: a['state']['pos'][0])
             for n in nodes:
 
-                if n['name'] in self._nodes:
-                    self._nodes[n['name']].restoreState(n['state'])
-                    continue
                 if n['class'] == 'SourceNode':
                     try:
                         ttype = eval(n['state']['terminals']['Out']['ttype'])
@@ -242,13 +258,15 @@ class Flowchart(Node):
                 type_file.write("import amitypes\n")
                 type_file.write("T = TypeVar('T')\n\n")
 
+                nodes = self.nodes(data='node')
+
                 for n1, t1, n2, t2 in state['connects']:
                     try:
-                        self.connectTerminals(self._nodes[n1][t1], self._nodes[n2][t2], type_file)
-                        node1 = self._nodes[n1]
-                        term1 = self._nodes[n1][t1]
-                        node2 = self._nodes[n2]
-                        term2 = self._nodes[n2][t2]
+                        node1 = nodes[n1]
+                        term1 = node1[t1]
+                        node2 = nodes[n2]
+                        term2 = node2[t2]
+                        self.connectTerminals(term1, term2, type_file)
                         if term1.isInput() or term1.isCondition:
                             in_name = node1.name() + '_' + term1.name()
                             in_name = in_name.replace('.', '_')
@@ -262,8 +280,8 @@ class Flowchart(Node):
 
                         connections[(in_name, out_name)] = (term1, term2)
                     except Exception:
-                        print(self._nodes[n1].terminals)
-                        print(self._nodes[n2].terminals)
+                        print(node1.terminals)
+                        print(node2.terminals)
                         printExc("Error connecting terminals %s.%s - %s.%s:" % (n1, t1, n2, t2))
 
                 type_file.flush()
@@ -345,9 +363,8 @@ class Flowchart(Node):
         """
         Remove all nodes from this flowchart except the original input/output nodes.
         """
-        for n in list(self._nodes.values()):
-            n.close()  # calls self.nodeClosed(n) by signal
-        # self.clearTerminals()
+        for name, node in list(self.nodes(data='node')):
+            node.close()  # calls self.nodeClosed(n) by signal
 
     async def updateState(self):
         while True:
@@ -357,10 +374,10 @@ class Flowchart(Node):
             # fcMsgs.NodeCheckPoint but we are only ever receiving the state
             new_node_state = await self.checkpoint.recv_pyobj()
             if 'ctrl' in new_node_state:
-                current_node_state = self._nodes[node_name].saveState()
+                current_node_state = self._graph.nodes[node_name]['node'].saveState()
                 current_node_state['ctrl'] = new_node_state['ctrl']
-                self._nodes[node_name].restoreState(current_node_state)
-            self._nodes[node_name].viewed = new_node_state['viewed']
+                self._graph.nodes[node_name]['node'].restoreState(current_node_state)
+            self._graph.nodes[node_name]['node'].viewed = new_node_state['viewed']
 
     async def updateSources(self, init=False):
         while True:
@@ -391,7 +408,7 @@ class Flowchart(Node):
                 now = datetime.now()
                 if hasattr(msg, 'node_name'):
                     node_name = ctrl.metadata[msg.node_name]['parent']
-                    node = self._nodes[node_name]
+                    node = self.nodes(data='node')[node_name]
                     node.setException(msg)
                     ctrl.chartWidget.statusText.append(f"[{now.strftime('%H:%M:%S')}] {source} {node.name()}: {msg}")
                 else:
@@ -402,7 +419,7 @@ class Flowchart(Node):
 
     @asyncqt.asyncSlot()
     async def chartLoaded(self):
-        for name, node in self.nodes().items():
+        for name, node in self.nodes(data='node'):
             msg = fcMsgs.NodeCheckpoint(node.name(), state=node.saveState())
             await self.broker.send_string(node.name(), zmq.SNDMORE)
             await self.broker.send_pyobj(msg)
@@ -452,7 +469,10 @@ class FlowchartCtrlWidget(QtGui.QWidget):
         displays = []
         now = datetime.now().strftime('%H:%M:%S')
 
-        for name, gnode in self.chart.nodes().items():
+        for name, gnode in self.chart._graph.nodes().items():
+            gnode = gnode['node']
+            if not gnode._enabled:
+                continue
 
             if not gnode.hasInput():
                 disconnectedNodes.append(gnode)
@@ -498,7 +518,7 @@ class FlowchartCtrlWidget(QtGui.QWidget):
                 topics = []
 
                 for term, in_var in node.input_vars().items():
-                    topics.append((in_var, node.name()))
+                    topics.append((in_var, node.name()+'.'+term))
 
                 await self.chart.broker.send_string(node.name(), zmq.SNDMORE)
                 await self.chart.broker.send_pyobj(fcMsgs.DisplayNode(name=node.name(),

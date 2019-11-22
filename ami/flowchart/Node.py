@@ -43,8 +43,8 @@ class Node(QtCore.QObject):
     sigClosed = QtCore.Signal(object)
     sigTerminalAdded = QtCore.Signal(object, object)  # self, term
     sigTerminalRemoved = QtCore.Signal(object, object)  # self, term
-    sigTerminalConnected = QtCore.Signal(object)  # self
-    sigTerminalDisconnected = QtCore.Signal(object)  # self
+    sigTerminalConnected = QtCore.Signal(object, object)  # localTerm, remoteTerm
+    sigTerminalDisconnected = QtCore.Signal(object, object)  # localTerm, remoteTerm
 
     def __init__(self, name, terminals={}, allowAddInput=False, allowAddOutput=False, allowAddCondition=True,
                  allowRemove=True, viewable=False, buffered=False, exportable=False, filter=False):
@@ -99,6 +99,7 @@ class Node(QtCore.QObject):
         self._filter = filter
         self._note = ""
         self._editor = None
+        self._enabled = True
 
         self.viewed = False
         self.exception = None
@@ -340,7 +341,7 @@ class Node(QtCore.QObject):
                 self._input_vars[localTerm.name()] = '.'.join([node.name(), remoteTerm.name()])
         elif localTerm.isCondition():
             self._condition_vars[localTerm.name()] = node.name()
-        self.sigTerminalConnected.emit(self)
+        self.sigTerminalConnected.emit(localTerm, remoteTerm)
 
     def disconnected(self, localTerm, remoteTerm):
         """Called whenever one of this node's terminals is disconnected from another."""
@@ -348,7 +349,7 @@ class Node(QtCore.QObject):
             del self._input_vars[localTerm.name()]
         elif localTerm.isCondition():
             del self._condition_vars[localTerm.name()]
-        self.sigTerminalDisconnected.emit(self)
+        self.sigTerminalDisconnected.emit(localTerm, remoteTerm)
 
     def isConnected(self):
         for name, term in self.terminals.items():
