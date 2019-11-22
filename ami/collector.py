@@ -67,11 +67,19 @@ class GraphCollector(Node, Collector):
         elif msg.mtype == MsgTypes.Datagram:
             self.store.update(msg.name, msg.heartbeat, msg.identity, msg.version, msg.payload)
             if self.store.ready(msg.name, msg.heartbeat):
-                times = self.store.complete(msg.name, msg.heartbeat, self.node)
-                if times:
-                    self.report("profile", {msg.name: times})
-                # prune entries older than the current heartbeat
-                self.store.prune(msg.name, msg.heartbeat)
+                try:
+                    times = self.store.complete(msg.name, msg.heartbeat, self.node)
+                except Exception as e:
+                    logger.exception("%s: Failure encountered while executing graph %s:", self.name, msg.name)
+                    self.report("error", e)
+                    logger.error("%s: Purging graph (%s v%d)", self.name, msg.name, self.store.version(msg.name))
+                    self.store.destroy(msg.name)
+                    self.report("purge", msg.name)
+                else:
+                    if times:
+                        self.report("profile", {msg.name: times})
+                    # prune entries older than the current heartbeat
+                    self.store.prune(msg.name, msg.heartbeat)
             else:
                 # prune older entries from the event builder
                 self.store.prune(msg.name)
