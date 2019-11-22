@@ -54,7 +54,7 @@ class Worker(Node):
 
     def clear_graph(self, name):
         if name in self.graphs:
-            self.graphs[name] = Graph(name)
+            self.graphs[name] = None
         if name in self.store:
             self.store.clear(name)
         self.update_requests()
@@ -137,9 +137,11 @@ class Worker(Node):
                                 times[name] = []
                             times[name].append(graph.times())
                     except Exception as e:
-                        self.clear_graph(name)
-                        logger.exception("%s: Failure encountered on executing graph %s:", self.name, name)
+                        logger.exception("%s: Failure encountered while executing graph %s:", self.name, name)
                         self.report("error", e)
+                        logger.error("%s: Purging graph (%s v%d)", self.name, name, self.store.version(name))
+                        self.clear_graph(name)
+                        self.report("purge", name)
             else:
                 self.store.send(msg)
 

@@ -188,10 +188,6 @@ class Manager(Collector):
                 if matched.group('name') in self.feature_stores[name]:
                     self.comm.send_string('ok', zmq.SNDMORE)
                     self.comm.send_pyobj(self.feature_stores[name].get(matched.group('name')))
-                    # stop = time.time()
-                    # print(matched.group('name'),
-                    #       type(self.feature_stores[name].get(matched.group('name'))),
-                    #       stop - start)
                 else:
                     self.comm.send_string('error')
             else:
@@ -350,7 +346,7 @@ class Manager(Collector):
     def publish_info(self, name):
         return name, self.versions[name], self.compilier_args
 
-    def publish_purge(self, name):
+    def publish_purge(self, name, reply=True):
         logger.info("Purging requested graph...")
         try:
             self.graphs[name] = None
@@ -360,12 +356,14 @@ class Manager(Collector):
             self.graph_comm.send(dill.dumps(self.graphs[name]))
             self.export_graph(name)
             logger.info("Purging of graph (%s v%d) completed", name, self.versions[name])
-            self.comm.send_string('ok')
+            if reply:
+                self.comm.send_string('ok')
         except Exception:
             logger.exception("Failed to purge graph (%s v%d) -", name, self.versions[name])
-            self.comm.send_string('error')
+            if reply:
+                self.comm.send_string('error')
 
-    def publish_delta(self, name, cmd, delta):
+    def publish_delta(self, name, cmd, delta, reply=True):
         logger.info("Sending requested delta of graph...")
         try:
             self.versions[name] += 1
@@ -374,12 +372,14 @@ class Manager(Collector):
             self.graph_comm.send(dill.dumps(delta))
             self.export_graph(name)
             logger.info("Sending delta of graph (%s v%d) completed", name, self.versions[name])
-            self.comm.send_string('ok')
+            if reply:
+                self.comm.send_string('ok')
         except Exception:
             logger.exception("Failed to send delta of graph (%s v%d) -", name, self.versions[name])
-            self.comm.send_string('error')
+            if reply:
+                self.comm.send_string('error')
 
-    def publish_graph(self, name):
+    def publish_graph(self, name, reply=True):
         logger.info("Sending requested graph...")
         try:
             self.versions[name] += 1
@@ -388,10 +388,12 @@ class Manager(Collector):
             self.graph_comm.send(dill.dumps(self.graphs[name]))
             self.export_graph(name)
             logger.info("Sending of graph (%s v%d) completed", name, self.versions[name])
-            self.comm.send_string('ok')
+            if reply:
+                self.comm.send_string('ok')
         except Exception:
             logger.exception("Failed to send graph (%s v%d) -", name, self.versions[name])
-            self.comm.send_string('error')
+            if reply:
+                self.comm.send_string('error')
 
     def publish_message(self, topic, node, payload):
         self.info_comm.send_string(topic, zmq.SNDMORE)
@@ -419,14 +421,22 @@ class Manager(Collector):
         topic = self.node_msg_comm.recv_string()
         node = self.node_msg_comm.recv_string()
 
-        if topic == "error":
-            payload = self.node_msg_comm.recv(copy=False)
-            self.publish_message(topic, node, payload)
-        elif topic == "profile":
+        if topic == "profile":
             payload = self.node_msg_comm.recv_multipart(copy=False)
             self.profile_comm.send_string(topic, zmq.SNDMORE)
             self.profile_comm.send_string(node, zmq.SNDMORE)
             self.profile_comm.send_multipart(payload, copy=False)
+        elif topic == "purge":
+            name = dill.loads(self.node_msg_comm.recv(copy=False))
+            logger.info("Received purge request for graph (%s v%d) from %s", name, self.versions[name], node)
+            if self.exists(name):
+                # send a null graph to workers
+                self.publish_purge(name, reply=False)
+                # delete the local graph information
+                self.delete(name)
+        else:
+            payload = self.node_msg_comm.recv(copy=False)
+            self.publish_message(topic, node, payload)
 
     def info_request(self):
         request = self.info_comm.recv_string()

@@ -377,6 +377,9 @@ class ResultStore(ZmqHandler):
         for name, store in self.stores.items():
             self.collector_message(identity, heartbeat, name, store.version, store.namespace)
 
+    def version(self, name):
+        return self.stores[name].version
+
     def clear(self, name=None):
         if name is not None:
             self.stores[name].clear()
