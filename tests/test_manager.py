@@ -183,8 +183,7 @@ def manager_proc(ipc_dir):
 
     # cleanup the manager process
     proc.terminate()
-    proc.join()
-
+    proc.join(1)
     return proc.exitcode
 
 

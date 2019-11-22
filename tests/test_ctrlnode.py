@@ -100,8 +100,9 @@ def test_scatterplot(qtbot):
     inputs = {"X": "X",
               "Y": "Y"}
     op = node.to_operation(inputs)
-    assert type(op) == gn.RollingBuffer
-    assert op.N == 101
+    assert type(op[0]) == gn.RollingBuffer
+    assert type(op[1]) == gn.Map
+    assert op[0].N == 101
 
     node.addInput(removable=True)
     assert len(node.terminals) == 4

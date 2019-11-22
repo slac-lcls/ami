@@ -1,5 +1,6 @@
 build
 install
+htmlcov/
 .eggs/
 .pytest_cache/
 .mypy_cache/
