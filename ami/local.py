@@ -157,6 +157,10 @@ def _sig_handler(procs, signum, frame):
     sys.exit(cleanup(procs))
 
 
+def _sys_exit(func, *args, **kwargs):
+    sys.exit(func(*args, **kwargs))
+
+
 def cleanup(procs):
     failed_proc = False
 
@@ -260,7 +264,7 @@ def run_ami(args, queue=None):
         for i in range(args.num_workers):
             proc = mp.Process(
                 name='worker%03d-n0' % i,
-                target=run_worker,
+                target=functools.partial(_sys_exit, run_worker),
                 args=(i, args.num_workers, args.heartbeat, src_cfg,
                       collector_addr, graph_addr, msg_addr, export_addr, flags)
             )
@@ -270,7 +274,7 @@ def run_ami(args, queue=None):
 
         collector_proc = mp.Process(
             name='nodecol-n0',
-            target=run_node_collector,
+            target=functools.partial(_sys_exit, run_node_collector),
             args=(0, args.num_workers, collector_addr, globalcol_addr, graph_addr, msg_addr)
         )
         collector_proc.daemon = True
@@ -279,7 +283,7 @@ def run_ami(args, queue=None):
 
         globalcol_proc = mp.Process(
             name='globalcol',
-            target=run_global_collector,
+            target=functools.partial(_sys_exit, run_global_collector),
             args=(0, 1, globalcol_addr, results_addr, graph_addr, msg_addr)
         )
         globalcol_proc.daemon = True
@@ -288,7 +292,7 @@ def run_ami(args, queue=None):
 
         manager_proc = mp.Process(
             name='manager',
-            target=run_manager,
+            target=functools.partial(_sys_exit, run_manager),
             args=(args.num_workers, 1, results_addr, graph_addr, comm_addr, msg_addr, info_addr, export_addr, view_addr,
                   profile_addr)
         )
@@ -302,7 +306,7 @@ def run_ami(args, queue=None):
                 return 1
             export_proc = mp.Process(
                 name='export',
-                target=run_export,
+                target=functools.partial(_sys_exit, run_export),
                 args=(args.export, comm_addr, export_addr, args.aggregate)
             )
             export_proc.daemon = True
@@ -356,7 +360,7 @@ def main():
     # start the ami processes
     parser = build_parser()
     args = parser.parse_args()
-    run_ami(args)
+    return run_ami(args)
 
 
 if __name__ == '__main__':
