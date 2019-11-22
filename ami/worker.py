@@ -94,6 +94,14 @@ class Worker(Node):
             self.store.remove(name)
         self.update_requests()
 
+    def recv_graph_exception(self, name, version, exception):
+        logger.exception("%s: Failure encountered updating graph (%s v%d):",
+                         self.name, name, self.store.version(name))
+        self.report("error", "Failure updating graph: %s" % exception)
+        logger.error("%s: Purging graph (%s v%d)", self.name, name, self.store.version(name))
+        self.clear_graph(name)
+        self.report("purge", name)
+
     def run(self):
         times = {}
         for msg in self.src.events():
@@ -110,10 +118,6 @@ class Worker(Node):
                         self.graph_comm.recv(False)
                     except zmq.Again:
                         break
-                    except (AssertionError, TypeError) as e:
-                        logger.exception("Failure encountered updating graph:")
-                        self.report("error", e)
-                        return 1
                 if times:
                     self.report("profile", times)
                     times = {}
@@ -137,7 +141,8 @@ class Worker(Node):
                                 times[name] = []
                             times[name].append(graph.times())
                     except Exception as e:
-                        logger.exception("%s: Failure encountered while executing graph %s:", self.name, name)
+                        logger.exception("%s: Failure encountered while executing graph (%s, v%d):",
+                                         self.name, name, self.store.version(name))
                         self.report("error", e)
                         logger.error("%s: Purging graph (%s v%d)", self.name, name, self.store.version(name))
                         self.clear_graph(name)
@@ -306,17 +311,15 @@ def main():
         else:
             src_cfg = None
 
-        run_worker(args.node_num,
-                   args.num_workers,
-                   args.heartbeat,
-                   src_cfg,
-                   collector_addr,
-                   graph_addr,
-                   msg_addr,
-                   export_addr,
-                   flags)
-
-        return 0
+        return run_worker(args.node_num,
+                          args.num_workers,
+                          args.heartbeat,
+                          src_cfg,
+                          collector_addr,
+                          graph_addr,
+                          msg_addr,
+                          export_addr,
+                          flags)
     except KeyboardInterrupt:
         logger.info("Worker killed by user...")
         return 0

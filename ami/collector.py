@@ -23,7 +23,7 @@ class GraphCollector(Node, Collector):
 
         self.downstream_addr = downstream_addr
 
-        self.register(self.graph_comm.sock, self.recv_handler)
+        self.register(self.graph_comm.sock, self.graph_comm.recv)
 
     def __enter__(self):
         return self
@@ -38,15 +38,6 @@ class GraphCollector(Node, Collector):
     def close(self):
         self.ctx.destroy()
 
-    def recv_handler(self):
-        try:
-            self.graph_comm.recv()
-        except (AssertionError, TypeError) as e:
-            logger.exception("Failure encountered updating graph:")
-            self.report("error", e)
-            self.exitcode = 1
-            self.running = False
-
     def recv_graph(self, name, version, args, graph):
         self.store.set_graph(name, version, args, graph)
 
@@ -58,6 +49,14 @@ class GraphCollector(Node, Collector):
 
     def recv_graph_purge(self, name, version, args, graph):
         self.store.purge_graph(name, version, args, graph)
+
+    def recv_graph_exception(self, name, version, exception):
+        logger.exception("%s: Failure encountered updating graph (%s v%d):",
+                         self.name, name, version)
+        self.report("error", "Failure updating graph: %s" % exception)
+        logger.error("%s: Purging graph (%s v%d)", self.name, name, version)
+        self.store.destroy(name)
+        self.report("purge", name)
 
     def process_msg(self, msg):
         if msg.mtype == MsgTypes.Transition:

@@ -650,6 +650,7 @@ class Node(abc.ABC):
         self.graph_initialized = False
 
         self.graph_comm = GraphReceiver(graph_addr, ctx)
+        self.graph_comm.exception = self.recv_graph_exception
         self.graph_comm.add_handler("graph", self.recv_graph)
         self.graph_comm.add_handler("init", self.recv_graph_init)
         self.graph_comm.add_handler("add", self.recv_graph_add)
@@ -747,6 +748,19 @@ class Node(abc.ABC):
             version (int):   the version number of the purged graph.
             args (dict):     the keyword arguments to be used for compilation.
             graph (Graph):   the purged graph.
+        """
+        pass
+
+    @abc.abstractmethod
+    def recv_graph_exception(self, name, version, exception):
+        """
+        An abstract method that subclasses should implement. This method is
+        called everytime that a graph exception occurs during a receive.
+
+        Args:
+            name (str):             the name of the graph that should be purged.
+            version (int):          the version number of the purged graph.
+            exception (Exception):  the exception thrown by the graph
         """
         pass
 
@@ -935,6 +949,7 @@ class GraphReceiver(BaseReceiver):
         self.handlers = {"cmd": self.command}
         self.commands = {}
         self.special = set(self.handlers.keys())
+        self.exception = None
 
     def command(self):
         """
@@ -1008,61 +1023,13 @@ class GraphReceiver(BaseReceiver):
             name, version, args = self.sock.recv_pyobj()
             payload = dill.loads(self.sock.recv())
             if topic in self.handlers:
-                self.handlers[topic](name, version, args, payload)
-
-
-class BaseReceiver(abc.ABC):
-    """Class for handling messages sent by the AMI graph manager.
-
-    This class is intended as an abstract base class for handling message
-    subscriptions from the AMI graph manager.
-
-    Args:
-        addr (str): the zmq address of the graph manager info service
-            (e.g. tcp://localhost:5555)
-        subscriptions (str): the subscription string used for topic filtering
-            of the messages by zmq.
-        ctx (zmq.Context): optional zmq context for the node to use. If none is
-            passed it creates one.
-    """
-
-    def __init__(self, addr, subscriptions, ctx=None):
-        if ctx is None:
-            self.ctx = zmq.Context()
-            self.owner = True
-        else:
-            self.ctx = ctx
-            self.owner = False
-        self.sock = self.ctx.socket(zmq.SUB)
-        self.sock.setsockopt_string(zmq.SUBSCRIBE, subscriptions)
-        self.sock.connect(addr)
-
-    def close(self):
-        """
-        Function should be called to clean up zmq resources. All sockets are
-        closed and the zmq.Context is destroyed if it is owned by this
-        instance.
-        """
-        self.sock.close()
-        if self.owner:
-            self.ctx.destroy()
-
-    def __enter__(self):
-        return self
-
-    def __exit__(self, exc_type, exc_value, traceback):
-        self.close()
-
-    @abc.abstractmethod
-    def recv(self, block=True):
-        """
-        Low level function for receiving a raw message from the graph manager.
-
-        Keyword Arguments:
-            block (bool): determines if the function call should block. Defaults
-                to True.
-        """
-        pass
+                try:
+                    self.handlers[topic](name, version, args, payload)
+                except (AssertionError, TypeError) as e:
+                    if self.exception is not None:
+                        self.exception(name, version, e)
+                    else:
+                        raise
 
 
 class ExportReceiver(BaseReceiver):
