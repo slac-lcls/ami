@@ -236,6 +236,7 @@ class Accumulator(GlobalTransformation):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         self.res_factory = kwargs.pop('res_factory', lambda: 0)
+        assert hasattr(self.res_factory, '__call__'), 'res_factory is not callable'
         self.res = self.res_factory()
 
     def __call__(self, *args, **kwargs):

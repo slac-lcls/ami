@@ -108,8 +108,7 @@ class Binning2D(CtrlNode):
                   ('range x max', 'intSpin', {'value': 100, 'min': 2, 'max': MAX}),
                   ('range y min', 'intSpin', {'value': 1, 'min': 1, 'max': MAX}),
                   ('range y max', 'intSpin', {'value': 100, 'min': 2, 'max': MAX}),
-                  ('density', 'check', {'checked': False}),
-                  ('num events', 'intSpin', {'value': 10, 'min': 1, 'max': MAX})]
+                  ('density', 'check', {'checked': False})]
 
     def __init__(self, name):
         super().__init__(name, terminals={
