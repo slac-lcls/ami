@@ -4,7 +4,6 @@ from ami.flowchart.library.common import CtrlNode, MAX
 from ami.flowchart.Node import Node
 import ami.graph_nodes as gn
 import numpy as np
-import functools
 
 
 class Sum(Node):
@@ -93,8 +92,7 @@ class Binning(CtrlNode):
                        condition_needs=list(conditions.values()), inputs=list(inputs.values()), outputs=map_outputs,
                        func=bin, parent=self.name()),
                 gn.Accumulator(name=self.name()+"_accumulated", inputs=map_outputs, outputs=outputs,
-                               res_factory=lambda: [None, 0],
-                               reduction=reduction)]
+                               res_factory=lambda: [None, 0], reduction=reduction, parent=self.name())]
         return node
 
 
@@ -124,8 +122,7 @@ class Binning2D(CtrlNode):
 
     def to_operation(self, inputs, conditions={}):
         outputs = self.output_vars()
-        map_outputs = [self.name()+"_hist"]
-        accumulated_outputs = [self.name()+"_sum"]
+        map_outputs = [self.name()+"_xbins", self.name()+"_ybins", self.name()+"_counts"]
         nbins = self.bins
         xmin = self.range_x_min
         xmax = self.range_x_max
@@ -137,13 +134,17 @@ class Binning2D(CtrlNode):
             counts, xbins, ybins = np.histogram2d(x, y, bins=nbins, range=[[xmin, xmax], [ymin, ymax]], density=density)
             return xbins, ybins, counts
 
+        def reduction(res, *rest):
+            res[0] = rest[0]
+            res[1] = rest[1]
+            res[2] = res[2] + rest[2]
+            return res
+
         node = [gn.Map(name=self.name()+"_map",
                        condition_needs=list(conditions.values()), inputs=list(inputs.values()), outputs=map_outputs,
                        func=bin, parent=self.name()),
-                gn.PickN(name=self.name()+"_accumulated", inputs=map_outputs, outputs=accumulated_outputs,
-                         N=self.num_events, parent=self.name()),
-                gn.Map(name=self.name()+"_operation", inputs=accumulated_outputs, outputs=outputs,
-                       func=lambda h: functools.reduce(lambda x, y: (y[0], y[1], x[2]+y[2]), h), parent=self.name())]
+                gn.Accumulator(name=self.name()+"_accumulated", inputs=map_outputs, outputs=outputs,
+                               res_factory=lambda: [None, None, 0], reduction=reduction, parent=self.name())]
         return node
 
 
