@@ -138,6 +138,7 @@ class Flowchart(Node):
         node.sigClosed.connect(self.nodeClosed)
         node.sigTerminalConnected.connect(self.nodeConnected)
         node.sigTerminalDisconnected.connect(self.nodeDisconnected)
+        node.sigNodeEnabled.connect(self.nodeEnabled)
 
     def nodeClosed(self, node):
         # Qt does not like if this function is async
@@ -170,8 +171,11 @@ class Flowchart(Node):
         localNode = localTerm.node().name()
         remoteNode = remoteTerm.node().name()
         key = localNode + '.' + localTerm.name() + '->' + remoteNode + '.' + remoteTerm.name()
-        if not self._graph.has_edge(localNode, remoteNode, key=key):
+        if self._graph.has_edge(localNode, remoteNode, key=key):
             self._graph.remove_edge(localNode, remoteNode, key=key)
+
+    def nodeEnabled(self, node):
+        pass
 
     def connectTerminals(self, term1, term2, type_file=None):
         """Connect two terminals together within this flowchart."""

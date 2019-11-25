@@ -115,11 +115,13 @@
       "Y.1"
     ]
   ],
+  "enabled": true,
   "nodes": [
     {
       "class": "SourceNode",
       "name": "cspad",
       "state": {
+        "enabled": null,
         "note": "",
         "pos": [
           0.0,
@@ -139,6 +141,7 @@
       "class": "SourceNode",
       "name": "laser",
       "state": {
+        "enabled": null,
         "note": "",
         "pos": [
           0.0,
@@ -164,6 +167,7 @@
           "origin x": 140,
           "origin y": 193
         },
+        "enabled": null,
         "note": "",
         "pos": [
           200.0,
@@ -189,6 +193,7 @@
       "class": "ImageViewer",
       "name": "ImageViewer.0",
       "state": {
+        "enabled": null,
         "note": "",
         "pos": [
           200.0,
@@ -208,6 +213,7 @@
       "class": "FilterOff",
       "name": "FilterOff.0",
       "state": {
+        "enabled": null,
         "note": "",
         "pos": [
           200.0,
@@ -236,6 +242,7 @@
         "ctrl": {
           "Num Points": 50
         },
+        "enabled": null,
         "note": "",
         "pos": [
           200.0,
@@ -255,6 +262,7 @@
       "class": "FilterOn",
       "name": "FilterOn.0",
       "state": {
+        "enabled": null,
         "note": "",
         "pos": [
           200.0,
@@ -280,6 +288,7 @@
       "class": "Sum",
       "name": "Sum.0",
       "state": {
+        "enabled": null,
         "note": "",
         "pos": [
           400.0,
@@ -305,6 +314,7 @@
       "class": "SourceNode",
       "name": "delta_t",
       "state": {
+        "enabled": null,
         "note": "",
         "pos": [
           400.0,
@@ -324,6 +334,7 @@
       "class": "ScalarViewer",
       "name": "ScalarViewer.0",
       "state": {
+        "enabled": null,
         "note": "",
         "pos": [
           600.0,
@@ -343,6 +354,7 @@
       "class": "MeanVsScan",
       "name": "MeanVsScan.0",
       "state": {
+        "enabled": null,
         "note": "",
         "pos": [
           600.0,
@@ -389,6 +401,7 @@
         "ctrl": {
           "Num Points": 100
         },
+        "enabled": null,
         "note": "",
         "pos": [
           600.0,
@@ -414,6 +427,7 @@
       "class": "MeanVsScan",
       "name": "MeanVsScan.1",
       "state": {
+        "enabled": null,
         "note": "",
         "pos": [
           600.0,
@@ -457,6 +471,7 @@
       "class": "LinePlot",
       "name": "LinePlot.0",
       "state": {
+        "enabled": null,
         "note": "",
         "pos": [
           800.0,

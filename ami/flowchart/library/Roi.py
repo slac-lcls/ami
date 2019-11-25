@@ -104,7 +104,7 @@ class Roi1D(CtrlNode):
     def display(self, topics, terms, addr, win, **kwargs):
         if self.widget is None:
             self.widget = WaveformWidget(topics, terms, addr, win, **kwargs)
-            self.widget.roi = pg.LinearRegionItem((0, 10), swapMode='block')
+            self.widget.roi = pg.LinearRegionItem((0, 10))
             self.widget.roi.setBounds((0, None))
             self.widget.plot_view.addItem(self.widget.roi)
             self.widget.roi.sigRegionChangeFinished.connect(self.set_values)

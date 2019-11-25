@@ -73,8 +73,8 @@ try:
                       ('wfbinend', 'intSpin', {'value': 22000, 'min': 0, 'max': MAX})]
 
         def __init__(self, name):
-            super().__init__(name, terminals={'Waveform': {'io': 'in', 'ttype': Array2d},
-                                              'Times': {'io': 'in', 'ttype': Array2d},
+            super().__init__(name, terminals={'Times': {'io': 'in', 'ttype': Array2d},
+                                              'Waveform': {'io': 'in', 'ttype': Array2d},
                                               'Num of Hits': {'io': 'out', 'ttype': Array1d},
                                               'Index': {'io': 'out', 'ttype': Array2d},
                                               'Values': {'io': 'out', 'ttype': Array2d},
@@ -95,7 +95,7 @@ try:
                        'cfd_wfbinbeg':  self.wfbinbeg,
                        'cfd_wfbinend': self.wfbinend}
 
-            def peakFinder(wfs, wts):
+            def peakFinder(wts, wfs):
                 wfpeaks = psWFPeaks.WFPeaks(**cfdpars)
                 peaks = wfpeaks(wfs, wts)
                 return peaks

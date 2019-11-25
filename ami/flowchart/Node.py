@@ -45,6 +45,7 @@ class Node(QtCore.QObject):
     sigTerminalRemoved = QtCore.Signal(object, object)  # self, term
     sigTerminalConnected = QtCore.Signal(object, object)  # localTerm, remoteTerm
     sigTerminalDisconnected = QtCore.Signal(object, object)  # localTerm, remoteTerm
+    sigNodeEnabled = QtCore.Signal(object)  # self
 
     def __init__(self, name, terminals={}, allowAddInput=False, allowAddOutput=False, allowAddCondition=True,
                  allowRemove=True, viewable=False, buffered=False, exportable=False, filter=False):
@@ -150,27 +151,27 @@ class Node(QtCore.QObject):
 
         return brush
 
-    def addInput(self, name="In", **args):
+    def addInput(self, name="In", **kwargs):
         """Add a new input terminal to this Node with the given name. Extra
         keyword arguments are passed to Terminal.__init__.
 
         This is a convenience function that just calls addTerminal(io='in', ...)"""
         # print "Node.addInput called."
-        return self.addTerminal(name, io='in', ttype=self.terminals["In"].type(), **args)
+        return self.addTerminal(name, io='in', ttype=self.terminals["In"].type(), **kwargs)
 
-    def addOutput(self, name="Out", **args):
+    def addOutput(self, name="Out", **kwargs):
         """Add a new output terminal to this Node with the given name. Extra
         keyword arguments are passed to Terminal.__init__.
 
         This is a convenience function that just calls addTerminal(io='out', ...)"""
-        return self.addTerminal(name, io='out', ttype=self.terminals["Out"].type(), **args)
+        return self.addTerminal(name, io='out', ttype=self.terminals["Out"].type(), **kwargs)
 
-    def addCondition(self, name="Condition", **args):
+    def addCondition(self, name="Condition", **kwargs):
         """Add a new condition terminal to this Node with the given name. Extra
         keyword arguments are passed to Terminal.__init__.
 
         This is a convenience function that just calls addTerminal(io='condition', ...)"""
-        return self.addTerminal(name, io='condition', ttype=Any, **args)
+        return self.addTerminal(name, io='condition', ttype=Any, **kwargs)
 
     def editNote(self):
         if self._editor is None:
@@ -209,21 +210,20 @@ class Node(QtCore.QObject):
         self.graphicsItem().updateTerminals()
         self.sigTerminalRemoved.emit(self, term)
 
-        self.graphicsItem().menu = None
-        self.graphicsItem().buildMenu()
+        self.graphicsItem().buildMenu(reset=True)
 
         group_name = term._group
-        group = self._groups[group_name]
-        group.discard(name)
-
-        terms = []
-        for term in group:
-            terms.append(term)
-
-        for term in terms:
-            self.removeTerminal(term)
-
         if group_name in self._groups:
+            group = self._groups[group_name]
+            group.discard(name)
+
+            terms = []
+            for term in group:
+                terms.append(term)
+
+            for term in terms:
+                self.removeTerminal(term)
+
             del self._groups[group_name]
 
     def addTerminal(self, name, group=None, **opts):
@@ -390,7 +390,7 @@ class Node(QtCore.QObject):
         Subclasses may want to extend this method, adding extra keys to the returned
         dict."""
         pos = self.graphicsItem().pos()
-        state = {'pos': (pos.x(), pos.y()), 'note': self._note}
+        state = {'pos': (pos.x(), pos.y()), 'note': self._note, 'enabled': self._enabled}
         state['terminals'] = self.saveTerminals()
         return state
 
@@ -401,6 +401,7 @@ class Node(QtCore.QObject):
         self.graphicsItem().setPos(*pos)
         note = state.get('note')
         self.setNote(note)
+        self._enabled = state.get('enabled')
         if 'terminals' in state:
             self.restoreTerminals(state['terminals'])
 
@@ -639,10 +640,17 @@ class NodeGraphicsItem(GraphicsObject):
         pos = ev.screenPos()
         menu.popup(QtCore.QPoint(pos.x(), pos.y()))
 
-    def buildMenu(self):
+    def buildMenu(self, reset=False):
+        if reset:
+            # qt seg. faults if you don't delete old menu first
+            self.menu = None
+
         if self.menu is None:
             self.menu = QtGui.QMenu()
             self.menu.setTitle("Node")
+            enabled = QtGui.QAction("Enabled", self.menu, checkable=True, checked=True)
+            enabled.toggled.connect(self.enabledFromMenu)
+            self.menu.addAction(enabled)
             self.menu.addAction("Edit note", self.node.editNote)
             if self.node._allowAddInput:
                 self.menu.addAction("Add input", self.addInputFromMenu)
@@ -652,6 +660,12 @@ class NodeGraphicsItem(GraphicsObject):
                 self.add_condition = self.menu.addAction("Add condition", self.addConditionFromMenu)
             if self.node._allowRemove:
                 self.menu.addAction("Remove node", self.node.close)
+
+        return self.menu
+
+    def enabledFromMenu(self, checked):
+        self.node._enabled = checked
+        self.node.sigNodeEnabled.emit(self.node)
 
     def addInputFromMenu(self):
         # called when add input is clicked in context menu

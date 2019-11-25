@@ -39,7 +39,7 @@ class FlowchartViewBox(ViewBox):
         ViewBox.__init__(self, *args, **kwargs)
         self.widget = widget
         self.setLimits(minXRange=200, minYRange=200,
-                       xMin=-100, yMin=-100, xMax=5.2e3, yMax=5.2e3)
+                       xMin=-1000, yMin=-1000, xMax=5.2e3, yMax=5.2e3)
         self.addItem(GridItem())
         self.setAcceptDrops(True)
         self.setRange(xRange=(0, 800), yRange=(0, 800))
