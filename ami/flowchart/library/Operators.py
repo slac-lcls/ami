@@ -2,6 +2,7 @@ from pyqtgraph import QtGui
 from typing import Any
 from amitypes import Array1d, Array2d
 from ami.flowchart.Node import Node, NodeGraphicsItem
+from ami.flowchart.library.common import CtrlNode, MAX
 import ami.graph_nodes as gn
 import numpy as np
 import functools
@@ -52,10 +53,14 @@ class MeanVsScan(Node):
 
 class MathGraphicsItem(NodeGraphicsItem):
 
-    def buildMenu(self):
-        super(MathGraphicsItem, self).buildMenu()
+    def buildMenu(self, reset=False):
+        super().buildMenu(reset)
         actions = self.menu.actions()
-        addInput = actions[1]
+        addInput = actions[2]
+
+        addFloat = QtGui.QAction("Add float", self.menu)
+        addFloat.triggered.connect(self.node.addFloat)
+        self.menu.insertAction(addInput, addFloat)
 
         addWaveform = QtGui.QAction("Add waveform", self.menu)
         addWaveform.triggered.connect(self.node.addWaveform)
@@ -71,10 +76,12 @@ class MathGraphicsItem(NodeGraphicsItem):
 class MathNode(Node):
 
     def __init__(self, name):
-        super(MathNode, self).__init__(name,
-                                       terminals={'Image': {'io': 'in', 'ttype': Array2d, 'removable': True},
-                                                  'Out': {'io': 'out', 'ttype': Array2d}},
-                                       allowAddInput=True)
+        super().__init__(name,
+                         terminals={'Float': {'io': 'in', 'ttype': float, 'removable': True},
+                                    'Waveform': {'io': 'in', 'ttype': Array1d, 'removable': True},
+                                    'Image': {'io': 'in', 'ttype': Array2d, 'removable': True},
+                                    'Out': {'io': 'out', 'ttype': Array2d}},
+                         allowAddInput=True)
         self.sigTerminalAdded.connect(self.setOutput)
         self.sigTerminalRemoved.connect(self.setOutput)
 
@@ -88,6 +95,9 @@ class MathNode(Node):
             return False
 
         return super(MathNode, self).isConnected()
+
+    def addFloat(self):
+        self.addTerminal('Float', io='in', ttype=float, removable=True)
 
     def addWaveform(self):
         self.addTerminal('Waveform', io='in', ttype=Array1d, removable=True)
@@ -103,10 +113,12 @@ class MathNode(Node):
 
         if Array2d in inputs:
             output_type = Array2d
-        elif inputs == {Array1d}:
+        elif Array1d in inputs:
             output_type = Array1d
+        elif float in inputs:
+            output_type = float
         else:
-            return
+            raise Exception("Unable to set output type!")
 
         self._outputs['Out']()._type = output_type
 
@@ -114,7 +126,7 @@ class MathNode(Node):
 class Add(MathNode):
 
     """
-    Add waveforms and images.
+    Add floats, waveforms, and images.
     """
 
     nodeName = "Add"
@@ -134,7 +146,7 @@ class Add(MathNode):
 class Subtract(MathNode):
 
     """
-    Subtract waveforms and images.
+    Subtract floats, waveforms, and images.
     """
 
     nodeName = "Subtract"
@@ -151,25 +163,90 @@ class Subtract(MathNode):
         return node
 
 
-# class Constant(CtrlNode, MathNode):
+class Multiply(MathNode):
 
-#     """
-#     Add/Subtract/Multiply/Divide waveform and images by constant.
-#     """
+    """
+    Multiply floats, waveforms, and images.
+    """
 
-#     nodeName = "Constant"
-#     uiTemplate = [('operation', 'combo', {'values': ['Add', 'Subtract', 'Multiply', 'Divide']})]
+    nodeName = "Multiply"
 
-#     def __init__(self, name):
-#         CtrlNode.__init__(name,
-#                           terminals={'Image': {'io': 'in', 'ttype': Array2d, 'removable': True},
-#                                      'Out': {'io': 'out', 'ttype': Array2d}},
-#                           allowAddInput=True)
-#         self.sigTerminalAdded.connect(self.setOutput)
-#         self.sigTerminalRemoved.connect(self.setOutput)
+    def to_operation(self, inputs, conditions={}):
+        outputs = self.output_vars()
 
-#     def to_operation(self, inputs, conditions={}):
-#         pass
+        def func(*args):
+            return functools.reduce(lambda x, y: x*y, args)
+
+        node = gn.Map(name=self.name()+"_operation",
+                      conditions_needs=list(conditions.values()), inputs=list(inputs.values()), outputs=outputs,
+                      func=func, parent=self.name())
+        return node
+
+
+class Divide(MathNode):
+
+    """
+    Divide floats, waveforms, and images.
+    """
+
+    nodeName = "Divide"
+
+    def to_operation(self, inputs, conditions={}):
+        outputs = self.output_vars()
+
+        def func(*args):
+            return functools.reduce(lambda x, y: x/y, args)
+
+        node = gn.Map(name=self.name()+"_operation",
+                      conditions_needs=list(conditions.values()), inputs=list(inputs.values()), outputs=outputs,
+                      func=func, parent=self.name())
+        return node
+
+
+class ConstantFloat(CtrlNode):
+
+    """
+    Outputs a float constant.
+    """
+
+    nodeName = "ConstantFloat"
+    uiTemplate = [('value', 'doubleSpin', {'value': 1, 'min': -MAX, 'max': MAX})]
+
+    def __init__(self, name):
+        super().__init__(name, terminals={'Out': {'io': 'out', 'ttype': float}})
+
+    def to_operation(self, inputs, conditions={}):
+        outputs = self.output_vars()
+        value = self.value
+
+        node = gn.Map(name=self.name()+"_operation",
+                      conditions_needs=list(conditions.values()), inputs=list(inputs.values()), outputs=outputs,
+                      func=lambda: value, parent=self.name())
+        return node
+
+
+class ConstantArray1d(CtrlNode):
+
+    """
+    Outputs a constant 1d array.
+    """
+
+    nodeName = "ConstantArray1d"
+    uiTemplate = [('shape', 'intSpin', {'value': 1, 'min': 1, 'max': MAX}),
+                  ('value', 'doubleSpin', {'value': 1, 'min': -MAX, 'max': MAX})]
+
+    def __init__(self, name):
+        super().__init__(name, terminals={'Out': {'io': 'out', 'ttype': Array1d}})
+
+    def to_operation(self, inputs, conditions={}):
+        outputs = self.output_vars()
+        shape = self.shape
+        value = self.value
+
+        node = gn.Map(name=self.name()+"_operation",
+                      conditions_needs=list(conditions.values()), inputs=list(inputs.values()), outputs=outputs,
+                      func=lambda: np.ones(shape)*value, parent=self.name())
+        return node
 
 
 class Export(Node):

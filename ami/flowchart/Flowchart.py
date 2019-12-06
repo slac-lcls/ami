@@ -26,6 +26,7 @@ import subprocess
 import re
 import tempfile
 import networkx as nx
+import itertools as it
 
 
 class Flowchart(Node):
@@ -175,7 +176,14 @@ class Flowchart(Node):
             self._graph.remove_edge(localNode, remoteNode, key=key)
 
     def nodeEnabled(self, node):
-        pass
+        # enabled = node._enabled
+        # successors = self._graph.successors(node.name())
+        outputs = [n for n, d in self._graph.out_degree() if d == 0]
+        sources_targets = list(it.product([node.name()], outputs))
+        for s, t in sources_targets:
+            paths = list(nx.algorithms.all_simple_paths(self._graph, s, t))
+            for path in paths:
+                pass
 
     def connectTerminals(self, term1, term2, type_file=None):
         """Connect two terminals together within this flowchart."""

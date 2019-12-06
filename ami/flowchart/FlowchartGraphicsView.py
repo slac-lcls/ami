@@ -13,7 +13,7 @@ class FlowchartGraphicsView(GraphicsView):
     sigDragEnter = QtCore.Signal()
 
     def __init__(self, widget, *args):
-        GraphicsView.__init__(self, *args, useOpenGL=False, background=0.5)
+        GraphicsView.__init__(self, *args, useOpenGL=False, background=0.75)
         self.widget = widget
         self.setAcceptDrops(True)
         self._vb = FlowchartViewBox(widget, lockAspect=True, invertY=True)

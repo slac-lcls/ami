@@ -47,8 +47,7 @@ class Node(QtCore.QObject):
     sigTerminalDisconnected = QtCore.Signal(object, object)  # localTerm, remoteTerm
     sigNodeEnabled = QtCore.Signal(object)  # self
 
-    def __init__(self, name, terminals={}, allowAddInput=False, allowAddOutput=False, allowAddCondition=True,
-                 allowRemove=True, viewable=False, buffered=False, exportable=False, filter=False):
+    def __init__(self, name, **kwargs):
         """
         ==============  ============================================================
         **Arguments:**
@@ -90,14 +89,14 @@ class Node(QtCore.QObject):
         self._outputs = OrderedDict()
         self._conditions = OrderedDict()
         self._groups = OrderedDict()  # terminal group {"name": set(terminals)}
-        self._allowAddInput = allowAddInput   # flags to allow the user to add/remove terminals
-        self._allowAddOutput = allowAddOutput
-        self._allowAddCondition = allowAddCondition
-        self._allowRemove = allowRemove
-        self._viewable = viewable
-        self._buffered = buffered
-        self._exportable = exportable
-        self._filter = filter
+        self._allowAddInput = kwargs.get("allowAddInput", False)
+        self._allowAddOutput = kwargs.get("allowAddOutput", False)
+        self._allowAddCondition = kwargs.get("allowAddCondition", True)
+        self._allowRemove = kwargs.get("allowRemove", True)
+        self._viewable = kwargs.get("viewable", False)
+        self._buffered = kwargs.get("buffered", False)
+        self._exportable = kwargs.get("exportable", False)
+        self._filter = kwargs.get("filter", False)
         self._note = ""
         self._editor = None
         self._enabled = True
@@ -108,6 +107,7 @@ class Node(QtCore.QObject):
         self._input_vars = {}  # term:var
         self._condition_vars = {}  # term:var
 
+        terminals = kwargs.get("terminals", {})
         brush = self.determineColor(terminals)
         self.graphicsItem(brush)
 
@@ -145,9 +145,9 @@ class Node(QtCore.QObject):
 
         brush = None
         if isInput and not isOutput:
-            brush = fn.mkBrush(255, 0, 0, 150)
+            brush = fn.mkBrush(255, 0, 0, 255)
         elif isOutput and not isInput:
-            brush = fn.mkBrush(0, 255, 0, 150)
+            brush = fn.mkBrush(0, 255, 0, 255)
 
         return brush
 
@@ -209,7 +209,6 @@ class Node(QtCore.QObject):
             del self._conditions[name]
         self.graphicsItem().updateTerminals()
         self.sigTerminalRemoved.emit(self, term)
-
         self.graphicsItem().buildMenu(reset=True)
 
         group_name = term._group
@@ -461,10 +460,12 @@ class NodeGraphicsItem(GraphicsObject):
 
         self.pen = fn.mkPen(0, 0, 0)
         self.selectPen = fn.mkPen(200, 200, 200, width=2)
+
         if brush:
             self.brush = brush
         else:
-            self.brush = fn.mkBrush(200, 200, 200, 150)
+            self.brush = fn.mkBrush(255, 255, 255, 255)
+
         self.hoverBrush = fn.mkBrush(200, 200, 200, 200)
         self.selectBrush = fn.mkBrush(200, 200, 255, 200)
         self.hovered = False
@@ -560,26 +561,16 @@ class NodeGraphicsItem(GraphicsObject):
         ev.ignore()
 
     def mouseClickEvent(self, ev):
-        # print "Node.mouseClickEvent called."
         if int(ev.button()) == int(QtCore.Qt.LeftButton):
             ev.accept()
-            # print "    ev.button: left"
             sel = self.isSelected()
-            # ret = QtGui.QGraphicsItem.mousePressEvent(self, ev)
             self.setSelected(True)
             if not sel and self.isSelected():
-                # self.setBrush(QtGui.QBrush(QtGui.QColor(200, 200, 255)))
-                # self.emit(QtCore.SIGNAL('selected'))
-                # self.scene().selectionChanged.emit() # for some reason this doesn't seem to be happening automatically
                 self.update()
-            # return ret
 
         elif int(ev.button()) == int(QtCore.Qt.RightButton):
-            # print "    ev.button: right"
             ev.accept()
-            # pos = ev.screenPos()
             self.raiseContextMenu(ev)
-            # self.menu.popup(QtCore.QPoint(pos.x(), pos.y()))
 
     def mouseDragEvent(self, ev):
         if ev.button() == QtCore.Qt.LeftButton:

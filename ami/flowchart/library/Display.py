@@ -156,9 +156,19 @@ class ScalarPlot(CtrlNode):
 
     def to_operation(self, inputs, conditions={}):
         outputs = [self.name()+'.'+i for i in inputs.keys()]
-        node = gn.RollingBuffer(name=self.name()+"_operation", N=self.Num_Points,
-                                conditions_needs=list(conditions.values()), inputs=list(inputs.values()),
-                                outputs=outputs)
+        buffer_output = [self.name()]
+
+        if len(inputs.values()) > 1:
+            node = [gn.RollingBuffer(name=self.name()+"_buffer", N=self.Num_Points,
+                                     conditions_needs=list(conditions.values()), inputs=list(inputs.values()),
+                                     outputs=buffer_output),
+                    gn.Map(name=self.name()+"_operation", inputs=buffer_output, outputs=outputs,
+                           func=lambda a: zip(*a))]
+        else:
+            node = gn.RollingBuffer(name=self.name(), N=self.Num_Points,
+                                    conditions_needs=list(conditions.values()), inputs=list(inputs.values()),
+                                    outputs=outputs)
+
         return node
 
 

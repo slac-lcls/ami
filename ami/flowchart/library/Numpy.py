@@ -60,8 +60,8 @@ class Binning(CtrlNode):
 
     nodeName = "Binning"
     uiTemplate = [('bins', 'intSpin', {'value': 10, 'min': 1, 'max': MAX}),
-                  ('range min', 'doubleSpin', {'value': 1, 'min': -MAX, 'max': MAX}),
-                  ('range max', 'doubleSpin', {'value': 100, 'min': -MAX, 'max': MAX}),
+                  ('range min', 'doubleSpin', {'value': 1, 'min': -MAX, 'max': MAX, 'precision': 10}),
+                  ('range max', 'doubleSpin', {'value': 100, 'min': -MAX, 'max': MAX, 'precision': 10}),
                   ('density', 'check', {'checked': False})]
 
     def __init__(self, name):
@@ -262,3 +262,36 @@ class Take(CtrlNode):
                 term._type = Array1d
             elif remoteTerm.type() == Array1d or remoteTerm.type() == List[float]:
                 term._type = float
+
+
+class Polynomial(CtrlNode):
+
+    """
+    Evaluate a polynomial using np.polynomial.polynomial.polyval
+    """
+
+    nodeName = "Polynomial"
+    uiTemplate = [('c0', 'doubleSpin', {'value': 1, 'min': -MAX, 'max': MAX, 'precision': 10}),
+                  ('c1', 'doubleSpin', {'value': 1, 'min': -MAX, 'max': MAX, 'precision': 10}),
+                  ('c2', 'doubleSpin', {'value': 1, 'min': -MAX, 'max': MAX, 'precision': 10})]
+
+    def __init__(self, name):
+        super().__init__(name, terminals={
+            'In': {'io': 'in', 'ttype': Array1d},
+            'Out': {'io': 'out', 'ttype': Array1d}
+        })
+
+    def to_operation(self, inputs, conditions={}):
+        outputs = self.output_vars()
+        c0 = self.c0
+        c1 = self.c1
+        c2 = self.c2
+
+        def poly(x):
+            coeffs = [c0, c1, c2]
+            return np.polynomial.polynomial.polyval(x, coeffs)
+
+        node = gn.Map(name=self.name()+"_operation",
+                      condition_needs=list(conditions.values()), inputs=list(inputs.values()), outputs=outputs,
+                      func=poly, parent=self.name())
+        return node
