@@ -1,57 +1,11 @@
 from pyqtgraph import QtGui
-from typing import Any, Union
-from amitypes import Array, Array1d, Array2d
-from ami.flowchart.library.common import CtrlNode, MAX
+from typing import Any
+from amitypes import Array1d, Array2d
 from ami.flowchart.Node import Node, NodeGraphicsItem
+from ami.flowchart.library.common import CtrlNode, MAX
 import ami.graph_nodes as gn
 import numpy as np
 import functools
-
-
-class Sum(Node):
-
-    """
-    Returns the sum of an array.
-    """
-
-    nodeName = "Sum"
-
-    def __init__(self, name):
-        super(Sum, self).__init__(name, terminals={
-            'In': {'io': 'in', 'ttype': Array},
-            'Out': {'io': 'out', 'ttype': float}
-        })
-
-    def to_operation(self, inputs, conditions={}):
-        outputs = self.output_vars()
-        node = gn.Map(name=self.name()+"_operation",
-                      condition_needs=list(conditions.values()), inputs=list(inputs.values()), outputs=outputs,
-                      func=lambda a: np.sum(a, dtype=np.float64), parent=self.name())
-        return node
-
-
-class Projection(CtrlNode):
-
-    """
-    Projection projects a 2d array along the selected axis.
-    """
-
-    nodeName = "Projection"
-    uiTemplate = [('axis', 'intSpin', {'value': 0, 'min': 0, 'max': 1})]
-
-    def __init__(self, name):
-        super(Projection, self).__init__(name, terminals={
-            'In': {'io': 'in', 'ttype': Array2d},
-            'Out': {'io': 'out', 'ttype': Array1d}
-        })
-
-    def to_operation(self, inputs, conditions={}):
-        outputs = self.output_vars()
-        axis = self.axis
-        node = gn.Map(name=self.name()+"_operation",
-                      condition_needs=list(conditions.values()), inputs=list(inputs.values()), outputs=outputs,
-                      func=lambda a: np.sum(a, axis=axis), parent=self.name())
-        return node
 
 
 class MeanVsScan(Node):
@@ -97,104 +51,16 @@ class MeanVsScan(Node):
         return nodes
 
 
-class Binning(CtrlNode):
-
-    """
-    Binning creates a histogram with a fixed number of bins using numpy.histogram.
-    """
-
-    nodeName = "Binning"
-    uiTemplate = [('bins', 'intSpin', {'value': 10, 'min': 1, 'max': MAX}),
-                  ('range min', 'intSpin', {'value': 1, 'min': 1, 'max': MAX}),
-                  ('range max', 'intSpin', {'value': 100, 'min': 2, 'max': MAX}),
-                  ('density', 'check', {'checked': False}),
-                  ('num events', 'intSpin', {'value': 10, 'min': 1, 'max': MAX})]
-
-    def __init__(self, name):
-        super().__init__(name, terminals={
-            'In': {'io': 'in', 'ttype': Union[float, Array1d]},
-            'Bins': {'io': 'out', 'ttype': Array1d},
-            'Counts': {'io': 'out', 'ttype': Array1d}
-        })
-
-    def to_operation(self, inputs, conditions={}):
-        outputs = self.output_vars()
-        map_outputs = [self.name()+"_hist"]
-        accumulated_outputs = [self.name()+"_sum"]
-        nbins = self.bins
-        rmin = self.range_min
-        rmax = self.range_max
-        density = self.density
-
-        def bin(arr):
-            counts, bins = np.histogram(arr, bins=nbins, range=(rmin, rmax), density=density)
-            return bins, counts
-
-        node = [gn.Map(name=self.name()+"_map",
-                       condition_needs=list(conditions.values()), inputs=list(inputs.values()), outputs=map_outputs,
-                       func=bin, parent=self.name()),
-                gn.PickN(name=self.name()+"_accumulated", inputs=map_outputs, outputs=accumulated_outputs,
-                         N=self.num_events, parent=self.name()),
-                gn.Map(name=self.name()+"_operation", inputs=accumulated_outputs, outputs=outputs,
-                       func=lambda h: functools.reduce(lambda x, y: (y[0], x[1]+y[1]), h), parent=self.name())]
-        return node
-
-
-class Binning2D(CtrlNode):
-
-    """
-    Binning2D creates a 2d histogram with a fixed number of bins using numpy.histogram2d.
-    """
-
-    nodeName = "Binning2D"
-    uiTemplate = [('bins', 'intSpin', {'value': 10, 'min': 1, 'max': MAX}),
-                  ('range x min', 'intSpin', {'value': 1, 'min': 1, 'max': MAX}),
-                  ('range x max', 'intSpin', {'value': 100, 'min': 2, 'max': MAX}),
-                  ('range y min', 'intSpin', {'value': 1, 'min': 1, 'max': MAX}),
-                  ('range y max', 'intSpin', {'value': 100, 'min': 2, 'max': MAX}),
-                  ('density', 'check', {'checked': False}),
-                  ('num events', 'intSpin', {'value': 10, 'min': 1, 'max': MAX})]
-
-    def __init__(self, name):
-        super().__init__(name, terminals={
-            'X': {'io': 'in', 'ttype': Union[float, Array1d]},
-            'Y': {'io': 'in', 'ttype': Union[float, Array1d]},
-            'XBins': {'io': 'out', 'ttype': Array1d},
-            'YBins': {'io': 'out', 'ttype': Array1d},
-            'Counts': {'io': 'out', 'ttype': Array2d}
-        })
-
-    def to_operation(self, inputs, conditions={}):
-        outputs = self.output_vars()
-        map_outputs = [self.name()+"_hist"]
-        accumulated_outputs = [self.name()+"_sum"]
-        nbins = self.bins
-        xmin = self.range_x_min
-        xmax = self.range_x_max
-        ymin = self.range_y_min
-        ymax = self.range_y_max
-        density = self.density
-
-        def bin(x, y):
-            counts, xbins, ybins = np.histogram2d(x, y, bins=nbins, range=[[xmin, xmax], [ymin, ymax]], density=density)
-            return xbins, ybins, counts
-
-        node = [gn.Map(name=self.name()+"_map",
-                       condition_needs=list(conditions.values()), inputs=list(inputs.values()), outputs=map_outputs,
-                       func=bin, parent=self.name()),
-                gn.PickN(name=self.name()+"_accumulated", inputs=map_outputs, outputs=accumulated_outputs,
-                         N=self.num_events, parent=self.name()),
-                gn.Map(name=self.name()+"_operation", inputs=accumulated_outputs, outputs=outputs,
-                       func=lambda h: functools.reduce(lambda x, y: (y[0], y[1], x[2]+y[2]), h), parent=self.name())]
-        return node
-
-
 class MathGraphicsItem(NodeGraphicsItem):
 
-    def buildMenu(self):
-        super(MathGraphicsItem, self).buildMenu()
+    def buildMenu(self, reset=False):
+        super().buildMenu(reset)
         actions = self.menu.actions()
-        addInput = actions[1]
+        addInput = actions[2]
+
+        addFloat = QtGui.QAction("Add float", self.menu)
+        addFloat.triggered.connect(self.node.addFloat)
+        self.menu.insertAction(addInput, addFloat)
 
         addWaveform = QtGui.QAction("Add waveform", self.menu)
         addWaveform.triggered.connect(self.node.addWaveform)
@@ -210,10 +76,12 @@ class MathGraphicsItem(NodeGraphicsItem):
 class MathNode(Node):
 
     def __init__(self, name):
-        super(MathNode, self).__init__(name,
-                                       terminals={'Image': {'io': 'in', 'ttype': Array2d, 'removable': True},
-                                                  'Out': {'io': 'out', 'ttype': Array2d}},
-                                       allowAddInput=True)
+        super().__init__(name,
+                         terminals={'Float': {'io': 'in', 'ttype': float, 'removable': True},
+                                    'Waveform': {'io': 'in', 'ttype': Array1d, 'removable': True},
+                                    'Image': {'io': 'in', 'ttype': Array2d, 'removable': True},
+                                    'Out': {'io': 'out', 'ttype': Array2d}},
+                         allowAddInput=True)
         self.sigTerminalAdded.connect(self.setOutput)
         self.sigTerminalRemoved.connect(self.setOutput)
 
@@ -227,6 +95,9 @@ class MathNode(Node):
             return False
 
         return super(MathNode, self).isConnected()
+
+    def addFloat(self):
+        self.addTerminal('Float', io='in', ttype=float, removable=True)
 
     def addWaveform(self):
         self.addTerminal('Waveform', io='in', ttype=Array1d, removable=True)
@@ -242,10 +113,12 @@ class MathNode(Node):
 
         if Array2d in inputs:
             output_type = Array2d
-        elif inputs == {Array1d}:
+        elif Array1d in inputs:
             output_type = Array1d
+        elif float in inputs:
+            output_type = float
         else:
-            return
+            raise Exception("Unable to set output type!")
 
         self._outputs['Out']()._type = output_type
 
@@ -253,7 +126,7 @@ class MathNode(Node):
 class Add(MathNode):
 
     """
-    Add waveforms and images.
+    Add floats, waveforms, and images.
     """
 
     nodeName = "Add"
@@ -273,7 +146,7 @@ class Add(MathNode):
 class Subtract(MathNode):
 
     """
-    Subtract waveforms and images.
+    Subtract floats, waveforms, and images.
     """
 
     nodeName = "Subtract"
@@ -290,25 +163,90 @@ class Subtract(MathNode):
         return node
 
 
-# class Constant(CtrlNode, MathNode):
+class Multiply(MathNode):
 
-#     """
-#     Add/Subtract/Multiply/Divide waveform and images by constant.
-#     """
+    """
+    Multiply floats, waveforms, and images.
+    """
 
-#     nodeName = "Constant"
-#     uiTemplate = [('operation', 'combo', {'values': ['Add', 'Subtract', 'Multiply', 'Divide']})]
+    nodeName = "Multiply"
 
-#     def __init__(self, name):
-#         CtrlNode.__init__(name,
-#                           terminals={'Image': {'io': 'in', 'ttype': Array2d, 'removable': True},
-#                                      'Out': {'io': 'out', 'ttype': Array2d}},
-#                           allowAddInput=True)
-#         self.sigTerminalAdded.connect(self.setOutput)
-#         self.sigTerminalRemoved.connect(self.setOutput)
+    def to_operation(self, inputs, conditions={}):
+        outputs = self.output_vars()
 
-#     def to_operation(self, inputs, conditions={}):
-#         pass
+        def func(*args):
+            return functools.reduce(lambda x, y: x*y, args)
+
+        node = gn.Map(name=self.name()+"_operation",
+                      conditions_needs=list(conditions.values()), inputs=list(inputs.values()), outputs=outputs,
+                      func=func, parent=self.name())
+        return node
+
+
+class Divide(MathNode):
+
+    """
+    Divide floats, waveforms, and images.
+    """
+
+    nodeName = "Divide"
+
+    def to_operation(self, inputs, conditions={}):
+        outputs = self.output_vars()
+
+        def func(*args):
+            return functools.reduce(lambda x, y: x/y, args)
+
+        node = gn.Map(name=self.name()+"_operation",
+                      conditions_needs=list(conditions.values()), inputs=list(inputs.values()), outputs=outputs,
+                      func=func, parent=self.name())
+        return node
+
+
+class ConstantFloat(CtrlNode):
+
+    """
+    Outputs a float constant.
+    """
+
+    nodeName = "ConstantFloat"
+    uiTemplate = [('value', 'doubleSpin', {'value': 1, 'min': -MAX, 'max': MAX})]
+
+    def __init__(self, name):
+        super().__init__(name, terminals={'Out': {'io': 'out', 'ttype': float}})
+
+    def to_operation(self, inputs, conditions={}):
+        outputs = self.output_vars()
+        value = self.value
+
+        node = gn.Map(name=self.name()+"_operation",
+                      conditions_needs=list(conditions.values()), inputs=list(inputs.values()), outputs=outputs,
+                      func=lambda: value, parent=self.name())
+        return node
+
+
+class ConstantArray1d(CtrlNode):
+
+    """
+    Outputs a constant 1d array.
+    """
+
+    nodeName = "ConstantArray1d"
+    uiTemplate = [('shape', 'intSpin', {'value': 1, 'min': 1, 'max': MAX}),
+                  ('value', 'doubleSpin', {'value': 1, 'min': -MAX, 'max': MAX})]
+
+    def __init__(self, name):
+        super().__init__(name, terminals={'Out': {'io': 'out', 'ttype': Array1d}})
+
+    def to_operation(self, inputs, conditions={}):
+        outputs = self.output_vars()
+        shape = self.shape
+        value = self.value
+
+        node = gn.Map(name=self.name()+"_operation",
+                      conditions_needs=list(conditions.values()), inputs=list(inputs.values()), outputs=outputs,
+                      func=lambda: np.ones(shape)*value, parent=self.name())
+        return node
 
 
 class Export(Node):
@@ -323,62 +261,3 @@ class Export(Node):
         super().__init__(name, terminals={"In": {'io': 'in', 'ttype': Any},
                                           "Out": {'io': 'out', 'ttype': Any}},
                          exportable=True)
-
-
-class Split(CtrlNode):
-
-    """
-    Split a 2d array into 1d arrays using np.split.
-    """
-
-    nodeName = "Split"
-    uiTemplate = [('axis', 'intSpin', {'value': 0, 'min': 0, 'max': 1})]
-
-    def __init__(self, name):
-        super().__init__(name, terminals={"In": {'io': 'in', 'ttype': Array2d},
-                                          "Out": {'io': 'out', 'ttype': Array1d}},
-                         allowAddOutput=True)
-
-    def to_operation(self, inputs, conditions={}):
-        outputs = self.output_vars()
-
-        axis = self.axis
-        sections = len(outputs)
-
-        def split(arr):
-            splits = np.split(arr, sections, axis=axis)
-            if axis == 0:
-                splits = map(lambda a: a[0, :], splits)
-            elif axis == 1:
-                splits = map(lambda a: a[:, 0], splits)
-            return list(splits)
-
-        node = gn.Map(name=self.name()+"_operation",
-                      condition_needs=list(conditions.values()), inputs=list(inputs.values()), outputs=outputs,
-                      func=split, parent=self.name())
-        return node
-
-
-class Stack(CtrlNode):
-
-    """
-    Stacks 1d arrays into 2d array using np.stack
-    """
-
-    nodeName = "Stack"
-    uiTemplate = [('axis', 'intSpin', {'value': 0, 'min': 0, 'max': 1})]
-
-    def __init__(self, name):
-        super().__init__(name, terminals={"In": {'io': 'in', 'ttype': Array1d},
-                                          "Out": {'io': 'out', 'ttype': Array2d}},
-                         allowAddInput=True)
-
-    def to_operation(self, inputs, conditions={}):
-        outputs = self.output_vars()
-
-        axis = self.axis
-
-        node = gn.Map(name=self.name()+"_operation",
-                      condition_needs=list(conditions.values()), inputs=list(inputs.values()), outputs=outputs,
-                      func=lambda *arr: np.stack(arr, axis=axis), parent=self.name())
-        return node

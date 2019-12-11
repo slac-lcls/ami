@@ -5,6 +5,7 @@ from ami.graph_nodes import PickN
 
 def test_filter_on(complex_graph):
     complex_graph.compile(num_workers=4, num_local_collectors=2)
+    complex_graph.plot('test.png')
     complex_graph({'cspad': np.ones((200, 200)), 'laser': True, 'delta_t': 8}, color='worker')
     worker = complex_graph({'cspad': np.ones((200, 200)), 'laser': True, 'delta_t': 3}, color='worker')
     complex_graph(worker, color='localCollector')

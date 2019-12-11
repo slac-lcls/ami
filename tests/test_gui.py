@@ -219,20 +219,20 @@ def test_editor(qtbot, flowchart, tmp_path):
     qtbot.addWidget(flowchart.widget())
 
     flowchart.createNode('Roi2D')
-    roi_node = flowchart._nodes['Roi2D.0']
+    roi_node = flowchart.nodes(data='node')['Roi2D.0']
 
     node_name = 'cspad'
     node_type = flowchart.source_library.getSourceType(node_name)
     node = SourceNode(name=node_name, terminals={'Out': {'io': 'out', 'ttype': node_type}})
 
     flowchart.createNode(nodeType=node_type, name=node_name, node=node)
-    cspad_node = flowchart._nodes['cspad']
+    cspad_node = flowchart.nodes(data='node')['cspad']
 
     cspad_out = cspad_node._outputs['Out']
     roi_in = roi_node._inputs['In']
 
     cspad_out().connectTo(roi_in())
-    assert len(flowchart.listConnections()) == 1
+    assert len(flowchart._graph.edges()) == 1
 
     widget = flowchart.widget()
 
@@ -241,7 +241,7 @@ def test_editor(qtbot, flowchart, tmp_path):
     widget.saveClicked()
 
     flowchart.clear()
-    assert len(flowchart.listConnections()) == 0
+    assert len(flowchart._graph.edges()) == 0
 
     flowchart.loadFile(pth)
-    assert len(flowchart.listConnections()) == 1
+    assert len(flowchart._graph.edges()) == 1

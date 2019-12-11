@@ -43,11 +43,11 @@ class Node(QtCore.QObject):
     sigClosed = QtCore.Signal(object)
     sigTerminalAdded = QtCore.Signal(object, object)  # self, term
     sigTerminalRemoved = QtCore.Signal(object, object)  # self, term
-    sigTerminalConnected = QtCore.Signal(object)  # self
-    sigTerminalDisconnected = QtCore.Signal(object)  # self
+    sigTerminalConnected = QtCore.Signal(object, object)  # localTerm, remoteTerm
+    sigTerminalDisconnected = QtCore.Signal(object, object)  # localTerm, remoteTerm
+    sigNodeEnabled = QtCore.Signal(object)  # self
 
-    def __init__(self, name, terminals={}, allowAddInput=False, allowAddOutput=False, allowAddCondition=True,
-                 allowRemove=True, viewable=False, buffered=False, exportable=False, filter=False):
+    def __init__(self, name, **kwargs):
         """
         ==============  ============================================================
         **Arguments:**
@@ -89,16 +89,17 @@ class Node(QtCore.QObject):
         self._outputs = OrderedDict()
         self._conditions = OrderedDict()
         self._groups = OrderedDict()  # terminal group {"name": set(terminals)}
-        self._allowAddInput = allowAddInput   # flags to allow the user to add/remove terminals
-        self._allowAddOutput = allowAddOutput
-        self._allowAddCondition = allowAddCondition
-        self._allowRemove = allowRemove
-        self._viewable = viewable
-        self._buffered = buffered
-        self._exportable = exportable
-        self._filter = filter
+        self._allowAddInput = kwargs.get("allowAddInput", False)
+        self._allowAddOutput = kwargs.get("allowAddOutput", False)
+        self._allowAddCondition = kwargs.get("allowAddCondition", True)
+        self._allowRemove = kwargs.get("allowRemove", True)
+        self._viewable = kwargs.get("viewable", False)
+        self._buffered = kwargs.get("buffered", False)
+        self._exportable = kwargs.get("exportable", False)
+        self._filter = kwargs.get("filter", False)
         self._note = ""
         self._editor = None
+        self._enabled = True
 
         self.viewed = False
         self.exception = None
@@ -106,8 +107,9 @@ class Node(QtCore.QObject):
         self._input_vars = {}  # term:var
         self._condition_vars = {}  # term:var
 
-        brush = self.determineColor(terminals)
-        self.graphicsItem(brush)
+        terminals = kwargs.get("terminals", {})
+        self.brush = self.determineColor(terminals)
+        self.graphicsItem(self.brush)
 
         for name, opts in terminals.items():
             self.addTerminal(name, **opts)
@@ -143,33 +145,49 @@ class Node(QtCore.QObject):
 
         brush = None
         if isInput and not isOutput:
-            brush = fn.mkBrush(255, 0, 0, 150)
+            brush = fn.mkBrush(255, 0, 0, 255)
         elif isOutput and not isInput:
-            brush = fn.mkBrush(0, 255, 0, 150)
+            brush = fn.mkBrush(0, 255, 0, 255)
 
         return brush
 
-    def addInput(self, name="In", **args):
+    def nodeEnabled(self, enabled):
+        self._enabled = enabled
+
+        # block signals so that flowchart.nodeEnabled doesn't get called recursively
+        self.graphicsItem().enabled.blockSignals(True)
+        self.graphicsItem().enabled.setChecked(enabled)
+        self.graphicsItem().enabled.blockSignals(False)
+
+        if enabled:
+            if self.brush:
+                self.graphicsItem().setBrush(self.brush)
+            else:
+                self.graphicsItem().setBrush(fn.mkBrush(255, 255, 255, 255))
+        else:
+            self.graphicsItem().setBrush(fn.mkBrush(255, 255, 0, 255))
+
+    def addInput(self, name="In", **kwargs):
         """Add a new input terminal to this Node with the given name. Extra
         keyword arguments are passed to Terminal.__init__.
 
         This is a convenience function that just calls addTerminal(io='in', ...)"""
         # print "Node.addInput called."
-        return self.addTerminal(name, io='in', ttype=self.terminals["In"].type(), **args)
+        return self.addTerminal(name, io='in', ttype=self.terminals["In"].type(), **kwargs)
 
-    def addOutput(self, name="Out", **args):
+    def addOutput(self, name="Out", **kwargs):
         """Add a new output terminal to this Node with the given name. Extra
         keyword arguments are passed to Terminal.__init__.
 
         This is a convenience function that just calls addTerminal(io='out', ...)"""
-        return self.addTerminal(name, io='out', ttype=self.terminals["Out"].type(), **args)
+        return self.addTerminal(name, io='out', ttype=self.terminals["Out"].type(), **kwargs)
 
-    def addCondition(self, name="Condition", **args):
+    def addCondition(self, name="Condition", **kwargs):
         """Add a new condition terminal to this Node with the given name. Extra
         keyword arguments are passed to Terminal.__init__.
 
         This is a convenience function that just calls addTerminal(io='condition', ...)"""
-        return self.addTerminal(name, io='condition', ttype=Any, **args)
+        return self.addTerminal(name, io='condition', ttype=Any, **kwargs)
 
     def editNote(self):
         if self._editor is None:
@@ -207,22 +225,20 @@ class Node(QtCore.QObject):
             del self._conditions[name]
         self.graphicsItem().updateTerminals()
         self.sigTerminalRemoved.emit(self, term)
-
-        self.graphicsItem().menu = None
-        self.graphicsItem().buildMenu()
+        self.graphicsItem().buildMenu(reset=True)
 
         group_name = term._group
-        group = self._groups[group_name]
-        group.discard(name)
-
-        terms = []
-        for term in group:
-            terms.append(term)
-
-        for term in terms:
-            self.removeTerminal(term)
-
         if group_name in self._groups:
+            group = self._groups[group_name]
+            group.discard(name)
+
+            terms = []
+            for term in group:
+                terms.append(term)
+
+            for term in terms:
+                self.removeTerminal(term)
+
             del self._groups[group_name]
 
     def addTerminal(self, name, group=None, **opts):
@@ -275,6 +291,9 @@ class Node(QtCore.QObject):
 
     def filter(self):
         return self._filter
+
+    def enabled(self):
+        return self._enabled
 
     def input_vars(self):
         return self._input_vars
@@ -340,7 +359,7 @@ class Node(QtCore.QObject):
                 self._input_vars[localTerm.name()] = '.'.join([node.name(), remoteTerm.name()])
         elif localTerm.isCondition():
             self._condition_vars[localTerm.name()] = node.name()
-        self.sigTerminalConnected.emit(self)
+        self.sigTerminalConnected.emit(localTerm, remoteTerm)
 
     def disconnected(self, localTerm, remoteTerm):
         """Called whenever one of this node's terminals is disconnected from another."""
@@ -348,7 +367,7 @@ class Node(QtCore.QObject):
             del self._input_vars[localTerm.name()]
         elif localTerm.isCondition():
             del self._condition_vars[localTerm.name()]
-        self.sigTerminalDisconnected.emit(self)
+        self.sigTerminalDisconnected.emit(localTerm, remoteTerm)
 
     def isConnected(self):
         for name, term in self.terminals.items():
@@ -375,7 +394,7 @@ class Node(QtCore.QObject):
         self.setException(None)
 
     def recolor(self):
-        if self.exception is None:
+        if self.exception:
             self.graphicsItem().setPen(QtGui.QPen(QtGui.QColor(0, 0, 0)))
         else:
             self.graphicsItem().setPen(QtGui.QPen(QtGui.QColor(150, 0, 0), 3))
@@ -389,7 +408,7 @@ class Node(QtCore.QObject):
         Subclasses may want to extend this method, adding extra keys to the returned
         dict."""
         pos = self.graphicsItem().pos()
-        state = {'pos': (pos.x(), pos.y()), 'note': self._note}
+        state = {'pos': (pos.x(), pos.y()), 'note': self._note, 'enabled': self._enabled}
         state['terminals'] = self.saveTerminals()
         return state
 
@@ -400,6 +419,7 @@ class Node(QtCore.QObject):
         self.graphicsItem().setPos(*pos)
         note = state.get('note')
         self.setNote(note)
+        self._enabled = state.get('enabled')
         if 'terminals' in state:
             self.restoreTerminals(state['terminals'])
 
@@ -459,10 +479,12 @@ class NodeGraphicsItem(GraphicsObject):
 
         self.pen = fn.mkPen(0, 0, 0)
         self.selectPen = fn.mkPen(200, 200, 200, width=2)
+
         if brush:
             self.brush = brush
         else:
-            self.brush = fn.mkBrush(200, 200, 200, 150)
+            self.brush = fn.mkBrush(255, 255, 255, 255)
+
         self.hoverBrush = fn.mkBrush(200, 200, 200, 200)
         self.selectBrush = fn.mkBrush(200, 200, 255, 200)
         self.hovered = False
@@ -486,6 +508,7 @@ class NodeGraphicsItem(GraphicsObject):
 
         self.menu = None
         self.add_condition = None
+        self.enabled = QtGui.QAction("Enabled", self.menu, checkable=True, checked=True)
         self.buildMenu()
 
     def setNote(self, text):
@@ -558,26 +581,16 @@ class NodeGraphicsItem(GraphicsObject):
         ev.ignore()
 
     def mouseClickEvent(self, ev):
-        # print "Node.mouseClickEvent called."
         if int(ev.button()) == int(QtCore.Qt.LeftButton):
             ev.accept()
-            # print "    ev.button: left"
             sel = self.isSelected()
-            # ret = QtGui.QGraphicsItem.mousePressEvent(self, ev)
             self.setSelected(True)
             if not sel and self.isSelected():
-                # self.setBrush(QtGui.QBrush(QtGui.QColor(200, 200, 255)))
-                # self.emit(QtCore.SIGNAL('selected'))
-                # self.scene().selectionChanged.emit() # for some reason this doesn't seem to be happening automatically
                 self.update()
-            # return ret
 
         elif int(ev.button()) == int(QtCore.Qt.RightButton):
-            # print "    ev.button: right"
             ev.accept()
-            # pos = ev.screenPos()
             self.raiseContextMenu(ev)
-            # self.menu.popup(QtCore.QPoint(pos.x(), pos.y()))
 
     def mouseDragEvent(self, ev):
         if ev.button() == QtCore.Qt.LeftButton:
@@ -638,10 +651,16 @@ class NodeGraphicsItem(GraphicsObject):
         pos = ev.screenPos()
         menu.popup(QtCore.QPoint(pos.x(), pos.y()))
 
-    def buildMenu(self):
+    def buildMenu(self, reset=False):
+        if reset:
+            # qt seg. faults if you don't delete old menu first
+            self.menu = None
+
         if self.menu is None:
             self.menu = QtGui.QMenu()
             self.menu.setTitle("Node")
+            self.enabled.toggled.connect(self.enabledFromMenu)
+            self.menu.addAction(self.enabled)
             self.menu.addAction("Edit note", self.node.editNote)
             if self.node._allowAddInput:
                 self.menu.addAction("Add input", self.addInputFromMenu)
@@ -651,6 +670,12 @@ class NodeGraphicsItem(GraphicsObject):
                 self.add_condition = self.menu.addAction("Add condition", self.addConditionFromMenu)
             if self.node._allowRemove:
                 self.menu.addAction("Remove node", self.node.close)
+
+        return self.menu
+
+    def enabledFromMenu(self, checked):
+        self.node.nodeEnabled(checked)
+        self.node.sigNodeEnabled.emit(self.node)
 
     def addInputFromMenu(self):
         # called when add input is clicked in context menu

@@ -46,6 +46,8 @@ def generateUi(opts):
                 w.setValue(o['value'])
         elif t == 'doubleSpin':
             w = QtGui.QDoubleSpinBox()
+            if 'precision' in o:
+                w.setDecimals(o['precision'])
             if 'max' in o:
                 w.setMaximum(o['max'])
             if 'min' in o:

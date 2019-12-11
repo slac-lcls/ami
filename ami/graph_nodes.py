@@ -234,24 +234,20 @@ class ReduceByKey(GlobalTransformation):
 class Accumulator(GlobalTransformation):
 
     def __init__(self, **kwargs):
-        N = kwargs.pop('N', 1)
         super().__init__(**kwargs)
-        self.N = N
-        self.res = []
+        self.res_factory = kwargs.pop('res_factory', lambda: 0)
+        assert hasattr(self.res_factory, '__call__'), 'res_factory is not callable'
+        self.res = self.res_factory()
 
     def __call__(self, *args, **kwargs):
-        if len(self.res) > self.N:
-            self.res = []
-
-        self.res.extend(args)
-
-        if self.reduction:
-            return self.reduction(self.res)
-
+        self.res = self.reduction(self.res, *args)
         return self.res
 
     def reset(self):
-        self.res = []
+        self.res = self.res_factory()
+
+    def on_expand(self):
+        return {'parent': self.parent, 'res_factory': self.res_factory}
 
 
 class PickN(GlobalTransformation):

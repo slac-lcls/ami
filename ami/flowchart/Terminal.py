@@ -41,6 +41,7 @@ class Terminal(object):
     def setOpts(self, **opts):
         self._removable = opts.get('removable', self._removable)
         self._type = opts.get('type', self._type)
+        self._group = opts.get('group', None)
 
     def connected(self, term):
         """
@@ -48,6 +49,7 @@ class Terminal(object):
         (note--this function is called on both terminals)
         """
         self.node().connected(self, term)
+        self.graphicsItem().buildMenu(reset=True)
 
     def disconnected(self, term):
         """
@@ -58,6 +60,9 @@ class Terminal(object):
 
     def type(self):
         return self._type
+
+    def group(self):
+        return self._group
 
     def setType(self, type):
         self._type = type
@@ -280,29 +285,36 @@ class TerminalGraphicsItem(GraphicsObject):
 
     def raiseContextMenu(self, ev):
         # only raise menu if this terminal is removable
-        menu = self.getMenu()
+        menu = self.buildMenu()
         menu = self.scene().addParentContextMenus(self, menu, ev)
         pos = ev.screenPos()
         menu.popup(QtCore.QPoint(pos.x(), pos.y()))
 
-    def getMenu(self):
+    def buildMenu(self, reset=False):
+        if reset:
+            # qt seg. faults if you don't delete old menu first
+            self.menu = None
+
         if self.menu is None:
             self.menu = QtGui.QMenu()
             self.menu.setTitle("Terminal")
 
-            def disconnect(term, connections):
-                for conn in connections:
-                    term.disconnectFrom(conn)
+            if self.term.isConnected():
+                def disconnect(term, connections):
+                    for conn in connections:
+                        term.disconnectFrom(conn)
+                        conn.graphicsItem().buildMenu(reset=True)
+                    term.graphicsItem().buildMenu(reset=True)
 
-            disconAct = QtGui.QAction("Disconnect", self.menu)
-            if self.term.inputTerminals():
-                disconAct.triggered.connect(lambda: disconnect(self.term, self.term.inputTerminals()))
-            elif self.term.dependentTerms():
-                disconAct.triggered.connect(lambda: disconnect(self.term, self.term.dependentTerms()))
-            self.menu.addAction(disconAct)
-            self.menu.disconAct = disconAct
-            if not self.term.isConnected():
-                disconAct.setEnabled(False)
+                disconAct = QtGui.QAction("Disconnect", self.menu)
+                if self.term.inputTerminals():
+                    disconAct.triggered.connect(lambda: disconnect(self.term, self.term.inputTerminals()))
+                elif self.term.dependentTerms():
+                    disconAct.triggered.connect(lambda: disconnect(self.term, self.term.dependentTerms()))
+                self.menu.addAction(disconAct)
+                self.menu.disconAct = disconAct
+            else:
+                pass
 
             if self.term.isRemovable():
                 remAct = QtGui.QAction("Remove terminal", self.menu)
