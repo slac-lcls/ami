@@ -1,5 +1,5 @@
 from qtpy import QtCore
-from ami.flowchart.library.Operators import Projection, Binning
+from ami.flowchart.library.Numpy import Projection, Binning
 from ami.flowchart.library.Accumulators import PickN
 from ami.flowchart.library.Display import ScatterPlot, ScalarPlot
 import ami.graph_nodes as gn
@@ -72,7 +72,7 @@ def test_binning(qtbot):
 
     assert node.range_min == 1
     qtbot.keyPress(node.ctrls['range min'], QtCore.Qt.Key_Down)
-    assert node.range_min == 1
+    assert node.range_min == 0
 
     assert node.range_max == 100
     for i in range(0, 10):
@@ -80,10 +80,9 @@ def test_binning(qtbot):
     assert node.range_max == 110
 
     op = node.to_operation(inputs={"In": node.name()})
-    assert len(op) == 3
+    assert len(op) == 2
     assert type(op[0]) == gn.Map
-    assert type(op[1]) == gn.PickN
-    assert type(op[2]) == gn.Map
+    assert type(op[1]) == gn.Accumulator
 
 
 def test_scatterplot(qtbot):

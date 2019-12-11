@@ -175,15 +175,25 @@ class Flowchart(Node):
         if self._graph.has_edge(localNode, remoteNode, key=key):
             self._graph.remove_edge(localNode, remoteNode, key=key)
 
-    def nodeEnabled(self, node):
-        # enabled = node._enabled
-        # successors = self._graph.successors(node.name())
+    def nodeEnabled(self, root):
+        enabled = root._enabled
+
         outputs = [n for n, d in self._graph.out_degree() if d == 0]
-        sources_targets = list(it.product([node.name()], outputs))
+        sources_targets = list(it.product([root.name()], outputs))
+
         for s, t in sources_targets:
             paths = list(nx.algorithms.all_simple_paths(self._graph, s, t))
+
             for path in paths:
-                pass
+                for node in path[1:]:
+                    node = self._graph.nodes[node]['node']
+                    node.nodeEnabled(enabled)
+                    if node.conditions():
+                        preds = self._graph.predecessors(node.name())
+                        preds = filter(lambda n: n.startswith("Filter"), preds)
+                        for filt in preds:
+                            node = self._graph.nodes[filt]['node']
+                            node.nodeEnabled(enabled)
 
     def connectTerminals(self, term1, term2, type_file=None):
         """Connect two terminals together within this flowchart."""
@@ -718,6 +728,9 @@ class FlowchartWidget(dockarea.DockArea):
             return
 
         node = item.node
+        if not node.enabled():
+            return
+
         node.viewed = True
         if isinstance(item.node, Node) and item.node.buffered():
             topics = []

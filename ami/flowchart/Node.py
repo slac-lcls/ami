@@ -108,8 +108,8 @@ class Node(QtCore.QObject):
         self._condition_vars = {}  # term:var
 
         terminals = kwargs.get("terminals", {})
-        brush = self.determineColor(terminals)
-        self.graphicsItem(brush)
+        self.brush = self.determineColor(terminals)
+        self.graphicsItem(self.brush)
 
         for name, opts in terminals.items():
             self.addTerminal(name, **opts)
@@ -150,6 +150,22 @@ class Node(QtCore.QObject):
             brush = fn.mkBrush(0, 255, 0, 255)
 
         return brush
+
+    def nodeEnabled(self, enabled):
+        self._enabled = enabled
+
+        # block signals so that flowchart.nodeEnabled doesn't get called recursively
+        self.graphicsItem().enabled.blockSignals(True)
+        self.graphicsItem().enabled.setChecked(enabled)
+        self.graphicsItem().enabled.blockSignals(False)
+
+        if enabled:
+            if self.brush:
+                self.graphicsItem().setBrush(self.brush)
+            else:
+                self.graphicsItem().setBrush(fn.mkBrush(255, 255, 255, 255))
+        else:
+            self.graphicsItem().setBrush(fn.mkBrush(255, 255, 0, 255))
 
     def addInput(self, name="In", **kwargs):
         """Add a new input terminal to this Node with the given name. Extra
@@ -276,6 +292,9 @@ class Node(QtCore.QObject):
     def filter(self):
         return self._filter
 
+    def enabled(self):
+        return self._enabled
+
     def input_vars(self):
         return self._input_vars
 
@@ -375,7 +394,7 @@ class Node(QtCore.QObject):
         self.setException(None)
 
     def recolor(self):
-        if self.exception is None:
+        if self.exception:
             self.graphicsItem().setPen(QtGui.QPen(QtGui.QColor(0, 0, 0)))
         else:
             self.graphicsItem().setPen(QtGui.QPen(QtGui.QColor(150, 0, 0), 3))
@@ -489,6 +508,7 @@ class NodeGraphicsItem(GraphicsObject):
 
         self.menu = None
         self.add_condition = None
+        self.enabled = QtGui.QAction("Enabled", self.menu, checkable=True, checked=True)
         self.buildMenu()
 
     def setNote(self, text):
@@ -639,9 +659,8 @@ class NodeGraphicsItem(GraphicsObject):
         if self.menu is None:
             self.menu = QtGui.QMenu()
             self.menu.setTitle("Node")
-            enabled = QtGui.QAction("Enabled", self.menu, checkable=True, checked=True)
-            enabled.toggled.connect(self.enabledFromMenu)
-            self.menu.addAction(enabled)
+            self.enabled.toggled.connect(self.enabledFromMenu)
+            self.menu.addAction(self.enabled)
             self.menu.addAction("Edit note", self.node.editNote)
             if self.node._allowAddInput:
                 self.menu.addAction("Add input", self.addInputFromMenu)
@@ -655,7 +674,7 @@ class NodeGraphicsItem(GraphicsObject):
         return self.menu
 
     def enabledFromMenu(self, checked):
-        self.node._enabled = checked
+        self.node.nodeEnabled(checked)
         self.node.sigNodeEnabled.emit(self.node)
 
     def addInputFromMenu(self):

@@ -15,7 +15,7 @@ class Sum(Node):
     nodeName = "Sum"
 
     def __init__(self, name):
-        super(Sum, self).__init__(name, terminals={
+        super().__init__(name, terminals={
             'In': {'io': 'in', 'ttype': Array},
             'Out': {'io': 'out', 'ttype': float}
         })
@@ -38,7 +38,7 @@ class Projection(CtrlNode):
     uiTemplate = [('axis', 'intSpin', {'value': 0, 'min': 0, 'max': 1})]
 
     def __init__(self, name):
-        super(Projection, self).__init__(name, terminals={
+        super().__init__(name, terminals={
             'In': {'io': 'in', 'ttype': Array2d},
             'Out': {'io': 'out', 'ttype': Array1d}
         })
