@@ -215,11 +215,14 @@ class Terminal(object):
             item.scene().removeItem(item)
 
     def saveState(self):
+        ttype = str(self._type)
+        if not ttype.startswith('typing'):
+            ttype = self._type
 
         return {
             'io': self._io,
             'removable': self._removable,
-            'ttype': self._type,
+            'ttype': ttype,
             'group': self._group
         }
 

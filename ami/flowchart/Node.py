@@ -296,7 +296,13 @@ class Node(QtCore.QObject):
         return self._enabled
 
     def input_vars(self):
-        return self._input_vars
+        # we need to sort input_vars
+        input_vars = {}
+        for key in self.terminals.keys():
+            if key in self._input_vars:
+                input_vars[key] = self._input_vars[key]
+
+        return input_vars
 
     def output_vars(self):
         output_vars = []

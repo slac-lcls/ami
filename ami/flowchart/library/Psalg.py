@@ -1,6 +1,7 @@
 from ami.flowchart.library.common import CtrlNode, MAX
 from amitypes import Array1d, Array2d
 import ami.graph_nodes as gn
+import numpy as np
 
 
 try:
@@ -95,14 +96,67 @@ try:
                        'cfd_wfbinbeg':  self.wfbinbeg,
                        'cfd_wfbinend': self.wfbinend}
 
+            wfpeaks = psWFPeaks.WFPeaks(**cfdpars)
+
             def peakFinder(wts, wfs):
-                wfpeaks = psWFPeaks.WFPeaks(**cfdpars)
                 peaks = wfpeaks(wfs, wts)
                 return peaks
 
             node = gn.Map(name=self.name()+"_operation",
                           condition_needs=list(conditions.values()), inputs=list(inputs.values()), outputs=outputs,
                           func=peakFinder, parent=self.name())
+            return node
+
+    import psana.hexanode.DLDProcessor as psfDLD
+
+    class Hexanode(CtrlNode):
+
+        """
+        Hexanode
+        """
+
+        nodeName = "Hexanode"
+        uiTemplate = [('num chans', 'combo', {'values': ["5", "7"]}),
+                      ('num hits', 'intSpin', {'value': 16, 'min': 1, 'max': MAX}),
+                      ('verbose', 'check', {'checked': False})]
+
+        class DLDProc():
+
+            def __init__(self, **params):
+                self.params = params
+                self.proc = None
+
+            def __call__(self, nev, nhits, pktsec):
+                if self.proc is None:
+                    self.proc = psfDLD.DLDProcessor(**self.params)
+                x, y, r, t = zip(*self.proc.xyrt_list(nev, nhits, pktsec))
+                return (np.array(x), np.array(y), np.array(r), np.array(t))
+
+        def __init__(self, name):
+            super().__init__(name, terminals={'Event Number': {'io': 'in', 'ttype': int},
+                                              'Num of Hits': {'io': 'in', 'ttype': Array1d},
+                                              'Peak Times': {'io': 'in', 'ttype': Array2d},
+                                              'X': {'io': 'out', 'ttype': Array1d},
+                                              'Y': {'io': 'out', 'ttype': Array1d},
+                                              'R': {'io': 'out', 'ttype': Array1d},
+                                              'T': {'io': 'out', 'ttype': Array1d}})
+
+            self.calibcfg = '/home/seshu/dev/lcls2/psana/psana/hexanode/examples/configuration_quad.txt'
+            self.calibtab = '/home/seshu/dev/lcls2/psana/psana/hexanode/examples/calibration_table_data.txt'
+
+        def to_operation(self, inputs, conditions={}):
+            outputs = self.output_vars()
+
+            dldpars = {'numchs': int(self.num_chans),
+                       'numhits': self.num_hits,
+                       'verbose': self.verbose,
+                       'calibtab': self.calibtab,
+                       'calibcfg': self.calibcfg}
+
+            node = gn.Map(name=self.name()+"_operation",
+                          condition_needs=list(conditions.values()), inputs=list(inputs.values()), outputs=outputs,
+                          func=self.DLDProc(**dldpars), parent=self.name())
+
             return node
 
 except ImportError:

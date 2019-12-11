@@ -27,6 +27,7 @@ import re
 import tempfile
 import networkx as nx
 import itertools as it
+import typing  # noqa
 
 
 class Flowchart(Node):
