@@ -252,9 +252,11 @@ def run_ami(args, queue=None):
             if Defaults.SourceType == 'psana':
                 xtcdir = tempfile.mkdtemp()
                 xtcfile = os.path.join(xtcdir, Defaults.SourceConfig['files'])
-                xtcevents = str(Defaults.SourceConfig['nevents'])
+                xtcevents = str(flags.get('nevents', Defaults.SourceConfig['nevents']))
+                xtcinterval = float(flags.get('interval', Defaults.SourceConfig['interval']))
+                xtcperiod = str(xtcinterval * 1e6)
                 # generate an xtc file
-                if subprocess.call(["amiwriter", "-f", xtcfile, "-n", xtcevents, "-c"]) != 0:
+                if subprocess.call(["amiwriter", "-f", xtcfile, "-n", xtcevents, "-p", xtcperiod,  "-c"]) != 0:
                     logger.critical("Failed to generate requested xtc2 data for the psana source!")
                     return 1
                 # point the default configuration settings to the generated file
