@@ -1,8 +1,7 @@
-from pyqtgraph import QtGui
 from typing import Any
-from amitypes import Array1d, Array2d
-from ami.flowchart.Node import Node, NodeGraphicsItem
-from ami.flowchart.library.common import CtrlNode, MAX
+from amitypes import Array1d
+from ami.flowchart.Node import Node
+from ami.flowchart.library.common import CtrlNode, MAX, MathNode
 import ami.graph_nodes as gn
 import numpy as np
 import functools
@@ -49,78 +48,6 @@ class MeanVsScan(Node):
         ]
 
         return nodes
-
-
-class MathGraphicsItem(NodeGraphicsItem):
-
-    def buildMenu(self, reset=False):
-        super().buildMenu(reset)
-        actions = self.menu.actions()
-        addInput = actions[2]
-
-        addFloat = QtGui.QAction("Add float", self.menu)
-        addFloat.triggered.connect(self.node.addFloat)
-        self.menu.insertAction(addInput, addFloat)
-
-        addWaveform = QtGui.QAction("Add waveform", self.menu)
-        addWaveform.triggered.connect(self.node.addWaveform)
-        self.menu.insertAction(addInput, addWaveform)
-
-        addImage = QtGui.QAction("Add image", self.menu)
-        addImage.triggered.connect(self.node.addImage)
-        self.menu.insertAction(addWaveform, addImage)
-
-        self.menu.removeAction(addInput)
-
-
-class MathNode(Node):
-
-    def __init__(self, name):
-        super().__init__(name,
-                         terminals={'Float': {'io': 'in', 'ttype': float, 'removable': True},
-                                    'Waveform': {'io': 'in', 'ttype': Array1d, 'removable': True},
-                                    'Image': {'io': 'in', 'ttype': Array2d, 'removable': True},
-                                    'Out': {'io': 'out', 'ttype': Array2d}},
-                         allowAddInput=True)
-        self.sigTerminalAdded.connect(self.setOutput)
-        self.sigTerminalRemoved.connect(self.setOutput)
-
-    def graphicsItem(self, brush=None):
-        if self._graphicsItem is None:
-            self._graphicsItem = MathGraphicsItem(self, brush)
-        return self._graphicsItem
-
-    def isConnected(self):
-        if len(self.terminals) < 3:
-            return False
-
-        return super(MathNode, self).isConnected()
-
-    def addFloat(self):
-        self.addTerminal('Float', io='in', ttype=float, removable=True)
-
-    def addWaveform(self):
-        self.addTerminal('Waveform', io='in', ttype=Array1d, removable=True)
-
-    def addImage(self):
-        self.addTerminal('Image', io='in', ttype=Array2d, removable=True)
-
-    def setOutput(self):
-        inputs = set()
-
-        for name, term in self._inputs.items():
-            inputs.add(term()._type)
-
-        if Array2d in inputs:
-            output_type = Array2d
-        elif Array1d in inputs:
-            output_type = Array1d
-        elif float in inputs:
-            output_type = float
-        else:
-            raise Exception("Unable to set output type!")
-
-        self._outputs['Out']()._type = output_type
 
 
 class Add(MathNode):

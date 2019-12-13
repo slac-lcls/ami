@@ -60,8 +60,8 @@ class Binning(CtrlNode):
 
     nodeName = "Binning"
     uiTemplate = [('bins', 'intSpin', {'value': 10, 'min': 1, 'max': MAX}),
-                  ('range min', 'doubleSpin', {'value': 1, 'min': -MAX, 'max': MAX, 'precision': 10}),
-                  ('range max', 'doubleSpin', {'value': 100, 'min': -MAX, 'max': MAX, 'precision': 10}),
+                  ('range min', 'doubleSpin', {'value': 1, 'min': -MAX, 'max': MAX}),
+                  ('range max', 'doubleSpin', {'value': 100, 'min': -MAX, 'max': MAX}),
                   ('density', 'check', {'checked': False})]
 
     def __init__(self, name):
@@ -103,11 +103,12 @@ class Binning2D(CtrlNode):
     """
 
     nodeName = "Binning2D"
-    uiTemplate = [('bins', 'intSpin', {'value': 10, 'min': 1, 'max': MAX}),
-                  ('range x min', 'intSpin', {'value': 1, 'min': 1, 'max': MAX}),
-                  ('range x max', 'intSpin', {'value': 100, 'min': 2, 'max': MAX}),
-                  ('range y min', 'intSpin', {'value': 1, 'min': 1, 'max': MAX}),
-                  ('range y max', 'intSpin', {'value': 100, 'min': 2, 'max': MAX}),
+    uiTemplate = [('x bins', 'intSpin', {'value': 10, 'min': 1, 'max': MAX}),
+                  ('y bins', 'intSpin', {'value': 10, 'min': 1, 'max': MAX}),
+                  ('range x min', 'doubleSpin', {'value': 1, 'min': -MAX, 'max': MAX}),
+                  ('range x max', 'doubleSpin', {'value': 100, 'min': -MAX, 'max': MAX}),
+                  ('range y min', 'doubleSpin', {'value': 1, 'min': -MAX, 'max': MAX}),
+                  ('range y max', 'doubleSpin', {'value': 100, 'min': -MAX, 'max': MAX}),
                   ('density', 'check', {'checked': False})]
 
     def __init__(self, name):
@@ -122,7 +123,8 @@ class Binning2D(CtrlNode):
     def to_operation(self, inputs, conditions={}):
         outputs = self.output_vars()
         map_outputs = [self.name()+"_xbins", self.name()+"_ybins", self.name()+"_counts"]
-        nbins = self.bins
+        nxbins = self.x_bins
+        nybins = self.y_bins
         xmin = self.range_x_min
         xmax = self.range_x_max
         ymin = self.range_y_min
@@ -130,7 +132,8 @@ class Binning2D(CtrlNode):
         density = self.density
 
         def bin(x, y):
-            counts, xbins, ybins = np.histogram2d(x, y, bins=nbins, range=[[xmin, xmax], [ymin, ymax]], density=density)
+            counts, xbins, ybins = np.histogram2d(x, y, bins=[nxbins, nybins],
+                                                  range=[[xmin, xmax], [ymin, ymax]], density=density)
             return xbins, ybins, counts
 
         def reduction(res, *rest):
@@ -206,7 +209,34 @@ class Stack(CtrlNode):
         return node
 
 
-class Take(CtrlNode):
+class GroupedNode(CtrlNode):
+
+    def __init__(self, name, *args, **kwargs):
+        super().__init__(name, *args, **kwargs)
+        self.sigTerminalConnected.connect(self.setType)
+
+    def addInput(self, **kwargs):
+        group = self.nextGroupName()
+        kwargs['group'] = group
+        super().addInput(**kwargs)
+        super().addOutput(**kwargs)
+
+    def setType(self, localTerm, remoteTerm):
+        pass
+
+    def find_output_term(self, localTerm):
+        group = localTerm.group()
+        if group:
+            group = self._groups[group]
+            for name in group:
+                term = self.terminals[name]
+                if term.isOutput():
+                    return term
+        else:
+            return self.terminals['Out']
+
+
+class Take(GroupedNode):
 
     """
     Index into a list or array using np.take
@@ -221,13 +251,6 @@ class Take(CtrlNode):
         super().__init__(name, terminals={"In": {'io': 'in', 'ttype': Array},
                                           "Out": {'io': 'out', 'ttype': Union[float, Array1d, Array2d]}},
                          allowAddInput=True)
-        self.sigTerminalConnected.connect(self.setType)
-
-    def addInput(self, **kwargs):
-        group = self.nextGroupName()
-        kwargs['group'] = group
-        super().addInput(**kwargs)
-        super().addOutput(**kwargs)
 
     def to_operation(self, inputs, conditions={}):
         outputs = self.output_vars()
@@ -246,15 +269,7 @@ class Take(CtrlNode):
 
     def setType(self, localTerm, remoteTerm):
         if localTerm.isInput():
-            group = localTerm.group()
-            if group:
-                group = self._groups[group]
-                for name in group:
-                    term = self.terminals[name]
-                    if term.isOutput():
-                        break
-            else:
-                term = self.terminals['Out']
+            term = self.find_output_term(localTerm)
 
             if remoteTerm.type() == Array3d:
                 term._type = Array2d
@@ -271,9 +286,9 @@ class Polynomial(CtrlNode):
     """
 
     nodeName = "Polynomial"
-    uiTemplate = [('c0', 'doubleSpin', {'value': 1, 'min': -MAX, 'max': MAX, 'precision': 10}),
-                  ('c1', 'doubleSpin', {'value': 1, 'min': -MAX, 'max': MAX, 'precision': 10}),
-                  ('c2', 'doubleSpin', {'value': 1, 'min': -MAX, 'max': MAX, 'precision': 10})]
+    uiTemplate = [('c0', 'doubleSpin', {'value': 1, 'min': -MAX, 'max': MAX}),
+                  ('c1', 'doubleSpin', {'value': 1, 'min': -MAX, 'max': MAX}),
+                  ('c2', 'doubleSpin', {'value': 1, 'min': -MAX, 'max': MAX})]
 
     def __init__(self, name):
         super().__init__(name, terminals={
