@@ -400,10 +400,10 @@ class Node(QtCore.QObject):
         self.setException(None)
 
     def recolor(self):
-        if self.exception:
+        if self.exception is None:
             self.graphicsItem().setPen(QtGui.QPen(QtGui.QColor(0, 0, 0)))
         else:
-            self.graphicsItem().setPen(QtGui.QPen(QtGui.QColor(150, 0, 0), 3))
+            self.graphicsItem().setPen(QtGui.QPen(QtGui.QColor(255, 0, 0), 3))
 
     def saveState(self):
         """Return a dictionary representing the current state of this node

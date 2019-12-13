@@ -2,7 +2,7 @@ from ami.flowchart.library.common import CtrlNode, MAX
 from amitypes import Array1d, Array2d
 import ami.graph_nodes as gn
 import numpy as np
-
+import os
 
 try:
     import constFracDiscrim as cfd
@@ -107,6 +107,7 @@ try:
                           func=peakFinder, parent=self.name())
             return node
 
+    import psana.hexanode
     import psana.hexanode.DLDProcessor as psfDLD
 
     class Hexanode(CtrlNode):
@@ -128,7 +129,14 @@ try:
 
             def __call__(self, nev, nhits, pktsec):
                 if self.proc is None:
+                    if not os.path.exists(self.params['calibtab']):
+                        raise FileNotFoundError(f"calibtab path invalid: {self.params['calibtab']}")
+
+                    if not os.path.exists(self.params['calibcfg']):
+                        raise FileNotFoundError(f"calibcfg path invalid: {self.params['calibcfg']}")
+
                     self.proc = psfDLD.DLDProcessor(**self.params)
+
                 x, y, r, t = zip(*self.proc.xyrt_list(nev, nhits, pktsec))
                 return (np.array(x), np.array(y), np.array(r), np.array(t))
 
@@ -141,8 +149,8 @@ try:
                                               'R': {'io': 'out', 'ttype': Array1d},
                                               'T': {'io': 'out', 'ttype': Array1d}})
 
-            self.calibcfg = '/home/seshu/dev/lcls2/psana/psana/hexanode/examples/configuration_quad.txt'
-            self.calibtab = '/home/seshu/dev/lcls2/psana/psana/hexanode/examples/calibration_table_data.txt'
+            self.calibcfg = os.path.join(list(psana.hexanode.__path__)[0], 'examples/configuration_quad.txt')
+            self.calibtab = os.path.join(list(psana.hexanode.__path__)[0], 'examples/calibration_table_data.txt')
 
         def to_operation(self, inputs, conditions={}):
             outputs = self.output_vars()
