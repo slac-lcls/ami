@@ -124,7 +124,6 @@ def flowchart(request, workerjson, broker, ipc_dir, qevent_loop):
 
         with Flowchart(broker_addr=broker.broker_sub_addr,
                        graphmgr_addr=graphmgr,
-                       node_addr=broker.node_addr,
                        checkpoint_addr=broker.checkpoint_pub_addr) as fc:
 
             qevent_loop.run_until_complete(fc.updateSources(init=True))

@@ -227,33 +227,58 @@ class HistogramWidget(pg.GraphicsLayoutWidget):
                 self.plot[name].setData(x=x, y=y)
 
 
-class Histogram2DWidget(pg.ImageView):
+class Histogram2DWidget(pg.GraphicsLayoutWidget):
 
     def __init__(self, topics, terms, addr, parent=None, **kwargs):
-        self.plot = pg.PlotItem()
-        self.plot.setAspectLocked(False)
-        super().__init__(parent, view=self.plot)
+        super().__init__(parent)
+        self.setAspectLocked(True)
+        self.view = self.addViewBox()
+        self.view.setAspectLocked(True)
+
         self.fetcher = AsyncFetcher(topics, terms, addr)
         self.terms = terms
-        self.last_updated = pg.LabelItem(parent=self.plot)
-        self.pixel_value = pg.LabelItem(parent=self.plot)
-        self.proxy = pg.SignalProxy(self.scene.sigMouseMoved,
+
+        self.imageItem = pg.ImageItem()
+        self.view.addItem(self.imageItem)
+
+        self.plot = pg.PlotItem(viewBox=self.view)
+        self.plot.showGrid(True, True)
+
+        self.ax = self.plot.getAxis('bottom')
+        self.ax.setGrid(255)
+        self.ax.setZValue(1)
+
+        self.ay = self.plot.getAxis('left')
+        self.ay.setGrid(255)
+        self.ay.setZValue(1)
+
+        self.addItem(self.plot)
+
+        self.last_updated = pg.LabelItem(parent=self.view)
+        self.pixel_value = pg.LabelItem(parent=self.view)
+
+        self.proxy = pg.SignalProxy(self.scene().sigMouseMoved,
                                     rateLimit=30,
                                     slot=self.cursor_hover_evt)
+
         self.xbins = None
         self.ybins = None
 
     def cursor_hover_evt(self, evt):
         pos = evt[0]
-        pos = self.plot.getViewBox().mapSceneToView(pos)
+        pos = self.view.mapSceneToView(pos)
+
         if self.imageItem.image is not None:
             shape = self.imageItem.image.shape
-            if self.xbins[0] <= pos.x() <= self.xbins[-1] and \
-               self.ybins[0] <= pos.y() <= self.ybins[-1]:
-                idxx = int(pos.x() - self.xbins[0]) % shape[0]
-                idxy = int(pos.y() - self.ybins[0]) % shape[1]
+
+            if 0 <= pos.x() <= shape[0] and \
+               0 <= pos.y() <= shape[1]:
+                idxx = int(pos.x())
+                idxy = int(pos.y())
+                x = self.xbins[idxx]
+                y = self.ybins[idxy]
                 z = self.imageItem.image[idxx, idxy]
-                self.pixel_value.setText(f"x={int(pos.x())}, y={int(pos.y())}, z={z:.5g}")
+                self.pixel_value.setText(f"x={x:.5g}, y={y:.5g}, z={z:.5g}")
                 self.pixel_value.item.moveBy(0, 12)
 
     async def update(self):
@@ -270,9 +295,22 @@ class Histogram2DWidget(pg.ImageView):
                 self.xbins = data[xbins]
                 self.ybins = data[ybins]
                 counts = data[counts]
-                xscale = (self.xbins[1] - self.xbins[0])/self.xbins.shape
-                yscale = (self.ybins[1] - self.ybins[0])/self.ybins.shape
-                self.setImage(counts, pos=(self.xbins[0], self.ybins[0]), scale=(xscale[0], yscale[0]))
+                xscale = (self.xbins[-1] - self.xbins[0])/self.xbins.shape
+                yscale = (self.ybins[-1] - self.ybins[0])/self.ybins.shape
+
+                self.ax.setRange(self.xbins[0], self.xbins[-1])
+                self.ax.setScale(xscale[0])
+
+                self.ay.setRange(self.ybins[0], self.ybins[-1])
+                self.ay.setScale(yscale[0])
+
+                # self.view.setLimits(xMin=0, xMax=len(self.xbins),
+                #                     yMin=0, yMax=len(self.ybins),
+                #                     minXRange=xscale[0], minYRange=yscale[0])
+
+                self.imageItem.setImage(counts,
+                                        pos=(self.xbins[0], self.ybins[0]),
+                                        scale=(xscale[0], yscale[0]))
 
 
 class ScatterWidget(pg.GraphicsLayoutWidget):

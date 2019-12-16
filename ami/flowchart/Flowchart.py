@@ -39,7 +39,7 @@ class Flowchart(Node):
     sigStateChanged = QtCore.Signal()
 
     def __init__(self, name=None, filePath=None, library=None,
-                 broker_addr="", graphmgr_addr="", node_addr="", checkpoint_addr=""):
+                 broker_addr="", graphmgr_addr="", checkpoint_addr=""):
         super(Flowchart, self).__init__(name)
         self.socks = []
         self.library = library or LIBRARY
@@ -56,10 +56,6 @@ class Flowchart(Node):
         self.graphinfo.setsockopt_string(zmq.SUBSCRIBE, '')
         self.graphinfo.connect(graphmgr_addr.info)
         self.socks.append(self.graphinfo)
-
-        self.node = self.ctx.socket(zmq.PULL)  # used to receive to_operation() from processes
-        self.node.bind(node_addr)
-        self.socks.append(self.node)
 
         self.checkpoint = self.ctx.socket(zmq.SUB)  # used to receive ctrlnode updates from processes
         self.checkpoint.setsockopt_string(zmq.SUBSCRIBE, '')
@@ -743,6 +739,28 @@ class FlowchartWidget(dockarea.DockArea):
             await self.chart.broker.send_pyobj(fcMsgs.DisplayNode(name=node.name(),
                                                                   topics=dict(topics),
                                                                   terms=node.input_vars()))
+
+        elif isinstance(item.node, SourceNode) and item.node.viewable():
+            name = node.name()
+            topic = None
+            views = {}
+            terms = {"In": name}
+
+            if name in self.ctrl.features:
+                topic = self.ctrl.features[name]
+            else:
+                topic = self.ctrl.graphCommHandler.auto(name)
+                async with self.ctrl.features_lock:
+                    self.ctrl.features[name] = topic
+                views = {name: name}
+
+            topics = [(name, topic)]
+            if views:
+                await self.ctrl.graphCommHandler.view(views)
+            await self.chart.broker.send_string(node.name(), zmq.SNDMORE)
+            await self.chart.broker.send_pyobj(fcMsgs.DisplayNode(name=node.name(),
+                                                                  topics=dict(topics),
+                                                                  terms=terms))
 
         elif isinstance(item.node, Node) and item.node.viewable():
             topics = []

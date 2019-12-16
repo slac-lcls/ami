@@ -18,7 +18,7 @@ from ami.asyncqt import QEventLoop, asyncSlot
 logger = logging.getLogger(LogConfig.get_package_name(__name__))
 
 
-def run_editor_window(broker_addr, graphmgr_addr, node_addr, checkpoint_addr, load=None):
+def run_editor_window(broker_addr, graphmgr_addr, checkpoint_addr, load=None):
     app = QtGui.QApplication([])
 
     loop = QEventLoop(app)
@@ -35,7 +35,6 @@ def run_editor_window(broker_addr, graphmgr_addr, node_addr, checkpoint_addr, lo
     # Create flowchart, define input/output terminals
     fc = Flowchart(broker_addr=broker_addr,
                    graphmgr_addr=graphmgr_addr,
-                   node_addr=node_addr,
                    checkpoint_addr=checkpoint_addr)
 
     loop.run_until_complete(fc.updateSources(init=True))
@@ -74,7 +73,7 @@ class NodeWindow(QtGui.QMainWindow):
 
 class NodeProcess(QtCore.QObject):
 
-    def __init__(self, msg=None, broker_addr="", graphmgr_addr="", editor_addr="", checkpoint_addr="", loop=None):
+    def __init__(self, msg=None, broker_addr="", graphmgr_addr="", checkpoint_addr="", loop=None):
         super(NodeProcess, self).__init__()
 
         if loop is None:
@@ -95,9 +94,6 @@ class NodeProcess(QtCore.QObject):
         self.broker = self.ctx.socket(zmq.SUB)
         self.broker.connect(broker_addr)
         self.broker.setsockopt_string(zmq.SUBSCRIBE, msg.name)
-
-        self.editor = self.ctx.socket(zmq.PUSH)
-        self.editor.connect(editor_addr)
 
         self.checkpoint = self.ctx.socket(zmq.PUB)
         self.checkpoint.connect(checkpoint_addr)
@@ -190,7 +186,6 @@ class MessageBroker(object):
         self.graphmgr_addr = graphmgr_addr
         self.broker_sub_addr = "ipc://%s/broker_sub" % ipcdir
         self.broker_pub_addr = "ipc://%s/broker_pub" % ipcdir
-        self.node_addr = "ipc://%s/nodes" % ipcdir
 
         self.checkpoint_sub_addr = "ipc://%s/checkpoint_sub" % ipcdir
         self.checkpoint_pub_addr = "ipc://%s/checkpoint_pub" % ipcdir
@@ -241,7 +236,6 @@ class MessageBroker(object):
             target=run_editor_window,
             args=(self.broker_sub_addr,
                   self.graphmgr_addr,
-                  self.node_addr,
                   self.checkpoint_pub_addr,
                   self.load),
             daemon=True)
@@ -280,7 +274,9 @@ class MessageBroker(object):
             await self.checkpoint_pub_sock.send_pyobj(msg.state)
 
     async def forward_message_to_node(self, topic, msg):
+
         if isinstance(msg, fcMsgs.NodeMsg):
+
             async with self.lock:
                 self.msgs[topic] = msg
 
@@ -308,7 +304,7 @@ class MessageBroker(object):
 
                     proc = mp.Process(
                         target=NodeProcess,
-                        args=(msg, self.broker_pub_addr, self.graphmgr_addr, self.node_addr, self.checkpoint_sub_addr),
+                        args=(msg, self.broker_pub_addr, self.graphmgr_addr, self.checkpoint_sub_addr),
                         daemon=True
                     )
                     proc.start()
@@ -330,7 +326,7 @@ class MessageBroker(object):
             if isinstance(msg, fcMsgs.CreateNode):
                 proc = mp.Process(
                     target=NodeProcess,
-                    args=(msg, self.broker_pub_addr, self.graphmgr_addr, self.node_addr, self.checkpoint_sub_addr),
+                    args=(msg, self.broker_pub_addr, self.graphmgr_addr, self.checkpoint_sub_addr),
                     daemon=True
                 )
                 proc.start()
@@ -357,6 +353,9 @@ class MessageBroker(object):
                         proc.terminate()
                         proc.join()
                         del self.widget_procs[topic]
+
+                    if topic in self.msgs:
+                        del self.msgs[topic]
 
     async def run(self):
         await asyncio.gather(self.handle_connect(),
