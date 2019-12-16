@@ -19,6 +19,10 @@ try:
     import p4p
 except ImportError:
     p4p = None
+try:
+    import pyarrow as pa
+except ImportError:
+    pa = None
 
 from ami import check_mp_start_method
 from ami.asyncqt import QEventLoop
@@ -33,6 +37,9 @@ psanatest = pytest.mark.skipif(psana is None, reason="psana not avaliable")
 
 
 epicstest = pytest.mark.skipif(p4p is None, reason="p4p not avaliable")
+
+
+pyarrowtest = pytest.mark.skipif(pa is None, reason="pyarrow not avaliable")
 
 
 @pytest.fixture(scope='session')

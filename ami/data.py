@@ -2,6 +2,7 @@ import sys
 import abc
 import zmq
 import time
+import dill
 import typing
 import inspect
 import logging
@@ -14,8 +15,11 @@ try:
     import psana
 except ImportError:
     psana = None
+try:
+    import pyarrowd as pa
+except ImportError:
+    pa = None
 import numpy as np
-import pyarrow as pa
 import amitypes as at
 from enum import Enum
 from dataclasses import dataclass, asdict, field
@@ -140,7 +144,31 @@ def build_serialization_context():
     return context
 
 
-class ArrowSerializer(object):
+class ModuleSerializer:
+
+    def __init__(self, module):
+        self.module = module
+
+    def __call__(self, msg):
+        return [self.module.dumps(msg)]
+
+
+class ModuleDeserializer:
+
+    def __init__(self, module):
+        self.module = module
+
+    def __call__(self, data):
+        msg = [self.module.loads(d) for d in data]
+        if len(msg) == 0:
+            return None
+        elif len(msg) == 1:
+            return msg[0]
+        else:
+            return msg
+
+
+class ArrowSerializer:
 
     def __init__(self):
         self.context = build_serialization_context()
@@ -156,7 +184,7 @@ class ArrowSerializer(object):
         return serialized_msg
 
 
-class ArrowDeserializer(object):
+class ArrowDeserializer:
 
     def __init__(self):
         self.context = build_serialization_context()
@@ -166,6 +194,33 @@ class ArrowDeserializer(object):
         data = list(map(pa.py_buffer, data[1:]))
         components['data'] = data
         return pa.deserialize_components(components, context=self.context)
+
+
+SerializationProtocols = {
+    'pickle': (ModuleSerializer, ModuleDeserializer, {'module': pickle}),
+    'dill': (ModuleSerializer, ModuleDeserializer, {'module': dill}),
+    'arrow': (ArrowSerializer, ArrowDeserializer, {}),
+    None:
+        (ArrowSerializer, ArrowDeserializer, {})
+        if pa is not None else
+        (ModuleSerializer, ModuleDeserializer, {'module': dill}),
+}
+
+
+def Serializer(protocol=None):
+    if protocol in SerializationProtocols:
+        cls, _, kwargs = SerializationProtocols[protocol]
+        return cls(**kwargs)
+    else:
+        raise NotImplementedError("%s protocol is not avaliable!" % protocol)
+
+
+def Deserializer(protocol=None):
+    if protocol in SerializationProtocols:
+        _, cls, kwargs = SerializationProtocols[protocol]
+        return cls(**kwargs)
+    else:
+        raise NotImplementedError("%s protocol is not avaliable!" % protocol)
 
 
 class TimestampConverter:
@@ -183,7 +238,7 @@ class TimestampConverter:
             return sec, nsec
 
     def encode(self, sec, nsec):
-        return ((raw_ts & self.mask) << self.shift) | (raw_ts & self.mask)
+        return ((sec & self.mask) << self.shift) | (nsec & self.mask)
 
     def __call__(self, raw_ts):
         timestamp = self.decode(raw_ts, as_float=True)

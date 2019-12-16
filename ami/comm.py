@@ -9,7 +9,7 @@ import zmq.asyncio
 import amitypes as at
 import ami.graph_nodes as gn
 from ami.graphkit_wrapper import Graph
-from ami.data import MsgTypes, Message, Transition, CollectorMessage, Datagram, ArrowSerializer, ArrowDeserializer
+from ami.data import MsgTypes, Message, Transition, CollectorMessage, Datagram, Serializer, Deserializer
 from enum import IntEnum
 
 
@@ -325,7 +325,7 @@ class ZmqHandler:
             self.ctx = ctx
         self.collector = self.ctx.socket(zmq.PUSH)
         self.collector.connect(addr)
-        self.serializer = ArrowSerializer()
+        self.serializer = Serializer()
 
     def send(self, msg):
         self.collector.send_serialized(msg, self.serializer, flags=zmq.NOBLOCK, copy=False)
@@ -664,7 +664,7 @@ class Node(abc.ABC):
 
         self.node_msg_comm = self.ctx.socket(zmq.PUSH)
         self.node_msg_comm.connect(msg_addr)
-        self.serializer = ArrowSerializer()
+        self.serializer = Serializer()
 
     @property
     @abc.abstractmethod
@@ -813,7 +813,7 @@ class Collector(abc.ABC):
         self.handlers = {}
         self.running = True
         self.exitcode = 0
-        self.deserializer = ArrowDeserializer()
+        self.deserializer = Deserializer()
 
     def register(self, sock, handler):
         """

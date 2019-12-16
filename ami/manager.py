@@ -7,7 +7,7 @@ import logging
 import argparse
 from ami import LogConfig
 from ami.comm import Ports, AutoExport, Collector, Store
-from ami.data import MsgTypes, Transitions, ArrowSerializer, ArrowDeserializer
+from ami.data import MsgTypes, Transitions, Serializer, Deserializer
 from ami.graphkit_wrapper import Graph
 
 
@@ -56,8 +56,8 @@ class Manager(Collector):
         self.export.bind(export_addr)
         self.register(self.export, self.export_request)
 
-        self.serializer = ArrowSerializer()
-        self.deserializer = ArrowDeserializer()
+        self.serializer = Serializer()
+        self.deserializer = Deserializer()
         self.comm = self.ctx.socket(zmq.REP)
         self.comm.bind(comm_addr)
         self.register(self.comm, self.client_request)
