@@ -59,6 +59,7 @@ class ResultsInjector(Node, ZmqHandler):
         self.comm = GraphCommHandler(name, addrs['comm'], ctx=ctx)
         self._name = name
         self.version = version
+        self.exceptions = {}
 
     def __enter__(self):
         return self
@@ -93,6 +94,11 @@ class ResultsInjector(Node, ZmqHandler):
     def recv_graph_purge(self, name, version, args, payload):
         if name in self.graphs:
             del self.graphs[name]
+
+    def recv_graph_exception(self, name, version, exception):
+        if name not in self.exceptions:
+            self.exceptions[name] = {}
+        self.exceptions[name][version] = exception
 
     def store_graph(self, name, version, payload):
         if name not in self.graphs:
