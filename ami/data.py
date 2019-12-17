@@ -16,7 +16,7 @@ try:
 except ImportError:
     psana = None
 try:
-    import pyarrowd as pa
+    import pyarrow as pa
 except ImportError:
     pa = None
 import numpy as np
