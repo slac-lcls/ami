@@ -341,7 +341,7 @@ class ScatterWidget(pg.GraphicsLayoutWidget):
                 y += ".%d" % i
             x = self.terms[x]
             y = self.terms[y]
-            name = " vs ".join((x, y))
+            name = " vs ".join((y, x))
             x = data[x]
             y = data[y]
 
@@ -412,7 +412,7 @@ class LineWidget(pg.GraphicsLayoutWidget):
                 y += ".%d" % i
             x = self.terms[x]
             y = self.terms[y]
-            name = " vs ".join((x, y))
+            name = " vs ".join((y, x))
             x = data[x]
             y = data[y]
             if name not in self.plot:

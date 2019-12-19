@@ -5,6 +5,7 @@ from ami.flowchart.library.common import CtrlNode, MAX, MathNode
 import ami.graph_nodes as gn
 import numpy as np
 import functools
+import itertools
 
 
 class MeanVsScan(Node):
@@ -123,6 +124,47 @@ class Divide(MathNode):
 
         def func(*args):
             return functools.reduce(lambda x, y: x/y, args)
+
+        node = gn.Map(name=self.name()+"_operation",
+                      conditions_needs=list(conditions.values()), inputs=list(inputs.values()), outputs=outputs,
+                      func=func, parent=self.name())
+        return node
+
+
+class Combinations(CtrlNode):
+
+    """
+    Generate combinations using itertools.combinations.
+    """
+
+    nodeName = "Combinations"
+    uiTemplate = [('length', 'intSpin', {'value': 1, 'min': 1, 'max': MAX})]
+
+    def __init__(self, name):
+        super().__init__(name, terminals={'In': {'io': 'in', 'ttype': Array1d},
+                                          'Out': {'io': 'out', 'ttype': Array1d}})
+        self.output_terms = []
+
+    def changed(self, *args, **kwargs):
+        super().changed(*args, **kwargs)
+
+        while len(self.output_vars()) > self.length:
+            self.removeTerminal(self.output_terms.pop())
+
+        while len(self.output_vars()) < self.length:
+            self.output_terms.append(self.addOutput())
+
+    def to_operation(self, inputs, conditions={}):
+        outputs = self.output_vars()
+
+        length = self.length
+
+        def func(*args):
+            r = list(map(np.array, zip(*itertools.combinations(*args, length))))
+            if r:
+                return r
+            else:
+                return [np.array([])]*length
 
         node = gn.Map(name=self.name()+"_operation",
                       conditions_needs=list(conditions.values()), inputs=list(inputs.values()), outputs=outputs,

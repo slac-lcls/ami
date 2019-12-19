@@ -395,14 +395,13 @@ class ConnectionItem(GraphicsObject):
         )
         self.source = source
         self.target = target
-        self.length = 0
         self.hovered = False
         self.path = None
         self.shapePath = None
         self.style = {
             'shape': 'cubic',
             'color': (100, 100, 250),
-            'width': 10.0,
+            'width': 3.0,
             'hoverColor': (255, 0, 0),
             'hoverWidth': 10.0,
             'selectedColor': (200, 200, 0),

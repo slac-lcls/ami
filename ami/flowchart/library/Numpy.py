@@ -60,8 +60,10 @@ class Binning(CtrlNode):
 
     nodeName = "Binning"
     uiTemplate = [('bins', 'intSpin', {'value': 10, 'min': 1, 'max': MAX}),
+                  ('auto range', 'check', {'checked': False}),
                   ('range min', 'doubleSpin', {'value': 1, 'min': -MAX, 'max': MAX}),
                   ('range max', 'doubleSpin', {'value': 100, 'min': -MAX, 'max': MAX}),
+                  ('weighted', 'check', {'checked': False}),
                   ('density', 'check', {'checked': False})]
 
     def __init__(self, name):
@@ -70,17 +72,31 @@ class Binning(CtrlNode):
             'Bins': {'io': 'out', 'ttype': Array1d},
             'Counts': {'io': 'out', 'ttype': Array1d}
         })
+        self.weighted = None
+
+    def changed(self, *args, **kwargs):
+        super().changed(*args, **kwargs)
+
+        if "weighted" == args[0] and args[1]:
+            self.addTerminal("Weights", io='in', ttype=Union[float, Array1d])
+        elif "weighted" in args[0] and not args[1]:
+            self.removeTerminal("Weights")
+        elif "auto range" == args[0]:
+            self.ctrls['range min'].setEnabled(not args[1])
+            self.ctrls['range max'].setEnabled(not args[1])
 
     def to_operation(self, inputs, conditions={}):
         outputs = self.output_vars()
         map_outputs = [self.name()+"_bins", self.name()+"_counts"]
         nbins = self.bins
-        rmin = self.range_min
-        rmax = self.range_max
         density = self.density
 
-        def bin(arr):
-            counts, bins = np.histogram(arr, bins=nbins, range=(rmin, rmax), density=density)
+        range = None
+        if not self.auto_range:
+            range = (self.range_min, self.range_max)
+
+        def bin(arr, weights=None):
+            counts, bins = np.histogram(arr, bins=nbins, range=range, density=density, weights=weights)
             return bins, counts
 
         def reduction(res, *rest):

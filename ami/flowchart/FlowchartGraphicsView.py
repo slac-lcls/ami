@@ -94,12 +94,13 @@ class FlowchartViewBox(ViewBox):
 
             try:
                 node_type = self.widget.chart.source_library.getSourceType(node)
-                node = SourceNode(name=node, terminals={'Out': {'io': 'out', 'ttype': node_type}})
-                # self.widget.chart.addNode(node, name=nodeType, pos=self.mapToView(ev.pos()))
-                self.widget.chart.createNode(node_type, name=node.name(), node=node, pos=self.mapToView(ev.pos()))
-                ev.accept()
-                self.widget.chart.source_lock.release()
-                return
+                if node not in self.widget.chart._graph:
+                    node = SourceNode(name=node, terminals={'Out': {'io': 'out', 'ttype': node_type}})
+                    # self.widget.chart.addNode(node, name=nodeType, pos=self.mapToView(ev.pos()))
+                    self.widget.chart.createNode(node_type, name=node.name(), node=node, pos=self.mapToView(ev.pos()))
+                    ev.accept()
+                    self.widget.chart.source_lock.release()
+                    return
             except KeyError:
                 pass
 
