@@ -135,6 +135,15 @@ class Binning2D(CtrlNode):
             'YBins': {'io': 'out', 'ttype': Array1d},
             'Counts': {'io': 'out', 'ttype': Array2d}
         })
+        self.x_type = None
+        self.y_type = None
+        self.sigTerminalConnected.connect(self.setType)
+
+    def setType(self, localTerm, remoteTerm):
+        if remoteTerm.isOutput() and localTerm.name() == 'X':
+            self.x_type = remoteTerm.type()
+        elif remoteTerm.isOutput() and localTerm.name() == 'Y':
+            self.y_type = remoteTerm.type()
 
     def to_operation(self, inputs, conditions={}):
         outputs = self.output_vars()
@@ -147,10 +156,16 @@ class Binning2D(CtrlNode):
         ymax = self.range_y_max
         density = self.density
 
-        def bin(x, y):
-            counts, xbins, ybins = np.histogram2d(x, y, bins=[nxbins, nybins],
-                                                  range=[[xmin, xmax], [ymin, ymax]], density=density)
-            return xbins, ybins, counts
+        if self.x_type == float and self.y_type == float:
+            def bin(x, y):
+                counts, xbins, ybins = np.histogram2d([x], [y], bins=[nxbins, nybins],
+                                                      range=[[xmin, xmax], [ymin, ymax]], density=density)
+                return xbins, ybins, counts
+        else:
+            def bin(x, y):
+                counts, xbins, ybins = np.histogram2d(x, y, bins=[nxbins, nybins],
+                                                      range=[[xmin, xmax], [ymin, ymax]], density=density)
+                return xbins, ybins, counts
 
         def reduction(res, *rest):
             res[0] = rest[0]
@@ -275,8 +290,12 @@ class Take(GroupedNode):
         index = self.index
         mode = self.mode
 
-        def func(*arr):
-            return list(map(lambda a: np.take(a, index, axis=axis, mode=mode), arr))
+        if len(inputs) == 1:
+            def func(arr):
+                return np.take(arr, index, axis=axis, mode=mode)
+        else:
+            def func(*arr):
+                return list(map(lambda a: np.take(a, index, axis=axis, mode=mode), arr))
 
         node = gn.Map(name=self.name()+"_operation",
                       condition_needs=list(conditions.values()), inputs=list(inputs.values()), outputs=outputs,

@@ -169,3 +169,61 @@ try:
 
 except ImportError:
     pass
+
+
+try:
+    from numba import jit
+
+    class PeakFinder1D(CtrlNode):
+
+        """
+        1D Peakfinder
+        """
+
+        nodeName = "PeakFinder1D"
+        uiTemplate = [('threshold lo', 'doubleSpin', {'value': 0, 'min': -MAX, 'max': MAX}),
+                      ('threshold hi', 'doubleSpin', {'value': 1, 'min': -MAX, 'max': MAX})]
+
+        def __init__(self, name):
+            super().__init__(name, terminals={"Waveform": {'io': 'in', 'ttype': Array1d},
+                                              "Out": {'io': 'out', 'ttype': float}})
+
+        def to_operation(self, inputs, conditions={}):
+            outputs = self.output_vars()
+
+            threshold_lo = self.threshold_lo
+            threshold_hi = self.threshold_hi
+
+            @jit(nopython=True)
+            def peakfinder1d(waveform):
+                weighted_sum = 0
+                weights = 0
+
+                for i in range(1, waveform.shape[0]-1):
+                    if waveform[i] < threshold_hi:
+                        continue
+
+                    left = i - 1
+                    right = i + 1
+
+                    if waveform[left] < threshold_lo or waveform[right] < threshold_lo:
+                        continue
+
+                    peak = waveform[i]
+
+                    if waveform[left] <= peak and waveform[right] <= peak:
+                        weighted_sum += peak*i
+                        weights += peak
+
+                if weights:
+                    return weighted_sum/weights
+                else:
+                    return np.nan
+
+            node = gn.Map(name=self.name()+"_operation",
+                          condition_needs=list(conditions.values()), inputs=list(inputs.values()), outputs=outputs,
+                          func=peakfinder1d, parent=self.name())
+            return node
+
+except ImportError:
+    pass
