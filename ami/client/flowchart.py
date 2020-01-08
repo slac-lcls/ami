@@ -35,7 +35,8 @@ def run_editor_window(broker_addr, graphmgr_addr, checkpoint_addr, load=None):
     # Create flowchart, define input/output terminals
     fc = Flowchart(broker_addr=broker_addr,
                    graphmgr_addr=graphmgr_addr,
-                   checkpoint_addr=checkpoint_addr)
+                   checkpoint_addr=checkpoint_addr,
+                   win=win)
 
     loop.run_until_complete(fc.updateSources(init=True))
 

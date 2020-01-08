@@ -39,7 +39,8 @@ class Flowchart(Node):
     sigStateChanged = QtCore.Signal()
 
     def __init__(self, name=None, filePath=None, library=None,
-                 broker_addr="", graphmgr_addr="", checkpoint_addr=""):
+                 broker_addr="", graphmgr_addr="", checkpoint_addr="",
+                 win=None):
         super(Flowchart, self).__init__(name)
         self.socks = []
         self.library = library or LIBRARY
@@ -62,9 +63,7 @@ class Flowchart(Node):
         self.checkpoint.connect(checkpoint_addr)
         self.socks.append(self.checkpoint)
 
-        if name is None:
-            name = "Flowchart"
-
+        self.win = win
         self.filePath = filePath
 
         self._graph = nx.MultiDiGraph()
@@ -350,6 +349,7 @@ class Flowchart(Node):
         self.restoreState(state, clear=True)
         self.viewBox.autoRange()
         self.sigFileLoaded.emit(fileName)
+        self.win.setWindowTitle("AMI Client - " + fileName.split('/')[-1])
         return fileName
 
     def saveFile(self, fileName=None, startDir=None, suggestedFileName='flowchart.fc'):

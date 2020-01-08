@@ -186,7 +186,8 @@ try:
 
         def __init__(self, name):
             super().__init__(name, terminals={"Waveform": {'io': 'in', 'ttype': Array1d},
-                                              "Out": {'io': 'out', 'ttype': float}})
+                                              "Centroid": {'io': 'out', 'ttype': Array1d},
+                                              "Width": {'io': 'out', 'ttype': Array1d}})
 
         def to_operation(self, inputs, conditions={}):
             outputs = self.output_vars()
@@ -196,8 +197,69 @@ try:
 
             @jit(nopython=True)
             def peakfinder1d(waveform):
-                weighted_sum = 0
-                weights = 0
+                centroids = []
+                widths = []
+
+                for i in range(1, waveform.shape[0]-1):
+                    if waveform[i] < threshold_hi:
+                        continue
+
+                    weighted_sum = 0
+                    weights = 0
+
+                    left = i - 1
+                    right = i + 1
+
+                    peak = waveform[i]
+
+                    while threshold_lo < waveform[left] <= peak:
+                        weighted_sum += waveform[left]*left
+                        weights += waveform[left]
+                        left -= 1
+
+                    while threshold_lo < waveform[right] <= peak:
+                        weighted_sum += waveform[right]*right
+                        weights += waveform[right]
+                        right += 1
+
+                    if weights:
+                        weighted_sum += peak*i
+                        weights += peak
+                        centroids.append(weighted_sum/weights)
+                        widths.append(right-left-2)
+
+                return np.array(centroids), np.array(widths)
+
+            node = gn.Map(name=self.name()+"_operation",
+                          condition_needs=list(conditions.values()), inputs=list(inputs.values()), outputs=outputs,
+                          func=peakfinder1d, parent=self.name())
+            return node
+
+    class MaxPeakFinder1D(CtrlNode):
+
+        """
+        1D Peakfinder
+        """
+
+        nodeName = "MaxPeakFinder1D"
+        uiTemplate = [('threshold lo', 'doubleSpin', {'value': 0, 'min': -MAX, 'max': MAX}),
+                      ('threshold hi', 'doubleSpin', {'value': 1, 'min': -MAX, 'max': MAX})]
+
+        def __init__(self, name):
+            super().__init__(name, terminals={"Waveform": {'io': 'in', 'ttype': Array1d},
+                                              "Centroid": {'io': 'out', 'ttype': Array1d},
+                                              "Width": {'io': 'out', 'ttype': Array1d}})
+
+        def to_operation(self, inputs, conditions={}):
+            outputs = self.output_vars()
+
+            threshold_lo = self.threshold_lo
+            threshold_hi = self.threshold_hi
+
+            @jit(nopython=True)
+            def peakfinder1d(waveform):
+                centroids = []
+                widths = []
 
                 for i in range(1, waveform.shape[0]-1):
                     if waveform[i] < threshold_hi:
@@ -206,24 +268,19 @@ try:
                     left = i - 1
                     right = i + 1
 
-                    if waveform[left] < threshold_lo or waveform[right] < threshold_lo:
-                        continue
-
                     peak = waveform[i]
 
-                    if waveform[left] <= peak and waveform[right] <= peak:
-                        weighted_sum += peak*i
-                        weights += peak
+                    if threshold_lo < waveform[left] <= peak and threshold_lo < waveform[right] <= peak:
+                        centroids.append(i)
+                        widths.append(1)
 
-                if weights:
-                    return weighted_sum/weights
-                else:
-                    return np.nan
+                return np.array(centroids), np.array(widths)
 
             node = gn.Map(name=self.name()+"_operation",
                           condition_needs=list(conditions.values()), inputs=list(inputs.values()), outputs=outputs,
                           func=peakfinder1d, parent=self.name())
             return node
+
 
 except ImportError:
     pass
