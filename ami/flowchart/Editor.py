@@ -91,18 +91,18 @@ class Ui_Toolbar(object):
         self.actionHome.setObjectName("actionHome")
 
         # select
-        self.actionSelect = QtWidgets.QAction(parent)
-        icon = QtGui.QIcon.fromTheme("draw-selection")
-        self.actionSelect.setIcon(icon)
-        self.actionSelect.setIconText("Select")
-        self.actionSelect.setObjectName("actionSelect")
+        # self.actionSelect = QtWidgets.QAction(parent)
+        # icon = QtGui.QIcon.fromTheme("draw-selection")
+        # self.actionSelect.setIcon(icon)
+        # self.actionSelect.setIconText("Select")
+        # self.actionSelect.setObjectName("actionSelect")
 
         self.toolBar.addAction(self.actionNew)
         self.toolBar.addAction(self.actionOpen)
         self.toolBar.addAction(self.actionSave)
         self.toolBar.addAction(self.actionApply)
         self.toolBar.addAction(self.actionHome)
-        self.toolBar.addAction(self.actionSelect)
+        # self.toolBar.addAction(self.actionSelect)
 
         self.source_model = build_model()
         self.source_search = QtGui.QLineEdit()

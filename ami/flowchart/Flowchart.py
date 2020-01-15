@@ -14,7 +14,6 @@ from ami.flowchart.Node import Node, NodeGraphicsItem, find_nearest
 from ami.flowchart.NodeLibrary import SourceLibrary
 from ami.flowchart.TypeEncoder import TypeEncoder
 from ami.comm import AsyncGraphCommHandler
-from ami.graphkit_wrapper import Graph
 from ami.client import flowchart_messages as fcMsgs
 
 import ami.flowchart.Editor as EditorTemplate
@@ -396,6 +395,8 @@ class Flowchart(Node):
                 current_node_state = self._graph.nodes[node_name]['node'].saveState()
                 current_node_state['ctrl'] = new_node_state['ctrl']
                 self._graph.nodes[node_name]['node'].restoreState(current_node_state)
+                self._graph.nodes[node_name]['node'].changed = True
+
             self._graph.nodes[node_name]['node'].viewed = new_node_state['viewed']
 
     async def updateSources(self, init=False):
@@ -485,12 +486,19 @@ class FlowchartCtrlWidget(QtGui.QWidget):
     async def applyClicked(self):
         graph_nodes = []
         disconnectedNodes = []
-        displays = []
+        displays = set()
         now = datetime.now().strftime('%H:%M:%S')
+
+        display_nodes = []
+        for name, gnode in self.chart._graph.nodes().items():
+            node = gnode['node']
+
+            if node.viewed:
+                display_nodes.append(name)
 
         for name, gnode in self.chart._graph.nodes().items():
             gnode = gnode['node']
-            if not gnode._enabled:
+            if not gnode.enabled():
                 continue
 
             if not gnode.hasInput():
@@ -500,18 +508,28 @@ class FlowchartCtrlWidget(QtGui.QWidget):
                 gnode.clearException()
                 gnode.recolor()
 
-            if gnode.viewed:
-                displays.append(gnode)
-
             if not hasattr(gnode, 'to_operation'):
                 continue
 
-            node = gnode.to_operation(inputs=gnode.input_vars(), conditions=gnode.condition_vars())
+            if gnode.changed:
+                node = gnode.to_operation(inputs=gnode.input_vars(), conditions=gnode.condition_vars())
 
-            if type(node) is list:
-                graph_nodes.extend(node)
-            else:
-                graph_nodes.append(node)
+                if type(node) is list:
+                    graph_nodes.extend(node)
+                else:
+                    graph_nodes.append(node)
+
+                gnode.changed = False
+
+                for display_node in display_nodes:
+                    paths = list(nx.algorithms.all_simple_paths(self.chart._graph, name, display_node))
+
+                    for path in paths:
+                        for gnode in path[1:]:
+                            gnode = self.chart._graph.nodes[gnode]
+                            node = gnode['node']
+                            if (node.viewable() or node.buffered()) and node.viewed:
+                                displays.add(node)
 
         if disconnectedNodes:
             for node in disconnectedNodes:
@@ -523,13 +541,14 @@ class FlowchartCtrlWidget(QtGui.QWidget):
         if not graph_nodes:
             return
 
-        graph = Graph(name=str(self.chart.name()))
-        graph.add(graph_nodes)
+        await self.graphCommHandler.add(graph_nodes)
 
-        await self.graphCommHandler.update(graph)
-        self.chartWidget.statusText.append(f"[{now}] Submitted graph")
-        # reinsert pick ones if they are still in the graph
-        features = {}
+        node_names = ', '.join(set(map(lambda node: node.parent, graph_nodes)))
+        self.chartWidget.statusText.append(f"[{now}] Submitted {node_names}")
+
+        node_names = ', '.join(set(map(lambda node: node.name(), displays)))
+        if node_names:
+            self.chartWidget.statusText.append(f"[{now}] Redisplaying {node_names}")
 
         for node in displays:
 
@@ -547,23 +566,10 @@ class FlowchartCtrlWidget(QtGui.QWidget):
 
             elif node.viewable():
                 topics = []
-                views = {}
 
                 for term, in_var in node.input_vars().items():
-
-                    if in_var in self.features:
-                        topic = self.features[in_var]
-                        if in_var not in features:
-                            features[in_var] = topic
-                            views[in_var] = node.name()
-
-                    else:
-                        continue
-
+                    topic = self.features[in_var]
                     topics.append((in_var, topic))
-
-                if views:
-                    await self.graphCommHandler.view(views)
 
                 await self.chart.broker.send_string(node.name(), zmq.SNDMORE)
                 await self.chart.broker.send_pyobj(fcMsgs.DisplayNode(name=node.name(),
@@ -573,9 +579,6 @@ class FlowchartCtrlWidget(QtGui.QWidget):
 
             elif node.exportable():
                 await self.graphCommHandler.export(node.input_vars()['In'], node.name())
-
-        async with self.features_lock:
-            self.features = features
 
         self.metadata = await self.graphCommHandler.metadata
 

@@ -101,6 +101,7 @@ class Node(QtCore.QObject):
         self._editor = None
         self._enabled = True
 
+        self.changed = True
         self.viewed = False
         self.exception = None
 
@@ -365,6 +366,8 @@ class Node(QtCore.QObject):
                 self._input_vars[localTerm.name()] = '.'.join([node.name(), remoteTerm.name()])
         elif localTerm.isCondition():
             self._condition_vars[localTerm.name()] = node.name()
+
+        self.changed = True
         self.sigTerminalConnected.emit(localTerm, remoteTerm)
 
     def disconnected(self, localTerm, remoteTerm):
@@ -373,6 +376,8 @@ class Node(QtCore.QObject):
             del self._input_vars[localTerm.name()]
         elif localTerm.isCondition():
             del self._condition_vars[localTerm.name()]
+
+        self.changed = True
         self.sigTerminalDisconnected.emit(localTerm, remoteTerm)
 
     def isConnected(self):

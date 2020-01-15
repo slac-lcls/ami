@@ -182,7 +182,7 @@ class CtrlNode(Node):
         self.init_values(ui)
         self.ui, self.stateGroup, self.ctrls = generateUi(ui)
         if self.stateGroup:
-            self.stateGroup.sigChanged.connect(self.changed)
+            self.stateGroup.sigChanged.connect(self.state_changed)
 
             for k, ctrl in self.ctrls.items():
                 if isinstance(ctrl, QtGui.QLineEdit):
@@ -212,7 +212,7 @@ class CtrlNode(Node):
     def ctrlWidget(self):
         return self.ui
 
-    def changed(self, *args, **kwargs):
+    def state_changed(self, *args, **kwargs):
         self.update(*args, **kwargs)
         self.sigStateChanged.emit(self)
 

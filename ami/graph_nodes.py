@@ -85,6 +85,19 @@ class Filter(abc.ABC):
     def to_operation(self):
         return
 
+    def __hash__(self):
+        return hash(self.name)
+
+    def __eq__(self, other):
+        """
+        Two nodes are considered equal if their name is equal.
+
+        Args:
+            other (Transformation): Node to compare against.
+        """
+        return bool(self.name is not None and
+                    self.name == getattr(other, 'name', None))
+
     def __repr__(self):
         return u"%s(name='%s', color='%s')" % (self.__class__.__name__, self.name, self.color)
 
