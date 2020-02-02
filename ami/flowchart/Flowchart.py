@@ -36,7 +36,6 @@ class Flowchart(Node):
 
     sigChartLoaded = QtCore.Signal()
     # called when output is expected to have changed
-    sigStateChanged = QtCore.Signal()
 
     def __init__(self, name=None, filePath=None, library=None,
                  broker_addr="", graphmgr_addr="", checkpoint_addr="",
@@ -221,7 +220,7 @@ class Flowchart(Node):
         """
         Return a serializable data structure representing the current state of this flowchart.
         """
-        state = Node.saveState(self)
+        state = {}
         state['nodes'] = []
         state['connects'] = []
         for name, node in self.nodes(data='node'):
@@ -263,6 +262,10 @@ class Flowchart(Node):
                     try:
                         node = self.createNode(n['class'], name=n['name'])
                         node.restoreState(n['state'])
+                        node.display(topics=None, terms=None, addr=None, win=None)
+                        if hasattr(node.widget, 'restoreState') and 'widget' in n['state']:
+                            node.widget.restoreState(n['state']['widget'])
+
                     except Exception:
                         printExc("Error creating node %s: (continuing anyway)" % n['name'])
 
@@ -325,7 +328,6 @@ class Flowchart(Node):
             self.blockSignals(False)
 
         self.sigChartLoaded.emit()
-        self.sigStateChanged.emit()
 
     def loadFile(self, fileName=None, startDir=None):
         """
@@ -349,7 +351,8 @@ class Flowchart(Node):
         self.restoreState(state, clear=True)
         self.viewBox.autoRange()
         self.sigFileLoaded.emit(fileName)
-        self.win.setWindowTitle("AMI Client - " + fileName.split('/')[-1])
+        if self.win:
+            self.win.setWindowTitle("AMI Client - " + fileName.split('/')[-1])
         return fileName
 
     def saveFile(self, fileName=None, startDir=None, suggestedFileName='flowchart.fc'):
@@ -392,10 +395,15 @@ class Flowchart(Node):
             # in ami.client.flowchart.NodeProcess.send_checkpoint we send a
             # fcMsgs.NodeCheckPoint but we are only ever receiving the state
             new_node_state = await self.checkpoint.recv_pyobj()
+            current_node_state = self._graph.nodes[node_name]['node'].saveState()
+
             if 'ctrl' in new_node_state:
-                current_node_state = self._graph.nodes[node_name]['node'].saveState()
                 current_node_state['ctrl'] = new_node_state['ctrl']
-                self._graph.nodes[node_name]['node'].restoreState(current_node_state)
+
+            if 'widget' in new_node_state:
+                current_node_state['widget'] = new_node_state['widget']
+
+            self._graph.nodes[node_name]['node'].restoreState(current_node_state)
             self._graph.nodes[node_name]['node'].viewed = new_node_state['viewed']
 
     async def updateSources(self, init=False):
@@ -539,9 +547,15 @@ class FlowchartCtrlWidget(QtGui.QWidget):
                 for term, in_var in node.input_vars().items():
                     topics.append((in_var, node.name()+'.'+term))
 
+                node.display(topics=None, terms=None, addr=None, win=None)
+                state = {}
+                if hasattr(node.widget, 'saveState'):
+                    state = node.widget.saveState()
+
                 await self.chart.broker.send_string(node.name(), zmq.SNDMORE)
                 await self.chart.broker.send_pyobj(fcMsgs.DisplayNode(name=node.name(),
                                                                       topics=dict(topics),
+                                                                      state=state,
                                                                       terms=node.input_vars(),
                                                                       redisplay=True))
 
@@ -565,9 +579,15 @@ class FlowchartCtrlWidget(QtGui.QWidget):
                 if views:
                     await self.graphCommHandler.view(views)
 
+                node.display(topics=None, terms=None, addr=None, win=None)
+                state = {}
+                if hasattr(node.widget, 'saveState'):
+                    state = node.widget.saveState()
+
                 await self.chart.broker.send_string(node.name(), zmq.SNDMORE)
                 await self.chart.broker.send_pyobj(fcMsgs.DisplayNode(name=node.name(),
                                                                       topics=dict(topics),
+                                                                      state=state,
                                                                       terms=node.input_vars(),
                                                                       redisplay=True))
 
@@ -735,9 +755,15 @@ class FlowchartWidget(dockarea.DockArea):
             for term, in_var in node.input_vars().items():
                 topics.append((in_var, node.name()+'.'+term))
 
+            node.display(topics=None, terms=None, addr=None, win=None)
+            state = {}
+            if hasattr(node.widget, 'saveState'):
+                state = node.widget.saveState()
+
             await self.chart.broker.send_string(node.name(), zmq.SNDMORE)
             await self.chart.broker.send_pyobj(fcMsgs.DisplayNode(name=node.name(),
                                                                   topics=dict(topics),
+                                                                  state=state,
                                                                   terms=node.input_vars()))
 
         elif isinstance(item.node, SourceNode) and item.node.viewable():
@@ -755,8 +781,10 @@ class FlowchartWidget(dockarea.DockArea):
                 views = {name: name}
 
             topics = [(name, topic)]
+
             if views:
                 await self.ctrl.graphCommHandler.view(views)
+
             await self.chart.broker.send_string(node.name(), zmq.SNDMORE)
             await self.chart.broker.send_pyobj(fcMsgs.DisplayNode(name=node.name(),
                                                                   topics=dict(topics),
@@ -766,9 +794,8 @@ class FlowchartWidget(dockarea.DockArea):
             topics = []
             views = {}
 
-            if not isinstance(node, SourceNode):
-                if len(node.inputs()) != len(node.input_vars()):
-                    return
+            if len(node.inputs()) != len(node.input_vars()):
+                return
 
             for term, in_var in node.input_vars().items():
 
@@ -784,9 +811,16 @@ class FlowchartWidget(dockarea.DockArea):
 
             if views:
                 await self.ctrl.graphCommHandler.view(views)
+
+            node.display(topics=None, terms=None, addr=None, win=None)
+            state = {}
+            if hasattr(node.widget, 'saveState'):
+                state = node.widget.saveState()
+
             await self.chart.broker.send_string(node.name(), zmq.SNDMORE)
             await self.chart.broker.send_pyobj(fcMsgs.DisplayNode(name=node.name(),
                                                                   topics=dict(topics),
+                                                                  state=state,
                                                                   terms=node.input_vars()))
 
         elif isinstance(item.node, CtrlNode):

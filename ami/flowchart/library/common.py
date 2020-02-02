@@ -1,166 +1,12 @@
 # -*- coding: utf-8 -*-
 from pyqtgraph.Qt import QtCore, QtGui
-from pyqtgraph.widgets.SpinBox import SpinBox
-from pyqtgraph.WidgetGroup import WidgetGroup
-from pyqtgraph.widgets.ColorButton import ColorButton
 from ami.flowchart.Node import Node, NodeGraphicsItem
-from ami.flowchart.library.DisplayWidgets import ScalarWidget, WaveformWidget, AreaDetWidget
+from ami.flowchart.library.DisplayWidgets import generateUi, ScalarWidget, WaveformWidget, AreaDetWidget
 from amitypes import Array1d, Array2d
 import asyncio
-import re
-import numpy as np
 
 
 MAX = 2147483647
-_float_re = re.compile(r'(([+-]?\d+(\.\d*)?|\.\d+)([eE][+-]?\d+)?)')
-
-
-def valid_float_string(string):
-    match = _float_re.search(string)
-    return match.groups()[0] == string if match else False
-
-
-def format_float(value):
-    """Modified form of the 'g' format specifier."""
-    string = "{:g}".format(value).replace("e+", "e")
-    string = re.sub("e(-?)0*(\\d+)", r"e\1\2", string)
-    return string
-
-
-class FloatValidator(QtGui.QValidator):
-
-    def validate(self, string, position):
-        if valid_float_string(string):
-            state = QtGui.QValidator.Acceptable
-        elif string == "" or string[position-1] in 'e.-+':
-            state = QtGui.QValidator.Intermediate
-        else:
-            state = QtGui.QValidator.Invalid
-        return (state, string, position)
-
-    def fixup(self, text):
-        match = _float_re.search(text)
-        return match.groups()[0] if match else ""
-
-
-class ScientificDoubleSpinBox(QtGui.QDoubleSpinBox):
-
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        self.setMinimum(-np.inf)
-        self.setMaximum(np.inf)
-        self.validator = FloatValidator()
-        self.setDecimals(1000)
-
-    def validate(self, text, position):
-        return self.validator.validate(text, position)
-
-    def fixup(self, text):
-        return self.validator.fixup(text)
-
-    def valueFromText(self, text):
-        return float(text)
-
-    def textFromValue(self, value):
-        return format_float(value)
-
-    def stepBy(self, steps):
-        text = self.cleanText()
-        groups = _float_re.search(text).groups()
-        decimal = float(groups[1])
-        decimal += steps
-        new_string = "{:g}".format(decimal) + (groups[3] if groups[3] else "")
-        self.lineEdit().setText(new_string)
-
-    def widgetGroupInterface(self):
-        return (lambda w: w.valueChanged,
-                QtGui.QDoubleSpinBox.value,
-                QtGui.QDoubleSpinBox.setValue)
-
-
-def generateUi(opts):
-    """Convenience function for generating common UI types"""
-    if len(opts) == 0:
-        return None, None, None
-
-    widget = QtGui.QWidget()
-    layout = QtGui.QFormLayout()
-    layout.setSpacing(0)
-    widget.setLayout(layout)
-    ctrls = {}
-    row = 0
-    group = WidgetGroup()
-    focused = False
-    for opt in opts:
-        if len(opt) == 2:
-            k, t = opt
-            o = {}
-        elif len(opt) == 3:
-            k, t, o = opt
-        else:
-            raise Exception("Widget specification must be (name, type) or (name, type, {opts})")
-
-        hidden = o.pop('hidden', False)
-        tip = o.pop('tip', None)
-
-        if t == 'intSpin':
-            w = QtGui.QSpinBox()
-            if 'max' in o:
-                w.setMaximum(o['max'])
-            if 'min' in o:
-                w.setMinimum(o['min'])
-            if 'value' in o:
-                w.setValue(o['value'])
-        elif t == 'doubleSpin':
-            w = ScientificDoubleSpinBox()
-            if 'max' in o:
-                w.setMaximum(o['max'])
-            if 'min' in o:
-                w.setMinimum(o['min'])
-            if 'value' in o:
-                w.setValue(o['value'])
-        elif t == 'spin':
-            w = SpinBox()
-            w.setOpts(**o)
-        elif t == 'check':
-            w = QtGui.QCheckBox()
-            w.setFocus()
-            if 'checked' in o:
-                w.setChecked(o['checked'])
-        elif t == 'combo':
-            w = QtGui.QComboBox()
-            for i in o['values']:
-                w.addItem(i)
-        elif t == 'color':
-            w = ColorButton()
-        elif t == 'text':
-            w = QtGui.QLineEdit()
-            if 'placeholder' in o:
-                w.setPlaceholderText(o['placeholder'])
-        else:
-            raise Exception("Unknown widget type '%s'" % str(t))
-
-        if tip is not None:
-            w.setToolTip(tip)
-
-        w.setObjectName(k)
-
-        if t != 'text' and not focused:
-            w.setFocus()
-            focused = True
-
-        layout.addRow(k, w)
-        if hidden:
-            w.hide()
-            label = layout.labelForField(w)
-            label.hide()
-
-        w.rowNum = row
-        ctrls[k] = w
-        group.addWidget(w, k)
-        row += 1
-
-    return widget, group, ctrls
 
 
 class CtrlNode(Node):
@@ -183,10 +29,6 @@ class CtrlNode(Node):
         self.ui, self.stateGroup, self.ctrls = generateUi(ui)
         if self.stateGroup:
             self.stateGroup.sigChanged.connect(self.changed)
-
-            for k, ctrl in self.ctrls.items():
-                if isinstance(ctrl, QtGui.QLineEdit):
-                    ctrl.textChanged.connect(lambda text: self.stateGroup.sigChanged.emit(k, text))
 
     def init_values(self, opts):
         for opt in opts:
@@ -223,19 +65,26 @@ class CtrlNode(Node):
             setattr(self, name, val)
 
     def saveState(self):
-        state = Node.saveState(self)
+        state = super().saveState()
         if self.stateGroup:
             state['ctrl'] = self.stateGroup.state()
+
+        if self.widget and hasattr(self.widget, 'saveState'):
+            state['widget'] = self.widget.saveState()
+
         return state
 
     def restoreState(self, state):
-        super(CtrlNode, self).restoreState(state)
+        super().restoreState(state)
         if self.stateGroup is not None:
             ctrlstate = state.get('ctrl', {})
             self.stateGroup.setState(ctrlstate)
             for k, ctrl in self.ctrls.items():
                 if isinstance(ctrl, QtGui.QLineEdit):
                     ctrl.setText(ctrlstate[k])
+
+        if self.widget is not None and 'widget' in state:
+            self.widget.restoreState(state['widget'])
 
     def hideRow(self, name):
         w = self.ctrls[name]
@@ -256,10 +105,9 @@ class CtrlNode(Node):
 
         self.widget = None
 
-    def display(self, topics, terms, addr, win, widget=None, **kwargs):
-
+    def display(self, topics=None, terms=None, addr=None, win=None, widget=None, **kwargs):
         if self.widget is None and widget:
-            self.widget = widget(topics, terms, addr, win, **kwargs)
+            self.widget = widget(topics, terms, addr, win, node=self, **kwargs)
 
         if self.task is None and self.widget:
             self.task = asyncio.ensure_future(self.widget.update())

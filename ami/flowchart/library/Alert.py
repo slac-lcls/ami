@@ -41,7 +41,7 @@ class Threshold(CtrlNode):
                                         buffered=True)
         self.dialog = None
 
-    def display(self, topics, addr, win, **kwargs):
+    def display(self, topics, terms, addr, win, **kwargs):
         if self.dialog is None:
             self.dialog = DialogWidget(topics, addr, win, **kwargs)
 

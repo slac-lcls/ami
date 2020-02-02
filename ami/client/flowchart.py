@@ -67,7 +67,6 @@ class NodeWindow(QtGui.QMainWindow):
         self.proc.node.clear()
         self.proc.widget = None
         self.proc.show = False
-        self.proc.node.sigStateChanged.emit(self.proc.node)
         self.destroy()
         event.ignore()
 
@@ -154,6 +153,9 @@ class NodeProcess(QtCore.QObject):
                 self.win.setCentralWidget(self.ctrlWidget)
             elif self.widget:
                 self.win.setCentralWidget(self.widget)
+
+            if msg.state and hasattr(self.widget, 'restoreState'):
+                self.widget.restoreState(msg.state)
 
             self.node.sigStateChanged.connect(self.send_checkpoint)
 
