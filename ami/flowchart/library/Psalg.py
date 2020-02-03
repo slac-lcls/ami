@@ -137,8 +137,12 @@ try:
 
                     self.proc = psfDLD.DLDProcessor(**self.params)
 
-                x, y, r, t = zip(*self.proc.xyrt_list(nev, nhits, pktsec))
-                return (np.array(x), np.array(y), np.array(r), np.array(t))
+                r = self.proc.xyrt_list(nev, nhits, pktsec)
+                if r:
+                    x, y, r, t = zip(*r)
+                    return (np.array(x), np.array(y), np.array(r), np.array(t))
+                else:
+                    return (np.array([]), np.array([]), np.array([]), np.array([]))
 
         def __init__(self, name):
             super().__init__(name, terminals={'Event Number': {'io': 'in', 'ttype': int},
@@ -212,21 +216,29 @@ try:
 
                     peak = waveform[i]
 
+                    left_found = False
                     while threshold_lo < waveform[left] <= peak:
+                        left_found = True
                         weighted_sum += waveform[left]*left
                         weights += waveform[left]
                         left -= 1
+                        if left < 0:
+                            break
 
+                    right_found = False
                     while threshold_lo < waveform[right] <= peak:
+                        right_found = True
                         weighted_sum += waveform[right]*right
                         weights += waveform[right]
                         right += 1
+                        if right > waveform.shape[0] - 1:
+                            break
 
-                    if weights:
+                    if left_found and right_found:
                         weighted_sum += peak*i
                         weights += peak
                         centroids.append(weighted_sum/weights)
-                        widths.append(right-left-2)
+                        widths.append(right-left-1)
 
                 return np.array(centroids), np.array(widths)
 
@@ -234,53 +246,6 @@ try:
                           condition_needs=list(conditions.values()), inputs=list(inputs.values()), outputs=outputs,
                           func=peakfinder1d, parent=self.name())
             return node
-
-    class MaxPeakFinder1D(CtrlNode):
-
-        """
-        1D Peakfinder
-        """
-
-        nodeName = "MaxPeakFinder1D"
-        uiTemplate = [('threshold lo', 'doubleSpin', {'value': 0, 'min': -MAX, 'max': MAX}),
-                      ('threshold hi', 'doubleSpin', {'value': 1, 'min': -MAX, 'max': MAX})]
-
-        def __init__(self, name):
-            super().__init__(name, terminals={"Waveform": {'io': 'in', 'ttype': Array1d},
-                                              "Centroid": {'io': 'out', 'ttype': Array1d},
-                                              "Width": {'io': 'out', 'ttype': Array1d}})
-
-        def to_operation(self, inputs, conditions={}):
-            outputs = self.output_vars()
-
-            threshold_lo = self.threshold_lo
-            threshold_hi = self.threshold_hi
-
-            @jit(nopython=True)
-            def peakfinder1d(waveform):
-                centroids = []
-                widths = []
-
-                for i in range(1, waveform.shape[0]-1):
-                    if waveform[i] < threshold_hi:
-                        continue
-
-                    left = i - 1
-                    right = i + 1
-
-                    peak = waveform[i]
-
-                    if threshold_lo < waveform[left] <= peak and threshold_lo < waveform[right] <= peak:
-                        centroids.append(i)
-                        widths.append(1)
-
-                return np.array(centroids), np.array(widths)
-
-            node = gn.Map(name=self.name()+"_operation",
-                          condition_needs=list(conditions.values()), inputs=list(inputs.values()), outputs=outputs,
-                          func=peakfinder1d, parent=self.name())
-            return node
-
 
 except ImportError:
     pass

@@ -42,10 +42,11 @@ class CloseNode(NodeMsg):
 
 class DisplayNode(NodeMsg):
 
-    def __init__(self, name, topics, terms, redisplay=False):
+    def __init__(self, name, topics, terms, state={}, redisplay=False):
         super().__init__(name)
         self.topics = topics
         self.terms = terms
+        self.state = state
         self.redisplay = redisplay
 
     def __repr__(self):

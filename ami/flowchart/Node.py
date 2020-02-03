@@ -81,7 +81,7 @@ class Node(QtCore.QObject):
         ==============  ============================================================
 
         """
-        QtCore.QObject.__init__(self)
+        super().__init__()
         self._name = name
         self._graphicsItem = None
         self.terminals = OrderedDict()
@@ -240,7 +240,8 @@ class Node(QtCore.QObject):
             for term in terms:
                 self.removeTerminal(term)
 
-            del self._groups[group_name]
+            if group_name in self._groups:
+                del self._groups[group_name]
 
     def addTerminal(self, name, group=None, **opts):
         """Add a new terminal to this Node with the given name. Extra

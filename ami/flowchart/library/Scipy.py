@@ -1,8 +1,10 @@
+from ami.flowchart.Node import Node
 from ami.flowchart.library.common import CtrlNode, MAX
 from amitypes import Array1d, Array2d
 import ami.graph_nodes as gn
 import numpy as np
 import scipy.ndimage.measurements as smt
+import scipy.stats as stats
 
 
 class BlobFinder(CtrlNode):
@@ -16,7 +18,7 @@ class BlobFinder(CtrlNode):
                   ('min sum', 'doubleSpin', {'value': 1, 'min': 0.01, 'max': MAX})]
 
     def __init__(self, name):
-        super(BlobFinder, self).__init__(name, terminals={
+        super().__init__(name, terminals={
             'In': {'io': 'in', 'ttype': Array2d},
             'NBlobs': {'io': 'out', 'ttype': int},
             'X': {'io': 'out', 'ttype': Array1d},
@@ -54,4 +56,31 @@ class BlobFinder(CtrlNode):
                       condition_needs=list(conditions.values()), inputs=list(inputs.values()), outputs=outputs,
                       func=find_blobs,
                       parent=self.name())
+        return node
+
+
+class Linregress(Node):
+
+    """
+    Scipy.stats.linregress
+    """
+
+    nodeName = "Linregress"
+
+    def __init__(self, name):
+        super().__init__(name, terminals={'X': {'io': 'in', 'ttype': Array1d},
+                                          'Y': {'io': 'in', 'ttype': Array1d},
+                                          'Slope': {'io': 'out', 'ttype': float},
+                                          'Intercept': {'io': 'out', 'ttype': float},
+                                          'r-value': {'io': 'out', 'ttype': float},
+                                          'p-value': {'io': 'out', 'ttype': float},
+                                          'stderr': {'io': 'out', 'ttype': float}})
+
+    def to_operation(self, inputs, conditions={}):
+        outputs = self.output_vars()
+
+        node = gn.Map(name=self.name()+"_operation",
+                      condition_needs=list(conditions.values()), inputs=list(inputs.values()), outputs=outputs,
+                      func=lambda x, y: stats.linregress(x, y), parent=self.name())
+
         return node
