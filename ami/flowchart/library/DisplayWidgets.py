@@ -354,8 +354,14 @@ class PlotWidget(pg.GraphicsLayoutWidget):
             self.fetcher = None
 
         self.plot_view = self.addPlot()
+
+        ax = self.plot_view.getAxis('bottom')
+        ax.enableAutoSIPrefix(enable=False)
+
+        ay = self.plot_view.getAxis('left')
+        ay.enableAutoSIPrefix(enable=False)
+
         self.plot_view.setMenuEnabled(False)
-        self.legend = self.plot_view.addLegend()
 
         self.configure_btn = pg.ButtonItem(pg.pixmaps.getPixmap('ctrl'), 14, parentItem=self.plot_view)
         self.configure_btn.clicked.connect(self.configure_plot)
@@ -388,14 +394,17 @@ class PlotWidget(pg.GraphicsLayoutWidget):
 
         ctrl_layout = self.ui.layout()
 
-        self.legend_layout = QtGui.QFormLayout()
+        if kwargs.get('legend', True):
+            self.legend = self.plot_view.addLegend()
 
-        groupbox = QtWidgets.QGroupBox()
-        groupbox.setTitle("Legend")
-        groupbox.setCheckable(True)
-        groupbox.setLayout(self.legend_layout)
-        ctrl_layout.addWidget(groupbox)
-        self.ctrls["Legend"] = groupbox
+            self.legend_layout = QtGui.QFormLayout()
+
+            groupbox = QtWidgets.QGroupBox()
+            groupbox.setTitle("Legend")
+            groupbox.setCheckable(True)
+            groupbox.setLayout(self.legend_layout)
+            ctrl_layout.addWidget(groupbox)
+            self.ctrls["Legend"] = groupbox
 
         self.apply_btn = QtWidgets.QPushButton("Apply", self.ui)
         self.apply_btn.clicked.connect(self.apply_clicked)
@@ -446,38 +455,43 @@ class PlotWidget(pg.GraphicsLayoutWidget):
             self.node.sigStateChanged.emit(self.node)
 
     def apply_clicked(self):
-        title = self.ctrls['Title'].text()
-        if title:
-            self.plot_view.setTitle(title)
+        if 'title' in self.ctrls:
+            title = self.ctrls['Title'].text()
+            if title:
+                self.plot_view.setTitle(title)
 
-        x_axis_lbl = self.ctrls['X Axis Label'].text()
-        if x_axis_lbl:
-            self.plot_view.setLabel('bottom', x_axis_lbl)
+        if 'X Axis Label' in self.ctrls:
+            x_axis_lbl = self.ctrls['X Axis Label'].text()
+            if x_axis_lbl:
+                self.plot_view.setLabel('bottom', x_axis_lbl)
 
-        y_axis_lbl = self.ctrls['Y Axis Label'].text()
-        if y_axis_lbl:
-            self.plot_view.setLabel('left', y_axis_lbl)
+        if 'Y Axis Label' in self.ctrls:
+            y_axis_lbl = self.ctrls['Y Axis Label'].text()
+            if y_axis_lbl:
+                self.plot_view.setLabel('left', y_axis_lbl)
 
-        showGrid = self.ctrls['Show Grid'].isChecked()
-        self.plot_view.showGrid(x=showGrid, y=showGrid, alpha=1.0)
+        if 'Show Grid' in self.ctrls:
+            showGrid = self.ctrls['Show Grid'].isChecked()
+            self.plot_view.showGrid(x=showGrid, y=showGrid, alpha=1.0)
 
-        if self.ctrls['Auto Range'].isChecked():
-            self.plot_view.vb.enableAutoRange()
-        else:
-            self.plot_view.vb.disableAutoRange()
+        if 'Auto Range' in self.ctrls:
+            if self.ctrls['Auto Range'].isChecked():
+                self.plot_view.vb.enableAutoRange()
+            else:
+                self.plot_view.vb.disableAutoRange()
 
-        if self.ctrls["Legend"].isChecked():
-            self.plot_view.vb.removeItem(self.legend)
-            self.legend = self.plot_view.addLegend()
+        if 'Legend' in self.ctrls:
+            if self.ctrls['Legend'].isChecked():
+                self.plot_view.vb.removeItem(self.legend)
+                self.legend = self.plot_view.addLegend()
 
-            for idx, name in self.trace_ids.items():
-                if name in self.plot:
+                for idx, name in self.trace_ids.items():
                     item = self.plot[name]
                     self.legend.removeItem(name)
                     self.legend.addItem(item, self.ctrls[idx].text())
-        else:
-            self.plot_view.vb.removeItem(self.legend)
-            self.legend = None
+            else:
+                self.plot_view.vb.removeItem(self.legend)
+                self.legend = None
 
     def saveState(self):
         if self.stateGroup:
@@ -488,7 +502,6 @@ class PlotWidget(pg.GraphicsLayoutWidget):
                     state[k] = ctrl.text()
                     if hasattr(ctrl, 'trace_id'):
                         state[k] = (self.trace_ids[ctrl.trace_id], ctrl.text())
-
             return state
 
     def restoreState(self, state):
@@ -556,40 +569,26 @@ class HistogramWidget(PlotWidget):
                 self.plot[name].setData(x=x, y=y)
 
 
-class Histogram2DWidget(pg.GraphicsLayoutWidget):
+class Histogram2DWidget(PlotWidget):
 
     def __init__(self, topics=None, terms=None, addr=None, parent=None, **kwargs):
-        super().__init__(parent)
-        self.view = self.addViewBox()
+        uiTemplate = [('Title', 'text'),
+                      ('X Axis Label', 'text'),
+                      ('Y Axis Label', 'text')]
 
-        if topics and terms and addr:
-            self.fetcher = AsyncFetcher(topics, terms, addr)
-        else:
-            self.fetcher = None
+        super().__init__(topics, terms, addr, uiTemplate, parent, legend=False, **kwargs)
 
-        self.terms = terms
+        self.view = self.plot_view.getViewBox()
+        self.plot_view.showGrid(True, True)
+
+        ax = self.plot_view.getAxis('bottom')
+        ax.setZValue(100)
+
+        ay = self.plot_view.getAxis('left')
+        ay.setZValue(100)
+
         self.imageItem = pg.ImageItem()
         self.view.addItem(self.imageItem)
-
-        self.plot = pg.PlotItem(viewBox=self.view)
-        self.plot.showGrid(True, True)
-
-        self.ax = self.plot.getAxis('bottom')
-        self.ax.setGrid(255)
-        self.ax.setZValue(1)
-
-        self.ay = self.plot.getAxis('left')
-        self.ay.setGrid(255)
-        self.ay.setZValue(1)
-
-        self.addItem(self.plot)
-
-        self.last_updated = pg.LabelItem(parent=self.view)
-        self.pixel_value = pg.LabelItem(parent=self.view)
-
-        self.proxy = pg.SignalProxy(self.scene().sigMouseMoved,
-                                    rateLimit=30,
-                                    slot=self.cursor_hover_evt)
 
         self.transform = QtGui.QTransform()
         self.xbins = None
@@ -614,26 +613,21 @@ class Histogram2DWidget(pg.GraphicsLayoutWidget):
                 self.pixel_value.setText(f"x={x:.5g}, y={y:.5g}, z={z:.5g}")
                 self.pixel_value.item.moveBy(0, 12)
 
-    async def update(self):
-        while True:
-            await self.fetcher.fetch()
-            self.last_updated.setText(self.fetcher.last_updated)
-            if self.fetcher.reply:
-                data = self.fetcher.reply
+    def data_updated(self, data):
+        xbins = self.terms['XBins']
+        ybins = self.terms['YBins']
+        counts = self.terms['Counts']
 
-                xbins = self.terms['XBins']
-                ybins = self.terms['YBins']
-                counts = self.terms['Counts']
+        self.xbins = data[xbins]
+        self.ybins = data[ybins]
+        counts = data[counts]
+        xscale = (self.xbins[-1] - self.xbins[0])/self.xbins.shape
+        yscale = (self.ybins[-1] - self.ybins[0])/self.ybins.shape
 
-                self.xbins = data[xbins]
-                self.ybins = data[ybins]
-                counts = data[counts]
-                xscale = (self.xbins[-1] - self.xbins[0])/self.xbins.shape
-                yscale = (self.ybins[-1] - self.ybins[0])/self.ybins.shape
-
-                self.imageItem.setImage(counts)
-                self.transform = QtGui.QTransform(xscale, 0, 0, yscale, self.xbins[0], self.ybins[0])
-                self.imageItem.setTransform(self.transform)
+        self.imageItem.setImage(counts)
+        self.imageItem.setZValue(-99)
+        self.transform = QtGui.QTransform(xscale, 0, 0, yscale, self.xbins[0], self.ybins[0])
+        self.imageItem.setTransform(self.transform)
 
 
 class ScatterWidget(PlotWidget):
