@@ -35,8 +35,16 @@ def run_editor_window(broker_addr, graphmgr_addr, checkpoint_addr, load=None):
     # Create flowchart, define input/output terminals
     fc = Flowchart(broker_addr=broker_addr,
                    graphmgr_addr=graphmgr_addr,
-                   checkpoint_addr=checkpoint_addr,
-                   win=win)
+                   checkpoint_addr=checkpoint_addr)
+
+    def update_title(filename):
+        if filename:
+            win.setWindowTitle('AMI Client - ' + filename.split('/')[-1])
+        else:
+            win.setWindowTitle('AMI Client')
+
+    fc.sigFileLoaded.connect(update_title)
+    fc.sigFileSaved.connect(update_title)
 
     loop.run_until_complete(fc.updateSources(init=True))
 

@@ -37,8 +37,7 @@ class Flowchart(Node):
     # called when output is expected to have changed
 
     def __init__(self, name=None, filePath=None, library=None,
-                 broker_addr="", graphmgr_addr="", checkpoint_addr="",
-                 win=None):
+                 broker_addr="", graphmgr_addr="", checkpoint_addr=""):
         super(Flowchart, self).__init__(name)
         self.socks = []
         self.library = library or LIBRARY
@@ -61,7 +60,6 @@ class Flowchart(Node):
         self.checkpoint.connect(checkpoint_addr)
         self.socks.append(self.checkpoint)
 
-        self.win = win
         self.filePath = filePath
 
         self._graph = nx.MultiDiGraph()
@@ -350,9 +348,6 @@ class Flowchart(Node):
         self.restoreState(state, clear=True)
         self.viewBox.autoRange()
         self.sigFileLoaded.emit(fileName)
-        if self.win:
-            self.win.setWindowTitle("AMI Client - " + fileName.split('/')[-1])
-        return fileName
 
     def saveFile(self, fileName=None, startDir=None, suggestedFileName='flowchart.fc'):
         """
@@ -483,12 +478,13 @@ class FlowchartCtrlWidget(QtGui.QWidget):
         self.features_lock = asyncio.Lock()
         self.features = {}
 
+        self.ui.actionNew.triggered.connect(self.clear)
         self.ui.actionOpen.triggered.connect(self.openClicked)
         self.ui.actionSave.triggered.connect(self.saveClicked)
-        # self.ui.saveAsBtn.clicked.connect(self.saveAsClicked)
+        self.ui.actionSaveAs.triggered.connect(self.saveAsClicked)
         self.ui.actionApply.triggered.connect(self.applyClicked)
         self.ui.actionHome.triggered.connect(self.homeClicked)
-        # self.chart.sigFileLoaded.connect(self.setCurrentFile)
+        self.chart.sigFileLoaded.connect(self.setCurrentFile)
         # self.ui.reloadBtn.clicked.connect(self.reloadClicked)
         self.chart.sigFileSaved.connect(self.fileSaved)
 
@@ -616,8 +612,7 @@ class FlowchartCtrlWidget(QtGui.QWidget):
             raise e
 
     def openClicked(self):
-        newFile = self.chart.loadFile()
-        self.setCurrentFile(newFile)
+        self.chart.loadFile()
 
     def fileSaved(self, fileName):
         self.setCurrentFile(fileName)
@@ -640,19 +635,12 @@ class FlowchartCtrlWidget(QtGui.QWidget):
         except Exception as e:
             raise e
 
-        # self.setCurrentFile(newFile)
+    def setCurrentFile(self, fileName):
+        self.currentFileName = fileName
 
     def homeClicked(self):
         children = self.viewBox().allChildren()
         self.viewBox().autoRange(items=children)
-
-    def setCurrentFile(self, fileName):
-        self.currentFileName = fileName
-        # if fileName is None:
-        #     self.ui.fileNameLabel.setText("<b>[ new ]</b>")
-        # else:
-        #     self.ui.fileNameLabel.setText("<b>%s</b>" % os.path.split(self.currentFileName)[1])
-        # self.resizeEvent(None)
 
     def scene(self):
         # returns the GraphicsScene object
@@ -665,7 +653,10 @@ class FlowchartCtrlWidget(QtGui.QWidget):
         return self.chartWidget
 
     def clear(self):
+        self.chart.clear()
         self.chartWidget.clear()
+        self.setCurrentFile(None)
+        self.chart.sigFileLoaded.emit('')
 
 
 class FlowchartWidget(dockarea.DockArea):
@@ -930,8 +921,8 @@ class FlowchartWidget(dockarea.DockArea):
                 target = f"to {target.node().name()}.{target.name()}"
                 text = ' '.join(["Connection", source, target])
 
-        self.hoverText.setPlainText(text)
+        if text:
+            self.hoverText.setPlainText(text)
 
     def clear(self):
-        # self.outputTree.setData(None)
         self.hoverText.setPlainText('')

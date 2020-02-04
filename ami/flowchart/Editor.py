@@ -76,6 +76,13 @@ class Ui_Toolbar(object):
         self.actionSave.setIconText("Save")
         self.actionSave.setObjectName("actionSave")
 
+        # save
+        self.actionSaveAs = QtWidgets.QAction(parent)
+        icon = QtGui.QIcon.fromTheme("document-save")
+        self.actionSaveAs.setIcon(icon)
+        self.actionSaveAs.setIconText("Save As")
+        self.actionSaveAs.setObjectName("actionSaveAs")
+
         # apply
         self.actionApply = QtWidgets.QAction(parent)
         icon = QtGui.QIcon.fromTheme("media-playback-start")
@@ -100,6 +107,7 @@ class Ui_Toolbar(object):
         self.toolBar.addAction(self.actionNew)
         self.toolBar.addAction(self.actionOpen)
         self.toolBar.addAction(self.actionSave)
+        self.toolBar.addAction(self.actionSaveAs)
         self.toolBar.addAction(self.actionApply)
         self.toolBar.addAction(self.actionHome)
         # self.toolBar.addAction(self.actionSelect)
