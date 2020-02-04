@@ -411,6 +411,7 @@ class Flowchart(Node):
             topic = await self.graphinfo.recv_string()
             source = await self.graphinfo.recv_string()
             msg = await self.graphinfo.recv_pyobj()
+            now = datetime.now()
 
             if topic == 'sources':
                 source_library = SourceLibrary()
@@ -430,9 +431,11 @@ class Flowchart(Node):
                     tree = ctrl.ui.source_tree
                     ctrl.ui.clear_model(tree)
                     ctrl.ui.create_model(ctrl.ui.source_tree, self.source_library.getLabelTree())
+
+                ctrl.chartWidget.statusText.append(f"[{now.strftime('%H:%M:%S')}] Updated sources.")
+
             elif topic == 'error':
                 ctrl = self.widget()
-                now = datetime.now()
                 if hasattr(msg, 'node_name'):
                     node_name = ctrl.metadata[msg.node_name]['parent']
                     node = self.nodes(data='node')[node_name]
@@ -583,6 +586,11 @@ class FlowchartCtrlWidget(QtGui.QWidget):
                 for term, in_var in node.input_vars().items():
                     topic = self.features[in_var]
                     topics.append((in_var, topic))
+
+                node.display(topics=None, terms=None, addr=None, win=None)
+                state = {}
+                if hasattr(node.widget, 'saveState'):
+                    state = node.widget.saveState()
 
                 node.display(topics=None, terms=None, addr=None, win=None)
                 state = {}

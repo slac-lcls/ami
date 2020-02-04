@@ -232,7 +232,8 @@ class AsyncFetcher(object):
 class ScalarWidget(QtWidgets.QLCDNumber):
 
     def __init__(self, topics=None, terms=None, addr=None, parent=None, **kwargs):
-        super(ScalarWidget, self).__init__(parent)
+        super().__init__(parent)
+
         if topics and terms and addr:
             self.fetcher = AsyncFetcher(topics, terms, addr, **kwargs)
         else:
@@ -486,9 +487,10 @@ class PlotWidget(pg.GraphicsLayoutWidget):
                 self.legend = self.plot_view.addLegend()
 
                 for idx, name in self.trace_ids.items():
-                    item = self.plot[name]
-                    self.legend.removeItem(name)
-                    self.legend.addItem(item, self.ctrls[idx].text())
+                    if name in self.plot:
+                        item = self.plot[name]
+                        self.legend.removeItem(name)
+                        self.legend.addItem(item, self.ctrls[idx].text())
             else:
                 self.plot_view.vb.removeItem(self.legend)
                 self.legend = None
