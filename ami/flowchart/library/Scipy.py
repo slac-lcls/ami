@@ -72,8 +72,8 @@ class Linregress(Node):
                                           'Y': {'io': 'in', 'ttype': Array1d},
                                           'Slope': {'io': 'out', 'ttype': float},
                                           'Intercept': {'io': 'out', 'ttype': float},
-                                          'r-value': {'io': 'out', 'ttype': float},
-                                          'p-value': {'io': 'out', 'ttype': float},
+                                          'r_value': {'io': 'out', 'ttype': float},
+                                          'p_value': {'io': 'out', 'ttype': float},
                                           'stderr': {'io': 'out', 'ttype': float}})
 
     def to_operation(self, inputs, conditions={}):
