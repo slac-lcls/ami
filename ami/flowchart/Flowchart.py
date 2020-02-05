@@ -262,9 +262,10 @@ class Flowchart(Node):
                     try:
                         node = self.createNode(n['class'], name=n['name'])
                         node.restoreState(n['state'])
-                        node.display(topics=None, terms=None, addr=None, win=None)
-                        if hasattr(node.widget, 'restoreState') and 'widget' in n['state']:
-                            node.widget.restoreState(n['state']['widget'])
+                        if hasattr(node, "display"):
+                            node.display(topics=None, terms=None, addr=None, win=None)
+                            if hasattr(node.widget, 'restoreState') and 'widget' in n['state']:
+                                node.widget.restoreState(n['state']['widget'])
 
                     except Exception:
                         printExc("Error creating node %s: (continuing anyway)" % n['name'])

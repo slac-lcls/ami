@@ -1,4 +1,5 @@
-from typing import TypeVar, List
+from typing import TypeVar
+from amitypes import Array1d
 from ami.flowchart.Node import Node
 from ami.flowchart.library.common import CtrlNode
 import ami.graph_nodes as gn
@@ -39,7 +40,7 @@ class PickN(CtrlNode):
     def __init__(self, name):
         super(PickN, self).__init__(name,
                                     terminals={'In': {'io': 'in', 'ttype': T},
-                                               'Out': {'io': 'out', 'ttype': List[T]}},
+                                               'Out': {'io': 'out', 'ttype': Array1d}},
                                     allowAddInput=True)
         self.N = 2
 
