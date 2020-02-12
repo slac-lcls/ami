@@ -234,10 +234,10 @@ class ScalarWidget(QtWidgets.QLCDNumber):
     def __init__(self, topics=None, terms=None, addr=None, parent=None, **kwargs):
         super().__init__(parent)
 
+        self.fetcher = None
         if topics and terms and addr:
-            self.fetcher = AsyncFetcher(topics, terms, addr, **kwargs)
-        else:
-            self.fetcher = None
+            self.fetcher = AsyncFetcher(topics, terms, addr)
+
         self.setGeometry(QtCore.QRect(320, 180, 191, 81))
         self.setDigitCount(10)
 
@@ -252,10 +252,11 @@ class AreaDetWidget(pg.ImageView):
 
     def __init__(self, topics=None, terms=None, addr=None, parent=None, **kwargs):
         super().__init__(parent)
+
+        self.fetcher = None
         if topics and terms and addr:
             self.fetcher = AsyncFetcher(topics, terms, addr)
-        else:
-            self.fetcher = None
+
         handles = self.roi.getHandles()
         self.roi.removeHandle(handles[1])
         self.last_updated = pg.LabelItem(parent=self.getView())
@@ -293,10 +294,11 @@ class PixelDetWidget(pg.ImageView):
         self.plot.hideAxis('left')
         self.plot.hideAxis('bottom')
         super().__init__(parent=parent, view=self.plot)
+
+        self.fetcher = None
         if topics and terms and addr:
             self.fetcher = AsyncFetcher(topics, terms, addr)
-        else:
-            self.fetcher = None
+
         self.last_updated = pg.LabelItem(parent=self.plot)
         self.point = self.plot.plot([0], [0], symbolBrush=(200, 0, 0), symbol='+', symbolSize=25)
         self.pixel_value = pg.LabelItem(parent=self.getView())
@@ -349,10 +351,9 @@ class PlotWidget(pg.GraphicsLayoutWidget):
         super().__init__(parent)
         self.node = kwargs.get('node', None)
 
+        self.fetcher = None
         if topics and terms and addr:
             self.fetcher = AsyncFetcher(topics, terms, addr)
-        else:
-            self.fetcher = None
 
         self.plot_view = self.addPlot()
 
@@ -720,10 +721,11 @@ class ArrayWidget(QtWidgets.QWidget):
 
     def __init__(self, topics=None, terms=None, addr=None, parent=None, **kwargs):
         super().__init__(parent)
+
+        self.fetcher = None
         if topics and terms and addr:
             self.fetcher = AsyncFetcher(topics, terms, addr)
-        else:
-            self.fetcher = None
+
         self.terms = terms
         self.update_rate = kwargs.get('update_rate', 30)
         self.grid = QtGui.QGridLayout(self)

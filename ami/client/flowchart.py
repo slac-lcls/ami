@@ -72,6 +72,7 @@ class NodeWindow(QtGui.QMainWindow):
         self.proc = proc
 
     def closeEvent(self, event):
+        self.proc.send_checkpoint(self.proc.node)
         self.proc.node.clear()
         self.proc.widget = None
         self.proc.show = False

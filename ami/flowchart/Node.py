@@ -40,7 +40,7 @@ class Node(QtCore.QObject):
     will use to automatically generate the control widget.
     """
 
-    sigClosed = QtCore.Signal(object)
+    sigClosed = QtCore.Signal(object, object)  # name, input_vars
     sigTerminalAdded = QtCore.Signal(object, object)  # self, term
     sigTerminalRemoved = QtCore.Signal(object, object)  # self, term
     sigTerminalConnected = QtCore.Signal(object, object)  # localTerm, remoteTerm
@@ -466,6 +466,7 @@ class Node(QtCore.QObject):
 
     def close(self):
         """Cleans up after the node--removes terminals, graphicsItem, widget"""
+        self.sigClosed.emit(self, self.input_vars())
         self.disconnectAll()
         self.clearTerminals()
         item = self.graphicsItem()
@@ -475,7 +476,6 @@ class Node(QtCore.QObject):
         w = self.ctrlWidget()
         if w is not None:
             w.setParent(None)
-        self.sigClosed.emit(self)
 
     def disconnectAll(self):
         for t in self.terminals.values():

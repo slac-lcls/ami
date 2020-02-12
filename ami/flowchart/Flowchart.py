@@ -26,6 +26,7 @@ import re
 import tempfile
 import networkx as nx
 import itertools as it
+import collections
 import typing  # noqa
 
 
@@ -67,6 +68,8 @@ class Flowchart(Node):
         self.nextZVal = 10
         self._widget = None
         self._scene = None
+
+        self.deleted_nodes = []
 
         self.sigChartLoaded.connect(self.chartLoaded)
 
@@ -133,15 +136,30 @@ class Flowchart(Node):
         node.sigTerminalDisconnected.connect(self.nodeDisconnected)
         node.sigNodeEnabled.connect(self.nodeEnabled)
 
-    def nodeClosed(self, node):
-        # Qt does not like if this function is async
+    @asyncqt.asyncSlot(object, object)
+    async def nodeClosed(self, node, input_vars):
         self._graph.remove_node(node.name())
-        try:
-            getattr(node, 'sigClosed').disconnect(self.nodeClosed)
-        except (TypeError, RuntimeError):
-            pass
-        self.broker.send_string(node.name(), zmq.SNDMORE)
-        self.broker.send_pyobj(fcMsgs.CloseNode())
+        await self.broker.send_string(node.name(), zmq.SNDMORE)
+        await self.broker.send_pyobj(fcMsgs.CloseNode())
+        ctrl = self.widget()
+
+        if hasattr(node, 'to_operation'):
+            self.deleted_nodes.append(node)
+        elif isinstance(node, SourceNode):
+            async with ctrl.features_lock:
+                ctrl.features_count[node.name()].discard(node.name())
+                if not ctrl.features_count[node.name()]:
+                    await ctrl.graphCommHandler.unview(node.name())
+        elif node.viewable():
+            views = []
+            async with ctrl.features_lock:
+                for term, in_var in input_vars.items():
+                    ctrl.features_count[in_var].discard(node.name())
+                    if not ctrl.features_count[in_var]:
+                        views.append(in_var)
+
+            if views:
+                await ctrl.graphCommHandler.unview(views)
 
     def nodeConnected(self, localTerm, remoteTerm):
         if remoteTerm.isOutput() or localTerm.isCondition():
@@ -393,14 +411,15 @@ class Flowchart(Node):
             current_node_state = self._graph.nodes[node_name]['node'].saveState()
 
             if 'ctrl' in new_node_state:
-                current_node_state['ctrl'] = new_node_state['ctrl']
+                if current_node_state['ctrl'] != new_node_state['ctrl']:
+                    current_node_state['ctrl'] = new_node_state['ctrl']
+                    self._graph.nodes[node_name]['node'].changed = True
 
             if 'widget' in new_node_state:
                 current_node_state['widget'] = new_node_state['widget']
 
             self._graph.nodes[node_name]['node'].restoreState(current_node_state)
             self._graph.nodes[node_name]['node'].viewed = new_node_state['viewed']
-            self._graph.nodes[node_name]['node'].changed = True
 
     async def updateSources(self, init=False):
         while True:
@@ -477,7 +496,8 @@ class FlowchartCtrlWidget(QtGui.QWidget):
         self.ui.create_model(self.ui.source_tree, self.chart.source_library.getLabelTree())
 
         self.features_lock = asyncio.Lock()
-        self.features = {}
+        self.features = {}  # {in_var : topic}
+        self.features_count = collections.defaultdict(set)  # {in_var : set(nodes)}
 
         self.ui.actionNew.triggered.connect(self.clear)
         self.ui.actionOpen.triggered.connect(self.openClicked)
@@ -491,17 +511,16 @@ class FlowchartCtrlWidget(QtGui.QWidget):
 
     @asyncqt.asyncSlot()
     async def applyClicked(self):
-        graph_nodes = []
+        graph_nodes = set()
         disconnectedNodes = []
         displays = set()
         now = datetime.now().strftime('%H:%M:%S')
 
-        display_nodes = []
-        for name, gnode in self.chart._graph.nodes().items():
-            node = gnode['node']
+        if self.chart.deleted_nodes:
+            await self.graphCommHandler.remove(self.chart.deleted_nodes)
+            self.chart.deleted_nodes = []
 
-            if node.viewed:
-                display_nodes.append(name)
+        outputs = [n for n, d in self.chart._graph.out_degree() if d == 0]
 
         for name, gnode in self.chart._graph.nodes().items():
             gnode = gnode['node']
@@ -519,22 +538,23 @@ class FlowchartCtrlWidget(QtGui.QWidget):
                 continue
 
             if gnode.changed:
-                node = gnode.to_operation(inputs=gnode.input_vars(), conditions=gnode.condition_vars())
-
-                if type(node) is list:
-                    graph_nodes.extend(node)
-                else:
-                    graph_nodes.append(node)
-
                 gnode.changed = False
 
-                for display_node in display_nodes:
-                    paths = list(nx.algorithms.all_simple_paths(self.chart._graph, name, display_node))
+                for output in outputs:
+                    paths = list(nx.algorithms.all_simple_paths(self.chart._graph, name, output))
 
                     for path in paths:
-                        for gnode in path[1:]:
+                        for gnode in path:
                             gnode = self.chart._graph.nodes[gnode]
                             node = gnode['node']
+
+                            if hasattr(node, 'to_operation'):
+                                nodes = node.to_operation(inputs=node.input_vars(), conditions=node.condition_vars())
+                                if type(nodes) is list:
+                                    graph_nodes.update(nodes)
+                                else:
+                                    graph_nodes.add(nodes)
+
                             if (node.viewable() or node.buffered()) and node.viewed:
                                 displays.add(node)
 
@@ -548,7 +568,7 @@ class FlowchartCtrlWidget(QtGui.QWidget):
         if not graph_nodes:
             return
 
-        await self.graphCommHandler.add(graph_nodes)
+        await self.graphCommHandler.add(list(graph_nodes))
 
         node_names = ', '.join(set(map(lambda node: node.parent, graph_nodes)))
         self.chartWidget.statusText.append(f"[{now}] Submitted {node_names}")
@@ -583,11 +603,6 @@ class FlowchartCtrlWidget(QtGui.QWidget):
                 for term, in_var in node.input_vars().items():
                     topic = self.features[in_var]
                     topics.append((in_var, topic))
-
-                node.display(topics=None, terms=None, addr=None, win=None)
-                state = {}
-                if hasattr(node.widget, 'saveState'):
-                    state = node.widget.saveState()
 
                 node.display(topics=None, terms=None, addr=None, win=None)
                 state = {}
@@ -776,10 +791,13 @@ class FlowchartWidget(dockarea.DockArea):
 
             if name in self.ctrl.features:
                 topic = self.ctrl.features[name]
+                async with self.ctrl.features_lock:
+                    self.ctrl.features_count[name].add(name)
             else:
                 topic = self.ctrl.graphCommHandler.auto(name)
                 async with self.ctrl.features_lock:
                     self.ctrl.features[name] = topic
+                    self.ctrl.features_count[name].add(name)
                 views = {name: name}
 
             topics = [(name, topic)]
@@ -803,10 +821,13 @@ class FlowchartWidget(dockarea.DockArea):
 
                 if in_var in self.ctrl.features:
                     topic = self.ctrl.features[in_var]
+                    async with self.ctrl.features_lock:
+                        self.ctrl.features_count[in_var].add(node.name())
                 else:
                     topic = self.ctrl.graphCommHandler.auto(in_var)
                     async with self.ctrl.features_lock:
                         self.ctrl.features[in_var] = topic
+                        self.ctrl.features_count[in_var].add(node.name())
                     views[in_var] = node.name()
 
                 topics.append((in_var, topic))

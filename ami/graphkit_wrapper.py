@@ -128,11 +128,12 @@ class Graph():
         for n in self.graph.nodes:
             if type(n) is str:
                 continue
-            if n.name == name:
+            if n.name == name or n.parent == name:
                 desc = nx.dag.descendants(self.graph, n)
                 self.graph.remove_nodes_from(desc)
                 self.graph.remove_node(n)
                 break
+
         if name in self.children_of_global_operations:
             for child in self.children_of_global_operations[name]:
                 self.remove(child.name)
