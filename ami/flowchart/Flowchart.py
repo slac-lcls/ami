@@ -144,7 +144,7 @@ class Flowchart(Node):
         ctrl = self.widget()
 
         if hasattr(node, 'to_operation'):
-            self.deleted_nodes.append(node)
+            self.deleted_nodes.append(node.name())
         elif isinstance(node, SourceNode):
             async with ctrl.features_lock:
                 ctrl.features_count[node.name()].discard(node.name())
@@ -673,6 +673,7 @@ class FlowchartCtrlWidget(QtGui.QWidget):
         self.chartWidget.clear()
         self.setCurrentFile(None)
         self.chart.sigFileLoaded.emit('')
+        self.applyClicked()
 
 
 class FlowchartWidget(dockarea.DockArea):
