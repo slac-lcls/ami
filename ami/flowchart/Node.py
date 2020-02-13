@@ -288,6 +288,18 @@ class Node(QtCore.QObject):
     def buffered(self):
         return self._buffered
 
+    def buffered_topics(self):
+        """
+        Buffered nodes can override their topics/terms.
+        """
+        return {in_var: self.name()+'.'+term for term, in_var in self.input_vars().items()}
+
+    def buffered_terms(self):
+        """
+        Buffered nodes can override their topics/terms.
+        """
+        return self.input_vars()
+
     def exportable(self):
         return self._exportable
 

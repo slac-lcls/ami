@@ -3,19 +3,25 @@ from amitypes import Array1d
 from ami.flowchart.library.common import CtrlNode, MAX
 from ami.flowchart.library.DisplayWidgets import AsyncFetcher
 import ami.graph_nodes as gn
+import asyncio
 
 
 class DialogWidget(QtWidgets.QWidget):
 
     def __init__(self, topics=None, terms=None, addr=None, parent=None, **kwargs):
         super().__init__(parent=parent)
+        self.fetcher = None
+        self.terms = terms
+        self.sleep_clicked = False
         if topics and terms and addr:
             self.fetcher = AsyncFetcher(topics, terms, addr)
-        else:
-            self.fetcher = None
 
     async def update(self):
         while True:
+            if self.sleep_clicked:
+                self.sleep_clicked = False
+                await asyncio.sleep(30)
+
             await self.fetcher.fetch()
             if self.fetcher.reply:
                 self.value_updated(self.fetcher.reply)
@@ -24,9 +30,16 @@ class DialogWidget(QtWidgets.QWidget):
         for term, name in self.terms.items():
             if data[name]:
                 msg = QtWidgets.QMessageBox()
+                sleep_btn = QtWidgets.QPushButton(f"Sleep 30 seconds")
                 msg.setText(f"{name} exceeded threshold!")
                 msg.setStandardButtons(QtWidgets.QMessageBox.Ok)
+                msg.addButton(sleep_btn, QtWidgets.QMessageBox.ButtonRole.ActionRole)
                 msg.exec_()
+
+                if msg.clickedButton() == sleep_btn:
+                    self.sleep_clicked = True
+                else:
+                    self.sleep_clicked = False
 
 
 class ArrayThreshold(CtrlNode):
@@ -43,6 +56,9 @@ class ArrayThreshold(CtrlNode):
         super().__init__(name, terminals={'In': {'io': 'in', 'ttype': Array1d}},
                          buffered=True)
         self.dialog = None
+
+    def buffered_topics(self):
+        return {in_var: self.name() for term, in_var in self.input_vars().items()}
 
     def display(self, topics, terms, addr, win, **kwargs):
         return super().display(topics, terms, addr, win, DialogWidget, **kwargs)

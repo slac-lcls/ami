@@ -83,7 +83,7 @@ class NodeWindow(QtGui.QMainWindow):
 class NodeProcess(QtCore.QObject):
 
     def __init__(self, msg=None, broker_addr="", graphmgr_addr="", checkpoint_addr="", loop=None):
-        super(NodeProcess, self).__init__()
+        super().__init__()
 
         if loop is None:
             self.app = QtGui.QApplication([])

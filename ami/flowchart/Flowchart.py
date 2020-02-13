@@ -580,10 +580,8 @@ class FlowchartCtrlWidget(QtGui.QWidget):
         for node in displays:
 
             if node.buffered():
-                topics = []
-
-                for term, in_var in node.input_vars().items():
-                    topics.append((in_var, node.name()+'.'+term))
+                topics = node.buffered_topics()
+                terms = node.buffered_terms()
 
                 node.display(topics=None, terms=None, addr=None, win=None)
                 state = {}
@@ -592,9 +590,9 @@ class FlowchartCtrlWidget(QtGui.QWidget):
 
                 await self.chart.broker.send_string(node.name(), zmq.SNDMORE)
                 await self.chart.broker.send_pyobj(fcMsgs.DisplayNode(name=node.name(),
-                                                                      topics=dict(topics),
+                                                                      topics=topics,
                                                                       state=state,
-                                                                      terms=node.input_vars(),
+                                                                      terms=terms,
                                                                       redisplay=True))
 
             elif node.viewable():
@@ -768,10 +766,10 @@ class FlowchartWidget(dockarea.DockArea):
 
         node.viewed = True
         if isinstance(item.node, Node) and item.node.buffered():
-            topics = []
-
-            for term, in_var in node.input_vars().items():
-                topics.append((in_var, node.name()+'.'+term))
+            # buffered nodes are allowed to override their topics/terms
+            # this is done because they may want to view intermediate values
+            topics = node.buffered_topics()
+            terms = node.buffered_terms()
 
             node.display(topics=None, terms=None, addr=None, win=None)
             state = {}
@@ -780,9 +778,9 @@ class FlowchartWidget(dockarea.DockArea):
 
             await self.chart.broker.send_string(node.name(), zmq.SNDMORE)
             await self.chart.broker.send_pyobj(fcMsgs.DisplayNode(name=node.name(),
-                                                                  topics=dict(topics),
+                                                                  topics=topics,
                                                                   state=state,
-                                                                  terms=node.input_vars()))
+                                                                  terms=terms))
 
         elif isinstance(item.node, SourceNode) and item.node.viewable():
             name = node.name()
