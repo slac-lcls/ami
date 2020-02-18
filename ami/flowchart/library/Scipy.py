@@ -1,5 +1,5 @@
-from ami.flowchart.Node import Node
 from ami.flowchart.library.common import CtrlNode, MAX
+from ami.flowchart.library.DisplayWidgets import FitWidget
 from amitypes import Array1d, Array2d
 import ami.graph_nodes as gn
 import numpy as np
@@ -59,7 +59,7 @@ class BlobFinder(CtrlNode):
         return node
 
 
-class Linregress(Node):
+class Linregress(CtrlNode):
 
     """
     Scipy.stats.linregress
@@ -69,18 +69,31 @@ class Linregress(Node):
 
     def __init__(self, name):
         super().__init__(name, terminals={'X': {'io': 'in', 'ttype': Array1d},
-                                          'Y': {'io': 'in', 'ttype': Array1d},
-                                          'Slope': {'io': 'out', 'ttype': float},
-                                          'Intercept': {'io': 'out', 'ttype': float},
-                                          'r_value': {'io': 'out', 'ttype': float},
-                                          'p_value': {'io': 'out', 'ttype': float},
-                                          'stderr': {'io': 'out', 'ttype': float}})
+                                          'Y': {'io': 'in', 'ttype': Array1d}},
+                         buffered=True)
+
+    def buffered_topics(self):
+        topics = super().buffered_topics()
+        topics[self.name()+".Fit"] = self.name()+".Fit"
+        return topics
+
+    def buffered_terms(self):
+        terms = self.input_vars()
+        terms["Fit"] = self.name()+".Fit"
+        return terms
+
+    def display(self, topics, terms, addr, win, **kwargs):
+        return super().display(topics, terms, addr, win, FitWidget, **kwargs)
 
     def to_operation(self, inputs, conditions={}):
-        outputs = self.output_vars()
+        outputs = [self.name()+".X", self.name()+".Y", self.name()+".Fit"]
 
-        node = gn.Map(name=self.name()+"_operation",
-                      condition_needs=list(conditions.values()), inputs=list(inputs.values()), outputs=outputs,
-                      func=lambda x, y: stats.linregress(x, y), parent=self.name())
+        def fit(x, y):
+            slope, intercept, r_value, p_value, stderr = stats.linregress(x, y)
+            return x, y, intercept + slope*x
 
-        return node
+        nodes = [gn.Map(name=self.name()+"_operation",
+                        condition_needs=list(conditions.values()), inputs=list(inputs.values()), outputs=outputs,
+                        func=fit, parent=self.name())]
+
+        return nodes

@@ -717,6 +717,42 @@ class LineWidget(PlotWidget):
                 self.plot[name].setData(x=x, y=y)
 
 
+class FitWidget(PlotWidget):
+
+    def __init__(self, topics=None, terms=None, addr=None, parent=None, **kwargs):
+        super().__init__(topics, terms, addr, parent=parent, **kwargs)
+
+    def data_updated(self, data):
+        x = self.terms["X"]
+        y = self.terms["Y"]
+        name = " vs ".join((y, x))
+
+        x = data[x]
+        y = data[y]
+        i = 0
+
+        if name not in self.plot:
+            legend_name = self.update_legend_layout(f"trace.0", name)
+            self.plot[name] = pg.ScatterPlotItem(name=legend_name)
+            self.plot_view.addItem(self.plot[name])
+            self.legend.addItem(self.plot[name], name=legend_name)
+
+        scatter = self.plot[name]
+        symbol, color = symbols_colors[i]
+        scatter.setData(x=x, y=y, symbol=symbol, brush=color)
+
+        fit = self.terms["Fit"]
+        fit = data[fit]
+        name = self.terms["Fit"]
+
+        if name not in self.plot:
+            legend_name = self.update_legend_layout(f"trace.1", name)
+            symbol, color = symbols_colors[1]
+            self.plot[name] = self.plot_view.plot(x=x, y=fit, name=legend_name)
+        else:
+            self.plot[name].setData(x=x, y=fit)
+
+
 class ArrayWidget(QtWidgets.QWidget):
 
     def __init__(self, topics=None, terms=None, addr=None, parent=None, **kwargs):
