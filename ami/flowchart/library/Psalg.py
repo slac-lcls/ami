@@ -3,6 +3,7 @@ from amitypes import Array1d, Array2d
 import ami.graph_nodes as gn
 import numpy as np
 import os
+import typing
 
 try:
     import constFracDiscrim as cfd
@@ -127,14 +128,13 @@ try:
                 self.params = params
                 self.proc = None
 
-            def __call__(self, nev, nhits, pktsec):
+            def __call__(self, nev, nhits, pktsec, calib):
+                if self.params['consts'] != calib:
+                    self.params['consts'] = calib
+                    self.proc = None
+
                 if self.proc is None:
-                    if not os.path.exists(self.params['calibtab']):
-                        raise FileNotFoundError(f"calibtab path invalid: {self.params['calibtab']}")
-
-                    if not os.path.exists(self.params['calibcfg']):
-                        raise FileNotFoundError(f"calibcfg path invalid: {self.params['calibcfg']}")
-
+                    self.params['consts'] = calib
                     self.proc = psfDLD.DLDProcessor(**self.params)
 
                 r = self.proc.xyrt_list(nev, nhits, pktsec)
@@ -148,6 +148,7 @@ try:
             super().__init__(name, terminals={'Event Number': {'io': 'in', 'ttype': int},
                                               'Num of Hits': {'io': 'in', 'ttype': Array1d},
                                               'Peak Times': {'io': 'in', 'ttype': Array2d},
+                                              'Calib': {'io': 'in', 'ttype': typing.Dict},
                                               'X': {'io': 'out', 'ttype': Array1d},
                                               'Y': {'io': 'out', 'ttype': Array1d},
                                               'R': {'io': 'out', 'ttype': Array1d},
@@ -163,7 +164,8 @@ try:
                        'numhits': self.num_hits,
                        'verbose': self.verbose,
                        'calibtab': self.calibtab,
-                       'calibcfg': self.calibcfg}
+                       'calibcfg': self.calibcfg,
+                       'consts': None}
 
             node = gn.Map(name=self.name()+"_operation",
                           condition_needs=list(conditions.values()), inputs=list(inputs.values()), outputs=outputs,
