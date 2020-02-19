@@ -134,7 +134,6 @@ try:
                     self.proc = None
 
                 if self.proc is None:
-                    self.params['consts'] = calib
                     self.proc = psfDLD.DLDProcessor(**self.params)
 
                 r = self.proc.xyrt_list(nev, nhits, pktsec)

@@ -2,7 +2,7 @@
     "interval": 0.01,
     "init_time": 0.5,
     "bound": 12,
-    "files": ["run22.h5"],
+    "files": ["data-amox27716-r0100-acqiris-e001000.xtc2"],
     "repeat": true,
     "config": {
         "delta_t": {"dtype": "Scalar", "range": [0,10], "integer": true},

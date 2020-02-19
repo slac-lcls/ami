@@ -503,10 +503,14 @@ class FlowchartCtrlWidget(QtGui.QWidget):
         self.ui.actionOpen.triggered.connect(self.openClicked)
         self.ui.actionSave.triggered.connect(self.saveClicked)
         self.ui.actionSaveAs.triggered.connect(self.saveAsClicked)
+
         self.ui.actionApply.triggered.connect(self.applyClicked)
+        self.ui.actionReset.triggered.connect(self.resetClicked)
+
         self.ui.actionHome.triggered.connect(self.homeClicked)
+        self.ui.navGroup.triggered.connect(self.navClicked)
+
         self.chart.sigFileLoaded.connect(self.setCurrentFile)
-        # self.ui.reloadBtn.clicked.connect(self.reloadClicked)
         self.chart.sigFileSaved.connect(self.fileSaved)
 
     @asyncqt.asyncSlot()
@@ -619,12 +623,6 @@ class FlowchartCtrlWidget(QtGui.QWidget):
 
         self.metadata = await self.graphCommHandler.metadata
 
-    def reloadClicked(self):
-        try:
-            self.chartWidget.reloadLibrary()
-        except Exception as e:
-            raise e
-
     def openClicked(self):
         self.chart.loadFile()
 
@@ -656,6 +654,20 @@ class FlowchartCtrlWidget(QtGui.QWidget):
         children = self.viewBox().allChildren()
         self.viewBox().autoRange(items=children)
 
+    def navClicked(self, action):
+        if action == self.ui.actionPan:
+            self.viewBox().setMouseMode("Pan")
+        elif action == self.ui.actionSelect:
+            self.viewBox().setMouseMode("Select")
+
+    @asyncqt.asyncSlot()
+    async def resetClicked(self):
+        for name, gnode in self.chart._graph.nodes().items():
+            gnode = gnode['node']
+            gnode.changed = True
+
+        self.applyClicked()
+
     def scene(self):
         # returns the GraphicsScene object
         return self.chartWidget.scene()
@@ -677,7 +689,7 @@ class FlowchartCtrlWidget(QtGui.QWidget):
 class FlowchartWidget(dockarea.DockArea):
     """Includes the actual graphical flowchart and debugging interface"""
     def __init__(self, chart, ctrl):
-        dockarea.DockArea.__init__(self)
+        super().__init__()
         self.chart = chart
         self.ctrl = ctrl
         self.hoverItem = None

@@ -90,6 +90,13 @@ class Ui_Toolbar(object):
         self.actionApply.setIconText("Apply")
         self.actionApply.setObjectName("actionApply")
 
+        # reset
+        self.actionReset = QtWidgets.QAction(parent)
+        # icon = QtGui.QIcon.fromTheme("media-playback-start")
+        # self.actionApply.setIcon(icon)
+        self.actionReset.setIconText("Reset")
+        self.actionReset.setObjectName("actionReset")
+
         # home
         self.actionHome = QtWidgets.QAction(parent)
         icon = QtGui.QIcon.fromTheme("go-home")
@@ -97,20 +104,40 @@ class Ui_Toolbar(object):
         self.actionHome.setIconText("Home")
         self.actionHome.setObjectName("actionHome")
 
-        # select
-        # self.actionSelect = QtWidgets.QAction(parent)
-        # icon = QtGui.QIcon.fromTheme("draw-selection")
+        self.navGroup = QtWidgets.QActionGroup(parent)
+
+        # pan
+        self.actionPan = QtWidgets.QAction(parent)
+        # icon = QtGui.QIcon.fromTheme("")
         # self.actionSelect.setIcon(icon)
-        # self.actionSelect.setIconText("Select")
-        # self.actionSelect.setObjectName("actionSelect")
+        self.actionPan.setIconText("Pan")
+        self.actionPan.setObjectName("actionPan")
+        self.actionPan.setCheckable(True)
+        self.actionPan.setChecked(True)
+        self.navGroup.addAction(self.actionPan)
+
+        # select
+        self.actionSelect = QtWidgets.QAction(parent)
+        icon = QtGui.QIcon.fromTheme("draw-selection")
+        self.actionSelect.setIcon(icon)
+        self.actionSelect.setIconText("Select")
+        self.actionSelect.setObjectName("actionSelect")
+        self.actionSelect.setCheckable(True)
+        self.navGroup.addAction(self.actionSelect)
 
         self.toolBar.addAction(self.actionNew)
         self.toolBar.addAction(self.actionOpen)
         self.toolBar.addAction(self.actionSave)
         self.toolBar.addAction(self.actionSaveAs)
+
         self.toolBar.addAction(self.actionApply)
+        self.toolBar.addAction(self.actionReset)
+        self.toolBar.insertSeparator(self.actionApply)
+
         self.toolBar.addAction(self.actionHome)
-        # self.toolBar.addAction(self.actionSelect)
+        self.toolBar.addAction(self.actionPan)
+        self.toolBar.addAction(self.actionSelect)
+        self.toolBar.insertSeparator(self.actionHome)
 
         self.source_model = build_model()
         self.source_search = QtGui.QLineEdit()
