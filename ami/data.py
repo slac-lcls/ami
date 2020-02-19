@@ -704,7 +704,7 @@ class Hdf5Source(HierarchicalDataSource):
         else:
             self.hdf5_idx += self.num_workers
 
-        if self.hdf5_idx < self.hdf5_max_idx:
+        if self.hdf5_max_idx is not None and self.hdf5_idx < self.hdf5_max_idx:
             return self.hdf5_idx
         else:
             raise IndexError("index outside hdf5 dataset range")
@@ -753,17 +753,34 @@ class Hdf5Source(HierarchicalDataSource):
                 logger.debug("DataSrc: ignoring empty dataset %s", name)
             else:
                 self.check_max_index(obj.shape[0])
+                # pytables bool needs special handling when using h5py
+                h5_native_type = obj.id.get_type()
+                if isinstance(h5_native_type, h5py.h5t.TypeBitfieldID):
+                    self.special_types[self.encode(name)] = np.bool
+                # assign type based on the dimensions of the dataset
                 if ndims == 2:
                     self.data_types[self.encode(name)] = at.Array2d
                 elif ndims == 1:
                     self.data_types[self.encode(name)] = at.Array1d
                 elif ndims == 0:
-                    self.data_types[self.encode(name)] = at.NumPyTypeDict.get(obj.dtype.type, typing.Any)
+                    if isinstance(h5_native_type, h5py.h5t.TypeBitfieldID):
+                        self.data_types[self.encode(name)] = bool
+                    else:
+                        self.data_types[self.encode(name)] = at.NumPyTypeDict.get(obj.dtype.type, typing.Any)
                 else:
                     self.data_types[self.encode(name)] = typing.Any
 
     def _update(self, run):
-        run.visititems(self._update_data_names)
+        groups = [run]
+        while groups:
+            grp = groups.pop()
+            for obj in grp.values():
+                if isinstance(obj, h5py.Group):
+                    groups.append(obj)
+                elif isinstance(obj, h5py.Dataset):
+                    self._update_data_names(obj.name.strip('/'), obj)
+                else:
+                    logger.warn("DataSrc: hdf5 node %s has unsupported type: %s", obj.name, type(obj))
 
     def _process(self, evt):
         index, run = evt
@@ -771,7 +788,12 @@ class Hdf5Source(HierarchicalDataSource):
         event = {}
 
         for name in self.requested_data:
-            event[name] = run[self.decode(name)][index]
+            if name in self.special_types:
+                dset = run[self.decode(name)]
+                with dset.astype(self.special_types[name]):
+                    event[name] = dset[index]
+            else:
+                event[name] = run[self.decode(name)][index]
 
         return event
 
