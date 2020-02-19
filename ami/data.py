@@ -588,6 +588,10 @@ class PsanaSource(HierarchicalDataSource):
         self.ds_keys = {
             'exp', 'dir', 'files', 'shmem', 'filter', 'batch_size', 'max_events', 'sel_det_ids', 'det_name'
         }
+        # special attributes that are per run instead of per event from a detectors interface, e.g. calib constants
+        self.special_attrs = {
+            'calibconst': typing.Dict,
+        }
         if psana is not None:
             ps_kwargs = {k: self.config[k] for k in self.ds_keys if k in self.config}
             self.ds = psana.DataSource(**ps_kwargs)
@@ -606,6 +610,13 @@ class PsanaSource(HierarchicalDataSource):
 
     def _events(self, run):
         yield from run.events()
+
+    def _update_special_attrs(self, detname, det_interface):
+        for attr, attr_type in self.special_attrs.items():
+            if hasattr(det_interface, attr):
+                attr_name = self.delimiter.join((detname, attr))
+                self.data_types[attr_name] = attr_type
+                self.special_types[attr_name] = getattr(det_interface, attr)
 
     def _update_hsd_segment(self, seg_name, seg_type, seg_chans):
         for seg_key, chanlist in seg_chans.items():
@@ -626,14 +637,18 @@ class PsanaSource(HierarchicalDataSource):
     def _update(self, run):
         detinfo = run.detinfo
         self.detectors = {}
-        self.data_types = {}
         self.special_names = {}
         for (detname, det_xface_name), det_attr_list in detinfo.items():
+            det_interface = run.Detector(detname)
+
+            # make & cache the psana Detector object
+            self.detectors[detname] = det_interface
+
+            # check if the detector has calibconstants
+            self._update_special_attrs(detname, det_interface)
+
             for attr in det_attr_list:
                 attr_name = self.delimiter.join((detname, det_xface_name, attr))
-                det_interface = run.Detector(detname)
-                # make & cache the psana Detector object
-                self.detectors[detname] = det_interface
                 try:
                     attr_sig = inspect.signature(getattr(getattr(det_interface, det_xface_name), attr))
                     if attr_sig.return_annotation is attr_sig.empty:
@@ -656,15 +671,19 @@ class PsanaSource(HierarchicalDataSource):
         event = {}
 
         for name in self.requested_data:
-            # each name is like "detname:drp_class_name:attrN"
-            namesplit = name.split(':')
-            detname = namesplit[0]
+            # check if it is a special type like calibconst
+            if name in self.special_types:
+                event[name] = self.special_types[name]
+            else:
+                # each name is like "detname:drp_class_name:attrN"
+                namesplit = name.split(':')
+                detname = namesplit[0]
 
-            # loop to the bottom level of the Det obj and get data
-            obj = self.detectors[detname]
-            for token in namesplit[1:]:
-                obj = getattr(obj, token)
-            event[name] = obj(evt)
+                # loop to the bottom level of the Det obj and get data
+                obj = self.detectors[detname]
+                for token in namesplit[1:]:
+                    obj = getattr(obj, token)
+                event[name] = obj(evt)
 
         for name, sub_names in self.requested_special.items():
             namesplit = name.split(':')
