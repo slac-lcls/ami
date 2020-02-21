@@ -109,7 +109,7 @@ class CtrlNode(Node):
         if self.widget is None and widget:
             self.widget = widget(topics, terms, addr, win, node=self, **kwargs)
 
-        if self.task is None and self.widget:
+        if self.task is None and self.widget and topics and terms and addr:
             self.task = asyncio.ensure_future(self.widget.update())
 
         return self.widget

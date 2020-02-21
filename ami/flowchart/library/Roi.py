@@ -26,14 +26,14 @@ class Roi2D(CtrlNode):
                          viewable=True)
         self.func = lambda img: img
 
-    def display(self, topics, terms, addr, win, **kwargs):
+    def display(self, topics=None, terms=None, addr=None, win=None, **kwargs):
         if self.widget is None:
             self.widget = AreaDetWidget(topics, terms, addr, win)
             self.widget.roi.sigRegionChangeFinished.connect(self.set_values)
             self.widget.ui.roiBtn.setChecked(True)
             self.widget.ui.roiBtn.hide()
             self.widget.roiClicked()
-        if self.task is None:
+        if self.task is None and self.widget and topics and terms and addr:
             self.task = asyncio.ensure_future(self.widget.update())
 
         return self.widget
@@ -102,14 +102,14 @@ class Roi1D(CtrlNode):
                          viewable=True)
         self.func = lambda img: img
 
-    def display(self, topics, terms, addr, win, **kwargs):
+    def display(self, topics=None, terms=None, addr=None, win=None, **kwargs):
         if self.widget is None:
             self.widget = WaveformWidget(topics, terms, addr, win, **kwargs)
             self.widget.roi = pg.LinearRegionItem((0, 10))
             self.widget.roi.setBounds((0, None))
             self.widget.plot_view.addItem(self.widget.roi)
             self.widget.roi.sigRegionChangeFinished.connect(self.set_values)
-        if self.task is None and self.widget:
+        if self.task is None and self.widget and topics and terms and addr:
             self.task = asyncio.ensure_future(self.widget.update())
 
         return self.widget
@@ -177,14 +177,14 @@ class ScatterRoi(CtrlNode):
 
         self.func = func
 
-    def display(self, topics, terms, addr, win, **kwargs):
+    def display(self, topics=None, terms=None, addr=None, win=None, **kwargs):
         if self.widget is None:
             self.widget = ScatterWidget(topics, terms, addr, win, **kwargs)
             self.widget.roi = pg.LinearRegionItem((0, 10))
             self.widget.roi.setBounds((0, None))
             self.widget.plot_view.addItem(self.widget.roi)
             self.widget.roi.sigRegionChangeFinished.connect(self.set_values)
-        if self.task is None and self.widget:
+        if self.task is None and self.widget and topics and terms and addr:
             self.task = asyncio.ensure_future(self.widget.update())
 
         return self.widget
@@ -269,11 +269,11 @@ class Roi0D(CtrlNode):
                          viewable=True)
         self.func = lambda img: img[0, 0]
 
-    def display(self, topics, terms, addr, win, **kwargs):
+    def display(self, topics=None, terms=None, addr=None, win=None, **kwargs):
         if self.widget is None:
             self.widget = PixelDetWidget(topics, terms, addr, win)
             self.widget.sigClicked.connect(self.set_values)
-        if self.task is None:
+        if self.task is None and self.widget and topics and terms and addr:
             self.task = asyncio.ensure_future(self.widget.update())
 
         return self.widget

@@ -211,8 +211,9 @@ def test_sources(qtbot, flowchart):
         pass
 
 
+@pytest.mark.asyncio
 @pytest.mark.parametrize('flowchart', ['static'], indirect=True)
-def test_editor(qtbot, flowchart, tmp_path):
+async def test_editor(qtbot, flowchart, tmp_path):
     flowchart, broker = flowchart
 
     qtbot.addWidget(flowchart.widget())
@@ -239,7 +240,7 @@ def test_editor(qtbot, flowchart, tmp_path):
     widget.setCurrentFile(pth)
     widget.saveClicked()
 
-    flowchart.clear()
+    await widget.clear()
     assert len(flowchart._graph.edges()) == 0
 
     flowchart.loadFile(pth)

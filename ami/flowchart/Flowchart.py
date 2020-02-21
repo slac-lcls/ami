@@ -5,7 +5,7 @@ from pyqtgraph.pgcollections import OrderedDict
 from pyqtgraph import FileDialog
 from pyqtgraph.debug import printExc
 from pyqtgraph import dockarea as dockarea
-from ami import asyncqt
+from ami.asyncqt import asyncSlot
 from ami.flowchart.FlowchartGraphicsView import FlowchartGraphicsView
 from ami.flowchart.Terminal import Terminal, TerminalGraphicsItem, ConnectionItem
 from ami.flowchart.library import LIBRARY
@@ -136,7 +136,7 @@ class Flowchart(Node):
         node.sigTerminalDisconnected.connect(self.nodeDisconnected)
         node.sigNodeEnabled.connect(self.nodeEnabled)
 
-    @asyncqt.asyncSlot(object, object)
+    @asyncSlot(object, object)
     async def nodeClosed(self, node, input_vars):
         self._graph.remove_node(node.name())
         await self.broker.send_string(node.name(), zmq.SNDMORE)
@@ -263,7 +263,6 @@ class Flowchart(Node):
             nodes = state['nodes']
             nodes.sort(key=lambda a: a['state']['pos'][0])
             for n in nodes:
-
                 if n['class'] == 'SourceNode':
                     try:
                         ttype = eval(n['state']['terminals']['Out']['ttype'])
@@ -462,7 +461,7 @@ class Flowchart(Node):
                 pass
                 # print(source, msg)
 
-    @asyncqt.asyncSlot()
+    @asyncSlot()
     async def chartLoaded(self):
         for name, node in self.nodes(data='node'):
             msg = fcMsgs.NodeCheckpoint(node.name(), state=node.saveState())
@@ -513,7 +512,7 @@ class FlowchartCtrlWidget(QtGui.QWidget):
         self.chart.sigFileLoaded.connect(self.setCurrentFile)
         self.chart.sigFileSaved.connect(self.fileSaved)
 
-    @asyncqt.asyncSlot()
+    @asyncSlot()
     async def applyClicked(self):
         graph_nodes = set()
         disconnectedNodes = []
@@ -660,13 +659,13 @@ class FlowchartCtrlWidget(QtGui.QWidget):
         elif action == self.ui.actionSelect:
             self.viewBox().setMouseMode("Select")
 
-    @asyncqt.asyncSlot()
+    @asyncSlot()
     async def resetClicked(self):
         for name, gnode in self.chart._graph.nodes().items():
             gnode = gnode['node']
             gnode.changed = True
 
-        self.applyClicked()
+        await self.applyClicked()
 
     def scene(self):
         # returns the GraphicsScene object
@@ -678,12 +677,13 @@ class FlowchartCtrlWidget(QtGui.QWidget):
     def chartWidget(self):
         return self.chartWidget
 
-    def clear(self):
+    @asyncSlot()
+    async def clear(self):
         self.chart.clear()
         self.chartWidget.clear()
         self.setCurrentFile(None)
         self.chart.sigFileLoaded.emit('')
-        self.applyClicked()
+        await self.applyClicked()
 
 
 class FlowchartWidget(dockarea.DockArea):
@@ -760,7 +760,7 @@ class FlowchartWidget(dockarea.DockArea):
 
         self.chart.createNode(nodeType, pos=pos)
 
-    @asyncqt.asyncSlot()
+    @asyncSlot()
     async def selectionChanged(self):
         # print "FlowchartWidget.selectionChanged called."
         items = self._scene.selectedItems()
