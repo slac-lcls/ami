@@ -250,6 +250,7 @@ class Flowchart(Node):
             to_term = data['to_term']
             state['connects'].append((from_node, from_term, to_node, to_term))
 
+        state['source_configuration'] = self.widget().sourceConfigure.saveState()
         return state
 
     def restoreState(self, state, clear=False):
@@ -260,6 +261,11 @@ class Flowchart(Node):
         try:
             if clear:
                 self.clear()
+
+            if 'source_configuration' in state:
+                src_cfg = state['source_configuration']
+                self.widget().sourceConfigure.restoreState(src_cfg)
+                self.widget().sourceConfigure.applyClicked()
 
             nodes = state['nodes']
             nodes.sort(key=lambda a: a['state']['pos'][0])

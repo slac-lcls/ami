@@ -111,9 +111,13 @@ class Worker(Node):
         src_type = src_cfg['type']
         hb_period = src_cfg['hb_period']
         num_workers = args['num_workers']
-        src_cls = Source.find_source(src_type)
-        flags = {}
-        self.src = src_cls(self.node, num_workers, hb_period, src_cfg, flags)
+        try:
+            src_cls = Source.find_source(src_type)
+            flags = {}
+            self.src = src_cls(self.node, num_workers, hb_period, src_cfg, flags)
+        except Exception as e:
+            self.report("error", e)
+            logger.error("%s: Error configuring source", self.name)
 
     def run(self):
         times = {}
