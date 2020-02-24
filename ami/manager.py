@@ -343,6 +343,13 @@ class Manager(Collector):
         else:
             self.comm.send(dill.dumps({}))
 
+    def cmd_update_sources(self, name):
+        src_cfg = self.comm.recv_pyobj()
+        self.graph_comm.send_string("update_sources", zmq.SNDMORE)
+        self.graph_comm.send_pyobj(self.publish_info(name), zmq.SNDMORE)
+        self.graph_comm.send(dill.dumps(src_cfg))
+        self.comm.send_string('ok')
+
     def publish_info(self, name):
         return name, self.versions[name], self.compilier_args
 

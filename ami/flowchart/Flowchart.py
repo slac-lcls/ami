@@ -13,6 +13,7 @@ from ami.flowchart.library.common import SourceNode, CtrlNode
 from ami.flowchart.Node import Node, NodeGraphicsItem, find_nearest
 from ami.flowchart.NodeLibrary import SourceLibrary
 from ami.flowchart.TypeEncoder import TypeEncoder
+from ami.flowchart.SourceConfiguration import SourceConfiguration
 from ami.comm import AsyncGraphCommHandler
 from ami.client import flowchart_messages as fcMsgs
 
@@ -502,6 +503,7 @@ class FlowchartCtrlWidget(QtGui.QWidget):
         self.ui.actionOpen.triggered.connect(self.openClicked)
         self.ui.actionSave.triggered.connect(self.saveClicked)
         self.ui.actionSaveAs.triggered.connect(self.saveAsClicked)
+        self.ui.actionConfigure.triggered.connect(self.configureClicked)
 
         self.ui.actionApply.triggered.connect(self.applyClicked)
         self.ui.actionReset.triggered.connect(self.resetClicked)
@@ -511,6 +513,9 @@ class FlowchartCtrlWidget(QtGui.QWidget):
 
         self.chart.sigFileLoaded.connect(self.setCurrentFile)
         self.chart.sigFileSaved.connect(self.fileSaved)
+
+        self.sourceConfigure = SourceConfiguration()
+        self.sourceConfigure.sigApply.connect(self.configureApply)
 
     @asyncSlot()
     async def applyClicked(self):
@@ -684,6 +689,13 @@ class FlowchartCtrlWidget(QtGui.QWidget):
         self.setCurrentFile(None)
         self.chart.sigFileLoaded.emit('')
         await self.applyClicked()
+
+    def configureClicked(self):
+        self.sourceConfigure.show()
+
+    @asyncSlot(object)
+    async def configureApply(self, src_cfg):
+        await self.graphCommHandler.updateSources(src_cfg)
 
 
 class FlowchartWidget(dockarea.DockArea):

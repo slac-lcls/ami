@@ -7,7 +7,7 @@ import logging
 import argparse
 from ami import LogConfig, Defaults
 from ami.comm import Ports, Colors, ResultStore, Node, AutoExport
-from ami.data import MsgTypes, Source
+from ami.data import MsgTypes, Source, Message, Transition, Transitions
 from ami.graphkit_wrapper import Graph
 
 
@@ -29,6 +29,7 @@ class Worker(Node):
         self.store = ResultStore(collector_addr, self.ctx)
 
         self.graph_comm.add_command("config", self.send_configure)
+        self.graph_comm.add_handler("update_sources", self.update_sources)
 
         self.exports = {}
 
@@ -46,7 +47,11 @@ class Worker(Node):
         self.ctx.destroy()
 
     def send_configure(self):
-        self.store.send(self.src.configure())
+        if self.src:
+            self.store.send(self.src.configure())
+        else:
+            self.store.send(Message(MsgTypes.Transition, self.node,
+                                    Transition(Transitions.Configure, {})))
 
     def init_graph(self, name):
         if name not in self.graphs or self.graphs[name] is None:
@@ -102,8 +107,21 @@ class Worker(Node):
         self.clear_graph(name)
         self.report("purge", name)
 
+    def update_sources(self, name, version, args, src_cfg):
+        src_type = src_cfg['type']
+        hb_period = src_cfg['hb_period']
+        num_workers = args['num_workers']
+        src_cls = Source.find_source(src_type)
+        flags = {}
+        self.src = src_cls(self.node, num_workers, hb_period, src_cfg, flags)
+
     def run(self):
         times = {}
+
+        while self.src is None:
+            logger.info("%s: Waiting for source configuration", self.name)
+            self.graph_comm.recv(True)
+
         for msg in self.src.events():
 
             # check to see if the graph has been reconfigured after update
@@ -155,6 +173,7 @@ def run_worker(num, num_workers, hb_period, source, collector_addr, graph_addr, 
 
     logger.info('Starting worker # %d, sending to collector at %s', num, collector_addr)
 
+    src = None
     if source is not None:
         src_type = source[0]
         if isinstance(source[1], dict):
@@ -169,20 +188,17 @@ def run_worker(num, num_workers, hb_period, source, collector_addr, graph_addr, 
             except json.decoder.JSONDecodeError:
                 logger.exception("worker%03d: problem parsing json file (%s):", num, source[1])
                 return 1
-    else:
-        src_type = Defaults.SourceType
-        src_cfg = Defaults.SourceConfig
 
-    src_cls = Source.find_source(src_type)
-    if src_cls is not None:
-        src = src_cls(num,
-                      num_workers,
-                      hb_period,
-                      src_cfg,
-                      flags)
-    else:
-        logger.critical("worker%03d: unknown data source type: %s", num, source[0])
-        return 1
+        src_cls = Source.find_source(src_type)
+        if src_cls is not None:
+            src = src_cls(num,
+                          num_workers,
+                          hb_period,
+                          src_cfg,
+                          flags)
+        else:
+            logger.critical("worker%03d: unknown data source type: %s", num, source[0])
+            return 1
 
     with Worker(num, src, collector_addr, graph_addr, msg_addr, export_addr) as worker:
         return worker.run()

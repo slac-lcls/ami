@@ -90,6 +90,13 @@ class Ui_Toolbar(object):
         self.actionApply.setIconText("Apply")
         self.actionApply.setObjectName("actionApply")
 
+        # configure
+        self.actionConfigure = QtWidgets.QAction(parent)
+        icon = QtGui.QIcon.fromTheme("preferences-system")
+        self.actionConfigure.setIcon(icon)
+        self.actionConfigure.setIconText("Configure")
+        self.actionConfigure.setObjectName("actionConfigure")
+
         # reset
         self.actionReset = QtWidgets.QAction(parent)
         # icon = QtGui.QIcon.fromTheme("media-playback-start")
@@ -129,6 +136,7 @@ class Ui_Toolbar(object):
         self.toolBar.addAction(self.actionOpen)
         self.toolBar.addAction(self.actionSave)
         self.toolBar.addAction(self.actionSaveAs)
+        self.toolBar.addAction(self.actionConfigure)
 
         self.toolBar.addAction(self.actionApply)
         self.toolBar.addAction(self.actionReset)

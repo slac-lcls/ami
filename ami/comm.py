@@ -1426,6 +1426,9 @@ class CommHandler(abc.ABC):
         """
         return self._request_dill('get_metadata')
 
+    def updateSources(self, src_cfg):
+        return self._post_dill("update_sources", src_cfg)
+
     def fetch(self, names):
         """
         Attempts to fetch a feature with the requested name from the global

@@ -7,7 +7,6 @@ import logging
 import tempfile
 import argparse
 import functools
-import subprocess
 import multiprocessing as mp
 
 from ami import LogConfig, Defaults, check_mp_start_method
@@ -248,20 +247,7 @@ def run_ami(args, queue=None):
                 logger.critical("Invalid data source config string: %s", args.source)
                 return 1
         else:
-            # if using the psana source generate some data for it
-            if Defaults.SourceType == 'psana':
-                xtcdir = tempfile.mkdtemp()
-                xtcfile = os.path.join(xtcdir, Defaults.SourceConfig['files'])
-                xtcevents = str(flags.get('nevents', Defaults.SourceConfig['nevents']))
-                xtcinterval = float(flags.get('interval', Defaults.SourceConfig['interval']))
-                xtcperiod = str(xtcinterval * 1e6)
-                # generate an xtc file
-                if subprocess.call(["amiwriter", "-f", xtcfile, "-n", xtcevents, "-p", xtcperiod,  "-c"]) != 0:
-                    logger.critical("Failed to generate requested xtc2 data for the psana source!")
-                    return 1
-                # point the default configuration settings to the generated file
-                Defaults.SourceConfig['files'] = xtcfile
-            src_cfg = (Defaults.SourceType, Defaults.SourceConfig)
+            src_cfg = None
 
         for i in range(args.num_workers):
             proc = mp.Process(
