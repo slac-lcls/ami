@@ -58,24 +58,23 @@ def build_parser():
     comm_group = parser.add_mutually_exclusive_group()
 
     comm_group.add_argument(
-        '-t',
-        '--tcp',
-        action='store_true',
-        help='use tcp instead of ipc for communication'
-    )
-
-    comm_group.add_argument(
-        '-i',
-        '--ipc',
-        help='ipc dir to use for communication'
-    )
-
-    parser.add_argument(
         '-p',
         '--port',
         type=int,
         default=Ports.Comm,
         help='starting port when using tcp for communication (default: %d)' % Ports.Comm
+    )
+
+    comm_group.add_argument(
+        '-i',
+        '--ipc-dir',
+        help='use ipc for communication and create the file descriptors in the specified directory'
+    )
+
+    comm_group.add_argument(
+        '--ipc',
+        action='store_true',
+        help='use ipc for communication and create the file descriptors in a temporary directory'
     )
 
     parser.add_argument(
@@ -189,7 +188,13 @@ def run_ami(args, queue=None):
     flags = {}
     if queue is None:
         queue = mp.Queue()
-    if args.tcp:
+    if args.ipc:
+        ipcdir = tempfile.mkdtemp()
+        owns_ipcdir = True
+    elif args.ipc is not None:
+        ipcdir = args.ipc
+        owns_ipcdir = False
+    if ipcdir is None:
         host = "127.0.0.1"
         comm_addr = "tcp://%s:%d" % (host, args.port)
         graph_addr = "tcp://%s:%d" % (host, args.port+1)
@@ -202,12 +207,6 @@ def run_ami(args, queue=None):
         view_addr = "tcp://%s:%d" % (host, args.port+8)
         profile_addr = "tcp://%s:%d" % (host, args.port+9)
     else:
-        if args.ipc:
-            ipcdir = args.ipc
-            owns_ipcdir = False
-        else:
-            ipcdir = tempfile.mkdtemp()
-            owns_ipcdir = True
         collector_addr = "ipc://%s/node_collector" % ipcdir
         globalcol_addr = "ipc://%s/collector" % ipcdir
         graph_addr = "ipc://%s/graph" % ipcdir

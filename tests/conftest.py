@@ -152,7 +152,7 @@ def start_ami(request, workerjson):
         pass
 
     parser = build_parser()
-    args = parser.parse_args(["-n", "1", '-t', '--headless',
+    args = parser.parse_args(["-n", "1", '--headless',
                               '%s://%s' %
                               (request.param, workerjson)])
 
