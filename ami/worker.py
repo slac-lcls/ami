@@ -111,6 +111,8 @@ class Worker(Node):
         src_type = src_cfg['type']
         hb_period = src_cfg['hb_period']
         num_workers = args['num_workers']
+        logger.info("%s: Received source configuration (%s v%d)", self.name, name, version)
+        self.report("info", "Received source configuration (%s v%d)" % (name, version))
         try:
             src_cls = Source.find_source(src_type)
             flags = {}
