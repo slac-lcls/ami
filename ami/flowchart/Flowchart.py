@@ -576,7 +576,6 @@ class FlowchartCtrlWidget(QtGui.QWidget):
             for node in disconnectedNodes:
                 self.chartWidget.statusText.append(f"[{now}] {node.name()} disconnected!")
                 node.setException(True)
-                node.recolor()
             return
 
         if not graph_nodes:
@@ -770,12 +769,7 @@ class FlowchartWidget(dockarea.DockArea):
 
     def nodeMenuTriggered(self, action):
         nodeType = action.nodeType
-        if action.pos is not None:
-            pos = action.pos
-        else:
-            pos = self.menuPos
-        pos = self.viewBox().mapSceneToView(pos)
-
+        pos = self.viewBox().mapSceneToView(action.pos)
         self.chart.createNode(nodeType, pos=pos)
 
     @asyncSlot()

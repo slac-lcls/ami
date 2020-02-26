@@ -412,16 +412,18 @@ class Node(QtCore.QObject):
 
     def setException(self, exc):
         self.exception = exc
-        self.recolor()
+        self.recolor(typ="exception")
 
     def clearException(self):
         self.setException(None)
 
-    def recolor(self):
-        if self.exception is None:
-            self.graphicsItem().setPen(QtGui.QPen(QtGui.QColor(0, 0, 0)))
-        else:
+    def recolor(self, typ=None):
+        if typ == "exception":
             self.graphicsItem().setPen(QtGui.QPen(QtGui.QColor(255, 0, 0), 3))
+        elif typ == "selected":
+            self.graphicsItem().setPen(QtGui.QPen(QtGui.QColor(250, 150, 0), 3))
+        else:
+            self.graphicsItem().setPen(QtGui.QPen(QtGui.QColor(0, 0, 0)))
 
     def saveState(self):
         """Return a dictionary representing the current state of this node
@@ -499,7 +501,7 @@ class Node(QtCore.QObject):
 
 class NodeGraphicsItem(GraphicsObject):
     def __init__(self, node, brush=None):
-        GraphicsObject.__init__(self)
+        super().__init__()
 
         self.pen = fn.mkPen(0, 0, 0)
         self.selectPen = fn.mkPen(200, 200, 200, width=2)

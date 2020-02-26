@@ -2,7 +2,7 @@ from pyqtgraph.Qt import QtGui, QtCore, QtWidgets
 from pyqtgraph.widgets.GraphicsView import GraphicsView
 from pyqtgraph.graphicsItems.ViewBox import ViewBox
 from pyqtgraph import GridItem
-# from ami.flowchart.Node import NodeGraphicsItem
+from ami.flowchart.Node import NodeGraphicsItem
 from ami.flowchart.library.common import SourceNode
 import asyncqt
 
@@ -14,7 +14,7 @@ class SelectionRect(QtWidgets.QGraphicsWidget):
     __pen = QtGui.QPen(QtGui.QColor(255, 255, 255), 1.0, QtCore.Qt.DashLine)
 
     def __init__(self, view, mouseDownPos):
-        super(SelectionRect, self).__init__()
+        super().__init__()
         self.setZValue(2)
 
         self.view = view
@@ -27,7 +27,7 @@ class SelectionRect(QtWidgets.QGraphicsWidget):
     def collidesWithItem(self, item):
         if self.selectFullyIntersectedItems:
             return self.sceneBoundingRect().contains(item.sceneBoundingRect())
-        return super(SelectionRect, self).collidesWithItem(item)
+        return super().collidesWithItem(item)
 
     def setDragPoint(self, dragPoint):
         topLeft = QtCore.QPointF(self.__mouseDownPos)
@@ -91,6 +91,9 @@ class FlowchartViewBox(ViewBox):
         self.setRange(xRange=(0, 800), yRange=(0, 800))
         self.mouseMode = "Pan"
         self.selectionRect = None
+        self.selected_nodes = []
+        self.copy = False
+        self.paste_pos = None
 
     def setMouseMode(self, mode):
         assert mode in ["Select", "Pan"]
@@ -102,7 +105,33 @@ class FlowchartViewBox(ViewBox):
         self._subMenus = self.getContextMenus(ev)
         for menu in self._subMenus:
             self._fc_menu.addMenu(menu)
+
+        if self.selected_nodes:
+            self.selected_node_menu = QtGui.QMenu("Selection")
+            if not self.copy:
+                self.selected_node_menu.addAction("Copy", self.copySelectedNodes)
+            else:
+                self.selected_node_menu.addAction("Paste", self.pasteSelectedNodes)
+                self.paste_pos = ev.pos()
+            self.selected_node_menu.addAction("Delete", self.deleteSelectedNodes)
+            self._fc_menu.addMenu(self.selected_node_menu)
+
         return self._fc_menu
+
+    def copySelectedNodes(self):
+        self.copy = True
+
+    def pasteSelectedNodes(self):
+        # TODO figure out right positions and preserve topology?
+        pos = self.mapToView(self.paste_pos)
+
+        for node in self.selected_nodes:
+            self.widget.chart.createNode(type(node).__name__, pos=pos)
+            pos += QtCore.QPointF(200, 0)
+
+    def deleteSelectedNodes(self):
+        for node in self.selected_nodes:
+            node.close()
 
     def getContextMenus(self, ev):
         # called by scene to add menus on to someone else's context menu
@@ -146,10 +175,25 @@ class FlowchartViewBox(ViewBox):
                 self.selectionRect.setDragPoint(self.mapToView(ev.pos()))
 
             if ev.isFinish():
-                # nodes = list(filter(lambda item: isinstance(item, NodeGraphicsItem), self.allChildren()))
-                # selected_nodes = list(map(self.collidesWithItem, nodes))
+                self.selected_nodes = []
+                for item in self.allChildren():
+                    if not isinstance(item, NodeGraphicsItem):
+                        continue
+                    if self.selectionRect.collidesWithItem(item):
+                        item.node.recolor("selected")
+                        self.selected_nodes.append(item.node)
+
+                self.copy = False
                 self.selectionRect.destroy()
                 self.selectionRect = None
+
+    def mousePressEvent(self, ev):
+        ev.accept()
+        super().mousePressEvent(ev)
+
+        if ev.button() == QtCore.Qt.LeftButton:
+            for node in self.selected_nodes:
+                node.recolor()
 
     def dropEvent(self, ev):
         if ev.mimeData().hasFormat('application/x-qabstractitemmodeldatalist'):
