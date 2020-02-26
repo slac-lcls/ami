@@ -191,7 +191,7 @@ def run_ami(args, queue=None):
     if args.ipc:
         ipcdir = tempfile.mkdtemp()
         owns_ipcdir = True
-    elif args.ipc is not None:
+    elif args.ipc_dir is not None:
         ipcdir = args.ipc
         owns_ipcdir = False
     if ipcdir is None:
