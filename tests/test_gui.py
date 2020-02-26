@@ -101,7 +101,7 @@ def flowchart(request, workerjson, broker, ipc_dir, qevent_loop):
         pass
 
     parser = build_parser()
-    args = parser.parse_args(["-n", "1", '--ipc', str(ipc_dir), '--headless',
+    args = parser.parse_args(["-n", "1", '-i', str(ipc_dir), '--headless',
                               '%s://%s' %
                               (request.param, workerjson)])
 

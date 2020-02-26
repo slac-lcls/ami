@@ -181,7 +181,6 @@ def cleanup(procs):
 
 
 def run_ami(args, queue=None):
-
     xtcdir = None
     ipcdir = None
     owns_ipcdir = True
@@ -192,7 +191,7 @@ def run_ami(args, queue=None):
         ipcdir = tempfile.mkdtemp()
         owns_ipcdir = True
     elif args.ipc_dir is not None:
-        ipcdir = args.ipc
+        ipcdir = args.ipc_dir
         owns_ipcdir = False
     if ipcdir is None:
         host = "127.0.0.1"

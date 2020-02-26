@@ -265,7 +265,8 @@ class Flowchart(Node):
             if 'source_configuration' in state:
                 src_cfg = state['source_configuration']
                 self.widget().sourceConfigure.restoreState(src_cfg)
-                self.widget().sourceConfigure.applyClicked()
+                if src_cfg['files']:
+                    self.widget().sourceConfigure.applyClicked()
 
             nodes = state['nodes']
             nodes.sort(key=lambda a: a['state']['pos'][0])
