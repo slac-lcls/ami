@@ -250,3 +250,70 @@ try:
 
 except ImportError:
     pass
+
+
+try:
+    from psalg_ext import peak_finder_algos
+
+    class PeakFinderV4R3(CtrlNode):
+
+        """
+        psana peakfinder v4r3d2
+        """
+
+        nodeName = "PeakFinderV4R3"
+        uiTemplate = [('npix min', 'doubleSpin', {'value': 20, 'min': -MAX, 'max': MAX}),
+                      ('npix max', 'doubleSpin', {'value': 25, 'min': -MAX, 'max': MAX}),
+                      ('amax thr', 'doubleSpin', {'value': 0, 'min': -MAX, 'max': MAX}),
+                      ('atot thr', 'doubleSpin', {'value': 0, 'min': -MAX, 'max': MAX}),
+                      ('son min', 'doubleSpin', {'value': 0, 'min': -MAX, 'max': MAX}),
+                      # pass to peak_finder_v4r3_d2
+                      ('thr low', 'doubleSpin', {'value': 35, 'min': -MAX, 'max': MAX}),
+                      ('thr high', 'doubleSpin', {'value': 100, 'min': -MAX, 'max': MAX}),
+                      ('rank', 'doubleSpin', {'value': 2, 'min': -MAX, 'max': MAX}),
+                      ('r0', 'doubleSpin', {'value': 4, 'min': -MAX, 'max': MAX}),
+                      ('dr', 'doubleSpin', {'value': 0.05, 'min': -MAX, 'max': MAX})]
+
+        class PeakfinderAlgos():
+
+            def __init__(self, constructor_params={}, call_params={}):
+                self.constructor_params = constructor_params
+                self.call_params = call_params
+                self.proc = None
+
+            def __call__(self, img):
+                if self.proc is None:
+                    self.proc = peak_finder_algos(pbits=0)
+                    self.proc.set_peak_selection_parameters(**self.constructor_params)
+
+                mask = np.ones(img.shape, dtype=np.uint16)
+                peaks = self.proc.peak_finder_v4r3_d2(img, mask, **self.call_params)
+                return peaks
+
+        def __init__(self, name):
+            super().__init__(name, terminals={'Image': {'io': 'in', 'ttype': Array2d},
+                                              'Peaks': {'io': 'out', 'ttype': typing.Any}})
+
+        def to_operation(self, inputs, conditions={}):
+            outputs = self.output_vars()
+
+            constructor_params = {'npix_min': self.npix_min,
+                                  'npix_max': self.npix_max,
+                                  'amax_thr': self.amax_thr,
+                                  'atot_thr': self.atot_thr,
+                                  'son_min': self.son_min}
+
+            call_params = {'thr_low': self.thr_low,
+                           'thr_high': self.thr_high,
+                           'rank': self.rank,
+                           'r0': self.r0,
+                           'dr': self.dr}
+
+            node = gn.Map(name=self.name()+"_operation",
+                          condition_needs=list(conditions.values()), inputs=list(inputs.values()), outputs=outputs,
+                          func=self.PeakfinderAlgos(constructor_params, call_params), parent=self.name())
+
+            return node
+
+except ImportError:
+    pass
