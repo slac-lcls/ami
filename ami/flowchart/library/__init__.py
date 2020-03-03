@@ -7,14 +7,14 @@ modules = [Roi, Filter, Operators, Display, Accumulators, Alert, Numpy]
 try:
     from ami.flowchart.library import Scipy
     modules.append(Scipy)
-except ImportError:
-    pass
+except ImportError as e:
+    print(e)
 
 try:
     from ami.flowchart.library import Psalg
     modules.append(Psalg)
-except ImportError:
-    pass
+except ImportError as e:
+    print(e)
 
 # Build default library
 LIBRARY = NodeLibrary()

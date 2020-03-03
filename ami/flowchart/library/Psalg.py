@@ -1,9 +1,12 @@
-from ami.flowchart.library.common import CtrlNode, MAX
+from pyqtgraph.Qt import QtGui, QtWidgets
 from amitypes import Array1d, Array2d
+from ami.flowchart.Node import NodeGraphicsItem
+from ami.flowchart.library.common import CtrlNode, MAX
 import ami.graph_nodes as gn
 import numpy as np
 import os
 import typing
+
 
 try:
     import constFracDiscrim as cfd
@@ -49,8 +52,8 @@ try:
                           parent=self.name())
             return node
 
-except ImportError:
-    pass
+except ImportError as e:
+    print(e)
 
 try:
     import psana.hexanode.WFPeaks as psWFPeaks
@@ -172,9 +175,8 @@ try:
 
             return node
 
-except ImportError:
-    pass
-
+except ImportError as e:
+    print(e)
 
 try:
     from numba import jit
@@ -248,12 +250,39 @@ try:
                           func=peakfinder1d, parent=self.name())
             return node
 
-except ImportError:
-    pass
-
+except ImportError as e:
+    print(e)
 
 try:
     from psalg_ext import peak_finder_algos
+
+    peak_attrs = ['seg', 'row', 'col', 'npix', 'amp_max', 'amp_tot',
+                  'row_cgrav', 'col_cgrav', 'row_sigma', 'col_sigma',
+                  'row_min', 'row_max', 'col_min', 'col_max',
+                  'bkgd', 'noise', 'son']
+
+    class PeakFinderGraphicsItem(NodeGraphicsItem):
+
+        def buildMenu(self, reset=False):
+            super().buildMenu(reset)
+            actions = self.menu.actions()
+            addInput = actions[2]
+
+            self.menu.removeAction(addInput)
+            self.output_group = QtWidgets.QActionGroup(self.menu)
+
+            for attr in peak_attrs:
+                if attr not in self.node.terminals:
+                    add_attr = QtGui.QAction(f"Add {attr}", self.menu)
+                    add_attr.attr = attr
+                    self.output_group.addAction(add_attr)
+                    self.menu.insertAction(addInput, add_attr)
+
+            self.output_group.triggered.connect(self.output_added)
+
+        def output_added(self, action):
+            self.node.addTerminal(action.attr, io='out', ttype=Array1d, removable=True)
+            self.buildMenu(reset=True)
 
     class PeakFinderV4R3(CtrlNode):
 
@@ -276,9 +305,10 @@ try:
 
         class PeakfinderAlgos():
 
-            def __init__(self, constructor_params={}, call_params={}):
+            def __init__(self, constructor_params={}, call_params={}, outputs=[]):
                 self.constructor_params = constructor_params
                 self.call_params = call_params
+                self.outputs = outputs
                 self.proc = None
 
             def __call__(self, img):
@@ -288,11 +318,26 @@ try:
 
                 mask = np.ones(img.shape, dtype=np.uint16)
                 peaks = self.proc.peak_finder_v4r3_d2(img, mask, **self.call_params)
-                return peaks
+
+                outputs = []
+                for output in self.outputs:
+                    outputs.append(np.array(list(map(lambda peak: getattr(peak, output), peaks))))
+
+                return outputs
 
         def __init__(self, name):
             super().__init__(name, terminals={'Image': {'io': 'in', 'ttype': Array2d},
-                                              'Peaks': {'io': 'out', 'ttype': typing.Any}})
+                                              'row_cgrav': {'io': 'out', 'ttype': Array1d, 'removable': True},
+                                              'col_cgrav': {'io': 'out', 'ttype': Array1d, 'removable': True},
+                                              'npix': {'io': 'out', 'ttype': Array1d, 'removable': True},
+                                              'son': {'io': 'out', 'ttype': Array1d, 'removable': True},
+                                              'amp_tot': {'io': 'out', 'ttype': Array1d, 'removable': True}})
+            self.graphicsItem().buildMenu(reset=True)
+
+        def graphicsItem(self, brush=None):
+            if self._graphicsItem is None:
+                self._graphicsItem = PeakFinderGraphicsItem(self, brush)
+            return self._graphicsItem
 
         def to_operation(self, inputs, conditions={}):
             outputs = self.output_vars()
@@ -311,9 +356,10 @@ try:
 
             node = gn.Map(name=self.name()+"_operation",
                           condition_needs=list(conditions.values()), inputs=list(inputs.values()), outputs=outputs,
-                          func=self.PeakfinderAlgos(constructor_params, call_params), parent=self.name())
+                          func=self.PeakfinderAlgos(constructor_params, call_params, list(self.outputs().keys())),
+                          parent=self.name())
 
             return node
 
-except ImportError:
-    pass
+except ImportError as e:
+    print(e)

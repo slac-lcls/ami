@@ -611,10 +611,21 @@ class FlowchartCtrlWidget(QtGui.QWidget):
 
             elif node.viewable():
                 topics = []
-
+                views = {}
                 for term, in_var in node.input_vars().items():
-                    topic = self.features[in_var]
+                    if in_var in self.features:
+                        topic = self.features[in_var]
+                    else:
+                        topic = self.graphCommHandler.auto(in_var)
+                        async with self.features_lock:
+                            self.features[in_var] = topic
+                            self.features_count[in_var].add(node.name())
+                        views[in_var] = node.name()
+
                     topics.append((in_var, topic))
+
+                if views:
+                    await self.graphCommHandler.view(views)
 
                 node.display(topics=None, terms=None, addr=None, win=None)
                 state = {}
@@ -669,6 +680,8 @@ class FlowchartCtrlWidget(QtGui.QWidget):
             self.viewBox().setMouseMode("Pan")
         elif action == self.ui.actionSelect:
             self.viewBox().setMouseMode("Select")
+        elif action == self.ui.actionComment:
+            self.viewBox().setMouseMode("Comment")
 
     @asyncSlot()
     async def resetClicked(self):

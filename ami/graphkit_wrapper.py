@@ -185,9 +185,13 @@ class Graph():
 
             assert old_node is not None, "Old node not found: %s" % new_node.name
             assert set(old_node.inputs) == set(new_node.inputs), "Inputs must match."
-            assert set(old_node.outputs) == set(new_node.outputs), "Outputs must match."
 
             self.graph.remove_node(old_node)
+
+            diff = set(old_node.outputs).difference(new_node.outputs)
+            for node in diff:
+                desc = nx.dag.descendants(self.graph, node)
+                self.graph.remove_nodes_from(desc)
 
         self.insert(new_node)
 

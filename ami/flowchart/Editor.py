@@ -132,6 +132,15 @@ class Ui_Toolbar(object):
         self.actionSelect.setCheckable(True)
         self.navGroup.addAction(self.actionSelect)
 
+        # comment
+        self.actionComment = QtWidgets.QAction(parent)
+        # icon = QtGui.QIcon.fromTheme("")
+        # self.actionSelect.setIcon(icon)
+        self.actionComment.setIconText("Comment")
+        self.actionComment.setObjectName("actionComment")
+        self.actionComment.setCheckable(True)
+        self.navGroup.addAction(self.actionComment)
+
         self.toolBar.addAction(self.actionNew)
         self.toolBar.addAction(self.actionOpen)
         self.toolBar.addAction(self.actionSave)
@@ -145,6 +154,7 @@ class Ui_Toolbar(object):
         self.toolBar.addAction(self.actionHome)
         self.toolBar.addAction(self.actionPan)
         self.toolBar.addAction(self.actionSelect)
+        # self.toolBar.addAction(self.actionComment)
         self.toolBar.insertSeparator(self.actionHome)
 
         self.source_model = build_model()

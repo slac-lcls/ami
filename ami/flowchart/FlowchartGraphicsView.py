@@ -7,6 +7,51 @@ from ami.flowchart.library.common import SourceNode
 import asyncqt
 
 
+class CommentRect(QtWidgets.QGraphicsWidget):
+    # Copyright 2015-2019 Ilgar Lunin, Pedro Cabrera
+    # taken from pyflow
+    __backgroundColor = QtGui.QColor(100, 100, 100, 50)
+    __pen = QtGui.QPen(QtGui.QColor(255, 255, 255), 1.0, QtCore.Qt.DashLine)
+
+    def __init__(self, view, mouseDownPos):
+        super().__init__()
+        self.setZValue(2)
+
+        self.view = view
+        self.view.addItem(self)
+        self.__mouseDownPos = mouseDownPos
+        self.setPos(self.__mouseDownPos)
+        self.resize(0, 0)
+        self.selectFullyIntersectedItems = True
+
+    def collidesWithItem(self, item):
+        if self.selectFullyIntersectedItems:
+            return self.sceneBoundingRect().contains(item.sceneBoundingRect())
+        return super().collidesWithItem(item)
+
+    def setDragPoint(self, dragPoint):
+        topLeft = QtCore.QPointF(self.__mouseDownPos)
+        bottomRight = QtCore.QPointF(dragPoint)
+        if dragPoint.x() < self.__mouseDownPos.x():
+            topLeft.setX(dragPoint.x())
+            bottomRight.setX(self.__mouseDownPos.x())
+        if dragPoint.y() < self.__mouseDownPos.y():
+            topLeft.setY(dragPoint.y())
+            bottomRight.setY(self.__mouseDownPos.y())
+        self.setPos(topLeft)
+        self.resize(bottomRight.x() - topLeft.x(),
+                    bottomRight.y() - topLeft.y())
+
+    def paint(self, painter, option, widget):
+        rect = self.windowFrameRect()
+        painter.setBrush(self.__backgroundColor)
+        painter.setPen(self.__pen)
+        painter.drawRect(rect)
+
+    def destroy(self):
+        self.view.removeItem(self)
+
+
 class SelectionRect(QtWidgets.QGraphicsWidget):
     # Copyright 2015-2019 Ilgar Lunin, Pedro Cabrera
     # taken from pyflow
@@ -90,13 +135,18 @@ class FlowchartViewBox(ViewBox):
         self.setAcceptDrops(True)
         self.setRange(xRange=(0, 800), yRange=(0, 800))
         self.mouseMode = "Pan"
+
         self.selectionRect = None
         self.selected_nodes = []
+
         self.copy = False
         self.paste_pos = None
 
+        self.commentRect = None
+        self.commentRects = []
+
     def setMouseMode(self, mode):
-        assert mode in ["Select", "Pan"]
+        assert mode in ["Select", "Pan", "Comment"]
         self.mouseMode = mode
 
     def getMenu(self, ev):
@@ -186,6 +236,24 @@ class FlowchartViewBox(ViewBox):
                 self.copy = False
                 self.selectionRect.destroy()
                 self.selectionRect = None
+
+        elif self.mouseMode == "Comment":
+            if ev.isStart():
+                self.commentRect = CommentRect(self, self.mapToView(ev.buttonDownPos()))
+
+            if self.commentRect:
+                self.commentRect.setDragPoint(self.mapToView(ev.pos()))
+
+            if ev.isFinish():
+                self.commentRects.append(self.commentRect)
+                self.commentRect = None
+                # self.selected_nodes = []
+                # for item in self.allChildren():
+                #     if not isinstance(item, NodeGraphicsItem):
+                #         continue
+                #     if self.selectionRect.collidesWithItem(item):
+                #         item.node.recolor("selected")
+                #         self.selected_nodes.append(item.node)
 
     def mousePressEvent(self, ev):
         ev.accept()
