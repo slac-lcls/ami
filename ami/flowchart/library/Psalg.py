@@ -4,7 +4,6 @@ from ami.flowchart.Node import NodeGraphicsItem
 from ami.flowchart.library.common import CtrlNode, MAX
 import ami.graph_nodes as gn
 import numpy as np
-import os
 import typing
 
 
@@ -111,7 +110,6 @@ try:
                           func=peakFinder, parent=self.name())
             return node
 
-    import psana.hexanode
     import psana.hexanode.DLDProcessor as psfDLD
 
     class Hexanode(CtrlNode):
@@ -156,17 +154,12 @@ try:
                                               'R': {'io': 'out', 'ttype': Array1d},
                                               'T': {'io': 'out', 'ttype': Array1d}})
 
-            self.calibcfg = os.path.join(list(psana.hexanode.__path__)[0], 'examples/configuration_quad.txt')
-            self.calibtab = os.path.join(list(psana.hexanode.__path__)[0], 'examples/calibration_table_data.txt')
-
         def to_operation(self, inputs, conditions={}):
             outputs = self.output_vars()
 
             dldpars = {'numchs': int(self.num_chans),
                        'numhits': self.num_hits,
                        'verbose': self.verbose,
-                       'calibtab': self.calibtab,
-                       'calibcfg': self.calibcfg,
                        'consts': None}
 
             node = gn.Map(name=self.name()+"_operation",
