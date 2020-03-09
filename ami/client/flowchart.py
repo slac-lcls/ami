@@ -11,7 +11,7 @@ from ami.flowchart.Flowchart import Flowchart
 from ami.flowchart.library import LIBRARY
 from ami.flowchart.library.common import SourceNode
 from ami import LogConfig
-from pyqtgraph.Qt import QtGui, QtCore
+from pyqtgraph.Qt import QtGui, QtCore, QtWidgets
 from ami.asyncqt import QEventLoop, asyncSlot
 
 
@@ -159,7 +159,9 @@ class NodeProcess(QtCore.QObject):
                 layout.setColumnStretch(1, 10)
                 self.node.update()
             elif self.ctrlWidget:
-                self.win.setCentralWidget(self.ctrlWidget)
+                scrollarea = QtWidgets.QScrollArea()
+                scrollarea.setWidget(self.ctrlWidget)
+                self.win.setCentralWidget(scrollarea)
             elif self.widget:
                 self.win.setCentralWidget(self.widget)
 

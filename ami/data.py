@@ -586,7 +586,7 @@ class PsanaSource(HierarchicalDataSource):
         super().__init__(idnum, num_workers, heartbeat_period, src_cfg, flags)
         self.ts_converter = TimestampConverter()
         self.ds_keys = {
-            'exp', 'dir', 'files', 'shmem', 'filter', 'batch_size', 'max_events', 'sel_det_ids', 'det_name'
+            'exp', 'dir', 'files', 'shmem', 'filter', 'batch_size', 'max_events', 'sel_det_ids', 'det_name', 'run'
         }
         # special attributes that are per run instead of per event from a detectors interface, e.g. calib constants
         self.special_attrs = {

@@ -149,6 +149,54 @@ def flowchart(request, workerjson, broker, ipc_dir, qevent_loop):
             return 1
 
 
+@pytest.fixture(scope='function')
+def flowchart_configure(broker, ipc_dir, qevent_loop):
+    try:
+        from pytest_cov.embed import cleanup_on_sigterm
+        cleanup_on_sigterm()
+    except ImportError:
+        pass
+
+    parser = build_parser()
+    args = parser.parse_args(["-n", "1", '-i', str(ipc_dir), '--headless'])
+
+    queue = mp.Queue()
+    ami = mp.Process(name='ami',
+                     target=run_ami,
+                     args=(args, queue))
+    ami.start()
+
+    try:
+        comm_addr = "ipc://%s/comm" % ipc_dir
+        graphinfo_addr = "ipc://%s/info" % ipc_dir
+
+        graphmgr = GraphMgrAddress("graph", comm_addr, None, graphinfo_addr)
+
+        with Flowchart(broker_addr=broker.broker_sub_addr,
+                       graphmgr_addr=graphmgr,
+                       checkpoint_addr=broker.checkpoint_pub_addr) as fc:
+
+            yield (fc, broker)
+
+    except Exception as e:
+        # let the fixture exit 'gracefully' if it fails
+        print("error setting up flowchart fixture:", e)
+        yield None
+    finally:
+        queue.put(None)
+        ami.join(2)
+        # if ami still hasn't exitted then kill it
+        if ami.is_alive():
+            ami.terminate()
+            ami.join()
+
+        if ami.exitcode == 0 or ami.exitcode == -signal.SIGTERM:
+            return 0
+        else:
+            print('AMI exited with non-zero status code: %d' % ami.exitcode)
+            return 1
+
+
 def test_broker_sub(broker):
     ctx = zmq.Context()
     socket = ctx.socket(zmq.XPUB)

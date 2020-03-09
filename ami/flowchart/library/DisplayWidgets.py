@@ -97,6 +97,7 @@ def generateUi(opts):
     ctrls = {}
     row = 0
     group = WidgetGroup()
+    groupboxes = {}
     focused = False
     for opt in opts:
         if len(opt) == 2:
@@ -156,16 +157,35 @@ def generateUi(opts):
             w.setFocus()
             focused = True
 
-        layout.addRow(k, w)
-        if hidden:
-            w.hide()
-            label = layout.labelForField(w)
-            label.hide()
+        if 'group' in o:
+            groupbox_name = o['group']
+            if groupbox_name not in groupboxes:
+                groupbox = QtWidgets.QGroupBox()
+                groupbox_layout = QtGui.QFormLayout()
+                groupbox.setLayout(groupbox_layout)
+                groupboxes[groupbox_name] = (groupbox, groupbox_layout)
+                groupbox.setTitle(groupbox_name)
+                layout.addWidget(groupbox)
+                ctrls[groupbox_name] = groupbox
+            else:
+                groupbox, groupbox_layout = groupboxes[groupbox_name]
 
-        w.rowNum = row
-        ctrls[k] = w
-        group.addWidget(w, k)
-        row += 1
+            groupbox_name = groupbox_name.replace(' ', '_')
+            w.group = groupbox_name
+            groupbox_layout.addRow(k, w)
+            ctrls[k+"_"+groupbox_name] = w
+            group.addWidget(w, k+"_"+groupbox_name)
+        else:
+            layout.addRow(k, w)
+            if hidden:
+                w.hide()
+                label = layout.labelForField(w)
+                label.hide()
+
+            w.rowNum = row
+            ctrls[k] = w
+            group.addWidget(w, k)
+            row += 1
 
     return widget, group, ctrls
 

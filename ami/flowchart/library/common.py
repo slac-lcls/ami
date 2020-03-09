@@ -15,7 +15,7 @@ class CtrlNode(Node):
     sigStateChanged = QtCore.Signal(object)
 
     def __init__(self, name, ui=None, terminals={}, **kwargs):
-        super(CtrlNode, self).__init__(name=name, terminals=terminals, **kwargs)
+        super().__init__(name=name, terminals=terminals, **kwargs)
         self.widget = None
         self.task = None
 
@@ -25,20 +25,20 @@ class CtrlNode(Node):
             else:
                 ui = []
 
-        self.init_values(ui)
         self.ui, self.stateGroup, self.ctrls = generateUi(ui)
+        self.init_values(ui)
         if self.stateGroup:
             self.stateGroup.sigChanged.connect(self.state_changed)
 
     def init_values(self, opts):
         for opt in opts:
-
-            if len(opt) != 3:
-                continue
+            assert(len(opt) == 3)
 
             k, t, o = opt
             k = k.replace(" ", "_")
 
+            if 'group' in o:
+                k = k+'_'+o['group']
             if 'value' in o:
                 setattr(self, k, o['value'])
             elif 'values' in o:

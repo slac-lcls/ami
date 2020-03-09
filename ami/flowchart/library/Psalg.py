@@ -57,6 +57,24 @@ except ImportError as e:
 try:
     import psana.hexanode.WFPeaks as psWFPeaks
 
+    def build_layout(channels):
+        template = [('num chans', 'combo', {'values': ["5"]}),
+                    ('num hits', 'intSpin', {'value': 16, 'min': 1, 'max': MAX})]
+
+        for channel in channels:
+            channel_group = [('delay', 'doubleSpin', {'group': channel}),
+                             ('fraction', 'doubleSpin', {'group': channel}),
+                             ('offset', 'doubleSpin', {'group': channel}),
+                             ('polarity', 'combo', {'values': ["Negative"], 'group': channel}),
+                             ('sample_interval', 'doubleSpin', {'group': channel}),
+                             ('threshold', 'doubleSpin', {'group': channel}),
+                             ('timerange_high', 'doubleSpin', {'group': channel}),
+                             ('timerange_low', 'doubleSpin', {'group': channel}),
+                             ('walk', 'doubleSpin', {'group': channel})]
+            template.extend(channel_group)
+
+        return template
+
     class WFPeaks(CtrlNode):
 
         """
@@ -64,17 +82,10 @@ try:
         """
 
         nodeName = "WFPeaks"
-        uiTemplate = [('num chans', 'combo', {'values': ["5", "7", "16"]}),
-                      ('num hits', 'intSpin', {'value': 16, 'min': 1, 'max': MAX}),
-                      ('base', 'doubleSpin', {'value': 0., 'min': 0., 'max': MAX}),
-                      ('thr', 'doubleSpin', {'value': -0.05, 'min': -MAX, 'max': MAX}),
-                      ('cfr', 'doubleSpin', {'value': 0.85, 'max': MAX}),
-                      ('deadtime', 'doubleSpin', {'value': 10.0, 'max': MAX}),
-                      ('leadingedge', 'check', {'checked': True}),
-                      ('ioffsetbeg', 'intSpin', {'value': 1000, 'min': 0, 'max': MAX}),
-                      ('ioffsetend', 'intSpin', {'value': 2000, 'min': 0, 'max': MAX}),
-                      ('wfbinbeg', 'intSpin', {'value': 6000, 'min': 0, 'max': MAX}),
-                      ('wfbinend', 'intSpin', {'value': 22000, 'min': 0, 'max': MAX})]
+        channels = ['mcp', 'x1', 'x2', 'y1', 'y2']
+        channel_attrs = ['delay', 'fraction', 'offset', 'polarity', 'sample_interval',
+                         'threshold', 'timerange_high', 'timerange_low', 'walk']
+        uiTemplate = build_layout(channels)
 
         def __init__(self, name):
             super().__init__(name, terminals={'Times': {'io': 'in', 'ttype': Array2d},
@@ -88,16 +99,13 @@ try:
             outputs = self.output_vars()
 
             cfdpars = {'numchs': int(self.num_chans),
-                       'numhits': self.num_hits,
-                       'cfd_base':  self.base,
-                       'cfd_thr': self.thr,
-                       'cfd_cfr':  self.cfr,
-                       'cfd_deadtime':  self.deadtime,
-                       'cfd_leadingedge':  self.leadingedge,
-                       'cfd_ioffsetbeg':  self.ioffsetbeg,
-                       'cfd_ioffsetend':  self.ioffsetend,
-                       'cfd_wfbinbeg':  self.wfbinbeg,
-                       'cfd_wfbinend': self.wfbinend}
+                       'numhits': self.num_hits}
+
+            for channel in WFPeaks.channels:
+                attrs = {}
+                for attr in WFPeaks.channel_attrs:
+                    attrs[attr] = getattr(self, attr+'_'+channel, 0)
+                cfdpars[channel] = attrs
 
             wfpeaks = psWFPeaks.WFPeaks(**cfdpars)
 
