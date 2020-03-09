@@ -1,5 +1,8 @@
 # CHANGELOG
 
+## 2.0.6 3/9/20
+* Run WFPeaks with different parameters on each channel.
+
 ## 2.0.5 3/3/20
 * Add configure sources
 * Add psana peakfinder v4r3d2
