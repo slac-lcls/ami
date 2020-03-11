@@ -302,7 +302,7 @@ class AreaDetWidget(pg.ImageView):
             await self.fetcher.fetch()
             self.last_updated.setText(self.fetcher.last_updated)
             for k, v in self.fetcher.reply.items():
-                self.setImage(v)
+                self.setImage(v, autoLevels=False)
 
 
 class PixelDetWidget(pg.ImageView):
