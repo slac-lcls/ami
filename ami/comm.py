@@ -460,7 +460,7 @@ class GraphBuilder(ContributionBuilder):
         if self.graph:
             self.graph.compile(**args)
 
-    def prune(self, prune_key=None):
+    def prune(self, identity, prune_key=None):
         if prune_key is None:
             depth = self.depth
         else:
@@ -468,8 +468,7 @@ class GraphBuilder(ContributionBuilder):
         if len(self.pending) > depth:
             for eb_key in sorted(self.pending.keys(), reverse=True)[depth:]:
                 logger.debug("Pruned uncompleted key %d", eb_key)
-                del self.pending[eb_key]
-                del self.contribs[eb_key]
+                self.complete(eb_key, identity)
 
     def set_graph(self, name, ver_key, args, graph):
         self.pending_graphs[ver_key] = (False, "set", name, args, graph)
@@ -562,8 +561,8 @@ class EventBuilder(ZmqHandler):
     def destroy(self, name):
         del self.builders[name]
 
-    def prune(self, name, prune_key=None):
-        self.builders[name].prune(prune_key)
+    def prune(self, name, identity, prune_key=None):
+        self.builders[name].prune(identity, prune_key)
 
     def set_graph(self, name, ver_key, args, graph):
         if name not in self.builders:

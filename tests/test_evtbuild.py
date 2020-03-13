@@ -187,7 +187,7 @@ def test_eb_depth(event_builder):
 
     for hb in range(num_hb):
         event_builder.update(name, hb, 0, 0, {})
-        event_builder.prune(name)
+        event_builder.prune(name, 0)
         assert event_builder.latest(name) == hb
         expected_depth = hb + 1 if hb < depth else depth
         expected_keys = {val for val in range(hb + 1) if (event_builder.latest(name) - val) < depth}
@@ -216,7 +216,7 @@ def test_comp_prune(event_builder):
         for contrib in contribs:
             event_builder.update(name, hb, contrib, 0, {})
         if event_builder.ready(name, hb):
-            event_builder.prune(name, hb)
+            event_builder.prune(name, 0, hb)
         # check the contribs and pending are the correct size
         assert len(event_builder.contribs(name).keys()) == depth
         assert len(event_builder.pending(name).keys()) == depth
