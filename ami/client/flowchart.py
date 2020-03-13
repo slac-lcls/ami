@@ -171,11 +171,11 @@ class NodeProcess(QtCore.QObject):
             self.node.sigStateChanged.connect(self.send_checkpoint)
 
         if not msg.redisplay:
-            self.show = not self.show
             if self.show:
-                self.win.show()
+                self.win.activateWindow()
             else:
-                self.win.hide()
+                self.show = True
+                self.win.show()
 
     @asyncSlot(object)
     async def send_checkpoint(self, node):

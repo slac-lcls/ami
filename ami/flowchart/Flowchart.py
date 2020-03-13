@@ -45,7 +45,6 @@ class Flowchart(Node):
         self.library = library or LIBRARY
         self.graphmgr_addr = graphmgr_addr
         self.source_library = None
-        self.source_lock = asyncio.Lock()
 
         self.ctx = zmq.asyncio.Context()
         self.broker = self.ctx.socket(zmq.PUB)  # used to create new node processes
@@ -443,16 +442,15 @@ class Flowchart(Node):
                         pth = pth[:-1]
                     source_library.addNodeType(source, amitypes.loads(node_type), [pth])
 
-                async with self.source_lock:
-                    self.source_library = source_library
+                self.source_library = source_library
 
-                    if init:
-                        break
+                if init:
+                    break
 
-                    ctrl = self.widget()
-                    tree = ctrl.ui.source_tree
-                    ctrl.ui.clear_model(tree)
-                    ctrl.ui.create_model(ctrl.ui.source_tree, self.source_library.getLabelTree())
+                ctrl = self.widget()
+                tree = ctrl.ui.source_tree
+                ctrl.ui.clear_model(tree)
+                ctrl.ui.create_model(ctrl.ui.source_tree, self.source_library.getLabelTree())
 
                 ctrl.chartWidget.statusText.append(f"[{now.strftime('%H:%M:%S')}] Updated sources.")
 

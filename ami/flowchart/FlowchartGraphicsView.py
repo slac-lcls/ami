@@ -4,7 +4,6 @@ from pyqtgraph.graphicsItems.ViewBox import ViewBox
 from pyqtgraph import GridItem
 from ami.flowchart.Node import NodeGraphicsItem
 from ami.flowchart.library.common import SourceNode
-import asyncqt
 
 
 class CommentRect(QtWidgets.QGraphicsWidget):
@@ -101,7 +100,6 @@ class FlowchartGraphicsView(GraphicsView):
 
     sigHoverOver = QtCore.Signal(object)
     sigClicked = QtCore.Signal(object)
-    sigDragEnter = QtCore.Signal()
 
     def __init__(self, widget, *args):
         super().__init__(*args, useOpenGL=False, background=0.75)
@@ -110,18 +108,12 @@ class FlowchartGraphicsView(GraphicsView):
         self._vb = FlowchartViewBox(widget, lockAspect=True, invertY=True)
         self.setCentralItem(self._vb)
         self.setRenderHint(QtGui.QPainter.Antialiasing, True)
-        self.sigDragEnter.connect(self.dragEnter)
 
     def viewBox(self):
         return self._vb
 
     def dragEnterEvent(self, ev):
         ev.accept()
-        self.sigDragEnter.emit()
-
-    @asyncqt.asyncSlot()
-    async def dragEnter(self):
-        await self.widget.chart.source_lock.acquire()
 
 
 class FlowchartViewBox(ViewBox):
@@ -270,7 +262,6 @@ class FlowchartViewBox(ViewBox):
             try:
                 self.widget.chart.createNode(node, pos=self.mapToView(ev.pos()))
                 ev.accept()
-                self.widget.chart.source_lock.release()
                 return
             except KeyError:
                 pass
@@ -279,15 +270,11 @@ class FlowchartViewBox(ViewBox):
                 node_type = self.widget.chart.source_library.getSourceType(node)
                 if node not in self.widget.chart._graph:
                     node = SourceNode(name=node, terminals={'Out': {'io': 'out', 'ttype': node_type}})
-                    # self.widget.chart.addNode(node, name=nodeType, pos=self.mapToView(ev.pos()))
                     self.widget.chart.createNode(node_type, name=node.name(), node=node, pos=self.mapToView(ev.pos()))
                     ev.accept()
-                    self.widget.chart.source_lock.release()
                     return
             except KeyError:
                 pass
 
         else:
             ev.ignore()
-
-        self.widget.chart.source_lock.release()
