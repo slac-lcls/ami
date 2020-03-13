@@ -1,0 +1,782 @@
+{
+  "connects": [
+    [
+      "andor",
+      "Out",
+      "Sum.1",
+      "In"
+    ],
+    [
+      "andor",
+      "Out",
+      "Projection.0",
+      "In"
+    ],
+    [
+      "waveforms",
+      "Out",
+      "Take.0",
+      "In"
+    ],
+    [
+      "Take.0",
+      "Out",
+      "Roi1D.0",
+      "In"
+    ],
+    [
+      "Projection.0",
+      "Out",
+      "WaveformViewer.0",
+      "In"
+    ],
+    [
+      "Projection.0",
+      "Out",
+      "PeakFinder1D.0",
+      "Waveform"
+    ],
+    [
+      "Projection.0",
+      "Out",
+      "ArrayThreshold.0",
+      "In"
+    ],
+    [
+      "Roi1D.0",
+      "Out",
+      "Sum.0",
+      "In"
+    ],
+    [
+      "PeakFinder1D.0",
+      "Centroid",
+      "WaveformViewer.1",
+      "In"
+    ],
+    [
+      "PeakFinder1D.0",
+      "Centroid",
+      "Binning.0",
+      "In"
+    ],
+    [
+      "Sum.0",
+      "Out",
+      "ScatterPlot.0",
+      "Y"
+    ],
+    [
+      "Sum.0",
+      "Out",
+      "Binning2D.0",
+      "Y"
+    ],
+    [
+      "Sum.0",
+      "Out",
+      "ScatterRoi.0",
+      "Y"
+    ],
+    [
+      "Sum.1",
+      "Out",
+      "ScatterPlot.0",
+      "X"
+    ],
+    [
+      "Sum.1",
+      "Out",
+      "Binning2D.0",
+      "X"
+    ],
+    [
+      "Sum.1",
+      "Out",
+      "ScatterRoi.0",
+      "X"
+    ],
+    [
+      "Binning.0",
+      "Bins",
+      "Histogram.0",
+      "Bins"
+    ],
+    [
+      "Binning.0",
+      "Counts",
+      "Histogram.0",
+      "Counts"
+    ],
+    [
+      "Binning2D.0",
+      "XBins",
+      "Histogram2D.0",
+      "XBins"
+    ],
+    [
+      "Binning2D.0",
+      "YBins",
+      "Histogram2D.0",
+      "YBins"
+    ],
+    [
+      "Binning2D.0",
+      "Counts",
+      "Histogram2D.0",
+      "Counts"
+    ],
+    [
+      "ScatterRoi.0",
+      "Out.X",
+      "LinePlot.0",
+      "X"
+    ],
+    [
+      "ScatterRoi.0",
+      "Out.Y",
+      "LinePlot.0",
+      "Y"
+    ],
+    [
+      "ScatterRoi.0",
+      "Out.Y",
+      "Linregress.0",
+      "Y"
+    ],
+    [
+      "ScatterRoi.0",
+      "Out.X",
+      "Linregress.0",
+      "X"
+    ]
+  ],
+  "nodes": [
+    {
+      "class": "SourceNode",
+      "name": "andor",
+      "state": {
+        "enabled": true,
+        "note": "",
+        "pos": [
+          100.0,
+          200.0
+        ],
+        "terminals": {
+          "Out": {
+            "group": null,
+            "io": "out",
+            "removable": false,
+            "ttype": "amitypes.Array2d"
+          }
+        }
+      }
+    },
+    {
+      "class": "SourceNode",
+      "name": "waveforms",
+      "state": {
+        "enabled": true,
+        "note": "",
+        "pos": [
+          100.0,
+          400.0
+        ],
+        "terminals": {
+          "Out": {
+            "group": null,
+            "io": "out",
+            "removable": false,
+            "ttype": "amitypes.Array2d"
+          }
+        }
+      }
+    },
+    {
+      "class": "Take",
+      "name": "Take.0",
+      "state": {
+        "ctrl": {
+          "axis": 0,
+          "index": 2,
+          "mode": "raise"
+        },
+        "enabled": true,
+        "note": "",
+        "pos": [
+          300.0,
+          400.0
+        ],
+        "terminals": {
+          "In": {
+            "group": null,
+            "io": "in",
+            "removable": false,
+            "ttype": "typing.Union[amitypes.Array3d, amitypes.Array2d, amitypes.Array1d, typing.List[float]]"
+          },
+          "Out": {
+            "group": null,
+            "io": "out",
+            "removable": false,
+            "ttype": "amitypes.Array1d"
+          }
+        }
+      }
+    },
+    {
+      "class": "Projection",
+      "name": "Projection.0",
+      "state": {
+        "ctrl": {
+          "axis": 0
+        },
+        "enabled": true,
+        "note": "",
+        "pos": [
+          300.0,
+          100.0
+        ],
+        "terminals": {
+          "In": {
+            "group": null,
+            "io": "in",
+            "removable": false,
+            "ttype": "amitypes.Array2d"
+          },
+          "Out": {
+            "group": null,
+            "io": "out",
+            "removable": false,
+            "ttype": "amitypes.Array1d"
+          }
+        }
+      }
+    },
+    {
+      "class": "Roi1D",
+      "name": "Roi1D.0",
+      "state": {
+        "ctrl": {
+          "extent": 1367,
+          "origin": 1357
+        },
+        "enabled": true,
+        "note": "",
+        "pos": [
+          500.0,
+          400.0
+        ],
+        "terminals": {
+          "In": {
+            "group": null,
+            "io": "in",
+            "removable": false,
+            "ttype": "amitypes.Array1d"
+          },
+          "Out": {
+            "group": null,
+            "io": "out",
+            "removable": false,
+            "ttype": "amitypes.Array1d"
+          }
+        },
+        "widget": {
+          "Auto Range": true,
+          "Show Grid": false,
+          "Title": "",
+          "X Axis Label": "",
+          "Y Axis Label": ""
+        }
+      }
+    },
+    {
+      "class": "WaveformViewer",
+      "name": "WaveformViewer.0",
+      "state": {
+        "enabled": true,
+        "note": "",
+        "pos": [
+          500.0,
+          100.0
+        ],
+        "terminals": {
+          "In": {
+            "group": null,
+            "io": "in",
+            "removable": false,
+            "ttype": "amitypes.Array1d"
+          }
+        },
+        "widget": {
+          "Auto Range": true,
+          "Show Grid": false,
+          "Title": "",
+          "X Axis Label": "",
+          "Y Axis Label": ""
+        }
+      }
+    },
+    {
+      "class": "PeakFinder1D",
+      "name": "PeakFinder1D.0",
+      "state": {
+        "ctrl": {
+          "threshold hi": 63000.0,
+          "threshold lo": 62000.0
+        },
+        "enabled": true,
+        "note": "",
+        "pos": [
+          500.0,
+          -300.0
+        ],
+        "terminals": {
+          "Centroid": {
+            "group": null,
+            "io": "out",
+            "removable": false,
+            "ttype": "amitypes.Array1d"
+          },
+          "Waveform": {
+            "group": null,
+            "io": "in",
+            "removable": false,
+            "ttype": "amitypes.Array1d"
+          },
+          "Width": {
+            "group": null,
+            "io": "out",
+            "removable": false,
+            "ttype": "amitypes.Array1d"
+          }
+        }
+      }
+    },
+    {
+      "class": "ArrayThreshold",
+      "name": "ArrayThreshold.0",
+      "state": {
+        "ctrl": {
+          "Count": 10,
+          "Threshold": 60000
+        },
+        "enabled": true,
+        "note": "",
+        "pos": [
+          500.0,
+          -100.0
+        ],
+        "terminals": {
+          "In": {
+            "group": null,
+            "io": "in",
+            "removable": false,
+            "ttype": "amitypes.Array1d"
+          }
+        }
+      }
+    },
+    {
+      "class": "Sum",
+      "name": "Sum.0",
+      "state": {
+        "enabled": true,
+        "note": "",
+        "pos": [
+          700.0,
+          400.0
+        ],
+        "terminals": {
+          "In": {
+            "group": null,
+            "io": "in",
+            "removable": false,
+            "ttype": "typing.Union[amitypes.Array3d, amitypes.Array2d, amitypes.Array1d, typing.List[float]]"
+          },
+          "Out": {
+            "group": null,
+            "io": "out",
+            "removable": false,
+            "ttype": "float"
+          }
+        }
+      }
+    },
+    {
+      "class": "Sum",
+      "name": "Sum.1",
+      "state": {
+        "enabled": true,
+        "note": "",
+        "pos": [
+          700.0,
+          200.0
+        ],
+        "terminals": {
+          "In": {
+            "group": null,
+            "io": "in",
+            "removable": false,
+            "ttype": "typing.Union[amitypes.Array3d, amitypes.Array2d, amitypes.Array1d, typing.List[float]]"
+          },
+          "Out": {
+            "group": null,
+            "io": "out",
+            "removable": false,
+            "ttype": "float"
+          }
+        }
+      }
+    },
+    {
+      "class": "WaveformViewer",
+      "name": "WaveformViewer.1",
+      "state": {
+        "enabled": true,
+        "note": "",
+        "pos": [
+          700.0,
+          -500.0
+        ],
+        "terminals": {
+          "In": {
+            "group": null,
+            "io": "in",
+            "removable": false,
+            "ttype": "amitypes.Array1d"
+          }
+        },
+        "widget": {
+          "Auto Range": true,
+          "Show Grid": false,
+          "Title": "",
+          "X Axis Label": "",
+          "Y Axis Label": ""
+        }
+      }
+    },
+    {
+      "class": "Binning",
+      "name": "Binning.0",
+      "state": {
+        "ctrl": {
+          "auto range": false,
+          "bins": 40,
+          "density": false,
+          "range max": 520.0,
+          "range min": 440.0,
+          "weighted": false
+        },
+        "enabled": true,
+        "note": "",
+        "pos": [
+          700.0,
+          -300.0
+        ],
+        "terminals": {
+          "Bins": {
+            "group": null,
+            "io": "out",
+            "removable": false,
+            "ttype": "amitypes.Array1d"
+          },
+          "Counts": {
+            "group": null,
+            "io": "out",
+            "removable": false,
+            "ttype": "amitypes.Array1d"
+          },
+          "In": {
+            "group": null,
+            "io": "in",
+            "removable": false,
+            "ttype": "typing.Union[float, amitypes.Array1d]"
+          }
+        }
+      }
+    },
+    {
+      "class": "ScatterPlot",
+      "name": "ScatterPlot.0",
+      "state": {
+        "ctrl": {
+          "Num Points": 1000
+        },
+        "enabled": true,
+        "note": "",
+        "pos": [
+          900.0,
+          400.0
+        ],
+        "terminals": {
+          "X": {
+            "group": null,
+            "io": "in",
+            "removable": false,
+            "ttype": "float"
+          },
+          "Y": {
+            "group": null,
+            "io": "in",
+            "removable": false,
+            "ttype": "float"
+          }
+        },
+        "widget": {
+          "Auto Range": true,
+          "Show Grid": false,
+          "Title": "",
+          "X Axis Label": "",
+          "Y Axis Label": "",
+          "trace.0": [
+            "Sum.0.Out vs Sum.1.Out",
+            "Sum.0.Out vs Sum.1.Out"
+          ]
+        }
+      }
+    },
+    {
+      "class": "Binning2D",
+      "name": "Binning2D.0",
+      "state": {
+        "ctrl": {
+          "density": false,
+          "range x max": 10000000.0,
+          "range x min": 2000000.0,
+          "range y max": 2.0,
+          "range y min": 0.0,
+          "x bins": 100,
+          "y bins": 100
+        },
+        "enabled": true,
+        "note": "",
+        "pos": [
+          900.0,
+          200.0
+        ],
+        "terminals": {
+          "Counts": {
+            "group": null,
+            "io": "out",
+            "removable": false,
+            "ttype": "amitypes.Array2d"
+          },
+          "X": {
+            "group": null,
+            "io": "in",
+            "removable": false,
+            "ttype": "typing.Union[float, amitypes.Array1d]"
+          },
+          "XBins": {
+            "group": null,
+            "io": "out",
+            "removable": false,
+            "ttype": "amitypes.Array1d"
+          },
+          "Y": {
+            "group": null,
+            "io": "in",
+            "removable": false,
+            "ttype": "typing.Union[float, amitypes.Array1d]"
+          },
+          "YBins": {
+            "group": null,
+            "io": "out",
+            "removable": false,
+            "ttype": "amitypes.Array1d"
+          }
+        }
+      }
+    },
+    {
+      "class": "Histogram",
+      "name": "Histogram.0",
+      "state": {
+        "enabled": true,
+        "note": "",
+        "pos": [
+          900.0,
+          -300.0
+        ],
+        "terminals": {
+          "Bins": {
+            "group": null,
+            "io": "in",
+            "removable": false,
+            "ttype": "amitypes.Array1d"
+          },
+          "Counts": {
+            "group": null,
+            "io": "in",
+            "removable": false,
+            "ttype": "amitypes.Array1d"
+          }
+        },
+        "widget": {
+          "Auto Range": true,
+          "Show Grid": false,
+          "Title": "",
+          "X Axis Label": "",
+          "Y Axis Label": ""
+        }
+      }
+    },
+    {
+      "class": "ScatterRoi",
+      "name": "ScatterRoi.0",
+      "state": {
+        "ctrl": {
+          "Num Points": 100,
+          "extent": 3047696,
+          "origin": 0
+        },
+        "enabled": true,
+        "note": "",
+        "pos": [
+          900.0,
+          600.0
+        ],
+        "terminals": {
+          "Out.X": {
+            "group": null,
+            "io": "out",
+            "removable": false,
+            "ttype": "amitypes.Array1d"
+          },
+          "Out.Y": {
+            "group": null,
+            "io": "out",
+            "removable": false,
+            "ttype": "amitypes.Array1d"
+          },
+          "X": {
+            "group": null,
+            "io": "in",
+            "removable": false,
+            "ttype": "float"
+          },
+          "Y": {
+            "group": null,
+            "io": "in",
+            "removable": false,
+            "ttype": "float"
+          }
+        },
+        "widget": {
+          "Auto Range": true,
+          "Show Grid": false,
+          "Title": "",
+          "X Axis Label": "",
+          "Y Axis Label": "",
+          "trace.0": [
+            "Sum.0.Out vs Sum.1.Out",
+            "Sum.0.Out vs Sum.1.Out"
+          ]
+        }
+      }
+    },
+    {
+      "class": "Histogram2D",
+      "name": "Histogram2D.0",
+      "state": {
+        "enabled": true,
+        "note": "",
+        "pos": [
+          1100.0,
+          200.0
+        ],
+        "terminals": {
+          "Counts": {
+            "group": null,
+            "io": "in",
+            "removable": false,
+            "ttype": "amitypes.Array2d"
+          },
+          "XBins": {
+            "group": null,
+            "io": "in",
+            "removable": false,
+            "ttype": "amitypes.Array1d"
+          },
+          "YBins": {
+            "group": null,
+            "io": "in",
+            "removable": false,
+            "ttype": "amitypes.Array1d"
+          }
+        },
+        "widget": {
+          "Title": "",
+          "X Axis Label": "",
+          "Y Axis Label": ""
+        }
+      }
+    },
+    {
+      "class": "LinePlot",
+      "name": "LinePlot.0",
+      "state": {
+        "enabled": true,
+        "note": "",
+        "pos": [
+          1100.0,
+          700.0
+        ],
+        "terminals": {
+          "X": {
+            "group": null,
+            "io": "in",
+            "removable": false,
+            "ttype": "amitypes.Array1d"
+          },
+          "Y": {
+            "group": null,
+            "io": "in",
+            "removable": false,
+            "ttype": "amitypes.Array1d"
+          }
+        },
+        "widget": {
+          "Auto Range": true,
+          "Show Grid": false,
+          "Title": "",
+          "X Axis Label": "",
+          "Y Axis Label": ""
+        }
+      }
+    },
+    {
+      "class": "Linregress",
+      "name": "Linregress.0",
+      "state": {
+        "enabled": true,
+        "note": "",
+        "pos": [
+          1100.0,
+          500.0
+        ],
+        "terminals": {
+          "X": {
+            "group": null,
+            "io": "in",
+            "removable": false,
+            "ttype": "amitypes.Array1d"
+          },
+          "Y": {
+            "group": null,
+            "io": "in",
+            "removable": false,
+            "ttype": "amitypes.Array1d"
+          }
+        },
+        "widget": {
+          "Auto Range": true,
+          "Show Grid": false,
+          "Title": "",
+          "X Axis Label": "",
+          "Y Axis Label": ""
+        }
+      }
+    }
+  ]
+}

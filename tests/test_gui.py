@@ -4,6 +4,7 @@ import zmq
 import time
 import os
 import signal
+import json
 import amitypes as at
 import multiprocessing as mp
 import ami.client.flowchart_messages as fcMsgs
@@ -150,15 +151,28 @@ def flowchart(request, workerjson, broker, ipc_dir, qevent_loop):
 
 
 @pytest.fixture(scope='function')
-def flowchart_configure(broker, ipc_dir, qevent_loop):
+def flowchart_hdf(request, tmpdir_factory, qtbot, broker, ipc_dir, qevent_loop):
     try:
         from pytest_cov.embed import cleanup_on_sigterm
         cleanup_on_sigterm()
     except ImportError:
         pass
 
+    cfg = {
+        "interval": 0.01,
+        "init_time": 0.1,
+        "bound": 100,
+        "repeat": True,
+        "files": [os.path.join('tests/graphs', request.param[0])]
+    }
+
+    fname = tmpdir_factory.mktemp("worker_config", False).join('worker.json')
+    with open(fname, 'w') as fd:
+        json.dump(cfg, fd)
+
     parser = build_parser()
-    args = parser.parse_args(["-n", "1", '-i', str(ipc_dir), '--headless'])
+    args = parser.parse_args(["-n", "1", '-i', str(ipc_dir), '--headless',
+                              'hdf5://%s' % fname])
 
     queue = mp.Queue()
     ami = mp.Process(name='ami',
@@ -172,9 +186,19 @@ def flowchart_configure(broker, ipc_dir, qevent_loop):
 
         graphmgr = GraphMgrAddress("graph", comm_addr, None, graphinfo_addr)
 
+        # wait for ami to be fully up before updating the sources
+        with GraphCommHandler(graphmgr.name, graphmgr.comm) as comm:
+            while not comm.sources:
+                time.sleep(0.1)
+
         with Flowchart(broker_addr=broker.broker_sub_addr,
                        graphmgr_addr=graphmgr,
                        checkpoint_addr=broker.checkpoint_pub_addr) as fc:
+
+            qevent_loop.run_until_complete(fc.updateSources(init=True))
+
+            qtbot.addWidget(fc.widget())
+            fc.loadFile(os.path.join('tests/graphs', request.param[1]))
 
             yield (fc, broker)
 
@@ -293,3 +317,13 @@ async def test_editor(qtbot, flowchart, tmp_path):
 
     flowchart.loadFile(pth)
     assert len(flowchart._graph.edges()) == 1
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('flowchart_hdf', [('run22.h5', 'run22.fc')], indirect=True)
+async def test_run22(qtbot, flowchart_hdf):
+    flowchart, broker = flowchart_hdf
+    print(flowchart.nodes())
+
+    ctrl = flowchart.widget()
+    await ctrl.applyClicked()
