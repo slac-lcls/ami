@@ -463,10 +463,14 @@ class GraphBuilder(ContributionBuilder):
     def prune(self, identity, prune_key=None):
         if prune_key is None:
             depth = self.depth
-        else:
+        elif prune_key < self.latest:
             depth = self.latest - prune_key
+        elif prune_key > self.latest:
+            depth = 0
+        else:
+            depth = 1
         if len(self.pending) > depth:
-            for eb_key in sorted(self.pending.keys(), reverse=True)[depth:]:
+            for eb_key in reversed(sorted(self.pending.keys(), reverse=True)[depth:]):
                 logger.debug("Pruned uncompleted key %d", eb_key)
                 self.complete(eb_key, identity)
 

@@ -208,7 +208,7 @@ def test_comp_prune(event_builder):
         (0, [0], 1),
         (1, [0], 2),
         (2, [1], 3),
-        (3, [0, 1], 0),
+        (3, [0, 1], 1),
     ]
     event_builder.create(name)
 
