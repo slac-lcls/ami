@@ -151,7 +151,7 @@ def flowchart(request, workerjson, broker, ipc_dir, qevent_loop):
 
 
 @pytest.fixture(scope='function')
-def flowchart_hdf(request, tmpdir_factory, qtbot, broker, ipc_dir, qevent_loop):
+def flowchart_hdf(request, tmp_path, qtbot, broker, ipc_dir, qevent_loop):
     try:
         from pytest_cov.embed import cleanup_on_sigterm
         cleanup_on_sigterm()
@@ -166,7 +166,7 @@ def flowchart_hdf(request, tmpdir_factory, qtbot, broker, ipc_dir, qevent_loop):
         "files": [os.path.join('tests/graphs', request.param[0])]
     }
 
-    fname = tmpdir_factory.mktemp("worker_config", False).join('worker.json')
+    fname = os.path.join(tmp_path, 'worker.json')
     with open(fname, 'w') as fd:
         json.dump(cfg, fd)
 
