@@ -1,10 +1,10 @@
-from typing import Any
-from amitypes import Array1d
+from typing import Union, Any
+from amitypes import Array1d, Array2d, Array3d
 from ami.flowchart.Node import Node
-from ami.flowchart.library.common import CtrlNode, MAX, MathNode
+from ami.flowchart.library.common import CtrlNode, MAX
+from ami.flowchart.library.CalculatorWidget import CalculatorWidget
 import ami.graph_nodes as gn
 import numpy as np
-import functools
 import itertools
 
 
@@ -51,86 +51,6 @@ class MeanVsScan(Node):
         return nodes
 
 
-class Add(MathNode):
-
-    """
-    Add floats, waveforms, and images.
-    """
-
-    nodeName = "Add"
-
-    def to_operation(self, inputs, conditions={}):
-        outputs = self.output_vars()
-
-        def func(*args):
-            return functools.reduce(lambda x, y: x+y, args)
-
-        node = gn.Map(name=self.name()+"_operation",
-                      conditions_needs=list(conditions.values()), inputs=list(inputs.values()), outputs=outputs,
-                      func=func, parent=self.name())
-        return node
-
-
-class Subtract(MathNode):
-
-    """
-    Subtract floats, waveforms, and images.
-    """
-
-    nodeName = "Subtract"
-
-    def to_operation(self, inputs, conditions={}):
-        outputs = self.output_vars()
-
-        def func(*args):
-            return functools.reduce(lambda x, y: x-y, args)
-
-        node = gn.Map(name=self.name()+"_operation",
-                      conditions_needs=list(conditions.values()), inputs=list(inputs.values()), outputs=outputs,
-                      func=func, parent=self.name())
-        return node
-
-
-class Multiply(MathNode):
-
-    """
-    Multiply floats, waveforms, and images.
-    """
-
-    nodeName = "Multiply"
-
-    def to_operation(self, inputs, conditions={}):
-        outputs = self.output_vars()
-
-        def func(*args):
-            return functools.reduce(lambda x, y: x*y, args)
-
-        node = gn.Map(name=self.name()+"_operation",
-                      conditions_needs=list(conditions.values()), inputs=list(inputs.values()), outputs=outputs,
-                      func=func, parent=self.name())
-        return node
-
-
-class Divide(MathNode):
-
-    """
-    Divide floats, waveforms, and images.
-    """
-
-    nodeName = "Divide"
-
-    def to_operation(self, inputs, conditions={}):
-        outputs = self.output_vars()
-
-        def func(*args):
-            return functools.reduce(lambda x, y: x/y, args)
-
-        node = gn.Map(name=self.name()+"_operation",
-                      conditions_needs=list(conditions.values()), inputs=list(inputs.values()), outputs=outputs,
-                      func=func, parent=self.name())
-        return node
-
-
 class Combinations(CtrlNode):
 
     """
@@ -172,52 +92,6 @@ class Combinations(CtrlNode):
         return node
 
 
-class ConstantFloat(CtrlNode):
-
-    """
-    Outputs a float constant.
-    """
-
-    nodeName = "ConstantFloat"
-    uiTemplate = [('value', 'doubleSpin', {'value': 1, 'min': -MAX, 'max': MAX})]
-
-    def __init__(self, name):
-        super().__init__(name, terminals={'Out': {'io': 'out', 'ttype': float}})
-
-    def to_operation(self, inputs, conditions={}):
-        outputs = self.output_vars()
-        value = self.value
-
-        node = gn.Map(name=self.name()+"_operation",
-                      conditions_needs=list(conditions.values()), inputs=list(inputs.values()), outputs=outputs,
-                      func=lambda: value, parent=self.name())
-        return node
-
-
-class ConstantArray1d(CtrlNode):
-
-    """
-    Outputs a constant 1d array.
-    """
-
-    nodeName = "ConstantArray1d"
-    uiTemplate = [('shape', 'intSpin', {'value': 1, 'min': 1, 'max': MAX}),
-                  ('value', 'doubleSpin', {'value': 1, 'min': -MAX, 'max': MAX})]
-
-    def __init__(self, name):
-        super().__init__(name, terminals={'Out': {'io': 'out', 'ttype': Array1d}})
-
-    def to_operation(self, inputs, conditions={}):
-        outputs = self.output_vars()
-        shape = self.shape
-        value = self.value
-
-        node = gn.Map(name=self.name()+"_operation",
-                      conditions_needs=list(conditions.values()), inputs=list(inputs.values()), outputs=outputs,
-                      func=lambda: np.ones(shape)*value, parent=self.name())
-        return node
-
-
 class Export(Node):
 
     """
@@ -230,3 +104,84 @@ class Export(Node):
         super().__init__(name, terminals={"In": {'io': 'in', 'ttype': Any},
                                           "Out": {'io': 'out', 'ttype': Any}},
                          exportable=True)
+
+
+try:
+    import sympy
+
+    class CalcProc():
+
+        def __init__(self, params):
+            self.params = params
+            self.func = None
+
+        def __call__(self, *args, **kwargs):
+            # note: args get passed in order of input terminals on node from top to bottom
+            # sympy symbols need to be defined in same order for this to work correctly
+            if self.func is None:
+                self.func = sympy.lambdify(**self.params, modules=["numpy", "scipy"])
+
+            return self.func(*args, **kwargs)
+
+    class Calculator(CtrlNode):
+        """
+        Calculator
+        """
+
+        nodeName = "Calculator"
+
+        def __init__(self, name):
+            super().__init__(name, terminals={'In': {'io': 'in', 'ttype': Union[float, Array1d, Array2d, Array3d]},
+                                              'Out': {'io': 'out', 'ttype': Any}},
+                             allowAddInput=True)
+
+            self.operation = ""
+
+        def display(self, topics=None, terms=None, addr=None, win=None, **kwargs):
+            if self.widget is None:
+                self.widget = CalculatorWidget(terms, win, self.operation)
+                self.widget.sigStateChanged.connect(self.state_changed)
+
+            return self.widget
+
+        def saveState(self):
+            state = super().saveState()
+            state['ctrl'] = {'operation': self.operation}
+
+            if self.widget:
+                state['widget'] = self.widget.saveState()
+            else:
+                state['widget'] = {'operation': self.operation}
+
+            return state
+
+        def restoreState(self, state):
+            super().restoreState(state)
+
+            self.operation = state['ctrl']['operation']
+
+            if self.widget:
+                self.widget.restoreState(state['widget'])
+
+        def to_operation(self, inputs, conditions={}):
+            outputs = self.output_vars()
+            args = []
+            expr = self.operation
+
+            # sympy doesn't like symbols name likes Sum.0.Out, need to remove dots.
+            for arg in self.input_vars().values():
+                rarg = arg.replace('.', '')
+                args.append(rarg)
+                expr = expr.replace(arg, rarg)
+
+            params = {'args': args,
+                      'expr': expr}
+
+            node = gn.Map(name=self.name()+"_operation",
+                          condition_needs=list(conditions.values()), inputs=list(inputs.values()), outputs=outputs,
+                          func=CalcProc(params), parent=self.name())
+
+            return node
+
+except ImportError as e:
+    print(e)

@@ -120,6 +120,27 @@ try:
 
     import psana.hexanode.DLDProcessor as psfDLD
 
+    class DLDProc():
+
+        def __init__(self, **params):
+            self.params = params
+            self.proc = None
+
+        def __call__(self, nev, nhits, pktsec, calib):
+            if self.params['consts'] != calib:
+                self.params['consts'] = calib
+                self.proc = None
+
+            if self.proc is None:
+                self.proc = psfDLD.DLDProcessor(**self.params)
+
+            r = self.proc.xyrt_list(nev, nhits, pktsec)
+            if r:
+                x, y, r, t = zip(*r)
+                return (np.array(x), np.array(y), np.array(r), np.array(t))
+            else:
+                return (np.array([]), np.array([]), np.array([]), np.array([]))
+
     class Hexanode(CtrlNode):
 
         """
@@ -130,27 +151,6 @@ try:
         uiTemplate = [('num chans', 'combo', {'values': ["5", "7"]}),
                       ('num hits', 'intSpin', {'value': 16, 'min': 1, 'max': MAX}),
                       ('verbose', 'check', {'checked': False})]
-
-        class DLDProc():
-
-            def __init__(self, **params):
-                self.params = params
-                self.proc = None
-
-            def __call__(self, nev, nhits, pktsec, calib):
-                if self.params['consts'] != calib:
-                    self.params['consts'] = calib
-                    self.proc = None
-
-                if self.proc is None:
-                    self.proc = psfDLD.DLDProcessor(**self.params)
-
-                r = self.proc.xyrt_list(nev, nhits, pktsec)
-                if r:
-                    x, y, r, t = zip(*r)
-                    return (np.array(x), np.array(y), np.array(r), np.array(t))
-                else:
-                    return (np.array([]), np.array([]), np.array([]), np.array([]))
 
         def __init__(self, name):
             super().__init__(name, terminals={'Event Number': {'io': 'in', 'ttype': int},
@@ -172,7 +172,7 @@ try:
 
             node = gn.Map(name=self.name()+"_operation",
                           condition_needs=list(conditions.values()), inputs=list(inputs.values()), outputs=outputs,
-                          func=self.DLDProc(**dldpars), parent=self.name())
+                          func=DLDProc(**dldpars), parent=self.name())
 
             return node
 

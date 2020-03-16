@@ -1,5 +1,9 @@
 # CHANGELOG
 
+## 2.0.8 3/16/20
+* Add Calculator node.
+* Right click source submenu
+
 ## 2.0.6 3/9/20
 * Run WFPeaks with different parameters on each channel.
 

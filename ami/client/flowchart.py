@@ -181,6 +181,7 @@ class NodeProcess(QtCore.QObject):
     async def send_checkpoint(self, node):
         state = node.saveState()
         state['viewed'] = self.show
+
         msg = fcMsgs.NodeCheckpoint(node.name(),
                                     state=state)
         await self.checkpoint.send_string(node.name(), zmq.SNDMORE)

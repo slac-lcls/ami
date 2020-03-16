@@ -309,6 +309,7 @@ class Flowchart(Node):
                         term1 = node1[t1]
                         node2 = nodes[n2]
                         term2 = node2[t2]
+
                         self.connectTerminals(term1, term2, type_file)
                         if term1.isInput() or term1.isCondition:
                             in_name = node1.name() + '_' + term1.name()
@@ -470,7 +471,8 @@ class Flowchart(Node):
     @asyncSlot()
     async def chartLoaded(self):
         for name, node in self.nodes(data='node'):
-            msg = fcMsgs.NodeCheckpoint(node.name(), state=node.saveState())
+            state = node.saveState()
+            msg = fcMsgs.NodeCheckpoint(node.name(), state=state)
             await self.broker.send_string(node.name(), zmq.SNDMORE)
             await self.broker.send_pyobj(msg)
 
@@ -749,13 +751,13 @@ class FlowchartWidget(dockarea.DockArea):
         self._scene.sigMouseHover.connect(self.hoverOver)
 
     def reloadLibrary(self):
-        self.nodeMenu.triggered.disconnect(self.nodeMenuTriggered)
-        self.nodeMenu = None
+        self.operationMenu.triggered.disconnect(self.operationMenuTriggered)
+        self.operationMenu = None
         self.subMenus = []
         self.chart.library.reload()
         self.buildMenu()
 
-    def buildMenu(self, pos=None):
+    def buildOperationMenu(self, pos=None):
         def buildSubMenu(node, rootMenu, subMenus, pos=None):
             for section, node in node.items():
                 menu = QtGui.QMenu(section)
@@ -767,11 +769,29 @@ class FlowchartWidget(dockarea.DockArea):
                     act = rootMenu.addAction(section)
                     act.nodeType = section
                     act.pos = pos
-        self.nodeMenu = QtGui.QMenu()
-        self.subMenus = []
-        buildSubMenu(self.chart.library.getNodeTree(), self.nodeMenu, self.subMenus, pos=pos)
-        self.nodeMenu.triggered.connect(self.nodeMenuTriggered)
-        return self.nodeMenu
+        self.operationMenu = QtGui.QMenu()
+        self.operationSubMenus = []
+        buildSubMenu(self.chart.library.getNodeTree(), self.operationMenu, self.operationSubMenus, pos=pos)
+        self.operationMenu.triggered.connect(self.operationMenuTriggered)
+        return self.operationMenu
+
+    def buildSourceMenu(self, pos=None):
+        def buildSubMenu(node, rootMenu, subMenus, pos=None):
+            for section, node in node.items():
+                menu = QtGui.QMenu(section)
+                rootMenu.addMenu(menu)
+                if isinstance(node, OrderedDict):
+                    buildSubMenu(node, menu, subMenus, pos=pos)
+                    subMenus.append(menu)
+                else:
+                    act = rootMenu.addAction(section)
+                    act.nodeType = section
+                    act.pos = pos
+        self.sourceMenu = QtGui.QMenu()
+        self.sourceSubMenus = []
+        buildSubMenu(self.chart.source_library.getSourceTree(), self.sourceMenu, self.sourceSubMenus, pos=pos)
+        self.sourceMenu.triggered.connect(self.sourceMenuTriggered)
+        return self.sourceMenu
 
     def scene(self):
         return self._scene  # the GraphicsScene item
@@ -779,10 +799,18 @@ class FlowchartWidget(dockarea.DockArea):
     def viewBox(self):
         return self._viewBox  # the viewBox that items should be added to
 
-    def nodeMenuTriggered(self, action):
+    def operationMenuTriggered(self, action):
         nodeType = action.nodeType
         pos = self.viewBox().mapSceneToView(action.pos)
         self.chart.createNode(nodeType, pos=pos)
+
+    def sourceMenuTriggered(self, action):
+        node = action.nodeType
+        if node not in self.chart._graph:
+            pos = self.viewBox().mapSceneToView(action.pos)
+            node_type = self.chart.source_library.getSourceType(node)
+            node = SourceNode(name=node, terminals={'Out': {'io': 'out', 'ttype': node_type}})
+            self.chart.createNode(node_type, name=node.name(), node=node, pos=pos)
 
     @asyncSlot()
     async def selectionChanged(self):
@@ -883,18 +911,14 @@ class FlowchartWidget(dockarea.DockArea):
 
         elif isinstance(item.node, CtrlNode):
             await self.chart.broker.send_string(node.name(), zmq.SNDMORE)
-            await self.chart.broker.send_pyobj(fcMsgs.DisplayNode(name=node.name(), topics={}, terms={}))
+            await self.chart.broker.send_pyobj(fcMsgs.DisplayNode(name=node.name(), topics={}, terms=node.input_vars()))
 
         self.ctrl.metadata = await self.ctrl.graphCommHandler.metadata
 
     def hoverOver(self, items):
-        # print "FlowchartWidget.hoverOver called."
         obj = None
 
         for item in items:
-            # if item is self.hoverItem:
-            #     return
-            # self.hoverItem = item
             if isinstance(item, NodeGraphicsItem):
                 obj = item.node
             if isinstance(item, TerminalGraphicsItem):
