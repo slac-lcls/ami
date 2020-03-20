@@ -104,7 +104,7 @@ try:
             for channel in WFPeaks.channels:
                 attrs = {}
                 for attr in WFPeaks.channel_attrs:
-                    attrs[attr] = getattr(self, attr+'_'+channel, 0)
+                    attrs[attr] = getattr(self, attr+'_'+channel)
                 cfdpars[channel] = attrs
 
             wfpeaks = psWFPeaks.WFPeaks(**cfdpars)

@@ -83,6 +83,9 @@ class CtrlNode(Node):
                 if isinstance(ctrl, QtGui.QLineEdit):
                     ctrl.setText(ctrlstate[k])
 
+            # call update because stateGroup won't emit a signal if the value of the widget has not changed
+            for ctrl, state in ctrlstate.items():
+                self.update(ctrl, state)
         if self.widget is not None and 'widget' in state:
             self.widget.restoreState(state['widget'])
 
