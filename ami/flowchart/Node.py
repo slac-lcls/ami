@@ -5,7 +5,6 @@ from pyqtgraph import functions as fn
 from pyqtgraph.pgcollections import OrderedDict
 from pyqtgraph.debug import printExc
 from ami.flowchart.Terminal import Terminal
-from ami.flowchart.Editor import NoteEditor
 from typing import Any
 import weakref
 
@@ -97,7 +96,6 @@ class Node(QtCore.QObject):
         self._buffered = kwargs.get("buffered", False)
         self._exportable = kwargs.get("exportable", False)
         self._filter = kwargs.get("filter", False)
-        self._note = ""
         self._editor = None
         self._enabled = True
 
@@ -189,19 +187,6 @@ class Node(QtCore.QObject):
 
         This is a convenience function that just calls addTerminal(io='condition', ...)"""
         return self.addTerminal(name, io='condition', ttype=Any, **kwargs)
-
-    def editNote(self):
-        if self._editor is None:
-            self.editor = NoteEditor(self)
-
-        if self._note:
-            self.editor.set_text(self._note)
-
-        self.editor.show()
-
-    def setNote(self, text):
-        self._note = text
-        self.graphicsItem().setNote(text)
 
     def removeTerminal(self, term):
         """Remove the specified terminal from this Node. May specify either the
@@ -434,7 +419,7 @@ class Node(QtCore.QObject):
         Subclasses may want to extend this method, adding extra keys to the returned
         dict."""
         pos = self.graphicsItem().pos()
-        state = {'pos': (pos.x(), pos.y()), 'note': self._note, 'enabled': self._enabled}
+        state = {'pos': (pos.x(), pos.y()), 'enabled': self._enabled}
         state['terminals'] = self.saveTerminals()
         return state
 
@@ -443,8 +428,6 @@ class Node(QtCore.QObject):
         by saveState(). """
         pos = state.get('pos', (0, 0))
         self.graphicsItem().setPos(*pos)
-        note = state.get('note')
-        self.setNote(note)
         self._enabled = state.get('enabled')
         if 'terminals' in state:
             self.restoreTerminals(state['terminals'])
@@ -516,7 +499,7 @@ class NodeGraphicsItem(GraphicsObject):
         self.hovered = False
 
         self.node = node
-        flags = self.ItemIsMovable | self.ItemIsSelectable | self.ItemIsFocusable | self.ItemSendsGeometryChanges
+        flags = self.ItemIsMovable | self.ItemIsSelectable | self.ItemSendsGeometryChanges
 
         self.setFlags(flags)
         self.bounds = QtCore.QRectF(0, 0, 100, 100)
@@ -524,21 +507,12 @@ class NodeGraphicsItem(GraphicsObject):
         self.nameItem.setDefaultTextColor(QtGui.QColor(50, 50, 50))
         self.nameItem.moveBy(self.bounds.width()/2. - self.nameItem.boundingRect().width()/2., 0)
 
-        self.noteItem = QtGui.QGraphicsTextItem("", self)
-        self.noteItem.setDefaultTextColor(QtGui.QColor(50, 50, 50))
-        self.noteItem.setTextWidth(self.bounds.width()/2.)
-        self.noteItem.moveBy(self.bounds.width()/2. - self.noteItem.boundingRect().width()/2.,
-                             self.noteItem.boundingRect().height() + 40)
-
         self.updateTerminals()
 
         self.menu = None
         self.add_condition = None
         self.enabled = QtGui.QAction("Enabled", self.menu, checkable=True, checked=True)
         self.buildMenu()
-
-    def setNote(self, text):
-        self.noteItem.setPlainText(text)
 
     def setPen(self, *args, **kwargs):
         self.pen = fn.mkPen(*args, **kwargs)
@@ -687,7 +661,6 @@ class NodeGraphicsItem(GraphicsObject):
             self.menu.setTitle("Node")
             self.enabled.toggled.connect(self.enabledFromMenu)
             self.menu.addAction(self.enabled)
-            self.menu.addAction("Edit note", self.node.editNote)
             if self.node._allowAddInput:
                 self.menu.addAction("Add input", self.addInputFromMenu)
             if self.node._allowAddOutput:

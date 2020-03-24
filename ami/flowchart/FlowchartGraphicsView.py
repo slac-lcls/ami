@@ -1,19 +1,20 @@
 from pyqtgraph.Qt import QtGui, QtCore, QtWidgets
 from pyqtgraph.widgets.GraphicsView import GraphicsView
 from pyqtgraph.graphicsItems.ViewBox import ViewBox
-from pyqtgraph import GridItem
+from pyqtgraph import GridItem, GraphicsWidget
 from ami.flowchart.Node import NodeGraphicsItem
+from ami.flowchart.Terminal import ConnectionItem
 from ami.flowchart.library.common import SourceNode
 
 
-class CommentRect(QtWidgets.QGraphicsWidget):
+class Rect(GraphicsWidget):
     # Copyright 2015-2019 Ilgar Lunin, Pedro Cabrera
     # taken from pyflow
-    __backgroundColor = QtGui.QColor(100, 100, 100, 50)
+    __backgroundColor = QtGui.QColor(100, 100, 255, 50)
     __pen = QtGui.QPen(QtGui.QColor(255, 255, 255), 1.0, QtCore.Qt.DashLine)
 
     def __init__(self, view, mouseDownPos):
-        super().__init__()
+        super().__init__(parent=view)
         self.setZValue(2)
 
         self.view = view
@@ -21,10 +22,9 @@ class CommentRect(QtWidgets.QGraphicsWidget):
         self.__mouseDownPos = mouseDownPos
         self.setPos(self.__mouseDownPos)
         self.resize(0, 0)
-        self.selectFullyIntersectedItems = True
 
-    def collidesWithItem(self, item):
-        if self.selectFullyIntersectedItems:
+    def collidesWithItem(self, item, selectFullyIntersectedItems=True):
+        if selectFullyIntersectedItems:
             return self.sceneBoundingRect().contains(item.sceneBoundingRect())
         return super().collidesWithItem(item)
 
@@ -51,49 +51,63 @@ class CommentRect(QtWidgets.QGraphicsWidget):
         self.view.removeItem(self)
 
 
-class SelectionRect(QtWidgets.QGraphicsWidget):
+class CommentName(GraphicsWidget):
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.label = QtWidgets.QGraphicsTextItem("Enter comment here", parent=self)
+        self.label.setTextInteractionFlags(QtCore.Qt.TextEditorInteraction)
+        self.setGraphicsItem(self.label)
+
+
+class CommentRect(Rect):
+    # Copyright 2015-2019 Ilgar Lunin, Pedro Cabrera
+    # taken from pyflow
+    __backgroundColor = QtGui.QColor(100, 100, 255, 50)
+    __pen = QtGui.QPen(QtGui.QColor(255, 255, 255), 1.0, QtCore.Qt.DashLine)
+
+    def __init__(self, view, mouseDownPos):
+        super().__init__(view, mouseDownPos)
+        flags = self.ItemIsMovable | self.ItemIsSelectable | self.ItemSendsGeometryChanges | \
+            self.ItemContainsChildrenInShape
+        self.setFlags(flags)
+        self.headerLayout = QtGui.QGraphicsLinearLayout(QtCore.Qt.Horizontal)
+        self.commentName = CommentName(parent=self)
+        self.headerLayout.addItem(self.commentName)
+        self.buildMenu()
+
+    def mousePressEvent(self, ev):
+        if ev.button() == QtCore.Qt.LeftButton:
+            boundingRect = self.boundingRect()
+            width = boundingRect.width()
+            height = boundingRect.height()
+            rect = QtCore.QRectF(width - 20, height - 20, 20, 20)
+            if rect.contains(ev.pos()):
+                self.view.commentRect = self
+                ev.ignore()
+            else:
+                ev.accept()
+                super().mousePressEvent(ev)
+
+        elif ev.button() == QtCore.Qt.RightButton:
+            ev.accept()
+            pos = ev.screenPos()
+            self.menu.popup(QtCore.QPoint(pos.x(), pos.y()))
+
+    def buildMenu(self):
+        self.menu = QtGui.QMenu()
+        self.menu.setTitle("Comment")
+        self.menu.addAction("Remove Comment", self.destroy)
+
+
+class SelectionRect(Rect):
     # Copyright 2015-2019 Ilgar Lunin, Pedro Cabrera
     # taken from pyflow
     __backgroundColor = QtGui.QColor(100, 100, 100, 50)
     __pen = QtGui.QPen(QtGui.QColor(255, 255, 255), 1.0, QtCore.Qt.DashLine)
 
     def __init__(self, view, mouseDownPos):
-        super().__init__()
-        self.setZValue(2)
-
-        self.view = view
-        self.view.addItem(self)
-        self.__mouseDownPos = mouseDownPos
-        self.setPos(self.__mouseDownPos)
-        self.resize(0, 0)
-        self.selectFullyIntersectedItems = True
-
-    def collidesWithItem(self, item):
-        if self.selectFullyIntersectedItems:
-            return self.sceneBoundingRect().contains(item.sceneBoundingRect())
-        return super().collidesWithItem(item)
-
-    def setDragPoint(self, dragPoint):
-        topLeft = QtCore.QPointF(self.__mouseDownPos)
-        bottomRight = QtCore.QPointF(dragPoint)
-        if dragPoint.x() < self.__mouseDownPos.x():
-            topLeft.setX(dragPoint.x())
-            bottomRight.setX(self.__mouseDownPos.x())
-        if dragPoint.y() < self.__mouseDownPos.y():
-            topLeft.setY(dragPoint.y())
-            bottomRight.setY(self.__mouseDownPos.y())
-        self.setPos(topLeft)
-        self.resize(bottomRight.x() - topLeft.x(),
-                    bottomRight.y() - topLeft.y())
-
-    def paint(self, painter, option, widget):
-        rect = self.windowFrameRect()
-        painter.setBrush(self.__backgroundColor)
-        painter.setPen(self.__pen)
-        painter.drawRect(rect)
-
-    def destroy(self):
-        self.view.removeItem(self)
+        super().__init__(view, mouseDownPos)
 
 
 class FlowchartGraphicsView(GraphicsView):
@@ -156,6 +170,7 @@ class FlowchartViewBox(ViewBox):
                 self.selected_node_menu.addAction("Paste", self.pasteSelectedNodes)
                 self.paste_pos = ev.pos()
             self.selected_node_menu.addAction("Delete", self.deleteSelectedNodes)
+            # self.selected_node_menu.addAction("Make subgraph", self.makesubgraph)
             self._fc_menu.addMenu(self.selected_node_menu)
 
         return self._fc_menu
@@ -232,7 +247,7 @@ class FlowchartViewBox(ViewBox):
                 self.selectionRect = None
 
         elif self.mouseMode == "Comment":
-            if ev.isStart():
+            if ev.isStart() and self.commentRect is None:
                 self.commentRect = CommentRect(self, self.mapToView(ev.buttonDownPos()))
 
             if self.commentRect:
@@ -240,19 +255,27 @@ class FlowchartViewBox(ViewBox):
 
             if ev.isFinish():
                 self.commentRects.append(self.commentRect)
+
+                for item in self.allChildren():
+                    if isinstance(item, NodeGraphicsItem) and self.commentRect.collidesWithItem(item):
+                        item.setParentItem(self.commentRect)
+                        new_pos = self.mapFromViewToItem(self.commentRect, item.pos())
+                        item.setPos(new_pos)
+                    elif isinstance(item, ConnectionItem):
+                        if self.commentRect.collidesWithItem(item, selectFullyIntersectedItems=True):
+                            item.setParentItem(self.commentRect)
+                            new_pos = self.mapFromViewToItem(self.commentRect, item.pos())
+                            item.setPos(new_pos)
+                        elif self.commentRect.collidesWithItem(item, selectFullyIntersectedItems=False):
+                            pass
+
                 self.commentRect = None
-                # self.selected_nodes = []
-                # for item in self.allChildren():
-                #     if not isinstance(item, NodeGraphicsItem):
-                #         continue
-                #     if self.selectionRect.collidesWithItem(item):
-                #         item.node.recolor("selected")
-                #         self.selected_nodes.append(item.node)
 
     def mousePressEvent(self, ev):
         ev.accept()
         super().mousePressEvent(ev)
 
+        # if we have selected nodes, restore their coloring to normal
         if ev.button() == QtCore.Qt.LeftButton:
             for node in self.selected_nodes:
                 node.recolor()

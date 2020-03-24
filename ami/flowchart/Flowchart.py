@@ -821,6 +821,7 @@ class FlowchartWidget(dockarea.DockArea):
             return
 
         item = items[0]
+
         if not hasattr(item, 'node'):
             return
 

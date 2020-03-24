@@ -388,7 +388,7 @@ class TerminalGraphicsItem(GraphicsObject):
 class ConnectionItem(GraphicsObject):
 
     def __init__(self, source, target=None):
-        GraphicsObject.__init__(self)
+        super().__init__()
         self.setFlags(
             self.ItemIsSelectable |
             self.ItemIsFocusable
