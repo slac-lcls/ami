@@ -34,7 +34,7 @@ import typing  # noqa
 class Flowchart(Node):
     sigFileLoaded = QtCore.Signal(object)
     sigFileSaved = QtCore.Signal(object)
-
+    sigNodeCreated = QtCore.Signal(object)
     sigChartLoaded = QtCore.Signal()
     # called when output is expected to have changed
 
@@ -113,6 +113,7 @@ class Flowchart(Node):
         self.broker.send_string(name, zmq.SNDMORE)
         self.broker.send_pyobj(msg)
 
+        self.sigNodeCreated.emit(node)
         return node
 
     def addNode(self, node, name, pos=None):

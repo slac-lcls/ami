@@ -2,9 +2,15 @@ from pyqtgraph.Qt import QtGui, QtCore, QtWidgets
 from pyqtgraph.widgets.GraphicsView import GraphicsView
 from pyqtgraph.graphicsItems.ViewBox import ViewBox
 from pyqtgraph import GridItem, GraphicsWidget
-from ami.flowchart.Node import NodeGraphicsItem
-from ami.flowchart.Terminal import ConnectionItem
+from ami.flowchart.Node import NodeGraphicsItem, find_nearest
 from ami.flowchart.library.common import SourceNode
+
+
+def clamp(pos):
+    pos = [find_nearest(pos.x()), find_nearest(pos.y())]
+    pos[0] = max(min(pos[0], 5e3), 0)
+    pos[1] = max(min(pos[1], 5e3), -900)
+    return QtCore.QPointF(*pos)
 
 
 class Rect(GraphicsWidget):
@@ -38,8 +44,8 @@ class Rect(GraphicsWidget):
             topLeft.setY(dragPoint.y())
             bottomRight.setY(self.__mouseDownPos.y())
         self.setPos(topLeft)
-        self.resize(bottomRight.x() - topLeft.x(),
-                    bottomRight.y() - topLeft.y())
+        self.resize(max(bottomRight.x() - topLeft.x(), 100),
+                    max(bottomRight.y() - topLeft.y(), 100))
 
     def paint(self, painter, option, widget):
         rect = self.windowFrameRect()
@@ -75,13 +81,26 @@ class CommentRect(Rect):
         self.commentName = CommentName(parent=self)
         self.headerLayout.addItem(self.commentName)
         self.buildMenu()
+        self.childNodes = set()
+
+    def mouseMoveEvent(self, ev):
+        ev.accept()
+        # for child in self.childNodes:
+        #     pos = self.view.mapFromViewToItem(self, child.pos())
+        #     child.setPos(pos.x(), pos.y())
+        super().mouseMoveEvent(ev)
+
+    def mouseReleaseEvent(self, ev):
+        ev.accept()
+        self.setPos(clamp(self.pos()))
+        super().mouseReleaseEvent(ev)
 
     def mousePressEvent(self, ev):
         if ev.button() == QtCore.Qt.LeftButton:
             boundingRect = self.boundingRect()
             width = boundingRect.width()
             height = boundingRect.height()
-            rect = QtCore.QRectF(width - 20, height - 20, 20, 20)
+            rect = QtCore.QRectF(width - 50, height - 50, 50, 50)
             if rect.contains(ev.pos()):
                 self.view.commentRect = self
                 ev.ignore()
@@ -93,6 +112,11 @@ class CommentRect(Rect):
             ev.accept()
             pos = ev.screenPos()
             self.menu.popup(QtCore.QPoint(pos.x(), pos.y()))
+
+    def nodeCreated(self, node):
+        item = node.graphicsItem()
+        if self.collidesWithItem(item):
+            self.childNodes.add(item)
 
     def buildMenu(self):
         self.menu = QtGui.QMenu()
@@ -135,6 +159,8 @@ class FlowchartViewBox(ViewBox):
     def __init__(self, widget, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.widget = widget
+        self.chart = widget.chart
+
         self.setLimits(minXRange=200, minYRange=200,
                        xMin=-1000, yMin=-1000, xMax=5.2e3, yMax=5.2e3)
         self.addItem(GridItem())
@@ -248,26 +274,20 @@ class FlowchartViewBox(ViewBox):
 
         elif self.mouseMode == "Comment":
             if ev.isStart() and self.commentRect is None:
-                self.commentRect = CommentRect(self, self.mapToView(ev.buttonDownPos()))
+                pos = clamp(self.mapToView(ev.buttonDownPos()))
+                self.commentRect = CommentRect(self, pos)
+                self.chart.sigNodeCreated.connect(self.commentRect.nodeCreated)
 
             if self.commentRect:
-                self.commentRect.setDragPoint(self.mapToView(ev.pos()))
+                pos = clamp(self.mapToView(ev.pos()))
+                self.commentRect.setDragPoint(pos)
 
             if ev.isFinish():
                 self.commentRects.append(self.commentRect)
 
                 for item in self.allChildren():
                     if isinstance(item, NodeGraphicsItem) and self.commentRect.collidesWithItem(item):
-                        item.setParentItem(self.commentRect)
-                        new_pos = self.mapFromViewToItem(self.commentRect, item.pos())
-                        item.setPos(new_pos)
-                    elif isinstance(item, ConnectionItem):
-                        if self.commentRect.collidesWithItem(item, selectFullyIntersectedItems=True):
-                            item.setParentItem(self.commentRect)
-                            new_pos = self.mapFromViewToItem(self.commentRect, item.pos())
-                            item.setPos(new_pos)
-                        elif self.commentRect.collidesWithItem(item, selectFullyIntersectedItems=False):
-                            pass
+                        self.commentRect.childNodes.add(item)
 
                 self.commentRect = None
 
