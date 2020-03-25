@@ -21,6 +21,12 @@ class CommentName(GraphicsWidget):
         self.label.setTextInteractionFlags(QtCore.Qt.TextEditorInteraction)
         self.setGraphicsItem(self.label)
 
+    def text(self):
+        return self.label.toPlainText()
+
+    def setText(self, text):
+        self.label.setPlainText(text)
+
 
 class CommentRect(GraphicsWidget):
     # Copyright 2015-2019 Ilgar Lunin, Pedro Cabrera
@@ -28,20 +34,22 @@ class CommentRect(GraphicsWidget):
     __backgroundColor = QtGui.QColor(100, 100, 255, 50)
     __pen = QtGui.QPen(QtGui.QColor(255, 255, 255), 1.0, QtCore.Qt.DashLine)
 
-    def __init__(self, view, mouseDownPos):
+    def __init__(self, view=None, mouseDownPos=QtCore.QPointF(0, 0), id=0):
         super().__init__()
         self.setZValue(2)
+        self.id = id
         self.headerLayout = QtGui.QGraphicsLinearLayout(QtCore.Qt.Horizontal)
         self.commentName = CommentName(parent=self)
         self.headerLayout.addItem(self.commentName)
-        self.view = view
-        self.view.addItem(self)
         self.__mouseDownPos = mouseDownPos
         self.setPos(self.__mouseDownPos)
         self.resize(0, 0)
         self.selectFullyIntersectedItems = True
         self.childNodes = set()
         self.buildMenu()
+        if view:
+            self.view = view
+            self.view.addItem(self)
 
     def collidesWithItem(self, item):
         if self.selectFullyIntersectedItems:
@@ -69,11 +77,19 @@ class CommentRect(GraphicsWidget):
 
     def destroy(self):
         self.view.removeItem(self)
+        del self.view.commentRects[self.id]
 
     def nodeCreated(self, node):
         item = node.graphicsItem()
         if self.collidesWithItem(item):
             self.childNodes.add(item)
+
+    def updateChildren(self, children):
+        collided = set()
+        for child in children:
+            if self.collidesWithItem(child):
+                collided.add(child)
+        self.childNodes = collided
 
     def mouseDragEvent(self, ev):
         if ev.button() == QtCore.Qt.LeftButton:
@@ -112,6 +128,21 @@ class CommentRect(GraphicsWidget):
         menu = self.scene().addParentContextMenus(self, self.menu, ev)
         pos = ev.screenPos()
         menu.popup(QtCore.QPoint(pos.x(), pos.y()))
+
+    def saveState(self):
+        rect = self.sceneBoundingRect()
+        topLeft = clamp(self.view.mapToView(rect.topLeft()))
+        bottomRight = clamp(self.view.mapToView(rect.bottomRight()))
+        return {'id': self.id,
+                'text': self.commentName.text(),
+                'topLeft': (topLeft.x(), topLeft.y()),
+                'bottomRight': (bottomRight.x(), bottomRight.y())}
+
+    def restoreState(self, state):
+        self.id = state['id']
+        self.commentName.setText(state['text'])
+        self.__mouseDownPos = QtCore.QPointF(*state['topLeft'])
+        self.setDragPoint(QtCore.QPointF(*state['bottomRight']))
 
 
 class SelectionRect(GraphicsWidget):
@@ -178,6 +209,12 @@ class FlowchartGraphicsView(GraphicsView):
     def dragEnterEvent(self, ev):
         ev.accept()
 
+    def saveState(self):
+        return self._vb.saveState()
+
+    def restoreState(self, state):
+        self._vb.restoreState(state)
+
 
 class FlowchartViewBox(ViewBox):
 
@@ -200,7 +237,8 @@ class FlowchartViewBox(ViewBox):
         self.paste_pos = None
 
         self.commentRect = None
-        self.commentRects = []
+        self.commentId = 0
+        self.commentRects = {}
 
     def setMouseMode(self, mode):
         assert mode in ["Select", "Pan", "Comment"]
@@ -299,15 +337,16 @@ class FlowchartViewBox(ViewBox):
         elif self.mouseMode == "Comment":
             if ev.isStart() and self.commentRect is None:
                 pos = clamp(self.mapToView(ev.buttonDownPos()))
-                self.commentRect = CommentRect(self, pos)
+                self.commentRect = CommentRect(self, pos, self.commentId)
                 self.chart.sigNodeCreated.connect(self.commentRect.nodeCreated)
+                self.commentId += 1
 
             if self.commentRect:
                 pos = clamp(self.mapToView(ev.pos()))
                 self.commentRect.setDragPoint(pos)
 
             if ev.isFinish():
-                self.commentRects.append(self.commentRect)
+                self.commentRects[self.commentRect.id] = self.commentRect
 
                 for item in self.allChildren():
                     if isinstance(item, NodeGraphicsItem) and self.commentRect.collidesWithItem(item):
@@ -322,6 +361,10 @@ class FlowchartViewBox(ViewBox):
         if ev.button() == QtCore.Qt.LeftButton:
             for node in self.selected_nodes:
                 node.recolor()
+
+        children = filter(lambda item: isinstance(item, NodeGraphicsItem), self.allChildren())
+        for id, comment in self.commentRects.items():
+            comment.updateChildren(children)
 
     def dropEvent(self, ev):
         if ev.mimeData().hasFormat('application/x-qabstractitemmodeldatalist'):
@@ -346,3 +389,20 @@ class FlowchartViewBox(ViewBox):
 
         else:
             ev.ignore()
+
+    def saveState(self):
+        state = {'comments': []}
+
+        for id, comment in self.commentRects.items():
+            state['comments'].append(comment.saveState())
+
+        return state
+
+    def restoreState(self, state):
+        self.commentId = 0
+        for commentState in state['comments']:
+            comment = CommentRect()
+            comment.restoreState(commentState)
+            self.addItem(comment)
+            self.commentRects[commentState['id']] = comment
+            self.commentId = max(commentState['id']+1, self.commentId)

@@ -483,6 +483,7 @@ class Node(QtCore.QObject):
 
 
 class NodeGraphicsItem(GraphicsObject):
+
     def __init__(self, node, brush=None):
         super().__init__()
 

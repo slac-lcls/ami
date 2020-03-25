@@ -239,6 +239,8 @@ class Flowchart(Node):
         state = {}
         state['nodes'] = []
         state['connects'] = []
+        state['viewbox'] = self.viewBox.saveState()
+
         for name, node in self.nodes(data='node'):
             cls = type(node)
             clsName = cls.__name__
@@ -267,6 +269,9 @@ class Flowchart(Node):
                 self.widget().sourceConfigure.restoreState(src_cfg)
                 if src_cfg['files']:
                     self.widget().sourceConfigure.applyClicked()
+
+            if 'viewbox' in state:
+                self.viewBox.restoreState(state['viewbox'])
 
             nodes = state['nodes']
             nodes.sort(key=lambda a: a['state']['pos'][0])
