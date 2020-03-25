@@ -76,19 +76,12 @@ class Ui_Toolbar(object):
         self.actionSave.setIconText("Save")
         self.actionSave.setObjectName("actionSave")
 
-        # save
+        # save as
         self.actionSaveAs = QtWidgets.QAction(parent)
         icon = QtGui.QIcon.fromTheme("document-save")
         self.actionSaveAs.setIcon(icon)
         self.actionSaveAs.setIconText("Save As")
         self.actionSaveAs.setObjectName("actionSaveAs")
-
-        # apply
-        self.actionApply = QtWidgets.QAction(parent)
-        icon = QtGui.QIcon.fromTheme("media-playback-start")
-        self.actionApply.setIcon(icon)
-        self.actionApply.setIconText("Apply")
-        self.actionApply.setObjectName("actionApply")
 
         # configure
         self.actionConfigure = QtWidgets.QAction(parent)
@@ -96,6 +89,13 @@ class Ui_Toolbar(object):
         self.actionConfigure.setIcon(icon)
         self.actionConfigure.setIconText("Configure")
         self.actionConfigure.setObjectName("actionConfigure")
+
+        # apply
+        self.actionApply = QtWidgets.QAction(parent)
+        icon = QtGui.QIcon.fromTheme("media-playback-start")
+        self.actionApply.setIcon(icon)
+        self.actionApply.setIconText("Apply")
+        self.actionApply.setObjectName("actionApply")
 
         # reset
         self.actionReset = QtWidgets.QAction(parent)
@@ -145,11 +145,11 @@ class Ui_Toolbar(object):
         self.toolBar.addAction(self.actionOpen)
         self.toolBar.addAction(self.actionSave)
         self.toolBar.addAction(self.actionSaveAs)
-        self.toolBar.addAction(self.actionConfigure)
 
+        self.toolBar.addAction(self.actionConfigure)
         self.toolBar.addAction(self.actionApply)
         self.toolBar.addAction(self.actionReset)
-        self.toolBar.insertSeparator(self.actionApply)
+        self.toolBar.insertSeparator(self.actionConfigure)
 
         self.toolBar.addAction(self.actionHome)
         self.toolBar.addAction(self.actionPan)
@@ -167,9 +167,26 @@ class Ui_Toolbar(object):
         self.node_search.setPlaceholderText('Search Operations...')
         self.node_tree = build_tree(self.node_model)
 
+        # subgraphs
+        self.subgraph_dock = dockarea.Dock('subgraph', size=(1, 2))
+        self.subgraph_dock.nStyle = ""
+        self.subgraph_dock.hideTitleBar()
+        self.subgraph_toolbar = QtWidgets.QToolBar(parent)
+        self.graphGroup = QtWidgets.QActionGroup(parent)
+
+        self.rootGraph = QtWidgets.QAction(parent)
+        self.rootGraph.setIconText("root")
+        self.rootGraph.setObjectName("rootGraph")
+        self.rootGraph.setCheckable(True)
+        self.rootGraph.setChecked(True)
+        self.graphGroup.addAction(self.rootGraph)
+        self.subgraph_toolbar.addAction(self.rootGraph)
+        self.subgraph_dock.addWidget(self.subgraph_toolbar, 0, 0, 1, -1)
+        chart.addDock(self.subgraph_dock, 'top')
+
         self.gridLayout.addWidget(self.toolBar, 0, 0, 1, -1)
 
-        self.node_dock = dockarea.Dock('nodes', size=(400, 1000))
+        self.node_dock = dockarea.Dock('nodes', size=(300, 1000))
         self.node_dock.hideTitleBar()
         self.node_dock.setOrientation('vertical')
         self.node_dock.addWidget(self.source_search, 1, 0, 1, 1)
@@ -179,6 +196,7 @@ class Ui_Toolbar(object):
         chart.addDock(self.node_dock, 'left')
 
         self.gridLayout.addWidget(chart, 1, 1, -1, -1)
+        self.gridLayout.setRowStretch(1, 10)
         self.gridLayout.setColumnStretch(1, 10)
 
         self.node_search.textChanged.connect(self.node_search_text_changed)
