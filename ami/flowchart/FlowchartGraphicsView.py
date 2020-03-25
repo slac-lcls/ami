@@ -16,15 +16,12 @@ def clamp(pos):
 class Rect(GraphicsWidget):
     # Copyright 2015-2019 Ilgar Lunin, Pedro Cabrera
     # taken from pyflow
-    __backgroundColor = QtGui.QColor(100, 100, 255, 50)
-    __pen = QtGui.QPen(QtGui.QColor(255, 255, 255), 1.0, QtCore.Qt.DashLine)
-
-    def __init__(self, view, mouseDownPos):
-        super().__init__(parent=view)
-        self.setZValue(2)
-
+    def __init__(self, view, mouseDownPos, backgroundColor, pen):
+        super().__init__()
         self.view = view
         self.view.addItem(self)
+        self.__backgroundColor = backgroundColor
+        self.__pen = pen
         self.__mouseDownPos = mouseDownPos
         self.setPos(self.__mouseDownPos)
         self.resize(0, 0)
@@ -69,30 +66,51 @@ class CommentName(GraphicsWidget):
 class CommentRect(Rect):
     # Copyright 2015-2019 Ilgar Lunin, Pedro Cabrera
     # taken from pyflow
-    __backgroundColor = QtGui.QColor(100, 100, 255, 50)
-    __pen = QtGui.QPen(QtGui.QColor(255, 255, 255), 1.0, QtCore.Qt.DashLine)
 
     def __init__(self, view, mouseDownPos):
-        super().__init__(view, mouseDownPos)
-        flags = self.ItemIsMovable | self.ItemIsSelectable | self.ItemSendsGeometryChanges | \
-            self.ItemContainsChildrenInShape
+        backgroundColor = QtGui.QColor(100, 100, 255, 50)
+        pen = QtGui.QPen(QtGui.QColor(255, 255, 255), 1.0, QtCore.Qt.DashLine)
+        super().__init__(view, mouseDownPos, backgroundColor, pen)
+        self.setZValue(-1)
+        flags = self.ItemIsMovable | self.ItemSendsGeometryChanges
         self.setFlags(flags)
         self.headerLayout = QtGui.QGraphicsLinearLayout(QtCore.Qt.Horizontal)
         self.commentName = CommentName(parent=self)
         self.headerLayout.addItem(self.commentName)
         self.buildMenu()
         self.childNodes = set()
+        self.movingChild = False
 
     def mouseMoveEvent(self, ev):
         ev.accept()
-        # for child in self.childNodes:
-        #     pos = self.view.mapFromViewToItem(self, child.pos())
-        #     child.setPos(pos.x(), pos.y())
-        super().mouseMoveEvent(ev)
+        pos = self.mapToScene(ev.pos())
+        for child in self.childNodes:
+            if child.sceneBoundingRect().contains(pos):
+                self.movingChild = True
+                child.setPos(self.mapToScene(ev.pos()))
+                break
+
+        if not self.movingChild:
+            old_pos = self.pos()
+            super().mouseMoveEvent(ev)
+            new_pos = self.pos()
+            diff = new_pos - old_pos
+
+            for child in self.childNodes:
+                child.moveBy(*diff)
 
     def mouseReleaseEvent(self, ev):
         ev.accept()
         self.setPos(clamp(self.pos()))
+
+        pos = self.mapToScene(ev.pos())
+        for child in self.childNodes:
+            child.setPos(clamp(child.pos()))
+
+            if not self.movingChild and child.sceneBoundingRect().contains(pos):
+                child.setSelected(True)
+
+        self.movingChild = False
         super().mouseReleaseEvent(ev)
 
     def mousePressEvent(self, ev):
@@ -127,11 +145,11 @@ class CommentRect(Rect):
 class SelectionRect(Rect):
     # Copyright 2015-2019 Ilgar Lunin, Pedro Cabrera
     # taken from pyflow
-    __backgroundColor = QtGui.QColor(100, 100, 100, 50)
-    __pen = QtGui.QPen(QtGui.QColor(255, 255, 255), 1.0, QtCore.Qt.DashLine)
 
     def __init__(self, view, mouseDownPos):
-        super().__init__(view, mouseDownPos)
+        backgroundColor = QtGui.QColor(100, 100, 100, 50)
+        pen = QtGui.QPen(QtGui.QColor(255, 255, 255), 1.0, QtCore.Qt.DashLine)
+        super().__init__(view, mouseDownPos, backgroundColor, pen)
 
 
 class FlowchartGraphicsView(GraphicsView):
