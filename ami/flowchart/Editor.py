@@ -51,6 +51,7 @@ def build_tree(model):
 class Ui_Toolbar(object):
     def setupUi(self, parent=None, chart=None):
         self.gridLayout = QtWidgets.QGridLayout(parent)
+        self.gridLayout.setSpacing(0)
 
         self.toolBar = QtWidgets.QToolBar(parent)
         self.toolBar.setObjectName("toolBar")
@@ -166,23 +167,6 @@ class Ui_Toolbar(object):
         self.node_search = QtGui.QLineEdit()
         self.node_search.setPlaceholderText('Search Operations...')
         self.node_tree = build_tree(self.node_model)
-
-        # subgraphs
-        self.subgraph_dock = dockarea.Dock('subgraph', size=(1, 2))
-        self.subgraph_dock.nStyle = ""
-        self.subgraph_dock.hideTitleBar()
-        self.subgraph_toolbar = QtWidgets.QToolBar(parent)
-        self.graphGroup = QtWidgets.QActionGroup(parent)
-
-        self.rootGraph = QtWidgets.QAction(parent)
-        self.rootGraph.setIconText("root")
-        self.rootGraph.setObjectName("rootGraph")
-        self.rootGraph.setCheckable(True)
-        self.rootGraph.setChecked(True)
-        self.graphGroup.addAction(self.rootGraph)
-        self.subgraph_toolbar.addAction(self.rootGraph)
-        self.subgraph_dock.addWidget(self.subgraph_toolbar, 0, 0, 1, -1)
-        chart.addDock(self.subgraph_dock, 'top')
 
         self.gridLayout.addWidget(self.toolBar, 0, 0, 1, -1)
 

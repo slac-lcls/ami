@@ -27,10 +27,6 @@ def run_editor_window(broker_addr, graphmgr_addr, checkpoint_addr, load=None):
     # Create main window with grid layout
     win = QtGui.QMainWindow()
     win.setWindowTitle('AMI Client')
-    cw = QtGui.QWidget()
-    win.setCentralWidget(cw)
-    layout = QtGui.QGridLayout()
-    cw.setLayout(layout)
 
     # Create flowchart, define input/output terminals
     fc = Flowchart(broker_addr=broker_addr,
@@ -49,7 +45,7 @@ def run_editor_window(broker_addr, graphmgr_addr, checkpoint_addr, load=None):
     loop.run_until_complete(fc.updateSources(init=True))
 
     # Add flowchart control panel to the main window
-    layout.addWidget(fc.widget(), 0, 0, 2, 1)
+    win.setCentralWidget(fc.widget(win))
     win.show()
 
     # Load a flowchart chart into the editor window

@@ -6,7 +6,7 @@ from pyqtgraph import FileDialog
 from pyqtgraph.debug import printExc
 from pyqtgraph import dockarea as dockarea
 from ami.asyncqt import asyncSlot
-from ami.flowchart.FlowchartGraphicsView import FlowchartGraphicsView
+from ami.flowchart.FlowchartGraphicsView import ViewManager
 from ami.flowchart.Terminal import Terminal, TerminalGraphicsItem, ConnectionItem
 from ami.flowchart.library import LIBRARY
 from ami.flowchart.library.common import SourceNode, CtrlNode
@@ -31,7 +31,7 @@ import collections
 import typing  # noqa
 
 
-class Flowchart(Node):
+class Flowchart(QtCore.QObject):
     sigFileLoaded = QtCore.Signal(object)
     sigFileSaved = QtCore.Signal(object)
     sigNodeCreated = QtCore.Signal(object)
@@ -219,7 +219,7 @@ class Flowchart(Node):
         and returns the *external* graphical representation of this flowchart."""
         return self.viewBox
 
-    def widget(self):
+    def widget(self, parent=None):
         """
         Return the control widget for this flowchart.
 
@@ -227,7 +227,7 @@ class Flowchart(Node):
         graphical representation of the flowchart.
         """
         if self._widget is None:
-            self._widget = FlowchartCtrlWidget(self, self.graphmgr_addr)
+            self._widget = FlowchartCtrlWidget(self, self.graphmgr_addr, parent)
             self.scene = self._widget.scene()
             self.viewBox = self._widget.viewBox()
         return self._widget
@@ -493,8 +493,8 @@ class FlowchartCtrlWidget(QtGui.QWidget):
     as well as buttons for loading/saving flowcharts.
     """
 
-    def __init__(self, chart, graphmgr_addr):
-        super(FlowchartCtrlWidget, self).__init__()
+    def __init__(self, chart, graphmgr_addr, parent=None):
+        super(FlowchartCtrlWidget, self).__init__(parent)
 
         self.graphCommHandler = AsyncGraphCommHandler(graphmgr_addr.name, graphmgr_addr.comm, ctx=chart.ctx)
         self.metadata = None
@@ -732,8 +732,9 @@ class FlowchartWidget(dockarea.DockArea):
         self.hoverItem = None
 
         #  build user interface (it was easier to do it here than via developer)
-        self.view = FlowchartGraphicsView(self)
+        self.view = ViewManager(self, ctrl)
         self.viewDock = dockarea.Dock('view', size=(1000, 600))
+        self.viewDock.nStyle = ""
         self.viewDock.addWidget(self.view)
         self.viewDock.hideTitleBar()
         self.addDock(self.viewDock)

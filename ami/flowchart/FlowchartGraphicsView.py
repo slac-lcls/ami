@@ -190,16 +190,54 @@ class SelectionRect(GraphicsWidget):
         self.view.removeItem(self)
 
 
+class ViewManager(QtWidgets.QWidget):
+
+    def __init__(self, widget, parent=None):
+        super().__init__(parent)
+        self.widget = widget
+
+        self.layout = QtGui.QGridLayout()
+        self.setLayout(self.layout)
+
+        self.toolBar = QtWidgets.QToolBar(parent)
+        self.graphGroup = QtWidgets.QActionGroup(parent)
+
+        self.actionRoot = QtWidgets.QAction("root", parent)
+        self.actionRoot.setCheckable(True)
+        self.actionRoot.setChecked(True)
+        self.toolBar.addAction(self.actionRoot)
+        self.graphGroup.addAction(self.actionRoot)
+
+        self.layout.addWidget(self.toolBar, 0, 0, 1, -1)
+
+        self.views = {"root": FlowchartGraphicsView(widget, self, isRoot=True)}
+        self.currentView = self.views["root"]
+        self.layout.addWidget(self.currentView, 1, 0, -1, -1)
+
+    def addView(self, nodes):
+        pass
+
+    def removeView(self, name):
+        pass
+
+    def scene(self):
+        return self.currentView.scene()
+
+    def viewBox(self):
+        return self.currentView.viewBox()
+
+
 class FlowchartGraphicsView(GraphicsView):
 
     sigHoverOver = QtCore.Signal(object)
     sigClicked = QtCore.Signal(object)
 
-    def __init__(self, widget, *args):
+    def __init__(self, widget, manager, isRoot=False, *args):
         super().__init__(*args, useOpenGL=False, background=0.75)
         self.widget = widget
+        self.isRoot = isRoot
         self.setAcceptDrops(True)
-        self._vb = FlowchartViewBox(widget, lockAspect=True, invertY=True)
+        self._vb = FlowchartViewBox(widget, manager, isRoot=True, lockAspect=True, invertY=True)
         self.setCentralItem(self._vb)
         self.setRenderHint(QtGui.QPainter.Antialiasing, True)
 
@@ -218,10 +256,12 @@ class FlowchartGraphicsView(GraphicsView):
 
 class FlowchartViewBox(ViewBox):
 
-    def __init__(self, widget, *args, **kwargs):
+    def __init__(self, widget, manager, isRoot=False, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.widget = widget
         self.chart = widget.chart
+        self.manager = manager
+        self.isRoot = isRoot
 
         self.setLimits(minXRange=200, minYRange=200,
                        xMin=-1000, yMin=-1000, xMax=5.2e3, yMax=5.2e3)
@@ -253,6 +293,8 @@ class FlowchartViewBox(ViewBox):
 
         if self.selected_nodes:
             self.selected_node_menu = QtGui.QMenu("Selection")
+            if self.isRoot:
+                self.selected_node_menu.addAction("Make Subgraph", self.makeSubgraph)
             if not self.copy:
                 self.selected_node_menu.addAction("Copy", self.copySelectedNodes)
             else:
@@ -277,6 +319,9 @@ class FlowchartViewBox(ViewBox):
     def deleteSelectedNodes(self):
         for node in self.selected_nodes:
             node.close()
+
+    def makeSubgraph(self):
+        self.manager.addView(self.selected_nodes)
 
     def getContextMenus(self, ev):
         # called by scene to add menus on to someone else's context menu
