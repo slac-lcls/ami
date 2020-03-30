@@ -402,10 +402,14 @@ class PlotWidget(pg.GraphicsLayoutWidget):
 
         if uiTemplate is None:
             uiTemplate = [('Title', 'text'),
-                          ('X Axis Label', 'text'),
-                          ('Y Axis Label', 'text'),
                           ('Show Grid', 'check', {'checked': False}),
-                          ('Auto Range', 'check', {'checked': True})]
+                          ('Auto Range', 'check', {'checked': True}),
+                          # x axis
+                          ('Label', 'text', {'group': 'X Axis'}),
+                          ('Log Scale', 'check', {'group': 'X Axis', 'checked': False}),
+                          # y axis
+                          ('Label', 'text', {'group': 'Y Axis'}),
+                          ('Log Scale', 'check', {'group': 'Y Axis', 'checked': False})]
 
         self.uiTemplate = uiTemplate
         self.init_values(self.uiTemplate)
@@ -449,12 +453,14 @@ class PlotWidget(pg.GraphicsLayoutWidget):
     def init_values(self, opts):
         for opt in opts:
 
-            if len(opt) != 3:
+            if len(opt) < 3:
                 continue
 
             k, t, o = opt
             k = k.replace(" ", "_")
 
+            if 'group' in o:
+                k = k+'_'+o['group']
             if 'value' in o:
                 setattr(self, k, o['value'])
             elif 'values' in o:
@@ -477,30 +483,27 @@ class PlotWidget(pg.GraphicsLayoutWidget):
             self.node.sigStateChanged.emit(self.node)
 
     def apply_clicked(self):
-        if 'title' in self.ctrls:
-            title = self.ctrls['Title'].text()
-            if title:
-                self.plot_view.setTitle(title)
+        title = getattr(self, "Title", "")
+        self.plot_view.setTitle(title)
 
-        if 'X Axis Label' in self.ctrls:
-            x_axis_lbl = self.ctrls['X Axis Label'].text()
-            if x_axis_lbl:
-                self.plot_view.setLabel('bottom', x_axis_lbl)
+        x_axis_lbl = getattr(self, "Label_X_Axis", "")
+        self.plot_view.setLabel('bottom', x_axis_lbl)
 
-        if 'Y Axis Label' in self.ctrls:
-            y_axis_lbl = self.ctrls['Y Axis Label'].text()
-            if y_axis_lbl:
-                self.plot_view.setLabel('left', y_axis_lbl)
+        xlog_scale = getattr(self, "Log_Scale_X_Axis", False)
+        ylog_scale = getattr(self, "Log_Scale_Y_Axis", False)
+        self.plot_view.setLogMode(x=xlog_scale, y=ylog_scale)
 
-        if 'Show Grid' in self.ctrls:
-            showGrid = self.ctrls['Show Grid'].isChecked()
-            self.plot_view.showGrid(x=showGrid, y=showGrid, alpha=1.0)
+        y_axis_lbl = getattr(self, "Label_Y_Axis", "")
+        self.plot_view.setLabel('left', y_axis_lbl)
 
-        if 'Auto Range' in self.ctrls:
-            if self.ctrls['Auto Range'].isChecked():
-                self.plot_view.vb.enableAutoRange()
-            else:
-                self.plot_view.vb.disableAutoRange()
+        show_grid = getattr(self, "Show_Grid", False)
+        self.plot_view.showGrid(x=show_grid, y=show_grid, alpha=1.0)
+
+        auto_range = getattr(self, "Auto_Range", False)
+        if auto_range:
+            self.plot_view.vb.enableAutoRange()
+        else:
+            self.plot_view.vb.disableAutoRange()
 
         if 'Legend' in self.ctrls:
             if self.ctrls['Legend'].isChecked():
@@ -539,6 +542,9 @@ class PlotWidget(pg.GraphicsLayoutWidget):
             for k, ctrl in self.ctrls.items():
                 if isinstance(ctrl, QtGui.QLineEdit):
                     ctrl.setText(state[k])
+
+            for ctrl, ctrlstate in state.items():
+                self.state_changed(ctrl, ctrlstate)
 
             self.apply_clicked()
 
@@ -596,10 +602,19 @@ class Histogram2DWidget(PlotWidget):
 
     def __init__(self, topics=None, terms=None, addr=None, parent=None, **kwargs):
         uiTemplate = [('Title', 'text'),
-                      ('X Axis Label', 'text'),
-                      ('Y Axis Label', 'text')]
+                      # x axis
+                      ('Label', 'text', {'group': 'X Axis'}),
+                      ('Log Scale', 'check', {'group': 'X Axis', 'checked': False}),
+                      # y axis
+                      ('Label', 'text', {'group': 'Y Axis'}),
+                      ('Log Scale', 'check', {'group': 'Y Axis', 'checked': False}),
+                      # z axis
+                      ('Log Scale', 'check', {'group': 'Z Axis', 'checked': False})]
 
         super().__init__(topics, terms, addr, uiTemplate, parent, legend=False, **kwargs)
+
+        self.Show_Grid = True
+        self.Auto_Range = True
 
         self.view = self.plot_view.getViewBox()
         self.plot_view.showGrid(True, True)
@@ -612,6 +627,9 @@ class Histogram2DWidget(PlotWidget):
 
         self.imageItem = pg.ImageItem()
         self.view.addItem(self.imageItem)
+
+        self.histogramLUT = pg.HistogramLUTItem(self.imageItem)
+        self.addItem(self.histogramLUT)
 
         self.transform = QtGui.QTransform()
         self.xbins = None
@@ -644,6 +662,8 @@ class Histogram2DWidget(PlotWidget):
         self.xbins = data[xbins]
         self.ybins = data[ybins]
         counts = data[counts]
+        if self.Log_Scale_Z_Axis:
+            counts = np.log10(counts)
         xscale = (self.xbins[-1] - self.xbins[0])/self.xbins.shape
         yscale = (self.ybins[-1] - self.ybins[0])/self.ybins.shape
 
