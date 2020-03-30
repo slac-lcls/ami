@@ -13,7 +13,7 @@ class DialogWidget(QtWidgets.QWidget):
         self.fetcher = None
         self.terms = terms
         self.sleep_clicked = False
-        if topics and terms and addr:
+        if addr:
             self.fetcher = AsyncFetcher(topics, terms, addr)
 
     async def update(self):

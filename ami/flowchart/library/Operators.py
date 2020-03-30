@@ -137,7 +137,7 @@ try:
 
             self.operation = ""
 
-        def display(self, topics=None, terms=None, addr=None, win=None, **kwargs):
+        def display(self, topics, terms, addr, win, **kwargs):
             if self.widget is None:
                 self.widget = CalculatorWidget(terms, win, self.operation)
                 self.widget.sigStateChanged.connect(self.state_changed)

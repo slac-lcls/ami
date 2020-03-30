@@ -255,7 +255,7 @@ class ScalarWidget(QtWidgets.QLCDNumber):
         super().__init__(parent)
 
         self.fetcher = None
-        if topics and terms and addr:
+        if addr:
             self.fetcher = AsyncFetcher(topics, terms, addr)
 
         self.setGeometry(QtCore.QRect(320, 180, 191, 81))
@@ -274,7 +274,7 @@ class AreaDetWidget(pg.ImageView):
         super().__init__(parent)
 
         self.fetcher = None
-        if topics and terms and addr:
+        if addr:
             self.fetcher = AsyncFetcher(topics, terms, addr)
 
         handles = self.roi.getHandles()
@@ -316,7 +316,7 @@ class PixelDetWidget(pg.ImageView):
         super().__init__(parent=parent, view=self.plot)
 
         self.fetcher = None
-        if topics and terms and addr:
+        if addr:
             self.fetcher = AsyncFetcher(topics, terms, addr)
 
         self.last_updated = pg.LabelItem(parent=self.plot)
@@ -372,7 +372,7 @@ class PlotWidget(pg.GraphicsLayoutWidget):
         self.node = kwargs.get('node', None)
 
         self.fetcher = None
-        if topics and terms and addr:
+        if addr:
             self.fetcher = AsyncFetcher(topics, terms, addr)
 
         self.plot_view = self.addPlot()
@@ -779,7 +779,7 @@ class ArrayWidget(QtWidgets.QWidget):
         super().__init__(parent)
 
         self.fetcher = None
-        if topics and terms and addr:
+        if addr:
             self.fetcher = AsyncFetcher(topics, terms, addr)
 
         self.terms = terms

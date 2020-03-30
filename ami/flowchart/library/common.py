@@ -76,6 +76,7 @@ class CtrlNode(Node):
 
     def restoreState(self, state):
         super().restoreState(state)
+
         if self.stateGroup is not None:
             ctrlstate = state.get('ctrl', {})
             self.stateGroup.setState(ctrlstate)
@@ -84,8 +85,9 @@ class CtrlNode(Node):
                     ctrl.setText(ctrlstate[k])
 
             # call update because stateGroup won't emit a signal if the value of the widget has not changed
-            for ctrl, state in ctrlstate.items():
-                self.update(ctrl, state)
+            for ctrl, ctrlstate in ctrlstate.items():
+                self.update(ctrl, ctrlstate)
+
         if self.widget is not None and 'widget' in state:
             self.widget.restoreState(state['widget'])
 
@@ -108,11 +110,11 @@ class CtrlNode(Node):
 
         self.widget = None
 
-    def display(self, topics=None, terms=None, addr=None, win=None, widget=None, **kwargs):
+    def display(self, topics, terms, addr, win, widget=None, **kwargs):
         if self.widget is None and widget:
             self.widget = widget(topics, terms, addr, win, node=self, **kwargs)
 
-        if self.task is None and self.widget and topics and terms and addr:
+        if self.task is None and self.widget and addr:
             self.task = asyncio.ensure_future(self.widget.update())
 
         return self.widget
