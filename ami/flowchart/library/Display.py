@@ -1,5 +1,5 @@
 from ami.flowchart.library.DisplayWidgets import ScalarWidget, ScatterWidget, WaveformWidget, \
-    AreaDetWidget, LineWidget, ArrayWidget, HistogramWidget, Histogram2DWidget
+    ImageWidget, LineWidget, ArrayWidget, HistogramWidget, Histogram2DWidget
 from ami.flowchart.library.common import CtrlNode, MAX
 from amitypes import Array, Array1d, Array2d
 import ami.graph_nodes as gn
@@ -55,7 +55,7 @@ class ImageViewer(CtrlNode):
         super().__init__(name, terminals={"In": {"io": "in", "ttype": Array2d}}, viewable=True)
 
     def display(self, topics, terms, addr, win, **kwargs):
-        return super().display(topics, terms, addr, win, AreaDetWidget, **kwargs)
+        return super().display(topics, terms, addr, win, ImageWidget, **kwargs)
 
 
 class Histogram(CtrlNode):

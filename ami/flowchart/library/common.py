@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 from pyqtgraph.Qt import QtCore, QtGui
 from ami.flowchart.Node import Node
-from ami.flowchart.library.DisplayWidgets import generateUi, ScalarWidget, WaveformWidget, AreaDetWidget
+from ami.flowchart.library.DisplayWidgets import generateUi, ScalarWidget, WaveformWidget, ImageWidget
 from amitypes import Array1d, Array2d
 import asyncio
 
@@ -69,6 +69,10 @@ class CtrlNode(Node):
         if self.stateGroup:
             state['ctrl'] = self.stateGroup.state()
 
+            for k, ctrl in self.ctrls.items():
+                if isinstance(ctrl, QtGui.QLineEdit):
+                    state['ctrl'][k] = ctrl.text()
+
         if self.widget and hasattr(self.widget, 'saveState'):
             state['widget'] = self.widget.saveState()
 
@@ -80,13 +84,13 @@ class CtrlNode(Node):
         if self.stateGroup is not None:
             ctrlstate = state.get('ctrl', {})
             self.stateGroup.setState(ctrlstate)
-            for k, ctrl in self.ctrls.items():
-                if isinstance(ctrl, QtGui.QLineEdit):
-                    ctrl.setText(ctrlstate[k])
 
-            # call update because stateGroup won't emit a signal if the value of the widget has not changed
-            for ctrl, ctrlstate in ctrlstate.items():
-                self.update(ctrl, ctrlstate)
+            for k, ctrl in self.ctrls.items():
+                if isinstance(ctrl, QtGui.QLineEdit) and k in ctrlstate:
+                    ctrl.setText(ctrlstate[k])
+                # call update because stateGroup won't emit a signal if the value of the widget has not changed
+                if k in ctrlstate:
+                    self.update(k, ctrlstate[k])
 
         if self.widget is not None and 'widget' in state:
             self.widget.restoreState(state['widget'])
@@ -137,7 +141,7 @@ class SourceNode(CtrlNode):
         elif ttype is Array1d:
             self.widgetType = WaveformWidget
         elif ttype is Array2d:
-            self.widgetType = AreaDetWidget
+            self.widgetType = ImageWidget
 
         self._input_vars["In"] = self.name()
 
