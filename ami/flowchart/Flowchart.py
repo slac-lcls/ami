@@ -276,13 +276,13 @@ class Flowchart(QtCore.QObject):
                     try:
                         node = self.createNode(n['class'], name=n['name'])
                         node.restoreState(n['state'])
-                        if hasattr(node, "display"):
-                            node.display(topics=None, terms=None, addr=None, win=None)
-                            if hasattr(node.widget, 'restoreState') and 'widget' in n['state']:
-                                node.widget.restoreState(n['state']['widget'])
-
                     except Exception:
                         printExc("Error creating node %s: (continuing anyway)" % n['name'])
+
+                if hasattr(node, "display"):
+                    node.display(topics=None, terms=None, addr=None, win=None)
+                    if hasattr(node.widget, 'restoreState') and 'widget' in n['state']:
+                        node.widget.restoreState(n['state']['widget'])
 
             # self.restoreTerminals(state['terminals'])
 
@@ -409,7 +409,6 @@ class Flowchart(QtCore.QObject):
             # fcMsgs.NodeCheckPoint but we are only ever receiving the state
             new_node_state = await self.checkpoint.recv_pyobj()
             current_node_state = self._graph.nodes[node_name]['node'].saveState()
-
             if 'ctrl' in new_node_state:
                 if current_node_state['ctrl'] != new_node_state['ctrl']:
                     current_node_state['ctrl'] = new_node_state['ctrl']
@@ -826,20 +825,9 @@ class FlowchartWidget(dockarea.DockArea):
             topics = node.buffered_topics()
             terms = node.buffered_terms()
 
-            node.display(topics=None, terms=None, addr=None, win=None)
-            state = {}
-            if hasattr(node.widget, 'saveState'):
-                state = node.widget.saveState()
-
-            await self.chart.broker.send_string(node.name(), zmq.SNDMORE)
-            await self.chart.broker.send_pyobj(fcMsgs.DisplayNode(name=node.name(),
-                                                                  topics=topics,
-                                                                  state=state,
-                                                                  terms=terms))
-
         elif isinstance(item.node, SourceNode) and item.node.viewable():
             name = node.name()
-            topic = None
+            topics = {}
             views = {}
             terms = {"In": name}
 
@@ -854,19 +842,15 @@ class FlowchartWidget(dockarea.DockArea):
                     self.ctrl.features_count[name].add(name)
                 views = {name: name}
 
-            topics = [(name, topic)]
+            topics[name] = topic
 
             if views:
                 await self.ctrl.graphCommHandler.view(views)
 
-            await self.chart.broker.send_string(node.name(), zmq.SNDMORE)
-            await self.chart.broker.send_pyobj(fcMsgs.DisplayNode(name=node.name(),
-                                                                  topics=dict(topics),
-                                                                  terms=terms))
-
         elif isinstance(item.node, Node) and item.node.viewable():
-            topics = []
+            topics = {}
             views = {}
+            terms = node.input_vars()
 
             if len(node.inputs()) != len(node.input_vars()):
                 return
@@ -884,25 +868,25 @@ class FlowchartWidget(dockarea.DockArea):
                         self.ctrl.features_count[in_var].add(node.name())
                     views[in_var] = node.name()
 
-                topics.append((in_var, topic))
+                topics[in_var] = topic
 
             if views:
                 await self.ctrl.graphCommHandler.view(views)
 
-            node.display(topics=None, terms=None, addr=None, win=None)
-            state = {}
-            if hasattr(node.widget, 'saveState'):
-                state = node.widget.saveState()
-
-            await self.chart.broker.send_string(node.name(), zmq.SNDMORE)
-            await self.chart.broker.send_pyobj(fcMsgs.DisplayNode(name=node.name(),
-                                                                  topics=dict(topics),
-                                                                  state=state,
-                                                                  terms=node.input_vars()))
-
         elif isinstance(item.node, CtrlNode):
-            await self.chart.broker.send_string(node.name(), zmq.SNDMORE)
-            await self.chart.broker.send_pyobj(fcMsgs.DisplayNode(name=node.name(), topics={}, terms=node.input_vars()))
+            topics = {}
+            terms = node.input_vars()
+
+        node.display(topics=None, terms=None, addr=None, win=None)
+        state = {}
+        if hasattr(node.widget, 'saveState'):
+            state = node.widget.saveState()
+
+        await self.chart.broker.send_string(node.name(), zmq.SNDMORE)
+        await self.chart.broker.send_pyobj(fcMsgs.DisplayNode(name=node.name(),
+                                                              topics=topics,
+                                                              state=state,
+                                                              terms=terms))
 
         self.ctrl.metadata = await self.ctrl.graphCommHandler.metadata
 

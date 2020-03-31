@@ -171,7 +171,7 @@ def generateUi(opts):
                 groupbox, groupbox_layout = groupboxes[groupbox_name]
 
             groupbox_name = groupbox_name.replace(' ', '_')
-            w.group = groupbox_name
+            w.groupbox_name = groupbox_name
             groupbox_layout.addRow(k, w)
             ctrls[k+"_"+groupbox_name] = w
             group.addWidget(w, k+"_"+groupbox_name)
@@ -249,122 +249,6 @@ class AsyncFetcher(object):
             self.data[self.view_subs[topic]] = reply
 
 
-class ScalarWidget(QtWidgets.QLCDNumber):
-
-    def __init__(self, topics=None, terms=None, addr=None, parent=None, **kwargs):
-        super().__init__(parent)
-
-        self.fetcher = None
-        if topics and terms and addr:
-            self.fetcher = AsyncFetcher(topics, terms, addr)
-
-        self.setGeometry(QtCore.QRect(320, 180, 191, 81))
-        self.setDigitCount(10)
-
-    async def update(self):
-        while True:
-            await self.fetcher.fetch()
-            for k, v in self.fetcher.reply.items():
-                self.display(v)
-
-
-class AreaDetWidget(pg.ImageView):
-
-    def __init__(self, topics=None, terms=None, addr=None, parent=None, **kwargs):
-        super().__init__(parent)
-
-        self.fetcher = None
-        if topics and terms and addr:
-            self.fetcher = AsyncFetcher(topics, terms, addr)
-
-        handles = self.roi.getHandles()
-        self.roi.removeHandle(handles[1])
-        self.last_updated = pg.LabelItem(parent=self.getView())
-        self.pixel_value = pg.LabelItem(parent=self.getView())
-        self.proxy = pg.SignalProxy(self.scene.sigMouseMoved,
-                                    rateLimit=30,
-                                    slot=self.cursor_hover_evt)
-
-    def cursor_hover_evt(self, evt):
-        pos = evt[0]
-        pos = self.view.mapSceneToView(pos)
-        if self.imageItem.image is not None:
-            shape = self.imageItem.image.shape
-            if 0 <= pos.x() <= shape[0] and 0 <= pos.y() <= shape[1]:
-                x = int(pos.x())
-                y = int(pos.y())
-                z = self.imageItem.image[x, y]
-                self.pixel_value.setText(f"x={x}, y={y}, z={z:.5g}")
-                self.pixel_value.item.moveBy(0, 12)
-
-    async def update(self):
-        while True:
-            await self.fetcher.fetch()
-            self.last_updated.setText(self.fetcher.last_updated)
-            for k, v in self.fetcher.reply.items():
-                self.setImage(v, autoLevels=False, autoHistogramRange=False)
-
-
-class PixelDetWidget(pg.ImageView):
-
-    sigClicked = QtCore.Signal(object, object)
-
-    def __init__(self, topics=None, terms=None, addr=None, parent=None, **kwargs):
-        self.plot = pg.PlotItem()
-        self.plot.hideAxis('left')
-        self.plot.hideAxis('bottom')
-        super().__init__(parent=parent, view=self.plot)
-
-        self.fetcher = None
-        if topics and terms and addr:
-            self.fetcher = AsyncFetcher(topics, terms, addr)
-
-        self.last_updated = pg.LabelItem(parent=self.plot)
-        self.point = self.plot.plot([0], [0], symbolBrush=(200, 0, 0), symbol='+', symbolSize=25)
-        self.pixel_value = pg.LabelItem(parent=self.getView())
-        self.proxy = pg.SignalProxy(self.scene.sigMouseMoved,
-                                    rateLimit=30,
-                                    slot=self.cursor_hover_evt)
-
-    def cursor_hover_evt(self, evt):
-        pos = evt[0]
-        pos = self.plot.getViewBox().mapSceneToView(pos)
-        if self.imageItem.image is not None:
-            shape = self.imageItem.image.shape
-            if 0 <= pos.x() <= shape[0] and 0 <= pos.y() <= shape[1]:
-                x = int(pos.x())
-                y = int(pos.y())
-                z = self.imageItem.image[x, y]
-                self.pixel_value.setText(f"x={x}, y={y}, z={z:.5g}")
-                self.pixel_value.item.moveBy(0, 12)
-
-    async def update(self):
-        while True:
-            await self.fetcher.fetch()
-            self.last_updated.setText(self.fetcher.last_updated)
-            for k, v in self.fetcher.reply.items():
-                self.setImage(v)
-
-    def mousePressEvent(self, ev):
-        if ev.button() == QtCore.Qt.LeftButton:
-            ev.accept()
-            view = self.plot.getViewBox()
-            if self.imageItem.image is not None:
-                shape = self.imageItem.image.shape
-                pos = view.mapSceneToView(ev.pos())
-                if 0 <= pos.x() <= shape[0] and 0 <= pos.y() <= shape[1]:
-                    x = int(pos.x())
-                    y = int(pos.y())
-                    self.update_cursor(x, y)
-                    self.sigClicked.emit(x, y)
-        else:
-            ev.ignore()
-
-    def update_cursor(self, x, y):
-        self.plot.removeItem(self.point)
-        self.point = self.plot.plot([x], [y], symbolBrush=(200, 0, 0), symbol='+', symbolSize=25)
-
-
 class PlotWidget(pg.GraphicsLayoutWidget):
 
     def __init__(self, topics=None, terms=None, addr=None, uiTemplate=None, parent=None, **kwargs):
@@ -372,10 +256,14 @@ class PlotWidget(pg.GraphicsLayoutWidget):
         self.node = kwargs.get('node', None)
 
         self.fetcher = None
-        if topics and terms and addr:
+        if addr:
             self.fetcher = AsyncFetcher(topics, terms, addr)
 
         self.plot_view = self.addPlot()
+        if self.node:
+            self.viewbox_proxy = pg.SignalProxy(self.plot_view.vb.sigStateChanged,
+                                                delay=1,
+                                                slot=lambda args: self.node.sigStateChanged.emit(self.node))
 
         ax = self.plot_view.getAxis('bottom')
         ax.enableAutoSIPrefix(enable=False)
@@ -393,19 +281,22 @@ class PlotWidget(pg.GraphicsLayoutWidget):
         self.trace_ids = {}  # { trace_idx : name }
         self.terms = terms
 
-        self.last_updated = pg.LabelItem(parent=self.plot_view.getViewBox())
-
-        self.pixel_value = pg.LabelItem(parent=self.plot_view.getViewBox())
-        self.proxy = pg.SignalProxy(self.sceneObj.sigMouseMoved,
-                                    rateLimit=30,
-                                    slot=self.cursor_hover_evt)
+        self.last_updated = pg.LabelItem(parent=self.plot_view)
+        self.pixel_value = pg.LabelItem(parent=self.plot_view)
+        self.hover_proxy = pg.SignalProxy(self.sceneObj.sigMouseMoved,
+                                          rateLimit=30,
+                                          slot=self.cursor_hover_evt)
 
         if uiTemplate is None:
             uiTemplate = [('Title', 'text'),
-                          ('X Axis Label', 'text'),
-                          ('Y Axis Label', 'text'),
                           ('Show Grid', 'check', {'checked': False}),
-                          ('Auto Range', 'check', {'checked': True})]
+                          ('Auto Range', 'check', {'checked': True}),
+                          # x axis
+                          ('Label', 'text', {'group': 'X Axis'}),
+                          ('Log Scale', 'check', {'group': 'X Axis', 'checked': False}),
+                          # y axis
+                          ('Label', 'text', {'group': 'Y Axis'}),
+                          ('Log Scale', 'check', {'group': 'Y Axis', 'checked': False})]
 
         self.uiTemplate = uiTemplate
         self.init_values(self.uiTemplate)
@@ -449,12 +340,14 @@ class PlotWidget(pg.GraphicsLayoutWidget):
     def init_values(self, opts):
         for opt in opts:
 
-            if len(opt) != 3:
+            if len(opt) < 3:
                 continue
 
             k, t, o = opt
             k = k.replace(" ", "_")
 
+            if 'group' in o:
+                k = k+'_'+o['group']
             if 'value' in o:
                 setattr(self, k, o['value'])
             elif 'values' in o:
@@ -477,70 +370,78 @@ class PlotWidget(pg.GraphicsLayoutWidget):
             self.node.sigStateChanged.emit(self.node)
 
     def apply_clicked(self):
-        if 'title' in self.ctrls:
-            title = self.ctrls['Title'].text()
-            if title:
-                self.plot_view.setTitle(title)
+        title = getattr(self, "Title", "")
+        self.plot_view.setTitle(title)
 
-        if 'X Axis Label' in self.ctrls:
-            x_axis_lbl = self.ctrls['X Axis Label'].text()
-            if x_axis_lbl:
-                self.plot_view.setLabel('bottom', x_axis_lbl)
+        x_axis_lbl = getattr(self, "Label_X_Axis", "")
+        self.plot_view.setLabel('bottom', x_axis_lbl)
 
-        if 'Y Axis Label' in self.ctrls:
-            y_axis_lbl = self.ctrls['Y Axis Label'].text()
-            if y_axis_lbl:
-                self.plot_view.setLabel('left', y_axis_lbl)
+        xlog_scale = getattr(self, "Log_Scale_X_Axis", False)
+        ylog_scale = getattr(self, "Log_Scale_Y_Axis", False)
+        self.plot_view.setLogMode(x=xlog_scale, y=ylog_scale)
 
-        if 'Show Grid' in self.ctrls:
-            showGrid = self.ctrls['Show Grid'].isChecked()
-            self.plot_view.showGrid(x=showGrid, y=showGrid, alpha=1.0)
+        y_axis_lbl = getattr(self, "Label_Y_Axis", "")
+        self.plot_view.setLabel('left', y_axis_lbl)
 
-        if 'Auto Range' in self.ctrls:
-            if self.ctrls['Auto Range'].isChecked():
-                self.plot_view.vb.enableAutoRange()
-            else:
-                self.plot_view.vb.disableAutoRange()
+        show_grid = getattr(self, "Show_Grid", False)
+        self.plot_view.showGrid(x=show_grid, y=show_grid, alpha=1.0)
+
+        auto_range = getattr(self, "Auto_Range", False)
+        if auto_range:
+            self.plot_view.vb.enableAutoRange()
+        else:
+            self.plot_view.vb.disableAutoRange()
 
         if 'Legend' in self.ctrls:
             if self.ctrls['Legend'].isChecked():
-                self.plot_view.vb.removeItem(self.legend)
-                self.legend = self.plot_view.addLegend()
-
+                self.legend.show()
+                self.legend.clear()
                 for idx, name in self.trace_ids.items():
                     if name in self.plot:
                         item = self.plot[name]
-                        self.legend.removeItem(name)
                         self.legend.addItem(item, self.ctrls[idx].text())
             else:
-                self.plot_view.vb.removeItem(self.legend)
-                self.legend = None
+                self.legend.hide()
 
     def saveState(self):
+        state = {}
+
         if self.stateGroup:
-            state = self.stateGroup.state()
+            state['ctrl'] = self.stateGroup.state()
+
+            legend = {}
 
             for k, ctrl in self.ctrls.items():
-                if isinstance(ctrl, QtGui.QLineEdit):
-                    state[k] = ctrl.text()
-                    if hasattr(ctrl, 'trace_id'):
-                        state[k] = (self.trace_ids[ctrl.trace_id], ctrl.text())
-            return state
+                if hasattr(ctrl, 'trace_id'):
+                    legend[k] = (self.trace_ids[ctrl.trace_id], ctrl.text())
+                elif isinstance(ctrl, QtGui.QLineEdit):
+                    state['ctrl'][k] = ctrl.text()
+
+            if legend:
+                state['legend'] = legend
+
+        state['viewbox'] = self.plot_view.vb.getState()
+        return state
 
     def restoreState(self, state):
         if self.stateGroup is not None:
-            for k, v in state.items():
-                if k.startswith('trace'):
-                    self.update_legend_layout(k, *v)
-                    state[k] = v[1]
+            ctrlstate = state.get('ctrl', {})
+            self.stateGroup.setState(ctrlstate)
 
-            self.stateGroup.setState(state)
+            legendstate = state.get('legend', {})
+            for k, v in legendstate.items():
+                self.update_legend_layout(k, *v)
 
             for k, ctrl in self.ctrls.items():
-                if isinstance(ctrl, QtGui.QLineEdit):
-                    ctrl.setText(state[k])
+                if isinstance(ctrl, QtGui.QLineEdit) and k in ctrlstate:
+                    ctrl.setText(ctrlstate[k])
+                if k in ctrlstate:
+                    self.state_changed(k, ctrlstate[k])
 
             self.apply_clicked()
+
+        if 'viewbox' in state:
+            self.plot_view.vb.setState(state['viewbox'])
 
     def configure_plot(self):
         self.ui.show()
@@ -555,8 +456,160 @@ class PlotWidget(pg.GraphicsLayoutWidget):
         while True:
             await self.fetcher.fetch()
             self.last_updated.setText(self.fetcher.last_updated)
+            self.last_updated.item.moveBy(13, -5)
             if self.fetcher.reply:
                 self.data_updated(self.fetcher.reply)
+
+
+class ScalarWidget(QtWidgets.QLCDNumber):
+
+    def __init__(self, topics=None, terms=None, addr=None, parent=None, **kwargs):
+        super().__init__(parent)
+
+        self.fetcher = None
+        if addr:
+            self.fetcher = AsyncFetcher(topics, terms, addr)
+
+        self.setGeometry(QtCore.QRect(320, 180, 191, 81))
+        self.setDigitCount(10)
+
+    async def update(self):
+        while True:
+            await self.fetcher.fetch()
+            for k, v in self.fetcher.reply.items():
+                self.display(v)
+
+
+class ImageWidget(PlotWidget):
+
+    def __init__(self, topics=None, terms=None, addr=None, parent=None, **kwargs):
+        uiTemplate = kwargs.pop("uiTemplate", [])
+        uiTemplate.extend([('Auto Range', 'check', {'group': 'Histogram', 'checked': True}),
+                           ('Auto Levels', 'check', {'group': 'Histogram', 'checked': True})])
+
+        super().__init__(topics, terms, addr, uiTemplate=uiTemplate, parent=parent, legend=False, **kwargs)
+
+        self.fetcher = None
+        if addr:
+            self.fetcher = AsyncFetcher(topics, terms, addr)
+
+        self.view = self.plot_view.getViewBox()
+        if not kwargs.get('axis', False):
+            self.view.removeItem(self.plot_view.getAxis('bottom'))
+            self.view.removeItem(self.plot_view.getAxis('left'))
+
+        self.imageItem = pg.ImageItem()
+        self.view.addItem(self.imageItem)
+
+        self.histogramLUT = pg.HistogramLUTItem(self.imageItem)
+        self.addItem(self.histogramLUT)
+        if self.node:
+            self.histogramLUT.sigLookupTableChanged.connect(lambda args: self.node.sigStateChanged.emit(self.node))
+            self.histogramLUT.sigLevelChangeFinished.connect(lambda args: self.node.sigStateChanged.emit(self.node))
+
+    def cursor_hover_evt(self, evt):
+        pos = evt[0]
+        pos = self.view.mapSceneToView(pos)
+        if self.imageItem.image is not None:
+            shape = self.imageItem.image.shape
+            if 0 <= pos.x() <= shape[0] and 0 <= pos.y() <= shape[1]:
+                x = int(pos.x())
+                y = int(pos.y())
+                z = self.imageItem.image[x, y]
+                self.pixel_value.setText(f"x={x}, y={y}, z={z:.5g}")
+                self.pixel_value.item.moveBy(0, 10)
+
+    def applyClicked(self):
+        super().applyClicked()
+        autorange_histogram = getattr(self, "Auto_Range_Histogram", True)
+
+        if autorange_histogram:
+            self.histogramLUT.autoHistogramRange()
+        else:
+            self.histogramLUT.vb.disableAutoRange()
+
+    def data_updated(self, data):
+        for k, v in data.items():
+            self.imageItem.setImage(v, autoLevels=self.Auto_Levels_Histogram)
+
+    def saveState(self):
+        state = super().saveState()
+        state['histogramLUT'] = self.histogramLUT.saveState()
+        if not getattr(self, "Auto_Range_Histogram", True):
+            state['histogramLUT_viewbox'] = self.histogramLUT.vb.getState()
+        return state
+
+    def restoreState(self, state):
+        super().restoreState(state)
+        self.histogramLUT.restoreState(state['histogramLUT'])
+        if 'histogramLUT_viewbox' in state:
+            self.histogramLUT.vb.setState(state['histogramLUT_viewbox'])
+
+
+class PixelDetWidget(ImageWidget):
+
+    sigClicked = QtCore.Signal(object, object)
+
+    def __init__(self, topics=None, terms=None, addr=None, parent=None, **kwargs):
+        super().__init__(topics, terms, addr, parent, **kwargs)
+        self.point = self.plot_view.plot([0], [0], symbolBrush=(200, 0, 0), symbol='+', symbolSize=25)
+
+    def mousePressEvent(self, ev):
+        if ev.button() == QtCore.Qt.LeftButton:
+            if self.imageItem.image is not None:
+                shape = self.imageItem.image.shape
+                pos = self.view.mapSceneToView(ev.pos())
+                if 0 <= pos.x() <= shape[0] and 0 <= pos.y() <= shape[1]:
+                    ev.accept()
+
+                    x = int(pos.x())
+                    y = int(pos.y())
+                    self.update_cursor(x, y)
+                    self.sigClicked.emit(x, y)
+
+        super().mousePressEvent(ev)
+
+    def update_cursor(self, x, y):
+        self.plot_view.removeItem(self.point)
+        self.point = self.plot_view.plot([x], [y], symbolBrush=(200, 0, 0), symbol='+', symbolSize=25)
+
+
+class AreaDetWidget(pg.ImageView):
+
+    def __init__(self, topics=None, terms=None, addr=None, parent=None, **kwargs):
+        super().__init__(parent)
+
+        self.fetcher = None
+        if addr:
+            self.fetcher = AsyncFetcher(topics, terms, addr)
+
+        handles = self.roi.getHandles()
+        self.view.disableAutoRange()
+        self.roi.removeHandle(handles[1])
+        self.last_updated = pg.LabelItem(parent=self.getView())
+        self.pixel_value = pg.LabelItem(parent=self.getView())
+        self.proxy = pg.SignalProxy(self.scene.sigMouseMoved,
+                                    rateLimit=30,
+                                    slot=self.cursor_hover_evt)
+
+    def cursor_hover_evt(self, evt):
+        pos = evt[0]
+        pos = self.view.mapSceneToView(pos)
+        if self.imageItem.image is not None:
+            shape = self.imageItem.image.shape
+            if 0 <= pos.x() <= shape[0] and 0 <= pos.y() <= shape[1]:
+                x = int(pos.x())
+                y = int(pos.y())
+                z = self.imageItem.image[x, y]
+                self.pixel_value.setText(f"x={x}, y={y}, z={z:.5g}")
+                self.pixel_value.item.moveBy(0, 12)
+
+    async def update(self):
+        while True:
+            await self.fetcher.fetch()
+            self.last_updated.setText(self.fetcher.last_updated)
+            for k, v in self.fetcher.reply.items():
+                self.setImage(v, autoLevels=False, autoHistogramRange=False)
 
 
 class HistogramWidget(PlotWidget):
@@ -592,16 +645,23 @@ class HistogramWidget(PlotWidget):
                 self.plot[name].setData(x=x, y=y)
 
 
-class Histogram2DWidget(PlotWidget):
+class Histogram2DWidget(ImageWidget):
 
     def __init__(self, topics=None, terms=None, addr=None, parent=None, **kwargs):
         uiTemplate = [('Title', 'text'),
-                      ('X Axis Label', 'text'),
-                      ('Y Axis Label', 'text')]
+                      # x axis
+                      ('Label', 'text', {'group': 'X Axis'}),
+                      ('Log Scale', 'check', {'group': 'X Axis', 'checked': False}),
+                      # y axis
+                      ('Label', 'text', {'group': 'Y Axis'}),
+                      ('Log Scale', 'check', {'group': 'Y Axis', 'checked': False}),
+                      # z axis
+                      ('Log Scale', 'check', {'group': 'Z Axis', 'checked': False})]
 
-        super().__init__(topics, terms, addr, uiTemplate, parent, legend=False, **kwargs)
+        super().__init__(topics, terms, addr, parent, uiTemplate=uiTemplate, axis=True, **kwargs)
 
-        self.view = self.plot_view.getViewBox()
+        self.Show_Grid = True
+        self.Auto_Range = True
         self.plot_view.showGrid(True, True)
 
         ax = self.plot_view.getAxis('bottom')
@@ -609,9 +669,6 @@ class Histogram2DWidget(PlotWidget):
 
         ay = self.plot_view.getAxis('left')
         ay.setZValue(100)
-
-        self.imageItem = pg.ImageItem()
-        self.view.addItem(self.imageItem)
 
         self.transform = QtGui.QTransform()
         self.xbins = None
@@ -644,10 +701,12 @@ class Histogram2DWidget(PlotWidget):
         self.xbins = data[xbins]
         self.ybins = data[ybins]
         counts = data[counts]
+        if self.Log_Scale_Z_Axis:
+            counts = np.log10(counts)
         xscale = (self.xbins[-1] - self.xbins[0])/self.xbins.shape
         yscale = (self.ybins[-1] - self.ybins[0])/self.ybins.shape
 
-        self.imageItem.setImage(counts)
+        self.imageItem.setImage(counts, autoLevels=self.Auto_Levels_Histogram)
         self.imageItem.setZValue(-99)
         self.transform = QtGui.QTransform(xscale, 0, 0, yscale, self.xbins[0], self.ybins[0])
         self.imageItem.setTransform(self.transform)
@@ -779,7 +838,7 @@ class ArrayWidget(QtWidgets.QWidget):
         super().__init__(parent)
 
         self.fetcher = None
-        if topics and terms and addr:
+        if addr:
             self.fetcher = AsyncFetcher(topics, terms, addr)
 
         self.terms = terms

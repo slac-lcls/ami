@@ -68,7 +68,6 @@ class CalculatorWidget(QtWidgets.QWidget):
         self.display = QtWidgets.QLineEdit(operation)
         self.display.setReadOnly(True)
         self.display.setAlignment(QtCore.Qt.AlignRight)
-        self.display.setMaxLength(20)
 
         # font = self.display.font()
         # font.setPointSize(font.pointSize() + 8)
