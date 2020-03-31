@@ -483,7 +483,9 @@ class ScalarWidget(QtWidgets.QLCDNumber):
 class ImageWidget(PlotWidget):
 
     def __init__(self, topics=None, terms=None, addr=None, parent=None, **kwargs):
-        uiTemplate = [('Title', 'text')]
+        uiTemplate = kwargs.pop("uiTemplate", [])
+        uiTemplate.extend([('Auto Range', 'check', {'group': 'Histogram', 'checked': True}),
+                           ('Auto Levels', 'check', {'group': 'Histogram', 'checked': True})])
 
         super().__init__(topics, terms, addr, uiTemplate=uiTemplate, parent=parent, legend=False, **kwargs)
 
@@ -492,14 +494,18 @@ class ImageWidget(PlotWidget):
             self.fetcher = AsyncFetcher(topics, terms, addr)
 
         self.view = self.plot_view.getViewBox()
-        self.view.removeItem(self.plot_view.getAxis('bottom'))
-        self.view.removeItem(self.plot_view.getAxis('left'))
+        if not kwargs.get('axis', False):
+            self.view.removeItem(self.plot_view.getAxis('bottom'))
+            self.view.removeItem(self.plot_view.getAxis('left'))
 
         self.imageItem = pg.ImageItem()
         self.view.addItem(self.imageItem)
 
         self.histogramLUT = pg.HistogramLUTItem(self.imageItem)
         self.addItem(self.histogramLUT)
+        if self.node:
+            self.histogramLUT.sigLookupTableChanged.connect(lambda args: self.node.sigStateChanged.emit(self.node))
+            self.histogramLUT.sigLevelChangeFinished.connect(lambda args: self.node.sigStateChanged.emit(self.node))
 
     def cursor_hover_evt(self, evt):
         pos = evt[0]
@@ -513,18 +519,31 @@ class ImageWidget(PlotWidget):
                 self.pixel_value.setText(f"x={x}, y={y}, z={z:.5g}")
                 self.pixel_value.item.moveBy(0, 10)
 
+    def applyClicked(self):
+        super().applyClicked()
+        autorange_histogram = getattr(self, "Auto_Range_Histogram", True)
+
+        if autorange_histogram:
+            self.histogramLUT.autoHistogramRange()
+        else:
+            self.histogramLUT.vb.disableAutoRange()
+
     def data_updated(self, data):
         for k, v in data.items():
-            self.imageItem.setImage(v)
+            self.imageItem.setImage(v, autoLevels=self.Auto_Levels_Histogram)
 
     def saveState(self):
         state = super().saveState()
         state['histogramLUT'] = self.histogramLUT.saveState()
+        if not getattr(self, "Auto_Range_Histogram", True):
+            state['histogramLUT_viewbox'] = self.histogramLUT.vb.getState()
         return state
 
     def restoreState(self, state):
         super().restoreState(state)
         self.histogramLUT.restoreState(state['histogramLUT'])
+        if 'histogramLUT_viewbox' in state:
+            self.histogramLUT.vb.setState(state['histogramLUT_viewbox'])
 
 
 class PixelDetWidget(ImageWidget):
@@ -626,7 +645,7 @@ class HistogramWidget(PlotWidget):
                 self.plot[name].setData(x=x, y=y)
 
 
-class Histogram2DWidget(PlotWidget):
+class Histogram2DWidget(ImageWidget):
 
     def __init__(self, topics=None, terms=None, addr=None, parent=None, **kwargs):
         uiTemplate = [('Title', 'text'),
@@ -639,12 +658,10 @@ class Histogram2DWidget(PlotWidget):
                       # z axis
                       ('Log Scale', 'check', {'group': 'Z Axis', 'checked': False})]
 
-        super().__init__(topics, terms, addr, uiTemplate, parent, legend=False, **kwargs)
+        super().__init__(topics, terms, addr, parent, uiTemplate=uiTemplate, axis=True, **kwargs)
 
         self.Show_Grid = True
         self.Auto_Range = True
-
-        self.view = self.plot_view.getViewBox()
         self.plot_view.showGrid(True, True)
 
         ax = self.plot_view.getAxis('bottom')
@@ -652,12 +669,6 @@ class Histogram2DWidget(PlotWidget):
 
         ay = self.plot_view.getAxis('left')
         ay.setZValue(100)
-
-        self.imageItem = pg.ImageItem()
-        self.view.addItem(self.imageItem)
-
-        self.histogramLUT = pg.HistogramLUTItem(self.imageItem)
-        self.addItem(self.histogramLUT)
 
         self.transform = QtGui.QTransform()
         self.xbins = None
@@ -695,19 +706,10 @@ class Histogram2DWidget(PlotWidget):
         xscale = (self.xbins[-1] - self.xbins[0])/self.xbins.shape
         yscale = (self.ybins[-1] - self.ybins[0])/self.ybins.shape
 
-        self.imageItem.setImage(counts)
+        self.imageItem.setImage(counts, autoLevels=self.Auto_Levels_Histogram)
         self.imageItem.setZValue(-99)
         self.transform = QtGui.QTransform(xscale, 0, 0, yscale, self.xbins[0], self.ybins[0])
         self.imageItem.setTransform(self.transform)
-
-    def saveState(self):
-        state = super().saveState()
-        state['histogramLUT'] = self.histogramLUT.saveState()
-        return state
-
-    def restoreState(self, state):
-        super().restoreState(state)
-        self.histogramLUT.restoreState(state['histogramLUT'])
 
 
 class ScatterWidget(PlotWidget):
