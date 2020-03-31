@@ -195,13 +195,17 @@ class ViewManager(QtWidgets.QWidget):
     def __init__(self, widget, parent=None):
         super().__init__(parent)
         self.widget = widget
+        self.chart = widget.chart
+        self.ctrl = widget.ctrl
 
         self.layout = QtGui.QGridLayout()
         self.setLayout(self.layout)
 
         self.toolBar = QtWidgets.QToolBar(parent)
         self.graphGroup = QtWidgets.QActionGroup(parent)
+        self.graphGroup.setExclusive(True)
 
+        self.actions = {}
         self.actionRoot = QtWidgets.QAction("root", parent)
         self.actionRoot.setCheckable(True)
         self.actionRoot.setChecked(True)
@@ -214,7 +218,26 @@ class ViewManager(QtWidgets.QWidget):
         self.currentView = self.views["root"]
         self.layout.addWidget(self.currentView, 1, 0, -1, -1)
 
-    def addView(self, nodes):
+    def addView(self, nodes, name=None):
+        if name is None:
+            n = 0
+            while True:
+                name = f"combined.{n}"
+                if name not in self.chart._graph.nodes():
+                    break
+                n += 1
+
+        view = FlowchartGraphicsView(self.widget, self)
+        self.views[name] = view
+        self.layout.addWidget(view, 1, 0, -1, -1)
+
+        actionSubgraph = QtWidgets.QAction(name, self.parentWidget())
+        actionSubgraph.setCheckable(True)
+        self.toolBar.addAction(actionSubgraph)
+        self.graphGroup.addAction(actionSubgraph)
+        self.actions[name] = actionSubgraph
+
+    def displayView(self):
         pass
 
     def removeView(self, name):

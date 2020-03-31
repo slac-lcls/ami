@@ -67,7 +67,6 @@ class Flowchart(QtCore.QObject):
 
         self.nextZVal = 10
         self._widget = None
-        self._scene = None
 
         self.deleted_nodes = []
 
@@ -128,7 +127,7 @@ class Flowchart(QtCore.QObject):
         item = node.graphicsItem()
         item.setZValue(self.nextZVal*2)
         self.nextZVal += 1
-        self.viewBox.addItem(item)
+        self.viewBox().addItem(item)
         pos = (find_nearest(pos[0]), find_nearest(pos[1]))
         item.moveBy(*pos)
         self._graph.add_node(name, node=node)
@@ -206,19 +205,6 @@ class Flowchart(QtCore.QObject):
                             node = self._graph.nodes[filt]['node']
                             node.nodeEnabled(enabled)
 
-    def connectTerminals(self, term1, term2, type_file=None):
-        """Connect two terminals together within this flowchart."""
-        term1.connectTo(term2, type_file=type_file)
-
-    def chartGraphicsItem(self):
-        """
-        Return the graphicsItem that displays the internal nodes and
-        connections of this flowchart.
-
-        Note that the similar method `graphicsItem()` is inherited from Node
-        and returns the *external* graphical representation of this flowchart."""
-        return self.viewBox
-
     def widget(self, parent=None):
         """
         Return the control widget for this flowchart.
@@ -228,9 +214,10 @@ class Flowchart(QtCore.QObject):
         """
         if self._widget is None:
             self._widget = FlowchartCtrlWidget(self, self.graphmgr_addr, parent)
-            self.scene = self._widget.scene()
-            self.viewBox = self._widget.viewBox()
         return self._widget
+
+    def viewBox(self):
+        return self.widget().viewBox()
 
     def saveState(self):
         """
@@ -316,7 +303,7 @@ class Flowchart(QtCore.QObject):
                         node2 = nodes[n2]
                         term2 = node2[t2]
 
-                        self.connectTerminals(term1, term2, type_file)
+                        term1.connectTo(term2, type_file=type_file)
                         if term1.isInput() or term1.isCondition:
                             in_name = node1.name() + '_' + term1.name()
                             in_name = in_name.replace('.', '_')
@@ -751,11 +738,8 @@ class FlowchartWidget(dockarea.DockArea):
         self.statusDock.addWidget(self.statusText)
         self.addDock(self.statusDock, 'bottom')
 
-        self._scene = self.view.scene()
-        self._viewBox = self.view.viewBox()
-
-        self._scene.selectionChanged.connect(self.selectionChanged)
-        self._scene.sigMouseHover.connect(self.hoverOver)
+        self.scene().selectionChanged.connect(self.selectionChanged)
+        self.scene().sigMouseHover.connect(self.hoverOver)
 
     def reloadLibrary(self):
         self.operationMenu.triggered.disconnect(self.operationMenuTriggered)
@@ -801,10 +785,10 @@ class FlowchartWidget(dockarea.DockArea):
         return self.sourceMenu
 
     def scene(self):
-        return self._scene  # the GraphicsScene item
+        return self.view.scene()  # the GraphicsScene item
 
     def viewBox(self):
-        return self._viewBox  # the viewBox that items should be added to
+        return self.view.viewBox()  # the viewBox that items should be added to
 
     def operationMenuTriggered(self, action):
         nodeType = action.nodeType
@@ -822,7 +806,7 @@ class FlowchartWidget(dockarea.DockArea):
     @asyncSlot()
     async def selectionChanged(self):
         # print "FlowchartWidget.selectionChanged called."
-        items = self._scene.selectedItems()
+        items = self.scene().selectedItems()
 
         if len(items) != 1:
             return
