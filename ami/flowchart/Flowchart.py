@@ -469,9 +469,6 @@ class Flowchart(Node):
                     ctrl.chartWidget.statusText.append(f"[{now.strftime('%H:%M:%S')}] {source} {node.name()}: {msg}")
                 else:
                     ctrl.chartWidget.statusText.append(f"[{now.strftime('%H:%M:%S')}] {source}: {msg}")
-            elif topic == "times":
-                pass
-                # print(source, msg)
 
     @asyncSlot()
     async def chartLoaded(self):

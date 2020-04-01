@@ -286,8 +286,9 @@ class Manager(Collector):
             if self.graphs[name] is None:
                 self.graphs[name] = Graph(name)
             self.graphs[name].add(nodes)
-            self.compile_graph(name)
+            graph = self.compile_graph(name)
             self.publish_delta(name, "add", nodes)
+            self.push_metadata(name, graph)
         except (AssertionError, TypeError):
             if isinstance(nodes, list):
                 logger.exception("Failure encountered adding nodes \"%s\" to the graph:",
@@ -307,11 +308,13 @@ class Manager(Collector):
                     self.graphs[name].remove(node)
                 # Check if the resulting graph is non-empty
                 if self.graphs[name]:
-                    self.compile_graph(name)
+                    graph = self.compile_graph(name)
                 else:
                     # if the graph is empty remove it
                     self.graphs[name] = None
+                    graph = None
                 self.publish_delta(name, "del", nodes)
+                self.push_metadata(name, graph)
             except (AssertionError, TypeError):
                 logger.exception("Failure encountered removing nodes \"%s\" from the graph:", nodes)
                 self.graphs[name] = dill.loads(backup)
@@ -423,6 +426,15 @@ class Manager(Collector):
             # re-ask for config information on connect
             self.graph_comm.send_string("cmd", zmq.SNDMORE)
             self.graph_comm.send_string("config")
+
+    def push_metadata(self, name, graph):
+        if graph:
+            metadata = graph.metadata()
+        else:
+            metadata = {}
+        self.profile_comm.send_string("metadata", zmq.SNDMORE)
+        self.profile_comm.send_string(name, zmq.SNDMORE)
+        self.profile_comm.send_pyobj(metadata)
 
     def node_request(self):
         topic = self.node_msg_comm.recv_string()
