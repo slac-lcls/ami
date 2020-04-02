@@ -6,13 +6,14 @@ import asyncio
 import zmq
 import zmq.asyncio
 
+from ami import LogConfig
 from ami.client import flowchart_messages as fcMsgs
 from ami.flowchart.Flowchart import Flowchart
+from ami.flowchart.Profiler import Profiler
 from ami.flowchart.library import LIBRARY
 from ami.flowchart.library.common import SourceNode
-from ami import LogConfig
-from pyqtgraph.Qt import QtGui, QtCore, QtWidgets
 from ami.asyncqt import QEventLoop, asyncSlot
+from pyqtgraph.Qt import QtGui, QtCore, QtWidgets
 
 
 logger = logging.getLogger(LogConfig.get_package_name(__name__))
@@ -229,6 +230,8 @@ class MessageBroker(object):
         self.checkpoint_pub_sock = self.ctx.socket(zmq.PUB)            # sends messages to editor
         self.checkpoint_pub_sock.bind(self.checkpoint_pub_addr)
 
+        self.profiler = None
+
     def __enter__(self):
         return self
 
@@ -348,6 +351,19 @@ class MessageBroker(object):
                 logger.info("creating process: %s pid: %d", msg.name, proc.pid)
                 async with self.lock:
                     self.widget_procs[msg.name] = (msg.node_type, proc)
+
+            elif isinstance(msg, fcMsgs.Profiler):
+                if self.profiler is None:
+                    self.profiler = mp.Process(target=Profiler,
+                                               args=(self.broker_pub_addr,
+                                                     self.graphmgr_addr.profile,
+                                                     self.checkpoint_sub_addr),
+                                               daemon=True)
+
+                    logger.info("creating process: Profiler pid: %d", self.profiler.pid)
+
+                await self.broker_pub_sock.send_string(topic, zmq.SNDMORE)
+                await self.broker_pub_sock.send_pyobj(msg)
 
             elif isinstance(msg, fcMsgs.DisplayNode):
                 await self.forward_message_to_node(topic, msg)

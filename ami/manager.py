@@ -434,7 +434,7 @@ class Manager(Collector):
             metadata = {}
         self.profile_comm.send_string("metadata", zmq.SNDMORE)
         self.profile_comm.send_string(name, zmq.SNDMORE)
-        self.profile_comm.send_pyobj(metadata)
+        self.profile_comm.send_serialized(metadata, self.serializer, flags=zmq.NOBLOCK, copy=False)
 
     def node_request(self):
         topic = self.node_msg_comm.recv_string()

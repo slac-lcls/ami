@@ -143,6 +143,7 @@ class Worker(Node):
                     except zmq.Again:
                         break
                 if times:
+                    times['heartbeat'] = msg.payload
                     self.report("profile", times)
                     times = {}
 
