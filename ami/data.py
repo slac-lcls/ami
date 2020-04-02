@@ -611,6 +611,18 @@ class PsanaSource(HierarchicalDataSource):
     def _events(self, run):
         yield from run.events()
 
+    def _get_attr_name(self, detname, det_xface_name, attr):
+        if det_xface_name == 'epics':
+            return detname
+        else:
+            return self.delimiter.join((detname, det_xface_name, attr))
+
+    def _get_attr_func(self, det_interface, det_xface_name, attr):
+        if det_xface_name == 'epics':
+            return getattr(det_interface, '__call__')
+        else:
+            return getattr(getattr(det_interface, det_xface_name), attr)
+
     def _update_special_attrs(self, detname, det_interface):
         for attr, attr_type in self.special_attrs.items():
             if hasattr(det_interface, attr):
@@ -636,6 +648,7 @@ class PsanaSource(HierarchicalDataSource):
 
     def _update(self, run):
         detinfo = run.detinfo
+        detinfo.update(run.epicsinfo)
         self.detectors = {}
         self.special_names = {}
         for (detname, det_xface_name), det_attr_list in detinfo.items():
@@ -648,9 +661,9 @@ class PsanaSource(HierarchicalDataSource):
             self._update_special_attrs(detname, det_interface)
 
             for attr in det_attr_list:
-                attr_name = self.delimiter.join((detname, det_xface_name, attr))
+                attr_name = self._get_attr_name(detname, det_xface_name, attr)
                 try:
-                    attr_sig = inspect.signature(getattr(getattr(det_interface, det_xface_name), attr))
+                    attr_sig = inspect.signature(self._get_attr_func(det_interface, det_xface_name, attr))
                     if attr_sig.return_annotation is attr_sig.empty:
                         attr_type = typing.Any
                     else:
