@@ -351,7 +351,7 @@ class MessageBroker(object):
             elif isinstance(msg, fcMsgs.Profiler):
                 if self.profiler is None:
                     self.profiler = mp.Process(target=Profiler,
-                                               args=(self.broker_pub_addr, self.graphmgr_addr.profile),
+                                               args=(self.broker_pub_addr, self.graphmgr_addr.profile, msg.name),
                                                daemon=True)
                     self.profiler.start()
                     logger.info("creating process: Profiler pid: %d", self.profiler.pid)

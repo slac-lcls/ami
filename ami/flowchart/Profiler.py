@@ -9,6 +9,7 @@ from pyqtgraph.Qt import QtGui, QtCore
 from ami import LogConfig
 from ami.data import Deserializer
 from ami.asyncqt import QEventLoop
+from ami.flowchart.library.DisplayWidgets import symbols_colors
 
 logger = logging.getLogger(LogConfig.get_package_name(__name__))
 
@@ -36,6 +37,9 @@ class HeartbeatData(object):
         time_per_heartbeat = 0
         node_time_per_heartbeat = collections.defaultdict(lambda: 0)
 
+        if self.graph not in data:
+            return
+
         for event in data[self.graph]:
             time_per_event = np.sum(list(event.values()))
             time_per_heartbeat += time_per_event
@@ -51,6 +55,9 @@ class HeartbeatData(object):
     def add_local_collector_data(self, localCollector, data):
         node_time_per_heartbeat = collections.defaultdict(lambda: 0)
 
+        if self.graph not in data:
+            return
+
         for node, time in data[self.graph].items():
             parent = self.metadata[node]['parent']
             node_time_per_heartbeat[parent] += time
@@ -61,6 +68,9 @@ class HeartbeatData(object):
         self.local_collector_time_per_heartbeat[localCollector] = node_time_per_heartbeat
 
     def add_global_collector_data(self, data):
+        if self.graph not in data:
+            return
+
         for node, time in data[self.graph].items():
             parent = self.metadata[node]['parent']
             self.total_time_per_heartbeat[parent] += time
@@ -74,7 +84,7 @@ class HeartbeatData(object):
 
 class Profiler(QtCore.QObject):
 
-    def __init__(self, broker_addr="", profiler_addr="", loop=None):
+    def __init__(self, broker_addr="", profiler_addr="", graph_name="graph", loop=None):
         super().__init__()
 
         if loop is None:
@@ -94,15 +104,21 @@ class Profiler(QtCore.QObject):
         self.profile.setsockopt_string(zmq.SUBSCRIBE, '')
         self.profile.connect(profiler_addr)
 
+        self.graph_name = graph_name
         self.deserializer = Deserializer()
         self.metadata = None
         self.parents = set()
 
         self.heartbeat_data = {}
+
         self.graphicsLayoutWidget = pg.GraphicsLayoutWidget()
+        self.plot = {}  # {name : PlotDataItem}
         self.plot_view = self.graphicsLayoutWidget.addPlot()
-        self.plot = {}
+        self.plot_view.setLabel('bottom', "heartbeat")
+        self.plot_view.setLabel('left', "Time (Sec)")
+
         self.trace_data = collections.defaultdict(lambda: np.array([np.nan]*100))
+        self.legend = self.plot_view.addLegend()
 
         self.win = QtGui.QMainWindow()
         self.win.setWindowTitle('Profiler')
@@ -121,6 +137,7 @@ class Profiler(QtCore.QObject):
             await self.broker.recv_string()
             msg = await self.broker.recv_pyobj()
 
+            self.graph_name = msg.name
             if msg.command == "show":
                 self.win.show()
             elif msg.command == "close":
@@ -142,7 +159,7 @@ class Profiler(QtCore.QObject):
                     self.heartbeat_data[heartbeat] = HeartbeatData(data['heartbeat'],
                                                                    self.metadata,
                                                                    self.parents,
-                                                                   'graph')
+                                                                   self.graph_name)
                 heartbeat_data = self.heartbeat_data[heartbeat]
 
                 if name.startswith('worker'):
@@ -152,23 +169,34 @@ class Profiler(QtCore.QObject):
                 elif name.startswith('globalCollector'):
                     heartbeat_data.add_global_collector_data(data)
 
+                    self.trace_data["heartbeat"][heartbeat % 100] = heartbeat
                     for node, time in heartbeat_data.total_time_per_heartbeat.items():
                         self.trace_data[node][heartbeat % 100] = time
 
+                    i = 0
                     for node, times in self.trace_data.items():
+                        if node == "heartbeat":
+                            continue
                         if node not in self.plot:
-                            self.plot[node] = self.plot_view.plot(y=times, name=node)
+                            symbol, color = symbols_colors[i]
+                            self.plot[node] = self.plot_view.plot(x=self.trace_data["heartbeat"], y=times, name=node,
+                                                                  symbol=symbol, symbolBrush=color)
+                            i += 1
                         else:
-                            self.plot[node].setData(y=times)
+                            self.plot[node].setData(x=self.trace_data["heartbeat"], y=times)
 
                     del self.heartbeat_data[heartbeat]
 
             elif topic == "metadata":
                 logger.info("Received metadata")
+                if name != self.graph_name:
+                    continue
+
                 self.metadata = data
                 self.trace_data = collections.defaultdict(lambda: np.array([np.nan]*100))
                 self.heartbeat_data = {}
                 self.plot = {}
+                self.legend.clear()
                 self.parents = set()
                 for k, v in data.items():
                     self.parents.add(v['parent'])

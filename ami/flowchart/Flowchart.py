@@ -493,6 +493,7 @@ class FlowchartCtrlWidget(QtGui.QWidget):
         super(FlowchartCtrlWidget, self).__init__()
 
         self.graphCommHandler = AsyncGraphCommHandler(graphmgr_addr.name, graphmgr_addr.comm, ctx=chart.ctx)
+        self.graph_name = graphmgr_addr.name
         self.metadata = None
 
         self.currentFileName = None
@@ -722,7 +723,7 @@ class FlowchartCtrlWidget(QtGui.QWidget):
     @asyncSlot()
     async def profilerClicked(self):
         await self.chart.broker.send_string("profiler", zmq.SNDMORE)
-        await self.chart.broker.send_pyobj(fcMsgs.Profiler(name="profiler", command="show"))
+        await self.chart.broker.send_pyobj(fcMsgs.Profiler(name=self.graph_name, command="show"))
 
 
 class FlowchartWidget(dockarea.DockArea):
