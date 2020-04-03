@@ -892,6 +892,9 @@ class FlowchartWidget(dockarea.DockArea):
             topics = {}
             terms = node.input_vars()
 
+        else:
+            return
+
         node.display(topics=None, terms=None, addr=None, win=None)
         state = {}
         if hasattr(node.widget, 'saveState'):
