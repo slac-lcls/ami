@@ -1,6 +1,6 @@
 from pyqtgraph.Qt import QtGui, QtWidgets
 from amitypes import Array1d, Array2d
-from ami.flowchart.Node import NodeGraphicsItem
+from ami.flowchart.Node import Node, NodeGraphicsItem
 from ami.flowchart.library.common import CtrlNode, MAX
 import ami.graph_nodes as gn
 import numpy as np
@@ -129,9 +129,6 @@ try:
         def __call__(self, nev, nhits, pktsec, calib):
             if self.params['consts'] != calib:
                 self.params['consts'] = calib
-                self.proc = None
-
-            if self.proc is None:
                 self.proc = psfDLD.DLDProcessor(**self.params)
 
             r = self.proc.xyrt_list(nev, nhits, pktsec)
@@ -285,6 +282,28 @@ try:
             self.node.addTerminal(action.attr, io='out', ttype=Array1d, removable=True)
             self.buildMenu(reset=True)
 
+    class PeakfinderAlgos():
+
+        def __init__(self, constructor_params={}, call_params={}, outputs=[]):
+            self.constructor_params = constructor_params
+            self.call_params = call_params
+            self.outputs = outputs
+            self.proc = None
+
+        def __call__(self, img):
+            if self.proc is None:
+                self.proc = peak_finder_algos(pbits=0)
+                self.proc.set_peak_selection_parameters(**self.constructor_params)
+
+            mask = np.ones(img.shape, dtype=np.uint16)
+            peaks = self.proc.peak_finder_v4r3_d2(img, mask, **self.call_params)
+
+            outputs = []
+            for output in self.outputs:
+                outputs.append(np.array(list(map(lambda peak: getattr(peak, output), peaks))))
+
+            return outputs
+
     class PeakFinderV4R3(CtrlNode):
 
         """
@@ -303,28 +322,6 @@ try:
                       ('rank', 'doubleSpin', {'value': 2, 'min': -MAX, 'max': MAX}),
                       ('r0', 'doubleSpin', {'value': 4, 'min': -MAX, 'max': MAX}),
                       ('dr', 'doubleSpin', {'value': 0.05, 'min': -MAX, 'max': MAX})]
-
-        class PeakfinderAlgos():
-
-            def __init__(self, constructor_params={}, call_params={}, outputs=[]):
-                self.constructor_params = constructor_params
-                self.call_params = call_params
-                self.outputs = outputs
-                self.proc = None
-
-            def __call__(self, img):
-                if self.proc is None:
-                    self.proc = peak_finder_algos(pbits=0)
-                    self.proc.set_peak_selection_parameters(**self.constructor_params)
-
-                mask = np.ones(img.shape, dtype=np.uint16)
-                peaks = self.proc.peak_finder_v4r3_d2(img, mask, **self.call_params)
-
-                outputs = []
-                for output in self.outputs:
-                    outputs.append(np.array(list(map(lambda peak: getattr(peak, output), peaks))))
-
-                return outputs
 
         def __init__(self, name):
             super().__init__(name, terminals={'Image': {'io': 'in', 'ttype': Array2d},
@@ -357,8 +354,61 @@ try:
 
             node = gn.Map(name=self.name()+"_operation",
                           condition_needs=list(conditions.values()), inputs=list(inputs.values()), outputs=outputs,
-                          func=self.PeakfinderAlgos(constructor_params, call_params, list(self.outputs().keys())),
+                          func=PeakfinderAlgos(constructor_params, call_params, list(self.outputs().keys())),
                           parent=self.name())
+
+            return node
+
+except ImportError as e:
+    print(e)
+
+
+try:
+    from psana.pyalgos.generic import edgefinder
+
+    class EdgeFinderProc():
+
+        def __init__(self, calibconsts={}):
+            self.calibconsts = calibconsts
+            self.proc = None
+
+        def __call__(self, image, iir, calib):
+
+            if self.calibconsts.keys() != calib.keys():
+                self.calibconsts = calib
+                self.proc = edgefinder.EdgeFinder(self.calibconsts)
+            elif all(np.array_equal(self.calibconsts[key], calib[key]) for key in calib):
+                self.calibconsts = calib
+                self.proc = edgefinder.EdgeFinder(self.calibconsts)
+
+            r = self.proc(image, iir)
+            if r:
+                return r.edge, r.fwhm, r.amplitude, r.amplitude_next, r.ref_amplitude
+            return np.nan, np.nan, np.nan, np.nan, np.nan
+
+    class EdgeFinder(Node):
+
+        """
+        psana edgefinder
+        """
+        nodeName = "EdgeFinder"
+
+        def __init__(self, name):
+            super().__init__(name, terminals={'Image': {'io': 'in', 'ttype': Array2d},
+                                              'IIR': {'io': 'in', 'ttype': Array1d},
+                                              'Calib': {'io': 'in', 'ttype': typing.Dict},
+                                              'edge': {'io': 'out', 'ttype': float},
+                                              'fwhm': {'io': 'out', 'ttype': float},
+                                              'amplitude': {'io': 'out', 'ttype': float},
+                                              'amplitude_next': {'io': 'out', 'ttype': float},
+                                              'ref_amplitude': {'io': 'out', 'ttype': float}})
+
+        def to_operation(self, inputs, conditions={}):
+            outputs = self.output_vars()
+
+            node = gn.Map(name=self.name()+"_operation",
+                          condition_needs=list(conditions.values()), inputs=list(inputs.values()), outputs=outputs,
+                          func=EdgeFinderProc({}), parent=self.name())
 
             return node
 

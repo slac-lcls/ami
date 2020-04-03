@@ -611,6 +611,24 @@ class PsanaSource(HierarchicalDataSource):
     def _events(self, run):
         yield from run.events()
 
+    def _get_attr_name(self, detname, det_xface_name, attr, is_env_det):
+        if is_env_det:
+            return detname
+        else:
+            return self.delimiter.join((detname, det_xface_name, attr))
+
+    def _get_attr_func(self, det_interface, det_xface_name, attr, is_env_det):
+        if is_env_det:
+            return getattr(det_interface, '__call__')
+        else:
+            return getattr(getattr(det_interface, det_xface_name), attr)
+
+    def _detinfo(self, run):
+        for (detname, det_xface_name), det_attr_list in run.detinfo.items():
+            yield detname, det_xface_name, det_attr_list, False
+        for (detname, det_xface_name), det_attr in run.epicsinfo.items():
+            yield detname, det_xface_name, [det_attr], True
+
     def _update_special_attrs(self, detname, det_interface):
         for attr, attr_type in self.special_attrs.items():
             if hasattr(det_interface, attr):
@@ -635,10 +653,10 @@ class PsanaSource(HierarchicalDataSource):
                     self.special_names[chan_name] = (seg_name, accessor)
 
     def _update(self, run):
-        detinfo = run.detinfo
         self.detectors = {}
+        self.env_detectors = set()
         self.special_names = {}
-        for (detname, det_xface_name), det_attr_list in detinfo.items():
+        for detname, det_xface_name, det_attr_list, is_env_det in self._detinfo(run):
             det_interface = run.Detector(detname)
 
             # make & cache the psana Detector object
@@ -648,9 +666,11 @@ class PsanaSource(HierarchicalDataSource):
             self._update_special_attrs(detname, det_interface)
 
             for attr in det_attr_list:
-                attr_name = self.delimiter.join((detname, det_xface_name, attr))
+                attr_name = self._get_attr_name(detname, det_xface_name, attr, is_env_det)
+                if is_env_det:
+                    self.env_detectors.add(attr_name)
                 try:
-                    attr_sig = inspect.signature(getattr(getattr(det_interface, det_xface_name), attr))
+                    attr_sig = inspect.signature(self._get_attr_func(det_interface, det_xface_name, attr, is_env_det))
                     if attr_sig.return_annotation is attr_sig.empty:
                         attr_type = typing.Any
                     else:
@@ -675,9 +695,13 @@ class PsanaSource(HierarchicalDataSource):
             if name in self.special_types:
                 event[name] = self.special_types[name]
             else:
-                # each name is like "detname:drp_class_name:attrN"
-                namesplit = name.split(':')
-                detname = namesplit[0]
+                if name in self.env_detectors:
+                    namesplit = []
+                    detname = name
+                else:
+                    # each name is like "detname:drp_class_name:attrN"
+                    namesplit = name.split(':')
+                    detname = namesplit[0]
 
                 # loop to the bottom level of the Det obj and get data
                 obj = self.detectors[detname]
