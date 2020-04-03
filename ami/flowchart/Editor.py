@@ -97,6 +97,11 @@ class Ui_Toolbar(object):
         self.actionConfigure.setIconText("Configure")
         self.actionConfigure.setObjectName("actionConfigure")
 
+        # profile
+        self.actionProfiler = QtWidgets.QAction(parent)
+        self.actionProfiler.setIconText("Profiler")
+        self.actionProfiler.setObjectName("actionProfiler")
+
         # reset
         self.actionReset = QtWidgets.QAction(parent)
         # icon = QtGui.QIcon.fromTheme("media-playback-start")
@@ -145,11 +150,12 @@ class Ui_Toolbar(object):
         self.toolBar.addAction(self.actionOpen)
         self.toolBar.addAction(self.actionSave)
         self.toolBar.addAction(self.actionSaveAs)
-        self.toolBar.addAction(self.actionConfigure)
 
+        self.toolBar.addAction(self.actionConfigure)
         self.toolBar.addAction(self.actionApply)
         self.toolBar.addAction(self.actionReset)
-        self.toolBar.insertSeparator(self.actionApply)
+        self.toolBar.addAction(self.actionProfiler)
+        self.toolBar.insertSeparator(self.actionConfigure)
 
         self.toolBar.addAction(self.actionHome)
         self.toolBar.addAction(self.actionPan)

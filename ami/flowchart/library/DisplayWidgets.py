@@ -541,7 +541,10 @@ class ImageWidget(PlotWidget):
 
     def restoreState(self, state):
         super().restoreState(state)
-        self.histogramLUT.restoreState(state['histogramLUT'])
+
+        if 'histogramLUT' in state:
+            self.histogramLUT.restoreState(state['histogramLUT'])
+
         if 'histogramLUT_viewbox' in state:
             self.histogramLUT.vb.setState(state['histogramLUT_viewbox'])
 

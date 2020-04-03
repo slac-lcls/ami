@@ -512,10 +512,11 @@ class FlowchartCtrlWidget(QtGui.QWidget):
         self.ui.actionOpen.triggered.connect(self.openClicked)
         self.ui.actionSave.triggered.connect(self.saveClicked)
         self.ui.actionSaveAs.triggered.connect(self.saveAsClicked)
-        self.ui.actionConfigure.triggered.connect(self.configureClicked)
 
+        self.ui.actionConfigure.triggered.connect(self.configureClicked)
         self.ui.actionApply.triggered.connect(self.applyClicked)
         self.ui.actionReset.triggered.connect(self.resetClicked)
+        self.ui.actionProfiler.triggered.connect(self.profilerClicked)
 
         self.ui.actionHome.triggered.connect(self.homeClicked)
         self.ui.navGroup.triggered.connect(self.navClicked)
@@ -717,6 +718,11 @@ class FlowchartCtrlWidget(QtGui.QWidget):
     @asyncSlot(object)
     async def configureApply(self, src_cfg):
         await self.graphCommHandler.updateSources(src_cfg)
+
+    @asyncSlot()
+    async def profilerClicked(self):
+        await self.chart.broker.send_string("profiler", zmq.SNDMORE)
+        await self.chart.broker.send_pyobj(fcMsgs.Profiler(name="profiler", command="show"))
 
 
 class FlowchartWidget(dockarea.DockArea):

@@ -74,10 +74,12 @@ class Manager(Collector):
 
         self.node_msg_comm = self.ctx.socket(zmq.PULL)
         self.node_msg_comm.bind(msg_addr)
+        self.register(self.node_msg_comm, self.node_request)
+
         self.profile_comm = self.ctx.socket(zmq.XPUB)
         self.profile_comm.setsockopt(zmq.XPUB_VERBOSE, True)
         self.profile_comm.bind(profile_addr)
-        self.register(self.node_msg_comm, self.node_request)
+        self.register(self.profile_comm, self.push_metadata_on_connect)
 
         self.view_comm = self.ctx.socket(zmq.XPUB)
         self.view_comm.setsockopt(zmq.XPUB_VERBOSE, True)
@@ -427,11 +429,20 @@ class Manager(Collector):
             self.graph_comm.send_string("cmd", zmq.SNDMORE)
             self.graph_comm.send_string("config")
 
+    def push_metadata_on_connect(self):
+        request = self.profile_comm.recv_string()
+
+        if request == "\x01":
+            for name in self.graphs:
+                graph = self.compile_graph(name)
+                self.push_metadata(name, graph)
+
     def push_metadata(self, name, graph):
         if graph:
             metadata = graph.metadata()
         else:
             metadata = {}
+
         self.profile_comm.send_string("metadata", zmq.SNDMORE)
         self.profile_comm.send_string(name, zmq.SNDMORE)
         self.profile_comm.send_serialized(metadata, self.serializer, flags=zmq.NOBLOCK, copy=False)

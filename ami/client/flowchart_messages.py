@@ -62,5 +62,6 @@ class NodeCheckpoint(NodeMsg):
 
 class Profiler(Msg):
 
-    def __init__(self, name):
+    def __init__(self, name, command):
         super().__init__(name)
+        self.command = ""

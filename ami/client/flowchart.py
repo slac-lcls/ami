@@ -28,10 +28,6 @@ def run_editor_window(broker_addr, graphmgr_addr, checkpoint_addr, load=None):
     # Create main window with grid layout
     win = QtGui.QMainWindow()
     win.setWindowTitle('AMI Client')
-    cw = QtGui.QWidget()
-    win.setCentralWidget(cw)
-    layout = QtGui.QGridLayout()
-    cw.setLayout(layout)
 
     # Create flowchart, define input/output terminals
     fc = Flowchart(broker_addr=broker_addr,
@@ -50,7 +46,7 @@ def run_editor_window(broker_addr, graphmgr_addr, checkpoint_addr, load=None):
     loop.run_until_complete(fc.updateSources(init=True))
 
     # Add flowchart control panel to the main window
-    layout.addWidget(fc.widget(), 0, 0, 2, 1)
+    win.setCentralWidget(fc.widget())
     win.show()
 
     # Load a flowchart chart into the editor window
@@ -355,11 +351,9 @@ class MessageBroker(object):
             elif isinstance(msg, fcMsgs.Profiler):
                 if self.profiler is None:
                     self.profiler = mp.Process(target=Profiler,
-                                               args=(self.broker_pub_addr,
-                                                     self.graphmgr_addr.profile,
-                                                     self.checkpoint_sub_addr),
+                                               args=(self.broker_pub_addr, self.graphmgr_addr.profile),
                                                daemon=True)
-
+                    self.profiler.start()
                     logger.info("creating process: Profiler pid: %d", self.profiler.pid)
 
                 await self.broker_pub_sock.send_string(topic, zmq.SNDMORE)
