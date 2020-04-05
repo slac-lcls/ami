@@ -8,8 +8,8 @@ import zmq.asyncio
 
 from ami import LogConfig
 from ami.client import flowchart_messages as fcMsgs
+from ami.profiler import Profiler
 from ami.flowchart.Flowchart import Flowchart
-from ami.flowchart.Profiler import Profiler
 from ami.flowchart.library import LIBRARY
 from ami.flowchart.library.common import SourceNode
 from ami.asyncqt import QEventLoop, asyncSlot
@@ -264,7 +264,6 @@ class MessageBroker(object):
 
         while True:
             topic = await self.broker_pub_sock.recv_string()
-
             if topic.startswith('\x01'):
                 topic = topic.lstrip('\x01')
                 async with self.lock:
@@ -355,6 +354,9 @@ class MessageBroker(object):
                                                daemon=True)
                     self.profiler.start()
                     logger.info("creating process: Profiler pid: %d", self.profiler.pid)
+
+                async with self.lock:
+                    self.msgs[topic] = msg
 
                 await self.broker_pub_sock.send_string(topic, zmq.SNDMORE)
                 await self.broker_pub_sock.send_pyobj(msg)

@@ -60,6 +60,7 @@ setup(
             'ami-local = ami.local:main',
             'ami-export = ami.export:main',
             'ami-syncer = ami.sync:main',
+            'ami-profiler = ami.profiler:main'
         ]
     },
     classifiers=[
