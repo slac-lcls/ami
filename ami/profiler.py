@@ -8,7 +8,7 @@ import zmq
 import zmq.asyncio
 import numpy as np
 import pyqtgraph as pg
-from pyqtgraph.Qt import QtGui, QtCore
+from pyqtgraph.Qt import QtGui, QtCore, QtWidgets
 from ami import Defaults
 from ami.data import Deserializer
 from ami.comm import Ports
@@ -22,7 +22,7 @@ class HeartbeatData(object):
 
     def __init__(self, heartbeat, metadata, parents, graph):
         self.heartbeat = heartbeat
-        self.metadata = metadata
+        self.metadata = dict(metadata)
         self.graph = graph
         self.parent = parents
 
@@ -48,8 +48,11 @@ class HeartbeatData(object):
             time_per_event = np.sum(list(event.values()))
             time_per_heartbeat += time_per_event
             for node, time in event.items():
-                parent = self.metadata[node]['parent']
-                node_time_per_heartbeat[parent] += time
+                try:
+                    parent = self.metadata[node]['parent']
+                    node_time_per_heartbeat[parent] += time
+                except KeyError as e:
+                    print(e, self.heartbeat, self.metadata['heartbeat'])
 
         for node, time in node_time_per_heartbeat.items():
             self.worker_average[node].append(time)
@@ -63,7 +66,11 @@ class HeartbeatData(object):
             return
 
         for node, time in data[self.graph].items():
-            parent = self.metadata[node]['parent']
+            try:
+                parent = self.metadata[node]['parent']
+            except KeyError as e:
+                print(e, self.heartbeat, self.metadata['heartbeat'])
+
             node_time_per_heartbeat[parent] += time
 
         for node, time in node_time_per_heartbeat.items():
@@ -131,7 +138,22 @@ class Profiler(QtCore.QObject):
 
         self.heartbeat_data = {}
 
+        self.widget = QtWidgets.QWidget()
+        self.layout = QtGui.QGridLayout(self.widget)
+        self.widget.setLayout(self.layout)
+
+        self.enabled_nodes = {}
+        self.trace_layout = QtGui.QFormLayout(self.widget)
+        hbox = QtWidgets.QHBoxLayout(self.widget)
+        selectAll = QtWidgets.QPushButton("Select All", self.widget)
+        unselectAll = QtWidgets.QPushButton("Unselect All", self.widget)
+        hbox.addWidget(selectAll)
+        hbox.addWidget(unselectAll)
+        self.trace_layout.addRow(hbox)
+        self.layout.addLayout(self.trace_layout, 0, 0, -1, 1)
+
         self.graphicsLayoutWidget = pg.GraphicsLayoutWidget()
+        self.layout.addWidget(self.graphicsLayoutWidget, 0, 1, -1, -1)
 
         self.time_per_heartbeat = self.graphicsLayoutWidget.addPlot(row=0, col=0)
         self.time_per_heartbeat.showGrid(True, True)
@@ -143,6 +165,7 @@ class Profiler(QtCore.QObject):
 
         self.heartbeats_per_second = self.graphicsLayoutWidget.addPlot(row=0, col=1)
         self.heartbeats_per_second.showGrid(True, True)
+        self.heartbeats_per_second.setLabel('bottom', "Heartbeat")
         self.heartbeats_per_second.setLabel('left', "Heartbeats/Second")
         self.heartbeats_per_second_data = np.array([np.nan]*100)
         self.heartbeats_per_second_trace = None
@@ -158,7 +181,7 @@ class Profiler(QtCore.QObject):
 
         self.win = ProfilerWindow(self)
         self.win.setWindowTitle('Profiler')
-        self.win.setCentralWidget(self.graphicsLayoutWidget)
+        self.win.setCentralWidget(self.widget)
         self.win.show()
 
         with loop:
@@ -204,9 +227,6 @@ class Profiler(QtCore.QObject):
             data = await self.profile.recv_serialized(self.deserializer, copy=False)
 
             if topic == "profile":
-                if self.metadata is None:
-                    continue
-
                 heartbeat = data['heartbeat']
 
                 if heartbeat not in self.heartbeat_data:
@@ -217,10 +237,13 @@ class Profiler(QtCore.QObject):
                 heartbeat_data = self.heartbeat_data[heartbeat]
 
                 if name.startswith('worker'):
+                    print(name, heartbeat_data.heartbeat, heartbeat_data.metadata['heartbeat'])
                     heartbeat_data.add_worker_data(name, data)
                 elif name.startswith('localCollector'):
+                    print(name, heartbeat_data.heartbeat, heartbeat_data.metadata['heartbeat'])
                     heartbeat_data.add_local_collector_data(name, data)
                 elif name.startswith('globalCollector'):
+                    print(name, heartbeat_data.heartbeat, heartbeat_data.metadata['heartbeat'])
                     heartbeat_data.add_global_collector_data(data)
 
                     self.time_per_heartbeat_data["heartbeat"][-1] = heartbeat
@@ -266,26 +289,33 @@ class Profiler(QtCore.QObject):
                     if self.heartbeats_per_second_trace is None:
                         symbol, color = symbols_colors[0]
                         self.heartbeats_per_second_trace = self.heartbeats_per_second.plot(
+                            x=self.time_per_heartbeat_data["heartbeat"],
                             y=self.heartbeats_per_second_data,
                             symbol=symbol, symbolBrush=color)
                     else:
-                        self.heartbeats_per_second_trace.setData(y=self.heartbeats_per_second_data)
+                        self.heartbeats_per_second_trace.setData(
+                            x=self.time_per_heartbeat_data["heartbeat"],
+                            y=self.heartbeats_per_second_data)
 
                     now = dt.datetime.now()
                     now = now.strftime("%H:%M:%S")
                     last_updated = f"Last Updated: {now}"
                     self.last_updated.setText(last_updated)
-                    text = f"Seconds/Heartbeat: {heartbeat_data.total_heartbeat_time:.6f}"
+                    text = f"Seconds/Heartbeat: {heartbeat_data.total_heartbeat_time:.6f}<br/>Heartbeat: {heartbeat}"
                     self.total_heartbeat_time.setText(text)
-                    text = f"Heartbeats/Second: {1/heartbeat_data.total_heartbeat_time:.0f}"
+                    text = f"Heartbeats/Second: {1/heartbeat_data.total_heartbeat_time:.0f}<br/>Heartbeat: {heartbeat}"
                     self.heartbeat_per_second.setText(text)
 
                     del self.heartbeat_data[heartbeat]
 
             elif topic == "metadata":
-                logger.info("Received %s metadata", self.graph_name)
                 if name != self.graph_name:
                     continue
+
+                heartbeat = data['heartbeat']
+                logger.info("Received %s metadata for heartbeat %d", self.graph_name, heartbeat)
+
+                self.metadata = data
 
                 self.time_per_heartbeat_data = collections.defaultdict(lambda: np.array([np.nan]*100))
                 self.time_per_heartbeat_traces = {}
@@ -297,10 +327,23 @@ class Profiler(QtCore.QObject):
 
                 self.heartbeats_per_second_data = np.array([np.nan]*100)
 
-                self.metadata = data
+                old_parents = set(self.parents)
                 self.parents = set()
                 for k, v in data.items():
-                    self.parents.add(v['parent'])
+                    if k == 'heartbeat':
+                        continue
+
+                    parent = v['parent']
+                    self.parents.add(parent)
+                    if parent not in self.enabled_nodes:
+                        widget = QtWidgets.QCheckBox(self.widget)
+                        widget.setCheckState(QtCore.Qt.Checked)
+                        self.enabled_nodes[parent] = widget
+                        self.trace_layout.addRow(parent, widget)
+
+                deleted_nodes = old_parents.difference(self.parents)
+                for node in deleted_nodes:
+                    self.trace_layout.removeRow(self.enabled_nodes[node])
 
 
 def main():

@@ -443,6 +443,7 @@ class Manager(Collector):
         else:
             metadata = {}
 
+        metadata['heartbeat'] = self.heartbeats[name]
         self.profile_comm.send_string("metadata", zmq.SNDMORE)
         self.profile_comm.send_string(name, zmq.SNDMORE)
         self.profile_comm.send_serialized(metadata, self.serializer, flags=zmq.NOBLOCK, copy=False)
