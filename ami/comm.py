@@ -441,7 +441,6 @@ class GraphBuilder(ContributionBuilder):
         self.pending_graphs = {}
         self.version = None
         self.completion = completion
-        self.times = None
 
     def _init(self, name):
         if self.graph is None:
@@ -503,6 +502,7 @@ class GraphBuilder(ContributionBuilder):
             return False
 
     def _complete(self, eb_key, identity):
+        times = []
         if self.apply_graph(self.pending[eb_key].version):
             contribs = self.pending[eb_key].namespace
             self.pending[eb_key].clear()
@@ -510,13 +510,14 @@ class GraphBuilder(ContributionBuilder):
                 for data in contribs.values():
                     res = self.graph(data, color=self.color)
                     self.pending[eb_key].update(res)
-                    self.times = self.graph.times()
+                    time = self.graph.times()
+                    if time:
+                        times.append(time)
         else:
             self.pending[eb_key].clear()
-            self.times = None
 
         self.completion(eb_key, identity, self.pending[eb_key])
-        return self.times
+        return times
 
     def _update(self, eb_key, eb_id, ver_key, data):
         if eb_key not in self.pending:
@@ -781,6 +782,7 @@ class Node(abc.ABC):
         self.node_msg_comm.send_string(topic, zmq.SNDMORE)
         self.node_msg_comm.send_string(self.name, zmq.SNDMORE)
         if topic == "profile":
+            self.node_msg_comm.send_string(payload['graph'], zmq.SNDMORE)
             self.node_msg_comm.send_serialized(payload, self.serializer, copy=False)
         else:
             self.node_msg_comm.send(dill.dumps(payload), copy=False)

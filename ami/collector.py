@@ -72,7 +72,10 @@ class GraphCollector(Node, Collector):
                     # complete the current heartbeat
                     times = self.store.complete(msg.name, msg.heartbeat, self.node)
                     if times:
-                        self.report("profile", {msg.name: times, 'heartbeat': msg.heartbeat})
+                        self.report("profile", {'graph': msg.name,
+                                                'heartbeat': msg.heartbeat,
+                                                'times': times,
+                                                'version': self.store.version(msg.name)})
                 except Exception as e:
                     logger.exception("%s: Failure encountered while executing graph %s:", self.name, msg.name)
                     self.report("error", e)

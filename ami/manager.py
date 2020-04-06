@@ -432,30 +432,36 @@ class Manager(Collector):
     def push_metadata_on_connect(self):
         request = self.profile_comm.recv_string()
 
-        if request == "\x01":
+        if request.startswith("\x01"):
             for name in self.graphs:
                 graph = self.compile_graph(name)
                 self.push_metadata(name, graph)
 
     def push_metadata(self, name, graph):
+        msg = {}
         if graph:
             metadata = graph.metadata()
         else:
             metadata = {}
 
-        metadata['heartbeat'] = self.heartbeats[name]
-        self.profile_comm.send_string("metadata", zmq.SNDMORE)
+        msg['graph'] = name
+        msg['version'] = self.versions[name]
+        msg['metadata'] = metadata
         self.profile_comm.send_string(name, zmq.SNDMORE)
-        self.profile_comm.send_serialized(metadata, self.serializer, flags=zmq.NOBLOCK, copy=False)
+        self.profile_comm.send_string("manager", zmq.SNDMORE)
+        self.profile_comm.send_string("metadata", zmq.SNDMORE)
+        self.profile_comm.send_serialized(msg, self.serializer, flags=zmq.NOBLOCK, copy=False)
 
     def node_request(self):
         topic = self.node_msg_comm.recv_string()
         node = self.node_msg_comm.recv_string()
 
         if topic == "profile":
+            graph = self.node_msg_comm.recv_string()
             payload = self.node_msg_comm.recv_multipart(copy=False)
-            self.profile_comm.send_string(topic, zmq.SNDMORE)
+            self.profile_comm.send_string(graph, zmq.SNDMORE)
             self.profile_comm.send_string(node, zmq.SNDMORE)
+            self.profile_comm.send_string(topic, zmq.SNDMORE)
             self.profile_comm.send_multipart(payload, copy=False)
         elif topic == "purge":
             name = dill.loads(self.node_msg_comm.recv(copy=False))

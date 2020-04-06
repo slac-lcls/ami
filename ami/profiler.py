@@ -9,6 +9,7 @@ import zmq.asyncio
 import numpy as np
 import pyqtgraph as pg
 from pyqtgraph.Qt import QtGui, QtCore, QtWidgets
+from pyqtgraph.WidgetGroup import WidgetGroup
 from ami import Defaults
 from ami.data import Deserializer
 from ami.comm import Ports
@@ -20,11 +21,9 @@ logger = logging.getLogger(__name__)
 
 class HeartbeatData(object):
 
-    def __init__(self, heartbeat, metadata, parents, graph):
+    def __init__(self, heartbeat, metadata):
         self.heartbeat = heartbeat
-        self.metadata = dict(metadata)
-        self.graph = graph
-        self.parent = parents
+        self.metadata = metadata
 
         self.num_events = {}  # {worker : events}
 
@@ -37,22 +36,16 @@ class HeartbeatData(object):
         self.total_time_per_heartbeat = collections.defaultdict(lambda: 0)
 
     def add_worker_data(self, worker, data):
-        self.num_events[worker] = len(data[self.graph])
+        self.num_events[worker] = len(data)
         time_per_heartbeat = 0
         node_time_per_heartbeat = collections.defaultdict(lambda: 0)
 
-        if self.graph not in data:
-            return
-
-        for event in data[self.graph]:
+        for event in data:
             time_per_event = np.sum(list(event.values()))
             time_per_heartbeat += time_per_event
             for node, time in event.items():
-                try:
-                    parent = self.metadata[node]['parent']
-                    node_time_per_heartbeat[parent] += time
-                except KeyError as e:
-                    print(e, self.heartbeat, self.metadata['heartbeat'])
+                parent = self.metadata[node]['parent']
+                node_time_per_heartbeat[parent] += time
 
         for node, time in node_time_per_heartbeat.items():
             self.worker_average[node].append(time)
@@ -62,16 +55,10 @@ class HeartbeatData(object):
     def add_local_collector_data(self, localCollector, data):
         node_time_per_heartbeat = collections.defaultdict(lambda: 0)
 
-        if self.graph not in data:
-            return
-
-        for node, time in data[self.graph].items():
-            try:
+        for contrib in data:
+            for node, time in contrib.items():
                 parent = self.metadata[node]['parent']
-            except KeyError as e:
-                print(e, self.heartbeat, self.metadata['heartbeat'])
-
-            node_time_per_heartbeat[parent] += time
+                node_time_per_heartbeat[parent] += time
 
         for node, time in node_time_per_heartbeat.items():
             self.local_collector_average[node].append(time)
@@ -79,12 +66,10 @@ class HeartbeatData(object):
         self.local_collector_time_per_heartbeat[localCollector] = node_time_per_heartbeat
 
     def add_global_collector_data(self, data):
-        if self.graph not in data:
-            return
-
-        for node, time in data[self.graph].items():
-            parent = self.metadata[node]['parent']
-            self.total_time_per_heartbeat[parent] += time
+        for contrib in data:
+            for node, time in contrib.items():
+                parent = self.metadata[node]['parent']
+                self.total_time_per_heartbeat[parent] += time
 
         for node, times in self.worker_average.items():
             self.total_time_per_heartbeat[node] += np.average(times)
@@ -126,14 +111,15 @@ class Profiler(QtCore.QObject):
         else:
             self.broker = None
 
+        self.graph_name = graph_name
         self.profile_addr = profile_addr
         self.profile = self.ctx.socket(zmq.SUB)
-        self.profile.setsockopt_string(zmq.SUBSCRIBE, '')
+        self.profile.setsockopt_string(zmq.SUBSCRIBE, self.graph_name)
         self.task = None
 
-        self.graph_name = graph_name
         self.deserializer = Deserializer()
-        self.metadata = None
+        self.current_version = 0
+        self.metadata = {}  # {version : metadata}
         self.parents = set()
 
         self.heartbeat_data = {}
@@ -146,10 +132,14 @@ class Profiler(QtCore.QObject):
         self.trace_layout = QtGui.QFormLayout(self.widget)
         hbox = QtWidgets.QHBoxLayout(self.widget)
         selectAll = QtWidgets.QPushButton("Select All", self.widget)
+        selectAll.clicked.connect(self.selectAll)
         unselectAll = QtWidgets.QPushButton("Unselect All", self.widget)
+        unselectAll.clicked.connect(self.unselectAll)
         hbox.addWidget(selectAll)
         hbox.addWidget(unselectAll)
         self.trace_layout.addRow(hbox)
+        self.trace_group = WidgetGroup()
+        self.trace_group.sigChanged.connect(self.state_changed)
         self.layout.addLayout(self.trace_layout, 0, 0, -1, 1)
 
         self.graphicsLayoutWidget = pg.GraphicsLayoutWidget()
@@ -159,8 +149,8 @@ class Profiler(QtCore.QObject):
         self.time_per_heartbeat.showGrid(True, True)
         self.time_per_heartbeat.setLabel('bottom', "Heartbeat")
         self.time_per_heartbeat.setLabel('left', "Time (Sec)")
-        self.time_per_heartbeat_traces = {}  # {name : PlotDataItem}
         self.time_per_heartbeat_data = collections.defaultdict(lambda: np.array([np.nan]*100))
+        self.time_per_heartbeat_traces = {}
         self.time_per_heartbeat_legend = self.time_per_heartbeat.addLegend()
 
         self.heartbeats_per_second = self.graphicsLayoutWidget.addPlot(row=0, col=1)
@@ -173,7 +163,6 @@ class Profiler(QtCore.QObject):
         self.percent_per_heartbeat = self.graphicsLayoutWidget.addPlot(row=1, col=0, rowspan=1, colspan=2)
         self.percent_per_heartbeat.showGrid(True, True)
         self.percent_per_heartbeat_trace = None
-        self.percent_per_heartbeat_data = collections.defaultdict(lambda: 0)
 
         self.last_updated = pg.LabelItem(parent=self.time_per_heartbeat.getViewBox())
         self.total_heartbeat_time = pg.LabelItem(parent=self.percent_per_heartbeat.getViewBox())
@@ -186,6 +175,27 @@ class Profiler(QtCore.QObject):
 
         with loop:
             loop.run_until_complete(asyncio.gather(self.process_broker_message(), self.monitor()))
+
+    def selectAll(self, clicked):
+        for name, btn in self.enabled_nodes.items():
+            btn.setCheckState(QtCore.Qt.Checked)
+
+    def unselectAll(self, clicked):
+        for name, btn in self.enabled_nodes.items():
+            btn.setCheckState(QtCore.Qt.Unchecked)
+
+    def state_changed(self, *args, **kwargs):
+        node, checked = args
+        if node not in self.time_per_heartbeat_traces:
+            return
+
+        trace = self.time_per_heartbeat_traces[node]
+        if checked:
+            trace.show()
+            self.time_per_heartbeat_legend.addItem(trace, node)
+        else:
+            trace.hide()
+            self.time_per_heartbeat_legend.removeItem(trace)
 
     async def monitor(self):
 
@@ -211,9 +221,7 @@ class Profiler(QtCore.QObject):
 
     def connect(self):
         if self.task is None:
-            self.profile.connect(self.profile_addr)
             self.task = asyncio.ensure_future(self.process_profile_data())
-            self.connected = True
 
     def cancel(self):
         self.task.cancel()
@@ -221,30 +229,71 @@ class Profiler(QtCore.QObject):
         self.profile.disconnect(self.profile_addr)
 
     async def process_profile_data(self):
+        self.profile.connect(self.profile_addr)
+
         while True:
-            topic = await self.profile.recv_string()
+            await self.profile.recv_string()
             name = await self.profile.recv_string()
+            data_type = await self.profile.recv_string()
             data = await self.profile.recv_serialized(self.deserializer, copy=False)
 
-            if topic == "profile":
+            if data_type == "profile":
                 heartbeat = data['heartbeat']
+                version = data['version']
 
                 if heartbeat not in self.heartbeat_data:
+                    if version not in self.metadata:
+                        continue
+
+                    metadata = self.metadata[version]
                     self.heartbeat_data[heartbeat] = HeartbeatData(data['heartbeat'],
-                                                                   self.metadata,
-                                                                   self.parents,
-                                                                   self.graph_name)
+                                                                   metadata)
                 heartbeat_data = self.heartbeat_data[heartbeat]
 
                 if name.startswith('worker'):
-                    print(name, heartbeat_data.heartbeat, heartbeat_data.metadata['heartbeat'])
-                    heartbeat_data.add_worker_data(name, data)
+                    heartbeat_data.add_worker_data(name, data['times'])
                 elif name.startswith('localCollector'):
-                    print(name, heartbeat_data.heartbeat, heartbeat_data.metadata['heartbeat'])
-                    heartbeat_data.add_local_collector_data(name, data)
+                    heartbeat_data.add_local_collector_data(name, data['times'])
                 elif name.startswith('globalCollector'):
-                    print(name, heartbeat_data.heartbeat, heartbeat_data.metadata['heartbeat'])
-                    heartbeat_data.add_global_collector_data(data)
+                    heartbeat_data.add_global_collector_data(data['times'])
+
+                    if version > self.current_version:
+                        self.current_version = version
+
+                        self.percent_per_heartbeat_data = collections.defaultdict(lambda: 0)
+                        if self.percent_per_heartbeat_trace:
+                            self.percent_per_heartbeat.removeItem(self.percent_per_heartbeat_trace)
+                            self.percent_per_heartbeat_trace = None
+
+                        parents = set()
+
+                        for k, v in self.metadata[version].items():
+                            parent = v['parent']
+                            parents.add(parent)
+                            if parent not in self.enabled_nodes:
+                                widget = QtWidgets.QCheckBox(self.widget)
+                                widget.node = parent
+                                widget.setCheckState(QtCore.Qt.Checked)
+                                self.enabled_nodes[parent] = widget
+                                self.trace_layout.addRow(parent, widget)
+
+                        deleted_nodes = self.parents.difference(parents)
+                        for node in deleted_nodes:
+                            self.trace_layout.removeRow(self.enabled_nodes[node])
+                            del self.enabled_nodes[node]
+                            trace = self.time_per_heartbeat_traces[node]
+                            self.time_per_heartbeat.removeItem(trace)
+                            self.time_per_heartbeat_legend.removeItem(trace)
+                            del self.time_per_heartbeat_traces[node]
+                            del self.time_per_heartbeat_data[node]
+
+                        self.parents = parents
+
+                        self.trace_group.sigChanged.disconnect(self.state_changed)
+                        self.trace_group = WidgetGroup()
+                        self.trace_group.sigChanged.connect(self.state_changed)
+                        for node, ctrl in self.enabled_nodes.items():
+                            self.trace_group.addWidget(ctrl, node)
 
                     self.time_per_heartbeat_data["heartbeat"][-1] = heartbeat
                     self.time_per_heartbeat_data["heartbeat"] = np.roll(self.time_per_heartbeat_data["heartbeat"], -1)
@@ -264,11 +313,11 @@ class Profiler(QtCore.QObject):
                             self.time_per_heartbeat_traces[node] = self.time_per_heartbeat.plot(
                                 x=self.time_per_heartbeat_data["heartbeat"], y=times, name=node,
                                 symbol=symbol, symbolBrush=color)
-                            i += 1
                         else:
                             self.time_per_heartbeat_traces[node].setData(
                                 x=self.time_per_heartbeat_data["heartbeat"],
                                 y=times)
+                        i += 1
 
                     nodes, times = zip(*self.percent_per_heartbeat_data.items())
 
@@ -308,42 +357,12 @@ class Profiler(QtCore.QObject):
 
                     del self.heartbeat_data[heartbeat]
 
-            elif topic == "metadata":
-                if name != self.graph_name:
-                    continue
+            elif data_type == "metadata":
+                graph_name = data['graph']
+                version = data['version']
+                logger.info("Received metadata for %s v%d", graph_name, version)
 
-                heartbeat = data['heartbeat']
-                logger.info("Received %s metadata for heartbeat %d", self.graph_name, heartbeat)
-
-                self.metadata = data
-
-                self.time_per_heartbeat_data = collections.defaultdict(lambda: np.array([np.nan]*100))
-                self.time_per_heartbeat_traces = {}
-                self.time_per_heartbeat_legend.clear()
-
-                if self.percent_per_heartbeat_trace:
-                    self.percent_per_heartbeat.removeItem(self.percent_per_heartbeat_trace)
-                    self.percent_per_heartbeat_trace = None
-
-                self.heartbeats_per_second_data = np.array([np.nan]*100)
-
-                old_parents = set(self.parents)
-                self.parents = set()
-                for k, v in data.items():
-                    if k == 'heartbeat':
-                        continue
-
-                    parent = v['parent']
-                    self.parents.add(parent)
-                    if parent not in self.enabled_nodes:
-                        widget = QtWidgets.QCheckBox(self.widget)
-                        widget.setCheckState(QtCore.Qt.Checked)
-                        self.enabled_nodes[parent] = widget
-                        self.trace_layout.addRow(parent, widget)
-
-                deleted_nodes = old_parents.difference(self.parents)
-                for node in deleted_nodes:
-                    self.trace_layout.removeRow(self.enabled_nodes[node])
+                self.metadata[version] = data['metadata']
 
 
 def main():

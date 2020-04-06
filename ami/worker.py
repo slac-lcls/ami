@@ -134,6 +134,14 @@ class Worker(Node):
             if msg.mtype == MsgTypes.Heartbeat:
                 self.store.collect(self.node, msg.payload)
 
+                if times:
+                    for name, time in times.items():
+                        self.report("profile", {'graph': name,
+                                                'heartbeat': msg.payload,
+                                                'times': time,
+                                                'version': self.store.version(name)})
+                    times = {}
+
                 # clear the data from the store after collecting
                 self.store.clear()
                 # check if there are graph updates
@@ -142,10 +150,6 @@ class Worker(Node):
                         self.graph_comm.recv(False)
                     except zmq.Again:
                         break
-                if times:
-                    times['heartbeat'] = msg.payload
-                    self.report("profile", times)
-                    times = {}
 
                 while True:
                     try:
