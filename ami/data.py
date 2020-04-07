@@ -617,12 +617,6 @@ class PsanaSource(HierarchicalDataSource):
         else:
             return self.delimiter.join((detname, det_xface_name, attr))
 
-    def _get_attr_func(self, det_interface, det_xface_name, attr, is_env_det):
-        if is_env_det:
-            return getattr(det_interface, '__call__')
-        else:
-            return getattr(getattr(det_interface, det_xface_name), attr)
-
     def _detinfo(self, run):
         for (detname, det_xface_name), det_attr_list in run.detinfo.items():
             yield detname, det_xface_name, det_attr_list, False
@@ -670,11 +664,14 @@ class PsanaSource(HierarchicalDataSource):
                 if is_env_det:
                     self.env_detectors.add(attr_name)
                 try:
-                    attr_sig = inspect.signature(self._get_attr_func(det_interface, det_xface_name, attr, is_env_det))
-                    if attr_sig.return_annotation is attr_sig.empty:
-                        attr_type = typing.Any
+                    if is_env_det:
+                        attr_type = det_interface.dtype
                     else:
-                        attr_type = attr_sig.return_annotation
+                        attr_sig = inspect.signature(getattr(getattr(det_interface, det_xface_name), attr))
+                        if attr_sig.return_annotation is attr_sig.empty:
+                            attr_type = typing.Any
+                        else:
+                            attr_type = attr_sig.return_annotation
                 except ValueError:
                     attr_type = typing.Any
                 if attr_type in at.HSDTypes:
