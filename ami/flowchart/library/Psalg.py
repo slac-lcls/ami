@@ -394,7 +394,7 @@ try:
         nodeName = "EdgeFinder"
 
         def __init__(self, name):
-            super().__init__(name, terminals={'Image': {'io': 'in', 'ttype': Array2d},
+            super().__init__(name, terminals={'Image': {'io': 'in', 'ttype': Array1d},
                                               'IIR': {'io': 'in', 'ttype': Array1d},
                                               'Calib': {'io': 'in', 'ttype': typing.Dict},
                                               'edge': {'io': 'out', 'ttype': float},
