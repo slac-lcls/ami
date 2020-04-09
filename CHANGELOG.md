@@ -1,5 +1,11 @@
 # CHANGELOG
 
+## 2.0.9 4/8/20
+* Save views for plots
+* Add color to histogram2d and image viewer
+* Timetool integration
+* Profiler
+
 ## 2.0.8 3/16/20
 * Add Calculator node.
 * Right click source submenu
