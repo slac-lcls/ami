@@ -5,7 +5,6 @@ from pyqtgraph import functions as fn
 from pyqtgraph.pgcollections import OrderedDict
 from pyqtgraph.debug import printExc
 from ami.flowchart.Terminal import Terminal
-from typing import Any
 import weakref
 
 
@@ -186,7 +185,7 @@ class Node(QtCore.QObject):
         keyword arguments are passed to Terminal.__init__.
 
         This is a convenience function that just calls addTerminal(io='condition', ...)"""
-        return self.addTerminal(name, io='condition', ttype=Any, **kwargs)
+        return self.addTerminal(name, io='condition', ttype=bool, **kwargs)
 
     def removeTerminal(self, term):
         """Remove the specified terminal from this Node. May specify either the
