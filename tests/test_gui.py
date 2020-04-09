@@ -115,8 +115,9 @@ def flowchart(request, workerjson, broker, ipc_dir, qevent_loop):
     try:
         comm_addr = "ipc://%s/comm" % ipc_dir
         graphinfo_addr = "ipc://%s/info" % ipc_dir
+        graphprof_addr = "ipc://%s/profile" % ipc_dir
 
-        graphmgr = GraphMgrAddress("graph", comm_addr, None, graphinfo_addr)
+        graphmgr = GraphMgrAddress("graph", comm_addr, None, graphinfo_addr, graphprof_addr)
 
         # wait for ami to be fully up before updating the sources
         with GraphCommHandler(graphmgr.name, graphmgr.comm) as comm:
