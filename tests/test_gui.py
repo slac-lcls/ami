@@ -184,8 +184,9 @@ def flowchart_hdf(request, tmp_path, qtbot, broker, ipc_dir, qevent_loop):
     try:
         comm_addr = "ipc://%s/comm" % ipc_dir
         graphinfo_addr = "ipc://%s/info" % ipc_dir
+        graphprof_addr = "ipc://%s/profile" % ipc_dir
 
-        graphmgr = GraphMgrAddress("graph", comm_addr, None, graphinfo_addr)
+        graphmgr = GraphMgrAddress("graph", comm_addr, None, graphinfo_addr, graphprof_addr)
 
         # wait for ami to be fully up before updating the sources
         with GraphCommHandler(graphmgr.name, graphmgr.comm) as comm:
@@ -319,12 +320,10 @@ async def test_editor(qtbot, flowchart, tmp_path):
     flowchart.loadFile(pth)
     assert len(flowchart._graph.edges()) == 1
 
+@pytest.mark.parametrize('flowchart_hdf', [('run22.h5', 'run22.fc')], indirect=True)
+def test_run22(qtbot, flowchart_hdf, qevent_loop):
+    flowchart, broker = flowchart_hdf
+    print(flowchart.nodes())
 
-# @pytest.mark.asyncio
-# @pytest.mark.parametrize('flowchart_hdf', [('run22.h5', 'run22.fc')], indirect=True)
-# async def test_run22(qtbot, flowchart_hdf):
-#     flowchart, broker = flowchart_hdf
-#     print(flowchart.nodes())
-
-#     ctrl = flowchart.widget()
-#     await ctrl.applyClicked()
+    ctrl = flowchart.widget()
+    qevent_loop.run_until_complete(ctrl.applyClicked())
