@@ -63,6 +63,15 @@ class BrokerProxy:
 
 
 @pytest.fixture(scope='function')
+def event_loop(qevent_loop):
+    """
+    Adding this overrides the event_loop fixture from pytest-asyncio. This lets
+    us use the qevent_loop when using the @pytest.mark.asyncio decorator
+    """
+    yield qevent_loop
+
+
+@pytest.fixture(scope='function')
 def broker(ipc_dir):
     try:
         from pytest_cov.embed import cleanup_on_sigterm
@@ -320,10 +329,12 @@ async def test_editor(qtbot, flowchart, tmp_path):
     flowchart.loadFile(pth)
     assert len(flowchart._graph.edges()) == 1
 
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize('flowchart_hdf', [('run22.h5', 'run22.fc')], indirect=True)
-def test_run22(qtbot, flowchart_hdf, qevent_loop):
+async def test_run22(qtbot, flowchart_hdf):
     flowchart, broker = flowchart_hdf
     print(flowchart.nodes())
 
     ctrl = flowchart.widget()
-    qevent_loop.run_until_complete(ctrl.applyClicked())
+    await ctrl.applyClicked()
