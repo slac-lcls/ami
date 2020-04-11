@@ -1,16 +1,14 @@
-import os
-import re
+import sys
 from setuptools import setup, find_packages
 
 
 def get_version(pkg):
-    """Scrap __version__  from __init__.py"""
-    vfilename = os.path.join(os.getcwd(), pkg, '__init__.py')
-    vfile = open(vfilename).read()
-    m = re.search(r'__version__ = (\S+)\n', vfile)
-    if m is None or len(m.groups()) != 1:
-        raise Exception("Cannot determine __version__ from init file: '%s'!" % vfilename)
-    version = m.group(1).strip('\'\"')
+    version = '2.0.0'
+    for arg in sys.argv:
+        if arg.startswith('--version'):
+            version = arg.split('=')[1]
+            sys.argv.remove(arg)
+
     return version
 
 

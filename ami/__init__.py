@@ -1,4 +1,10 @@
-__version__ = '2.0.0'
+def get_version():
+    import pkg_resources
+    try:
+        return pkg_resources.get_distribution(__name__).version
+    except pkg_resources.DistributionNotFound:
+        # package is not installed
+        pass
 
 
 def psana_available():
@@ -49,3 +55,6 @@ class Defaults:
             "laser": {"dtype": "Scalar", "range": [0, 2], "integer": True},
         },
     }
+
+
+__version__ = get_version()
