@@ -184,7 +184,13 @@ class Ui_Toolbar(object):
         self.node_dock.addWidget(self.node_tree, 4, 0, 1, 1)
         chart.addDock(self.node_dock, 'left')
 
-        self.gridLayout.addWidget(chart, 1, 1, -1, -1)
+        self.rateLbl = QtWidgets.QLabel("")
+        self.rateLbl.setAlignment(QtCore.Qt.AlignRight)
+
+        self.gridLayout.addWidget(chart, 1, 1, 1, -1)
+        self.gridLayout.addWidget(self.rateLbl, 2, 1, 1, 1)
+
+        self.gridLayout.setRowStretch(1, 10)
         self.gridLayout.setColumnStretch(1, 10)
 
         self.node_search.textChanged.connect(self.node_search_text_changed)

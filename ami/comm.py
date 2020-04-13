@@ -779,13 +779,13 @@ class Node(abc.ABC):
             payload (obj): the payload of the report. This can be any arbitrary
                 object that can be serialized using dill.
         """
-        self.node_msg_comm.send_string(topic, zmq.SNDMORE)
-        self.node_msg_comm.send_string(self.name, zmq.SNDMORE)
+        self.node_msg_comm.send_string(topic, zmq.NOBLOCK | zmq.SNDMORE)
+        self.node_msg_comm.send_string(self.name, zmq.NOBLOCK | zmq.SNDMORE)
         if topic == "profile":
-            self.node_msg_comm.send_string(payload['graph'], zmq.SNDMORE)
-            self.node_msg_comm.send_serialized(payload, self.serializer, copy=False)
+            self.node_msg_comm.send_string(payload['graph'], zmq.NOBLOCK | zmq.SNDMORE)
+            self.node_msg_comm.send_serialized(payload, self.serializer, zmq.NOBLOCK, copy=False)
         else:
-            self.node_msg_comm.send(dill.dumps(payload), copy=False)
+            self.node_msg_comm.send(dill.dumps(payload), zmq.NOBLOCK, copy=False)
 
 
 class Collector(abc.ABC):

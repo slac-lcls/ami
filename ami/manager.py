@@ -135,7 +135,7 @@ class Manager(Collector):
             self.export_config()
 
     @property
-    def compilier_args(self):
+    def compiler_args(self):
         return {'num_workers': self.num_workers, 'num_local_collectors': self.num_nodes}
 
     def exists(self, name):
@@ -221,7 +221,7 @@ class Manager(Collector):
             name (str): the name of the graph to compile.
         """
         graph = dill.loads(dill.dumps(self.graphs[name]))
-        graph.compile(**self.compilier_args)
+        graph.compile(**self.compiler_args)
         return graph
 
     def cmd_unknown(self, name=None):
@@ -356,7 +356,7 @@ class Manager(Collector):
         self.comm.send_string('ok')
 
     def publish_info(self, name):
-        return name, self.versions[name], self.compilier_args
+        return name, self.versions[name], self.compiler_args
 
     def publish_purge(self, name, reply=True):
         logger.info("Purging requested graph...")
@@ -459,9 +459,9 @@ class Manager(Collector):
         if topic == "profile":
             graph = self.node_msg_comm.recv_string()
             payload = self.node_msg_comm.recv_multipart(copy=False)
-            self.profile_comm.send_string(graph, zmq.SNDMORE)
-            self.profile_comm.send_string(node, zmq.SNDMORE)
-            self.profile_comm.send_string(topic, zmq.SNDMORE)
+            self.profile_comm.send_string(graph, zmq.NOBLOCK | zmq.SNDMORE)
+            self.profile_comm.send_string(node, zmq.NOBLOCK | zmq.SNDMORE)
+            self.profile_comm.send_string(topic, zmq.NOBLOCK | zmq.SNDMORE)
             self.profile_comm.send_multipart(payload, copy=False)
         elif topic == "purge":
             name = dill.loads(self.node_msg_comm.recv(copy=False))

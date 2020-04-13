@@ -5,6 +5,7 @@ import zmq
 import json
 import logging
 import argparse
+import time
 from ami import LogConfig, Defaults
 from ami.comm import Ports, Colors, ResultStore, Node, AutoExport
 from ami.data import MsgTypes, Source, Message, Transition, Transitions
@@ -123,6 +124,8 @@ class Worker(Node):
 
     def run(self):
         times = {}
+        event_rate = {}
+        num_events = 0
 
         while self.src is None:
             logger.info("%s: Waiting for source configuration", self.name)
@@ -135,12 +138,17 @@ class Worker(Node):
                 self.store.collect(self.node, msg.payload)
 
                 if times:
-                    for name, time in times.items():
+                    for name, exec_times in times.items():
                         self.report("profile", {'graph': name,
                                                 'heartbeat': msg.payload,
-                                                'times': time,
+                                                'times': exec_times,
                                                 'version': self.store.version(name)})
                     times = {}
+
+                if event_rate:
+                    event_rate['num_events'] = num_events
+                    self.report("event_rate", event_rate)
+                    event_rate = {}
 
                 # clear the data from the store after collecting
                 self.store.clear()
@@ -164,10 +172,21 @@ class Worker(Node):
                         if graph:
                             if name in self.exports:
                                 msg.payload.update(self.exports[name])
+
+                            start = time.time()
                             graph_result = graph(msg.payload, color=Colors.Worker)
+                            stop = time.time()
+
                             self.store.update(name, graph_result)
+
+                            if name not in event_rate:
+                                event_rate[name] = []
+
+                            event_rate[name].append(stop - start)
+
                             if name not in times:
                                 times[name] = []
+
                             times[name].append(graph.times())
                     except Exception as e:
                         logger.exception("%s: Failure encountered while executing graph (%s, v%d):",
@@ -176,6 +195,8 @@ class Worker(Node):
                         logger.error("%s: Purging graph (%s v%d)", self.name, name, self.store.version(name))
                         self.clear_graph(name)
                         self.report("purge", name)
+
+                num_events += 1
             else:
                 self.store.send(msg)
 

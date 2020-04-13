@@ -330,11 +330,11 @@ async def test_editor(qtbot, flowchart, tmp_path):
     assert len(flowchart._graph.edges()) == 1
 
 
-@pytest.mark.asyncio
-@pytest.mark.parametrize('flowchart_hdf', [('run22.h5', 'run22.fc')], indirect=True)
-async def test_run22(qtbot, flowchart_hdf):
-    flowchart, broker = flowchart_hdf
-    print(flowchart.nodes())
+# @pytest.mark.asyncio
+# @pytest.mark.parametrize('flowchart_hdf', [('run22.h5', 'run22.fc')], indirect=True)
+# async def test_run22(qtbot, flowchart_hdf):
+#     flowchart, broker = flowchart_hdf
+#     print(flowchart.nodes())
 
-    ctrl = flowchart.widget()
-    await ctrl.applyClicked()
+#     ctrl = flowchart.widget()
+#     await ctrl.applyClicked()

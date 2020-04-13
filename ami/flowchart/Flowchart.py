@@ -29,6 +29,7 @@ import networkx as nx
 import itertools as it
 import collections
 import typing  # noqa
+import numpy as np
 
 
 class Flowchart(Node):
@@ -434,6 +435,7 @@ class Flowchart(Node):
             self._graph.nodes[node_name]['node'].viewed = new_node_state['viewed']
 
     async def updateSources(self, init=False):
+
         while True:
             topic = await self.graphinfo.recv_string()
             source = await self.graphinfo.recv_string()
@@ -459,6 +461,15 @@ class Flowchart(Node):
                 ctrl.ui.create_model(ctrl.ui.source_tree, self.source_library.getLabelTree())
 
                 ctrl.chartWidget.statusText.append(f"[{now.strftime('%H:%M:%S')}] Updated sources.")
+
+            elif topic == 'event_rate':
+                total_num_events = msg['num_events']
+                time_per_event = msg[ctrl.graph_name]
+                num_events = len(time_per_event)
+                total_time = np.sum(time_per_event)
+                events_per_second = num_events/total_time
+                ctrl = self.widget()
+                ctrl.ui.rateLbl.setText(f"Num Events: {total_num_events} Events/Sec: {events_per_second:.0f}")
 
             elif topic == 'error':
                 ctrl = self.widget()
