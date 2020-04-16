@@ -632,7 +632,7 @@ class PsanaSource(HierarchicalDataSource):
 
     @property
     def repeat_mode(self):
-        return super().repeat_mode or self.config.get('shmem', False)
+        return self.config.get('repeat', self.config.get('shmem', False))
 
     @property
     def counting_mode(self):
