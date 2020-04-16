@@ -1,8 +1,8 @@
 # -*- coding: utf-8 -*-
 from ami.flowchart.NodeLibrary import NodeLibrary, isNodeClass
-from ami.flowchart.library import Roi, Filter, Operators, Display, Accumulators, Alert, Numpy
+from ami.flowchart.library import Roi, Conditional, Operators, Display, Accumulators, Alert, Numpy
 
-modules = [Roi, Filter, Operators, Display, Accumulators, Alert, Numpy]
+modules = [Roi, Conditional, Operators, Display, Accumulators, Alert, Numpy]
 
 try:
     from ami.flowchart.library import Scipy
