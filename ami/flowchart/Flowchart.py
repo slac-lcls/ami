@@ -551,6 +551,8 @@ class FlowchartCtrlWidget(QtGui.QWidget):
             self.chart.deleted_nodes = []
 
         outputs = [n for n, d in self.chart._graph.out_degree() if d == 0]
+        changed_nodes = set()
+        failed_nodes = set()
 
         for name, gnode in self.chart._graph.nodes().items():
             gnode = gnode['node']
@@ -568,7 +570,7 @@ class FlowchartCtrlWidget(QtGui.QWidget):
                 continue
 
             if gnode.changed:
-                gnode.changed = False
+                changed_nodes.add(gnode)
 
                 for output in outputs:
                     paths = list(nx.algorithms.all_simple_paths(self.chart._graph, name, output))
@@ -579,7 +581,15 @@ class FlowchartCtrlWidget(QtGui.QWidget):
                             node = gnode['node']
 
                             if hasattr(node, 'to_operation'):
-                                nodes = node.to_operation(inputs=node.input_vars(), conditions=node.condition_vars())
+                                try:
+                                    nodes = node.to_operation(inputs=node.input_vars(),
+                                                              conditions=node.condition_vars())
+                                except BaseException as e:
+                                    self.chartWidget.statusText.append(f"[{now}] {node.name()} {e}")
+                                    node.setException(True)
+                                    failed_nodes.add(node)
+                                    continue
+
                                 if type(nodes) is list:
                                     graph_nodes.update(nodes)
                                 else:
@@ -592,12 +602,19 @@ class FlowchartCtrlWidget(QtGui.QWidget):
             for node in disconnectedNodes:
                 self.chartWidget.statusText.append(f"[{now}] {node.name()} disconnected!")
                 node.setException(True)
+            graph_nodes = []
+
+        if failed_nodes:
+            self.chartWidget.statusText.append(f"[{now}] failed to submit graph")
             return
 
         if not graph_nodes:
             return
 
         await self.graphCommHandler.add(list(graph_nodes))
+
+        for node in changed_nodes:
+            node.changed = False
 
         node_names = ', '.join(set(map(lambda node: node.parent, graph_nodes)))
         self.chartWidget.statusText.append(f"[{now}] Submitted {node_names}")

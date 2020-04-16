@@ -201,46 +201,75 @@ class CalculatorWidget(QtWidgets.QWidget):
         self.display.setText(state['operation'])
 
 
-class LogicalCalculatorWidget(CalculatorWidget):
+class LogicalCalculatorWidget(QtWidgets.QWidget):
+
+    sigStateChanged = QtCore.Signal(object, object)
 
     def __init__(self, terms, parent=None, operation=""):
-        super().__init__(terms, parent, operation)
+        super().__init__(parent)
 
-        self.space = self.createButton("Space", self.operatorClicked, " ")
+        self.terms = terms
+        self.layout = QtWidgets.QGridLayout()
+        self.setLayout(self.layout)
 
-        self.ee = self.createButton("==", self.operatorClicked)
-        self.ne = self.createButton("!=", self.operatorClicked)
-        self.true = self.createButton("True", self.operatorClicked)
-        self.false = self.createButton("False", self.operatorClicked)
+        self.display = QtWidgets.QLineEdit(operation, self)
+        self.display.setFocus()
+        self.display.textChanged.connect(self.stateChanged)
 
-        self.gt = self.createButton(">", self.operatorClicked)
-        self.gte = self.createButton(">=", self.operatorClicked)
-        self.lt = self.createButton("<", self.operatorClicked)
-        self.lte = self.createButton("<=", self.operatorClicked)
+        entryLayout = QtWidgets.QHBoxLayout()
+        lbl = QtWidgets.QLabel("<b><span style=\" font-size: 12pt\";>If(</b></span>", self)
+        lbl2 = QtWidgets.QLabel("<b><span style=\" font-size: 12pt;\">)</b></span>", self)
+        entryLayout.addWidget(lbl)
+        entryLayout.addWidget(self.display)
+        entryLayout.addWidget(lbl2)
 
-        self.and_ = self.createButton("and", self.operatorClicked)
-        self.or_ = self.createButton("or", self.operatorClicked)
-        self.not_ = self.createButton("not", self.operatorClicked)
-        self.in_ = self.createButton("in", self.operatorClicked)
+        self.layout.addLayout(entryLayout, 0, 0)
 
-        self.layout.addWidget(self.space, 1, 6, 1, 3)
-        self.layout.addWidget(self.ee, 2, 6)
-        self.layout.addWidget(self.ne, 3, 6)
-        self.layout.addWidget(self.true, 4, 6)
-        self.layout.addWidget(self.false, 5, 6)
+        if terms:
+            self.variable_widget = QtWidgets.QWidget(parent=self)
+            self.variable_layout = QtWidgets.QGridLayout()
 
-        self.layout.addWidget(self.gt, 2, 7)
-        self.layout.addWidget(self.gte, 3, 7)
-        self.layout.addWidget(self.lt, 4, 7)
-        self.layout.addWidget(self.lte, 5, 7)
+            self.variables = []
 
-        self.layout.addWidget(self.and_, 2, 8)
-        self.layout.addWidget(self.or_, 3, 8)
-        self.layout.addWidget(self.not_, 4, 8)
-        self.layout.addWidget(self.in_, 5, 8)
+            for _, term in terms.items():
+                self.variables.append(self.createButton(term, self.operatorClicked))
 
-        self.layout.removeWidget(self.display)
-        self.layout.addWidget(self.display, 0, 0, 1, 9)
+            row = 0
+            col = 0
+            for i in range(0, len(terms)):
+                self.variable_layout.addWidget(self.variables[i], row, col)
+                if col < 3:
+                    col += 1
+                else:
+                    col = 0
+                    row += 1
+
+            self.variable_widget.setLayout(self.variable_layout)
+            self.layout.addWidget(self.variable_widget, 1, 0)
+
+    def createButton(self, text, member, op=None):
+        button = Button(parent=self, text=text)
+        button.op = op
+        button.clicked.connect(member)
+        return button
+
+    def operatorClicked(self):
+        clickedButton = self.sender()
+        if clickedButton.op:
+            value = clickedButton.op
+        else:
+            value = clickedButton.text()
+
+        self.display.setText(self.display.text() + value)
+
+    def stateChanged(self, text):
+        self.sigStateChanged.emit("operation", text)
+
+    def saveState(self):
+        return {'operation': self.display.text()}
+
+    def restoreState(self, state):
+        self.display.setText(state['operation'])
 
 
 if __name__ == '__main__':
