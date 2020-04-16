@@ -110,7 +110,7 @@ def psana_graph(tmpdir_factory):
 def xtcwriter(tmpdir_factory):
     if shutil.which('xtcwriter') is not None:
         fname = tmpdir_factory.mktemp("xtcs", False).join('data.xtc2')
-        p = subprocess.run(['xtcwriter', '-f', fname], stdout=subprocess.PIPE)
+        p = subprocess.run(['xtcwriter', '-f', fname, '-n', '25'], stdout=subprocess.PIPE)
         if p.returncode == 0:
             return fname
 

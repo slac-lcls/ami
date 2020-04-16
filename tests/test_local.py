@@ -12,7 +12,7 @@ import pytest
 import time
 import numpy as np
 
-# from conftest import psanatest
+from conftest import psanatest
 
 
 @pytest.mark.parametrize('start_ami', ['static'], indirect=True)
@@ -22,7 +22,7 @@ def test_complex_graph(complex_graph_file, start_ami):
     start = time.time()
     while comm_handler.graphVersion != comm_handler.featuresVersion:
         end = time.time()
-        if end - start > 100:
+        if end - start > 20:
             raise TimeoutError
 
     bins = comm_handler.fetch('BinningOn.Bins')
@@ -31,16 +31,16 @@ def test_complex_graph(complex_graph_file, start_ami):
     np.testing.assert_equal(counts, np.array([10000.0]))
 
 
-# @psanatest
-# @pytest.mark.parametrize('start_ami', ['psana'], indirect=True)
-# def test_psana_graph(psana_graph, start_ami):
+@psanatest
+@pytest.mark.parametrize('start_ami', ['psana'], indirect=True)
+def test_psana_graph(psana_graph, start_ami):
 
-#     comm_handler = start_ami
-#     comm_handler.load(psana_graph)
-#     start = time.time()
-#     while comm_handler.graphVersion != comm_handler.featuresVersion:
-#         end = time.time()
-#         if end - start > 100:
-#             raise TimeoutError
-#     picked_cspad = comm_handler.fetch('picked')
-#     assert picked_cspad.shape == (6, 6)
+    comm_handler = start_ami
+    comm_handler.load(psana_graph)
+    start = time.time()
+    while comm_handler.graphVersion != comm_handler.featuresVersion:
+        end = time.time()
+        if end - start > 20:
+            raise TimeoutError
+    picked_cspad = comm_handler.fetch('picked')
+    assert picked_cspad.shape == (6, 6)
