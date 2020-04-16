@@ -16,7 +16,7 @@ logger = logging.getLogger(__name__)
 
 
 class Worker(Node):
-    def __init__(self, node, src, collector_addr, graph_addr, msg_addr, export_addr, src_cfg=None):
+    def __init__(self, node, src, collector_addr, graph_addr, msg_addr, export_addr):
         """
         node : int
             a unique integer identifying this worker
@@ -24,7 +24,7 @@ class Worker(Node):
             object with an events() method that is an iterable (like psana.DataSource)
         """
         super(__class__, self).__init__(node, graph_addr, msg_addr, export_addr)
-        self.src_cfg = src_cfg
+
         self.src = src
 
         self.store = ResultStore(collector_addr, self.ctx)
@@ -108,11 +108,7 @@ class Worker(Node):
         self.clear_graph(name)
         self.report("purge", name)
 
-    def update_sources(self, name=0, version=0, args={}, src_cfg={}):
-        if self.src_cfg is None:
-            self.src_cfg = {'args': args,
-                            'cfg': src_cfg}
-
+    def update_sources(self, name, version, args, src_cfg):
         src_type = src_cfg['type']
         hb_period = src_cfg['hb_period']
         num_workers = args['num_workers']
@@ -126,87 +122,95 @@ class Worker(Node):
             self.report("error", e)
             logger.error("%s: Error configuring source", self.name)
 
+    def collect(self, heartbeat):
+        # send the data from the store to collector
+        self.store.collect(self.node, heartbeat)
+
+        # update the profiler data
+        if self.times:
+            for name, exec_times in self.times.items():
+                self.report("profile", {'graph': name,
+                                        'heartbeat': heartbeat,
+                                        'times': exec_times,
+                                        'version': self.store.version(name)})
+
+        if self.event_rate:
+            self.event_rate['num_events'] = self.num_events
+            self.report("event_rate", self.event_rate)
+            self.event_rate = {}
+
+        # clear the data from the store after collecting
+        self.store.clear()
+
     def run(self):
-        times = {}
-        event_rate = {}
-        num_events = 0
+        self.times = {}
+        self.event_rate = {}
+        self.num_events = 0
 
         while self.src is None:
             logger.info("%s: Waiting for source configuration", self.name)
             self.graph_comm.recv(True)
 
-        while True:
-            for msg in self.src.events():
+        for msg in self.src.events():
 
-                # check to see if the graph has been reconfigured after update
-                if msg.mtype == MsgTypes.Heartbeat:
-                    self.store.collect(self.node, msg.payload)
+            # check to see if the graph has been reconfigured after update
+            if msg.mtype == MsgTypes.Heartbeat:
+                self.collect(msg.payload)
 
-                    if times:
-                        for name, exec_times in times.items():
-                            self.report("profile", {'graph': name,
-                                                    'heartbeat': msg.payload,
-                                                    'times': exec_times,
-                                                    'version': self.store.version(name)})
-                        times = {}
+                # check if there are graph updates
+                while True:
+                    try:
+                        self.graph_comm.recv(False)
+                    except zmq.Again:
+                        break
 
-                    if event_rate:
-                        event_rate['num_events'] = num_events
-                        self.report("event_rate", event_rate)
-                        event_rate = {}
+                while True:
+                    try:
+                        name, data = self.export_comm.recv(False)
+                        self.exports[name] = {AutoExport.unmangle(k): v
+                                              for k, v in data.items() if k in self.src.requested_names}
+                    except zmq.Again:
+                        break
+            elif msg.mtype == MsgTypes.Datagram:
+                for name, graph in self.graphs.items():
+                    try:
+                        if graph:
+                            if name in self.exports:
+                                msg.payload.update(self.exports[name])
 
-                    # clear the data from the store after collecting
-                    self.store.clear()
-                    # check if there are graph updates
-                    while True:
-                        try:
-                            self.graph_comm.recv(False)
-                        except zmq.Again:
-                            break
+                            start = time.time()
+                            graph_result = graph(msg.payload, color=Colors.Worker)
+                            stop = time.time()
 
-                    while True:
-                        try:
-                            name, data = self.export_comm.recv(False)
-                            self.exports[name] = {AutoExport.unmangle(k): v
-                                                  for k, v in data.items() if k in self.src.requested_names}
-                        except zmq.Again:
-                            break
-                elif msg.mtype == MsgTypes.Datagram:
-                    for name, graph in self.graphs.items():
-                        try:
-                            if graph:
-                                if name in self.exports:
-                                    msg.payload.update(self.exports[name])
+                            self.store.update(name, graph_result)
 
-                                start = time.time()
-                                graph_result = graph(msg.payload, color=Colors.Worker)
-                                stop = time.time()
+                            if name not in self.event_rate:
+                                self.event_rate[name] = []
 
-                                self.store.update(name, graph_result)
+                            self.event_rate[name].append(stop - start)
 
-                                if name not in event_rate:
-                                    event_rate[name] = []
+                            if name not in self.times:
+                                self.times[name] = []
 
-                                event_rate[name].append(stop - start)
+                            self.times[name].append(graph.times())
+                    except Exception as e:
+                        logger.exception("%s: Failure encountered while executing graph (%s, v%d):",
+                                         self.name, name, self.store.version(name))
+                        self.report("error", e)
+                        logger.error("%s: Purging graph (%s v%d)", self.name, name, self.store.version(name))
+                        self.clear_graph(name)
+                        self.report("purge", name)
 
-                                if name not in times:
-                                    times[name] = []
+                self.num_events += 1
+            elif msg.mtype == MsgTypes.Transition:
+                if msg.payload.ttype == Transitions.Unconfigure:
+                    if self.src.heartbeat is not None:
+                        self.collect(self.src.heartbeat)
 
-                                times[name].append(graph.times())
-                        except Exception as e:
-                            logger.exception("%s: Failure encountered while executing graph (%s, v%d):",
-                                             self.name, name, self.store.version(name))
-                            self.report("error", e)
-                            logger.error("%s: Purging graph (%s v%d)", self.name, name, self.store.version(name))
-                            self.clear_graph(name)
-                            self.report("purge", name)
-
-                    num_events += 1
-                else:
-                    self.store.send(msg)
+                # forward the transition
+                self.store.send(msg)
             else:
-                logger.info("%s: Reconfiguring source", self.name)
-                self.update_sources(args=self.src_cfg['args'], src_cfg=self.src_cfg['cfg'])
+                self.store.send(msg)
 
 
 def run_worker(num, num_workers, hb_period, source, collector_addr, graph_addr, msg_addr, export_addr, flags=None):
@@ -214,7 +218,6 @@ def run_worker(num, num_workers, hb_period, source, collector_addr, graph_addr, 
     logger.info('Starting worker # %d, sending to collector at %s', num, collector_addr)
 
     src = None
-    cfg = {}
     if source is not None:
         src_type = source[0]
         if isinstance(source[1], dict):
@@ -237,16 +240,11 @@ def run_worker(num, num_workers, hb_period, source, collector_addr, graph_addr, 
                           hb_period,
                           src_cfg,
                           flags)
-
-            src_cfg['type'] = src_type
-            src_cfg['hb_period'] = hb_period
-            cfg['cfg'] = src_cfg
-            cfg['args'] = {'num_workers': num_workers}
         else:
             logger.critical("worker%03d: unknown data source type: %s", num, source[0])
             return 1
 
-    with Worker(num, src, collector_addr, graph_addr, msg_addr, export_addr, cfg) as worker:
+    with Worker(num, src, collector_addr, graph_addr, msg_addr, export_addr) as worker:
         return worker.run()
 
 

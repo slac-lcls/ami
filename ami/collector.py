@@ -4,7 +4,7 @@ import logging
 import argparse
 from ami import LogConfig, Defaults
 from ami.comm import Ports, Colors, Node, Collector, TransitionBuilder, EventBuilder
-from ami.data import MsgTypes
+from ami.data import MsgTypes, Transitions
 
 
 logger = logging.getLogger(__name__)
@@ -38,6 +38,25 @@ class GraphCollector(Node, Collector):
     def close(self):
         self.ctx.destroy()
 
+    def flush(self, configure):
+        try:
+            if configure:
+                self.store.flush(self.node, drop=True)
+            else:
+                for name, hb_times in self.store.flush(self.node).items():
+                    for heartbeat, times in hb_times:
+                        self.report_times(times, name, heartbeat)
+        except Exception as e:
+            logger.exception("%s: Failure encountered while flushing store", self.name)
+            self.report("error", e)
+
+    def report_times(self, times, name, heartbeat):
+        if times:
+            self.report("profile", {'graph': name,
+                                    'heartbeat': heartbeat,
+                                    'times': times,
+                                    'version': self.store.version(name)})
+
     def recv_graph(self, name, version, args, graph):
         self.store.set_graph(name, version, args, graph)
 
@@ -63,6 +82,10 @@ class GraphCollector(Node, Collector):
             self.transitions.update(msg.payload.ttype, msg.identity, msg.payload.payload)
             if self.transitions.ready(msg.payload.ttype):
                 self.transitions.complete(msg.payload.ttype, self.node)
+                if msg.payload.ttype == Transitions.Configure:
+                    self.flush(True)
+                elif msg.payload.ttype == Transitions.Unconfigure:
+                    self.flush(False)
         elif msg.mtype == MsgTypes.Datagram:
             self.store.update(msg.name, msg.heartbeat, msg.identity, msg.version, msg.payload)
             if self.store.ready(msg.name, msg.heartbeat):
@@ -71,11 +94,7 @@ class GraphCollector(Node, Collector):
                     self.store.prune(msg.name, self.node, msg.heartbeat)
                     # complete the current heartbeat
                     times = self.store.complete(msg.name, msg.heartbeat, self.node)
-                    if times:
-                        self.report("profile", {'graph': msg.name,
-                                                'heartbeat': msg.heartbeat,
-                                                'times': times,
-                                                'version': self.store.version(msg.name)})
+                    self.report_times(times, msg.name, msg.heartbeat)
                 except Exception as e:
                     logger.exception("%s: Failure encountered while executing graph %s:", self.name, msg.name)
                     self.report("error", e)

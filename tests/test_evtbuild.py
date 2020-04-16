@@ -13,7 +13,7 @@ class FakeBuilder(ContributionBuilder):
         super().__init__(num_contribs)
         self.completed = set()
 
-    def _complete(self, eb_key, identity):
+    def _complete(self, eb_key, identity, drop):
         self.completed.add((eb_key, identity))
 
     def _update(self, eb_key, eb_id, data):

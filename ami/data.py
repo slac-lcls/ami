@@ -44,8 +44,9 @@ class MsgTypes(Enum):
 class Transitions(Enum):
     Allocate = 0
     Configure = 1
-    Enable = 2
-    Disable = 3
+    Unconfigure = 2
+    Enable = 3
+    Disable = 4
 
     def _serialize(transitionType):
         return {'type': transitionType.value}
@@ -277,6 +278,7 @@ class Source(abc.ABC):
             'init_time': float,
             'bound': int,
             'repeat': lambda s: s.lower() == 'true',
+            'counting': lambda s: s.lower() == 'true',
             'files': lambda f: f.split(','),
         }
         # Apply flags to the config dictionary
@@ -309,6 +311,13 @@ class Source(abc.ABC):
             The init_time value set in the source configuration.
         """
         return self.config.get('init_time', 0)
+
+    def reset_heartbeat(self):
+        """
+        Resets the heartbeat to its initial state.
+        """
+        self.heartbeat = None
+        self.old_heartbeat = None
 
     def check_heartbeat_boundary(self, timestamp):
         """
@@ -416,14 +425,26 @@ class Source(abc.ABC):
         Constructs a properly formatted configure message
 
         Returns:
-            An object of type `Message` which includes a list of
-            names of the currently available detectors/data.
+            An object of type `Message` which includes a dict of
+            names:types of the currently available detectors/data.
         """
+        self.reset_heartbeat()
         self.request(self.requested_names)
         flatten_types = {name: at.dumps(dtype) for name, dtype in self.types.items()}
         return Message(MsgTypes.Transition,
                        self.idnum,
                        Transition(Transitions.Configure, flatten_types))
+
+    def unconfigure(self):
+        """
+        Constructs a properly formatted unconfigure message
+
+        Returns:
+            An object of type `Message` which includes an empty dict.
+        """
+        return Message(MsgTypes.Transition,
+                       self.idnum,
+                       Transition(Transitions.Unconfigure, {}))
 
     def heartbeat_msg(self):
         """
@@ -524,12 +545,11 @@ class HierarchicalDataSource(Source):
         if timestamp is None:
             # If the source does not provide timestamps use the counter
             return counter, counter
-        elif self.repeat_mode:
-            # If in repeat mode (a.k.a. looping forever over the same events)
-            # then use fake ts for heartbeats
+        elif self.counting_mode:
+            # If in counting mode then force use the counter for heartbeats
             return timestamp, counter
         elif heartbeat is None:
-            # If no heartbeat adjusted timestamp is provider just the raw timestamp
+            # If no heartbeat adjusted timestamp is provided just use the raw timestamp
             return timestamp, timestamp
         else:
             return timestamp, heartbeat
@@ -537,6 +557,10 @@ class HierarchicalDataSource(Source):
     @property
     def repeat_mode(self):
         return self.config.get('repeat', False)
+
+    @property
+    def counting_mode(self):
+        return self.config.get('counting', True)
 
     @property
     def repeat(self):
@@ -579,6 +603,9 @@ class HierarchicalDataSource(Source):
                     yield from self.event(timestamp, self._process(evt))
                     time.sleep(self.interval)
 
+                # signal that the run has ended
+                yield self.unconfigure()
+
 
 class PsanaSource(HierarchicalDataSource):
 
@@ -592,18 +619,24 @@ class PsanaSource(HierarchicalDataSource):
         self.special_attrs = {
             'calibconst': typing.Dict,
         }
-        if psana is not None:
-            ps_kwargs = {k: self.config[k] for k in self.ds_keys if k in self.config}
-            self.ds = psana.DataSource(**ps_kwargs)
-        else:
+        if psana is None:
             raise NotImplementedError("psana is not available!")
 
     def _timestamp(self, evt):
         return self.ts_converter(evt.timestamp)
 
     @property
+    def ds(self):
+        ps_kwargs = {k: self.config[k] for k in self.ds_keys if k in self.config}
+        return psana.DataSource(**ps_kwargs)
+
+    @property
     def repeat_mode(self):
-        return super().repeat_mode and (not self.config.get('shmem', False))
+        return super().repeat_mode or self.config.get('shmem', False)
+
+    @property
+    def counting_mode(self):
+        return self.config.get('counting', not self.config.get('shmem', False))
 
     def _runs(self):
         yield from self.ds.runs()
@@ -910,6 +943,8 @@ class RandomSource(SimSource):
                         logger.warn("DataSrc: %s has unknown type %s", name, config['dtype'])
             yield from self.event(timestamp, event)
             time.sleep(self.interval)
+        # signal source has finished
+        yield self.unconfigure()
 
 
 class StaticSource(SimSource):
@@ -940,3 +975,5 @@ class StaticSource(SimSource):
             if count >= self.bound:
                 break
             time.sleep(self.interval)
+        # signal source has finished
+        yield self.unconfigure()

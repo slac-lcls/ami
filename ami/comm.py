@@ -395,16 +395,16 @@ class ContributionBuilder(abc.ABC):
         self.contribs = {}
 
     @abc.abstractmethod
-    def _complete(self, eb_key, identity):
+    def _complete(self, eb_key, identity, drop):
         pass
 
     @abc.abstractmethod
     def _update(self, eb_key, identity, *args, **kwargs):
         pass
 
-    def complete(self, eb_key, identity):
+    def complete(self, eb_key, identity, drop=False):
         if eb_key in self.pending:
-            times = self._complete(eb_key, identity)
+            times = self._complete(eb_key, identity, drop)
             del self.pending[eb_key]
             del self.contribs[eb_key]
             logger.debug("Completed key %s", eb_key)
@@ -459,7 +459,8 @@ class GraphBuilder(ContributionBuilder):
         if self.graph:
             self.graph.compile(**args)
 
-    def prune(self, identity, prune_key=None):
+    def prune(self, identity, prune_key=None, drop=False):
+        times = {}
         if prune_key is None:
             depth = self.depth
         elif prune_key < self.latest:
@@ -468,10 +469,18 @@ class GraphBuilder(ContributionBuilder):
             depth = 0
         else:
             depth = 1
+
         if len(self.pending) > depth:
             for eb_key in reversed(sorted(self.pending.keys(), reverse=True)[depth:]):
                 logger.debug("Pruned uncompleted key %d", eb_key)
-                self.complete(eb_key, identity)
+                times[eb_key] = self.complete(eb_key, identity, drop)
+
+        return times
+
+    def flush(self, identity, drop=False):
+        times = self.prune(identity, self.latest + 1, drop)
+        self.latest = 0
+        return times
 
     def set_graph(self, name, ver_key, args, graph):
         self.pending_graphs[ver_key] = (False, "set", name, args, graph)
@@ -501,7 +510,7 @@ class GraphBuilder(ContributionBuilder):
         else:
             return False
 
-    def _complete(self, eb_key, identity):
+    def _complete(self, eb_key, identity, drop):
         times = []
         if self.apply_graph(self.pending[eb_key].version):
             contribs = self.pending[eb_key].namespace
@@ -516,7 +525,7 @@ class GraphBuilder(ContributionBuilder):
         else:
             self.pending[eb_key].clear()
 
-        self.completion(eb_key, identity, self.pending[eb_key])
+        self.completion(eb_key, identity, self.pending[eb_key], drop)
         return times
 
     def _update(self, eb_key, eb_id, ver_key, data):
@@ -537,8 +546,9 @@ class TransitionBuilder(ContributionBuilder, ZmqHandler):
         ContributionBuilder.__init__(self, num_contribs)
         ZmqHandler.__init__(self, addr, ctx)
 
-    def _complete(self, eb_key, identity):
-        self.message(MsgTypes.Transition, identity, Transition(eb_key, self.pending[eb_key]))
+    def _complete(self, eb_key, identity, drop):
+        if not drop:
+            self.message(MsgTypes.Transition, identity, Transition(eb_key, self.pending[eb_key]))
 
     def _update(self, eb_key, eb_id, payload):
         if eb_key not in self.pending:
@@ -566,8 +576,14 @@ class EventBuilder(ZmqHandler):
     def destroy(self, name):
         del self.builders[name]
 
-    def prune(self, name, identity, prune_key=None):
-        self.builders[name].prune(identity, prune_key)
+    def prune(self, name, identity, prune_key=None, drop=False):
+        return self.builders[name].prune(identity, prune_key, drop)
+
+    def flush(self, identity, drop=False):
+        times = {}
+        for name, builder in self.builders.items():
+            times[name] = builder.flush(identity, drop)
+        return times
 
     def set_graph(self, name, ver_key, args, graph):
         if name not in self.builders:
@@ -588,11 +604,12 @@ class EventBuilder(ZmqHandler):
         if name in self.builders:
             self.destroy(name)
 
-    def complete(self, name, eb_key, identity):
-        return self.builders[name].complete(eb_key, identity)
+    def complete(self, name, eb_key, identity, drop=False):
+        return self.builders[name].complete(eb_key, identity, drop)
 
-    def completion(self, name, eb_key, identity, payload):
-        self.collector_message(identity, eb_key, name, payload.version, payload.namespace)
+    def completion(self, name, eb_key, identity, payload, drop):
+        if not drop:
+            self.collector_message(identity, eb_key, name, payload.version, payload.namespace)
 
     def update(self, name, eb_key, eb_id, ver_key, data):
         if name not in self.builders:
