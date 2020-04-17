@@ -495,6 +495,9 @@ class ImageWidget(PlotWidget):
 
         super().__init__(topics, terms, addr, uiTemplate=uiTemplate, parent=parent, legend=False, **kwargs)
 
+        self.flip = False
+        self.rotate = 0
+
         self.fetcher = None
         if addr:
             self.fetcher = AsyncFetcher(topics, terms, addr)
@@ -525,9 +528,12 @@ class ImageWidget(PlotWidget):
                 self.pixel_value.setText(f"x={x}, y={y}, z={z:.5g}")
                 self.pixel_value.item.moveBy(0, 10)
 
-    def applyClicked(self):
-        super().applyClicked()
+    def apply_clicked(self):
+        super().apply_clicked()
         autorange_histogram = getattr(self, "Auto_Range_Histogram", True)
+
+        self.flip = getattr(self, "Flip_Display", False)
+        self.rotate = int(getattr(self, "Rotate_Counter_Clockwise_Display", 0))/90
 
         if autorange_histogram:
             self.histogramLUT.autoHistogramRange()
@@ -536,11 +542,10 @@ class ImageWidget(PlotWidget):
 
     def data_updated(self, data):
         for k, v in data.items():
-            if self.Flip_Display:
+            if self.flip:
                 v = np.flip(v)
-            if self.Rotate_Counter_Clockwise_Display != '0':
-                k = int(self.Rotate_Counter_Clockwise_Display)/90
-                v = np.rot90(v, k)
+            if self.rotate != 0:
+                v = np.rot90(v, self.rotate)
             self.imageItem.setImage(v, autoLevels=self.Auto_Levels_Histogram)
 
     def saveState(self):
