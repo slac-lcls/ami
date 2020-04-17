@@ -487,6 +487,12 @@ class ImageWidget(PlotWidget):
         uiTemplate.extend([('Auto Range', 'check', {'group': 'Histogram', 'checked': True}),
                            ('Auto Levels', 'check', {'group': 'Histogram', 'checked': True})])
 
+        display = kwargs.pop("display", True)
+        if display:
+            uiTemplate.append(('Flip', 'check', {'group': 'Display', 'checked': False}))
+            uiTemplate.append(('Rotate Counter Clockwise', 'combo',
+                               {'group': 'Display', 'values': ['0', '90', '180', '270']}))
+
         super().__init__(topics, terms, addr, uiTemplate=uiTemplate, parent=parent, legend=False, **kwargs)
 
         self.fetcher = None
@@ -530,6 +536,11 @@ class ImageWidget(PlotWidget):
 
     def data_updated(self, data):
         for k, v in data.items():
+            if self.Flip_Display:
+                v = np.flip(v)
+            if self.Rotate_Counter_Clockwise_Display != '0':
+                k = int(self.Rotate_Counter_Clockwise_Display)/90
+                v = np.rot90(v, k)
             self.imageItem.setImage(v, autoLevels=self.Auto_Levels_Histogram)
 
     def saveState(self):
@@ -554,7 +565,7 @@ class PixelDetWidget(ImageWidget):
     sigClicked = QtCore.Signal(object, object)
 
     def __init__(self, topics=None, terms=None, addr=None, parent=None, **kwargs):
-        super().__init__(topics, terms, addr, parent, **kwargs)
+        super().__init__(topics, terms, addr, parent, display=False, **kwargs)
         self.point = self.plot_view.plot([0], [0], symbolBrush=(200, 0, 0), symbol='+', symbolSize=25)
 
     def mousePressEvent(self, ev):
@@ -661,7 +672,7 @@ class Histogram2DWidget(ImageWidget):
                       # z axis
                       ('Log Scale', 'check', {'group': 'Z Axis', 'checked': False})]
 
-        super().__init__(topics, terms, addr, parent, uiTemplate=uiTemplate, axis=True, **kwargs)
+        super().__init__(topics, terms, addr, parent, uiTemplate=uiTemplate, display=False, axis=True, **kwargs)
 
         self.Show_Grid = True
         self.Auto_Range = True
