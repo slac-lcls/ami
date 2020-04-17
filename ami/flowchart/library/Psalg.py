@@ -5,6 +5,7 @@ from ami.flowchart.library.common import CtrlNode, MAX
 import ami.graph_nodes as gn
 import numpy as np
 import typing
+import os
 
 
 try:
@@ -391,6 +392,7 @@ try:
         """
         psana edgefinder
         """
+
         nodeName = "EdgeFinder"
 
         def __init__(self, name):
@@ -410,6 +412,59 @@ try:
                           condition_needs=list(conditions.values()), inputs=list(inputs.values()), outputs=outputs,
                           func=EdgeFinderProc({}), parent=self.name())
 
+            return node
+
+except ImportError as e:
+    print(e)
+
+
+try:
+    from psana.pop.POP import POP as psanaPOP
+
+    class POPProc(object):
+
+        def __init__(self, args):
+            self.args = args
+            self.proc = None
+
+        def __call__(self, img):
+            if self.proc is None:
+                self.proc = psanaPOP(img=img, **self.args)
+
+            pop = self.proc
+            slice_img = pop.GetSlice()
+            rbins, distr = pop.GetRadialDist()
+            ebins, diste = pop.GetEnergyDist()
+
+            return slice_img, rbins, distr, ebins, diste
+
+    class POP(CtrlNode):
+
+        """
+        psana POP
+        """
+
+        nodeName = "POP"
+
+        def __init__(self, name):
+            super().__init__(name, terminals={'Image': {'io': 'in', 'ttype': Array2d},
+                                              'sliceImg': {'io': 'out', 'ttype': Array2d},
+                                              'Rbins': {'io': 'out', 'ttype': Array1d},
+                                              'DistR': {'io': 'out', 'ttype': Array1d},
+                                              'Ebins': {'io': 'out', 'ttype': Array1d},
+                                              'DistE': {'io': 'out', 'ttype': Array1d}})
+
+        def to_operation(self, inputs, conditions={}):
+            outputs = self.output_vars()
+            pth = os.path.dirname(__file__)
+
+            args = {'lmax': 4, 'reg': 0, 'alpha': 4e-4, 'X0': None, 'Y0': None, 'Rmax': None,
+                    'RBFs_db': False, 'RBFs_fnm': os.path.join(pth, 'RBFs512.pkl')}
+
+            node = gn.Map(name=self.name()+"_operation",
+                          condition_needs=list(conditions.values()),
+                          inputs=list(inputs.values()), outputs=outputs, parent=self.name(),
+                          func=POPProc(args))
             return node
 
 except ImportError as e:
