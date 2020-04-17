@@ -25,11 +25,11 @@ import json
 import subprocess
 import re
 import tempfile
+import numpy as np
 import networkx as nx
 import itertools as it
 import collections
 import typing  # noqa
-import numpy as np
 
 
 class Flowchart(Node):
@@ -435,6 +435,7 @@ class Flowchart(Node):
             self._graph.nodes[node_name]['node'].viewed = new_node_state['viewed']
 
     async def updateSources(self, init=False):
+        num_workers = None
 
         while True:
             topic = await self.graphinfo.recv_string()
@@ -463,13 +464,25 @@ class Flowchart(Node):
                 ctrl.chartWidget.statusText.append(f"[{now.strftime('%H:%M:%S')}] Updated sources.")
 
             elif topic == 'event_rate':
-                total_num_events = msg['num_events']
+                if num_workers is None:
+                    ctrl = self.widget()
+                    compiler_args = await ctrl.graphCommHandler.compilerArgs
+                    num_workers = compiler_args['num_workers']
+                    events_per_second = [None]*num_workers
+                    total_events = [None]*num_workers
+
                 time_per_event = msg[ctrl.graph_name]
-                num_events = len(time_per_event)
-                total_time = np.sum(time_per_event)
-                events_per_second = num_events/total_time
-                ctrl = self.widget()
-                ctrl.ui.rateLbl.setText(f"Num Events: {total_num_events} Events/Sec: {events_per_second:.0f}")
+                worker = int(re.search(r'(\d)+', source).group())
+                events_per_second[worker] = len(time_per_event)/(time_per_event[-1][1] - time_per_event[0][0])
+                total_events[worker] = msg['num_events']
+
+                if all(events_per_second):
+                    events_per_second = int(np.sum(events_per_second))
+                    total_num_events = int(np.sum(total_events))
+                    ctrl = self.widget()
+                    ctrl.ui.rateLbl.setText(f"Num Events: {total_num_events} Events/Sec: {events_per_second}")
+                    events_per_second = [None]*num_workers
+                    total_events = [None]*num_workers
 
             elif topic == 'error':
                 ctrl = self.widget()

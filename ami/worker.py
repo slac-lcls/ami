@@ -145,7 +145,7 @@ class Worker(Node):
     def run(self):
         self.times = {}
         self.event_rate = {}
-        self.num_events = 0
+        self.num_events = 1
 
         while self.src is None:
             logger.info("%s: Waiting for source configuration", self.name)
@@ -187,12 +187,12 @@ class Worker(Node):
                             if name not in self.event_rate:
                                 self.event_rate[name] = []
 
-                            self.event_rate[name].append(stop - start)
+                            self.event_rate[name].append((start, stop))
 
                             if name not in self.times:
                                 self.times[name] = []
 
-                            self.times[name].append(graph.times())
+                            self.times[name].append((start, stop, graph.times()))
                     except Exception as e:
                         logger.exception("%s: Failure encountered while executing graph (%s, v%d):",
                                          self.name, name, self.store.version(name))

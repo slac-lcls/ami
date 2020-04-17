@@ -242,6 +242,9 @@ class Manager(Collector):
     def cmd_get_features(self, name):
         self.comm.send_pyobj(self.features(name))
 
+    def cmd_get_compiler_args(self, name):
+        self.comm.send_pyobj(self.compiler_args)
+
     def cmd_get_names(self, name):
         self.comm.send_pyobj(self.names(name))
 

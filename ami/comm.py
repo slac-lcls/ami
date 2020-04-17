@@ -1,4 +1,5 @@
 import abc
+import time
 import zmq
 import dill
 import asyncio
@@ -517,11 +518,13 @@ class GraphBuilder(ContributionBuilder):
             self.pending[eb_key].clear()
             if self.graph:
                 for data in contribs.values():
+                    start = time.time()
                     res = self.graph(data, color=self.color)
+                    stop = time.time()
                     self.pending[eb_key].update(res)
-                    time = self.graph.times()
-                    if time:
-                        times.append(time)
+                    exec_time = self.graph.times()
+                    if exec_time:
+                        times.append((start, stop, exec_time))
         else:
             self.pending[eb_key].clear()
 
@@ -1417,6 +1420,16 @@ class CommHandler(abc.ABC):
             A tuple of the graph and feature store versions.
         """
         return self._request('get_versions')
+
+    @property
+    def compilerArgs(self):
+        """
+        Arguments for compiling graph.
+
+        Returns:
+            Returns dictionary of graph compiler args.
+        """
+        return self._request("get_compiler_args")
 
     @property
     def graphVersion(self):
