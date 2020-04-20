@@ -139,6 +139,8 @@ def generateUi(opts):
             w = QtGui.QComboBox()
             for i in o['values']:
                 w.addItem(i)
+            if 'value'in o:
+                w.setCurrentText(o['value'])
         elif t == 'color':
             w = ColorButton()
         elif t == 'text':
@@ -265,11 +267,15 @@ class PlotWidget(pg.GraphicsLayoutWidget):
                                                 delay=1,
                                                 slot=lambda args: self.node.sigStateChanged.emit(self.node))
 
+        self.plot_view.showGrid(True, True)
+
         ax = self.plot_view.getAxis('bottom')
         ax.enableAutoSIPrefix(enable=False)
+        ax.setZValue(100)
 
         ay = self.plot_view.getAxis('left')
         ay.enableAutoSIPrefix(enable=False)
+        ay.setZValue(100)
 
         self.plot_view.setMenuEnabled(False)
 
@@ -289,7 +295,7 @@ class PlotWidget(pg.GraphicsLayoutWidget):
 
         if uiTemplate is None:
             uiTemplate = [('Title', 'text'),
-                          ('Show Grid', 'check', {'checked': False}),
+                          ('Show Grid', 'check', {'checked': True}),
                           ('Auto Range', 'check', {'checked': True}),
                           # x axis
                           ('Label', 'text', {'group': 'X Axis'}),
@@ -322,6 +328,10 @@ class PlotWidget(pg.GraphicsLayoutWidget):
         self.apply_btn = QtWidgets.QPushButton("Apply", self.ui)
         self.apply_btn.clicked.connect(self.apply_clicked)
         ctrl_layout.addWidget(self.apply_btn)
+
+        self.win = QtGui.QMainWindow()
+        self.win.setWindowTitle(self.node.name() + ' configuration')
+        self.win.setCentralWidget(self.ui)
 
     def update_legend_layout(self, idx, data_name, name=None):
         if idx not in self.trace_ids:
@@ -444,7 +454,7 @@ class PlotWidget(pg.GraphicsLayoutWidget):
             self.plot_view.vb.setState(state['viewbox'])
 
     def configure_plot(self):
-        self.ui.show()
+        self.win.show()
 
     def cursor_hover_evt(self):
         pass
@@ -483,9 +493,18 @@ class ScalarWidget(QtWidgets.QLCDNumber):
 class ImageWidget(PlotWidget):
 
     def __init__(self, topics=None, terms=None, addr=None, parent=None, **kwargs):
-        uiTemplate = kwargs.pop("uiTemplate", [])
-        uiTemplate.extend([('Auto Range', 'check', {'group': 'Histogram', 'checked': True}),
-                           ('Auto Levels', 'check', {'group': 'Histogram', 'checked': True})])
+        uiTemplate = [('Title', 'text'),
+                      ('Show Grid', 'check', {'checked': True}),
+                      # x axis
+                      ('Label', 'text', {'group': 'X Axis'}),
+                      ('Log Scale', 'check', {'group': 'X Axis', 'checked': False}),
+                      # y axis
+                      ('Label', 'text', {'group': 'Y Axis'}),
+                      ('Log Scale', 'check', {'group': 'Y Axis', 'checked': False}),
+                      # histogram
+                      ('Auto Range', 'check', {'group': 'Histogram', 'checked': True}),
+                      ('Auto Levels', 'check', {'group': 'Histogram', 'checked': True}),
+                      ('Log Scale', 'check', {'group': 'Histogram', 'checked': False})]
 
         display = kwargs.pop("display", True)
         if display:
@@ -503,11 +522,9 @@ class ImageWidget(PlotWidget):
             self.fetcher = AsyncFetcher(topics, terms, addr)
 
         self.view = self.plot_view.getViewBox()
-        if not kwargs.get('axis', False):
-            self.view.removeItem(self.plot_view.getAxis('bottom'))
-            self.view.removeItem(self.plot_view.getAxis('left'))
 
         self.imageItem = pg.ImageItem()
+        self.imageItem.setZValue(-99)
         self.view.addItem(self.imageItem)
 
         self.histogramLUT = pg.HistogramLUTItem(self.imageItem)
@@ -530,11 +547,13 @@ class ImageWidget(PlotWidget):
 
     def apply_clicked(self):
         super().apply_clicked()
-        autorange_histogram = getattr(self, "Auto_Range_Histogram", True)
 
         self.flip = getattr(self, "Flip_Display", False)
         self.rotate = int(getattr(self, "Rotate_Counter_Clockwise_Display", 0))/90
+        self.auto_levels = getattr(self, "Auto_Levels_Histogram", True)
+        self.log_scale_histogram = getattr(self, "Log_Scale_Histogram", False)
 
+        autorange_histogram = getattr(self, "Auto_Range_Histogram", True)
         if autorange_histogram:
             self.histogramLUT.autoHistogramRange()
         else:
@@ -546,7 +565,9 @@ class ImageWidget(PlotWidget):
                 v = np.flip(v)
             if self.rotate != 0:
                 v = np.rot90(v, self.rotate)
-            self.imageItem.setImage(v, autoLevels=self.Auto_Levels_Histogram)
+            if self.log_scale_histogram:
+                v = np.log10(v)
+            self.imageItem.setImage(v, autoLevels=self.auto_levels)
 
     def saveState(self):
         state = super().saveState()
@@ -667,31 +688,11 @@ class HistogramWidget(PlotWidget):
 class Histogram2DWidget(ImageWidget):
 
     def __init__(self, topics=None, terms=None, addr=None, parent=None, **kwargs):
-        uiTemplate = [('Title', 'text'),
-                      # x axis
-                      ('Label', 'text', {'group': 'X Axis'}),
-                      ('Log Scale', 'check', {'group': 'X Axis', 'checked': False}),
-                      # y axis
-                      ('Label', 'text', {'group': 'Y Axis'}),
-                      ('Log Scale', 'check', {'group': 'Y Axis', 'checked': False}),
-                      # z axis
-                      ('Log Scale', 'check', {'group': 'Z Axis', 'checked': False})]
+        super().__init__(topics, terms, addr, parent, display=False, axis=True, **kwargs)
 
-        super().__init__(topics, terms, addr, parent, uiTemplate=uiTemplate, display=False, axis=True, **kwargs)
-
-        self.Show_Grid = True
-        self.Auto_Range = True
-        self.plot_view.showGrid(True, True)
-
-        ax = self.plot_view.getAxis('bottom')
-        ax.setZValue(100)
-
-        ay = self.plot_view.getAxis('left')
-        ay.setZValue(100)
-
-        self.transform = QtGui.QTransform()
         self.xbins = None
         self.ybins = None
+        self.transform = QtGui.QTransform()
 
     def cursor_hover_evt(self, evt):
         pos = evt[0]
@@ -720,13 +721,12 @@ class Histogram2DWidget(ImageWidget):
         self.xbins = data[xbins]
         self.ybins = data[ybins]
         counts = data[counts]
-        if self.Log_Scale_Z_Axis:
+        if self.log_scale_histogram:
             counts = np.log10(counts)
         xscale = (self.xbins[-1] - self.xbins[0])/self.xbins.shape
         yscale = (self.ybins[-1] - self.ybins[0])/self.ybins.shape
 
-        self.imageItem.setImage(counts, autoLevels=self.Auto_Levels_Histogram)
-        self.imageItem.setZValue(-99)
+        self.imageItem.setImage(counts, autoLevels=self.auto_levels)
         self.transform = QtGui.QTransform(xscale, 0, 0, yscale, self.xbins[0], self.ybins[0])
         self.imageItem.setTransform(self.transform)
 

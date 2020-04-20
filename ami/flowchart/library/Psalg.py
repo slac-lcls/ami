@@ -425,18 +425,41 @@ try:
 
         def __init__(self, args):
             self.args = args
+            self.accum_num = args.pop('accum_num', 1)
+            self.normalize_dist = args.pop('normalizeDist', True)
             self.proc = None
+            self.img = None
+            self.counter = 0
 
         def __call__(self, img):
             if self.proc is None:
+                self.img = np.zeros(img.shape)
+                self.counter += 1
                 self.proc = psanaPOP(img=img, **self.args)
 
-            pop = self.proc
-            slice_img = pop.GetSlice()
-            rbins, distr = pop.GetRadialDist()
-            ebins, diste = pop.GetEnergyDist()
+                self.slice_img = np.array([[np.nan]])
+                self.rbins = np.array([np.nan, np.nan])
+                self.distr = np.array([np.nan])
+                self.ebins = np.array([np.nan, np.nan])
+                self.diste = np.array([np.nan])
 
-            return slice_img, rbins, distr, ebins, diste
+            self.img += img
+
+            if self.counter % self.accum_num == 0:
+                pop = self.proc
+                pop.Peel(self.img)
+                self.slice_img = pop.GetSlice()
+                self.rbins, self.distr = pop.GetRadialDist()
+                self.ebins, self.diste = pop.GetEnergyDist()
+                self.counter = 1
+                self.img = np.zeros(img.shape)
+                if self.normalize_dist:
+                    self.distr = self.distr/self.distr.max()
+                    self.diste = self.diste/self.diste.max()
+            else:
+                self.counter += 1
+
+            return self.slice_img, self.rbins[1:], self.distr, self.ebins[1:], self.diste
 
     class POP(CtrlNode):
 
@@ -445,6 +468,16 @@ try:
         """
 
         nodeName = "POP"
+
+        uiTemplate = [('lmax', 'intSpin', {'value': 4, 'values': ['2', '4', '6', '8', '10', '12']}),
+                      ('reg', 'doubleSpin', {'value': 0, 'max': MAX}),
+                      ('X0', 'intSpin', {'value': 512, 'max': MAX}),
+                      ('Y0', 'intSpin', {'value': 512, 'max': MAX}),
+                      ('Rmax', 'intSpin', {'value': 512, 'max': MAX}),
+                      ('RBFs_db', 'check', {'checked': False}),
+                      ('edge_w', 'intSpin', {'value': 10, 'max': MAX}),
+                      ('accum_num', 'intSpin', {'value': 30, 'min': 0}),
+                      ('normalizeDist', 'check', {'checked': True})]
 
         def __init__(self, name):
             super().__init__(name, terminals={'Image': {'io': 'in', 'ttype': Array2d},
@@ -458,8 +491,9 @@ try:
             outputs = self.output_vars()
             pth = os.path.dirname(__file__)
 
-            args = {'lmax': 4, 'reg': 0, 'alpha': 4e-4, 'X0': None, 'Y0': None, 'Rmax': None,
-                    'RBFs_db': False, 'RBFs_fnm': os.path.join(pth, 'RBFs512.pkl')}
+            args = {'lmax': self.lmax, 'reg': self.reg, 'alpha': 4e-4, 'X0': self.X0, 'Y0': self.Y0, 'Rmax': self.Rmax,
+                    'RBFs_db': self.RBFs_db, 'RBFs_fnm': os.path.join(pth, 'RBFs512.pkl'), 'accum_num': self.accum_num,
+                    'normalizeDist': self.normalizeDist}
 
             node = gn.Map(name=self.name()+"_operation",
                           condition_needs=list(conditions.values()),
