@@ -330,8 +330,9 @@ class PlotWidget(pg.GraphicsLayoutWidget):
         ctrl_layout.addWidget(self.apply_btn)
 
         self.win = QtGui.QMainWindow()
-        self.win.setWindowTitle(self.node.name() + ' configuration')
         self.win.setCentralWidget(self.ui)
+        if self.node:
+            self.win.setWindowTitle(self.node.name() + ' configuration')
 
     def update_legend_layout(self, idx, data_name, name=None):
         if idx not in self.trace_ids:

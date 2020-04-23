@@ -63,7 +63,8 @@ try:
                     ('num hits', 'intSpin', {'value': 16, 'min': 1, 'max': MAX})]
 
         for channel in channels:
-            channel_group = [('delay', 'doubleSpin', {'group': channel}),
+            channel_group = [('name', 'text', {'values': f'Channel {channel}', 'group': channel}),
+                             ('delay', 'doubleSpin', {'group': channel}),
                              ('fraction', 'doubleSpin', {'group': channel}),
                              ('offset', 'doubleSpin', {'group': channel}),
                              ('polarity', 'combo', {'values': ["Negative"], 'group': channel}),
@@ -83,8 +84,8 @@ try:
         """
 
         nodeName = "WFPeaks"
-        channels = ['mcp', 'x1', 'x2', 'y1', 'y2']
-        channel_attrs = ['delay', 'fraction', 'offset', 'polarity', 'sample_interval',
+        channels = ['Channel 0', 'Channel 1', 'Channel 2', 'Channel 3', 'Channel 4']
+        channel_attrs = ['name', 'delay', 'fraction', 'offset', 'polarity', 'sample_interval',
                          'threshold', 'timerange_high', 'timerange_low', 'walk']
         uiTemplate = build_layout(channels)
 
@@ -100,14 +101,18 @@ try:
             outputs = self.output_vars()
 
             cfdpars = {'numchs': int(self.num_chans),
-                       'numhits': self.num_hits}
+                       'numhits': self.num_hits,
+                       'version': 4}
 
-            for channel in WFPeaks.channels:
+            paramsCFD = {}
+            for channel, name in enumerate(WFPeaks.channels):
+                name = name.replace(' ', '_')
                 attrs = {}
                 for attr in WFPeaks.channel_attrs:
-                    attrs[attr] = getattr(self, attr+'_'+channel)
-                cfdpars[channel] = attrs
+                    attrs[attr] = getattr(self, attr+'_'+name)
+                paramsCFD[channel] = attrs
 
+            cfdpars['paramsCFD'] = paramsCFD
             wfpeaks = psWFPeaks.WFPeaks(**cfdpars)
 
             def peakFinder(wts, wfs):

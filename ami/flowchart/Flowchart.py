@@ -582,7 +582,7 @@ class FlowchartCtrlWidget(QtGui.QWidget):
             if not hasattr(gnode, 'to_operation'):
                 continue
 
-            if gnode.changed:
+            if gnode.changed and gnode not in changed_nodes:
                 changed_nodes.add(gnode)
 
                 for output in outputs:
