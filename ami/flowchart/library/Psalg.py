@@ -5,7 +5,6 @@ from ami.flowchart.library.common import CtrlNode, MAX
 import ami.graph_nodes as gn
 import numpy as np
 import typing
-import os
 
 
 try:
@@ -430,17 +429,26 @@ try:
 
         def __init__(self, args):
             self.args = args
+            self.calibconsts = {}
             self.accum_num = args.pop('accum_num', 1)
             self.normalize_dist = args.pop('normalizeDist', True)
             self.proc = None
             self.img = None
             self.counter = 0
 
-        def __call__(self, img):
-            if self.proc is None:
+        def __call__(self, img, calib):
+            init = False
+            if self.calibconsts.keys() != calib.keys():
+                init = True
+            elif not all(np.array_equal(self.calibconsts[key], calib[key]) for key in calib):
+                init = True
+
+            if init:
+                self.calibconsts = calib
                 self.img = np.zeros(img.shape)
                 self.counter += 1
-                self.proc = psanaPOP(img=img, **self.args)
+                calib_dict, _ = calib.get('pop_rbfs')
+                self.proc = psanaPOP(img=img, RBFs_dict=calib_dict, **self.args)
 
                 self.slice_img = np.array([[np.nan]])
                 self.rbins = np.array([np.nan, np.nan])
@@ -479,7 +487,6 @@ try:
                       ('X0', 'intSpin', {'value': 512, 'max': MAX}),
                       ('Y0', 'intSpin', {'value': 512, 'max': MAX}),
                       ('Rmax', 'intSpin', {'value': 512, 'max': MAX}),
-                      ('RBFs_db', 'check', {'checked': False}),
                       ('edge_w', 'intSpin', {'value': 10, 'max': MAX}),
                       ('accum_num', 'intSpin', {'value': 30, 'min': 0}),
                       ('normalizeDist', 'check', {'checked': True})]
@@ -494,11 +501,9 @@ try:
 
         def to_operation(self, inputs, conditions={}):
             outputs = self.output_vars()
-            pth = os.path.dirname(__file__)
 
             args = {'lmax': self.lmax, 'reg': self.reg, 'alpha': 4e-4, 'X0': self.X0, 'Y0': self.Y0, 'Rmax': self.Rmax,
-                    'RBFs_db': self.RBFs_db, 'RBFs_fnm': os.path.join(pth, 'RBFs512.pkl'), 'accum_num': self.accum_num,
-                    'normalizeDist': self.normalizeDist}
+                    'accum_num': self.accum_num, 'edge_w': self.edge_w, 'normalizeDist': self.normalizeDist}
 
             node = gn.Map(name=self.name()+"_operation",
                           condition_needs=list(conditions.values()),
