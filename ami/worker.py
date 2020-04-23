@@ -63,6 +63,8 @@ class Worker(Node):
             self.graphs[name] = None
         if name in self.store:
             self.store.clear(name)
+        if name in self.times:
+            del self.times[name]
         self.update_requests()
 
     def update_requests(self):
@@ -98,6 +100,8 @@ class Worker(Node):
             del self.graphs[name]
         if name in self.store:
             self.store.remove(name)
+        if name is self.times:
+            del self.times[name]
         self.update_requests()
 
     def recv_graph_exception(self, name, version, exception):
