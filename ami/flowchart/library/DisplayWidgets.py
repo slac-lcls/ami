@@ -518,10 +518,6 @@ class ImageWidget(PlotWidget):
         self.flip = False
         self.rotate = 0
 
-        self.fetcher = None
-        if addr:
-            self.fetcher = AsyncFetcher(topics, terms, addr)
-
         self.view = self.plot_view.getViewBox()
 
         self.imageItem = pg.ImageItem()
