@@ -567,6 +567,17 @@ class FlowchartCtrlWidget(QtGui.QWidget):
             await self.graphCommHandler.remove(self.chart.deleted_nodes)
             self.chart.deleted_nodes = []
 
+        # detect if the manager has no graph (e.g. from a purge on failure)
+        if await self.graphCommHandler.graphVersion == 0:
+            # mark all the nodes as changed to force a resubmit of the whole graph
+            for name, gnode in self.chart._graph.nodes().items():
+                gnode = gnode['node']
+                gnode.changed = True
+            # reset reference counting on views
+            async with self.features_lock:
+                self.features = {}
+                self.features_count = collections.defaultdict(set)
+
         outputs = [n for n, d in self.chart._graph.out_degree() if d == 0]
         changed_nodes = set()
         failed_nodes = set()
@@ -583,14 +594,13 @@ class FlowchartCtrlWidget(QtGui.QWidget):
                 gnode.clearException()
                 gnode.recolor()
 
-            if gnode.isSource() and gnode.viewable() and gnode.viewed:
-                displays.add(gnode)
-
-            if not hasattr(gnode, 'to_operation'):
-                continue
-
             if gnode.changed and gnode not in changed_nodes:
                 changed_nodes.add(gnode)
+
+                if not hasattr(gnode, 'to_operation'):
+                    if gnode.isSource() and gnode.viewable() and gnode.viewed:
+                        displays.add(gnode)
+                    continue
 
                 for output in outputs:
                     paths = list(nx.algorithms.all_simple_paths(self.chart._graph, name, output))
@@ -628,16 +638,11 @@ class FlowchartCtrlWidget(QtGui.QWidget):
             self.chartWidget.statusText.append(f"[{now}] failed to submit graph")
             return
 
-        if not graph_nodes:
-            return
+        if graph_nodes:
+            await self.graphCommHandler.add(list(graph_nodes))
 
-        await self.graphCommHandler.add(list(graph_nodes))
-
-        for node in changed_nodes:
-            node.changed = False
-
-        node_names = ', '.join(set(map(lambda node: node.parent, graph_nodes)))
-        self.chartWidget.statusText.append(f"[{now}] Submitted {node_names}")
+            node_names = ', '.join(set(map(lambda node: node.parent, graph_nodes)))
+            self.chartWidget.statusText.append(f"[{now}] Submitted {node_names}")
 
         node_names = ', '.join(set(map(lambda node: node.name(), displays)))
         if node_names:
@@ -665,8 +670,15 @@ class FlowchartCtrlWidget(QtGui.QWidget):
                 views = {}
                 terms = {"In": node.name()} if node.isSource() else node.input_vars()
 
+                # make sure we don't leak any reference counts
+                if node.changed:
+                    for in_var, viewers in self.features_count.items():
+                        viewers.discard(node.name())
+                        if not viewers and node.name() in self.features:
+                            del self.features[node.name()]
+
                 for term, in_var in terms.items():
-                    if in_var in self.features and not node.changed:
+                    if in_var in self.features:
                         topic = self.features[in_var]
                     else:
                         topic = self.graphCommHandler.auto(in_var)
@@ -694,6 +706,9 @@ class FlowchartCtrlWidget(QtGui.QWidget):
 
             elif node.exportable():
                 await self.graphCommHandler.export(node.input_vars()['In'], node.name())
+
+        for node in changed_nodes:
+            node.changed = False
 
         self.metadata = await self.graphCommHandler.metadata
 
