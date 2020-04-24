@@ -151,6 +151,8 @@ class Flowchart(Node):
             async with ctrl.features_lock:
                 ctrl.features_count[node.name()].discard(node.name())
                 if not ctrl.features_count[node.name()]:
+                    if node.name() in ctrl.features:
+                        del ctrl.features[node.name()]
                     await ctrl.graphCommHandler.unview(node.name())
         elif node.viewable():
             views = []
@@ -158,6 +160,8 @@ class Flowchart(Node):
                 for term, in_var in input_vars.items():
                     ctrl.features_count[in_var].discard(node.name())
                     if not ctrl.features_count[in_var]:
+                        if in_var in ctrl.features:
+                            del ctrl.features[in_var]
                         views.append(in_var)
 
             if views:
@@ -579,6 +583,9 @@ class FlowchartCtrlWidget(QtGui.QWidget):
                 gnode.clearException()
                 gnode.recolor()
 
+            if gnode.isSource() and gnode.viewable() and gnode.viewed:
+                displays.add(gnode)
+
             if not hasattr(gnode, 'to_operation'):
                 continue
 
@@ -653,12 +660,13 @@ class FlowchartCtrlWidget(QtGui.QWidget):
                                                                       state=state,
                                                                       terms=terms,
                                                                       redisplay=True))
-
             elif node.viewable():
                 topics = []
                 views = {}
-                for term, in_var in node.input_vars().items():
-                    if in_var in self.features:
+                terms = {"In": node.name()} if node.isSource() else node.input_vars()
+
+                for term, in_var in terms.items():
+                    if in_var in self.features and not node.changed:
                         topic = self.features[in_var]
                     else:
                         topic = self.graphCommHandler.auto(in_var)
@@ -681,7 +689,7 @@ class FlowchartCtrlWidget(QtGui.QWidget):
                 await self.chart.broker.send_pyobj(fcMsgs.DisplayNode(name=node.name(),
                                                                       topics=dict(topics),
                                                                       state=state,
-                                                                      terms=node.input_vars(),
+                                                                      terms=terms,
                                                                       redisplay=True))
 
             elif node.exportable():
