@@ -79,21 +79,23 @@ class NodeWindow(QtGui.QMainWindow):
 
 class NodeProcess(QtCore.QObject):
 
-    def __init__(self, msg=None, broker_addr="", graphmgr_addr="", checkpoint_addr="", loop=None):
+    def __init__(self, msg, broker_addr="", graphmgr_addr="", checkpoint_addr="", loop=None):
         super().__init__()
 
         if loop is None:
             self.app = QtGui.QApplication([])
             loop = QEventLoop(self.app)
+
         asyncio.set_event_loop(loop)
 
         self.win = NodeWindow(self)
 
-        try:
+        if msg.node_type == "SourceNode":
+            self.node = SourceNode(name=msg.name)
+        else:
             self.node = LIBRARY.getNodeType(msg.node_type)(msg.name)
-        except KeyError:
-            self.node = SourceNode(name=msg.name, terminals={'Out': {'io': 'out', 'ttype': msg.node_type}})
 
+        self.node.restoreState(msg.state)
         self.graphmgr_addr = graphmgr_addr
         self.ctx = zmq.asyncio.Context()
 
@@ -108,9 +110,7 @@ class NodeProcess(QtCore.QObject):
         self.widget = None
         self.show = False
 
-        if msg:
-            self.name = msg.name
-            self.win.setWindowTitle(msg.name)
+        self.win.setWindowTitle(msg.name)
 
         with loop:
             loop.run_until_complete(asyncio.gather(self.process(), self.monitor_node_task()))
@@ -133,8 +133,6 @@ class NodeProcess(QtCore.QObject):
 
             if isinstance(msg, fcMsgs.DisplayNode):
                 self.display(msg)
-            elif isinstance(msg, fcMsgs.NodeCheckpoint):
-                self.restore_checkpoint(msg)
             elif isinstance(msg, fcMsgs.CloseNode):
                 return
 
@@ -183,9 +181,6 @@ class NodeProcess(QtCore.QObject):
                                     state=state)
         await self.checkpoint.send_string(node.name(), zmq.SNDMORE)
         await self.checkpoint.send_pyobj(msg)
-
-    def restore_checkpoint(self, checkpoint):
-        self.node.restoreState(checkpoint.state)
 
 
 class MessageBroker(object):
@@ -310,7 +305,12 @@ class MessageBroker(object):
             async with self.lock:
                 for name in dead_procs:
                     typ, proc = self.widget_procs[name]
-                    msg = fcMsgs.CreateNode(name, typ)
+
+                    state = {}
+                    if name in self.checkpoints:
+                        state = self.checkpoints[name].state
+
+                    msg = fcMsgs.CreateNode(name, typ, state)
 
                     # don't resend last message
                     del self.msgs[msg.name]
@@ -323,12 +323,6 @@ class MessageBroker(object):
                     proc.start()
                     logger.info("restarting process: %s pid: %d", msg.name, proc.pid)
                     self.widget_procs[msg.name] = (msg.node_type, proc)
-
-                    if name in self.checkpoints:
-                        checkpoint = self.checkpoints[name]
-                        self.msgs[name] = checkpoint
-                        await self.broker_pub_sock.send_string(name, zmq.SNDMORE)
-                        await self.broker_pub_sock.send_pyobj(checkpoint)
 
     async def process_messages(self):
 
@@ -363,12 +357,6 @@ class MessageBroker(object):
 
             elif isinstance(msg, fcMsgs.DisplayNode):
                 await self.forward_message_to_node(topic, msg)
-
-            elif isinstance(msg, fcMsgs.NodeCheckpoint):
-                # Receive checkpoints from editor when we load a saved graph
-                await self.forward_message_to_node(topic, msg)
-                async with self.lock:
-                    self.checkpoints[topic] = msg
 
             elif isinstance(msg, fcMsgs.CloseNode):
                 await self.forward_message_to_node(topic, msg)

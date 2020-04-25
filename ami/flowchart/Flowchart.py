@@ -36,7 +36,6 @@ class Flowchart(Node):
     sigFileLoaded = QtCore.Signal(object)
     sigFileSaved = QtCore.Signal(object)
     sigNodeCreated = QtCore.Signal(object)
-    sigChartLoaded = QtCore.Signal()
     # called when output is expected to have changed
 
     def __init__(self, name=None, filePath=None, library=None,
@@ -72,8 +71,6 @@ class Flowchart(Node):
 
         self.deleted_nodes = []
 
-        self.sigChartLoaded.connect(self.chartLoaded)
-
     def __enter__(self):
         return self
 
@@ -94,7 +91,7 @@ class Flowchart(Node):
     def nodes(self, **kwargs):
         return self._graph.nodes(**kwargs)
 
-    def createNode(self, nodeType=None, name=None, node=None, pos=None):
+    def createNode(self, nodeType=None, name=None, pos=None):
         """Create a new Node and add it to this flowchart.
         """
         if name is None:
@@ -104,20 +101,14 @@ class Flowchart(Node):
                 if name not in self._graph.nodes():
                     break
                 n += 1
+
         # create an instance of the node
-        if node is None:
-            node = self.library.getNodeType(nodeType)(name)
+        node = self.library.getNodeType(nodeType)(name)
 
-        self.addNode(node, name, pos)
-
-        msg = fcMsgs.CreateNode(name, nodeType)
-        self.broker.send_string(name, zmq.SNDMORE)
-        self.broker.send_pyobj(msg)
-
-        self.sigNodeCreated.emit(node)
+        self.addNode(node, pos)
         return node
 
-    def addNode(self, node, name, pos=None):
+    def addNode(self, node, pos=None):
         """Add an existing Node to this flowchart.
 
         See also: createNode()
@@ -132,11 +123,12 @@ class Flowchart(Node):
         self.viewBox.addItem(item)
         pos = (find_nearest(pos[0]), find_nearest(pos[1]))
         item.moveBy(*pos)
-        self._graph.add_node(name, node=node)
+        self._graph.add_node(node.name(), node=node)
         node.sigClosed.connect(self.nodeClosed)
         node.sigTerminalConnected.connect(self.nodeConnected)
         node.sigTerminalDisconnected.connect(self.nodeDisconnected)
         node.sigNodeEnabled.connect(self.nodeEnabled)
+        self.sigNodeCreated.emit(node)
 
     @asyncSlot(object, object)
     async def nodeClosed(self, node, input_vars):
@@ -286,23 +278,20 @@ class Flowchart(Node):
                         ttype = eval(n['state']['terminals']['Out']['ttype'])
                         n['state']['terminals']['Out']['ttype'] = ttype
                         node = SourceNode(name=n['name'], terminals=n['state']['terminals'])
-                        node.restoreState(n['state'])
-                        self.createNode(name=n['name'], node=node, nodeType=ttype)
+                        self.addNode(node=node)
                     except Exception:
                         printExc("Error creating node %s: (continuing anyway)" % n['name'])
                 else:
                     try:
                         node = self.createNode(n['class'], name=n['name'])
-                        node.restoreState(n['state'])
                     except Exception:
                         printExc("Error creating node %s: (continuing anyway)" % n['name'])
 
+                node.restoreState(n['state'])
                 if hasattr(node, "display"):
                     node.display(topics=None, terms=None, addr=None, win=None)
                     if hasattr(node.widget, 'restoreState') and 'widget' in n['state']:
                         node.widget.restoreState(n['state']['widget'])
-
-            # self.restoreTerminals(state['terminals'])
 
             connections = {}
             with tempfile.NamedTemporaryFile(mode='w') as type_file:
@@ -360,8 +349,6 @@ class Flowchart(Node):
 
         finally:
             self.blockSignals(False)
-
-        self.sigChartLoaded.emit()
 
     def loadFile(self, fileName=None, startDir=None):
         """
@@ -497,14 +484,6 @@ class Flowchart(Node):
                     ctrl.chartWidget.statusText.append(f"[{now.strftime('%H:%M:%S')}] {source} {node.name()}: {msg}")
                 else:
                     ctrl.chartWidget.statusText.append(f"[{now.strftime('%H:%M:%S')}] {source}: {msg}")
-
-    @asyncSlot()
-    async def chartLoaded(self):
-        for name, node in self.nodes(data='node'):
-            state = node.saveState()
-            msg = fcMsgs.NodeCheckpoint(node.name(), state=state)
-            await self.broker.send_string(node.name(), zmq.SNDMORE)
-            await self.broker.send_pyobj(msg)
 
     async def run(self):
         await asyncio.gather(self.updateState(),
@@ -883,7 +862,7 @@ class FlowchartWidget(dockarea.DockArea):
             pos = self.viewBox().mapSceneToView(action.pos)
             node_type = self.chart.source_library.getSourceType(node)
             node = SourceNode(name=node, terminals={'Out': {'io': 'out', 'ttype': node_type}})
-            self.chart.createNode(node_type, name=node.name(), node=node, pos=pos)
+            self.chart.addNode(node=node, pos=pos)
 
     @asyncSlot()
     async def selectionChanged(self):
@@ -962,6 +941,13 @@ class FlowchartWidget(dockarea.DockArea):
 
         else:
             return
+
+        if not node.created:
+            state = node.saveState()
+            msg = fcMsgs.CreateNode(node.name(), node.__class__.__name__, state=state)
+            await self.chart.broker.send_string(node.name(), zmq.SNDMORE)
+            await self.chart.broker.send_pyobj(msg)
+            node.created = True
 
         node.display(topics=None, terms=None, addr=None, win=None)
         state = {}

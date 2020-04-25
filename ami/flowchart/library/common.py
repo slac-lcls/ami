@@ -132,17 +132,7 @@ class SourceNode(CtrlNode):
         super(SourceNode, self).__init__(**kwargs)
 
         self.widgetType = None
-
-        terminals = kwargs['terminals']
-        ttype = terminals['Out']['ttype']
-
-        if ttype is int or ttype is float or ttype is bool:
-            self.widgetType = ScalarWidget
-        elif ttype is Array1d:
-            self.widgetType = WaveformWidget
-        elif ttype is Array2d:
-            self.widgetType = ImageWidget
-
+        self.setWidgetType()
         self._input_vars["In"] = self.name()
 
     def display(self, topics, terms, addr, win, **kwargs):
@@ -151,3 +141,17 @@ class SourceNode(CtrlNode):
 
     def isSource(self):
         return True
+
+    def setWidgetType(self):
+        if 'Out' in self.terminals:
+            ttype = self.terminals['Out']._type
+            if ttype is int or ttype is float or ttype is bool:
+                self.widgetType = ScalarWidget
+            elif ttype is Array1d:
+                self.widgetType = WaveformWidget
+            elif ttype is Array2d:
+                self.widgetType = ImageWidget
+
+    def restoreState(self, state):
+        super().restoreState(state)
+        self.setWidgetType()

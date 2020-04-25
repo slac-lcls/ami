@@ -98,6 +98,7 @@ class Node(QtCore.QObject):
         self._editor = None
         self._enabled = True
 
+        self.created = False
         self.changed = True
         self.viewed = False
         self.exception = None

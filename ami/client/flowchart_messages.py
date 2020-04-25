@@ -26,12 +26,13 @@ class NodeMsg(Msg):
 
 class CreateNode(BrokerMsg):
 
-    def __init__(self, name, node_type):
+    def __init__(self, name, node_type, state={}):
         super().__init__(name)
         self.node_type = node_type
+        self.state = state
 
     def __repr__(self):
-        return f"CreateNode(name={self.name}, node_type={self.node_type})"
+        return f"CreateNode(name={self.name}, node_type={self.node_type}, state={self.state})"
 
 
 class CloseNode(NodeMsg):
@@ -55,7 +56,7 @@ class DisplayNode(NodeMsg):
 
 class NodeCheckpoint(NodeMsg):
 
-    def __init__(self, name, state=None):
+    def __init__(self, name, state={}):
         super().__init__(name)
         self.state = state
 

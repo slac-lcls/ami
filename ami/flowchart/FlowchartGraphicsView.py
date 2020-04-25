@@ -370,6 +370,7 @@ class FlowchartViewBox(ViewBox):
         if ev.mimeData().hasFormat('application/x-qabstractitemmodeldatalist'):
             arr = ev.mimeData().data('application/x-qabstractitemmodeldatalist')
             node = self.decode_data(arr)[0][0].value()
+
             try:
                 self.widget.chart.createNode(node, pos=self.mapToView(ev.pos()))
                 ev.accept()
@@ -381,7 +382,7 @@ class FlowchartViewBox(ViewBox):
                 node_type = self.widget.chart.source_library.getSourceType(node)
                 if node not in self.widget.chart._graph:
                     node = SourceNode(name=node, terminals={'Out': {'io': 'out', 'ttype': node_type}})
-                    self.widget.chart.createNode(node_type, name=node.name(), node=node, pos=self.mapToView(ev.pos()))
+                    self.widget.chart.addNode(node=node, pos=self.mapToView(ev.pos()))
                     ev.accept()
                     return
             except KeyError:
