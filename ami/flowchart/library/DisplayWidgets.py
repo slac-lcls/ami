@@ -250,6 +250,14 @@ class AsyncFetcher(object):
             self.last_updated = f"Last Updated: {now}"
             self.data[self.view_subs[topic]] = reply
 
+    def close(self):
+        for name, sock_count in self.sockets.items():
+            sock, count = sock_count
+            self.poller.unregister(sock)
+            sock.close()
+
+        self.ctx.destroy()
+
 
 class PlotWidget(pg.GraphicsLayoutWidget):
 
@@ -471,6 +479,10 @@ class PlotWidget(pg.GraphicsLayoutWidget):
             if self.fetcher.reply:
                 self.data_updated(self.fetcher.reply)
 
+    def close(self):
+        if self.fetcher:
+            self.fetcher.close()
+
 
 class ScalarWidget(QtWidgets.QLCDNumber):
 
@@ -489,6 +501,10 @@ class ScalarWidget(QtWidgets.QLCDNumber):
             await self.fetcher.fetch()
             for k, v in self.fetcher.reply.items():
                 self.display(v)
+
+    def close(self):
+        if self.fetcher:
+            self.fetcher.close()
 
 
 class ImageWidget(PlotWidget):
@@ -647,6 +663,10 @@ class AreaDetWidget(pg.ImageView):
             self.last_updated.setText(self.fetcher.last_updated)
             for k, v in self.fetcher.reply.items():
                 self.setImage(v, autoLevels=False, autoHistogramRange=False)
+
+    def close(self):
+        if self.fetcher:
+            self.fetcher.close()
 
 
 class HistogramWidget(PlotWidget):
@@ -877,3 +897,7 @@ class ArrayWidget(QtWidgets.QWidget):
     def array_updated(self, data):
         for term, name in self.terms.items():
             self.table.setData(data[name])
+
+    def close(self):
+        if self.fetcher:
+            self.fetcher.close()

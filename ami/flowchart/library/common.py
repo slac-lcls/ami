@@ -112,6 +112,9 @@ class CtrlNode(Node):
             self.task.cancel()
             self.task = None
 
+        if self.widget:
+            self.widget.close()
+
         self.widget = None
 
     def display(self, topics, terms, addr, win, widget=None, **kwargs):
