@@ -9,8 +9,8 @@ import tempfile
 import itertools
 import subprocess
 import signal
-import multiprocessing as mp
 import numpy as np
+import ami.multiproc as mp
 try:
     import psana
 except ImportError:
@@ -24,7 +24,7 @@ try:
 except ImportError:
     pa = None
 
-from ami import check_mp_start_method
+from ami.multiproc import check_mp_start_method
 from ami.asyncqt import QEventLoop
 from ami.graphkit_wrapper import Graph
 from ami.graph_nodes import Map, FilterOn, FilterOff, PickN

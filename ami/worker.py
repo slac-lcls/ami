@@ -137,6 +137,7 @@ class Worker(Node):
                                         'heartbeat': heartbeat,
                                         'times': exec_times,
                                         'version': self.store.version(name)})
+            self.times = {}
 
         if self.event_rate:
             self.event_rate['num_events'] = self.num_events

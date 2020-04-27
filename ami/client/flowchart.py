@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 import logging
-import multiprocessing as mp
+import ami.multiproc as mp
 import tempfile
 import asyncio
 import zmq

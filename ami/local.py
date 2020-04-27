@@ -7,9 +7,10 @@ import logging
 import tempfile
 import argparse
 import functools
-import multiprocessing as mp
+import ami.multiproc as mp
 
-from ami import LogConfig, Defaults, check_mp_start_method
+from ami import LogConfig, Defaults
+from ami.multiproc import check_mp_start_method
 from ami.comm import Ports, GraphCommHandler
 from ami.manager import run_manager
 from ami.worker import run_worker

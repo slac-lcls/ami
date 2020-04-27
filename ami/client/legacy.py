@@ -7,7 +7,7 @@ import asyncio
 import importlib
 import threading
 import numpy as np
-import multiprocessing as mp
+import ami.multiproc as mp
 
 from qtpy.QtWidgets import QWidget, QHBoxLayout, QFileDialog, \
                            QApplication, QMainWindow, QPushButton, \

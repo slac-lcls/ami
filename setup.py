@@ -33,8 +33,9 @@ setup(
         'ipython',
         'qtpy',
         'asyncqt',
-        'amityping',
+        'amityping>=1.0.9',
         'mypy',
+        'setproctitle',
     ],
     tests_require=[
         'pytest',
