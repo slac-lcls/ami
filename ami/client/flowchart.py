@@ -242,6 +242,7 @@ class MessageBroker(object):
 
     def launch_editor_window(self):
         editor_proc = mp.Process(
+            name='editor',
             target=run_editor_window,
             args=(self.broker_sub_addr,
                   self.graphmgr_addr,
@@ -333,6 +334,7 @@ class MessageBroker(object):
             if isinstance(msg, fcMsgs.CreateNode):
                 proc = mp.Process(
                     target=NodeProcess,
+                    name=msg.name,
                     args=(msg, self.broker_pub_addr, self.graphmgr_addr, self.checkpoint_sub_addr),
                     daemon=True
                 )
