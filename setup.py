@@ -45,7 +45,7 @@ setup(
     extras_require={
         'pva': ['p4p'],
         'hdf5': ['h5py'],
-        'arrow': ['pyarrow'],
+        'arrow': ['pyarrow>=0.17'],
         'lcls': ['psana', 'h5py', 'p4p'],
     },
     entry_points={
