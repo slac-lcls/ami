@@ -178,7 +178,7 @@ class ArrowSerializer:
         serialized_msg = []
         ser = pa.serialize(msg, context=self.context)
         comp = ser.to_components()
-        metadata = {k: comp[k] for k in ['num_tensors', 'num_ndarrays', 'num_buffers']}
+        metadata = {k: comp[k] for k in ['num_tensors', 'num_ndarrays', 'num_buffers', 'num_sparse_tensors']}
         serialized_msg.append(pickle.dumps(metadata))
         views = list(map(memoryview, comp['data']))
         serialized_msg.extend(views)

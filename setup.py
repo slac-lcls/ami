@@ -32,7 +32,7 @@ setup(
         'networkfox',
         'ipython',
         'qtpy',
-        'asyncqt',
+        'asyncqt>=0.8.0',
         'amityping>=1.0.9',
         'mypy',
         'setproctitle',
@@ -45,7 +45,7 @@ setup(
     extras_require={
         'pva': ['p4p'],
         'hdf5': ['h5py'],
-        'arrow': ['pyarrow>=0.15'],
+        'arrow': ['pyarrow'],
         'lcls': ['psana', 'h5py', 'p4p'],
     },
     entry_points={

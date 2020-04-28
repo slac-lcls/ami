@@ -318,6 +318,7 @@ class MessageBroker(object):
 
                     proc = mp.Process(
                         target=NodeProcess,
+                        name=msg.name,
                         args=(msg, self.broker_pub_addr, self.graphmgr_addr, self.checkpoint_sub_addr),
                         daemon=True
                     )

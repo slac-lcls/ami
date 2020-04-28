@@ -29,5 +29,5 @@ class Process(_mp.Process):
     def run(self):
         if self._target:
             if self.procname is not None:
-                setproctitle.setproctitle(self.procname)
+                setproctitle.setproctitle("ami " + self.procname)
             self._target(*self._args, **self._kwargs)
