@@ -413,17 +413,17 @@ class Flowchart(Node):
             # in ami.client.flowchart.NodeProcess.send_checkpoint we send a
             # fcMsgs.NodeCheckPoint but we are only ever receiving the state
             new_node_state = await self.checkpoint.recv_pyobj()
-            current_node_state = self._graph.nodes[node_name]['node'].saveState()
+            node = self._graph.nodes[node_name]['node']
+            current_node_state = node.saveState()
             if 'ctrl' in new_node_state:
                 if current_node_state['ctrl'] != new_node_state['ctrl']:
                     current_node_state['ctrl'] = new_node_state['ctrl']
-                    self._graph.nodes[node_name]['node'].changed = True
-
+                    node.changed = True
             if 'widget' in new_node_state:
                 current_node_state['widget'] = new_node_state['widget']
 
-            self._graph.nodes[node_name]['node'].restoreState(current_node_state)
-            self._graph.nodes[node_name]['node'].viewed = new_node_state['viewed']
+            node.restoreState(current_node_state)
+            node.viewed = new_node_state['viewed']
 
     async def updateSources(self, init=False):
         num_workers = None
@@ -432,7 +432,7 @@ class Flowchart(Node):
             topic = await self.graphinfo.recv_string()
             source = await self.graphinfo.recv_string()
             msg = await self.graphinfo.recv_pyobj()
-            now = datetime.now()
+            now = datetime.now().strftime('%H:%M:%S')
 
             if topic == 'sources':
                 source_library = SourceLibrary()
@@ -452,7 +452,7 @@ class Flowchart(Node):
                 ctrl.ui.clear_model(tree)
                 ctrl.ui.create_model(ctrl.ui.source_tree, self.source_library.getLabelTree())
 
-                ctrl.chartWidget.statusText.append(f"[{now.strftime('%H:%M:%S')}] Updated sources.")
+                ctrl.chartWidget.statusText.append(f"[{now}] Updated sources.")
 
             elif topic == 'event_rate':
                 if num_workers is None:
@@ -481,9 +481,9 @@ class Flowchart(Node):
                     node_name = ctrl.metadata[msg.node_name]['parent']
                     node = self.nodes(data='node')[node_name]
                     node.setException(msg)
-                    ctrl.chartWidget.statusText.append(f"[{now.strftime('%H:%M:%S')}] {source} {node.name()}: {msg}")
+                    ctrl.chartWidget.statusText.append(f"[{now}] {source} {node.name()}: {msg}")
                 else:
-                    ctrl.chartWidget.statusText.append(f"[{now.strftime('%H:%M:%S')}] {source}: {msg}")
+                    ctrl.chartWidget.statusText.append(f"[{now}] {source}: {msg}")
 
     async def run(self):
         await asyncio.gather(self.updateState(),
@@ -560,6 +560,7 @@ class FlowchartCtrlWidget(QtGui.QWidget):
         outputs = [n for n, d in self.chart._graph.out_degree() if d == 0]
         changed_nodes = set()
         failed_nodes = set()
+        seen = set()
 
         for name, gnode in self.chart._graph.nodes().items():
             gnode = gnode['node']
@@ -589,7 +590,7 @@ class FlowchartCtrlWidget(QtGui.QWidget):
                             gnode = self.chart._graph.nodes[gnode]
                             node = gnode['node']
 
-                            if hasattr(node, 'to_operation'):
+                            if hasattr(node, 'to_operation') and node not in seen:
                                 try:
                                     nodes = node.to_operation(inputs=node.input_vars(),
                                                               conditions=node.condition_vars())
@@ -598,6 +599,8 @@ class FlowchartCtrlWidget(QtGui.QWidget):
                                     node.setException(True)
                                     failed_nodes.add(node)
                                     continue
+
+                                seen.add(node)
 
                                 if type(nodes) is list:
                                     graph_nodes.update(nodes)
@@ -880,14 +883,39 @@ class FlowchartWidget(dockarea.DockArea):
         if not node.enabled():
             return
 
+        if node.viewable():
+            inputs = [n for n, d, in self.chart._graph.in_degree() if d == 0]
+            seen = set()
+            pending = set()
+
+            for in_node in inputs:
+                paths = list(nx.algorithms.all_simple_paths(self.chart._graph, in_node, node.name()))
+                for path in paths:
+                    for gnode in path:
+                        gnode = self.chart._graph.nodes[gnode]
+                        node = gnode['node']
+                        if node in seen:
+                            continue
+                        else:
+                            seen.add(node)
+
+                        if node.changed:
+                            pending.add(node.name())
+
+            if pending:
+                now = datetime.now().strftime('%H:%M:%S')
+                pending = ', '.join(pending)
+                self.statusText.append(f"[{now}] Pending changes for {pending}. Please apply before trying to view.")
+                return
+
         node.viewed = True
-        if isinstance(item.node, Node) and item.node.buffered():
+        if isinstance(node, Node) and node.buffered():
             # buffered nodes are allowed to override their topics/terms
             # this is done because they may want to view intermediate values
             topics = node.buffered_topics()
             terms = node.buffered_terms()
 
-        elif isinstance(item.node, SourceNode) and item.node.viewable():
+        elif isinstance(node, SourceNode) and node.viewable():
             name = node.name()
             topics = {}
             views = {}
@@ -909,7 +937,7 @@ class FlowchartWidget(dockarea.DockArea):
             if views:
                 await self.ctrl.graphCommHandler.view(views)
 
-        elif isinstance(item.node, Node) and item.node.viewable():
+        elif isinstance(node, Node) and node.viewable():
             topics = {}
             views = {}
             terms = node.input_vars()
@@ -935,7 +963,7 @@ class FlowchartWidget(dockarea.DockArea):
             if views:
                 await self.ctrl.graphCommHandler.view(views)
 
-        elif isinstance(item.node, CtrlNode):
+        elif isinstance(node, CtrlNode):
             topics = {}
             terms = node.input_vars()
 
