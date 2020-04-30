@@ -1,5 +1,5 @@
 from pyqtgraph.Qt import QtGui, QtWidgets
-from amitypes import Array1d, Array2d
+from amitypes import DataSource, Array1d, Array2d
 from ami.flowchart.Node import Node, NodeGraphicsItem
 from ami.flowchart.library.common import CtrlNode, MAX
 import ami.graph_nodes as gn
@@ -175,6 +175,74 @@ try:
             node = gn.Map(name=self.name()+"_operation",
                           condition_needs=list(conditions.values()), inputs=list(inputs.values()), outputs=outputs,
                           func=DLDProc(**dldpars), parent=self.name())
+
+            return node
+
+except ImportError as e:
+    print(e)
+
+try:
+    import psana.xtcav.LasingOnCharacterization as psLOC
+
+    class LOCProc():
+
+        def __init__(self, **params):
+            self.params = params
+            self.proc = None
+            self.dets = None
+
+        def __call__(self, src):
+            t = None
+            power = None
+            agr = None
+            pulse = None
+
+            if self.proc is None:
+                self.dets = psLOC.setDetectors(src.run)
+                self.proc = psLOC.LasingOnCharacterization(self.params, src.run, self.dets)
+
+            if self.dets._camraw(src.evt) is not None:
+                if self.proc.processEvent(src.evt):
+                    t, power, agr, pulse = self.proc.resultsProcessImage()
+
+            return t, power, agr, pulse
+
+    class XTCAVLasingOn(CtrlNode):
+
+        """
+        XTCAVLasingOn
+        """
+
+        nodeName = "XTCAVLasingOn"
+        uiTemplate = [('num bunches', 'intSpin', {'value': 1, 'min': 1, 'max': MAX}),
+                      ('snr filter', 'doubleSpin', {'value': 10.0, 'min': 0, 'max': MAX}),
+                      ('roi expand', 'doubleSpin', {'value': 1.0, 'min': -MAX, 'max': MAX}),
+                      ('roi fraction', 'doubleSpin', {'value': 0.001, 'min': 0, 'max': 1}),
+                      ('island split method',  'combo', {'values': ["scipyLabel", "contourLabel"]}),
+                      ('island split par1', 'doubleSpin', {'value': 3.0, 'min': -MAX, 'max': MAX}),
+                      ('island split par2', 'doubleSpin', {'value': 5.0, 'min': -MAX, 'max': MAX})]
+
+        def __init__(self, name):
+            super().__init__(name, terminals={'Source': {'io': 'in', 'ttype': DataSource},
+                                              't': {'io': 'out', 'ttype': Array2d},
+                                              'power': {'io': 'out', 'ttype': Array1d},
+                                              'agreement': {'io': 'out', 'ttype': float},
+                                              'pulse': {'io': 'out', 'ttype': Array2d}})
+
+        def to_operation(self, inputs, conditions={}):
+            outputs = self.output_vars()
+
+            locpars = {'num_bunches': self.num_bunches,
+                       'snr_filter': self.snr_filter,
+                       'roi_expand': self.roi_expand,
+                       'roi_fraction': self.roi_fraction,
+                       'island_split_method': self.island_split_method,
+                       'island_split_par1': self.island_split_par1,
+                       'island_split_par2': self.island_split_par2}
+
+            node = gn.Map(name=self.name()+"_operation",
+                          condition_needs=list(conditions.values()), inputs=list(inputs.values()), outputs=outputs,
+                          func=LOCProc(**locpars), parent=self.name())
 
             return node
 

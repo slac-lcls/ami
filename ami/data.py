@@ -22,6 +22,7 @@ except ImportError:
 import numpy as np
 import amitypes as at
 from enum import Enum
+from mypy_extensions import TypedDict
 from dataclasses import dataclass, asdict, field
 
 
@@ -268,9 +269,11 @@ class Source(abc.ABC):
         self.requested_special = {}
         self.config = src_cfg
         self.flags = flags or {}
+        self.source = at.DataSource(self.config)
         self._base_types = {
             'timestamp': int,
             'heartbeat': int,
+            'source': type(self.source),
         }
         self._base_names = set(self._base_types)
         self._flag_types = {
@@ -468,7 +471,7 @@ class Source(abc.ABC):
         Returns:
             An object of type `Message` which includes the data for the event.
         """
-        base = [('timestamp', timestamp), ('heartbeat', self.heartbeat)]
+        base = [('timestamp', timestamp), ('heartbeat', self.heartbeat), ('source', self.source)]
         data.update({k: v for k, v in base if k in self.requested_names})
         msg = Message(mtype=MsgTypes.Datagram, identity=self.idnum, payload=data, timestamp=timestamp)
         yield msg
@@ -512,6 +515,7 @@ class HierarchicalDataSource(Source):
         self.delimiter = ":"
         self.data_types = {}
         self.special_types = {}
+        self.grouped_types = {}
 
     def _names(self):
         return set(self.data_types)
@@ -585,14 +589,17 @@ class HierarchicalDataSource(Source):
 
         while self.repeat:
             for run in self._runs():
+                self.source.run = run
                 # clear type info from previous runs
                 self.data_types = {}
                 self.special_types = {}
+                self.grouped_types = {}
                 # call the subclasses update function then emit the configure message
                 self._update(run)
                 yield self.configure()
 
                 for evt in self._events(run):
+                    self.source.evt = evt
                     # get the subclasses timestamp implementation
                     timestamp, heartbeat = self.timestamp(evt)
                     # check the heartbeat
@@ -602,9 +609,13 @@ class HierarchicalDataSource(Source):
                     # emit the processed event data
                     yield from self.event(timestamp, self._process(evt))
                     time.sleep(self.interval)
+                    # remove reference to evt object
+                    self.source.evt = None
 
                 # signal that the run has ended
                 yield self.unconfigure()
+                # remove reference to run object
+                self.source.run = None
 
 
 class PsanaSource(HierarchicalDataSource):
@@ -663,6 +674,17 @@ class PsanaSource(HierarchicalDataSource):
                 self.data_types[attr_name] = attr_type
                 self.special_types[attr_name] = getattr(det_interface, attr)
 
+    def _update_det_group(self, detname, det_xface_name, det_attr_list):
+        if len(det_attr_list) > 1:
+            group_name = self.delimiter.join((detname, det_xface_name))
+            group_types = {}
+            for attr in det_attr_list:
+                attr_name = self._get_attr_name(detname, det_xface_name, attr, False)
+                group_types[attr] = self.data_types[attr_name]
+            type_name = type(getattr(self.detectors[detname], det_xface_name)).__name__
+            self.data_types[group_name] = TypedDict(type_name, group_types)
+            self.grouped_types[group_name] = det_attr_list
+
     def _update_hsd_segment(self, seg_name, seg_type, seg_chans):
         for seg_key, chanlist in seg_chans.items():
             seg_key_name = str(seg_key)
@@ -717,6 +739,9 @@ class PsanaSource(HierarchicalDataSource):
                 else:
                     self.data_types[attr_name] = attr_type
 
+            # if the det interface has more than one attr make a grouped source
+            self._update_det_group(detname, det_xface_name, det_attr_list)
+
     def _process(self, evt):
         event = {}
 
@@ -733,11 +758,20 @@ class PsanaSource(HierarchicalDataSource):
                     namesplit = name.split(':')
                     detname = namesplit[0]
 
-                # loop to the bottom level of the Det obj and get data
-                obj = self.detectors[detname]
-                for token in namesplit[1:]:
-                    obj = getattr(obj, token)
-                event[name] = obj(evt)
+                if name in self.grouped_types:
+                    obj = self.detectors[detname]
+                    for token in namesplit[1:]:
+                        obj = getattr(obj, token)
+                    grouped = {}
+                    for attr in self.grouped_types[name]:
+                        grouped[attr] = getattr(obj, attr)(evt)
+                    event[name] = grouped
+                else:
+                    # loop to the bottom level of the Det obj and get data
+                    obj = self.detectors[detname]
+                    for token in namesplit[1:]:
+                        obj = getattr(obj, token)
+                    event[name] = obj(evt)
 
         for name, sub_names in self.requested_special.items():
             namesplit = name.split(':')
