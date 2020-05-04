@@ -22,7 +22,6 @@ except ImportError:
 import numpy as np
 import amitypes as at
 from enum import Enum
-from mypy_extensions import TypedDict
 from dataclasses import dataclass, asdict, field
 
 
@@ -141,6 +140,8 @@ def build_serialization_context():
 
     context = pa.SerializationContext()
     for cls in [MsgTypes, Transitions, Message, CollectorMessage, Transition, Datagram]:
+        register(context, cls)
+    for cls in at.PyArrowTypes:
         register(context, cls)
 
     return context
@@ -590,6 +591,7 @@ class HierarchicalDataSource(Source):
         while self.repeat:
             for run in self._runs():
                 self.source.run = run
+                self.source.key += 1
                 # clear type info from previous runs
                 self.data_types = {}
                 self.special_types = {}
@@ -674,16 +676,17 @@ class PsanaSource(HierarchicalDataSource):
                 self.data_types[attr_name] = attr_type
                 self.special_types[attr_name] = getattr(det_interface, attr)
 
-    def _update_det_group(self, detname, det_xface_name, det_attr_list):
-        if len(det_attr_list) > 1:
-            group_name = self.delimiter.join((detname, det_xface_name))
-            group_types = {}
-            for attr in det_attr_list:
-                attr_name = self._get_attr_name(detname, det_xface_name, attr, False)
-                group_types[attr] = self.data_types[attr_name]
-            type_name = type(getattr(self.detectors[detname], det_xface_name)).__name__
-            self.data_types[group_name] = TypedDict(type_name, group_types)
-            self.grouped_types[group_name] = det_attr_list
+    def _update_dets(self, run, detname, is_env_det):
+        if detname not in self.detectors:
+            self.detectors[detname] = run.Detector(detname)
+
+        det_xface = self.detectors[detname]
+
+        if not is_env_det:
+            self.data_types[detname] = at.Detector
+            self.grouped_types[detname] = at.Detector(detname, 'psana', det_xface._dettype, det_xface)
+
+        return det_xface
 
     def _update_hsd_segment(self, seg_name, seg_type, seg_chans):
         for seg_key, chanlist in seg_chans.items():
@@ -706,10 +709,8 @@ class PsanaSource(HierarchicalDataSource):
         self.env_detectors = set()
         self.special_names = {}
         for detname, det_xface_name, det_attr_list, is_env_det in self._detinfo(run):
-            det_interface = run.Detector(detname)
-
             # make & cache the psana Detector object
-            self.detectors[detname] = det_interface
+            det_interface = self._update_dets(run, detname, is_env_det)
 
             # check if the detector has calibconstants
             self._update_special_attrs(detname, det_interface)
@@ -739,9 +740,6 @@ class PsanaSource(HierarchicalDataSource):
                 else:
                     self.data_types[attr_name] = attr_type
 
-            # if the det interface has more than one attr make a grouped source
-            self._update_det_group(detname, det_xface_name, det_attr_list)
-
     def _process(self, evt):
         event = {}
 
@@ -759,13 +757,7 @@ class PsanaSource(HierarchicalDataSource):
                     detname = namesplit[0]
 
                 if name in self.grouped_types:
-                    obj = self.detectors[detname]
-                    for token in namesplit[1:]:
-                        obj = getattr(obj, token)
-                    grouped = {}
-                    for attr in self.grouped_types[name]:
-                        grouped[attr] = getattr(obj, attr)(evt)
-                    event[name] = grouped
+                    event[name] = self.grouped_types[name]
                 else:
                     # loop to the bottom level of the Det obj and get data
                     obj = self.detectors[detname]

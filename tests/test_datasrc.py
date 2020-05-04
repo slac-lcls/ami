@@ -63,11 +63,11 @@ def test_static_source(sim_src_cfg):
     source = src_cls(idnum, num_workers, heartbeat_period, sim_src_cfg)
 
     # check the names from the source are correct
-    expected_names = {'timestamp', 'heartbeat'}
+    expected_names = {'timestamp', 'heartbeat', 'source'}
     expected_names.update(sim_src_cfg['config'].keys())
     assert source.names == expected_names
     # check the types from the source are correct
-    expected_dtypes = {'timestamp': int, 'heartbeat': int}
+    expected_dtypes = {'timestamp': int, 'heartbeat': int, 'source': at.DataSource}
     for name, cfg in sim_src_cfg['config'].items():
         if cfg["dtype"] == "Scalar":
             if cfg.get("integer", False):
@@ -138,11 +138,11 @@ def test_random_source(sim_src_cfg):
     source = src_cls(idnum, num_workers, heartbeat_period, sim_src_cfg)
 
     # check the names from the source are correct
-    expected_names = {'timestamp', 'heartbeat'}
+    expected_names = {'timestamp', 'heartbeat', 'source'}
     expected_names.update(sim_src_cfg['config'].keys())
     assert source.names == expected_names
     # check the types from the source are correct
-    expected_dtypes = {'timestamp': int, 'heartbeat': int}
+    expected_dtypes = {'timestamp': int, 'heartbeat': int, 'source': at.DataSource}
     for name, cfg in sim_src_cfg['config'].items():
         if cfg["dtype"] == "Scalar":
             if cfg.get("integer", False):

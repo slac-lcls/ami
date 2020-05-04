@@ -437,9 +437,7 @@ class Flowchart(Node):
             if topic == 'sources':
                 source_library = SourceLibrary()
                 for source, node_type in msg.items():
-                    pth = source.split(':')
-                    if len(pth) > 2:
-                        pth = pth[:-1]
+                    pth = source.split(':')[:-1]
                     source_library.addNodeType(source, amitypes.loads(node_type), [pth])
 
                 self.source_library = source_library

@@ -1,5 +1,5 @@
 from pyqtgraph.Qt import QtGui, QtWidgets
-from amitypes import DataSource, Array1d, Array2d
+from amitypes import DataSource, Detector, Array1d, Array2d
 from ami.flowchart.Node import Node, NodeGraphicsItem
 from ami.flowchart.library.common import CtrlNode, MAX
 import ami.graph_nodes as gn
@@ -190,20 +190,24 @@ try:
             self.params = params
             self.proc = None
             self.dets = None
+            self.src_key = 0
 
-        def __call__(self, src):
+        def __call__(self, src, cam, pars):
             t = None
             power = None
             agr = None
             pulse = None
 
-            if self.proc is None:
-                self.dets = psLOC.setDetectors(src.run)
-                self.proc = psLOC.LasingOnCharacterization(self.params, src.run, self.dets)
+            if self.proc is None or self.src_key != src.key:
+                if src.cfg['type'] == 'psana':
+                    self.src_key = src.key
+                    self.dets = psLOC.setDetectors(src.run, camera=cam.det, xtcavpars=pars.det)
+                    self.proc = psLOC.LasingOnCharacterization(self.params, src.run, self.dets)
+                else:
+                    raise NotImplementedError("XTCAVLasingOn does not support the %s source type!" % src.cfg['type'])
 
-            if self.dets._camraw(src.evt) is not None:
-                if self.proc.processEvent(src.evt):
-                    t, power, agr, pulse = self.proc.resultsProcessImage()
+            if self.proc.processEvent(src.evt):
+                t, power, agr, pulse = self.proc.resultsProcessImage()
 
             return t, power, agr, pulse
 
@@ -223,10 +227,12 @@ try:
                       ('island split par2', 'doubleSpin', {'value': 5.0, 'min': -MAX, 'max': MAX})]
 
         def __init__(self, name):
-            super().__init__(name, terminals={'Source': {'io': 'in', 'ttype': DataSource},
+            super().__init__(name, terminals={'src': {'io': 'in', 'ttype': DataSource},
+                                              'cam': {'io': 'in', 'ttype': Detector},
+                                              'pars': {'io': 'in', 'ttype': Detector},
                                               't': {'io': 'out', 'ttype': Array2d},
                                               'power': {'io': 'out', 'ttype': Array1d},
-                                              'agreement': {'io': 'out', 'ttype': float},
+                                              'agr': {'io': 'out', 'ttype': float},
                                               'pulse': {'io': 'out', 'ttype': Array2d}})
 
         def to_operation(self, inputs, conditions={}):

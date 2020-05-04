@@ -275,12 +275,13 @@ def test_sources(qtbot, flowchart):
 
     source_tree = source_library.getSourceTree()
     sources = set(source_tree.keys())
-    assert sources == set(['delta_t', 'cspad', 'laser', 'timestamp', 'heartbeat'])
+    assert sources == set(['delta_t', 'cspad', 'laser', 'timestamp', 'heartbeat', 'source'])
 
-    label_tree = OrderedDict([('cspad', "<class 'amitypes.Array2d'>"),
+    label_tree = OrderedDict([('cspad', "<class 'amitypes.array.Array2d'>"),
                               ('delta_t', "<class 'int'>"),
                               ('heartbeat', "<class 'int'>"),
                               ('laser', "<class 'int'>"),
+                              ('source', "<class 'amitypes.source.DataSource'>"),
                               ('timestamp', "<class 'int'>")])
     assert source_library.getLabelTree() == label_tree
     # test cached version
@@ -308,7 +309,7 @@ async def test_editor(qtbot, flowchart, tmp_path):
     node_type = flowchart.source_library.getSourceType(node_name)
     node = SourceNode(name=node_name, terminals={'Out': {'io': 'out', 'ttype': node_type}})
 
-    flowchart.createNode(nodeType=node_type, name=node_name, node=node)
+    flowchart.addNode(node=node)
     cspad_node = flowchart.nodes(data='node')['cspad']
 
     cspad_out = cspad_node._outputs['Out']
