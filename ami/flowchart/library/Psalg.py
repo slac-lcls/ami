@@ -193,9 +193,9 @@ try:
             self.src_key = 0
 
         def __call__(self, src, cam, pars):
-            t = None
+            time = None
             power = None
-            agr = None
+            agreement = None
             pulse = None
 
             if self.proc is None or self.src_key != src.key:
@@ -207,9 +207,9 @@ try:
                     raise NotImplementedError("XTCAVLasingOn does not support the %s source type!" % src.cfg['type'])
 
             if self.proc.processEvent(src.evt):
-                t, power, agr, pulse = self.proc.resultsProcessImage()
+                time, power, agreement, pulse = self.proc.resultsProcessImage()
 
-            return t, power, agr, pulse
+            return time, power, agreement, pulse
 
     class XTCAVLasingOn(CtrlNode):
 
@@ -230,10 +230,10 @@ try:
             super().__init__(name, terminals={'src': {'io': 'in', 'ttype': DataSource},
                                               'cam': {'io': 'in', 'ttype': Detector},
                                               'pars': {'io': 'in', 'ttype': Detector},
-                                              't': {'io': 'out', 'ttype': Array2d},
-                                              'power': {'io': 'out', 'ttype': Array1d},
-                                              'agr': {'io': 'out', 'ttype': float},
-                                              'pulse': {'io': 'out', 'ttype': Array2d}})
+                                              'time': {'io': 'out', 'ttype': Array2d},
+                                              'power': {'io': 'out', 'ttype': Array2d},
+                                              'agreement': {'io': 'out', 'ttype': float},
+                                              'pulse': {'io': 'out', 'ttype': Array1d}})
 
         def to_operation(self, inputs, conditions={}):
             outputs = self.output_vars()
