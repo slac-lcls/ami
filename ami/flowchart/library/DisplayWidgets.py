@@ -484,6 +484,51 @@ class PlotWidget(pg.GraphicsLayoutWidget):
             self.fetcher.close()
 
 
+class TextWidget(pg.LayoutWidget):
+    def __init__(self, topics=None, terms=None, addr=None, parent=None, **kwargs):
+        super().__init__(parent)
+
+        self.fetcher = None
+        if addr:
+            self.fetcher = AsyncFetcher(topics, terms, addr)
+
+        self.label = self.addLabel()
+        self.label.setMinimumSize(150, 50)
+
+    async def update(self):
+        while True:
+            await self.fetcher.fetch()
+            for k, v in self.fetcher.reply.items():
+                self.label.setText(v)
+
+    def close(self):
+        if self.fetcher:
+            self.fetcher.close()
+
+
+class ObjectWidget(pg.LayoutWidget):
+    def __init__(self, topics=None, terms=None, addr=None, parent=None, **kwargs):
+        super().__init__(parent)
+
+        self.fetcher = None
+        if addr:
+            self.fetcher = AsyncFetcher(topics, terms, addr)
+
+        self.label = self.addLabel()
+        self.label.setMinimumSize(360, 180)
+        self.label.setWordWrap(True)
+
+    async def update(self):
+        while True:
+            await self.fetcher.fetch()
+            for k, v in self.fetcher.reply.items():
+                self.label.setText("%s:\n\n%s" % (k, v))
+
+    def close(self):
+        if self.fetcher:
+            self.fetcher.close()
+
+
 class ScalarWidget(QtWidgets.QLCDNumber):
 
     def __init__(self, topics=None, terms=None, addr=None, parent=None, **kwargs):
@@ -493,7 +538,7 @@ class ScalarWidget(QtWidgets.QLCDNumber):
         if addr:
             self.fetcher = AsyncFetcher(topics, terms, addr)
 
-        self.setGeometry(QtCore.QRect(320, 180, 191, 81))
+        self.setMinimumSize(300, 100)
         self.setDigitCount(10)
 
     async def update(self):

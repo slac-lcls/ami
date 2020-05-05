@@ -1,7 +1,8 @@
 # -*- coding: utf-8 -*-
 from pyqtgraph.Qt import QtCore, QtGui
 from ami.flowchart.Node import Node
-from ami.flowchart.library.DisplayWidgets import generateUi, ScalarWidget, WaveformWidget, ImageWidget
+from ami.flowchart.library.DisplayWidgets import generateUi, ScalarWidget, WaveformWidget, ImageWidget, \
+        TextWidget, ObjectWidget
 from amitypes import Array1d, Array2d
 import asyncio
 
@@ -154,6 +155,10 @@ class SourceNode(CtrlNode):
                 self.widgetType = WaveformWidget
             elif ttype is Array2d:
                 self.widgetType = ImageWidget
+            elif ttype is str:
+                self.widgetType = TextWidget
+            else:
+                self.widgetType = ObjectWidget
 
     def restoreState(self, state):
         super().restoreState(state)

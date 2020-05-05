@@ -1,7 +1,9 @@
 from ami.flowchart.library.DisplayWidgets import ScalarWidget, ScatterWidget, WaveformWidget, \
-    ImageWidget, LineWidget, ArrayWidget, HistogramWidget, Histogram2DWidget
+    ImageWidget, TextWidget, ObjectWidget, LineWidget, ArrayWidget, HistogramWidget, \
+    Histogram2DWidget
 from ami.flowchart.library.common import CtrlNode, MAX
 from amitypes import Array, Array1d, Array2d
+from typing import Any, Text
 import ami.graph_nodes as gn
 import asyncio
 
@@ -56,6 +58,38 @@ class ImageViewer(CtrlNode):
 
     def display(self, topics, terms, addr, win, **kwargs):
         return super().display(topics, terms, addr, win, ImageWidget, **kwargs)
+
+
+class TextViewer(CtrlNode):
+
+    """
+    TextViewer displays text.
+    """
+
+    nodeName = "TextViewer"
+    uiTemplate = []
+
+    def __init__(self, name):
+        super().__init__(name, terminals={"In": {"io": "in", "ttype": Text}}, viewable=True)
+
+    def display(self, topics, terms, addr, win, **kwargs):
+        return super().display(topics, terms, addr, win, TextWidget, **kwargs)
+
+
+class ObjectViewer(CtrlNode):
+
+    """
+    ObjectViewer displays string representation of a python object.
+    """
+
+    nodeName = "ObjectViewer"
+    uiTemplate = []
+
+    def __init__(self, name):
+        super().__init__(name, terminals={"In": {"io": "in", "ttype": Any}}, viewable=True)
+
+    def display(self, topics, terms, addr, win, **kwargs):
+        return super().display(topics, terms, addr, win, ObjectWidget, **kwargs)
 
 
 class Histogram(CtrlNode):
