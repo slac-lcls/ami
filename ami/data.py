@@ -292,6 +292,13 @@ class Source(abc.ABC):
                 self.config[flag] = self._flag_types[flag](value)
             else:
                 self.config[flag] = value
+        # If 'type' has not been passed in the config dictionary then set it
+        if 'type' not in self.config:
+            base_name = __class__.__name__
+            type_name = type(self).__name__
+            if type_name.endswith(base_name):
+                type_name = type_name[:-len(base_name)]
+            self.config['type'] = type_name.lower()
 
     @property
     def interval(self):
@@ -315,6 +322,18 @@ class Source(abc.ABC):
             The init_time value set in the source configuration.
         """
         return self.config.get('init_time', 0)
+
+    @property
+    def src_type(self):
+
+        """
+        Getter for the type value set in the source configuration. This tells
+        which type of source it is. e.g. sim, psana, hdf5.
+
+        Returns:
+            The type value set in the source configuration.
+        """
+        return self.config.get('type', 'generic')
 
     def reset_heartbeat(self):
         """
@@ -363,7 +382,7 @@ class Source(abc.ABC):
                                       lambda x:
                                       inspect.isclass(x) and not inspect.isabstract(x) and issubclass(x, cls))
         for clsname, clsobj in cls_list:
-            if (clsname == name) or (clsname == name.capitalize() + 'Source'):
+            if (clsname == name) or (clsname == name.capitalize() + cls.__name__):
                 return clsobj
 
     @abc.abstractmethod
@@ -541,6 +560,10 @@ class HierarchicalDataSource(Source):
         pass
 
     @abc.abstractmethod
+    def _cleanup(self):
+        pass
+
+    @abc.abstractmethod
     def _timestamp(self, evt):
         pass
 
@@ -618,6 +641,8 @@ class HierarchicalDataSource(Source):
                 yield self.unconfigure()
                 # remove reference to run object
                 self.source.run = None
+                # call the subclass cleanup method
+                self._cleanup()
 
 
 class PsanaSource(HierarchicalDataSource):
@@ -678,15 +703,25 @@ class PsanaSource(HierarchicalDataSource):
 
     def _update_dets(self, run, detname, is_env_det):
         if detname not in self.detectors:
-            self.detectors[detname] = run.Detector(detname)
-
-        det_xface = self.detectors[detname]
+            det_xface = run.Detector(detname)
+            self.detectors[detname] = at.Detector(detname, self.src_type, det_xface._dettype, det_xface)
+        else:
+            det_xface = self.detectors[detname].det
 
         if not is_env_det:
             self.data_types[detname] = at.Detector
-            self.grouped_types[detname] = at.Detector(detname, 'psana', det_xface._dettype, det_xface)
 
         return det_xface
+
+    def _update_group(self, detname, det_xface_name, det_attr_list, is_env_det):
+        if not is_env_det:
+            group_name = self.delimiter.join((detname, det_xface_name))
+            group_types = {}
+            for attr in det_attr_list:
+                attr_name = self._get_attr_name(detname, det_xface_name, attr, is_env_det)
+                group_types[attr] = self.data_types[attr_name]
+            self.data_types[group_name] = at.Group
+            self.grouped_types[group_name] = det_attr_list
 
     def _update_hsd_segment(self, seg_name, seg_type, seg_chans):
         for seg_key, chanlist in seg_chans.items():
@@ -740,6 +775,9 @@ class PsanaSource(HierarchicalDataSource):
                 else:
                     self.data_types[attr_name] = attr_type
 
+            # if the det interface has more than one attr make a grouped source
+            self._update_group(detname, det_xface_name, det_attr_list, is_env_det)
+
     def _process(self, evt):
         event = {}
 
@@ -747,6 +785,8 @@ class PsanaSource(HierarchicalDataSource):
             # check if it is a special type like calibconst
             if name in self.special_types:
                 event[name] = self.special_types[name]
+            elif name in self.detectors and name not in self.env_detectors:
+                event[name] = self.detectors[name]
             else:
                 if name in self.env_detectors:
                     namesplit = []
@@ -757,10 +797,16 @@ class PsanaSource(HierarchicalDataSource):
                     detname = namesplit[0]
 
                 if name in self.grouped_types:
-                    event[name] = self.grouped_types[name]
+                    obj = self.detectors[detname].det
+                    for token in namesplit[1:]:
+                        obj = getattr(obj, token)
+                    grouped = {}
+                    for attr in self.grouped_types[name]:
+                        grouped[attr] = getattr(obj, attr)(evt)
+                    event[name] = at.Group(name, self.src_type, type(obj).__name__, grouped)
                 else:
                     # loop to the bottom level of the Det obj and get data
-                    obj = self.detectors[detname]
+                    obj = self.detectors[detname].det
                     for token in namesplit[1:]:
                         obj = getattr(obj, token)
                     event[name] = obj(evt)
@@ -770,7 +816,7 @@ class PsanaSource(HierarchicalDataSource):
             detname = namesplit[0]
 
             # loop to the bottom level of the Det obj and get data
-            obj = self.detectors[detname]
+            obj = self.detectors[detname].det
             for token in namesplit[1:]:
                 obj = getattr(obj, token)
             data = obj(evt)
@@ -782,6 +828,10 @@ class PsanaSource(HierarchicalDataSource):
                     event[sub_name] = meth(data, *args, **kwargs)
 
         return event
+
+    def _cleanup(self):
+        # clear the references to the detector interface
+        self.detectors.clear()
 
 
 class Hdf5Source(HierarchicalDataSource):
@@ -846,7 +896,10 @@ class Hdf5Source(HierarchicalDataSource):
                 break
 
     def _update_data_names(self, name, obj):
-        if isinstance(obj, h5py.Dataset):
+        if isinstance(obj, h5py.Group):
+            self.data_types[self.encode(name)] = at.Group
+            self.grouped_types[self.encode(name)] = obj
+        elif isinstance(obj, h5py.Dataset):
             ndims = len(obj.shape) - 1
             if ndims < 0:
                 logger.debug("DataSrc: ignoring empty dataset %s", name)
@@ -876,6 +929,7 @@ class Hdf5Source(HierarchicalDataSource):
             for obj in grp.values():
                 if isinstance(obj, h5py.Group):
                     groups.append(obj)
+                    self._update_data_names(obj.name.strip('/'), obj)
                 elif isinstance(obj, h5py.Dataset):
                     self._update_data_names(obj.name.strip('/'), obj)
                 else:
@@ -891,10 +945,25 @@ class Hdf5Source(HierarchicalDataSource):
                 dset = run[self.decode(name)]
                 with dset.astype(self.special_types[name]):
                     event[name] = dset[index]
+            elif name in self.grouped_types:
+                grouped = {}
+                groups = [(self.grouped_types[name], grouped)]
+                while groups:
+                    grp, dset = groups.pop()
+                    for oname, obj in grp.items():
+                        if isinstance(obj, h5py.Group):
+                            dset[oname] = {}
+                            groups.append((obj, dset[oname]))
+                        elif isinstance(obj, h5py.Dataset):
+                            dset[oname] = obj[index]
+                event[name] = at.Group(name, self.src_type, type(self.grouped_types[name]).__name__, grouped)
             else:
                 event[name] = run[self.decode(name)][index]
 
         return event
+
+    def _cleanup(self):
+        pass
 
 
 class SimSource(Source):

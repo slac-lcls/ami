@@ -2,7 +2,7 @@ import typing
 import json
 import inspect
 import mypy_extensions
-from amitypes import DataSource, Detector, Array1d, Array2d, Array3d
+from amitypes import DataSource, Detector, Group, Array1d, Array2d, Array3d
 
 
 class TypeEncoder(json.JSONEncoder):
@@ -24,6 +24,8 @@ class TypeEncoder(json.JSONEncoder):
             return "amitypes.DataSource"
         elif obj == Detector:
             return "amitypes.Detector"
+        elif obj == Group:
+            return "amitypes.Group"
         elif obj == Array1d:
             return "amitypes.Array1d"
         elif obj == Array2d:
