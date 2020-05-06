@@ -33,7 +33,7 @@ setup(
         'ipython',
         'qtpy',
         'asyncqt>=0.8.0',
-        'amityping>=1.0.9',
+        'amityping>=1.1.2',
         'mypy',
         'setproctitle',
     ],
