@@ -12,7 +12,6 @@ from ami.flowchart.library import LIBRARY
 from ami.flowchart.library.common import SourceNode, CtrlNode
 from ami.flowchart.Node import Node, NodeGraphicsItem, find_nearest
 from ami.flowchart.NodeLibrary import SourceLibrary
-from ami.flowchart.TypeEncoder import TypeEncoder
 from ami.flowchart.SourceConfiguration import SourceConfiguration
 from ami.comm import AsyncGraphCommHandler
 from ami.client import flowchart_messages as fcMsgs
@@ -394,7 +393,7 @@ class Flowchart(Node):
         state = self.saveState()
 
         with open(fileName, 'w') as f:
-            json.dump(state, f, indent=2, separators=(',', ': '), sort_keys=True, cls=TypeEncoder)
+            json.dump(state, f, indent=2, separators=(',', ': '), sort_keys=True, cls=amitypes.TypeEncoder)
             f.write('\n')
 
         self.sigFileSaved.emit(fileName)
