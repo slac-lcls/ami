@@ -249,7 +249,7 @@ class TimestampConverter:
 
 
 class Source(abc.ABC):
-    def __init__(self, idnum, num_workers, heartbeat_period, src_cfg, flags=None):
+    def __init__(self, idnum, num_workers, heartbeat_period, src_cfg, flags=None, ts_type=None):
         """
         Args:
             idnum (int): Id number
@@ -272,7 +272,7 @@ class Source(abc.ABC):
         self.flags = flags or {}
         self.source = at.DataSource(self.config)
         self._base_types = {
-            'timestamp': int,
+            'timestamp': int if ts_type is None else ts_type,
             'heartbeat': int,
             'source': type(self.source),
         }
@@ -528,8 +528,8 @@ class Source(abc.ABC):
 
 
 class HierarchicalDataSource(Source):
-    def __init__(self, idnum, num_workers, heartbeat_period, src_cfg, flags=None):
-        super().__init__(idnum, num_workers, heartbeat_period, src_cfg, flags)
+    def __init__(self, idnum, num_workers, heartbeat_period, src_cfg, flags=None, ts_type=None):
+        super().__init__(idnum, num_workers, heartbeat_period, src_cfg, flags, ts_type)
         self._counter = None
         self.loop_count = 0
         self.delimiter = ":"
@@ -646,9 +646,8 @@ class HierarchicalDataSource(Source):
 
 
 class PsanaSource(HierarchicalDataSource):
-
     def __init__(self, idnum, num_workers, heartbeat_period, src_cfg, flags=None):
-        super().__init__(idnum, num_workers, heartbeat_period, src_cfg, flags)
+        super().__init__(idnum, num_workers, heartbeat_period, src_cfg, flags, float)
         self.ts_converter = TimestampConverter()
         self.ds_keys = {
             'exp', 'dir', 'files', 'shmem', 'filter', 'batch_size', 'max_events', 'sel_det_ids', 'det_name', 'run'
@@ -910,7 +909,9 @@ class Hdf5Source(HierarchicalDataSource):
                 if isinstance(h5_native_type, h5py.h5t.TypeBitfieldID):
                     self.special_types[self.encode(name)] = np.bool
                 # assign type based on the dimensions of the dataset
-                if ndims == 2:
+                if ndims == 3:
+                    self.data_types[self.encode(name)] = at.Array3d
+                elif ndims == 2:
                     self.data_types[self.encode(name)] = at.Array2d
                 elif ndims == 1:
                     self.data_types[self.encode(name)] = at.Array1d
