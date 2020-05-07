@@ -23,6 +23,10 @@ try:
     import pyarrow as pa
 except ImportError:
     pa = None
+try:
+    import h5py
+except ImportError:
+    h5py = None
 
 from ami.multiproc import check_mp_start_method
 from ami.asyncqt import QEventLoop
@@ -40,6 +44,9 @@ epicstest = pytest.mark.skipif(p4p is None, reason="p4p not avaliable")
 
 
 pyarrowtest = pytest.mark.skipif(pa is None, reason="pyarrow not avaliable")
+
+
+hdf5test = pytest.mark.skipif(h5py is None, reason="h5py not avaliable")
 
 
 @pytest.fixture(scope='session')
@@ -113,6 +120,17 @@ def xtcwriter(tmpdir_factory):
         p = subprocess.run(['xtcwriter', '-f', fname, '-n', '25'], stdout=subprocess.PIPE)
         if p.returncode == 0:
             return fname
+
+
+@pytest.fixture(scope='session')
+def hdf5writer(tmpdir_factory):
+    fname = tmpdir_factory.mktemp("h5s", False).join('data.h5')
+    with h5py.File(fname, 'w') as f:
+        f.create_dataset("gasdet", data=np.linspace(0.0, 5.0, 10))
+        f.create_dataset("ec", data=np.arange(10))
+        f.create_dataset("camera/image", data=np.arange(160).reshape((10, 4, 4)))
+        f.create_dataset("camera/raw", data=np.arange(160).reshape((10, 4, 2, 2)))
+    return fname
 
 
 @pytest.fixture(scope='session')
