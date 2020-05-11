@@ -29,8 +29,8 @@ class BlobFinder(CtrlNode):
     def to_operation(self, inputs, conditions={}):
         outputs = self.output_vars()
 
-        threshold = self.threshold
-        min_sum = self.min_sum
+        threshold = self.values['threshold']
+        min_sum = self.values['min sum']
 
         def find_blobs(img):
             blobs, nblobs = smt.label(img > threshold)

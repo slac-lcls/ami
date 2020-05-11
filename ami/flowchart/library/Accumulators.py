@@ -42,11 +42,10 @@ class PickN(CtrlNode):
                                     terminals={'In': {'io': 'in', 'ttype': T},
                                                'Out': {'io': 'out', 'ttype': Array1d}},
                                     allowAddInput=True)
-        self.N = 2
 
     def to_operation(self, inputs, conditions={}):
         outputs = self.output_vars()
         node = gn.PickN(name=self.name()+"_operation",
                         inputs=list(inputs.values()), outputs=outputs, condition_needs=list(conditions.values()),
-                        N=self.N, parent=self.name())
+                        N=self.values['N'], parent=self.name())
         return node

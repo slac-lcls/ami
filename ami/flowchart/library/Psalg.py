@@ -33,14 +33,14 @@ try:
         def to_operation(self, inputs, conditions={}):
             outputs = self.output_vars()
 
-            sampleInterval = self.Sample_Interval
-            horpos = self.horpos
-            gain = self.gain
-            offset = self.offset
-            delay = self.delay
-            walk = self.walk
-            threshold = self.threshold
-            fraction = self.fraction
+            sampleInterval = self.values['Sample Interval']
+            horpos = self.values['horpos']
+            gain = self.values['gain']
+            offset = self.values['offset']
+            delay = self.values['delay']
+            walk = self.values['walk']
+            threshold = self.values['threshold']
+            fraction = self.values['fraction']
 
             def cfd_func(waveform):
                 return cfd.cfd(sampleInterval, horpos, gain, offset, waveform, delay, walk, threshold, fraction)
@@ -167,9 +167,9 @@ try:
         def to_operation(self, inputs, conditions={}):
             outputs = self.output_vars()
 
-            dldpars = {'numchs': int(self.num_chans),
-                       'numhits': self.num_hits,
-                       'verbose': self.verbose,
+            dldpars = {'numchs': int(self.values['num chans']),
+                       'numhits': self.values['num hits'],
+                       'verbose': self.values['verbose'],
                        'consts': None}
 
             node = gn.Map(name=self.name()+"_operation",
@@ -238,13 +238,13 @@ try:
         def to_operation(self, inputs, conditions={}):
             outputs = self.output_vars()
 
-            locpars = {'num_bunches': self.num_bunches,
-                       'snr_filter': self.snr_filter,
-                       'roi_expand': self.roi_expand,
-                       'roi_fraction': self.roi_fraction,
-                       'island_split_method': self.island_split_method,
-                       'island_split_par1': self.island_split_par1,
-                       'island_split_par2': self.island_split_par2}
+            locpars = {'num_bunches': self.values['num bunches'],
+                       'snr_filter': self.values['snr filter'],
+                       'roi_expand': self.values['roi expand'],
+                       'roi_fraction': self.values['roi fraction'],
+                       'island_split_method': self.values['island split method'],
+                       'island_split_par1': self.values['island split par1'],
+                       'island_split_par2': self.values['island split par2']}
 
             node = gn.Map(name=self.name()+"_operation",
                           condition_needs=list(conditions.values()), inputs=list(inputs.values()), outputs=outputs,
@@ -276,8 +276,8 @@ try:
         def to_operation(self, inputs, conditions={}):
             outputs = self.output_vars()
 
-            threshold_lo = self.threshold_lo
-            threshold_hi = self.threshold_hi
+            threshold_lo = self.values['threshold lo']
+            threshold_hi = self.values['threshold hi']
 
             @jit(nopython=True)
             def peakfinder1d(waveform):
@@ -419,17 +419,17 @@ try:
         def to_operation(self, inputs, conditions={}):
             outputs = self.output_vars()
 
-            constructor_params = {'npix_min': self.npix_min,
-                                  'npix_max': self.npix_max,
-                                  'amax_thr': self.amax_thr,
-                                  'atot_thr': self.atot_thr,
-                                  'son_min': self.son_min}
+            constructor_params = {'npix_min': self.values['npix min'],
+                                  'npix_max': self.values['npix max'],
+                                  'amax_thr': self.values['amax thr'],
+                                  'atot_thr': self.values['atot thr'],
+                                  'son_min': self.values['son min']}
 
-            call_params = {'thr_low': self.thr_low,
-                           'thr_high': self.thr_high,
-                           'rank': self.rank,
-                           'r0': self.r0,
-                           'dr': self.dr}
+            call_params = {'thr_low': self.values['thr low'],
+                           'thr_high': self.values['thr high'],
+                           'rank': self.values['rank'],
+                           'r0': self.values['r0'],
+                           'dr': self.values['dr']}
 
             node = gn.Map(name=self.name()+"_operation",
                           condition_needs=list(conditions.values()), inputs=list(inputs.values()), outputs=outputs,
@@ -558,6 +558,7 @@ try:
 
         uiTemplate = [('lmax', 'intSpin', {'value': 4, 'values': ['2', '4', '6', '8', '10', '12']}),
                       ('reg', 'doubleSpin', {'value': 0, 'max': MAX}),
+                      ('alpha', 'doubleSpin', {'value': 4e-4, 'max': MAX})
                       ('X0', 'intSpin', {'value': 512, 'max': MAX}),
                       ('Y0', 'intSpin', {'value': 512, 'max': MAX}),
                       ('Rmax', 'intSpin', {'value': 512, 'max': MAX}),
@@ -576,13 +577,10 @@ try:
         def to_operation(self, inputs, conditions={}):
             outputs = self.output_vars()
 
-            args = {'lmax': self.lmax, 'reg': self.reg, 'alpha': 4e-4, 'X0': self.X0, 'Y0': self.Y0, 'Rmax': self.Rmax,
-                    'accum_num': self.accum_num, 'edge_w': self.edge_w, 'normalizeDist': self.normalizeDist}
-
             node = gn.Map(name=self.name()+"_operation",
                           condition_needs=list(conditions.values()),
                           inputs=list(inputs.values()), outputs=outputs, parent=self.name(),
-                          func=POPProc(args))
+                          func=POPProc(self.values))
             return node
 
 except ImportError as e:

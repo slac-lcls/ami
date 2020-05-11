@@ -66,8 +66,8 @@ class ArrayThreshold(CtrlNode):
     def to_operation(self, inputs, conditions={}):
         map_outputs = [self.name()+"_map"]
         outputs = [self.name()]
-        threshold = self.Threshold
-        count = self.Count
+        threshold = self.values['Threshold']
+        count = self.values['Count']
 
         nodes = [gn.Map(name=self.name()+"_operation",
                         condition_needs=list(conditions.values()),

@@ -1,7 +1,9 @@
 # -*- coding: utf-8 -*-
-from pyqtgraph.Qt import QtCore, QtGui
+from pyqtgraph.Qt import QtCore
+
 from ami.flowchart.Node import Node
-from ami.flowchart.library.DisplayWidgets import generateUi, ScalarWidget, WaveformWidget, ImageWidget, \
+from ami.flowchart.library.WidgetGroup import generateUi
+from ami.flowchart.library.DisplayWidgets import ScalarWidget, WaveformWidget, ImageWidget, \
         TextWidget, ObjectWidget
 from amitypes import Array1d, Array2d
 import asyncio
@@ -26,31 +28,9 @@ class CtrlNode(Node):
             else:
                 ui = []
 
-        self.ui, self.stateGroup, self.ctrls = generateUi(ui)
-        self.init_values(ui)
+        self.ui, self.stateGroup, self.ctrls, self.values = generateUi(ui)
         if self.stateGroup:
             self.stateGroup.sigChanged.connect(self.state_changed)
-
-    def init_values(self, opts):
-        for opt in opts:
-            assert(len(opt) == 3)
-
-            k, t, o = opt
-            k = k.replace(" ", "_")
-
-            if 'group' in o:
-                k = k+'_'+o['group']
-            if 'value' in o:
-                setattr(self, k, o['value'])
-            elif 'values' in o:
-                setattr(self, k, o['values'][0])
-            elif 'index' in o:
-                setattr(self, k, o['values'][o['index']])
-            elif 'checked' in o:
-                setattr(self, k, o['checked'])
-
-            if t == "text" and 'value' not in o:
-                setattr(self, k, "")
 
     def ctrlWidget(self):
         return self.ui
@@ -60,19 +40,16 @@ class CtrlNode(Node):
         self.sigStateChanged.emit(self)
 
     def update(self, *args, **kwargs):
-        if args:
-            name, val = args
-            name = name.replace(" ", "_")
-            setattr(self, name, val)
+        name, group, val = args
+        if group:
+            self.values[group][name] = val
+        else:
+            self.values[name] = val
 
     def saveState(self):
         state = super().saveState()
         if self.stateGroup:
             state['ctrl'] = self.stateGroup.state()
-
-            for k, ctrl in self.ctrls.items():
-                if isinstance(ctrl, QtGui.QLineEdit):
-                    state['ctrl'][k] = ctrl.text()
 
         if self.widget and hasattr(self.widget, 'saveState'):
             state['widget'] = self.widget.saveState()
@@ -85,13 +62,6 @@ class CtrlNode(Node):
         if self.stateGroup is not None:
             ctrlstate = state.get('ctrl', {})
             self.stateGroup.setState(ctrlstate)
-
-            for k, ctrl in self.ctrls.items():
-                if isinstance(ctrl, QtGui.QLineEdit) and k in ctrlstate:
-                    ctrl.setText(ctrlstate[k])
-                # call update because stateGroup won't emit a signal if the value of the widget has not changed
-                if k in ctrlstate:
-                    self.update(k, ctrlstate[k])
 
         if self.widget is not None and 'widget' in state:
             self.widget.restoreState(state['widget'])

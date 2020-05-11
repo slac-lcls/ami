@@ -45,7 +45,7 @@ class Projection(CtrlNode):
 
     def to_operation(self, inputs, conditions={}):
         outputs = self.output_vars()
-        axis = self.axis
+        axis = self.values['axis']
         node = gn.Map(name=self.name()+"_operation",
                       condition_needs=list(conditions.values()), inputs=list(inputs.values()), outputs=outputs,
                       func=lambda a: np.sum(a, axis=axis), parent=self.name())
@@ -88,8 +88,8 @@ class Binning(CtrlNode):
     def to_operation(self, inputs, conditions={}):
         outputs = self.output_vars()
         map_outputs = [self.name()+"_bins", self.name()+"_counts"]
-        nbins = self.bins
-        density = self.density
+        nbins = self.values['bins']
+        density = self.values['density']
 
         range = None
         if not self.auto_range:
@@ -148,13 +148,13 @@ class Binning2D(CtrlNode):
     def to_operation(self, inputs, conditions={}):
         outputs = self.output_vars()
         map_outputs = [self.name()+"_xbins", self.name()+"_ybins", self.name()+"_counts"]
-        nxbins = self.x_bins
-        nybins = self.y_bins
-        xmin = self.range_x_min
-        xmax = self.range_x_max
-        ymin = self.range_y_min
-        ymax = self.range_y_max
-        density = self.density
+        nxbins = self.values['x bins']
+        nybins = self.values['y bins']
+        xmin = self.values['range x min']
+        xmax = self.values['range x max']
+        ymin = self.values['range y min']
+        ymax = self.values['range y max']
+        density = self.values['density']
 
         if self.x_type == float and self.y_type == float:
             def bin(x, y):
@@ -198,7 +198,7 @@ class Split(CtrlNode):
     def to_operation(self, inputs, conditions={}):
         outputs = self.output_vars()
 
-        axis = self.axis
+        axis = self.values['axis']
         sections = len(outputs)
 
         def split(arr):
@@ -232,7 +232,7 @@ class Stack(CtrlNode):
     def to_operation(self, inputs, conditions={}):
         outputs = self.output_vars()
 
-        axis = self.axis
+        axis = self.values['axis']
 
         node = gn.Map(name=self.name()+"_operation",
                       condition_needs=list(conditions.values()), inputs=list(inputs.values()), outputs=outputs,
@@ -286,9 +286,9 @@ class Take(GroupedNode):
     def to_operation(self, inputs, conditions={}):
         outputs = self.output_vars()
 
-        axis = self.axis
-        index = self.index
-        mode = self.mode
+        axis = self.values['axis']
+        index = self.values['index']
+        mode = self.values['mode']
 
         if len(inputs) == 1:
             def func(arr):
@@ -333,9 +333,9 @@ class Polynomial(CtrlNode):
 
     def to_operation(self, inputs, conditions={}):
         outputs = self.output_vars()
-        c0 = self.c0
-        c1 = self.c1
-        c2 = self.c2
+        c0 = self.values['c0']
+        c1 = self.values['c1']
+        c2 = self.values['c2']
 
         def poly(x):
             coeffs = [c0, c1, c2]

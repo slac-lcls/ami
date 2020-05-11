@@ -77,7 +77,7 @@ class Combinations(CtrlNode):
     def to_operation(self, inputs, conditions={}):
         outputs = self.output_vars()
 
-        length = self.length
+        length = self.values['length']
 
         def func(*args):
             r = list(map(np.array, zip(*itertools.combinations(*args, length))))
@@ -171,6 +171,7 @@ try:
             # sympy doesn't like symbols name likes Sum.0.Out, need to remove dots.
             for arg in self.input_vars().values():
                 rarg = arg.replace('.', '')
+                rarg = arg.replace(':', '')
                 args.append(rarg)
                 expr = expr.replace(arg, rarg)
 

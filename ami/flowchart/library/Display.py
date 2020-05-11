@@ -161,10 +161,11 @@ class ScatterPlot(CtrlNode):
     def to_operation(self, inputs, conditions={}):
         outputs = [self.name()+'.'+i for i in inputs.keys()]
         buffer_output = [self.name()]
-        nodes = [gn.RollingBuffer(name=self.name()+"_buffer", N=self.Num_Points,
+        nodes = [gn.RollingBuffer(name=self.name()+"_buffer", N=self.values['Num Points'],
                                   conditions_needs=list(conditions.values()), inputs=list(inputs.values()),
                                   outputs=buffer_output, parent=self.name()),
-                 gn.Map(name=self.name()+"_operation", inputs=buffer_output, outputs=outputs, func=lambda a: zip(*a),
+                 gn.Map(name=self.name()+"_operation", inputs=buffer_output, outputs=outputs,
+                        func=lambda a: zip(*a),
                         parent=self.name())]
         return nodes
 
@@ -194,7 +195,7 @@ class ScalarPlot(CtrlNode):
         buffer_output = [self.name()]
 
         if len(inputs.values()) > 1:
-            node = [gn.RollingBuffer(name=self.name()+"_buffer", N=self.Num_Points,
+            node = [gn.RollingBuffer(name=self.name()+"_buffer", N=self.values['Num Points'],
                                      conditions_needs=list(conditions.values()), inputs=list(inputs.values()),
                                      outputs=buffer_output, parent=self.name()),
                     gn.Map(name=self.name()+"_operation", inputs=buffer_output, outputs=outputs,
@@ -246,7 +247,7 @@ class TableView(CtrlNode):
 
     def display(self, topics, terms, addr, win, **kwargs):
         if self.widget is None:
-            kwargs['update_rate'] = int(self.Update_Rate)
+            kwargs['update_rate'] = int(self.values['Update Rate'])
             self.widget = ArrayWidget(topics, terms, addr, win, **kwargs)
 
         if self.task is None:
