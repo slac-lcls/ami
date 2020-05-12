@@ -1,5 +1,8 @@
 # CHANGELOG
 
+## 2.0.11 5/12/20
+* xtcav algorithm integration
+
 ## 2.0.10 4/28/20
 * Fix display memory leaks
 * POP algorithm integration
