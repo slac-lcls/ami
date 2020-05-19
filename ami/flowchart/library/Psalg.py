@@ -558,7 +558,7 @@ try:
 
         uiTemplate = [('lmax', 'intSpin', {'value': 4, 'values': ['2', '4', '6', '8', '10', '12']}),
                       ('reg', 'doubleSpin', {'value': 0, 'max': MAX}),
-                      ('alpha', 'doubleSpin', {'value': 4e-4, 'max': MAX})
+                      ('alpha', 'doubleSpin', {'value': 4e-4, 'max': MAX}),
                       ('X0', 'intSpin', {'value': 512, 'max': MAX}),
                       ('Y0', 'intSpin', {'value': 512, 'max': MAX}),
                       ('Rmax', 'intSpin', {'value': 512, 'max': MAX}),

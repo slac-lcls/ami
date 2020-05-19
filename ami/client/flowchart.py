@@ -152,7 +152,6 @@ class NodeProcess(QtCore.QObject):
                 layout.addWidget(self.ctrlWidget, 0, 0)
                 layout.addWidget(self.widget, 0, 1, -1, -1)
                 layout.setColumnStretch(1, 10)
-                self.node.update()
             elif self.ctrlWidget:
                 scrollarea = QtWidgets.QScrollArea()
                 scrollarea.setWidget(self.ctrlWidget)

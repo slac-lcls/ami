@@ -586,6 +586,9 @@ class FlowchartCtrlWidget(QtGui.QWidget):
                 for output in outputs:
                     paths = list(nx.algorithms.all_simple_paths(self.chart._graph, name, output))
 
+                    if not paths:
+                        paths = [[output]]
+
                     for path in paths:
                         for gnode in path:
                             gnode = self.chart._graph.nodes[gnode]

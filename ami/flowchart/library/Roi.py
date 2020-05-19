@@ -238,11 +238,12 @@ class ScatterRoi(CtrlNode):
             return np.array(x), np.array(y)
 
         nodes = [gn.PickN(name=self.name()+"_pickN", condition_needs=list(conditions.values()),
-                          inputs=list(inputs.values()), outputs=pickn_outputs, parent=self.name(), N=self.Num_Points),
+                          inputs=list(inputs.values()), outputs=pickn_outputs, parent=self.name(),
+                          N=self.values['Num Points']),
                  gn.Map(name=self.name()+"_operation", inputs=pickn_outputs, outputs=outputs, func=self.func,
                         parent=self.name()),
-                 gn.Map(name=self.name()+"_display", inputs=pickn_outputs, outputs=display_outputs, parent=self.name(),
-                        func=display_func)]
+                 gn.Map(name=self.name()+"_display", inputs=pickn_outputs, outputs=display_outputs,
+                        parent=self.name(), func=display_func)]
 
         return nodes
 

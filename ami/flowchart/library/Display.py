@@ -201,7 +201,7 @@ class ScalarPlot(CtrlNode):
                     gn.Map(name=self.name()+"_operation", inputs=buffer_output, outputs=outputs,
                            func=lambda a: zip(*a), parent=self.name())]
         else:
-            node = gn.RollingBuffer(name=self.name(), N=self.Num_Points,
+            node = gn.RollingBuffer(name=self.name(), N=self.values['Num Points'],
                                     conditions_needs=list(conditions.values()), inputs=list(inputs.values()),
                                     outputs=outputs, parent=self.name())
 

@@ -92,8 +92,8 @@ class Binning(CtrlNode):
         density = self.values['density']
 
         range = None
-        if not self.auto_range:
-            range = (self.range_min, self.range_max)
+        if not self.values['auto range']:
+            range = (self.values['range min'], self.values['range max'])
 
         def bin(arr, weights=None):
             counts, bins = np.histogram(arr, bins=nbins, range=range, density=density, weights=weights)
@@ -105,8 +105,8 @@ class Binning(CtrlNode):
             return res
 
         node = [gn.Map(name=self.name()+"_map",
-                       condition_needs=list(conditions.values()), inputs=list(inputs.values()), outputs=map_outputs,
-                       func=bin, parent=self.name()),
+                       condition_needs=list(conditions.values()), inputs=list(inputs.values()),
+                       outputs=map_outputs, func=bin, parent=self.name()),
                 gn.Accumulator(name=self.name()+"_accumulated", inputs=map_outputs, outputs=outputs,
                                res_factory=lambda: [None, 0], reduction=reduction, parent=self.name())]
         return node
@@ -174,8 +174,8 @@ class Binning2D(CtrlNode):
             return res
 
         node = [gn.Map(name=self.name()+"_map",
-                       condition_needs=list(conditions.values()), inputs=list(inputs.values()), outputs=map_outputs,
-                       func=bin, parent=self.name()),
+                       condition_needs=list(conditions.values()), inputs=list(inputs.values()),
+                       outputs=map_outputs, func=bin, parent=self.name()),
                 gn.Accumulator(name=self.name()+"_accumulated", inputs=map_outputs, outputs=outputs,
                                res_factory=lambda: [None, None, 0], reduction=reduction, parent=self.name())]
         return node

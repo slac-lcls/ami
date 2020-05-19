@@ -9,6 +9,7 @@ import pyqtgraph as pg
 from pyqtgraph.Qt import QtGui, QtWidgets, QtCore
 from ami import LogConfig
 from ami.flowchart.library.WidgetGroup import generateUi
+from ami.flowchart.library.Editors import TraceEditor, HistEditor
 
 logger = logging.getLogger(LogConfig.get_package_name(__name__))
 
@@ -82,97 +83,6 @@ class AsyncFetcher(object):
             sock.close()
 
         self.ctx.destroy()
-
-
-line_styles = {'None': QtCore.Qt.PenStyle.NoPen,
-               'Solid': QtCore.Qt.PenStyle.SolidLine,
-               'Dash': QtCore.Qt.PenStyle.DashLine,
-               'Dot': QtCore.Qt.PenStyle.DotLine,
-               'DashDot': QtCore.Qt.PenStyle.DashDotLine,
-               'DashDotDot': QtCore.Qt.PenStyle.DashDotDotLine}
-
-
-class TraceEditor(QtWidgets.QWidget):
-
-    def __init__(self, parent=None, **kwargs):
-        super().__init__(parent)
-
-        self.uiTemplate = [
-            # Point
-            ('symbol', 'combo',
-             {'values': ['o', 't', 't1', 't2', 't3', 's', 'p', 'h', 'star', '+', 'd'],
-              'value': kwargs.get('symbol', 'o'), 'group': 'Point'}),
-            ('Brush', 'color', {'value': kwargs.get('color', (255, 0, 0)), 'group': 'Point'}),
-            ('Size', 'intSpin', {'min': 1, 'value': 14, 'group': 'Point'}),
-            # Line
-            ('color', 'color', {'group': 'Line'}),
-            ('width', 'intSpin', {'min': 1, 'value': 1, 'group': 'Line'}),
-            ('style', 'combo', {'values': line_styles.keys(), 'value': 'Solid', 'group': 'Line'})
-        ]
-
-        self.ui, self.stateGroup, self.ctrls, self.trace_attrs = generateUi(self.uiTemplate)
-
-        if self.stateGroup:
-            self.stateGroup.sigChanged.connect(self.state_changed)
-
-        self.layout = QtGui.QGridLayout()
-        self.setLayout(self.layout)
-
-        self.layout.addWidget(self.ui, 0, 0, -1, 2)
-        self.layout.setRowStretch(0, 1)
-        self.layout.setColumnStretch(0, 1)
-
-        self.plot_widget = pg.GraphicsLayoutWidget()
-        self.plot_widget.setFixedSize(200, 100)
-
-        self.plot_view = self.plot_widget.addPlot()
-        self.plot_view.setMenuEnabled(False)
-        # self.plot_view.addLegend()
-
-        ax = self.plot_view.getAxis('bottom')
-        ay = self.plot_view.getAxis('left')
-        self.plot_view.vb.removeItem(ax)
-        self.plot_view.vb.removeItem(ay)
-        self.plot_view.vb.setMouseEnabled(False, False)
-
-        self.trace = None
-        self.attrs = None
-        self.update_plot()
-
-        self.layout.addWidget(self.plot_widget, 0, 2, -1, -1)
-
-    def update_plot(self):
-        point = self.trace_attrs['Point']
-        line = self.trace_attrs['Line']
-
-        point = {'symbol': point['symbol'],
-                 'symbolSize': point['Size'],
-                 'symbolBrush': tuple(point['Brush'])}
-
-        line = {'color': line['color'],
-                'width': line['width'],
-                'style': line_styles[line['style']]}
-
-        pen = pg.mkPen(**line)
-
-        if self.trace is None:
-            self.trace = self.plot_view.plot([0, 1, 2, 3], [0, 0, 0, 0], pen=pen, **point)
-        else:
-            self.trace.setData([0, 1, 2, 3], [0, 0, 0, 0], pen=pen, **point)
-
-        self.attrs = {'pen': pen, 'point': point}
-
-    def state_changed(self, *args, **kwargs):
-        attr, group, val = args
-        self.trace_attrs[group][attr] = val
-        self.update_plot()
-
-    def saveState(self):
-        return self.stateGroup.state()
-
-    def restoreState(self, state):
-        self.stateGroup.setState(state)
-        self.update_plot()
 
 
 class PlotWidget(pg.GraphicsLayoutWidget):
@@ -276,7 +186,10 @@ class PlotWidget(pg.GraphicsLayoutWidget):
             self.stateGroup.addWidget(w, idx)
             self.legend_layout.addRow(idx, w)
 
-            editor = TraceEditor(parent=self, **kwargs)
+            editor = self.editor(node=self.node, parent=self, **kwargs)
+            if restore:
+                state = kwargs.get("editor_state", {})
+                editor.restoreState(state)
             self.legend_editors[idx] = editor
             self.legend_layout.addWidget(editor)
         elif restore:
@@ -285,6 +198,9 @@ class PlotWidget(pg.GraphicsLayoutWidget):
             editor.restoreState(state)
 
         return self.ctrls[idx].text()
+
+    def editor(self, node, parent, **kwargs):
+        return TraceEditor(node=node, parent=parent, **kwargs)
 
     def state_changed(self, *args, **kwargs):
         name, group, val = args
@@ -333,7 +249,8 @@ class PlotWidget(pg.GraphicsLayoutWidget):
                     item = self.plot[name]
                     attrs = self.legend_editors[idx].attrs
                     self.legend.addItem(item, self.ctrls[idx].text())
-                    item.setPen(attrs['pen'])
+                    if 'pen' in attrs:
+                        item.setPen(attrs['pen'])
                     self.trace_attrs[name] = attrs
 
     def saveState(self):
@@ -481,7 +398,8 @@ class ImageWidget(PlotWidget):
         if display:
             uiTemplate.append(('Flip', 'check', {'group': 'Display', 'checked': False}))
             uiTemplate.append(('Rotate Counter Clockwise', 'combo',
-                               {'group': 'Display', 'values': ['0', '90', '180', '270']}))
+                               {'group': 'Display', 'value': '0',
+                                'values': ['0', '90', '180', '270']}))
 
         super().__init__(topics, terms, addr, uiTemplate=uiTemplate, parent=parent, legend=False, **kwargs)
 
@@ -515,12 +433,12 @@ class ImageWidget(PlotWidget):
     def apply_clicked(self):
         super().apply_clicked()
 
-        self.flip = getattr(self, "Flip_Display", False)
-        self.rotate = int(getattr(self, "Rotate_Counter_Clockwise_Display", 0))/90
-        self.auto_levels = getattr(self, "Auto_Levels_Histogram", True)
-        self.log_scale_histogram = getattr(self, "Log_Scale_Histogram", False)
+        self.flip = self.plot_attrs['Display']['Flip']
+        self.rotate = int(self.plot_attrs['Display']['Rotate Counter Clockwise'])/90
+        self.auto_levels = self.plot_attrs['Histogram']['Auto Levels']
+        self.log_scale_histogram = self.plot_attrs['Histogram']['Log Scale']
 
-        autorange_histogram = getattr(self, "Auto_Range_Histogram", True)
+        autorange_histogram = self.plot_attrs['Histogram']['Auto Range']
         if autorange_histogram:
             self.histogramLUT.autoHistogramRange()
         else:
@@ -628,8 +546,10 @@ class HistogramWidget(PlotWidget):
     def __init__(self, topics=None, terms=None, addr=None, parent=None, **kwargs):
         super().__init__(topics, terms, addr, parent=parent, **kwargs)
 
+    def editor(self, node, parent, **kwargs):
+        return HistEditor(node=node, parent=parent, **kwargs)
+
     def data_updated(self, data):
-        i = 0
 
         num_terms = int(len(self.terms)/2)
         for i in range(0, num_terms):
@@ -649,11 +569,15 @@ class HistogramWidget(PlotWidget):
 
             if name not in self.plot:
                 _, color = symbols_colors[i]
-                legend_name = self.update_legend_layout(f"trace.{i}", name)
+                idx = f"trace.{i}"
+                legend_name = self.update_legend_layout(idx, name, color=color)
+                attrs = self.legend_editors[idx].attrs
+                self.trace_attrs[name] = attrs
                 self.plot[name] = self.plot_view.plot(x, y, name=legend_name, brush=color,
                                                       stepMode=True, fillLevel=0)
             else:
-                self.plot[name].setData(x=x, y=y)
+                attrs = self.trace_attrs[name]
+                self.plot[name].setData(x=x, y=y, **attrs)
 
 
 class Histogram2DWidget(ImageWidget):
@@ -725,14 +649,15 @@ class ScatterWidget(PlotWidget):
             y = data[y]
 
             if name not in self.plot:
-                legend_name = self.update_legend_layout(f"trace.{i}", name)
-                self.plot[name] = pg.ScatterPlotItem(name=legend_name)
-                self.plot_view.addItem(self.plot[name])
-                self.legend.addItem(self.plot[name], name=legend_name)
-
-            scatter = self.plot[name]
-            symbol, color = symbols_colors[i]
-            scatter.setData(x=x, y=y, symbol=symbol, brush=color)
+                symbol, color = symbols_colors[i]
+                idx = f"trace.{i}"
+                legend_name = self.update_legend_layout(idx, name, symbol=symbol, color=color, style='None')
+                attrs = self.legend_editors[idx].attrs
+                self.trace_attrs[name] = attrs
+                self.plot[name] = self.plot_view.plot(x=x, y=y, name=legend_name, pen=None, **attrs['point'])
+            else:
+                attrs = self.trace_attrs[name]
+                self.plot[name].setData(x=x, y=y, **attrs['point'])
 
 
 class WaveformWidget(PlotWidget):
@@ -746,8 +671,8 @@ class WaveformWidget(PlotWidget):
         for term, name in self.terms.items():
             if name not in self.plot:
                 symbol, color = symbols_colors[i]
-                i += 1
                 idx = f"trace.{i}"
+                i += 1
                 legend_name = self.update_legend_layout(idx, name, symbol=symbol, color=color)
                 attrs = self.legend_editors[idx].attrs
                 self.trace_attrs[name] = attrs
@@ -783,12 +708,17 @@ class LineWidget(PlotWidget):
             y = data[y]
 
             if name not in self.plot:
-                legend_name = self.update_legend_layout(f"trace.{i}", name)
                 symbol, color = symbols_colors[i]
+                idx = f"trace.{i}"
                 i += 1
-                self.plot[name] = self.plot_view.plot(x=x, y=y, name=legend_name, symbol=symbol, symbolBrush=color)
+                legend_name = self.update_legend_layout(idx, name, symbol=symbol, color=color)
+                attrs = self.legend_editors[idx].attrs
+                self.trace_attrs[name] = attrs
+                self.plot[name] = self.plot_view.plot(x=x, y=y,
+                                                      name=legend_name, pen=attrs['pen'], **attrs['point'])
             else:
-                self.plot[name].setData(x=x, y=y)
+                attrs = self.trace_attrs[name]
+                self.plot[name].setData(x=x, y=y, **attrs['point'])
 
 
 class FitWidget(PlotWidget):
@@ -806,25 +736,30 @@ class FitWidget(PlotWidget):
         i = 0
 
         if name not in self.plot:
-            legend_name = self.update_legend_layout(f"trace.0", name)
-            self.plot[name] = pg.ScatterPlotItem(name=legend_name)
-            self.plot_view.addItem(self.plot[name])
-            self.legend.addItem(self.plot[name], name=legend_name)
-
-        scatter = self.plot[name]
-        symbol, color = symbols_colors[i]
-        scatter.setData(x=x, y=y, symbol=symbol, brush=color)
+            symbol, color = symbols_colors[i]
+            legend_name = self.update_legend_layout("trace.0", name, symbol=symbol, color=color, style='None')
+            attrs = self.legend_editors["trace.0"].attrs
+            self.trace_attrs[name] = attrs
+            self.plot[name] = self.plot_view.plot(x=x, y=y, name=legend_name,
+                                                  pen=attrs['pen'], **attrs['point'])
+        else:
+            attrs = self.trace_attrs[name]
+            self.plot[name].setData(x=x, y=y, **attrs['point'])
 
         fit = self.terms["Fit"]
         fit = data[fit]
         name = self.terms["Fit"]
 
         if name not in self.plot:
-            legend_name = self.update_legend_layout(f"trace.1", name)
             symbol, color = symbols_colors[1]
-            self.plot[name] = self.plot_view.plot(x=x, y=fit, name=legend_name)
+            legend_name = self.update_legend_layout("trace.1", name, symbol='None', color=color)
+            attrs = self.legend_editors["trace.1"].attrs
+            self.trace_attrs[name] = attrs
+            self.plot[name] = self.plot_view.plot(x=x, y=fit, name=legend_name,
+                                                  pen=attrs['pen'], **attrs['point'])
         else:
-            self.plot[name].setData(x=x, y=fit)
+            attrs = self.trace_attrs[name]
+            self.plot[name].setData(x=x, y=fit, **attrs['point'])
 
 
 class ArrayWidget(QtWidgets.QWidget):
