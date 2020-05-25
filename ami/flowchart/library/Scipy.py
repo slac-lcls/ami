@@ -1,4 +1,4 @@
-from ami.flowchart.library.common import CtrlNode, MAX
+from ami.flowchart.library.common import CtrlNode
 from ami.flowchart.library.DisplayWidgets import FitWidget
 from amitypes import Array1d, Array2d
 import ami.graph_nodes as gn
@@ -14,8 +14,8 @@ class BlobFinder(CtrlNode):
     """
 
     nodeName = "BlobFinder"
-    uiTemplate = [('threshold', 'doubleSpin', {'value': 10, 'min': 0.01, 'max': MAX}),
-                  ('min sum', 'doubleSpin', {'value': 1, 'min': 0.01, 'max': MAX})]
+    uiTemplate = [('threshold', 'doubleSpin', {'value': 10, 'min': 0.01}),
+                  ('min sum', 'doubleSpin', {'value': 1, 'min': 0.01})]
 
     def __init__(self, name):
         super().__init__(name, terminals={
@@ -53,7 +53,7 @@ class BlobFinder(CtrlNode):
             return nblobs, x, y, adu_sum
 
         node = gn.Map(name=self.name()+"_operation",
-                      condition_needs=list(conditions.values()), inputs=list(inputs.values()), outputs=outputs,
+                      condition_needs=conditions, inputs=inputs, outputs=outputs,
                       func=find_blobs,
                       parent=self.name())
         return node
@@ -93,7 +93,7 @@ class Linregress(CtrlNode):
             return x, y, intercept + slope*x
 
         nodes = [gn.Map(name=self.name()+"_operation",
-                        condition_needs=list(conditions.values()), inputs=list(inputs.values()), outputs=outputs,
+                        condition_needs=conditions, inputs=inputs, outputs=outputs,
                         func=fit, parent=self.name())]
 
         return nodes

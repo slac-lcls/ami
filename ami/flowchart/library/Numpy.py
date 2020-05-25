@@ -1,6 +1,6 @@
 from typing import Union, List
 from amitypes import Array, Array1d, Array2d, Array3d
-from ami.flowchart.library.common import CtrlNode, MAX
+from ami.flowchart.library.common import CtrlNode
 from ami.flowchart.Node import Node
 import ami.graph_nodes as gn
 import numpy as np
@@ -23,7 +23,7 @@ class Sum(Node):
     def to_operation(self, inputs, conditions={}):
         outputs = self.output_vars()
         node = gn.Map(name=self.name()+"_operation",
-                      condition_needs=list(conditions.values()), inputs=list(inputs.values()), outputs=outputs,
+                      condition_needs=conditions, inputs=inputs, outputs=outputs,
                       func=lambda a: np.sum(a, dtype=np.float64), parent=self.name())
         return node
 
@@ -47,7 +47,7 @@ class Projection(CtrlNode):
         outputs = self.output_vars()
         axis = self.values['axis']
         node = gn.Map(name=self.name()+"_operation",
-                      condition_needs=list(conditions.values()), inputs=list(inputs.values()), outputs=outputs,
+                      condition_needs=conditions, inputs=inputs, outputs=outputs,
                       func=lambda a: np.sum(a, axis=axis), parent=self.name())
         return node
 
@@ -59,10 +59,10 @@ class Binning(CtrlNode):
     """
 
     nodeName = "Binning"
-    uiTemplate = [('bins', 'intSpin', {'value': 10, 'min': 1, 'max': MAX}),
+    uiTemplate = [('bins', 'intSpin', {'value': 10, 'min': 1}),
                   ('auto range', 'check', {'checked': False}),
-                  ('range min', 'doubleSpin', {'value': 1, 'min': -MAX, 'max': MAX}),
-                  ('range max', 'doubleSpin', {'value': 100, 'min': -MAX, 'max': MAX}),
+                  ('range min', 'doubleSpin', {'value': 1}),
+                  ('range max', 'doubleSpin', {'value': 100}),
                   ('weighted', 'check', {'checked': False}),
                   ('density', 'check', {'checked': False})]
 
@@ -105,7 +105,7 @@ class Binning(CtrlNode):
             return res
 
         node = [gn.Map(name=self.name()+"_map",
-                       condition_needs=list(conditions.values()), inputs=list(inputs.values()),
+                       condition_needs=conditions, inputs=inputs,
                        outputs=map_outputs, func=bin, parent=self.name()),
                 gn.Accumulator(name=self.name()+"_accumulated", inputs=map_outputs, outputs=outputs,
                                res_factory=lambda: [None, 0], reduction=reduction, parent=self.name())]
@@ -119,12 +119,12 @@ class Binning2D(CtrlNode):
     """
 
     nodeName = "Binning2D"
-    uiTemplate = [('x bins', 'intSpin', {'value': 10, 'min': 1, 'max': MAX}),
-                  ('y bins', 'intSpin', {'value': 10, 'min': 1, 'max': MAX}),
-                  ('range x min', 'doubleSpin', {'value': 1, 'min': -MAX, 'max': MAX}),
-                  ('range x max', 'doubleSpin', {'value': 100, 'min': -MAX, 'max': MAX}),
-                  ('range y min', 'doubleSpin', {'value': 1, 'min': -MAX, 'max': MAX}),
-                  ('range y max', 'doubleSpin', {'value': 100, 'min': -MAX, 'max': MAX}),
+    uiTemplate = [('x bins', 'intSpin', {'value': 10, 'min': 1}),
+                  ('y bins', 'intSpin', {'value': 10, 'min': 1}),
+                  ('range x min', 'doubleSpin', {'value': 1}),
+                  ('range x max', 'doubleSpin', {'value': 100}),
+                  ('range y min', 'doubleSpin', {'value': 1}),
+                  ('range y max', 'doubleSpin', {'value': 100}),
                   ('density', 'check', {'checked': False})]
 
     def __init__(self, name):
@@ -174,7 +174,7 @@ class Binning2D(CtrlNode):
             return res
 
         node = [gn.Map(name=self.name()+"_map",
-                       condition_needs=list(conditions.values()), inputs=list(inputs.values()),
+                       condition_needs=conditions, inputs=inputs,
                        outputs=map_outputs, func=bin, parent=self.name()),
                 gn.Accumulator(name=self.name()+"_accumulated", inputs=map_outputs, outputs=outputs,
                                res_factory=lambda: [None, None, 0], reduction=reduction, parent=self.name())]
@@ -210,7 +210,7 @@ class Split(CtrlNode):
             return list(splits)
 
         node = gn.Map(name=self.name()+"_operation",
-                      condition_needs=list(conditions.values()), inputs=list(inputs.values()), outputs=outputs,
+                      condition_needs=conditions, inputs=inputs, outputs=outputs,
                       func=split, parent=self.name())
         return node
 
@@ -235,7 +235,7 @@ class Stack(CtrlNode):
         axis = self.values['axis']
 
         node = gn.Map(name=self.name()+"_operation",
-                      condition_needs=list(conditions.values()), inputs=list(inputs.values()), outputs=outputs,
+                      condition_needs=conditions, inputs=inputs, outputs=outputs,
                       func=lambda *arr: np.stack(arr, axis=axis), parent=self.name())
         return node
 
@@ -275,7 +275,7 @@ class Take(GroupedNode):
 
     nodeName = "Take"
     uiTemplate = [('axis', 'intSpin', {'value': 0, 'min': 0, 'max': 2}),
-                  ('index', 'intSpin', {'value': 0, 'min': -MAX, 'max': MAX}),
+                  ('index', 'intSpin', {'value': 0}),
                   ('mode', 'combo', {'values': ['raise', 'wrap', 'clip']})]
 
     def __init__(self, name):
@@ -298,7 +298,7 @@ class Take(GroupedNode):
                 return list(map(lambda a: np.take(a, index, axis=axis, mode=mode), arr))
 
         node = gn.Map(name=self.name()+"_operation",
-                      condition_needs=list(conditions.values()), inputs=list(inputs.values()), outputs=outputs,
+                      condition_needs=conditions, inputs=inputs, outputs=outputs,
                       func=func, parent=self.name())
         return node
 
@@ -321,9 +321,9 @@ class Polynomial(CtrlNode):
     """
 
     nodeName = "Polynomial"
-    uiTemplate = [('c0', 'doubleSpin', {'value': 1, 'min': -MAX, 'max': MAX}),
-                  ('c1', 'doubleSpin', {'value': 1, 'min': -MAX, 'max': MAX}),
-                  ('c2', 'doubleSpin', {'value': 1, 'min': -MAX, 'max': MAX})]
+    uiTemplate = [('c0', 'doubleSpin', {'value': 1}),
+                  ('c1', 'doubleSpin', {'value': 1}),
+                  ('c2', 'doubleSpin', {'value': 1})]
 
     def __init__(self, name):
         super().__init__(name, terminals={
@@ -342,6 +342,6 @@ class Polynomial(CtrlNode):
             return np.polynomial.polynomial.polyval(x, coeffs)
 
         node = gn.Map(name=self.name()+"_operation",
-                      condition_needs=list(conditions.values()), inputs=list(inputs.values()), outputs=outputs,
+                      condition_needs=conditions, inputs=inputs, outputs=outputs,
                       func=poly, parent=self.name())
         return node

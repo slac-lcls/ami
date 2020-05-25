@@ -1,7 +1,7 @@
 from ami.flowchart.library.DisplayWidgets import ScalarWidget, ScatterWidget, WaveformWidget, \
     ImageWidget, TextWidget, ObjectWidget, LineWidget, ArrayWidget, HistogramWidget, \
     Histogram2DWidget
-from ami.flowchart.library.common import CtrlNode, MAX
+from ami.flowchart.library.common import CtrlNode
 from amitypes import Array, Array1d, Array2d
 from typing import Any, Text
 import ami.graph_nodes as gn
@@ -143,7 +143,7 @@ class ScatterPlot(CtrlNode):
     """
 
     nodeName = "ScatterPlot"
-    uiTemplate = [("Num Points", 'intSpin', {'value': 100, 'min': 1, 'max': MAX})]
+    uiTemplate = [("Num Points", 'intSpin', {'value': 100, 'min': 1})]
 
     def __init__(self, name):
         super().__init__(name, terminals={"X": {"io": "in", "ttype": float},
@@ -162,7 +162,7 @@ class ScatterPlot(CtrlNode):
         outputs = [self.name()+'.'+i for i in inputs.keys()]
         buffer_output = [self.name()]
         nodes = [gn.RollingBuffer(name=self.name()+"_buffer", N=self.values['Num Points'],
-                                  conditions_needs=list(conditions.values()), inputs=list(inputs.values()),
+                                  conditions_needs=conditions, inputs=inputs,
                                   outputs=buffer_output, parent=self.name()),
                  gn.Map(name=self.name()+"_operation", inputs=buffer_output, outputs=outputs,
                         func=lambda a: zip(*a),
@@ -177,7 +177,7 @@ class ScalarPlot(CtrlNode):
     """
 
     nodeName = "ScalarPlot"
-    uiTemplate = [("Num Points", 'intSpin', {'value': 100, 'min': 1, 'max': MAX})]
+    uiTemplate = [("Num Points", 'intSpin', {'value': 100, 'min': 1})]
 
     def __init__(self, name):
         super().__init__(name, terminals={"Y": {"io": "in", "ttype": float}},
@@ -196,13 +196,13 @@ class ScalarPlot(CtrlNode):
 
         if len(inputs.values()) > 1:
             node = [gn.RollingBuffer(name=self.name()+"_buffer", N=self.values['Num Points'],
-                                     conditions_needs=list(conditions.values()), inputs=list(inputs.values()),
+                                     conditions_needs=conditions, inputs=inputs,
                                      outputs=buffer_output, parent=self.name()),
                     gn.Map(name=self.name()+"_operation", inputs=buffer_output, outputs=outputs,
                            func=lambda a: zip(*a), parent=self.name())]
         else:
             node = gn.RollingBuffer(name=self.name(), N=self.values['Num Points'],
-                                    conditions_needs=list(conditions.values()), inputs=list(inputs.values()),
+                                    conditions_needs=conditions, inputs=inputs,
                                     outputs=outputs, parent=self.name())
 
         return node

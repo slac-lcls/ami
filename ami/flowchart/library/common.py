@@ -9,9 +9,6 @@ from amitypes import Array1d, Array2d
 import asyncio
 
 
-MAX = 2147483647
-
-
 class CtrlNode(Node):
     """Abstract class for nodes with auto-generated control UI"""
 

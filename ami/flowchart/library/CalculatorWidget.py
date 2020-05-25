@@ -59,7 +59,7 @@ class Button(QtWidgets.QToolButton):
 
 class CalculatorWidget(QtWidgets.QWidget):
     NumDigitButtons = 10
-    sigStateChanged = QtCore.Signal(object, object)
+    sigStateChanged = QtCore.Signal(object, object, object)
 
     def __init__(self, terms, parent=None, operation=""):
         super().__init__(parent)
@@ -155,7 +155,7 @@ class CalculatorWidget(QtWidgets.QWidget):
             self.layout.addWidget(self.variable_widget, 6, 0, 1, 7)
 
     def stateChanged(self, text):
-        self.sigStateChanged.emit("operation", text)
+        self.sigStateChanged.emit("operation", None, text)
 
     def digitClicked(self):
         clickedButton = self.sender()
@@ -203,7 +203,7 @@ class CalculatorWidget(QtWidgets.QWidget):
 
 class LogicalCalculatorWidget(QtWidgets.QWidget):
 
-    sigStateChanged = QtCore.Signal(object, object)
+    sigStateChanged = QtCore.Signal(object, object, object)
 
     def __init__(self, terms, parent=None, operation=""):
         super().__init__(parent)
@@ -263,7 +263,7 @@ class LogicalCalculatorWidget(QtWidgets.QWidget):
         self.display.setText(self.display.text() + value)
 
     def stateChanged(self, text):
-        self.sigStateChanged.emit("operation", text)
+        self.sigStateChanged.emit("operation", None, text)
 
     def saveState(self):
         return {'operation': self.display.text()}

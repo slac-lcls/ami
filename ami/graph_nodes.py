@@ -17,11 +17,27 @@ class Transformation(abc.ABC):
         """
 
         self.name = kwargs['name']
-        self.inputs = kwargs['inputs']
-        self.outputs = kwargs['outputs']
+
+        inputs = kwargs['inputs']
+        if type(inputs) is dict:
+            self.inputs = list(inputs.values())
+        else:
+            self.inputs = inputs
+
+        outputs = kwargs['outputs']
+        if type(outputs) is dict:
+            self.outputs = list(outputs.values())
+        else:
+            self.outputs = outputs
+
+        condition_needs = kwargs.get('condition_needs', [])
+        if type(condition_needs) is dict:
+            self.condition_needs = list(condition_needs.values())
+        else:
+            self.condition_needs = condition_needs
+
         self.func = kwargs['func']
         self.parent = kwargs.get('parent', None)
-        self.condition_needs = kwargs.get('condition_needs', [])
         self.color = ""
         self.is_global_operation = False
 
@@ -75,9 +91,21 @@ class Filter(abc.ABC):
             condition (function): Condition to evaluate
         """
         self.name = kwargs['name']
-        self.condition_needs = kwargs['condition_needs']
+
         self.inputs = []
-        self.outputs = kwargs['outputs']
+
+        outputs = kwargs['outputs']
+        if type(outputs) is dict:
+            self.outputs = list(outputs.values())
+        else:
+            self.outputs = outputs
+
+        condition_needs = kwargs['condition_needs']
+        if type(condition_needs) is dict:
+            self.condition_needs = list(condition_needs.values())
+        else:
+            self.condition_needs = condition_needs
+
         self.parent = kwargs.get('parent', None)
         self.color = ""
 

@@ -1,5 +1,5 @@
 from ami.flowchart.library.DisplayWidgets import AreaDetWidget, WaveformWidget, PixelDetWidget, ScatterWidget
-from ami.flowchart.library.common import CtrlNode, MAX
+from ami.flowchart.library.common import CtrlNode
 from amitypes import Array2d, Array1d
 import ami.graph_nodes as gn
 import pyqtgraph as pg
@@ -14,10 +14,10 @@ class Roi2D(CtrlNode):
     """
 
     nodeName = "Roi2D"
-    uiTemplate = [('origin x',  'intSpin', {'value': 0, 'min': 0, 'max': MAX}),
-                  ('extent x',  'intSpin', {'value': 10, 'min': 1, 'max': MAX}),
-                  ('origin y',  'intSpin', {'value': 0, 'min': 0, 'max': MAX}),
-                  ('extent y',  'intSpin', {'value': 10, 'min': 1, 'max': MAX})]
+    uiTemplate = [('origin x',  'intSpin', {'value': 0, 'min': 0}),
+                  ('extent x',  'intSpin', {'value': 10, 'min': 1}),
+                  ('origin y',  'intSpin', {'value': 0, 'min': 0}),
+                  ('extent y',  'intSpin', {'value': 10, 'min': 1})]
 
     def __init__(self, name):
         super().__init__(name,
@@ -77,7 +77,7 @@ class Roi2D(CtrlNode):
     def to_operation(self, inputs, conditions={}):
         outputs = self.output_vars()
         node = gn.Map(name=self.name()+"_operation",
-                      condition_needs=list(conditions.values()), inputs=list(inputs.values()), outputs=outputs,
+                      condition_needs=conditions, inputs=inputs, outputs=outputs,
                       func=self.func,
                       parent=self.name())
         return node
@@ -90,8 +90,8 @@ class Roi1D(CtrlNode):
     """
 
     nodeName = "Roi1D"
-    uiTemplate = [('origin',  'intSpin', {'value': 0, 'min': 0, 'max': MAX}),
-                  ('extent',  'intSpin', {'value': 10, 'min': 1, 'max': MAX})]
+    uiTemplate = [('origin',  'intSpin', {'value': 0, 'min': 0}),
+                  ('extent',  'intSpin', {'value': 10, 'min': 1})]
 
     def __init__(self, name):
         super().__init__(name, terminals={"In": {"io": "in", "ttype": Array1d},
@@ -143,7 +143,7 @@ class Roi1D(CtrlNode):
     def to_operation(self, inputs, conditions={}):
         outputs = self.output_vars()
         node = gn.Map(name=self.name()+"_operation",
-                      condition_needs=list(conditions.values()), inputs=list(inputs.values()), outputs=outputs,
+                      condition_needs=conditions, inputs=inputs, outputs=outputs,
                       func=self.func,
                       parent=self.name())
         return node
@@ -156,9 +156,9 @@ class ScatterRoi(CtrlNode):
     """
 
     nodeName = "ScatterRoi"
-    uiTemplate = [('origin',  'intSpin', {'value': 0, 'min': 0, 'max': MAX}),
-                  ('extent',  'intSpin', {'value': 10, 'min': 1, 'max': MAX}),
-                  ('Num Points', 'intSpin', {'value': 100, 'min': 1, 'max': MAX})]
+    uiTemplate = [('origin',  'intSpin', {'value': 0, 'min': 0}),
+                  ('extent',  'intSpin', {'value': 10, 'min': 1}),
+                  ('Num Points', 'intSpin', {'value': 100, 'min': 1})]
 
     def __init__(self, name):
         super().__init__(name, terminals={"X": {"io": "in", "ttype": float},
@@ -237,8 +237,8 @@ class ScatterRoi(CtrlNode):
             x, y = zip(*arr)
             return np.array(x), np.array(y)
 
-        nodes = [gn.PickN(name=self.name()+"_pickN", condition_needs=list(conditions.values()),
-                          inputs=list(inputs.values()), outputs=pickn_outputs, parent=self.name(),
+        nodes = [gn.PickN(name=self.name()+"_pickN", condition_needs=conditions,
+                          inputs=inputs, outputs=pickn_outputs, parent=self.name(),
                           N=self.values['Num Points']),
                  gn.Map(name=self.name()+"_operation", inputs=pickn_outputs, outputs=outputs, func=self.func,
                         parent=self.name()),
@@ -255,8 +255,8 @@ class Roi0D(CtrlNode):
     """
 
     nodeName = "Roi0D"
-    uiTemplate = [('x', 'intSpin', {'value': 0, 'min': 0, 'max': MAX}),
-                  ('y', 'intSpin', {'value': 0, 'min': 0, 'max': MAX})]
+    uiTemplate = [('x', 'intSpin', {'value': 0, 'min': 0}),
+                  ('y', 'intSpin', {'value': 0, 'min': 0})]
 
     def __init__(self, name):
         super().__init__(name,
@@ -303,7 +303,7 @@ class Roi0D(CtrlNode):
     def to_operation(self, inputs, conditions={}):
         outputs = self.output_vars()
         node = gn.Map(name=self.name()+"_operation",
-                      conditions_needs=list(conditions.values()), inputs=list(inputs.values()), outputs=outputs,
+                      conditions_needs=conditions, inputs=inputs, outputs=outputs,
                       func=self.func,
                       parent=self.name())
         return node

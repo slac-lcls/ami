@@ -19,6 +19,8 @@ import numpy as np
 
 __all__ = ['WidgetGroup']
 
+MAX = 2147483647
+
 
 def splitterState(w):
     s = str(w.saveState().toPercentEncoding())
@@ -377,7 +379,7 @@ def generateUi(opts):
 
     widget = QtGui.QWidget()
     layout = QtGui.QFormLayout()
-    layout.setSpacing(0)
+    # layout.setSpacing(0)
     widget.setLayout(layout)
     ctrls = {}
     row = 0
@@ -398,16 +400,38 @@ def generateUi(opts):
         tip = o.pop('tip', None)
         val = o.get('value', None)
 
+        parent = None
+        if 'group' in o:
+            name = o['group']
+            if name not in groupboxes:
+                groupbox = QtWidgets.QGroupBox(parent=widget)
+                groupbox_layout = QtGui.QFormLayout()
+                groupbox.setLayout(groupbox_layout)
+                groupboxes[name] = (groupbox, groupbox_layout)
+                groupbox.setTitle(name)
+                layout.addWidget(groupbox)
+                ctrls[name] = {'groupbox': groupbox}
+                default_values[name] = {}
+
+            groupbox, groupbox_layout = groupboxes[name]
+            parent = groupbox
+        else:
+            parent = widget
+
         if t == 'intSpin':
-            w = QtGui.QSpinBox()
+            w = QtGui.QSpinBox(parent=parent)
             if 'max' in o:
                 w.setMaximum(o['max'])
+            else:
+                w.setMaximum(MAX)
             if 'min' in o:
                 w.setMinimum(o['min'])
+            else:
+                w.setMinimum(-MAX)
             if 'value' in o:
                 w.setValue(o['value'])
         elif t == 'doubleSpin':
-            w = ScientificDoubleSpinBox()
+            w = ScientificDoubleSpinBox(parent=parent)
             if 'max' in o:
                 w.setMaximum(o['max'])
             if 'min' in o:
@@ -415,26 +439,26 @@ def generateUi(opts):
             if 'value' in o:
                 w.setValue(o['value'])
         elif t == 'spin':
-            w = SpinBox()
+            w = SpinBox(parent=widget)
             w.setOpts(**o)
         elif t == 'check':
-            w = QtGui.QCheckBox()
+            w = QtGui.QCheckBox(parent=parent)
             w.setFocus()
             if 'checked' in o:
                 val = o['checked']
                 w.setChecked(o['checked'])
         elif t == 'combo':
-            w = QtGui.QComboBox()
+            w = QtGui.QComboBox(parent=parent)
             for i in o['values']:
                 w.addItem(i)
             if 'value' in o:
                 w.setCurrentText(o['value'])
         elif t == 'color':
-            w = ColorButton()
+            w = ColorButton(parent=parent)
             if 'value' in o:
                 w.setColor(o['value'])
         elif t == 'text':
-            w = QtGui.QLineEdit()
+            w = QtGui.QLineEdit(parent=parent)
             if 'placeholder' in o:
                 w.setPlaceholderText(o['placeholder'])
             if 'value' in o:
@@ -452,24 +476,12 @@ def generateUi(opts):
             focused = True
 
         if 'group' in o:
-            groupbox_name = o['group']
-            if groupbox_name not in groupboxes:
-                groupbox_widget = QtWidgets.QGroupBox()
-                groupbox_layout = QtGui.QFormLayout()
-                groupbox_widget.setLayout(groupbox_layout)
-                groupboxes[groupbox_name] = (groupbox_widget, groupbox_layout)
-                groupbox_widget.setTitle(groupbox_name)
-                layout.addWidget(groupbox_widget)
-                ctrls[groupbox_name] = {'groupbox': groupbox_widget}
-                default_values[groupbox_name] = {}
-            else:
-                groupbox, groupbox_layout = groupboxes[groupbox_name]
-
-            w.groupbox_name = groupbox_name
+            name = o['group']
+            groupbox, groupbox_layout = groupboxes[name]
             groupbox_layout.addRow(k, w)
-            ctrls[groupbox_name][k] = w
-            widgetgroup.addWidget(w, name=k, group=groupbox_name)
-            default_values[groupbox_name][k] = val
+            ctrls[name][k] = w
+            widgetgroup.addWidget(w, name=k, group=name)
+            default_values[name][k] = val
         else:
             layout.addRow(k, w)
             if hidden:
