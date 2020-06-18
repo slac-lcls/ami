@@ -66,7 +66,12 @@ def setComboState(w, v):
         if ind > -1:
             w.setCurrentIndex(ind)
             return
-    w.setCurrentIndex(w.findText(str(v)))
+
+    idx = w.findText(str(v))
+    if w.currentIndex() == idx:
+        w.currentIndexChanged.emit(idx)
+    else:
+        w.setCurrentIndex(idx)
 
 
 class WidgetGroup(QtCore.QObject):
@@ -229,12 +234,9 @@ class WidgetGroup(QtCore.QObject):
         g = None
         if type(n) is tuple:
             n, g = n
-            v1 = self.cache[g][n]
-        else:
-            v1 = self.cache[n]
-        v2 = self.readWidget(w)
-        if v1 != v2:
-            self.sigChanged.emit(n, g, v2)
+
+        val = self.readWidget(w)
+        self.sigChanged.emit(n, g, val)
 
     def state(self):
         for w in self.uncachedWidgets:
@@ -447,6 +449,8 @@ def generateUi(opts):
             if 'checked' in o:
                 val = o['checked']
                 w.setChecked(o['checked'])
+            else:
+                val = False
         elif t == 'combo':
             w = QtGui.QComboBox(parent=parent)
             for i in o['values']:

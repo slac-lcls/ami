@@ -147,19 +147,6 @@ try:
 
             return self.widget
 
-        def saveState(self):
-            state = super().saveState()
-            state['ctrl'] = self.values
-            return state
-
-        def restoreState(self, state):
-            super().restoreState(state)
-
-            self.values = state['ctrl']
-
-            if self.widget:
-                self.widget.restoreState(state['ctrl'])
-
         def to_operation(self, inputs, conditions={}):
             outputs = self.output_vars()
             args = []

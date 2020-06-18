@@ -132,12 +132,14 @@ class HistEditor(TraceEditor):
 
 class ChannelEditor(QtWidgets.QWidget):
 
+    sigStateChanged = QtCore.Signal(object, object, object)
+
     def __init__(self, parent=None):
         super().__init__(parent)
 
         self.uiTemplate = [("num hits", "intSpin", {"value": 1, "min": 1}),
                            ("uniform parameters", "check"),
-                           ("dld", "check")]
+                           ("DLD", "check")]
 
         self.ui, self.stateGroup, self.ctrls, self.values = generateUi(self.uiTemplate)
         self.stateGroup.sigChanged.connect(self.state_changed)
@@ -161,7 +163,7 @@ class ChannelEditor(QtWidgets.QWidget):
         hbox = QtWidgets.QHBoxLayout()
         hbox.addWidget(QtWidgets.QLabel("Copy", parent=self))
 
-        params = ['all parameters', 'name', 'delay', 'fraction', 'offset', 'polarity',
+        params = ['all parameters', 'channel', 'delay', 'fraction', 'offset', 'polarity',
                   'sample_interval', 'threshold', 'timerange_high', 'timerange_low', 'walk']
 
         self.copy_param = QtWidgets.QComboBox()
@@ -193,15 +195,15 @@ class ChannelEditor(QtWidgets.QWidget):
         if not name:
             name = f"Channel {channel}"
 
-        channel_group = [('name', 'text', {'values': f'Channel {channel}', 'group': name}),
+        channel_group = [('channel', 'text', {'values': f'Channel {channel}', 'group': name}),
                          ('delay', 'doubleSpin', {'group': name}),
                          ('fraction', 'doubleSpin', {'group': name}),
                          ('offset', 'doubleSpin', {'group': name}),
                          ('polarity', 'combo', {'values': ["Negative"], 'group': name}),
                          ('sample_interval', 'doubleSpin', {'group': name}),
                          ('threshold', 'doubleSpin', {'group': name}),
-                         ('timerange_high', 'doubleSpin', {'group': name}),
                          ('timerange_low', 'doubleSpin', {'group': name}),
+                         ('timerange_high', 'doubleSpin', {'group': name}),
                          ('walk', 'doubleSpin', {'group': name})]
 
         self.channel_groups[name] = generateUi(channel_group)
@@ -256,6 +258,8 @@ class ChannelEditor(QtWidgets.QWidget):
         else:
             self.values[attr] = val
 
+        self.sigStateChanged.emit(attr, group, val)
+
     def saveState(self):
         state = self.stateGroup.state()
 
@@ -275,9 +279,9 @@ class ChannelEditor(QtWidgets.QWidget):
         for channel in range(0, channels):
             channel = f"Channel {channel}"
             if channel not in self.channel_groups:
-                _, stateGroup, _, vals = self.add_channel(name=channel)
+                _, stateGroup, _, _ = self.add_channel(name=channel)
             else:
-                _, stateGroup, _, vals = self.channel_groups[channel]
+                _, stateGroup, _, _ = self.channel_groups[channel]
 
-            self.values[channel] = vals[channel]
+            self.values[channel] = state[channel]
             stateGroup.setState({channel: state[channel]})

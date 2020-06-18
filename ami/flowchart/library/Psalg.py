@@ -73,27 +73,26 @@ try:
                                               'Index': {'io': 'out', 'ttype': Array2d},
                                               'Values': {'io': 'out', 'ttype': Array2d},
                                               'Peak Times': {'io': 'out', 'ttype': Array2d}})
+            self.values = {}
 
         def display(self, topics, terms, addr, win, **kwargs):
             if self.widget is None:
                 self.widget = ChannelEditor(parent=win)
+                self.values = self.widget.values
+                self.widget.sigStateChanged.connect(self.state_changed)
 
             return self.widget
 
         def to_operation(self, inputs, conditions={}):
             outputs = self.output_vars()
-
-            cfdpars = {'numchs': int(self.num_chans),
-                       'numhits': self.num_hits,
+            numchs = len(self.widget.channel_groups)
+            cfdpars = {'numchs': numchs,
+                       'numhits': self.values['num hits'],
                        'version': 4}
 
             paramsCFD = {}
-            for channel, name in enumerate(WFPeaks.channels):
-                name = name.replace(' ', '_')
-                attrs = {}
-                for attr in WFPeaks.channel_attrs:
-                    attrs[attr] = getattr(self, attr+'_'+name)
-                paramsCFD[channel] = attrs
+            for chn in range(0, numchs):
+                paramsCFD[chn] = self.values[f"Channel {chn}"]
 
             cfdpars['paramsCFD'] = paramsCFD
             wfpeaks = psWFPeaks.WFPeaks(**cfdpars)
@@ -140,7 +139,7 @@ try:
                       ('verbose', 'check', {'checked': False})]
 
         def __init__(self, name):
-            super().__init__(name, terminals={'Event Number': {'io': 'in', 'ttype': int},
+            super().__init__(name, terminals={'Event Number': {'io': 'in', 'ttype': float},
                                               'Num of Hits': {'io': 'in', 'ttype': Array1d},
                                               'Peak Times': {'io': 'in', 'ttype': Array2d},
                                               'Calib': {'io': 'in', 'ttype': typing.Dict},
@@ -151,7 +150,7 @@ try:
 
         def to_operation(self, inputs, conditions={}):
             outputs = self.output_vars()
-
+            print(self.values)
             dldpars = {'numchs': int(self.values['num chans']),
                        'numhits': self.values['num hits'],
                        'verbose': self.values['verbose'],

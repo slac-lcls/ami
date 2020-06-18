@@ -77,23 +77,10 @@ class If(CtrlNode):
 
     def display(self, topics, terms, addr, win, **kwargs):
         if self.widget is None:
-            self.widget = LogicalCalculatorWidget(terms, win, self.operation)
+            self.widget = LogicalCalculatorWidget(terms, win, self.values['operation'])
             self.widget.sigStateChanged.connect(self.state_changed)
 
         return self.widget
-
-    def saveState(self):
-        state = super().saveState()
-        state['ctrl'] = self.values
-        return state
-
-    def restoreState(self, state):
-        super().restoreState(state)
-
-        self.values = state['ctrl']
-
-        if self.widget:
-            self.widget.restoreState(state['widget'])
 
     def to_operation(self, inputs, conditions={}):
         outputs = self.output_vars()
