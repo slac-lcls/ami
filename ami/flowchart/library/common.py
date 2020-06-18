@@ -60,14 +60,10 @@ class CtrlNode(Node):
 
         if self.stateGroup is not None:
             ctrlstate = state.get('ctrl', {})
-            if 'num chans' in ctrlstate:
-                from ami.forkedpdb import ForkedPdb
-                ForkedPdb().set_trace()
             self.stateGroup.setState(ctrlstate)
 
         if self.widget is not None and 'widget' in state:
             self.widget.restoreState(state['widget'])
-        print(self.values)
 
     def hideRow(self, name):
         w = self.ctrls[name]
