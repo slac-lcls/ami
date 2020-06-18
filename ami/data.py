@@ -543,6 +543,12 @@ class HierarchicalDataSource(Source):
     def _types(self):
         return self.data_types
 
+    def _steps(self, run):
+        yield run
+
+    def _process_step(self, step):
+        pass
+
     @abc.abstractmethod
     def _runs(self):
         pass
@@ -556,7 +562,7 @@ class HierarchicalDataSource(Source):
         pass
 
     @abc.abstractmethod
-    def _process(self, run):
+    def _process(self, evt):
         pass
 
     @abc.abstractmethod
@@ -623,19 +629,24 @@ class HierarchicalDataSource(Source):
                 self._update(run)
                 yield self.configure()
 
-                for evt in self._events(run):
-                    self.source.evt = evt
-                    # get the subclasses timestamp implementation
-                    timestamp, heartbeat = self.timestamp(evt)
-                    # check the heartbeat
-                    if self.check_heartbeat_boundary(heartbeat):
-                        yield self.heartbeat_msg()
+                # loop over the steps in the run (if any)
+                for step in self._steps(run):
+                    # process the step
+                    self._process_step(step)
+                    # loop over the events in the step
+                    for evt in self._events(step):
+                        self.source.evt = evt
+                        # get the subclasses timestamp implementation
+                        timestamp, heartbeat = self.timestamp(evt)
+                        # check the heartbeat
+                        if self.check_heartbeat_boundary(heartbeat):
+                            yield self.heartbeat_msg()
 
-                    # emit the processed event data
-                    yield from self.event(timestamp, self._process(evt))
-                    time.sleep(self.interval)
-                    # remove reference to evt object
-                    self.source.evt = None
+                        # emit the processed event data
+                        yield from self.event(timestamp, self._process(evt))
+                        time.sleep(self.interval)
+                        # remove reference to evt object
+                        self.source.evt = None
 
                 # signal that the run has ended
                 yield self.unconfigure()
@@ -678,8 +689,11 @@ class PsanaSource(HierarchicalDataSource):
     def _runs(self):
         yield from self.ds.runs()
 
-    def _events(self, run):
-        yield from run.events()
+    def _steps(self, run):
+        yield from run.steps()
+
+    def _events(self, step):
+        yield from step.events()
 
     def _get_attr_name(self, detname, det_xface_name, attr, is_env_det):
         if is_env_det:
@@ -691,6 +705,8 @@ class PsanaSource(HierarchicalDataSource):
         for (detname, det_xface_name), det_attr_list in run.detinfo.items():
             yield detname, det_xface_name, det_attr_list, False
         for (detname, det_xface_name), det_attr in run.epicsinfo.items():
+            yield detname, det_xface_name, [det_attr], True
+        for (detname, det_xface_name), det_attr in run.scaninfo.items():
             yield detname, det_xface_name, [det_attr], True
 
     def _update_special_attrs(self, detname, det_interface):

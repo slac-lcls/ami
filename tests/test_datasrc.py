@@ -136,6 +136,8 @@ def test_psana_source(xtcwriter):
     expected_cfg = {
         'HX2:DVD:GCC:01:PMON': float,
         'HX2:DVD:GPI:01:PMON': str,
+        'motor1': float,
+        'motor2': float,
         'xpphsd': at.Detector,
         'xpphsd:calibconst': typing.Dict,
         'xpphsd:raw:calib': at.Array1d,
