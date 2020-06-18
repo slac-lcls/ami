@@ -433,8 +433,10 @@ class ImageWidget(PlotWidget):
     def apply_clicked(self):
         super().apply_clicked()
 
-        self.flip = self.plot_attrs['Display']['Flip']
-        self.rotate = int(self.plot_attrs['Display']['Rotate Counter Clockwise'])/90
+        if 'Display' in self.plot_attrs:
+            self.flip = self.plot_attrs['Display']['Flip']
+            self.rotate = int(self.plot_attrs['Display']['Rotate Counter Clockwise'])/90
+
         self.auto_levels = self.plot_attrs['Histogram']['Auto Levels']
         self.log_scale_histogram = self.plot_attrs['Histogram']['Log Scale']
 
