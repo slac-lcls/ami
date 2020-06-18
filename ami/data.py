@@ -546,9 +546,6 @@ class HierarchicalDataSource(Source):
     def _steps(self, run):
         yield run
 
-    def _process_step(self, step):
-        pass
-
     @abc.abstractmethod
     def _runs(self):
         pass
@@ -631,8 +628,9 @@ class HierarchicalDataSource(Source):
 
                 # loop over the steps in the run (if any)
                 for step in self._steps(run):
-                    # process the step
-                    self._process_step(step)
+                    # add the step to the source
+                    self.source.step = step
+
                     # loop over the events in the step
                     for evt in self._events(step):
                         self.source.evt = evt
@@ -647,6 +645,9 @@ class HierarchicalDataSource(Source):
                         time.sleep(self.interval)
                         # remove reference to evt object
                         self.source.evt = None
+
+                    # remove reference to step object
+                    self.source.step = None
 
                 # signal that the run has ended
                 yield self.unconfigure()
