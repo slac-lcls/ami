@@ -74,8 +74,8 @@ class Binning(CtrlNode):
         })
         self.weighted = None
 
-    def changed(self, *args, **kwargs):
-        super().changed(*args, **kwargs)
+    def state_changed(self, *args, **kwargs):
+        super().state_changed(*args, **kwargs)
 
         if "weighted" == args[0] and args[1]:
             self.addTerminal("Weights", io='in', ttype=Union[float, Array1d])

@@ -251,14 +251,14 @@ class WidgetGroup(QtCore.QObject):
                 n, g = n
 
             v = None
-            if g:
+            if g and g in s:
                 if n in s[g]:
                     v = s[g][n]
 
             if n in s:
                 v = s[n]
 
-            if v:
+            if v is not None:
                 self.setWidget(w, v)
 
     def readWidget(self, w):

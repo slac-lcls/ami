@@ -280,8 +280,9 @@ class PlotWidget(pg.GraphicsLayoutWidget):
 
             legendstate = state.get('legend', {})
             for k, v in legendstate.items():
-                data_name, name, editor_state = v
-                self.update_legend_layout(k, data_name, name, editor_state=editor_state, restore=True)
+                if len(v) == 3:
+                    data_name, name, editor_state = v
+                    self.update_legend_layout(k, data_name, name, editor_state=editor_state, restore=True)
 
             self.apply_clicked()
 

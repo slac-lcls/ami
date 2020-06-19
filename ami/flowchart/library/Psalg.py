@@ -150,7 +150,7 @@ try:
 
         def to_operation(self, inputs, conditions={}):
             outputs = self.output_vars()
-            print(self.values)
+
             dldpars = {'numchs': int(self.values['num chans']),
                        'numhits': self.values['num hits'],
                        'verbose': self.values['verbose'],
@@ -557,6 +557,7 @@ try:
 
         def __init__(self, name):
             super().__init__(name, terminals={'Image': {'io': 'in', 'ttype': Array2d},
+                                              'Calib': {'io': 'in', 'ttype': typing.Dict},
                                               'sliceImg': {'io': 'out', 'ttype': Array2d},
                                               'Rbins': {'io': 'out', 'ttype': Array1d},
                                               'DistR': {'io': 'out', 'ttype': Array1d},

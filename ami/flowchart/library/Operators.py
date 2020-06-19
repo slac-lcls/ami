@@ -66,13 +66,13 @@ class Combinations(CtrlNode):
                                           'Out': {'io': 'out', 'ttype': Array1d}})
         self.output_terms = []
 
-    def changed(self, *args, **kwargs):
-        super().changed(*args, **kwargs)
+    def state_changed(self, *args, **kwargs):
+        super().state_changed(*args, **kwargs)
 
-        while len(self.output_vars()) > self.length:
+        while len(self.output_vars()) > self.values['length']:
             self.removeTerminal(self.output_terms.pop())
 
-        while len(self.output_vars()) < self.length:
+        while len(self.output_vars()) < self.values['length']:
             self.output_terms.append(self.addOutput())
 
     def to_operation(self, inputs, conditions={}):
