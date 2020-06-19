@@ -414,14 +414,21 @@ class Flowchart(Node):
             new_node_state = await self.checkpoint.recv_pyobj()
             node = self._graph.nodes[node_name]['node']
             current_node_state = node.saveState()
+            changed = False
             if 'ctrl' in new_node_state:
                 if current_node_state['ctrl'] != new_node_state['ctrl']:
                     current_node_state['ctrl'] = new_node_state['ctrl']
-                    node.changed = True
-            if 'widget' in new_node_state:
-                current_node_state['widget'] = new_node_state['widget']
+                    changed = True
 
-            node.restoreState(current_node_state)
+            if 'widget' in new_node_state:
+                if current_node_state['widget'] != new_node_state['widget']:
+                    current_node_state['widget'] = new_node_state['widget']
+                    changed = True
+
+            if changed:
+                node.changed = True
+                node.restoreState(current_node_state)
+
             node.viewed = new_node_state['viewed']
 
     async def updateSources(self, init=False):
@@ -585,6 +592,9 @@ class FlowchartCtrlWidget(QtGui.QWidget):
 
                 for output in outputs:
                     paths = list(nx.algorithms.all_simple_paths(self.chart._graph, name, output))
+
+                    if not paths:
+                        paths = [[output]]
 
                     for path in paths:
                         for gnode in path:

@@ -1,5 +1,5 @@
 from ami.flowchart.library.DisplayWidgets import AreaDetWidget, WaveformWidget, PixelDetWidget, ScatterWidget
-from ami.flowchart.library.common import CtrlNode, MAX
+from ami.flowchart.library.common import CtrlNode
 from amitypes import Array2d, Array1d
 import ami.graph_nodes as gn
 import pyqtgraph as pg
@@ -14,10 +14,10 @@ class Roi2D(CtrlNode):
     """
 
     nodeName = "Roi2D"
-    uiTemplate = [('origin x',  'intSpin', {'value': 0, 'min': 0, 'max': MAX}),
-                  ('extent x',  'intSpin', {'value': 10, 'min': 1, 'max': MAX}),
-                  ('origin y',  'intSpin', {'value': 0, 'min': 0, 'max': MAX}),
-                  ('extent y',  'intSpin', {'value': 10, 'min': 1, 'max': MAX})]
+    uiTemplate = [('origin x',  'intSpin', {'value': 0, 'min': 0}),
+                  ('extent x',  'intSpin', {'value': 10, 'min': 1}),
+                  ('origin y',  'intSpin', {'value': 0, 'min': 0}),
+                  ('extent y',  'intSpin', {'value': 10, 'min': 1})]
 
     def __init__(self, name):
         super().__init__(name,
@@ -44,33 +44,30 @@ class Roi2D(CtrlNode):
         self.stateGroup.blockSignals(True)
         roi = args[0]
         extent, _, origin = roi.getAffineSliceParams(self.widget.image, self.widget.getImageItem())
-        self.origin_x = int(origin[0])
-        self.origin_y = int(origin[1])
-        self.extent_x = int(extent[0])
-        self.extent_y = int(extent[1])
-        self.ctrls['origin x'].setValue(self.origin_x)
-        self.ctrls['extent x'].setValue(self.extent_x)
-        self.ctrls['origin y'].setValue(self.origin_y)
-        self.ctrls['extent y'].setValue(self.extent_y)
+        self.values['origin x'] = int(origin[0])
+        self.values['origin y'] = int(origin[1])
+        self.values['extent x'] = int(extent[0])
+        self.values['extent y'] = int(extent[1])
+        self.ctrls['origin x'].setValue(self.values['origin x'])
+        self.ctrls['extent x'].setValue(self.values['extent x'])
+        self.ctrls['origin y'].setValue(self.values['origin y'])
+        self.ctrls['extent y'].setValue(self.values['extent y'])
         self.set_func()
         self.stateGroup.blockSignals(False)
         self.sigStateChanged.emit(self)
 
     def update(self, *args, **kwargs):
-        self.origin_x = self.ctrls['origin x'].value()
-        self.origin_y = self.ctrls['origin y'].value()
-        self.extent_x = self.ctrls['extent x'].value()
-        self.extent_y = self.ctrls['extent y'].value()
+        super().update(*args, **kwargs)
         self.set_func()
         if self.widget:
-            self.widget.roi.setPos(self.origin_x, y=self.origin_y, finish=False)
-            self.widget.roi.setSize((self.extent_x, self.extent_y), finish=False)
+            self.widget.roi.setPos(self.values['origin x'], y=self.values['origin y'], finish=False)
+            self.widget.roi.setSize((self.values['extent x'], self.values['extent y']), finish=False)
 
     def set_func(self):
-        origin_x = self.origin_x
-        origin_y = self.origin_y
-        extent_x = self.extent_x
-        extent_y = self.extent_y
+        origin_x = self.values['origin x']
+        origin_y = self.values['origin y']
+        extent_x = self.values['extent x']
+        extent_y = self.values['extent y']
 
         def func(img):
             return img[slice(origin_x, extent_x), slice(origin_y, extent_y)]
@@ -80,7 +77,7 @@ class Roi2D(CtrlNode):
     def to_operation(self, inputs, conditions={}):
         outputs = self.output_vars()
         node = gn.Map(name=self.name()+"_operation",
-                      condition_needs=list(conditions.values()), inputs=list(inputs.values()), outputs=outputs,
+                      condition_needs=conditions, inputs=inputs, outputs=outputs,
                       func=self.func,
                       parent=self.name())
         return node
@@ -93,8 +90,8 @@ class Roi1D(CtrlNode):
     """
 
     nodeName = "Roi1D"
-    uiTemplate = [('origin',  'intSpin', {'value': 0, 'min': 0, 'max': MAX}),
-                  ('extent',  'intSpin', {'value': 10, 'min': 1, 'max': MAX})]
+    uiTemplate = [('origin',  'intSpin', {'value': 0, 'min': 0}),
+                  ('extent',  'intSpin', {'value': 10, 'min': 1})]
 
     def __init__(self, name):
         super().__init__(name, terminals={"In": {"io": "in", "ttype": Array1d},
@@ -120,24 +117,23 @@ class Roi1D(CtrlNode):
         self.stateGroup.blockSignals(True)
         roi = args[0]
         origin, extent = roi.getRegion()
-        self.origin = int(origin)
-        self.extent = int(extent)
-        self.ctrls['origin'].setValue(self.origin)
-        self.ctrls['extent'].setValue(self.extent)
+        self.values['origin'] = int(origin)
+        self.values['extent'] = int(extent)
+        self.ctrls['origin'].setValue(self.values['origin'])
+        self.ctrls['extent'].setValue(self.values['extent'])
         self.set_func()
         self.stateGroup.blockSignals(False)
         self.sigStateChanged.emit(self)
 
     def update(self, *args, **kwargs):
-        self.origin = self.ctrls['origin'].value()
-        self.extent = self.ctrls['extent'].value()
+        super().update(*args, **kwargs)
         self.set_func()
         if self.widget:
-            self.widget.roi.setRegion((self.origin, self.extent))
+            self.widget.roi.setRegion((self.values['origin'], self.values['extent']))
 
     def set_func(self):
-        origin = self.origin
-        extent = self.extent
+        origin = self.values['origin']
+        extent = self.values['extent']
 
         def func(arr):
             return arr[slice(origin, extent)]
@@ -147,7 +143,7 @@ class Roi1D(CtrlNode):
     def to_operation(self, inputs, conditions={}):
         outputs = self.output_vars()
         node = gn.Map(name=self.name()+"_operation",
-                      condition_needs=list(conditions.values()), inputs=list(inputs.values()), outputs=outputs,
+                      condition_needs=conditions, inputs=inputs, outputs=outputs,
                       func=self.func,
                       parent=self.name())
         return node
@@ -160,9 +156,9 @@ class ScatterRoi(CtrlNode):
     """
 
     nodeName = "ScatterRoi"
-    uiTemplate = [('origin',  'intSpin', {'value': 0, 'min': 0, 'max': MAX}),
-                  ('extent',  'intSpin', {'value': 10, 'min': 1, 'max': MAX}),
-                  ('Num Points', 'intSpin', {'value': 100, 'min': 1, 'max': MAX})]
+    uiTemplate = [('origin',  'intSpin', {'value': 0, 'min': 0}),
+                  ('extent',  'intSpin', {'value': 10, 'min': 1}),
+                  ('Num Points', 'intSpin', {'value': 100, 'min': 1})]
 
     def __init__(self, name):
         super().__init__(name, terminals={"X": {"io": "in", "ttype": float},
@@ -195,24 +191,23 @@ class ScatterRoi(CtrlNode):
         self.stateGroup.blockSignals(True)
         roi = args[0]
         origin, extent = roi.getRegion()
-        self.origin = int(origin)
-        self.extent = int(extent)
-        self.ctrls['origin'].setValue(self.origin)
-        self.ctrls['extent'].setValue(self.extent)
+        self.values['origin'] = int(origin)
+        self.values['extent'] = int(extent)
+        self.ctrls['origin'].setValue(self.values['origin'])
+        self.ctrls['extent'].setValue(self.values['extent'])
         self.set_func()
         self.stateGroup.blockSignals(False)
         self.sigStateChanged.emit(self)
 
     def update(self, *args, **kwargs):
-        self.origin = self.ctrls['origin'].value()
-        self.extent = self.ctrls['extent'].value()
+        super().update(*args, **kwargs)
         self.set_func()
         if self.widget:
-            self.widget.roi.setRegion((self.origin, self.extent))
+            self.widget.roi.setRegion((self.values['origin'], self.values['extent']))
 
     def set_func(self):
-        origin = self.origin
-        extent = self.extent
+        origin = self.values['origin']
+        extent = self.values['extent']
 
         def func(arr):
             arr = np.array(arr)
@@ -242,12 +237,13 @@ class ScatterRoi(CtrlNode):
             x, y = zip(*arr)
             return np.array(x), np.array(y)
 
-        nodes = [gn.PickN(name=self.name()+"_pickN", condition_needs=list(conditions.values()),
-                          inputs=list(inputs.values()), outputs=pickn_outputs, parent=self.name(), N=self.Num_Points),
+        nodes = [gn.PickN(name=self.name()+"_pickN", condition_needs=conditions,
+                          inputs=inputs, outputs=pickn_outputs, parent=self.name(),
+                          N=self.values['Num Points']),
                  gn.Map(name=self.name()+"_operation", inputs=pickn_outputs, outputs=outputs, func=self.func,
                         parent=self.name()),
-                 gn.Map(name=self.name()+"_display", inputs=pickn_outputs, outputs=display_outputs, parent=self.name(),
-                        func=display_func)]
+                 gn.Map(name=self.name()+"_display", inputs=pickn_outputs, outputs=display_outputs,
+                        parent=self.name(), func=display_func)]
 
         return nodes
 
@@ -259,8 +255,8 @@ class Roi0D(CtrlNode):
     """
 
     nodeName = "Roi0D"
-    uiTemplate = [('x', 'intSpin', {'value': 0, 'min': 0, 'max': MAX}),
-                  ('y', 'intSpin', {'value': 0, 'min': 0, 'max': MAX})]
+    uiTemplate = [('x', 'intSpin', {'value': 0, 'min': 0}),
+                  ('y', 'intSpin', {'value': 0, 'min': 0})]
 
     def __init__(self, name):
         super().__init__(name,
@@ -282,7 +278,7 @@ class Roi0D(CtrlNode):
         # need to block signals to the stateGroup otherwise stateGroup.sigChanged
         # will be emmitted by setValue causing update to be called
         self.stateGroup.blockSignals(True)
-        self.x, self.y = args
+        self.values['x'], self.values['y'] = args
         self.ctrls['x'].setValue(self.x)
         self.ctrls['y'].setValue(self.y)
         self.set_func()
@@ -290,15 +286,14 @@ class Roi0D(CtrlNode):
         self.sigStateChanged.emit(self)
 
     def update(self, *args, **kwargs):
-        self.x = self.ctrls['x'].value()
-        self.y = self.ctrls['y'].value()
+        super().update(*args, **kwargs)
         self.set_func()
         if self.widget:
             self.widget.update_cursor(self.x, self.y)
 
     def set_func(self):
-        x = self.x
-        y = self.y
+        x = self.valaues['x']
+        y = self.values['y']
 
         def func(img):
             return img[x, y]
@@ -308,7 +303,7 @@ class Roi0D(CtrlNode):
     def to_operation(self, inputs, conditions={}):
         outputs = self.output_vars()
         node = gn.Map(name=self.name()+"_operation",
-                      conditions_needs=list(conditions.values()), inputs=list(inputs.values()), outputs=outputs,
+                      conditions_needs=conditions, inputs=inputs, outputs=outputs,
                       func=self.func,
                       parent=self.name())
         return node

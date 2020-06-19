@@ -106,7 +106,7 @@ class NodeProcess(QtCore.QObject):
         self.checkpoint = self.ctx.socket(zmq.PUB)
         self.checkpoint.connect(checkpoint_addr)
 
-        self.ctrlWidget = self.node.ctrlWidget()
+        self.ctrlWidget = self.node.ctrlWidget(self.win)
         self.widget = None
         self.show = False
 
@@ -152,13 +152,15 @@ class NodeProcess(QtCore.QObject):
                 layout.addWidget(self.ctrlWidget, 0, 0)
                 layout.addWidget(self.widget, 0, 1, -1, -1)
                 layout.setColumnStretch(1, 10)
-                self.node.update()
             elif self.ctrlWidget:
                 scrollarea = QtWidgets.QScrollArea()
                 scrollarea.setWidget(self.ctrlWidget)
                 self.win.setCentralWidget(scrollarea)
             elif self.widget:
-                self.win.setCentralWidget(self.widget)
+                scrollarea = QtWidgets.QScrollArea()
+                scrollarea.setWidgetResizable(True)
+                scrollarea.setWidget(self.widget)
+                self.win.setCentralWidget(scrollarea)
 
             if msg.state and hasattr(self.widget, 'restoreState'):
                 self.widget.restoreState(msg.state)

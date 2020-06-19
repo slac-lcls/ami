@@ -1,7 +1,7 @@
 from typing import Union, Any
 from amitypes import Array1d, Array2d, Array3d
 from ami.flowchart.Node import Node
-from ami.flowchart.library.common import CtrlNode, MAX
+from ami.flowchart.library.common import CtrlNode
 from ami.flowchart.library.CalculatorWidget import CalculatorWidget
 import ami.graph_nodes as gn
 import numpy as np
@@ -41,8 +41,9 @@ class MeanVsScan(Node):
 
         nodes = [
             gn.Map(name=self.name()+'_map', inputs=[inputs['Value']], outputs=map_outputs,
-                   condition_needs=list(conditions.values()), func=lambda a: (a, 1), parent=self.name()),
-            gn.ReduceByKey(name=self.name()+'_reduce', inputs=[inputs['Bin']]+map_outputs, outputs=reduce_outputs,
+                   condition_needs=conditions, func=lambda a: (a, 1), parent=self.name()),
+            gn.ReduceByKey(name=self.name()+'_reduce',
+                           inputs=[inputs['Bin']]+map_outputs, outputs=reduce_outputs,
                            reduction=lambda cv, v: (cv[0]+v[0], cv[1]+v[1]), parent=self.name()),
             gn.Map(name=self.name()+'_mean', inputs=reduce_outputs, outputs=outputs, func=mean,
                    parent=self.name())
@@ -58,26 +59,26 @@ class Combinations(CtrlNode):
     """
 
     nodeName = "Combinations"
-    uiTemplate = [('length', 'intSpin', {'value': 1, 'min': 1, 'max': MAX})]
+    uiTemplate = [('length', 'intSpin', {'value': 1, 'min': 1})]
 
     def __init__(self, name):
         super().__init__(name, terminals={'In': {'io': 'in', 'ttype': Array1d},
                                           'Out': {'io': 'out', 'ttype': Array1d}})
         self.output_terms = []
 
-    def changed(self, *args, **kwargs):
-        super().changed(*args, **kwargs)
+    def state_changed(self, *args, **kwargs):
+        super().state_changed(*args, **kwargs)
 
-        while len(self.output_vars()) > self.length:
+        while len(self.output_vars()) > self.values['length']:
             self.removeTerminal(self.output_terms.pop())
 
-        while len(self.output_vars()) < self.length:
+        while len(self.output_vars()) < self.values['length']:
             self.output_terms.append(self.addOutput())
 
     def to_operation(self, inputs, conditions={}):
         outputs = self.output_vars()
 
-        length = self.length
+        length = self.values['length']
 
         def func(*args):
             r = list(map(np.array, zip(*itertools.combinations(*args, length))))
@@ -87,7 +88,7 @@ class Combinations(CtrlNode):
                 return [np.array([])]*length
 
         node = gn.Map(name=self.name()+"_operation",
-                      conditions_needs=list(conditions.values()), inputs=list(inputs.values()), outputs=outputs,
+                      conditions_needs=conditions, inputs=inputs, outputs=outputs,
                       func=func, parent=self.name())
         return node
 
@@ -131,46 +132,30 @@ try:
         nodeName = "Calculator"
 
         def __init__(self, name):
-            super().__init__(name, terminals={'In': {'io': 'in', 'ttype': Union[float, Array1d, Array2d, Array3d]},
-                                              'Out': {'io': 'out', 'ttype': Any}},
+            super().__init__(name,
+                             terminals={'In': {'io': 'in', 'ttype': Union[float, Array1d,
+                                                                          Array2d, Array3d]},
+                                        'Out': {'io': 'out', 'ttype': Any}},
                              allowAddInput=True)
 
-            self.operation = ""
+            self.values = {'operation': ''}
 
         def display(self, topics, terms, addr, win, **kwargs):
             if self.widget is None:
-                self.widget = CalculatorWidget(terms, win, self.operation)
+                self.widget = CalculatorWidget(terms, win, self.values['operation'])
                 self.widget.sigStateChanged.connect(self.state_changed)
 
             return self.widget
 
-        def saveState(self):
-            state = super().saveState()
-            state['ctrl'] = {'operation': self.operation}
-
-            if self.widget:
-                state['widget'] = self.widget.saveState()
-            else:
-                state['widget'] = {'operation': self.operation}
-
-            return state
-
-        def restoreState(self, state):
-            super().restoreState(state)
-
-            self.operation = state['ctrl']['operation']
-
-            if self.widget:
-                self.widget.restoreState(state['widget'])
-
         def to_operation(self, inputs, conditions={}):
             outputs = self.output_vars()
             args = []
-            expr = self.operation
+            expr = self.values['operation']
 
             # sympy doesn't like symbols name likes Sum.0.Out, need to remove dots.
             for arg in self.input_vars().values():
                 rarg = arg.replace('.', '')
+                rarg = arg.replace(':', '')
                 args.append(rarg)
                 expr = expr.replace(arg, rarg)
 
@@ -178,7 +163,8 @@ try:
                       'expr': expr}
 
             node = gn.Map(name=self.name()+"_operation",
-                          condition_needs=list(conditions.values()), inputs=list(inputs.values()), outputs=outputs,
+                          condition_needs=conditions,
+                          inputs=inputs, outputs=outputs,
                           func=CalcProc(params), parent=self.name())
 
             return node

@@ -1,7 +1,8 @@
 from pyqtgraph.Qt import QtGui, QtWidgets
 from amitypes import DataSource, Detector, Array1d, Array2d
 from ami.flowchart.Node import Node, NodeGraphicsItem
-from ami.flowchart.library.common import CtrlNode, MAX
+from ami.flowchart.library.common import CtrlNode
+from ami.flowchart.library.Editors import ChannelEditor
 import ami.graph_nodes as gn
 import numpy as np
 import typing
@@ -17,14 +18,14 @@ try:
         """
 
         nodeName = "CFD"
-        uiTemplate = [('Sample Interval', 'doubleSpin', {'value': 1, 'min': 0.01, 'max': MAX}),
-                      ('horpos', 'doubleSpin', {'value': 0, 'min': 0, 'max': MAX}),
-                      ('gain', 'doubleSpin', {'value': 1, 'min': 0.01, 'max': MAX}),
-                      ('offset', 'doubleSpin', {'value': 0, 'min': 0, 'max': MAX}),
-                      ('delay', 'intSpin', {'value': 1, 'min': 0, 'max': MAX}),
-                      ('walk', 'doubleSpin', {'value': 0, 'min': 0, 'max': MAX}),
-                      ('threshold', 'doubleSpin', {'value': 0, 'min': 0, 'max': MAX}),
-                      ('fraction', 'doubleSpin', {'value': 0.5, 'min': 0, 'max': MAX})]
+        uiTemplate = [('Sample Interval', 'doubleSpin', {'value': 1, 'min': 0.01}),
+                      ('horpos', 'doubleSpin', {'value': 0, 'min': 0}),
+                      ('gain', 'doubleSpin', {'value': 1, 'min': 0.01}),
+                      ('offset', 'doubleSpin', {'value': 0, 'min': 0}),
+                      ('delay', 'intSpin', {'value': 1, 'min': 0}),
+                      ('walk', 'doubleSpin', {'value': 0, 'min': 0}),
+                      ('threshold', 'doubleSpin', {'value': 0, 'min': 0}),
+                      ('fraction', 'doubleSpin', {'value': 0.5, 'min': 0})]
 
         def __init__(self, name):
             super().__init__(name, terminals={'In': {'io': 'in', 'ttype': Array1d},
@@ -33,22 +34,22 @@ try:
         def to_operation(self, inputs, conditions={}):
             outputs = self.output_vars()
 
-            sampleInterval = self.Sample_Interval
-            horpos = self.horpos
-            gain = self.gain
-            offset = self.offset
-            delay = self.delay
-            walk = self.walk
-            threshold = self.threshold
-            fraction = self.fraction
+            sampleInterval = self.values['Sample Interval']
+            horpos = self.values['horpos']
+            gain = self.values['gain']
+            offset = self.values['offset']
+            delay = self.values['delay']
+            walk = self.values['walk']
+            threshold = self.values['threshold']
+            fraction = self.values['fraction']
 
             def cfd_func(waveform):
                 return cfd.cfd(sampleInterval, horpos, gain, offset, waveform, delay, walk, threshold, fraction)
 
             node = gn.Map(name=self.name()+"_operation",
-                          condition_needs=list(conditions.values()), inputs=list(inputs.values()), outputs=outputs,
-                          func=cfd_func,
-                          parent=self.name())
+                          condition_needs=conditions,
+                          inputs=inputs, outputs=outputs,
+                          func=cfd_func, parent=self.name())
             return node
 
 except ImportError as e:
@@ -57,25 +58,6 @@ except ImportError as e:
 try:
     import psana.hexanode.WFPeaks as psWFPeaks
 
-    def build_layout(channels):
-        template = [('num chans', 'combo', {'values': ["5"]}),
-                    ('num hits', 'intSpin', {'value': 16, 'min': 1, 'max': MAX})]
-
-        for channel in channels:
-            channel_group = [('name', 'text', {'values': f'Channel {channel}', 'group': channel}),
-                             ('delay', 'doubleSpin', {'group': channel}),
-                             ('fraction', 'doubleSpin', {'group': channel}),
-                             ('offset', 'doubleSpin', {'group': channel}),
-                             ('polarity', 'combo', {'values': ["Negative"], 'group': channel}),
-                             ('sample_interval', 'doubleSpin', {'group': channel}),
-                             ('threshold', 'doubleSpin', {'group': channel}),
-                             ('timerange_high', 'doubleSpin', {'group': channel}),
-                             ('timerange_low', 'doubleSpin', {'group': channel}),
-                             ('walk', 'doubleSpin', {'group': channel})]
-            template.extend(channel_group)
-
-        return template
-
     class WFPeaks(CtrlNode):
 
         """
@@ -83,10 +65,6 @@ try:
         """
 
         nodeName = "WFPeaks"
-        channels = ['Channel 0', 'Channel 1', 'Channel 2', 'Channel 3', 'Channel 4']
-        channel_attrs = ['name', 'delay', 'fraction', 'offset', 'polarity', 'sample_interval',
-                         'threshold', 'timerange_high', 'timerange_low', 'walk']
-        uiTemplate = build_layout(channels)
 
         def __init__(self, name):
             super().__init__(name, terminals={'Times': {'io': 'in', 'ttype': Array2d},
@@ -95,21 +73,26 @@ try:
                                               'Index': {'io': 'out', 'ttype': Array2d},
                                               'Values': {'io': 'out', 'ttype': Array2d},
                                               'Peak Times': {'io': 'out', 'ttype': Array2d}})
+            self.values = {}
+
+        def display(self, topics, terms, addr, win, **kwargs):
+            if self.widget is None:
+                self.widget = ChannelEditor(parent=win)
+                self.values = self.widget.values
+                self.widget.sigStateChanged.connect(self.state_changed)
+
+            return self.widget
 
         def to_operation(self, inputs, conditions={}):
             outputs = self.output_vars()
-
-            cfdpars = {'numchs': int(self.num_chans),
-                       'numhits': self.num_hits,
+            numchs = len(self.widget.channel_groups)
+            cfdpars = {'numchs': numchs,
+                       'numhits': self.values['num hits'],
                        'version': 4}
 
             paramsCFD = {}
-            for channel, name in enumerate(WFPeaks.channels):
-                name = name.replace(' ', '_')
-                attrs = {}
-                for attr in WFPeaks.channel_attrs:
-                    attrs[attr] = getattr(self, attr+'_'+name)
-                paramsCFD[channel] = attrs
+            for chn in range(0, numchs):
+                paramsCFD[chn] = self.values[f"Channel {chn}"]
 
             cfdpars['paramsCFD'] = paramsCFD
             wfpeaks = psWFPeaks.WFPeaks(**cfdpars)
@@ -119,7 +102,8 @@ try:
                 return peaks
 
             node = gn.Map(name=self.name()+"_operation",
-                          condition_needs=list(conditions.values()), inputs=list(inputs.values()), outputs=outputs,
+                          condition_needs=conditions,
+                          inputs=inputs, outputs=outputs,
                           func=peakFinder, parent=self.name())
             return node
 
@@ -151,11 +135,11 @@ try:
 
         nodeName = "Hexanode"
         uiTemplate = [('num chans', 'combo', {'values': ["5", "7"]}),
-                      ('num hits', 'intSpin', {'value': 16, 'min': 1, 'max': MAX}),
+                      ('num hits', 'intSpin', {'value': 16, 'min': 1}),
                       ('verbose', 'check', {'checked': False})]
 
         def __init__(self, name):
-            super().__init__(name, terminals={'Event Number': {'io': 'in', 'ttype': int},
+            super().__init__(name, terminals={'Event Number': {'io': 'in', 'ttype': float},
                                               'Num of Hits': {'io': 'in', 'ttype': Array1d},
                                               'Peak Times': {'io': 'in', 'ttype': Array2d},
                                               'Calib': {'io': 'in', 'ttype': typing.Dict},
@@ -167,13 +151,14 @@ try:
         def to_operation(self, inputs, conditions={}):
             outputs = self.output_vars()
 
-            dldpars = {'numchs': int(self.num_chans),
-                       'numhits': self.num_hits,
-                       'verbose': self.verbose,
+            dldpars = {'numchs': int(self.values['num chans']),
+                       'numhits': self.values['num hits'],
+                       'verbose': self.values['verbose'],
                        'consts': None}
 
             node = gn.Map(name=self.name()+"_operation",
-                          condition_needs=list(conditions.values()), inputs=list(inputs.values()), outputs=outputs,
+                          condition_needs=conditions,
+                          inputs=inputs, outputs=outputs,
                           func=DLDProc(**dldpars), parent=self.name())
 
             return node
@@ -218,13 +203,13 @@ try:
         """
 
         nodeName = "XTCAVLasingOn"
-        uiTemplate = [('num bunches', 'intSpin', {'value': 1, 'min': 1, 'max': MAX}),
-                      ('snr filter', 'doubleSpin', {'value': 10.0, 'min': 0, 'max': MAX}),
-                      ('roi expand', 'doubleSpin', {'value': 1.0, 'min': -MAX, 'max': MAX}),
+        uiTemplate = [('num bunches', 'intSpin', {'value': 1, 'min': 1}),
+                      ('snr filter', 'doubleSpin', {'value': 10.0, 'min': 0}),
+                      ('roi expand', 'doubleSpin', {'value': 1.0}),
                       ('roi fraction', 'doubleSpin', {'value': 0.001, 'min': 0, 'max': 1}),
                       ('island split method',  'combo', {'values': ["scipyLabel", "contourLabel"]}),
-                      ('island split par1', 'doubleSpin', {'value': 3.0, 'min': -MAX, 'max': MAX}),
-                      ('island split par2', 'doubleSpin', {'value': 5.0, 'min': -MAX, 'max': MAX})]
+                      ('island split par1', 'doubleSpin', {'value': 3.0}),
+                      ('island split par2', 'doubleSpin', {'value': 5.0})]
 
         def __init__(self, name):
             super().__init__(name, terminals={'src': {'io': 'in', 'ttype': DataSource},
@@ -238,16 +223,17 @@ try:
         def to_operation(self, inputs, conditions={}):
             outputs = self.output_vars()
 
-            locpars = {'num_bunches': self.num_bunches,
-                       'snr_filter': self.snr_filter,
-                       'roi_expand': self.roi_expand,
-                       'roi_fraction': self.roi_fraction,
-                       'island_split_method': self.island_split_method,
-                       'island_split_par1': self.island_split_par1,
-                       'island_split_par2': self.island_split_par2}
+            locpars = {'num_bunches': self.values['num bunches'],
+                       'snr_filter': self.values['snr filter'],
+                       'roi_expand': self.values['roi expand'],
+                       'roi_fraction': self.values['roi fraction'],
+                       'island_split_method': self.values['island split method'],
+                       'island_split_par1': self.values['island split par1'],
+                       'island_split_par2': self.values['island split par2']}
 
             node = gn.Map(name=self.name()+"_operation",
-                          condition_needs=list(conditions.values()), inputs=list(inputs.values()), outputs=outputs,
+                          condition_needs=conditions,
+                          inputs=inputs, outputs=outputs,
                           func=LOCProc(**locpars), parent=self.name())
 
             return node
@@ -265,8 +251,8 @@ try:
         """
 
         nodeName = "PeakFinder1D"
-        uiTemplate = [('threshold lo', 'doubleSpin', {'value': 0, 'min': -MAX, 'max': MAX}),
-                      ('threshold hi', 'doubleSpin', {'value': 1, 'min': -MAX, 'max': MAX})]
+        uiTemplate = [('threshold lo', 'doubleSpin', {'value': 0}),
+                      ('threshold hi', 'doubleSpin', {'value': 1})]
 
         def __init__(self, name):
             super().__init__(name, terminals={"Waveform": {'io': 'in', 'ttype': Array1d},
@@ -276,8 +262,8 @@ try:
         def to_operation(self, inputs, conditions={}):
             outputs = self.output_vars()
 
-            threshold_lo = self.threshold_lo
-            threshold_hi = self.threshold_hi
+            threshold_lo = self.values['threshold lo']
+            threshold_hi = self.values['threshold hi']
 
             @jit(nopython=True)
             def peakfinder1d(waveform):
@@ -323,7 +309,8 @@ try:
                 return np.array(centroids), np.array(widths)
 
             node = gn.Map(name=self.name()+"_operation",
-                          condition_needs=list(conditions.values()), inputs=list(inputs.values()), outputs=outputs,
+                          condition_needs=conditions,
+                          inputs=inputs, outputs=outputs,
                           func=peakfinder1d, parent=self.name())
             return node
 
@@ -390,17 +377,17 @@ try:
         """
 
         nodeName = "PeakFinderV4R3"
-        uiTemplate = [('npix min', 'doubleSpin', {'value': 20, 'min': -MAX, 'max': MAX}),
-                      ('npix max', 'doubleSpin', {'value': 25, 'min': -MAX, 'max': MAX}),
-                      ('amax thr', 'doubleSpin', {'value': 0, 'min': -MAX, 'max': MAX}),
-                      ('atot thr', 'doubleSpin', {'value': 0, 'min': -MAX, 'max': MAX}),
-                      ('son min', 'doubleSpin', {'value': 0, 'min': -MAX, 'max': MAX}),
+        uiTemplate = [('npix min', 'doubleSpin', {'value': 20}),
+                      ('npix max', 'doubleSpin', {'value': 25}),
+                      ('amax thr', 'doubleSpin', {'value': 0}),
+                      ('atot thr', 'doubleSpin', {'value': 0}),
+                      ('son min', 'doubleSpin', {'value': 0}),
                       # pass to peak_finder_v4r3_d2
-                      ('thr low', 'doubleSpin', {'value': 35, 'min': -MAX, 'max': MAX}),
-                      ('thr high', 'doubleSpin', {'value': 100, 'min': -MAX, 'max': MAX}),
-                      ('rank', 'doubleSpin', {'value': 2, 'min': -MAX, 'max': MAX}),
-                      ('r0', 'doubleSpin', {'value': 4, 'min': -MAX, 'max': MAX}),
-                      ('dr', 'doubleSpin', {'value': 0.05, 'min': -MAX, 'max': MAX})]
+                      ('thr low', 'doubleSpin', {'value': 35}),
+                      ('thr high', 'doubleSpin', {'value': 100}),
+                      ('rank', 'doubleSpin', {'value': 2}),
+                      ('r0', 'doubleSpin', {'value': 4}),
+                      ('dr', 'doubleSpin', {'value': 0.05})]
 
         def __init__(self, name):
             super().__init__(name, terminals={'Image': {'io': 'in', 'ttype': Array2d},
@@ -419,20 +406,21 @@ try:
         def to_operation(self, inputs, conditions={}):
             outputs = self.output_vars()
 
-            constructor_params = {'npix_min': self.npix_min,
-                                  'npix_max': self.npix_max,
-                                  'amax_thr': self.amax_thr,
-                                  'atot_thr': self.atot_thr,
-                                  'son_min': self.son_min}
+            constructor_params = {'npix_min': self.values['npix min'],
+                                  'npix_max': self.values['npix max'],
+                                  'amax_thr': self.values['amax thr'],
+                                  'atot_thr': self.values['atot thr'],
+                                  'son_min': self.values['son min']}
 
-            call_params = {'thr_low': self.thr_low,
-                           'thr_high': self.thr_high,
-                           'rank': self.rank,
-                           'r0': self.r0,
-                           'dr': self.dr}
+            call_params = {'thr_low': self.values['thr low'],
+                           'thr_high': self.values['thr high'],
+                           'rank': self.values['rank'],
+                           'r0': self.values['r0'],
+                           'dr': self.values['dr']}
 
             node = gn.Map(name=self.name()+"_operation",
-                          condition_needs=list(conditions.values()), inputs=list(inputs.values()), outputs=outputs,
+                          condition_needs=conditions,
+                          inputs=inputs, outputs=outputs,
                           func=PeakfinderAlgos(constructor_params, call_params, list(self.outputs().keys())),
                           parent=self.name())
 
@@ -487,7 +475,8 @@ try:
             outputs = self.output_vars()
 
             node = gn.Map(name=self.name()+"_operation",
-                          condition_needs=list(conditions.values()), inputs=list(inputs.values()), outputs=outputs,
+                          condition_needs=conditions,
+                          inputs=inputs, outputs=outputs,
                           func=EdgeFinderProc({}), parent=self.name())
 
             return node
@@ -557,16 +546,18 @@ try:
         nodeName = "POP"
 
         uiTemplate = [('lmax', 'intSpin', {'value': 4, 'values': ['2', '4', '6', '8', '10', '12']}),
-                      ('reg', 'doubleSpin', {'value': 0, 'max': MAX}),
-                      ('X0', 'intSpin', {'value': 512, 'max': MAX}),
-                      ('Y0', 'intSpin', {'value': 512, 'max': MAX}),
-                      ('Rmax', 'intSpin', {'value': 512, 'max': MAX}),
-                      ('edge_w', 'intSpin', {'value': 10, 'max': MAX}),
+                      ('reg', 'doubleSpin', {'value': 0}),
+                      ('alpha', 'doubleSpin', {'value': 4e-4}),
+                      ('X0', 'intSpin', {'value': 512}),
+                      ('Y0', 'intSpin', {'value': 512}),
+                      ('Rmax', 'intSpin', {'value': 512}),
+                      ('edge_w', 'intSpin', {'value': 10}),
                       ('accum_num', 'intSpin', {'value': 30, 'min': 0}),
                       ('normalizeDist', 'check', {'checked': True})]
 
         def __init__(self, name):
             super().__init__(name, terminals={'Image': {'io': 'in', 'ttype': Array2d},
+                                              'Calib': {'io': 'in', 'ttype': typing.Dict},
                                               'sliceImg': {'io': 'out', 'ttype': Array2d},
                                               'Rbins': {'io': 'out', 'ttype': Array1d},
                                               'DistR': {'io': 'out', 'ttype': Array1d},
@@ -576,13 +567,10 @@ try:
         def to_operation(self, inputs, conditions={}):
             outputs = self.output_vars()
 
-            args = {'lmax': self.lmax, 'reg': self.reg, 'alpha': 4e-4, 'X0': self.X0, 'Y0': self.Y0, 'Rmax': self.Rmax,
-                    'accum_num': self.accum_num, 'edge_w': self.edge_w, 'normalizeDist': self.normalizeDist}
-
             node = gn.Map(name=self.name()+"_operation",
-                          condition_needs=list(conditions.values()),
-                          inputs=list(inputs.values()), outputs=outputs, parent=self.name(),
-                          func=POPProc(args))
+                          condition_needs=conditions,
+                          inputs=inputs, outputs=outputs, parent=self.name(),
+                          func=POPProc(self.values))
             return node
 
 except ImportError as e:

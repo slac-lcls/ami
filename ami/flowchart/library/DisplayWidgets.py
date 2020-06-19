@@ -1,4 +1,3 @@
-import re
 import zmq
 import logging
 import asyncio
@@ -8,188 +7,15 @@ import itertools as it
 import numpy as np
 import pyqtgraph as pg
 from pyqtgraph.Qt import QtGui, QtWidgets, QtCore
-from pyqtgraph.widgets.SpinBox import SpinBox
-from pyqtgraph.WidgetGroup import WidgetGroup
-from pyqtgraph.widgets.ColorButton import ColorButton
 from ami import LogConfig
-
+from ami.flowchart.library.WidgetGroup import generateUi
+from ami.flowchart.library.Editors import TraceEditor, HistEditor
 
 logger = logging.getLogger(LogConfig.get_package_name(__name__))
 
-colors = ['b', 'g', 'r']
+colors = [(0, 0, 255), (0, 255, 0), (255, 0, 0)]
 symbols = ['o', 's', 't', 'd', '+']
 symbols_colors = list(it.product(symbols, colors))
-_float_re = re.compile(r'(([+-]?\d+(\.\d*)?|\.\d+)([eE][+-]?\d+)?)')
-
-
-def valid_float_string(string):
-    match = _float_re.search(string)
-    return match.groups()[0] == string if match else False
-
-
-def format_float(value):
-    """Modified form of the 'g' format specifier."""
-    string = "{:g}".format(value).replace("e+", "e")
-    string = re.sub("e(-?)0*(\\d+)", r"e\1\2", string)
-    return string
-
-
-class FloatValidator(QtGui.QValidator):
-
-    def validate(self, string, position):
-        if valid_float_string(string):
-            state = QtGui.QValidator.Acceptable
-        elif string == "" or string[position-1] in 'e.-+':
-            state = QtGui.QValidator.Intermediate
-        else:
-            state = QtGui.QValidator.Invalid
-        return (state, string, position)
-
-    def fixup(self, text):
-        match = _float_re.search(text)
-        return match.groups()[0] if match else ""
-
-
-class ScientificDoubleSpinBox(QtGui.QDoubleSpinBox):
-
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        self.setMinimum(-np.inf)
-        self.setMaximum(np.inf)
-        self.validator = FloatValidator()
-        self.setDecimals(1000)
-
-    def validate(self, text, position):
-        return self.validator.validate(text, position)
-
-    def fixup(self, text):
-        return self.validator.fixup(text)
-
-    def valueFromText(self, text):
-        return float(text)
-
-    def textFromValue(self, value):
-        return format_float(value)
-
-    def stepBy(self, steps):
-        text = self.cleanText()
-        groups = _float_re.search(text).groups()
-        decimal = float(groups[1])
-        decimal += steps
-        new_string = "{:g}".format(decimal) + (groups[3] if groups[3] else "")
-        self.lineEdit().setText(new_string)
-
-    def widgetGroupInterface(self):
-        return (lambda w: w.valueChanged,
-                QtGui.QDoubleSpinBox.value,
-                QtGui.QDoubleSpinBox.setValue)
-
-
-def generateUi(opts):
-    """Convenience function for generating common UI types"""
-    if len(opts) == 0:
-        return None, None, None
-
-    widget = QtGui.QWidget()
-    layout = QtGui.QFormLayout()
-    layout.setSpacing(0)
-    widget.setLayout(layout)
-    ctrls = {}
-    row = 0
-    group = WidgetGroup()
-    groupboxes = {}
-    focused = False
-    for opt in opts:
-        if len(opt) == 2:
-            k, t = opt
-            o = {}
-        elif len(opt) == 3:
-            k, t, o = opt
-        else:
-            raise Exception("Widget specification must be (name, type) or (name, type, {opts})")
-
-        hidden = o.pop('hidden', False)
-        tip = o.pop('tip', None)
-
-        if t == 'intSpin':
-            w = QtGui.QSpinBox()
-            if 'max' in o:
-                w.setMaximum(o['max'])
-            if 'min' in o:
-                w.setMinimum(o['min'])
-            if 'value' in o:
-                w.setValue(o['value'])
-        elif t == 'doubleSpin':
-            w = ScientificDoubleSpinBox()
-            if 'max' in o:
-                w.setMaximum(o['max'])
-            if 'min' in o:
-                w.setMinimum(o['min'])
-            if 'value' in o:
-                w.setValue(o['value'])
-        elif t == 'spin':
-            w = SpinBox()
-            w.setOpts(**o)
-        elif t == 'check':
-            w = QtGui.QCheckBox()
-            w.setFocus()
-            if 'checked' in o:
-                w.setChecked(o['checked'])
-        elif t == 'combo':
-            w = QtGui.QComboBox()
-            for i in o['values']:
-                w.addItem(i)
-            if 'value'in o:
-                w.setCurrentText(o['value'])
-        elif t == 'color':
-            w = ColorButton()
-        elif t == 'text':
-            w = QtGui.QLineEdit()
-            if 'placeholder' in o:
-                w.setPlaceholderText(o['placeholder'])
-        else:
-            raise Exception("Unknown widget type '%s'" % str(t))
-
-        if tip is not None:
-            w.setToolTip(tip)
-
-        w.setObjectName(k)
-
-        if t != 'text' and not focused:
-            w.setFocus()
-            focused = True
-
-        if 'group' in o:
-            groupbox_name = o['group']
-            if groupbox_name not in groupboxes:
-                groupbox = QtWidgets.QGroupBox()
-                groupbox_layout = QtGui.QFormLayout()
-                groupbox.setLayout(groupbox_layout)
-                groupboxes[groupbox_name] = (groupbox, groupbox_layout)
-                groupbox.setTitle(groupbox_name)
-                layout.addWidget(groupbox)
-                ctrls[groupbox_name] = groupbox
-            else:
-                groupbox, groupbox_layout = groupboxes[groupbox_name]
-
-            groupbox_name = groupbox_name.replace(' ', '_')
-            w.groupbox_name = groupbox_name
-            groupbox_layout.addRow(k, w)
-            ctrls[k+"_"+groupbox_name] = w
-            group.addWidget(w, k+"_"+groupbox_name)
-        else:
-            layout.addRow(k, w)
-            if hidden:
-                w.hide()
-                label = layout.labelForField(w)
-                label.hide()
-
-            w.rowNum = row
-            ctrls[k] = w
-            group.addWidget(w, k)
-            row += 1
-
-    return widget, group, ctrls
 
 
 class AsyncFetcher(object):
@@ -271,6 +97,7 @@ class PlotWidget(pg.GraphicsLayoutWidget):
 
         self.plot_view = self.addPlot()
         if self.node:
+            # node is passed in on subprocess
             self.viewbox_proxy = pg.SignalProxy(self.plot_view.vb.sigStateChanged,
                                                 delay=1,
                                                 slot=lambda args: self.node.sigStateChanged.emit(self.node))
@@ -293,6 +120,9 @@ class PlotWidget(pg.GraphicsLayoutWidget):
 
         self.plot = {}  # { name : PlotDataItem }
         self.trace_ids = {}  # { trace_idx : name }
+        self.trace_attrs = {}
+        self.legend_editors = {}
+
         self.terms = terms
 
         self.last_updated = pg.LabelItem(parent=self.plot_view)
@@ -313,8 +143,7 @@ class PlotWidget(pg.GraphicsLayoutWidget):
                           ('Log Scale', 'check', {'group': 'Y Axis', 'checked': False})]
 
         self.uiTemplate = uiTemplate
-        self.init_values(self.uiTemplate)
-        self.ui, self.stateGroup, self.ctrls = generateUi(self.uiTemplate)
+        self.ui, self.stateGroup, self.ctrls, self.plot_attrs = generateUi(self.uiTemplate)
 
         if self.stateGroup:
             self.stateGroup.sigChanged.connect(self.state_changed)
@@ -328,7 +157,6 @@ class PlotWidget(pg.GraphicsLayoutWidget):
 
             groupbox = QtWidgets.QGroupBox()
             groupbox.setTitle("Legend")
-            groupbox.setCheckable(True)
             groupbox.setLayout(self.legend_layout)
             ctrl_layout.addWidget(groupbox)
             self.ctrls["Legend"] = groupbox
@@ -338,89 +166,92 @@ class PlotWidget(pg.GraphicsLayoutWidget):
         ctrl_layout.addWidget(self.apply_btn)
 
         self.win = QtGui.QMainWindow()
-        self.win.setCentralWidget(self.ui)
+        scrollArea = QtWidgets.QScrollArea(parent=self.win)
+        scrollArea.setWidgetResizable(True)
+        scrollArea.setWidget(self.ui)
+        self.win.setCentralWidget(scrollArea)
         if self.node:
             self.win.setWindowTitle(self.node.name() + ' configuration')
 
-    def update_legend_layout(self, idx, data_name, name=None):
+    def update_legend_layout(self, idx, data_name, name=None, **kwargs):
+        restore = kwargs.get('restore', False)
+
         if idx not in self.trace_ids:
             if name is None:
                 name = data_name
+
             self.trace_ids[idx] = data_name
             w = QtGui.QLineEdit(name)
-            w.trace_id = idx
             self.ctrls[idx] = w
             self.stateGroup.addWidget(w, idx)
-            setattr(self, idx, name)
             self.legend_layout.addRow(idx, w)
+
+            editor = self.editor(node=self.node, parent=self, **kwargs)
+            if restore:
+                state = kwargs.get("editor_state", {})
+                editor.restoreState(state)
+            self.legend_editors[idx] = editor
+            self.legend_layout.addWidget(editor)
+        elif restore:
+            editor = self.legend_editors[idx]
+            state = kwargs.get("editor_state", {})
+            editor.restoreState(state)
 
         return self.ctrls[idx].text()
 
-    def init_values(self, opts):
-        for opt in opts:
-
-            if len(opt) < 3:
-                continue
-
-            k, t, o = opt
-            k = k.replace(" ", "_")
-
-            if 'group' in o:
-                k = k+'_'+o['group']
-            if 'value' in o:
-                setattr(self, k, o['value'])
-            elif 'values' in o:
-                setattr(self, k, o['values'][0])
-            elif 'index' in o:
-                setattr(self, k, o['values'][o['index']])
-            elif 'checked' in o:
-                setattr(self, k, o['checked'])
-
-            if t == "text" and 'value' not in o:
-                setattr(self, k, "")
+    def editor(self, node, parent, **kwargs):
+        return TraceEditor(node=node, parent=parent, **kwargs)
 
     def state_changed(self, *args, **kwargs):
-        if args:
-            name, val = args
-            name = name.replace(" ", "_")
-            setattr(self, name, val)
+        name, group, val = args
+        if group:
+            self.plot_attrs[group][name] = val
+        else:
+            self.plot_attrs[name] = val
 
         if self.node:
             self.node.sigStateChanged.emit(self.node)
 
     def apply_clicked(self):
-        title = getattr(self, "Title", "")
-        self.plot_view.setTitle(title)
+        title = self.plot_attrs.get('Title', None)
+        if title:
+            self.plot_view.setTitle(title)
 
-        x_axis_lbl = getattr(self, "Label_X_Axis", "")
-        self.plot_view.setLabel('bottom', x_axis_lbl)
+        x_axis = self.plot_attrs.get('X Axis', {})
+        y_axis = self.plot_attrs.get('Y Axis', {})
 
-        xlog_scale = getattr(self, "Log_Scale_X_Axis", False)
-        ylog_scale = getattr(self, "Log_Scale_Y_Axis", False)
+        x_lbl = x_axis.get('Label', None)
+        if x_lbl:
+            self.plot_view.setLabel('bottom', x_lbl)
+
+        y_lbl = y_axis.get('Label', None)
+        if y_lbl:
+            self.plot_view.setLabel('left', y_lbl)
+
+        xlog_scale = x_axis.get('Log Scale', False)
+        ylog_scale = y_axis.get('Log Scale', False)
         self.plot_view.setLogMode(x=xlog_scale, y=ylog_scale)
 
-        y_axis_lbl = getattr(self, "Label_Y_Axis", "")
-        self.plot_view.setLabel('left', y_axis_lbl)
-
-        show_grid = getattr(self, "Show_Grid", False)
+        show_grid = self.plot_attrs.get('Show Grid', True)
         self.plot_view.showGrid(x=show_grid, y=show_grid, alpha=1.0)
 
-        auto_range = getattr(self, "Auto_Range", False)
-        if auto_range:
-            self.plot_view.vb.enableAutoRange()
-        else:
-            self.plot_view.vb.disableAutoRange()
+        if "Auto Range" in self.plot_attrs:
+            auto_range = self.plot_attrs["Auto Range"]
+            if auto_range:
+                self.plot_view.vb.enableAutoRange()
+            else:
+                self.plot_view.vb.disableAutoRange()
 
         if 'Legend' in self.ctrls:
-            if self.ctrls['Legend'].isChecked():
-                self.legend.show()
-                self.legend.clear()
-                for idx, name in self.trace_ids.items():
-                    if name in self.plot:
-                        item = self.plot[name]
-                        self.legend.addItem(item, self.ctrls[idx].text())
-            else:
-                self.legend.hide()
+            self.legend.clear()
+            for idx, name in self.trace_ids.items():
+                if name in self.plot:
+                    item = self.plot[name]
+                    attrs = self.legend_editors[idx].attrs
+                    self.legend.addItem(item, self.ctrls[idx].text())
+                    if 'pen' in attrs:
+                        item.setPen(attrs['pen'])
+                    self.trace_attrs[name] = attrs
 
     def saveState(self):
         state = {}
@@ -430,16 +261,16 @@ class PlotWidget(pg.GraphicsLayoutWidget):
 
             legend = {}
 
-            for k, ctrl in self.ctrls.items():
-                if hasattr(ctrl, 'trace_id'):
-                    legend[k] = (self.trace_ids[ctrl.trace_id], ctrl.text())
-                elif isinstance(ctrl, QtGui.QLineEdit):
-                    state['ctrl'][k] = ctrl.text()
+            for trace_id, trace_editor in self.legend_editors.items():
+                editor_state = trace_editor.saveState()
+                ctrl = self.ctrls[trace_id]
+                legend[trace_id] = (self.trace_ids[trace_id], ctrl.text(), editor_state)
 
             if legend:
                 state['legend'] = legend
 
         state['viewbox'] = self.plot_view.vb.getState()
+
         return state
 
     def restoreState(self, state):
@@ -449,13 +280,9 @@ class PlotWidget(pg.GraphicsLayoutWidget):
 
             legendstate = state.get('legend', {})
             for k, v in legendstate.items():
-                self.update_legend_layout(k, *v)
-
-            for k, ctrl in self.ctrls.items():
-                if isinstance(ctrl, QtGui.QLineEdit) and k in ctrlstate:
-                    ctrl.setText(ctrlstate[k])
-                if k in ctrlstate:
-                    self.state_changed(k, ctrlstate[k])
+                if len(v) == 3:
+                    data_name, name, editor_state = v
+                    self.update_legend_layout(k, data_name, name, editor_state=editor_state, restore=True)
 
             self.apply_clicked()
 
@@ -572,7 +399,8 @@ class ImageWidget(PlotWidget):
         if display:
             uiTemplate.append(('Flip', 'check', {'group': 'Display', 'checked': False}))
             uiTemplate.append(('Rotate Counter Clockwise', 'combo',
-                               {'group': 'Display', 'values': ['0', '90', '180', '270']}))
+                               {'group': 'Display', 'value': '0',
+                                'values': ['0', '90', '180', '270']}))
 
         super().__init__(topics, terms, addr, uiTemplate=uiTemplate, parent=parent, legend=False, **kwargs)
 
@@ -606,12 +434,14 @@ class ImageWidget(PlotWidget):
     def apply_clicked(self):
         super().apply_clicked()
 
-        self.flip = getattr(self, "Flip_Display", False)
-        self.rotate = int(getattr(self, "Rotate_Counter_Clockwise_Display", 0))/90
-        self.auto_levels = getattr(self, "Auto_Levels_Histogram", True)
-        self.log_scale_histogram = getattr(self, "Log_Scale_Histogram", False)
+        if 'Display' in self.plot_attrs:
+            self.flip = self.plot_attrs['Display']['Flip']
+            self.rotate = int(self.plot_attrs['Display']['Rotate Counter Clockwise'])/90
 
-        autorange_histogram = getattr(self, "Auto_Range_Histogram", True)
+        self.auto_levels = self.plot_attrs['Histogram']['Auto Levels']
+        self.log_scale_histogram = self.plot_attrs['Histogram']['Log Scale']
+
+        autorange_histogram = self.plot_attrs['Histogram']['Auto Range']
         if autorange_histogram:
             self.histogramLUT.autoHistogramRange()
         else:
@@ -719,8 +549,10 @@ class HistogramWidget(PlotWidget):
     def __init__(self, topics=None, terms=None, addr=None, parent=None, **kwargs):
         super().__init__(topics, terms, addr, parent=parent, **kwargs)
 
+    def editor(self, node, parent, **kwargs):
+        return HistEditor(node=node, parent=parent, **kwargs)
+
     def data_updated(self, data):
-        i = 0
 
         num_terms = int(len(self.terms)/2)
         for i in range(0, num_terms):
@@ -740,11 +572,15 @@ class HistogramWidget(PlotWidget):
 
             if name not in self.plot:
                 _, color = symbols_colors[i]
-                legend_name = self.update_legend_layout(f"trace.{i}", name)
+                idx = f"trace.{i}"
+                legend_name = self.update_legend_layout(idx, name, color=color)
+                attrs = self.legend_editors[idx].attrs
+                self.trace_attrs[name] = attrs
                 self.plot[name] = self.plot_view.plot(x, y, name=legend_name, brush=color,
                                                       stepMode=True, fillLevel=0)
             else:
-                self.plot[name].setData(x=x, y=y)
+                attrs = self.trace_attrs[name]
+                self.plot[name].setData(x=x, y=y, **attrs)
 
 
 class Histogram2DWidget(ImageWidget):
@@ -816,14 +652,15 @@ class ScatterWidget(PlotWidget):
             y = data[y]
 
             if name not in self.plot:
-                legend_name = self.update_legend_layout(f"trace.{i}", name)
-                self.plot[name] = pg.ScatterPlotItem(name=legend_name)
-                self.plot_view.addItem(self.plot[name])
-                self.legend.addItem(self.plot[name], name=legend_name)
-
-            scatter = self.plot[name]
-            symbol, color = symbols_colors[i]
-            scatter.setData(x=x, y=y, symbol=symbol, brush=color)
+                symbol, color = symbols_colors[i]
+                idx = f"trace.{i}"
+                legend_name = self.update_legend_layout(idx, name, symbol=symbol, color=color, style='None')
+                attrs = self.legend_editors[idx].attrs
+                self.trace_attrs[name] = attrs
+                self.plot[name] = self.plot_view.plot(x=x, y=y, name=legend_name, pen=None, **attrs['point'])
+            else:
+                attrs = self.trace_attrs[name]
+                self.plot[name].setData(x=x, y=y, **attrs['point'])
 
 
 class WaveformWidget(PlotWidget):
@@ -836,13 +673,18 @@ class WaveformWidget(PlotWidget):
 
         for term, name in self.terms.items():
             if name not in self.plot:
-                legend_name = self.update_legend_layout(f"trace.{i}", name)
                 symbol, color = symbols_colors[i]
+                idx = f"trace.{i}"
                 i += 1
-                self.plot[name] = self.plot_view.plot(y=np.array(data[name]), name=legend_name,
-                                                      symbol=symbol, symbolBrush=color)
+                legend_name = self.update_legend_layout(idx, name, symbol=symbol, color=color)
+                attrs = self.legend_editors[idx].attrs
+                self.trace_attrs[name] = attrs
+                self.plot[name] = self.plot_view.plot(y=data[name], name=legend_name,
+                                                      pen=attrs['pen'],
+                                                      **attrs['point'])
             else:
-                self.plot[name].setData(y=np.array(data[name]))
+                attrs = self.trace_attrs[name]
+                self.plot[name].setData(y=data[name], **attrs['point'])
 
 
 class LineWidget(PlotWidget):
@@ -869,12 +711,17 @@ class LineWidget(PlotWidget):
             y = data[y]
 
             if name not in self.plot:
-                legend_name = self.update_legend_layout(f"trace.{i}", name)
                 symbol, color = symbols_colors[i]
+                idx = f"trace.{i}"
                 i += 1
-                self.plot[name] = self.plot_view.plot(x=x, y=y, name=legend_name, symbol=symbol, symbolBrush=color)
+                legend_name = self.update_legend_layout(idx, name, symbol=symbol, color=color)
+                attrs = self.legend_editors[idx].attrs
+                self.trace_attrs[name] = attrs
+                self.plot[name] = self.plot_view.plot(x=x, y=y,
+                                                      name=legend_name, pen=attrs['pen'], **attrs['point'])
             else:
-                self.plot[name].setData(x=x, y=y)
+                attrs = self.trace_attrs[name]
+                self.plot[name].setData(x=x, y=y, **attrs['point'])
 
 
 class FitWidget(PlotWidget):
@@ -892,25 +739,30 @@ class FitWidget(PlotWidget):
         i = 0
 
         if name not in self.plot:
-            legend_name = self.update_legend_layout(f"trace.0", name)
-            self.plot[name] = pg.ScatterPlotItem(name=legend_name)
-            self.plot_view.addItem(self.plot[name])
-            self.legend.addItem(self.plot[name], name=legend_name)
-
-        scatter = self.plot[name]
-        symbol, color = symbols_colors[i]
-        scatter.setData(x=x, y=y, symbol=symbol, brush=color)
+            symbol, color = symbols_colors[i]
+            legend_name = self.update_legend_layout("trace.0", name, symbol=symbol, color=color, style='None')
+            attrs = self.legend_editors["trace.0"].attrs
+            self.trace_attrs[name] = attrs
+            self.plot[name] = self.plot_view.plot(x=x, y=y, name=legend_name,
+                                                  pen=attrs['pen'], **attrs['point'])
+        else:
+            attrs = self.trace_attrs[name]
+            self.plot[name].setData(x=x, y=y, **attrs['point'])
 
         fit = self.terms["Fit"]
         fit = data[fit]
         name = self.terms["Fit"]
 
         if name not in self.plot:
-            legend_name = self.update_legend_layout(f"trace.1", name)
             symbol, color = symbols_colors[1]
-            self.plot[name] = self.plot_view.plot(x=x, y=fit, name=legend_name)
+            legend_name = self.update_legend_layout("trace.1", name, symbol='None', color=color)
+            attrs = self.legend_editors["trace.1"].attrs
+            self.trace_attrs[name] = attrs
+            self.plot[name] = self.plot_view.plot(x=x, y=fit, name=legend_name,
+                                                  pen=attrs['pen'], **attrs['point'])
         else:
-            self.plot[name].setData(x=x, y=fit)
+            attrs = self.trace_attrs[name]
+            self.plot[name].setData(x=x, y=fit, **attrs['point'])
 
 
 class ArrayWidget(QtWidgets.QWidget):

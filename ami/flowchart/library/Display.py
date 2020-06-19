@@ -1,7 +1,7 @@
 from ami.flowchart.library.DisplayWidgets import ScalarWidget, ScatterWidget, WaveformWidget, \
     ImageWidget, TextWidget, ObjectWidget, LineWidget, ArrayWidget, HistogramWidget, \
     Histogram2DWidget
-from ami.flowchart.library.common import CtrlNode, MAX
+from ami.flowchart.library.common import CtrlNode
 from amitypes import Array, Array1d, Array2d
 from typing import Any, Text
 import ami.graph_nodes as gn
@@ -143,7 +143,7 @@ class ScatterPlot(CtrlNode):
     """
 
     nodeName = "ScatterPlot"
-    uiTemplate = [("Num Points", 'intSpin', {'value': 100, 'min': 1, 'max': MAX})]
+    uiTemplate = [("Num Points", 'intSpin', {'value': 100, 'min': 1})]
 
     def __init__(self, name):
         super().__init__(name, terminals={"X": {"io": "in", "ttype": float},
@@ -161,10 +161,11 @@ class ScatterPlot(CtrlNode):
     def to_operation(self, inputs, conditions={}):
         outputs = [self.name()+'.'+i for i in inputs.keys()]
         buffer_output = [self.name()]
-        nodes = [gn.RollingBuffer(name=self.name()+"_buffer", N=self.Num_Points,
-                                  conditions_needs=list(conditions.values()), inputs=list(inputs.values()),
+        nodes = [gn.RollingBuffer(name=self.name()+"_buffer", N=self.values['Num Points'],
+                                  conditions_needs=conditions, inputs=inputs,
                                   outputs=buffer_output, parent=self.name()),
-                 gn.Map(name=self.name()+"_operation", inputs=buffer_output, outputs=outputs, func=lambda a: zip(*a),
+                 gn.Map(name=self.name()+"_operation", inputs=buffer_output, outputs=outputs,
+                        func=lambda a: zip(*a),
                         parent=self.name())]
         return nodes
 
@@ -176,7 +177,7 @@ class ScalarPlot(CtrlNode):
     """
 
     nodeName = "ScalarPlot"
-    uiTemplate = [("Num Points", 'intSpin', {'value': 100, 'min': 1, 'max': MAX})]
+    uiTemplate = [("Num Points", 'intSpin', {'value': 100, 'min': 1})]
 
     def __init__(self, name):
         super().__init__(name, terminals={"Y": {"io": "in", "ttype": float}},
@@ -194,14 +195,14 @@ class ScalarPlot(CtrlNode):
         buffer_output = [self.name()]
 
         if len(inputs.values()) > 1:
-            node = [gn.RollingBuffer(name=self.name()+"_buffer", N=self.Num_Points,
-                                     conditions_needs=list(conditions.values()), inputs=list(inputs.values()),
+            node = [gn.RollingBuffer(name=self.name()+"_buffer", N=self.values['Num Points'],
+                                     conditions_needs=conditions, inputs=inputs,
                                      outputs=buffer_output, parent=self.name()),
                     gn.Map(name=self.name()+"_operation", inputs=buffer_output, outputs=outputs,
                            func=lambda a: zip(*a), parent=self.name())]
         else:
-            node = gn.RollingBuffer(name=self.name(), N=self.Num_Points,
-                                    conditions_needs=list(conditions.values()), inputs=list(inputs.values()),
+            node = gn.RollingBuffer(name=self.name(), N=self.values['Num Points'],
+                                    conditions_needs=conditions, inputs=inputs,
                                     outputs=outputs, parent=self.name())
 
         return node
@@ -246,7 +247,7 @@ class TableView(CtrlNode):
 
     def display(self, topics, terms, addr, win, **kwargs):
         if self.widget is None:
-            kwargs['update_rate'] = int(self.Update_Rate)
+            kwargs['update_rate'] = int(self.values['Update Rate'])
             self.widget = ArrayWidget(topics, terms, addr, win, **kwargs)
 
         if self.task is None:
