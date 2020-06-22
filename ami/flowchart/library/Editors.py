@@ -242,7 +242,7 @@ class ChannelEditor(QtWidgets.QWidget):
         _, from_stateGroup, _, _ = self.channel_groups[from_channel]
         _, to_stateGroup, _, _ = self.channel_groups[to_channel]
 
-        from_state = from_stateGroup.state()
+        from_state = from_stateGroup.state()[from_channel]
         if param == "all parameters":
             to_stateGroup.setState({to_channel: from_state})
         else:
