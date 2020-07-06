@@ -11,7 +11,7 @@ import tempfile
 
 
 class Terminal(object):
-    def __init__(self, node, name, io, ttype, group=None, pos=None, removable=False):
+    def __init__(self, node, name, io, ttype, group=None, pos=None, removable=False, unit=None):
         """
         Construct a new terminal.
 
@@ -24,6 +24,7 @@ class Terminal(object):
         group           Terminal group
         pos             [x, y], the position of the terminal within its node's boundaries
         removable       (bool) Whether the terminal can be removed by the user
+        unit            Pint Unit
         ==============  =================================================================================
         """
         self._io = io
@@ -34,6 +35,7 @@ class Terminal(object):
         self._group = group
 
         self._type = ttype
+        self._unit = unit
         self._graphicsItem = TerminalGraphicsItem(self, parent=self._node().graphicsItem())
 
         self.recolor()
@@ -66,6 +68,15 @@ class Terminal(object):
 
     def setType(self, type):
         self._type = type
+
+    def unit(self):
+        return self._unit
+
+    def setUnit(self, unit):
+        if self._unit is not None:
+            self._unit *= unit
+        else:
+            self._unit = unit
 
     def connections(self):
         return self._connections
@@ -144,7 +155,8 @@ class Terminal(object):
                     if len(t.connections()) > 0:
                         raise Exception(
                             "Cannot connect %s <-> %s: Terminal %s is already connected to %s \
-                            (and does not allow multiple connections)" % (self, term, t, list(t.connections().keys())))
+                            (and does not allow multiple connections)" % (self, term, t,
+                                                                          list(t.connections().keys())))
                 elif t.isOutput():
                     types["Output"] = t
 
@@ -165,6 +177,11 @@ class Terminal(object):
 
         self.connected(term)
         term.connected(self)
+
+        if self.isInput() and term.isOutput():
+            self.setUnit(term.unit())
+        elif self.isOutput() and term.isInput():
+            term.setUnit(self.unit())
 
         return connectionItem
 

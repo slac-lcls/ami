@@ -1,6 +1,7 @@
 from pyqtgraph.Qt import QtGui, QtWidgets
 from amitypes import DataSource, Detector, Array1d, Array2d
 from ami.flowchart.Node import Node, NodeGraphicsItem
+from ami.flowchart.Units import ureg
 from ami.flowchart.library.common import CtrlNode
 from ami.flowchart.library.Editors import ChannelEditor
 import ami.graph_nodes as gn
@@ -215,8 +216,8 @@ try:
             super().__init__(name, terminals={'src': {'io': 'in', 'ttype': DataSource},
                                               'cam': {'io': 'in', 'ttype': Detector},
                                               'pars': {'io': 'in', 'ttype': Detector},
-                                              'time': {'io': 'out', 'ttype': Array2d},
-                                              'power': {'io': 'out', 'ttype': Array2d},
+                                              'time': {'io': 'out', 'ttype': Array2d, 'unit': ureg.femtosecond},
+                                              'power': {'io': 'out', 'ttype': Array2d, 'unit': ureg.gigawatt},
                                               'agreement': {'io': 'out', 'ttype': float},
                                               'pulse': {'io': 'out', 'ttype': Array1d}})
 

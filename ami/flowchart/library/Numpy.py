@@ -305,6 +305,7 @@ class Take(GroupedNode):
     def setType(self, localTerm, remoteTerm):
         if localTerm.isInput():
             term = self.find_output_term(localTerm)
+            term.setUnit(remoteTerm.unit())
 
             if remoteTerm.type() == Array3d:
                 term._type = Array2d

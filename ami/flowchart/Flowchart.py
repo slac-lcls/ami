@@ -1030,10 +1030,15 @@ class FlowchartWidget(dockarea.DockArea):
                 term = term()
                 connections = []
                 connections.append(f"{node.name()}.{name}")
+
+                if term.unit():
+                    connections.append(f"in {term.unit()}")
+
                 if term.inputTerminals():
                     connections.append("connected to:")
                 else:
                     connections.append(f"accepts type: {term.type()}")
+
                 for in_term in term.inputTerminals():
                     connections.append(f"{in_term.node().name()}.{in_term.name()}")
                 text.append(' '.join(connections))
@@ -1045,10 +1050,15 @@ class FlowchartWidget(dockarea.DockArea):
                 term = term()
                 connections = []
                 connections.append(f"{node.name()}.{name}")
+
+                if term.unit():
+                    connections.append(f"in {term.unit()}")
+
                 if term.dependentTerms():
                     connections.append("connected to:")
                 else:
                     connections.append(f"emits type: {term.type()}")
+
                 for in_term in term.dependentTerms():
                     connections.append(f"{in_term.node().name()}.{in_term.name()}")
                 text.append(' '.join(connections))
@@ -1059,6 +1069,10 @@ class FlowchartWidget(dockarea.DockArea):
             term = obj
             node = obj.node()
             text = f"Term: {node.name()}.{term.name()}\nType: {term.type()}"
+
+            if term.unit():
+                text += f"\nUnit: {term.unit()}"
+
             terms = None
 
             if (term.isOutput or term.isCondition) and term.dependentTerms():
@@ -1084,9 +1098,14 @@ class FlowchartWidget(dockarea.DockArea):
                 target = connection.target.term
 
             if source and target:
-                source = f"from {source.node().name()}.{source.name()}"
-                target = f"to {target.node().name()}.{target.name()}"
-                text = ' '.join(["Connection", source, target])
+                prefix = f"from {source.node().name()}.{source.name()} to {target.node().name()}.{target.name()}\n"
+                from_node = f"\nfrom: {source.node().name()}.{source.name()} type: {source.type()}"
+                if source.unit():
+                    from_node += f" unit: {source.unit()}"
+                to_node = f"\nto: {target.node().name()}.{target.name()} type: {target.type()}"
+                if target.unit():
+                    to_node += f" unit: {target.unit()}"
+                text = ' '.join(["Connection", prefix, from_node, to_node])
 
         if text:
             self.hoverText.setPlainText(text)
