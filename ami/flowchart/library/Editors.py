@@ -1,3 +1,4 @@
+import numpy as np
 import pyqtgraph as pg
 from pyqtgraph.Qt import QtGui, QtWidgets, QtCore
 from ami.flowchart.library.WidgetGroup import generateUi
@@ -24,7 +25,7 @@ class TraceEditor(QtWidgets.QWidget):
                 ('symbol', 'combo',
                  {'values': ['o', 't', 't1', 't2', 't3', 's', 'p', 'h', 'star', '+', 'd', 'None'],
                   'value': kwargs.get('symbol', 'o'), 'group': 'Point'}),
-                ('Brush', 'color', {'value': kwargs.get('color', (255, 0, 0)), 'group': 'Point'}),
+                ('Brush', 'color', {'value': kwargs.get('color', (0, 0, 255)), 'group': 'Point'}),
                 ('Size', 'intSpin', {'min': 1, 'value': 14, 'group': 'Point'}),
                 # Line
                 ('color', 'color', {'group': 'Line'}),
@@ -285,3 +286,92 @@ class ChannelEditor(QtWidgets.QWidget):
 
             self.values[channel] = state[channel]
             stateGroup.setState({channel: state[channel]})
+
+
+class AnnotationEditor(TraceEditor):
+
+    sigRemoved = QtCore.Signal(object)
+
+    def __init__(self, node=None, parent=None, name="", **kwargs):
+        uiTemplate = [
+            ('name', 'text'),
+            # from
+            ('X', 'doubleSpin', {'value': 0, 'group': kwargs.get('from_', 'From')}),
+            ('Y', 'doubleSpin', {'value': 0, 'group': kwargs.get('from_', 'From')}),
+            # to
+            ('X', 'doubleSpin', {'value': 0, 'group': kwargs.get('to', 'To')}),
+            ('Y', 'doubleSpin', {'value': 0, 'group': kwargs.get('to', 'To')}),
+            # Point
+            ('symbol', 'combo',
+             {'values': ['o', 't', 't1', 't2', 't3', 's', 'p', 'h', 'star', '+', 'd', 'None'],
+              'value': kwargs.get('symbol', 'o'), 'group': 'Point'}),
+            ('Brush', 'color', {'value': kwargs.get('color', (0, 0, 255)), 'group': 'Point'}),
+            ('Size', 'intSpin', {'min': 1, 'value': 14, 'group': 'Point'}),
+            # Line
+            ('color', 'color', {'group': 'Line'}),
+            ('width', 'intSpin', {'min': 1, 'value': 1, 'group': 'Line'}),
+            ('style', 'combo',
+             {'values': line_styles.keys(), 'value': kwargs.get('style', 'Solid'), 'group': 'Line'})
+        ]
+
+        super().__init__(node=node, parent=parent, uiTemplate=uiTemplate)
+        self.name = name
+        self.remove_btn = QtWidgets.QPushButton("Remove", self)
+        self.remove_btn.clicked.connect(self.remove)
+        self.ui.layout().addWidget(self.remove_btn)
+
+    def trace_data(self):
+        pass
+
+    def update_plot(self):
+        super().update_plot()
+        pen = self.attrs['pen']
+        point = self.attrs['point']
+        x, y = self.trace_data()
+        self.trace.setData(x, y, pen=pen, **point)
+
+    def remove(self):
+        self.sigRemoved.emit(self.name)
+
+
+class LineEditor(AnnotationEditor):
+
+    def __init__(self, node=None, parent=None, name="", **kwargs):
+        super().__init__(node, parent, name, from_='From', to='To')
+
+    def trace_data(self):
+        x = [self.trace_attrs['From']['X'], self.trace_attrs['To']['X']]
+        y = [self.trace_attrs['From']['Y'], self.trace_attrs['To']['Y']]
+        return x, y
+
+
+class RectEditor(AnnotationEditor):
+
+    def __init__(self, node=None, parent=None, name="", **kwargs):
+        super().__init__(node, parent, name, from_='Top Left', to='Bottom Right')
+
+    def trace_data(self):
+        tl = (self.trace_attrs['Top Left']['X'], self.trace_attrs['Top Left']['Y'])
+        br = (self.trace_attrs['Bottom Right']['X'], self.trace_attrs['Bottom Right']['Y'])
+
+        x = [tl[0], br[0], br[0], tl[0], tl[0]]
+        y = [tl[1], tl[1], br[1], br[1], tl[1]]
+        return x, y
+
+
+class CircleEditor(AnnotationEditor):
+
+    def __init__(self, node=None, parent=None, name="", **kwargs):
+        super().__init__(node, parent, name, from_='Center', to='Radius', symbol='None')
+
+    def trace_data(self):
+        x = [self.trace_attrs['Center']['X'], self.trace_attrs['Radius']['X']]
+        y = [self.trace_attrs['Center']['Y'], self.trace_attrs['Radius']['Y']]
+
+        center = QtCore.QPointF(x[0], y[0])
+        radius = QtGui.QVector2D(x[1], y[1]).distanceToPoint(QtGui.QVector2D(center))
+
+        t = np.linspace(0, 2*np.pi, 100)
+        x = center.x() + radius * np.sin(t)
+        y = center.y() + radius * np.cos(t)
+        return x, y

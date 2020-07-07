@@ -9,7 +9,8 @@ import pyqtgraph as pg
 from pyqtgraph.Qt import QtGui, QtWidgets, QtCore
 from ami import LogConfig
 from ami.flowchart.library.WidgetGroup import generateUi
-from ami.flowchart.library.Editors import TraceEditor, HistEditor
+from ami.flowchart.library.Editors import TraceEditor, HistEditor, \
+    LineEditor, CircleEditor, RectEditor
 
 logger = logging.getLogger(LogConfig.get_package_name(__name__))
 
@@ -122,6 +123,8 @@ class PlotWidget(pg.GraphicsLayoutWidget):
         self.trace_ids = {}  # { trace_idx : name }
         self.trace_attrs = {}
         self.legend_editors = {}
+        self.annotation_editors = {}
+        self.annotation_traces = {}
 
         self.terms = terms
 
@@ -152,14 +155,30 @@ class PlotWidget(pg.GraphicsLayoutWidget):
 
         if kwargs.get('legend', True):
             self.legend = self.plot_view.addLegend()
-
             self.legend_layout = QtGui.QFormLayout()
 
-            groupbox = QtWidgets.QGroupBox()
-            groupbox.setTitle("Legend")
-            groupbox.setLayout(self.legend_layout)
-            ctrl_layout.addWidget(groupbox)
-            self.ctrls["Legend"] = groupbox
+            self.legend_groupbox = QtWidgets.QGroupBox()
+            self.legend_groupbox.setTitle("Legend")
+            self.legend_groupbox.setLayout(self.legend_layout)
+            ctrl_layout.addWidget(self.legend_groupbox)
+            self.ctrls["Legend"] = self.legend_groupbox
+
+        self.annotation_layout = QtGui.QFormLayout()
+        self.annotation_groupbox = QtWidgets.QGroupBox()
+        self.annotation_groupbox.setTitle("Annotations")
+        self.annotation_groupbox.setLayout(self.annotation_layout)
+        ctrl_layout.addWidget(self.annotation_groupbox)
+        self.ctrls["Annotations"] = self.annotation_groupbox
+
+        self.annotation_type = QtGui.QComboBox(parent=self.annotation_groupbox)
+        self.annotation_type.addItem("Line", LineEditor)
+        self.annotation_type.addItem("Circle", CircleEditor)
+        self.annotation_type.addItem("Rect", RectEditor)
+        self.annotation_layout.addWidget(self.annotation_type)
+
+        self.add_annotation_btn = QtWidgets.QPushButton("Add", self.annotation_groupbox)
+        self.add_annotation_btn.clicked.connect(self.add_annotation)
+        self.annotation_layout.addWidget(self.add_annotation_btn)
 
         self.apply_btn = QtWidgets.QPushButton("Apply", self.ui)
         self.apply_btn.clicked.connect(self.apply_clicked)
@@ -186,7 +205,7 @@ class PlotWidget(pg.GraphicsLayoutWidget):
             self.stateGroup.addWidget(w, idx)
             self.legend_layout.addRow(idx, w)
 
-            editor = self.editor(node=self.node, parent=self, **kwargs)
+            editor = self.editor(node=self.node, parent=self.legend_groupbox, **kwargs)
             if restore:
                 state = kwargs.get("editor_state", {})
                 editor.restoreState(state)
@@ -198,6 +217,33 @@ class PlotWidget(pg.GraphicsLayoutWidget):
             editor.restoreState(state)
 
         return self.ctrls[idx].text()
+
+    def add_annotation(self, name=None, state=None):
+        if name:
+            editor_class, idx = name.split('.')
+            editor = eval(editor_class)(node=self.node, parent=self.annotation_groupbox, name=name)
+            editor.restoreState(state)
+        else:
+            editor_class = self.annotation_type.currentData()
+            idx = len(self.annotation_editors)
+            name = f"{editor_class.__name__}.{idx}"
+            editor = editor_class(node=self.node, parent=self.annotation_groupbox, name=name)
+
+        editor.sigRemoved.connect(self.remove_annotation)
+        self.annotation_editors[name] = editor
+        self.annotation_layout.addWidget(editor)
+
+    def remove_annotation(self, name):
+        if name in self.annotation_traces:
+            item = self.annotation_traces[name]
+            self.plot_view.removeItem(item)
+            self.legend.removeItem(item)
+            del self.annotation_traces[name]
+
+        editor = self.annotation_editors[name]
+        self.annotation_layout.removeWidget(editor.ui)
+        editor.deleteLater()
+        del self.annotation_editors[name]
 
     def editor(self, node, parent, **kwargs):
         return TraceEditor(node=node, parent=parent, **kwargs)
@@ -253,6 +299,19 @@ class PlotWidget(pg.GraphicsLayoutWidget):
                         item.setPen(attrs['pen'])
                     self.trace_attrs[name] = attrs
 
+        for name, editor in self.annotation_editors.items():
+            x, y = editor.trace_data()
+            pen = editor.attrs['pen']
+            point = editor.attrs['point']
+            if name not in self.annotation_traces:
+                self.annotation_traces[name] = self.plot_view.plot(x, y, pen=pen,
+                                                                   name=editor.ctrls["name"].text(),
+                                                                   **point)
+            else:
+                item = self.annotation_traces[name]
+                item.setData(x, y, pen=pen, **point)
+                self.legend.addItem(item, editor.ctrls["name"].text())
+
     def saveState(self):
         state = {}
 
@@ -269,6 +328,14 @@ class PlotWidget(pg.GraphicsLayoutWidget):
             if legend:
                 state['legend'] = legend
 
+            annotations = {}
+
+            for name, editor in self.annotation_editors.items():
+                annotations[name] = editor.saveState()
+
+            if annotations:
+                state['annotations'] = annotations
+
         state['viewbox'] = self.plot_view.vb.getState()
 
         return state
@@ -283,6 +350,10 @@ class PlotWidget(pg.GraphicsLayoutWidget):
                 if len(v) == 3:
                     data_name, name, editor_state = v
                     self.update_legend_layout(k, data_name, name, editor_state=editor_state, restore=True)
+
+            annotation_state = state.get('annotations', {})
+            for name, state in annotation_state.items():
+                self.add_annotation(name, state)
 
             self.apply_clicked()
 
