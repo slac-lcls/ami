@@ -153,6 +153,7 @@ class PlotWidget(pg.GraphicsLayoutWidget):
 
         ctrl_layout = self.ui.layout()
 
+        self.legend = None
         if kwargs.get('legend', True):
             self.legend = self.plot_view.addLegend()
             self.legend_layout = QtGui.QFormLayout()
@@ -310,7 +311,8 @@ class PlotWidget(pg.GraphicsLayoutWidget):
             else:
                 item = self.annotation_traces[name]
                 item.setData(x, y, pen=pen, **point)
-                self.legend.addItem(item, editor.ctrls["name"].text())
+                if self.legend:
+                    self.legend.addItem(item, editor.ctrls["name"].text())
 
     def saveState(self):
         state = {}
