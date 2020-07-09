@@ -67,7 +67,6 @@ class TraceEditor(QtWidgets.QWidget):
         self.layout.addWidget(self.plot_widget, 0, 2, -1, -1)
 
     def update_plot(self):
-
         point = self.trace_attrs['Point']
 
         symbol = point['symbol']
@@ -84,6 +83,10 @@ class TraceEditor(QtWidgets.QWidget):
                 'style': line_styles[line['style']]}
 
         pen = pg.mkPen(**line)
+
+        if 'Fill' in self.trace_attrs and self.trace_attrs['Fill']['Fill Annotation']:
+            point['fillBrush'] = tuple(self.trace_attrs['Fill']['Brush'])
+            point['fillLevel'] = 0
 
         if self.trace is None:
             self.trace = self.plot_view.plot([0, 1, 2, 3], [0, 0, 0, 0], pen=pen, **point)
@@ -314,6 +317,12 @@ class AnnotationEditor(TraceEditor):
              {'values': line_styles.keys(), 'value': kwargs.get('style', 'Solid'), 'group': 'Line'})
         ]
 
+        if kwargs.get('fill', False):
+            uiTemplate.extend([
+                ('Fill Annotation', 'check', {'group': 'Fill', 'checked': True}),
+                ('Brush', 'color', {'value': (255, 0, 0, 100), 'group': 'Fill'})
+            ])
+
         super().__init__(node=node, parent=parent, uiTemplate=uiTemplate)
         self.name = name
         self.remove_btn = QtWidgets.QPushButton("Remove", self)
@@ -328,6 +337,7 @@ class AnnotationEditor(TraceEditor):
         pen = self.attrs['pen']
         point = self.attrs['point']
         x, y = self.trace_data()
+
         self.trace.setData(x, y, pen=pen, **point)
 
     def remove(self):
@@ -348,7 +358,7 @@ class LineEditor(AnnotationEditor):
 class RectEditor(AnnotationEditor):
 
     def __init__(self, node=None, parent=None, name="", **kwargs):
-        super().__init__(node, parent, name, from_='Top Left', to='Bottom Right')
+        super().__init__(node, parent, name, from_='Top Left', to='Bottom Right', symbol='None', fill=True)
 
     def trace_data(self):
         tl = (self.trace_attrs['Top Left']['X'], self.trace_attrs['Top Left']['Y'])
@@ -362,7 +372,7 @@ class RectEditor(AnnotationEditor):
 class CircleEditor(AnnotationEditor):
 
     def __init__(self, node=None, parent=None, name="", **kwargs):
-        super().__init__(node, parent, name, from_='Center', to='Radius', symbol='None')
+        super().__init__(node, parent, name, from_='Center', to='Radius', symbol='None', fill=True)
 
     def trace_data(self):
         x = [self.trace_attrs['Center']['X'], self.trace_attrs['Radius']['X']]
