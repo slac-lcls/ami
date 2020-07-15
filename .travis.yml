@@ -3,12 +3,13 @@ sudo: required
 services:
   - xvfb
 
-os:
-  - linux
-#  - osx
-
-env:
-  - PYVER="3.7"
+jobs:
+  include:
+    - os: linux
+      dist: xenial
+      env: PYVER="3.7"
+#    - os: osx
+#      env: PYVER="3.7"
 
 branches:
   only:
