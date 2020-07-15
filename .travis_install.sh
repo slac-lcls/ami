@@ -23,8 +23,8 @@ conda config --append channels conda-forge
 # Useful for debugging any issues with conda
 conda info -a
 # Create test environment
-conda env create -q -n myrel python=${TRAVIS_PYTHON_VERSION}
-conda install -n myrel --only-deps ami
+conda create -q -n myrel python=${TRAVIS_PYTHON_VERSION}
+conda install -q -n myrel --only-deps ami
 # install ami via setup.py
 conda activate myrel
 python setup.py install
