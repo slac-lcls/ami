@@ -1,5 +1,7 @@
 language: minimal
 sudo: required
+services:
+  - xvfb
 
 python:
   - 3.7
