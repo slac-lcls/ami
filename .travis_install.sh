@@ -21,7 +21,7 @@ if [[ $TRAVIS_OS_NAME == osx ]]; then
     # Useful for debugging any issues with conda
     conda info -a
     # Create test environment
-    conda env create -q -n $CONDA_ENV -f $HOME/relmanage/env_create_macos.yaml
+    conda env create -q -n myrel -f $HOME/relmanage/env_create_macos.yaml
 else
     # setup the conda environment
     git clone https://github.com/slac-lcls/relmanage.git $HOME/relmanage
@@ -38,9 +38,9 @@ else
     # Useful for debugging any issues with conda
     conda info -a
     # Create test environment
-    conda env create -q -n $CONDA_ENV -f $HOME/relmanage/env_create.yaml  
+    conda env create -q -n myrel -f $HOME/relmanage/env_create.yaml  
 fi
 
 # install ami via setup.py
-conda activate $CONDA_ENV
+conda activate myrel
 python setup.py install
