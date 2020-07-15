@@ -5,7 +5,7 @@ services:
 
 os:
   - linux
-  - osx
+#  - osx
 
 env:
   - PYVER="3.7"
@@ -29,6 +29,7 @@ install:
   - conda info -a
   - conda create -q -n myrel python=${PYVER}
   - conda install -q -n myrel --only-deps ami
+  - conda install -q -n myrel flake8
   - conda activate myrel
   - python setup.py install --single-version-externally-managed --record=record.txt
 
