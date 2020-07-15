@@ -1,0 +1,25 @@
+language: python
+python:
+  - 3.6
+
+os:
+  - linux
+  - osx
+
+branches:
+  only:
+    - master
+
+install:
+  - ./.travis_install.sh
+
+script:
+  - flake8
+  - pytest
+
+notifications:
+  email:
+    recipients:
+      - ddamiani@slac.stanford.edu
+    on_success: change # default: change
+    on_failure: always # default: always
