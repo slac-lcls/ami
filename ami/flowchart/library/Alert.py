@@ -30,7 +30,7 @@ class DialogWidget(QtWidgets.QWidget):
         for term, name in self.terms.items():
             if data[name]:
                 msg = QtWidgets.QMessageBox()
-                sleep_btn = QtWidgets.QPushButton(f"Sleep 30 seconds")
+                sleep_btn = QtWidgets.QPushButton("Sleep 30 seconds")
                 msg.setText(f"{name} exceeded threshold!")
                 msg.setStandardButtons(QtWidgets.QMessageBox.Ok)
                 msg.addButton(sleep_btn, QtWidgets.QMessageBox.ButtonRole.ActionRole)
