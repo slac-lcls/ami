@@ -1,15 +1,19 @@
 language: minimal
 sudo: required
+
 services:
   - xvfb
+addons:
+  apt:
+    packages:
+      - xvfb
 
-jobs:
-  include:
-    - os: linux
-      dist: xenial
-      env: PYVER="3.7"
-#    - os: osx
-#      env: PYVER="3.7"
+env:
+  - PYVER="3.7"
+
+os:
+  - linux
+#  - osx
 
 branches:
   only:
