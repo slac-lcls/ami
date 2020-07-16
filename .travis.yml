@@ -3,10 +3,6 @@ sudo: required
 
 services:
   - xvfb
-addons:
-  apt:
-    packages:
-      - xvfb
 
 env:
   - PYVER="3.7"
