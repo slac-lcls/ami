@@ -40,7 +40,7 @@ install:
 
 script:
   - flake8
-  - pytest
+  - xvfb-run pytest
 
 notifications:
   email:
