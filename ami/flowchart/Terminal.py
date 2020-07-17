@@ -73,10 +73,8 @@ class Terminal(object):
         return self._unit
 
     def setUnit(self, unit):
-        if self._unit is not None:
-            self._unit *= unit
-        else:
-            self._unit = unit
+        assert self._unit is None  # TODO handle conversions
+        self._unit = unit
 
     def connections(self):
         return self._connections

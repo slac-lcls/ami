@@ -88,6 +88,7 @@ class CtrlNode(Node):
         self.widget = None
 
     def display(self, topics, terms, addr, win, widget=None, **kwargs):
+
         if self.widget is None and widget:
             self.widget = widget(topics, terms, addr, parent=win, node=self, **kwargs)
 

@@ -91,6 +91,7 @@ class PlotWidget(pg.GraphicsLayoutWidget):
     def __init__(self, topics=None, terms=None, addr=None, uiTemplate=None, parent=None, **kwargs):
         super().__init__(parent)
         self.node = kwargs.get('node', None)
+        self.units = kwargs.get('units', {})
 
         self.fetcher = None
         if addr:
@@ -106,11 +107,11 @@ class PlotWidget(pg.GraphicsLayoutWidget):
         self.plot_view.showGrid(True, True)
 
         ax = self.plot_view.getAxis('bottom')
-        ax.enableAutoSIPrefix(enable=False)
+        ax.enableAutoSIPrefix(enable=bool(self.units))
         ax.setZValue(100)
 
         ay = self.plot_view.getAxis('left')
-        ay.enableAutoSIPrefix(enable=False)
+        ay.enableAutoSIPrefix(enable=bool(self.units))
         ay.setZValue(100)
 
         self.plot_view.setMenuEnabled(False)

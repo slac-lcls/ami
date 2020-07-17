@@ -303,6 +303,15 @@ class Node(QtCore.QObject):
 
         return input_vars
 
+    def input_units(self):
+        units = {}
+
+        for key, term in self.terminals.items():
+            if key in self._input_vars:
+                units[key] = term.unit()
+
+        return units
+
     def output_vars(self):
         output_vars = []
 

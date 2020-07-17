@@ -14,17 +14,16 @@ from ami.flowchart.Flowchart import Flowchart
 from ami.flowchart.library.common import SourceNode
 from ami.local import build_parser, run_ami
 from ami.comm import GraphCommHandler
-
 from collections import OrderedDict
 
 
 class BrokerHelper:
-    def __init__(self, ipcdir, comm):
+    def __init__(self, graphmgr_addr, ipcdir, comm):
         # we are in a forked process so create a new event loop (needed in some cases).
         self.loop = asyncio.new_event_loop()
         # set this new event loop as the default one so zmq picks it up
         asyncio.set_event_loop(self.loop)
-        self.broker = MessageBroker("", "", ipcdir=ipcdir)
+        self.broker = MessageBroker(graphmgr_addr, "", ipcdir=ipcdir)
         self.comm = comm
         self.task = asyncio.ensure_future(self.broker.run())
 
@@ -46,8 +45,8 @@ class BrokerHelper:
                 self.comm.send(getattr(self.broker, request))
 
     @staticmethod
-    def execute(ipcdir, comm):
-        return BrokerHelper(ipcdir, comm)
+    def execute(graphmgr_addr, ipcdir, comm):
+        return BrokerHelper(graphmgr_addr, ipcdir, comm)
 
 
 class BrokerProxy:
@@ -72,7 +71,25 @@ def event_loop(qevent_loop):
 
 
 @pytest.fixture(scope='function')
-def broker(ipc_dir):
+def graphmgr_addr(ipc_dir):
+    try:
+        from pytest_cov.embed import cleanup_on_sigterm
+        cleanup_on_sigterm()
+    except ImportError:
+        pass
+
+    comm_addr = "ipc://%s/comm" % ipc_dir
+    view_addr = "ipc://%s/view" % ipc_dir
+    graphinfo_addr = "ipc://%s/info" % ipc_dir
+    graphprof_addr = "ipc://%s/profile" % ipc_dir
+
+    graphmgr = GraphMgrAddress("graph", comm_addr, view_addr, graphinfo_addr, graphprof_addr)
+
+    yield graphmgr
+
+
+@pytest.fixture(scope='function')
+def broker(ipc_dir, graphmgr_addr):
     try:
         from pytest_cov.embed import cleanup_on_sigterm
         cleanup_on_sigterm()
@@ -84,7 +101,7 @@ def broker(ipc_dir):
     proc = mp.Process(
         name='broker',
         target=BrokerHelper.execute,
-        args=(ipc_dir, child_comm),
+        args=(graphmgr_addr, ipc_dir, child_comm),
         daemon=False
     )
     proc.start()
@@ -103,7 +120,7 @@ def broker(ipc_dir):
 
 
 @pytest.fixture(scope='function')
-def flowchart(request, workerjson, broker, ipc_dir, qevent_loop):
+def flowchart(request, workerjson, broker, ipc_dir, graphmgr_addr, qevent_loop):
     try:
         from pytest_cov.embed import cleanup_on_sigterm
         cleanup_on_sigterm()
@@ -122,19 +139,13 @@ def flowchart(request, workerjson, broker, ipc_dir, qevent_loop):
     ami.start()
 
     try:
-        comm_addr = "ipc://%s/comm" % ipc_dir
-        graphinfo_addr = "ipc://%s/info" % ipc_dir
-        graphprof_addr = "ipc://%s/profile" % ipc_dir
-
-        graphmgr = GraphMgrAddress("graph", comm_addr, None, graphinfo_addr, graphprof_addr)
-
         # wait for ami to be fully up before updating the sources
-        with GraphCommHandler(graphmgr.name, graphmgr.comm) as comm:
+        with GraphCommHandler(graphmgr_addr.name, graphmgr_addr.comm) as comm:
             while not comm.sources:
                 time.sleep(0.1)
 
         with Flowchart(broker_addr=broker.broker_sub_addr,
-                       graphmgr_addr=graphmgr,
+                       graphmgr_addr=graphmgr_addr,
                        checkpoint_addr=broker.checkpoint_pub_addr) as fc:
 
             qevent_loop.run_until_complete(fc.updateSources(init=True))
@@ -161,7 +172,7 @@ def flowchart(request, workerjson, broker, ipc_dir, qevent_loop):
 
 
 @pytest.fixture(scope='function')
-def flowchart_hdf(request, tmp_path, qtbot, broker, ipc_dir, qevent_loop):
+def flowchart_hdf(request, tmp_path, qtbot, broker, ipc_dir, graphmgr_addr, qevent_loop):
     try:
         from pytest_cov.embed import cleanup_on_sigterm
         cleanup_on_sigterm()
@@ -191,19 +202,13 @@ def flowchart_hdf(request, tmp_path, qtbot, broker, ipc_dir, qevent_loop):
     ami.start()
 
     try:
-        comm_addr = "ipc://%s/comm" % ipc_dir
-        graphinfo_addr = "ipc://%s/info" % ipc_dir
-        graphprof_addr = "ipc://%s/profile" % ipc_dir
-
-        graphmgr = GraphMgrAddress("graph", comm_addr, None, graphinfo_addr, graphprof_addr)
-
         # wait for ami to be fully up before updating the sources
-        with GraphCommHandler(graphmgr.name, graphmgr.comm) as comm:
-            while not comm.sources:
-                time.sleep(0.1)
+        comm = GraphCommHandler(graphmgr_addr.name, graphmgr_addr.comm)
+        while not comm.sources:
+            time.sleep(0.1)
 
         with Flowchart(broker_addr=broker.broker_sub_addr,
-                       graphmgr_addr=graphmgr,
+                       graphmgr_addr=graphmgr_addr,
                        checkpoint_addr=broker.checkpoint_pub_addr) as fc:
 
             qevent_loop.run_until_complete(fc.updateSources(init=True))
@@ -211,7 +216,7 @@ def flowchart_hdf(request, tmp_path, qtbot, broker, ipc_dir, qevent_loop):
             qtbot.addWidget(fc.widget())
             fc.loadFile(os.path.join('tests/graphs', request.param[1]))
 
-            yield (fc, broker)
+            yield (fc, broker, comm)
 
     except Exception as e:
         # let the fixture exit 'gracefully' if it fails
@@ -333,9 +338,28 @@ async def test_editor(qtbot, flowchart, tmp_path):
 
 # @pytest.mark.asyncio
 # @pytest.mark.parametrize('flowchart_hdf', [('run22.h5', 'run22.fc')], indirect=True)
-# async def test_run22(qtbot, flowchart_hdf):
-#     flowchart, broker = flowchart_hdf
-#     print(flowchart.nodes())
+# async def test_run22(qtbot, flowchart_hdf, graphmgr_addr):
+#     flowchart, broker, comm = flowchart_hdf
 
 #     ctrl = flowchart.widget()
+#     viewbox = ctrl.viewBox()
+#     scene = ctrl.scene()
+#     chartWidget = ctrl.chartWidget
 #     await ctrl.applyClicked()
+
+#     outputs = [n for n, d in flowchart._graph.out_degree() if d == 0]
+
+#     for output in outputs:
+#         node = flowchart._graph.nodes[output]['node']
+#         graphicsItem = node.graphicsItem()
+#         graphicsItem.setSelected(True)
+#         graphicsItem.update()
+#         await chartWidget.selectionChanged()
+#         graphicsItem.setSelected(False)
+#         graphicsItem.update()
+#         break
+
+#     while not comm.features:
+#         time.sleep(0.1)
+
+#     print(comm.features)

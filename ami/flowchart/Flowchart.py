@@ -657,6 +657,7 @@ class FlowchartCtrlWidget(QtGui.QWidget):
                                                                       topics=topics,
                                                                       state=state,
                                                                       terms=terms,
+                                                                      units=node.input_units(),
                                                                       redisplay=True))
             elif node.viewable():
                 topics = []
@@ -695,6 +696,7 @@ class FlowchartCtrlWidget(QtGui.QWidget):
                                                                       topics=dict(topics),
                                                                       state=state,
                                                                       terms=terms,
+                                                                      units=node.input_units(),
                                                                       redisplay=True))
 
             elif node.exportable():
@@ -997,7 +999,8 @@ class FlowchartWidget(dockarea.DockArea):
         await self.chart.broker.send_pyobj(fcMsgs.DisplayNode(name=node.name(),
                                                               topics=topics,
                                                               state=state,
-                                                              terms=terms))
+                                                              terms=terms,
+                                                              units=node.input_units()))
 
         self.ctrl.metadata = await self.ctrl.graphCommHandler.metadata
 

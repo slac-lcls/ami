@@ -137,12 +137,14 @@ class NodeProcess(QtCore.QObject):
                 return
 
     def display(self, msg):
+
         if self.show and msg.redisplay:
             self.node.clear()
             self.widget = None
 
         if self.widget is None:
-            self.widget = self.node.display(msg.topics, msg.terms, self.graphmgr_addr, self.win)
+            self.widget = self.node.display(msg.topics, msg.terms, self.graphmgr_addr, self.win,
+                                            units=msg.units)
 
             if self.ctrlWidget and self.widget:
                 cw = QtGui.QWidget()
@@ -262,6 +264,7 @@ class MessageBroker(object):
 
         while True:
             topic = await self.broker_pub_sock.recv_string()
+
             if topic.startswith('\x01'):
                 topic = topic.lstrip('\x01')
                 async with self.lock:
