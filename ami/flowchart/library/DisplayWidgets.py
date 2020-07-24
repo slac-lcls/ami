@@ -613,10 +613,6 @@ class AreaDetWidget(pg.ImageView):
             for k, v in self.fetcher.reply.items():
                 self.setImage(v, autoLevels=False, autoHistogramRange=False)
 
-    def close(self):
-        if self.fetcher:
-            self.fetcher.close()
-
 
 class HistogramWidget(PlotWidget):
 
