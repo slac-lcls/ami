@@ -1,5 +1,5 @@
+from ami.flowchart.Node import Node
 from ami.flowchart.library.common import CtrlNode
-from ami.flowchart.library.DisplayWidgets import FitWidget
 from amitypes import Array1d, Array2d
 import ami.graph_nodes as gn
 import numpy as np
@@ -59,7 +59,7 @@ class BlobFinder(CtrlNode):
         return node
 
 
-class Linregress(CtrlNode):
+class Linregress(Node):
 
     """
     Scipy.stats.linregress
@@ -69,31 +69,86 @@ class Linregress(CtrlNode):
 
     def __init__(self, name):
         super().__init__(name, terminals={'X': {'io': 'in', 'ttype': Array1d},
-                                          'Y': {'io': 'in', 'ttype': Array1d}},
-                         buffered=True)
-
-    def buffered_topics(self):
-        topics = super().buffered_topics()
-        topics[self.name()+".Fit"] = self.name()+".Fit"
-        return topics
-
-    def buffered_terms(self):
-        terms = self.input_vars()
-        terms["Fit"] = self.name()+".Fit"
-        return terms
-
-    def display(self, topics, terms, addr, win, **kwargs):
-        return super().display(topics, terms, addr, win, FitWidget, **kwargs)
+                                          'Y': {'io': 'in', 'ttype': Array1d},
+                                          'slope': {'io': 'out', 'ttype': float},
+                                          'intercept': {'io': 'out', 'ttype': float},
+                                          'rvalue': {'io': 'out', 'ttype': float},
+                                          'pvalue': {'io': 'out', 'ttype': float},
+                                          'stderr': {'io': 'out', 'ttype': float},
+                                          'fit': {'io': 'out', 'ttype': Array1d}})
 
     def to_operation(self, inputs, conditions={}):
-        outputs = [self.name()+".X", self.name()+".Y", self.name()+".Fit"]
+        outputs = self.output_vars()
 
         def fit(x, y):
             slope, intercept, r_value, p_value, stderr = stats.linregress(x, y)
-            return x, y, intercept + slope*x
+            return slope, intercept, r_value, p_value, stderr, slope*x + intercept
 
         nodes = [gn.Map(name=self.name()+"_operation",
                         condition_needs=conditions, inputs=inputs, outputs=outputs,
                         func=fit, parent=self.name())]
 
         return nodes
+
+
+try:
+    import sympy as sp
+    import scipy.optimize as optimize
+
+    class FitProc():
+
+        def __init__(self, *args, **kwargs):
+            self.expr = kwargs['expr']
+            self.step_size = kwargs['step size']
+            self.p0 = kwargs.get('init vals', None)
+            self.func = None
+
+        def set_func(self):
+            """
+            scipy.curve_fit requires a function with x as the first argument
+            so we need to reorder arguments
+            """
+            func = sp.sympify(self.expr)
+            x = sp.Symbol('x')
+            syms = list(func.free_symbols)
+            syms.remove(x)
+            syms.insert(0, x)
+            return sp.lambdify(syms, func, modules=["numpy", "scipy"])
+
+        def __call__(self, y, *args, **kwargs):
+            if self.func is None:
+                self.func = self.set_func()
+
+            x = np.arange(0, y.size, 1)
+            try:
+                best_vals, covar = optimize.curve_fit(self.func, x, y, p0=self.p0)
+            except RuntimeError as e:
+                print(e)
+
+            return self.func(x, *best_vals)
+
+    class CurveFit(CtrlNode):
+        """
+        Fit a function to data.
+        """
+
+        nodeName = "CurveFit"
+        uiTemplate = [('expr', 'text'),
+                      ('step size', 'intSpin', {'value': 1, 'min': 1})]
+
+        def __init__(self, name):
+            super().__init__(name, terminals={'In': {'io': 'in', 'ttype': Array1d},
+                                              'Out': {'io': 'out', 'ttype': Array1d}})
+
+        def to_operation(self, inputs, conditions={}):
+            outputs = self.output_vars()
+
+            node = gn.Map(name=self.name()+"_operation",
+                          condition_needs=conditions,
+                          inputs=inputs, outputs=outputs,
+                          func=FitProc(**self.values), parent=self.name())
+
+            return node
+
+except ImportError as e:
+    print(e)

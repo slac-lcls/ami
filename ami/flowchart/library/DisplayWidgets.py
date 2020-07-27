@@ -794,47 +794,6 @@ class LineWidget(PlotWidget):
                 self.plot[name].setData(x=x, y=y, **attrs['point'])
 
 
-class FitWidget(PlotWidget):
-
-    def __init__(self, topics=None, terms=None, addr=None, parent=None, **kwargs):
-        super().__init__(topics, terms, addr, parent=parent, **kwargs)
-
-    def data_updated(self, data):
-        x = self.terms["X"]
-        y = self.terms["Y"]
-        name = " vs ".join((y, x))
-
-        x = data[x]
-        y = data[y]
-        i = 0
-
-        if name not in self.plot:
-            symbol, color = symbols_colors[i]
-            legend_name = self.update_legend_layout("trace.0", name, symbol=symbol, color=color, style='None')
-            attrs = self.legend_editors["trace.0"].attrs
-            self.trace_attrs[name] = attrs
-            self.plot[name] = self.plot_view.plot(x=x, y=y, name=legend_name,
-                                                  pen=attrs['pen'], **attrs['point'])
-        else:
-            attrs = self.trace_attrs[name]
-            self.plot[name].setData(x=x, y=y, **attrs['point'])
-
-        fit = self.terms["Fit"]
-        fit = data[fit]
-        name = self.terms["Fit"]
-
-        if name not in self.plot:
-            symbol, color = symbols_colors[1]
-            legend_name = self.update_legend_layout("trace.1", name, symbol='None', color=color)
-            attrs = self.legend_editors["trace.1"].attrs
-            self.trace_attrs[name] = attrs
-            self.plot[name] = self.plot_view.plot(x=x, y=fit, name=legend_name,
-                                                  pen=attrs['pen'], **attrs['point'])
-        else:
-            attrs = self.trace_attrs[name]
-            self.plot[name].setData(x=x, y=fit, **attrs['point'])
-
-
 class ArrayWidget(QtWidgets.QWidget):
 
     def __init__(self, topics=None, terms=None, addr=None, parent=None, **kwargs):
