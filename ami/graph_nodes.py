@@ -246,7 +246,7 @@ class ReduceByKey(GlobalTransformation):
 
     def __init__(self, **kwargs):
         kwargs.setdefault('reduction', operator.add)
-        super(ReduceByKey, self).__init__(**kwargs)
+        super().__init__(**kwargs)
         self.res = {}
 
     def __call__(self, *args, **kwargs):
