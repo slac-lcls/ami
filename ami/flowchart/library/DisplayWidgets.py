@@ -27,13 +27,22 @@ class AsyncFetcher(object):
         self.poller = zmq.asyncio.Poller()
         self.sockets = {}
         self.data = {}
+        self.timestamps = {}
         self.last_updated = "Last Updated: None"
         self.update_topics(topics, terms)
 
     @property
     def reply(self):
         if self.data.keys() == set(self.subs):
-            return {name: self.data[topic] for name, topic in self.topics.items()}
+            res = {}
+            heartbeats = set()
+            for name, topic in self.topics.items():
+                res[name] = self.data[topic]
+                heartbeats.add(self.timestamps[topic])
+
+            assert len(heartbeats) == 1, "AsyncFetcher received data from different heartbeats!"
+            return res
+
         else:
             return {}
 
@@ -70,12 +79,13 @@ class AsyncFetcher(object):
             if flag != zmq.POLLIN:
                 continue
             topic = await sock.recv_string()
-            await sock.recv_pyobj()
+            heartbeat = await sock.recv_pyobj()
             reply = await sock.recv_pyobj()
             now = dt.datetime.now()
             now = now.strftime("%H:%M:%S")
             self.last_updated = f"Last Updated: {now}"
             self.data[self.view_subs[topic]] = reply
+            self.timestamps[self.view_subs[topic]] = heartbeat
 
     def close(self):
         for name, sock_count in self.sockets.items():
