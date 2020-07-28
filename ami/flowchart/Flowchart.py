@@ -28,6 +28,7 @@ import numpy as np
 import networkx as nx
 import itertools as it
 import collections
+import os
 import typing  # noqa
 
 
@@ -779,7 +780,19 @@ class FlowchartCtrlWidget(QtGui.QWidget):
 
     @asyncSlot(object)
     async def configureApply(self, src_cfg):
-        await self.graphCommHandler.updateSources(src_cfg)
+        missing = []
+
+        if 'files' in src_cfg:
+            for f in src_cfg['files']:
+                if not os.path.exists(f):
+                    missing.append(f)
+
+        if not missing:
+            await self.graphCommHandler.updateSources(src_cfg)
+        else:
+            now = datetime.now().strftime('%H:%M:%S')
+            missing = ' '.join(missing)
+            self.chartWidget.statusText.append(f"[{now}] Missing {missing}!")
 
     @asyncSlot()
     async def profilerClicked(self):
