@@ -83,6 +83,81 @@ class MeanVsScan(CtrlNode):
         return nodes
 
 
+class MeanWaveformVsScan(CtrlNode):
+
+    """
+    MeanWaveformVsScan creates a 2d histogram using a variable number of bins.
+
+    Returns a dict with keys Bins and values mean waveform of bins.
+    """
+
+    nodeName = "MeanWaveformVsScan"
+    uiTemplate = [('binned', 'check', {'checked': False}),
+                  ('bins', 'intSpin', {'value': 10, 'min': 1}),
+                  ('min', 'intSpin', {'value': 0}),
+                  ('max', 'intSpin', {'value': 10})]
+
+    def __init__(self, name):
+        super().__init__(name, terminals={
+            'Bin': {'io': 'in', 'ttype': float},
+            'Value': {'io': 'in', 'ttype': Array1d},
+            'Bins': {'io': 'out', 'ttype': Array1d},
+            'Counts': {'io': 'out', 'ttype': Array2d}
+        })
+
+    def to_operation(self, inputs, conditions={}):
+        outputs = self.output_vars()
+
+        if self.values['binned']:
+            bins = np.histogram_bin_edges(np.arange(self.values['min'], self.values['max']),
+                                          bins=self.values['bins'],
+                                          range=(self.values['min'], self.values['max']))
+            map_outputs = [self.name()+'_bin', self.name()+'_map_count']
+            reduce_outputs = [self.name()+'_reduce_count']
+
+            def func(k, v):
+                return np.digitize(k, bins), (v, 1)
+
+            def mean(d):
+                res = {}
+                for k, v in d.items():
+                    res[bins[k]] = v[0]/v[1]
+                keys, values = zip(*sorted(res.items()))
+                return np.array(keys), np.stack(values, axis=1)
+
+            nodes = [
+                gn.Map(name=self.name()+'_map', inputs=inputs, outputs=map_outputs,
+                       condition_needs=conditions, func=func, parent=self.name()),
+                gn.ReduceByKey(name=self.name()+'_reduce',
+                               inputs=map_outputs, outputs=reduce_outputs,
+                               reduction=lambda cv, v: (cv[0]+v[0], cv[1]+v[1]), parent=self.name()),
+                gn.Map(name=self.name()+'_mean', inputs=reduce_outputs, outputs=outputs, func=mean,
+                       parent=self.name())
+            ]
+        else:
+            map_outputs = [self.name()+'_map_count']
+            reduce_outputs = [self.name()+'_reduce_count']
+
+            def mean(d):
+                res = {}
+                for k, v in d.items():
+                    res[k] = v[0]/v[1]
+                keys, values = zip(*sorted(res.items()))
+                return np.array(keys), np.stack(values, axis=1)
+
+            nodes = [
+                gn.Map(name=self.name()+'_map', inputs=[inputs['Value']], outputs=map_outputs,
+                       condition_needs=conditions, func=lambda a: (a, 1), parent=self.name()),
+                gn.ReduceByKey(name=self.name()+'_reduce',
+                               inputs=[inputs['Bin']]+map_outputs, outputs=reduce_outputs,
+                               reduction=lambda cv, v: (cv[0]+v[0], cv[1]+v[1]), parent=self.name()),
+                gn.Map(name=self.name()+'_mean', inputs=reduce_outputs, outputs=outputs, func=mean,
+                       parent=self.name())
+            ]
+
+        return nodes
+
+
 class Combinations(CtrlNode):
 
     """

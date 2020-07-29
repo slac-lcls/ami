@@ -498,10 +498,10 @@ class ImageWidget(PlotWidget):
         self.view.addItem(self.imageItem)
 
         self.histogramLUT = pg.HistogramLUTItem(self.imageItem)
+        self.histogram_connected = False
         self.addItem(self.histogramLUT)
         if self.node:
             self.histogramLUT.sigLookupTableChanged.connect(lambda args: self.node.sigStateChanged.emit(self.node))
-            self.histogramLUT.sigLevelChangeFinished.connect(lambda args: self.node.sigStateChanged.emit(self.node))
 
     def cursor_hover_evt(self, evt):
         pos = evt[0]
@@ -523,6 +523,14 @@ class ImageWidget(PlotWidget):
             self.rotate = int(self.plot_attrs['Display']['Rotate Counter Clockwise'])/90
 
         self.auto_levels = self.plot_attrs['Histogram']['Auto Levels']
+        if not self.auto_levels:
+            self.histogram_connected = True
+            self.histogramLUT.sigLevelChangeFinished.connect(lambda args: self.node.sigStateChanged.emit(self.node))
+        else:
+            if self.histogram_connected:
+                self.histogramLUT.sigLevelChangeFinished.disconnect()
+                self.histogram_connected = False
+
         self.log_scale_histogram = self.plot_attrs['Histogram']['Log Scale']
 
         autorange_histogram = self.plot_attrs['Histogram']['Auto Range']
@@ -584,44 +592,6 @@ class PixelDetWidget(ImageWidget):
     def update_cursor(self, x, y):
         self.plot_view.removeItem(self.point)
         self.point = self.plot_view.plot([x], [y], symbolBrush=(200, 0, 0), symbol='+', symbolSize=25)
-
-
-class AreaDetWidget(pg.ImageView):
-
-    def __init__(self, topics=None, terms=None, addr=None, parent=None, **kwargs):
-        super().__init__(parent)
-
-        self.fetcher = None
-        if addr:
-            self.fetcher = AsyncFetcher(topics, terms, addr)
-
-        handles = self.roi.getHandles()
-        self.view.disableAutoRange()
-        self.roi.removeHandle(handles[1])
-        self.last_updated = pg.LabelItem(parent=self.getView())
-        self.pixel_value = pg.LabelItem(parent=self.getView())
-        self.proxy = pg.SignalProxy(self.scene.sigMouseMoved,
-                                    rateLimit=30,
-                                    slot=self.cursor_hover_evt)
-
-    def cursor_hover_evt(self, evt):
-        pos = evt[0]
-        pos = self.view.mapSceneToView(pos)
-        if self.imageItem.image is not None:
-            shape = self.imageItem.image.shape
-            if 0 <= pos.x() <= shape[0] and 0 <= pos.y() <= shape[1]:
-                x = int(pos.x())
-                y = int(pos.y())
-                z = self.imageItem.image[x, y]
-                self.pixel_value.setText(f"x={x}, y={y}, z={z:.5g}")
-                self.pixel_value.item.moveBy(0, 12)
-
-    async def update(self):
-        while True:
-            await self.fetcher.fetch()
-            self.last_updated.setText(self.fetcher.last_updated)
-            for k, v in self.fetcher.reply.items():
-                self.setImage(v, autoLevels=False, autoHistogramRange=False)
 
 
 class HistogramWidget(PlotWidget):
