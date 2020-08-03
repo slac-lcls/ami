@@ -68,7 +68,7 @@ class Roi2D(CtrlNode):
         ey = self.values['extent y']
 
         def func(img):
-            return img[slice(ox, ex), slice(oy, ey)]
+            return img[slice(ox, ox+ex), slice(oy, oy+ey)]
 
         node = gn.Map(name=self.name()+"_operation",
                       condition_needs=conditions, inputs=inputs, outputs=outputs,
@@ -129,7 +129,7 @@ class Roi1D(CtrlNode):
         extent = self.values['extent']
 
         def func(arr):
-            return arr[slice(origin, extent)]
+            return arr[slice(origin, origin+extent)]
 
         node = gn.Map(name=self.name()+"_operation",
                       condition_needs=conditions, inputs=inputs, outputs=outputs,
@@ -208,7 +208,7 @@ class ScatterRoi(CtrlNode):
         def func(arr):
             arr = np.array(arr)
 
-            roi = arr[(origin < arr[:, 0]) & (arr[:, 0] < extent)]
+            roi = arr[(origin < arr[:, 0]) & (arr[:, 0] < (origin+extent))]
             if roi.size > 0:
                 return roi[:, 0], roi[:, 1]
             else:

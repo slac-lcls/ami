@@ -13,6 +13,7 @@ from ami.flowchart.library.WidgetGroup import generateUi
 from ami.flowchart.library.Editors import TraceEditor, HistEditor, \
     LineEditor, CircleEditor, RectEditor
 
+
 logger = logging.getLogger(LogConfig.get_package_name(__name__))
 
 colors = [(0, 0, 255), (0, 255, 0), (255, 0, 0)]
@@ -35,16 +36,17 @@ class AsyncFetcher(object):
 
     @property
     def reply(self):
-        if self.data.keys() == set(self.subs):
+        heartbeats = set(self.timestamps.values())
+        if self.data.keys() == set(self.subs) and len(heartbeats) == 1:
+            now = dt.datetime.now()
+            now = now.strftime("%H:%M:%S")
+            self.last_updated = f"Last Updated: {now}"
+
             res = {}
-            heartbeats = set()
             for name, topic in self.topics.items():
                 res[name] = self.data[topic]
-                heartbeats.add(self.timestamps[topic])
 
-            assert len(heartbeats) == 1, "AsyncFetcher received data from different heartbeats!"
             return res
-
         else:
             return {}
 
@@ -83,9 +85,6 @@ class AsyncFetcher(object):
             topic = await sock.recv_string()
             heartbeat = await sock.recv_pyobj()
             reply = await sock.recv_serialized(self.deserializer, copy=False)
-            now = dt.datetime.now()
-            now = now.strftime("%H:%M:%S")
-            self.last_updated = f"Last Updated: {now}"
             self.data[self.view_subs[topic]] = reply
             self.timestamps[self.view_subs[topic]] = heartbeat
 
@@ -387,9 +386,9 @@ class PlotWidget(pg.GraphicsLayoutWidget):
     async def update(self):
         while True:
             await self.fetcher.fetch()
-            self.last_updated.setText(self.fetcher.last_updated)
-            self.last_updated.item.moveBy(13, -5)
             if self.fetcher.reply:
+                self.last_updated.setText(self.fetcher.last_updated)
+                self.last_updated.item.moveBy(13, -5)
                 self.data_updated(self.fetcher.reply)
 
     def close(self):
@@ -492,6 +491,8 @@ class ImageWidget(PlotWidget):
 
         self.flip = False
         self.rotate = 0
+        self.log_scale_histogram = False
+        self.auto_levels = True
 
         self.view = self.plot_view.getViewBox()
 
@@ -503,7 +504,8 @@ class ImageWidget(PlotWidget):
         self.histogram_connected = False
         self.addItem(self.histogramLUT)
         if self.node:
-            self.histogramLUT.sigLookupTableChanged.connect(lambda args: self.node.sigStateChanged.emit(self.node))
+            self.histogramLUT.sigLookupTableChanged.connect(
+                lambda args: self.node.sigStateChanged.emit(self.node))
 
     def cursor_hover_evt(self, evt):
         pos = evt[0]
@@ -527,7 +529,8 @@ class ImageWidget(PlotWidget):
         self.auto_levels = self.plot_attrs['Histogram']['Auto Levels']
         if not self.auto_levels:
             self.histogram_connected = True
-            self.histogramLUT.sigLevelChangeFinished.connect(lambda args: self.node.sigStateChanged.emit(self.node))
+            self.histogramLUT.sigLevelChangeFinished.connect(
+                lambda args: self.node.sigStateChanged.emit(self.node))
         else:
             if self.histogram_connected:
                 self.histogramLUT.sigLevelChangeFinished.disconnect()
@@ -797,8 +800,8 @@ class ArrayWidget(QtWidgets.QWidget):
     async def update(self):
         while True:
             await self.fetcher.fetch()
-            self.last_updated.setText(self.fetcher.last_updated)
             if self.fetcher.reply:
+                self.last_updated.setText(self.fetcher.last_updated)
                 self.array_updated(self.fetcher.reply)
             await asyncio.sleep(self.update_rate)
 

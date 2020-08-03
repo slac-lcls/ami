@@ -101,7 +101,8 @@ class MeanWaveformVsScan(CtrlNode):
         super().__init__(name, terminals={
             'Bin': {'io': 'in', 'ttype': float},
             'Value': {'io': 'in', 'ttype': Array1d},
-            'Bins': {'io': 'out', 'ttype': Array1d},
+            'X Bins': {'io': 'out', 'ttype': Array1d},
+            'Y Bins': {'io': 'out', 'ttype': Array1d},
             'Counts': {'io': 'out', 'ttype': Array2d}
         })
 
@@ -123,7 +124,8 @@ class MeanWaveformVsScan(CtrlNode):
                 for k, v in d.items():
                     res[bins[k]] = v[0]/v[1]
                 keys, values = zip(*sorted(res.items()))
-                return np.array(keys), np.stack(values, axis=1)
+                stack = np.stack(values, axis=1)
+                return np.arange(0, stack.shape[0]), np.array(keys), stack
 
             nodes = [
                 gn.Map(name=self.name()+'_map', inputs=inputs, outputs=map_outputs,
@@ -143,7 +145,8 @@ class MeanWaveformVsScan(CtrlNode):
                 for k, v in d.items():
                     res[k] = v[0]/v[1]
                 keys, values = zip(*sorted(res.items()))
-                return np.array(keys), np.stack(values, axis=1)
+                stack = np.stack(values, axis=1)
+                return np.arange(0, stack.shape[0]), np.array(keys), stack
 
             nodes = [
                 gn.Map(name=self.name()+'_map', inputs=[inputs['Value']], outputs=map_outputs,

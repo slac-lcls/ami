@@ -28,30 +28,6 @@ class Sum(Node):
         return node
 
 
-class Projection(CtrlNode):
-
-    """
-    Projection projects a 2d array along the selected axis.
-    """
-
-    nodeName = "Projection"
-    uiTemplate = [('axis', 'intSpin', {'value': 0, 'min': 0, 'max': 1})]
-
-    def __init__(self, name):
-        super().__init__(name, terminals={
-            'In': {'io': 'in', 'ttype': Array2d},
-            'Out': {'io': 'out', 'ttype': Array1d}
-        })
-
-    def to_operation(self, inputs, conditions={}):
-        outputs = self.output_vars()
-        axis = self.values['axis']
-        node = gn.Map(name=self.name()+"_operation",
-                      condition_needs=conditions, inputs=inputs, outputs=outputs,
-                      func=lambda a: np.sum(a, axis=axis), parent=self.name())
-        return node
-
-
 class Binning(CtrlNode):
 
     """
@@ -265,6 +241,37 @@ class GroupedNode(CtrlNode):
                     return term
         else:
             return self.terminals['Out']
+
+
+class Projection(GroupedNode):
+
+    """
+    Projection projects a 2d array along the selected axis.
+    """
+
+    nodeName = "Projection"
+    uiTemplate = [('axis', 'intSpin', {'value': 0, 'min': 0, 'max': 1})]
+
+    def __init__(self, name):
+        super().__init__(name, terminals={'In': {'io': 'in', 'ttype': Array2d},
+                                          'Out': {'io': 'out', 'ttype': Array1d}},
+                         allowAddInput=True)
+
+    def to_operation(self, inputs, conditions={}):
+        outputs = self.output_vars()
+        axis = self.values['axis']
+
+        if len(inputs) == 1:
+            def func(arr):
+                return np.sum(arr, axis=axis)
+        else:
+            def func(*arr):
+                return list(map(lambda a: np.sum(a, axis=axis), arr))
+
+        node = gn.Map(name=self.name()+"_operation",
+                      condition_needs=conditions, inputs=inputs, outputs=outputs,
+                      func=func, parent=self.name())
+        return node
 
 
 class Take(GroupedNode):
