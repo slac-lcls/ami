@@ -418,7 +418,7 @@ class Manager(Collector):
     def publish_view(self, topic, timestamp, data):
         self.view_comm.send_string(topic, zmq.SNDMORE)
         self.view_comm.send_pyobj(timestamp, zmq.SNDMORE)
-        self.view_comm.send_pyobj(data)
+        self.view_comm.send_serialized(data, self.serializer, copy=False, flags=zmq.NOBLOCK)
 
     def graph_request(self):
         request = self.graph_comm.recv_string()

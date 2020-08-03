@@ -8,6 +8,7 @@ import numpy as np
 import pyqtgraph as pg
 from pyqtgraph.Qt import QtGui, QtWidgets, QtCore
 from ami import LogConfig
+from ami.data import Deserializer
 from ami.flowchart.library.WidgetGroup import generateUi
 from ami.flowchart.library.Editors import TraceEditor, HistEditor, \
     LineEditor, CircleEditor, RectEditor
@@ -29,6 +30,7 @@ class AsyncFetcher(object):
         self.data = {}
         self.timestamps = {}
         self.last_updated = "Last Updated: None"
+        self.deserializer = Deserializer()
         self.update_topics(topics, terms)
 
     @property
@@ -80,7 +82,7 @@ class AsyncFetcher(object):
                 continue
             topic = await sock.recv_string()
             heartbeat = await sock.recv_pyobj()
-            reply = await sock.recv_pyobj()
+            reply = await sock.recv_serialized(self.deserializer, copy=False)
             now = dt.datetime.now()
             now = now.strftime("%H:%M:%S")
             self.last_updated = f"Last Updated: {now}"
