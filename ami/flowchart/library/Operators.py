@@ -32,6 +32,7 @@ class MeanVsScan(CtrlNode):
 
     def to_operation(self, inputs, conditions={}):
         outputs = self.output_vars()
+        name = self.name()
 
         if self.values['binned']:
             bins = np.histogram_bin_edges(np.arange(self.values['min'], self.values['max']),
@@ -46,7 +47,10 @@ class MeanVsScan(CtrlNode):
             def mean(d):
                 res = {}
                 for k, v in d.items():
-                    res[bins[k]] = v[0]/v[1]
+                    try:
+                        res[bins[k]] = v[0]/v[1]
+                    except IndexError:
+                        print(f"{name} key {k} outside range of bins!")
                 keys, values = zip(*sorted(res.items()))
                 return np.array(keys), np.array(values)
 
@@ -108,6 +112,7 @@ class MeanWaveformVsScan(CtrlNode):
 
     def to_operation(self, inputs, conditions={}):
         outputs = self.output_vars()
+        name = self.name()
 
         if self.values['binned']:
             bins = np.histogram_bin_edges(np.arange(self.values['min'], self.values['max']),
@@ -122,7 +127,10 @@ class MeanWaveformVsScan(CtrlNode):
             def mean(d):
                 res = {}
                 for k, v in d.items():
-                    res[bins[k]] = v[0]/v[1]
+                    try:
+                        res[bins[k]] = v[0]/v[1]
+                    except IndexError:
+                        print(f"{name} key {k} outside range of bins!")
                 keys, values = zip(*sorted(res.items()))
                 stack = np.stack(values, axis=1)
                 return np.arange(0, stack.shape[0]), np.array(keys), stack
