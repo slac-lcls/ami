@@ -32,7 +32,6 @@ class MeanVsScan(CtrlNode):
 
     def to_operation(self, inputs, conditions={}):
         outputs = self.output_vars()
-        name = self.name()
 
         if self.values['binned']:
             bins = np.histogram_bin_edges(np.arange(self.values['min'], self.values['max']),
@@ -50,7 +49,7 @@ class MeanVsScan(CtrlNode):
                     try:
                         res[bins[k]] = v[0]/v[1]
                     except IndexError:
-                        print(f"{name} key {k} outside range of bins!")
+                        pass
 
                 keys, values = zip(*sorted(res.items()))
                 return np.array(keys), np.array(values)
@@ -113,7 +112,6 @@ class MeanWaveformVsScan(CtrlNode):
 
     def to_operation(self, inputs, conditions={}):
         outputs = self.output_vars()
-        name = self.name()
 
         if self.values['binned']:
             bins = np.histogram_bin_edges(np.arange(self.values['min'], self.values['max']),
@@ -131,7 +129,7 @@ class MeanWaveformVsScan(CtrlNode):
                     try:
                         res[bins[k]] = v[0]/v[1]
                     except IndexError:
-                        print(f"{name} key {k} outside range of bins!")
+                        pass
 
                 missing_keys = set(bins).difference(res.keys())
                 k, v = d.popitem()
