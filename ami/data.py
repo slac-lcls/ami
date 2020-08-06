@@ -732,10 +732,6 @@ class PsanaSource(HierarchicalDataSource):
     def _update_group(self, detname, det_xface_name, det_attr_list, is_env_det):
         if not is_env_det:
             group_name = self.delimiter.join((detname, det_xface_name))
-            group_types = {}
-            for attr in det_attr_list:
-                attr_name = self._get_attr_name(detname, det_xface_name, attr, is_env_det)
-                group_types[attr] = self.data_types[attr_name]
             self.data_types[group_name] = at.Group
             self.grouped_types[group_name] = det_attr_list
 
