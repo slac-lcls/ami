@@ -133,3 +133,30 @@ class SourceNode(CtrlNode):
     def restoreState(self, state):
         super().restoreState(state)
         self.setWidgetType()
+
+
+class GroupedNode(CtrlNode):
+
+    def __init__(self, name, *args, **kwargs):
+        super().__init__(name, *args, **kwargs)
+        self.sigTerminalConnected.connect(self.setType)
+
+    def addInput(self, **kwargs):
+        group = self.nextGroupName()
+        kwargs['group'] = group
+        super().addInput(**kwargs)
+        super().addOutput(**kwargs)
+
+    def setType(self, localTerm, remoteTerm):
+        pass
+
+    def find_output_term(self, localTerm):
+        group = localTerm.group()
+        if group:
+            group = self._groups[group]
+            for name in group:
+                term = self.terminals[name]
+                if term.isOutput():
+                    return term
+        else:
+            return self.terminals['Out']

@@ -1,6 +1,6 @@
 from typing import Union, List
 from amitypes import Array, Array1d, Array2d, Array3d
-from ami.flowchart.library.common import CtrlNode
+from ami.flowchart.library.common import CtrlNode, GroupedNode
 from ami.flowchart.Node import Node
 import ami.graph_nodes as gn
 import numpy as np
@@ -214,33 +214,6 @@ class Stack(CtrlNode):
                       condition_needs=conditions, inputs=inputs, outputs=outputs,
                       func=lambda *arr: np.stack(arr, axis=axis), parent=self.name())
         return node
-
-
-class GroupedNode(CtrlNode):
-
-    def __init__(self, name, *args, **kwargs):
-        super().__init__(name, *args, **kwargs)
-        self.sigTerminalConnected.connect(self.setType)
-
-    def addInput(self, **kwargs):
-        group = self.nextGroupName()
-        kwargs['group'] = group
-        super().addInput(**kwargs)
-        super().addOutput(**kwargs)
-
-    def setType(self, localTerm, remoteTerm):
-        pass
-
-    def find_output_term(self, localTerm):
-        group = localTerm.group()
-        if group:
-            group = self._groups[group]
-            for name in group:
-                term = self.terminals[name]
-                if term.isOutput():
-                    return term
-        else:
-            return self.terminals['Out']
 
 
 class Projection(GroupedNode):

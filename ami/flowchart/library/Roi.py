@@ -1,8 +1,10 @@
-from ami.flowchart.library.DisplayWidgets import ImageWidget, WaveformWidget, PixelDetWidget, ScatterWidget
+from ami.flowchart.library.DisplayWidgets import ImageWidget, WaveformWidget, PixelDetWidget, \
+    ScatterWidget, Histogram2DWidget
 from ami.flowchart.library.common import CtrlNode
 from amitypes import Array2d, Array1d
-import ami.graph_nodes as gn
+from pyqtgraph import QtCore
 import pyqtgraph as pg
+import ami.graph_nodes as gn
 import numpy as np
 
 
@@ -14,8 +16,8 @@ class Roi2D(CtrlNode):
 
     nodeName = "Roi2D"
     uiTemplate = [('origin x',  'intSpin', {'value': 0, 'min': 0}),
-                  ('extent x',  'intSpin', {'value': 10, 'min': 1}),
                   ('origin y',  'intSpin', {'value': 0, 'min': 0}),
+                  ('extent x',  'intSpin', {'value': 10, 'min': 1}),
                   ('extent y',  'intSpin', {'value': 10, 'min': 1})]
 
     def __init__(self, name):
@@ -276,6 +278,87 @@ class Roi0D(CtrlNode):
 
         node = gn.Map(name=self.name()+"_operation",
                       conditions_needs=conditions, inputs=inputs, outputs=outputs,
+                      func=func,
+                      parent=self.name())
+        return node
+
+
+class Histogram2DRoi(CtrlNode):
+
+    """
+    Roi of 2d histogram
+    """
+
+    nodeName = "Histogram2DRoi"
+    uiTemplate = [('origin x',  'intSpin', {'value': 0, 'min': 0}),
+                  ('origin y',  'intSpin', {'value': 0, 'min': 0}),
+                  ('extent x',  'intSpin', {'value': 10, 'min': 1}),
+                  ('extent y',  'intSpin', {'value': 10, 'min': 1})]
+
+    def __init__(self, name):
+        super().__init__(name, terminals={'XBins': {'io': 'in', 'ttype': Array1d},
+                                          'YBins': {'io': 'in', 'ttype': Array1d},
+                                          'Counts': {'io': 'in', 'ttype': Array2d},
+                                          'XBins.Out': {'io': 'out', 'ttype': Array1d},
+                                          'YBins.Out': {'io': 'out', 'ttype': Array1d},
+                                          'Counts.Out': {'io': 'out', 'ttype': Array2d}},
+                         viewable=True)
+
+    def display(self, topics, terms, addr, win, **kwargs):
+        super().display(topics, terms, addr, win, Histogram2DWidget, **kwargs)
+
+        if self.widget:
+            self.roi = pg.RectROI([self.values['origin x'], self.values['origin y']],
+                                  [self.values['extent x'], self.values['extent y']])
+            self.roi.sigRegionChangeFinished.connect(self.set_values)
+            self.widget.view.addItem(self.roi)
+
+        return self.widget
+
+    def set_values(self, *args, **kwargs):
+        # need to block signals to the stateGroup otherwise stateGroup.sigChanged
+        # will be emmitted by setValue causing update to be called
+        self.stateGroup.blockSignals(True)
+        roi = args[0]
+        extent, _, origin = roi.getAffineSliceParams(self.widget.imageItem.image, self.widget.imageItem)
+        origin = QtCore.QPoint(*origin)*self.widget.transform
+        extent = QtCore.QPoint(*extent)
+        self.values['origin x'] = origin.x()
+        self.values['origin y'] = origin.y()
+        self.values['extent x'] = extent.x()
+        self.values['extent y'] = extent.y()
+        self.ctrls['origin x'].setValue(self.values['origin x'])
+        self.ctrls['extent x'].setValue(self.values['extent x'])
+        self.ctrls['origin y'].setValue(self.values['origin y'])
+        self.ctrls['extent y'].setValue(self.values['extent y'])
+        self.stateGroup.blockSignals(False)
+        self.sigStateChanged.emit(self)
+
+    def update(self, *args, **kwargs):
+        super().update(*args, **kwargs)
+
+        if self.widget:
+            origin = QtCore.QPoint(self.values['origin x'], self.values['origin y'])
+            self.roi.setPos(origin.x(), origin.y(), finish=False)
+            self.roi.setSize((self.values['extent x'], self.values['extent y']), finish=False)
+
+    def to_operation(self, inputs, conditions={}):
+        outputs = self.output_vars()
+
+        ox = self.values['origin x']
+        ex = self.values['extent x']
+        oy = self.values['origin y']
+        ey = self.values['extent y']
+
+        def func(x, y, img):
+            xstart = np.digitize(ox, x)
+            ystart = np.digitize(oy, y)
+            xs = slice(xstart, xstart+ex)
+            ys = slice(ystart, ystart+ey)
+            return x[xs], y[ys], img[xs, ys]
+
+        node = gn.Map(name=self.name()+"_operation",
+                      condition_needs=conditions, inputs=inputs, outputs=outputs,
                       func=func,
                       parent=self.name())
         return node

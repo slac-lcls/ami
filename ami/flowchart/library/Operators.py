@@ -45,12 +45,13 @@ class MeanVsScan(CtrlNode):
                 return np.digitize(k, bins), (v, 1)
 
             def mean(d):
-                res = {}
+                res = {bins[i]: 0 for i in range(0, bins.size)}
                 for k, v in d.items():
                     try:
                         res[bins[k]] = v[0]/v[1]
                     except IndexError:
                         print(f"{name} key {k} outside range of bins!")
+
                 keys, values = zip(*sorted(res.items()))
                 return np.array(keys), np.array(values)
 
@@ -131,6 +132,12 @@ class MeanWaveformVsScan(CtrlNode):
                         res[bins[k]] = v[0]/v[1]
                     except IndexError:
                         print(f"{name} key {k} outside range of bins!")
+
+                missing_keys = set(bins).difference(res.keys())
+                k, v = d.popitem()
+                for k in missing_keys:
+                    res[k] = np.zeros(v[0].shape)
+
                 keys, values = zip(*sorted(res.items()))
                 stack = np.stack(values, axis=1)
                 return np.arange(0, stack.shape[0]), np.array(keys), stack
