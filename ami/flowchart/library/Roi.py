@@ -15,10 +15,10 @@ class Roi2D(CtrlNode):
     """
 
     nodeName = "Roi2D"
-    uiTemplate = [('origin x',  'intSpin', {'value': 0, 'min': 0}),
-                  ('origin y',  'intSpin', {'value': 0, 'min': 0}),
-                  ('extent x',  'intSpin', {'value': 10, 'min': 1}),
-                  ('extent y',  'intSpin', {'value': 10, 'min': 1})]
+    uiTemplate = [('origin x', 'intSpin', {'value': 0, 'min': 0}),
+                  ('origin y', 'intSpin', {'value': 0, 'min': 0}),
+                  ('extent x', 'intSpin', {'value': 10, 'min': 1}),
+                  ('extent y', 'intSpin', {'value': 10, 'min': 1})]
 
     def __init__(self, name):
         super().__init__(name,
@@ -86,8 +86,8 @@ class Roi1D(CtrlNode):
     """
 
     nodeName = "Roi1D"
-    uiTemplate = [('origin',  'intSpin', {'value': 0, 'min': 0}),
-                  ('extent',  'intSpin', {'value': 10, 'min': 1})]
+    uiTemplate = [('origin', 'intSpin', {'value': 0, 'min': 0}),
+                  ('extent', 'intSpin', {'value': 10, 'min': 1})]
 
     def __init__(self, name):
         super().__init__(name, terminals={"In": {"io": "in", "ttype": Array1d},
@@ -147,8 +147,8 @@ class ScatterRoi(CtrlNode):
     """
 
     nodeName = "ScatterRoi"
-    uiTemplate = [('origin',  'intSpin', {'value': 0, 'min': 0}),
-                  ('extent',  'intSpin', {'value': 10, 'min': 1}),
+    uiTemplate = [('origin', 'intSpin', {'value': 0, 'min': 0}),
+                  ('extent', 'intSpin', {'value': 10, 'min': 1}),
                   ('Num Points', 'intSpin', {'value': 100, 'min': 1})]
 
     def __init__(self, name):
@@ -290,10 +290,10 @@ class Histogram2DRoi(CtrlNode):
     """
 
     nodeName = "Histogram2DRoi"
-    uiTemplate = [('origin x',  'intSpin', {'value': 0, 'min': 0}),
-                  ('origin y',  'intSpin', {'value': 0, 'min': 0}),
-                  ('extent x',  'intSpin', {'value': 10, 'min': 1}),
-                  ('extent y',  'intSpin', {'value': 10, 'min': 1})]
+    uiTemplate = [('origin x', 'intSpin', {'value': 0, 'min': 0}),
+                  ('origin y', 'intSpin', {'value': 0, 'min': 0}),
+                  ('extent x', 'intSpin', {'value': 10, 'min': 1}),
+                  ('extent y', 'intSpin', {'value': 10, 'min': 1})]
 
     def __init__(self, name):
         super().__init__(name, terminals={'XBins': {'io': 'in', 'ttype': Array1d},

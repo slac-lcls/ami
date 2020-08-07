@@ -8,6 +8,7 @@ class SourceConfiguration(QtGui.QWidget):
 
     def __init__(self, parent=None):
         super().__init__(parent)
+        self.setWindowTitle("Configure")
         self.formLayout = QtWidgets.QFormLayout(self)
 
         self.interval = QtGui.QDoubleSpinBox(self)

@@ -1,5 +1,81 @@
+import os
+import sys
+import importlib
 from qtpy import QtGui, QtWidgets, QtCore
-from pyqtgraph import dockarea
+from pyqtgraph import dockarea, FileDialog
+from ami.flowchart.NodeLibrary import isNodeClass
+# from ami.flowchart.library import LIBRARY
+
+
+class LibraryEditor(QtWidgets.QWidget):
+
+    def __init__(self):
+        super().__init__()
+
+        self.modules = {}
+
+        self.layout = QtWidgets.QGridLayout(self)
+
+        self.loadBtn = QtWidgets.QPushButton("Load Modules", parent=self)
+        self.loadBtn.clicked.connect(self.loadFile)
+
+        self.reloadBtn = QtWidgets.QPushButton("Reload Selected Modules", parent=self)
+        self.reloadBtn.clicked.connect(self.reloadFile)
+
+        self.unloadBtn = QtWidgets.QPushButton("Unload Selected Modules", parent=self)
+        self.unloadBtn.clicked.connect(self.unloadFile)
+
+        self.model = build_model()
+        self.tree = build_tree(model=self.model, parent=self)
+
+        self.applyBtn = QtWidgets.QPushButton("Apply", parent=self)
+        self.applyBtn.clicked.connect(self.applyClicked)
+
+        self.layout.addWidget(self.loadBtn, 1, 1, 1, 1)
+        self.layout.addWidget(self.reloadBtn, 1, 2, 1, 1)
+        self.layout.addWidget(self.unloadBtn, 1, 3, 1, 1)
+        self.layout.addWidget(self.tree, 2, 1, 1, -1)
+        self.layout.addWidget(self.applyBtn, 3, 1, 1, -1)
+
+    def loadFile(self):
+        file_filters = "*.py"
+        self.fileDialog = FileDialog(None, "Load Nodes", None, file_filters)
+        self.fileDialog.setFileMode(FileDialog.ExistingFiles)
+        self.fileDialog.filesSelected.connect(self.fileDialogFilesSelected)
+        self.fileDialog.show()
+
+    def fileDialogFilesSelected(self, pths):
+        dirs = set(map(os.path.dirname, pths))
+        sys.path.extend(dirs)
+
+        for mod in pths:
+            mod = os.path.basename(mod)
+            mod = os.path.splitext(mod)[0]
+            mod = importlib.import_module(mod)
+
+            nodes = [getattr(mod, name) for name in dir(mod) if isNodeClass(getattr(mod, name))]
+
+            if not nodes:
+                continue
+
+            self.modules[mod] = nodes
+
+            parent = QtGui.QStandardItem(mod.__name__)
+            for node in nodes:
+                child = QtGui.QStandardItem(node.__name__)
+                parent.appendRow(child)
+
+            self.tree.model().sourceModel().appendRow(parent)
+            self.tree.expandAll()
+
+    def reloadFile(self):
+        pass
+
+    def unloadFile(self):
+        pass
+
+    def applyClicked(self):
+        pass
 
 
 class SearchProxyModel(QtCore.QSortFilterProxyModel):
@@ -34,15 +110,16 @@ def build_model():
     return model
 
 
-def build_tree(model):
-    tree = QtGui.QTreeView()
+def build_tree(model=None, parent=None):
+    tree = QtGui.QTreeView(parent=parent)
     tree.setSortingEnabled(True)
     tree.sortByColumn(0, QtCore.Qt.AscendingOrder)
     tree.setEditTriggers(QtGui.QAbstractItemView.NoEditTriggers)
     tree.setHeaderHidden(True)
     tree.setRootIsDecorated(True)
     tree.setUniformRowHeights(True)
-    tree.setModel(model)
+    if model:
+        tree.setModel(model)
     tree.setSelectionMode(QtWidgets.QAbstractItemView.SingleSelection)
     tree.setDragEnabled(True)
     return tree
@@ -166,12 +243,12 @@ class Ui_Toolbar(object):
         self.source_model = build_model()
         self.source_search = QtGui.QLineEdit()
         self.source_search.setPlaceholderText('Search Sources...')
-        self.source_tree = build_tree(self.source_model)
+        self.source_tree = build_tree(self.source_model, parent)
 
         self.node_model = build_model()
         self.node_search = QtGui.QLineEdit()
         self.node_search.setPlaceholderText('Search Operations...')
-        self.node_tree = build_tree(self.node_model)
+        self.node_tree = build_tree(self.node_model, parent)
 
         self.gridLayout.addWidget(self.toolBar, 0, 0, 1, -1)
 
@@ -185,13 +262,16 @@ class Ui_Toolbar(object):
         chart.addDock(self.node_dock, 'left')
 
         self.rateLbl = QtWidgets.QLabel("")
-        self.rateLbl.setAlignment(QtCore.Qt.AlignRight)
+        self.rateLbl.setAlignment(QtCore.Qt.AlignRight | QtCore.Qt.AlignBottom)
+
+        self.libraryConfigure = QtWidgets.QPushButton("Manage Library")
 
         self.gridLayout.addWidget(chart, 1, 1, 1, -1)
-        self.gridLayout.addWidget(self.rateLbl, 2, 1, 1, 1)
+        self.gridLayout.addWidget(self.libraryConfigure, 2, 1)
+        self.gridLayout.addWidget(self.rateLbl, 2, 2, 1, -1)
 
         self.gridLayout.setRowStretch(1, 10)
-        self.gridLayout.setColumnStretch(1, 10)
+        self.gridLayout.setColumnStretch(2, 10)
 
         self.node_search.textChanged.connect(self.node_search_text_changed)
         self.source_search.textChanged.connect(self.source_search_text_changed)

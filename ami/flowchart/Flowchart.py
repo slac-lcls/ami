@@ -40,7 +40,7 @@ class Flowchart(Node):
 
     def __init__(self, name=None, filePath=None, library=None,
                  broker_addr="", graphmgr_addr="", checkpoint_addr=""):
-        super(Flowchart, self).__init__(name)
+        super().__init__(name)
         self.socks = []
         self.library = library or LIBRARY
         self.graphmgr_addr = graphmgr_addr
@@ -545,6 +545,9 @@ class FlowchartCtrlWidget(QtGui.QWidget):
 
         self.sourceConfigure = SourceConfiguration()
         self.sourceConfigure.sigApply.connect(self.configureApply)
+
+        self.libraryEditor = EditorTemplate.LibraryEditor()
+        self.ui.libraryConfigure.clicked.connect(self.libraryEditor.show)
 
     @asyncSlot()
     async def applyClicked(self):
