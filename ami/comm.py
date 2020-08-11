@@ -1,4 +1,6 @@
 import abc
+import os
+import sys
 import time
 import zmq
 import dill
@@ -680,6 +682,7 @@ class Node(abc.ABC):
         self.graph_comm.add_handler("add", self.recv_graph_add)
         self.graph_comm.add_handler("del", self.recv_graph_del)
         self.graph_comm.add_handler("purge", self.recv_graph_purge)
+        self.graph_comm.add_handler("update_path", self.update_path)
 
         if export_addr is None:
             self.export_comm = None
@@ -806,6 +809,16 @@ class Node(abc.ABC):
             self.node_msg_comm.send_serialized(payload, self.serializer, zmq.NOBLOCK, copy=False)
         else:
             self.node_msg_comm.send(dill.dumps(payload), zmq.NOBLOCK, copy=False)
+
+    def update_path(self, name, version, args, paths):
+        exists = True
+        for pth in paths:
+            if not os.path.exists(pth):
+                self.report("error", f"{pth} not accessible!")
+                exists = False
+
+        if exists:
+            sys.path.extend(paths)
 
 
 class Collector(abc.ABC):
@@ -1463,6 +1476,9 @@ class CommHandler(abc.ABC):
 
     def updateSources(self, src_cfg):
         return self._post_dill("update_sources", src_cfg)
+
+    def updatePath(self, paths):
+        return self._post_dill("update_path", paths)
 
     def fetch(self, names):
         """

@@ -508,7 +508,7 @@ class FlowchartCtrlWidget(QtGui.QWidget):
     """
 
     def __init__(self, chart, graphmgr_addr):
-        super(FlowchartCtrlWidget, self).__init__()
+        super().__init__()
 
         self.graphCommHandler = AsyncGraphCommHandler(graphmgr_addr.name, graphmgr_addr.comm, ctx=chart.ctx)
         self.graph_name = graphmgr_addr.name
@@ -546,7 +546,8 @@ class FlowchartCtrlWidget(QtGui.QWidget):
         self.sourceConfigure = SourceConfiguration()
         self.sourceConfigure.sigApply.connect(self.configureApply)
 
-        self.libraryEditor = EditorTemplate.LibraryEditor()
+        self.libraryEditor = EditorTemplate.LibraryEditor(self, chart.library)
+        self.libraryEditor.sigApplyClicked.connect(self.libraryUpdated)
         self.ui.libraryConfigure.clicked.connect(self.libraryEditor.show)
 
     @asyncSlot()
@@ -801,6 +802,15 @@ class FlowchartCtrlWidget(QtGui.QWidget):
     async def profilerClicked(self):
         await self.chart.broker.send_string("profiler", zmq.SNDMORE)
         await self.chart.broker.send_pyobj(fcMsgs.Profiler(name=self.graph_name, command="show"))
+
+    @asyncSlot()
+    async def libraryUpdated(self):
+        await self.chart.broker.send_string("library", zmq.SNDMORE)
+        await self.chart.broker.send_pyobj(fcMsgs.Library(name=self.graph_name,
+                                                          paths=self.libraryEditor.paths))
+
+        dirs = set(map(os.path.dirname, self.libraryEditor.paths))
+        await self.graphCommHandler.updatePath(dirs)
 
 
 class FlowchartWidget(dockarea.DockArea):

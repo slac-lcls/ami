@@ -6,10 +6,10 @@ from amitypes import Array1d
 class TestNode(CtrlNode):
 
     """
-    Test
+    Test Node
     """
 
-    nodeName = "Test"
+    nodeName = "TestNode"
     uiTemplate = [('spin', 'intSpin', {'value': 0})]
 
     def __init__(self, name):

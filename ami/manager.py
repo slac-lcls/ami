@@ -1,5 +1,6 @@
 #!/usr/bin/env python
 import re
+import os
 import sys
 import zmq
 import dill
@@ -356,6 +357,24 @@ class Manager(Collector):
         self.graph_comm.send_string("update_sources", zmq.SNDMORE)
         self.graph_comm.send_pyobj(self.publish_info(name), zmq.SNDMORE)
         self.graph_comm.send(dill.dumps(src_cfg))
+        self.comm.send_string('ok')
+
+    def cmd_update_path(self, name):
+        paths = self.comm.recv_pyobj()
+        exists = True
+        for pth in paths:
+            if not os.path.exists(pth):
+                logger.error("Path: %s not accessible from manager!", pth)
+                exists = False
+
+        if not exists:
+            self.comm.send_string('error')
+            return
+
+        sys.path.extend(paths)
+        self.graph_comm.send_string("update_path", zmq.SNDMORE)
+        self.graph_comm.send_pyobj(self.publish_info(name), zmq.SNDMORE)
+        self.graph_comm.send(dill.dumps(paths))
         self.comm.send_string('ok')
 
     def publish_info(self, name):

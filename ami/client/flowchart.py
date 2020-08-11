@@ -1,16 +1,20 @@
 #!/usr/bin/env python
+import os
+import sys
 import logging
-import ami.multiproc as mp
+import importlib
 import tempfile
 import asyncio
 import zmq
 import zmq.asyncio
+import ami.multiproc as mp
 
 from ami import LogConfig
 from ami.client import flowchart_messages as fcMsgs
 from ami.profiler import Profiler
 from ami.flowchart.Flowchart import Flowchart
 from ami.flowchart.library import LIBRARY
+from ami.flowchart.NodeLibrary import isNodeClass
 from ami.flowchart.library.common import SourceNode
 from ami.asyncqt import QEventLoop, asyncSlot
 from pyqtgraph.Qt import QtGui, QtCore, QtWidgets
@@ -79,7 +83,8 @@ class NodeWindow(QtGui.QMainWindow):
 
 class NodeProcess(QtCore.QObject):
 
-    def __init__(self, msg, broker_addr="", graphmgr_addr="", checkpoint_addr="", loop=None):
+    def __init__(self, msg, broker_addr="", graphmgr_addr="", checkpoint_addr="", loop=None,
+                 library_paths=None):
         super().__init__()
 
         if loop is None:
@@ -93,6 +98,20 @@ class NodeProcess(QtCore.QObject):
         if msg.node_type == "SourceNode":
             self.node = SourceNode(name=msg.name)
         else:
+            if library_paths:
+                dirs = set(map(os.path.dirname, library_paths))
+                sys.path.extend(dirs)
+
+                for mod in library_paths:
+                    mod = os.path.basename(mod)
+                    mod = os.path.splitext(mod)[0]
+                    mod = importlib.import_module(mod)
+
+                    nodes = [getattr(mod, name) for name in dir(mod) if isNodeClass(getattr(mod, name))]
+
+                    for node in nodes:
+                        LIBRARY.addNodeType(node, [(mod.__name__, )])
+
             self.node = LIBRARY.getNodeType(msg.node_type)(msg.name)
 
         self.node.restoreState(msg.state)
@@ -202,6 +221,7 @@ class MessageBroker(object):
         self.checkpoint_pub_addr = "ipc://%s/checkpoint_pub" % ipcdir
 
         self.load = load
+        self.library_paths = set()
 
         self.lock = asyncio.Lock()
         self.msgs = {}
@@ -325,6 +345,7 @@ class MessageBroker(object):
                         target=NodeProcess,
                         name=msg.name,
                         args=(msg, self.broker_pub_addr, self.graphmgr_addr, self.checkpoint_sub_addr),
+                        kwargs={'library_paths': self.library_paths},
                         daemon=True
                     )
                     proc.start()
@@ -342,6 +363,7 @@ class MessageBroker(object):
                     target=NodeProcess,
                     name=msg.name,
                     args=(msg, self.broker_pub_addr, self.graphmgr_addr, self.checkpoint_sub_addr),
+                    kwargs={'library_paths': self.library_paths},
                     daemon=True
                 )
                 proc.start()
@@ -379,6 +401,9 @@ class MessageBroker(object):
 
                     if topic in self.msgs:
                         del self.msgs[topic]
+
+            elif isinstance(msg, fcMsgs.Library):
+                self.library_paths.update(msg.paths)
 
     async def run(self):
         await asyncio.gather(self.handle_connect(),

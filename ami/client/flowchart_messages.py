@@ -35,6 +35,13 @@ class CreateNode(BrokerMsg):
         return f"CreateNode(name={self.name}, node_type={self.node_type}, state={self.state})"
 
 
+class Library(BrokerMsg):
+
+    def __init__(self, name, paths):
+        super().__init__(name)
+        self.paths = paths
+
+
 class CloseNode(NodeMsg):
 
     def __init__(self):

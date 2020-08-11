@@ -1,18 +1,28 @@
 import os
 import sys
 import importlib
-from qtpy import QtGui, QtWidgets, QtCore
+import logging
+import pyqtgraph as pg
 from pyqtgraph import dockarea, FileDialog
+from pyqtgraph.Qt import QtGui, QtWidgets, QtCore
 from ami.flowchart.NodeLibrary import isNodeClass
-# from ami.flowchart.library import LIBRARY
+
+
+logger = logging.getLogger(__name__)
 
 
 class LibraryEditor(QtWidgets.QWidget):
 
-    def __init__(self):
+    sigApplyClicked = QtCore.Signal()
+
+    def __init__(self, ctrlWidget, library):
         super().__init__()
 
-        self.modules = {}
+        self.modules = {}  # {mod : [nodes]}
+        self.paths = set()
+
+        self.ctrl = ctrlWidget
+        self.library = library
 
         self.layout = QtWidgets.QGridLayout(self)
 
@@ -22,18 +32,14 @@ class LibraryEditor(QtWidgets.QWidget):
         self.reloadBtn = QtWidgets.QPushButton("Reload Selected Modules", parent=self)
         self.reloadBtn.clicked.connect(self.reloadFile)
 
-        self.unloadBtn = QtWidgets.QPushButton("Unload Selected Modules", parent=self)
-        self.unloadBtn.clicked.connect(self.unloadFile)
-
-        self.model = build_model()
-        self.tree = build_tree(model=self.model, parent=self)
+        self.tree = QtWidgets.QTreeWidget(parent=self)
+        self.tree.setHeaderHidden(True)
 
         self.applyBtn = QtWidgets.QPushButton("Apply", parent=self)
         self.applyBtn.clicked.connect(self.applyClicked)
 
         self.layout.addWidget(self.loadBtn, 1, 1, 1, 1)
         self.layout.addWidget(self.reloadBtn, 1, 2, 1, 1)
-        self.layout.addWidget(self.unloadBtn, 1, 3, 1, 1)
         self.layout.addWidget(self.tree, 2, 1, 1, -1)
         self.layout.addWidget(self.applyBtn, 3, 1, 1, -1)
 
@@ -47,6 +53,7 @@ class LibraryEditor(QtWidgets.QWidget):
     def fileDialogFilesSelected(self, pths):
         dirs = set(map(os.path.dirname, pths))
         sys.path.extend(dirs)
+        self.paths.update(pths)
 
         for mod in pths:
             mod = os.path.basename(mod)
@@ -60,22 +67,32 @@ class LibraryEditor(QtWidgets.QWidget):
 
             self.modules[mod] = nodes
 
-            parent = QtGui.QStandardItem(mod.__name__)
+            parent = QtWidgets.QTreeWidgetItem(self.tree, [mod.__name__])
+            parent.mod = mod
             for node in nodes:
-                child = QtGui.QStandardItem(node.__name__)
-                parent.appendRow(child)
+                child = QtWidgets.QTreeWidgetItem(parent, [node.__name__])
+                child.mod = mod
 
-            self.tree.model().sourceModel().appendRow(parent)
             self.tree.expandAll()
 
     def reloadFile(self):
-        pass
+        mods = set()
+        for item in self.tree.selectedItems():
+            mods.add(item.mod)
 
-    def unloadFile(self):
-        pass
+        for mod in mods:
+            logger.info(f"Reloading: {mod.__name__}")
+            pg.reload.reload(mod)
 
     def applyClicked(self):
-        pass
+        for mod, nodes in self.modules.items():
+            for node in nodes:
+                self.library.addNodeType(node, [(mod.__name__, )])
+
+        self.ctrl.ui.clear_model(self.ctrl.ui.node_tree)
+        self.ctrl.ui.create_model(self.ctrl.ui.node_tree, self.library.getLabelTree(rebuild=True))
+
+        self.sigApplyClicked.emit()
 
 
 class SearchProxyModel(QtCore.QSortFilterProxyModel):

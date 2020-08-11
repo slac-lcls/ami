@@ -62,8 +62,8 @@ class NodeLibrary:
     def getNodeTree(self):
         return self.nodeTree
 
-    def getLabelTree(self):
-        if self.labelTree:
+    def getLabelTree(self, rebuild=False):
+        if self.labelTree and not rebuild:
             return self.labelTree
 
         for root, children in self.nodeTree.items():
