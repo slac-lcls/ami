@@ -250,6 +250,7 @@ class Flowchart(Node):
             state['connects'].append((from_node, from_term, to_node, to_term))
 
         state['source_configuration'] = self.widget().sourceConfigure.saveState()
+        state['library'] = self.widget().libraryEditor.saveState()
         return state
 
     def restoreState(self, state, clear=False):
@@ -266,6 +267,11 @@ class Flowchart(Node):
                 self.widget().sourceConfigure.restoreState(src_cfg)
                 if src_cfg['files']:
                     self.widget().sourceConfigure.applyClicked()
+
+            if 'library' in state:
+                lib_cfg = state['library']
+                self.widget().libraryEditor.restoreState(lib_cfg)
+                self.widget().libraryEditor.applyClicked()
 
             if 'viewbox' in state:
                 self.viewBox.restoreState(state['viewbox'])
@@ -811,6 +817,9 @@ class FlowchartCtrlWidget(QtGui.QWidget):
 
         dirs = set(map(os.path.dirname, self.libraryEditor.paths))
         await self.graphCommHandler.updatePath(dirs)
+
+        now = datetime.now().strftime('%H:%M:%S')
+        self.chartWidget.statusText.append(f"[{now}] Loaded modules.")
 
 
 class FlowchartWidget(dockarea.DockArea):

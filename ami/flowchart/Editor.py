@@ -94,6 +94,12 @@ class LibraryEditor(QtWidgets.QWidget):
 
         self.sigApplyClicked.emit()
 
+    def saveState(self):
+        return {'paths': list(self.paths)}
+
+    def restoreState(self, state):
+        self.fileDialogFilesSelected(state['paths'])
+
 
 class SearchProxyModel(QtCore.QSortFilterProxyModel):
 

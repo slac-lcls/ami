@@ -5,6 +5,7 @@ import sys
 import zmq
 import dill
 import logging
+import collections
 import argparse
 from ami import LogConfig
 from ami.comm import Ports, AutoExport, Collector, Store
@@ -47,6 +48,7 @@ class Manager(Collector):
         self.feature_req = re.compile(r"(?P<type>fetch):(?P<name>.*)")
         self.view_req = re.compile(r"view:(?P<graph>.*):(?P<name>.*)")
         self.graphs = {}
+        self.paths = collections.defaultdict(set)
         self.versions = {}
         self.purged = set()
         self.global_cmds = {"list_graphs"}
@@ -371,6 +373,7 @@ class Manager(Collector):
             self.comm.send_string('error')
             return
 
+        self.paths[name].update(paths)
         sys.path.extend(paths)
         self.graph_comm.send_string("update_path", zmq.SNDMORE)
         self.graph_comm.send_pyobj(self.publish_info(name), zmq.SNDMORE)
@@ -444,6 +447,10 @@ class Manager(Collector):
 
         if request == "\x01":
             for name, graph in self.graphs.items():
+                if name in self.paths:
+                    self.graph_comm.send_string("update_path", zmq.SNDMORE)
+                    self.graph_comm.send_pyobj(self.publish_info(name), zmq.SNDMORE)
+                    self.graph_comm.send(dill.dumps(self.paths[name]))
                 self.graph_comm.send_string("init", zmq.SNDMORE)
                 self.graph_comm.send_pyobj(self.publish_info(name), zmq.SNDMORE)
                 self.graph_comm.send(dill.dumps(graph))
