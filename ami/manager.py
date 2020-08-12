@@ -257,6 +257,9 @@ class Manager(Collector):
     def cmd_get_sources(self, name):
         self.comm.send_pyobj(self.partition)
 
+    def cmd_get_paths(self, name):
+        self.comm.send_pyobj(list(self.paths[name]))
+
     def cmd_create_graph(self, name):
         if not self.exists(name):
             self.create(name)

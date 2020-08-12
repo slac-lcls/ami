@@ -1474,6 +1474,16 @@ class CommHandler(abc.ABC):
         """
         return self._request_dill('get_metadata')
 
+    @property
+    def paths(self):
+        """
+        The current graph's python path.
+
+        Returns:
+            A list of paths.
+        """
+        return self._request("get_paths")
+
     def updateSources(self, src_cfg):
         return self._post_dill("update_sources", src_cfg)
 
