@@ -8,6 +8,7 @@ import asyncio
 import zmq
 import zmq.asyncio
 import ami.multiproc as mp
+import pyqtgraph as pg
 
 from ami import LogConfig
 from ami.client import flowchart_messages as fcMsgs
@@ -152,6 +153,8 @@ class NodeProcess(QtCore.QObject):
 
             if isinstance(msg, fcMsgs.DisplayNode):
                 self.display(msg)
+            elif isinstance(msg, fcMsgs.ReloadLibrary):
+                self.reloadLibrary(msg)
             elif isinstance(msg, fcMsgs.CloseNode):
                 return
 
@@ -194,6 +197,11 @@ class NodeProcess(QtCore.QObject):
             else:
                 self.show = True
                 self.win.show()
+
+    def reloadLibrary(self, msg):
+        for mod in msg.mods:
+            mod = sys.modules[mod]
+            pg.reload.reload(mod)
 
     @asyncSlot(object)
     async def send_checkpoint(self, node):
@@ -386,6 +394,9 @@ class MessageBroker(object):
                 await self.broker_pub_sock.send_pyobj(msg)
 
             elif isinstance(msg, fcMsgs.DisplayNode):
+                await self.forward_message_to_node(topic, msg)
+
+            elif isinstance(msg, fcMsgs.ReloadLibrary):
                 await self.forward_message_to_node(topic, msg)
 
             elif isinstance(msg, fcMsgs.CloseNode):

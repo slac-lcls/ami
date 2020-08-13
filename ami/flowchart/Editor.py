@@ -14,6 +14,7 @@ logger = logging.getLogger(__name__)
 class LibraryEditor(QtWidgets.QWidget):
 
     sigApplyClicked = QtCore.Signal()
+    sigReloadClicked = QtCore.Signal(object)
 
     def __init__(self, ctrlWidget, library):
         super().__init__()
@@ -29,8 +30,8 @@ class LibraryEditor(QtWidgets.QWidget):
         self.loadBtn = QtWidgets.QPushButton("Load Modules", parent=self)
         self.loadBtn.clicked.connect(self.loadFile)
 
-        self.reloadBtn = QtWidgets.QPushButton("Reload Selected Modules", parent=self)
-        self.reloadBtn.clicked.connect(self.reloadFile)
+        # self.reloadBtn = QtWidgets.QPushButton("Reload Selected Modules", parent=self)
+        # self.reloadBtn.clicked.connect(self.reloadFile)
 
         self.tree = QtWidgets.QTreeWidget(parent=self)
         self.tree.setHeaderHidden(True)
@@ -38,8 +39,8 @@ class LibraryEditor(QtWidgets.QWidget):
         self.applyBtn = QtWidgets.QPushButton("Apply", parent=self)
         self.applyBtn.clicked.connect(self.applyClicked)
 
-        self.layout.addWidget(self.loadBtn, 1, 1, 1, 1)
-        self.layout.addWidget(self.reloadBtn, 1, 2, 1, 1)
+        self.layout.addWidget(self.loadBtn, 1, 1, 1, -1)
+        # self.layout.addWidget(self.reloadBtn, 1, 2, 1, 1)
         self.layout.addWidget(self.tree, 2, 1, 1, -1)
         self.layout.addWidget(self.applyBtn, 3, 1, 1, -1)
 
@@ -81,8 +82,9 @@ class LibraryEditor(QtWidgets.QWidget):
             mods.add(item.mod)
 
         for mod in mods:
-            logger.info(f"Reloading: {mod.__name__}")
             pg.reload.reload(mod)
+
+        self.sigReloadClicked.emit(mods)
 
     def applyClicked(self):
         for mod, nodes in self.modules.items():

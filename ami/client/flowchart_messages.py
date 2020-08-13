@@ -42,6 +42,13 @@ class Library(BrokerMsg):
         self.paths = paths
 
 
+class ReloadLibrary(NodeMsg):
+
+    def __init__(self, name, mods):
+        super().__init__(name)
+        self.mods = mods
+
+
 class CloseNode(NodeMsg):
 
     def __init__(self):

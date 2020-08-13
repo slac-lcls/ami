@@ -554,6 +554,7 @@ class FlowchartCtrlWidget(QtGui.QWidget):
 
         self.libraryEditor = EditorTemplate.LibraryEditor(self, chart.library)
         self.libraryEditor.sigApplyClicked.connect(self.libraryUpdated)
+        self.libraryEditor.sigReloadClicked.connect(self.libraryReloaded)
         self.ui.libraryConfigure.clicked.connect(self.libraryEditor.show)
 
     @asyncSlot()
@@ -820,6 +821,19 @@ class FlowchartCtrlWidget(QtGui.QWidget):
 
         now = datetime.now().strftime('%H:%M:%S')
         self.chartWidget.statusText.append(f"[{now}] Loaded modules.")
+
+    @asyncSlot(object)
+    async def libraryReloaded(self, mods):
+        smods = set(map(lambda mod: mod.__name__, mods))
+
+        for name, gnode in self.chart._graph.nodes().items():
+            node = gnode['node']
+            if node.__module__ in smods:
+                await self.chart.broker.send_string(node.name(), zmq.SNDMORE)
+                await self.chart.broker.send_pyobj(fcMsgs.ReloadLibrary(name=node.name(),
+                                                                        mods=smods))
+                now = datetime.now().strftime('%H:%M:%S')
+                self.chartWidget.statusText.append(f"[{now}] Reloaded {node.name()}.")
 
 
 class FlowchartWidget(dockarea.DockArea):
