@@ -17,3 +17,6 @@ htmlcov/
 *.fc
 *.last
 *.swp
+.agignore
+.gdb_history
+examples/*
