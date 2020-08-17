@@ -1,6 +1,5 @@
 from typing import Union, Any
 from amitypes import Array1d, Array2d, Array3d
-from ami.flowchart.Node import Node
 from ami.flowchart.library.common import CtrlNode
 from ami.flowchart.library.CalculatorWidget import CalculatorWidget
 import ami.graph_nodes as gn
@@ -215,17 +214,17 @@ class Combinations(CtrlNode):
         return node
 
 
-class Export(Node):
+class Export(CtrlNode):
 
     """
     Send data back to worker.
     """
 
     nodeName = "Export"
+    uiTemplate = [('alias', 'text')]
 
     def __init__(self, name):
-        super().__init__(name, terminals={"In": {'io': 'in', 'ttype': Any},
-                                          "Out": {'io': 'out', 'ttype': Any}},
+        super().__init__(name, terminals={"In": {'io': 'in', 'ttype': Any}},
                          exportable=True)
 
 

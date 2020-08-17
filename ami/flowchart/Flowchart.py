@@ -602,6 +602,8 @@ class FlowchartCtrlWidget(QtGui.QWidget):
                 if not hasattr(gnode, 'to_operation'):
                     if gnode.isSource() and gnode.viewable() and gnode.viewed:
                         displays.add(gnode)
+                    elif gnode.exportable():
+                        displays.add(gnode)
                     continue
 
                 for output in outputs:
@@ -714,7 +716,7 @@ class FlowchartCtrlWidget(QtGui.QWidget):
                                                                       redisplay=True))
 
             elif node.exportable():
-                await self.graphCommHandler.export(node.input_vars()['In'], node.name())
+                await self.graphCommHandler.export(node.input_vars()['In'], node.values['alias'])
 
         for node in changed_nodes:
             node.changed = False
