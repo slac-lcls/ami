@@ -621,8 +621,9 @@ class FlowchartCtrlWidget(QtGui.QWidget):
                                 try:
                                     nodes = node.to_operation(inputs=node.input_vars(),
                                                               conditions=node.condition_vars())
-                                except BaseException as e:
-                                    self.chartWidget.statusText.append(f"[{now}] {node.name()} {e}")
+                                except Exception:
+                                    self.chartWidget.statusText.append(f"[{now}] {node.name()} error!")
+                                    printExc(f"{node.name()} raised exception! See console for stacktrace.")
                                     node.setException(True)
                                     failed_nodes.add(node)
                                     continue

@@ -16,6 +16,12 @@ try:
 except ImportError as e:
     print(e)
 
+try:
+    from ami.flowchart.library import FFTW
+    modules.append(FFTW)
+except ImportError as e:
+    print(e)
+
 # Build default library
 LIBRARY = NodeLibrary()
 
