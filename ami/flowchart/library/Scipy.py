@@ -1,3 +1,4 @@
+from pyqtgraph.debug import printExc
 from ami.flowchart.Node import Node
 from ami.flowchart.library.common import CtrlNode
 from amitypes import Array1d, Array2d
@@ -122,10 +123,11 @@ try:
             x = np.arange(0, y.size, 1)
             try:
                 best_vals, covar = optimize.curve_fit(self.func, x, y, p0=self.p0)
-            except RuntimeError as e:
-                print(e)
+                return self.func(x, *best_vals)
+            except RuntimeError:
+                printExc()
 
-            return self.func(x, *best_vals)
+            return np.array([])
 
     class CurveFit(CtrlNode):
         """
