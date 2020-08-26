@@ -784,6 +784,8 @@ class PsanaSource(HierarchicalDataSource):
                         self._update_hsd_segment(attr_name, attr_type, seg_chans)
                     else:
                         logger.debug("DataSrc: unsupported HSDType: %s", attr_type)
+                    # add the overall hsdtype too
+                    self.data_types[attr_name] = attr_type
                 else:
                     self.data_types[attr_name] = attr_type
 
