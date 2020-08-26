@@ -735,12 +735,18 @@ class PsanaSource(HierarchicalDataSource):
             self.data_types[group_name] = at.Group
             self.grouped_types[group_name] = det_attr_list
 
-    def _update_hsd_segment(self, seg_name, seg_type, seg_chans):
+    def _update_hsd_segment(self, hsd_name, hsd_type, seg_chans):
         for seg_key, chanlist in seg_chans.items():
+            # add the segment itself
             seg_key_name = str(seg_key)
-            seg_key_type, seg_value_type = seg_type.__args__
-            for chan_key_name, chan_type in typing.get_type_hints(seg_value_type).items():
-                chan_name = self.delimiter.join((seg_name, seg_key_name, chan_key_name))
+            seg_key_type, seg_type = hsd_type.__args__
+            seg_name = self.delimiter.join((hsd_name, seg_key_name))
+            self.data_types[seg_name] = seg_type
+            seg_accessor = (lambda o, s: o.get(s, {}), (seg_key,), {})
+            self.special_names[seg_name] = (hsd_name, seg_accessor)
+            # add the channels of the segment
+            for chan_key_name, chan_type in typing.get_type_hints(seg_type).items():
+                chan_name = self.delimiter.join((hsd_name, seg_key_name, chan_key_name))
                 # for the HSD cast the channel ids to expected type
                 try:
                     chan_key = seg_key_type(chan_key_name)
@@ -749,7 +755,7 @@ class PsanaSource(HierarchicalDataSource):
                 if not isinstance(chan_key, seg_key_type) or chan_key in chanlist:
                     accessor = (lambda o, s, c: o.get(s, {}).get(c), (seg_key, chan_key), {})
                     self.data_types[chan_name] = chan_type
-                    self.special_names[chan_name] = (seg_name, accessor)
+                    self.special_names[chan_name] = (hsd_name, accessor)
 
     def _update(self, run):
         self.detectors = {}
