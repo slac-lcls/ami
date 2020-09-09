@@ -705,6 +705,8 @@ class PsanaSource(HierarchicalDataSource):
     def _detinfo(self, run):
         for (detname, det_xface_name), det_attr_list in run.detinfo.items():
             yield detname, det_xface_name, det_attr_list, False
+        for (detname, det_xface_name), det_attr_list in run.stepinfo.items():
+            yield detname, det_xface_name, det_attr_list, False
         for (detname, det_xface_name), det_attr in run.epicsinfo.items():
             yield detname, det_xface_name, [det_attr], True
         for (detname, det_xface_name), det_attr in run.scaninfo.items():
