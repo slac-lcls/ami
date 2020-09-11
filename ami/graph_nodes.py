@@ -308,7 +308,7 @@ class PickN(GlobalTransformation):
 
         if len(args) > 1:
             args = [args]
-        elif self.is_expanded and len(args) == 1 and type(args[0]) is list:
+        elif self.is_expanded and len(args) == 1 and type(args[0]) is list and self.N > 1:
             args = args[0]
 
         for arg in args:
