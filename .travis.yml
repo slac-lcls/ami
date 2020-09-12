@@ -34,9 +34,12 @@ install:
   - conda activate myrel
   - python setup.py install --single-version-externally-managed --record=record.txt
 
+before_script:
+  - export DISPLAY=:99.0
+
 script:
   - flake8
-  - xvfb-run pytest
+  - pytest
 
 notifications:
   email:
