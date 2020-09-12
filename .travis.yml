@@ -1,5 +1,7 @@
-language: minimal
-sudo: required
+language: shell
+
+dist:
+  - xenial
 
 services:
   - xvfb
@@ -39,7 +41,7 @@ before_script:
 
 script:
   - flake8
-  - pytest
+  - xvfb-run pytest
 
 notifications:
   email:
