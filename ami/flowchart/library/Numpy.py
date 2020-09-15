@@ -201,7 +201,7 @@ class Stack(CtrlNode):
     uiTemplate = [('axis', 'intSpin', {'value': 0, 'min': 0, 'max': 1})]
 
     def __init__(self, name):
-        super().__init__(name, terminals={"In": {'io': 'in', 'ttype': Array1d},
+        super().__init__(name, terminals={"In": {'io': 'in', 'ttype': Union[Array1d, List[Array1d]]},
                                           "Out": {'io': 'out', 'ttype': Array2d}},
                          allowAddInput=True)
 
@@ -210,9 +210,15 @@ class Stack(CtrlNode):
 
         axis = self.values['axis']
 
-        node = gn.Map(name=self.name()+"_operation",
-                      condition_needs=conditions, inputs=inputs, outputs=outputs,
-                      func=lambda *arr: np.stack(arr, axis=axis), parent=self.name())
+        if len(self.inputs()) > 1:
+            node = gn.Map(name=self.name()+"_operation",
+                          condition_needs=conditions, inputs=inputs, outputs=outputs,
+                          func=lambda *arr: np.stack(arr, axis=axis), parent=self.name())
+        else:
+            node = gn.Map(name=self.name()+"_operation",
+                          condition_needs=conditions, inputs=inputs, outputs=outputs,
+                          func=lambda arr: np.stack(arr, axis=axis), parent=self.name())
+
         return node
 
 

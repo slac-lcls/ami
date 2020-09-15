@@ -89,6 +89,7 @@ try:
             numchs = len(self.widget.channel_groups)
             cfdpars = {'numchs': numchs,
                        'numhits': self.values['num hits'],
+                       'DLD': self.values['DLD'],
                        'version': 4}
 
             paramsCFD = {}

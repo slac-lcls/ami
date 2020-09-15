@@ -203,7 +203,7 @@ class ChannelEditor(QtWidgets.QWidget):
                          ('delay', 'doubleSpin', {'group': name}),
                          ('fraction', 'doubleSpin', {'group': name}),
                          ('offset', 'doubleSpin', {'group': name}),
-                         ('polarity', 'combo', {'values': ["Negative"], 'group': name}),
+                         ('polarity', 'combo', {'values': ["Negative", "Positive"], 'group': name}),
                          ('sample_interval', 'doubleSpin', {'group': name}),
                          ('threshold', 'doubleSpin', {'group': name}),
                          ('timerange_low', 'doubleSpin', {'group': name}),
