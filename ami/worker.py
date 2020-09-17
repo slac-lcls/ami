@@ -6,6 +6,7 @@ import json
 import logging
 import argparse
 import time
+import os
 from ami import LogConfig, Defaults
 from ami.comm import Ports, Colors, ResultStore, Node, AutoExport
 from ami.data import MsgTypes, Source, Message, Transition, Transitions
@@ -227,7 +228,7 @@ def run_worker(num, num_workers, hb_period, source, collector_addr, graph_addr, 
         src_type = source[0]
         if isinstance(source[1], dict):
             src_cfg = source[1]
-        else:
+        elif source[1].endswith('.json'):
             try:
                 with open(source[1], 'r') as cnf:
                     src_cfg = json.load(cnf)
@@ -237,6 +238,12 @@ def run_worker(num, num_workers, hb_period, source, collector_addr, graph_addr, 
             except json.decoder.JSONDecodeError:
                 logger.exception("worker%03d: problem parsing json file (%s):", num, source[1])
                 return 1
+        elif src_type == 'psana':
+            src_cfg = {}
+            cfg = source[1].split(':')
+            for c in cfg:
+                k, v = c.split('=')
+                src_cfg[k] = v
 
         src_cls = Source.find_source(src_type)
         if src_cls is not None:
@@ -322,7 +329,7 @@ def main():
     parser.add_argument(
         '-f',
         '--flags',
-        nargs='*',
+        action='append',
         default=[],
         help='extra flags as key=value pairs that are passed to the data source'
     )

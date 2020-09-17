@@ -143,7 +143,9 @@ class ChannelEditor(QtWidgets.QWidget):
 
         self.uiTemplate = [("num hits", "intSpin", {"value": 1, "min": 1}),
                            ("uniform parameters", "check"),
-                           ("DLD", "check")]
+                           ("DLD", "check"),
+                           ("cfd_wfbinbeg", "intSpin", {"value": 0, "min": 0}),
+                           ("cfd_wfbinend", "intSpin", {"value": 1, "min": 1})]
 
         self.ui, self.stateGroup, self.ctrls, self.values = generateUi(self.uiTemplate)
         self.stateGroup.sigChanged.connect(self.state_changed)

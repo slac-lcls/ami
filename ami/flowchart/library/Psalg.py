@@ -90,7 +90,9 @@ try:
             cfdpars = {'numchs': numchs,
                        'numhits': self.values['num hits'],
                        'DLD': self.values['DLD'],
-                       'version': 4}
+                       'version': 4,
+                       'cfd_wfbinbeg': self.values['cfd_wfbinbeg'],
+                       'cfd_wfbinend': self.values['cfd_wfbinend']}
 
             paramsCFD = {}
             for chn in range(0, numchs):
