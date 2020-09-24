@@ -35,14 +35,17 @@ class HeartbeatData(object):
 
         self.total_time_per_heartbeat = collections.defaultdict(lambda: 0)
 
+        self.heartbeat_times = collections.defaultdict(list)
+
     def add_worker_data(self, worker, data):
         self.num_events[worker] = len(data)
-        time_per_heartbeat = 0
         node_time_per_heartbeat = collections.defaultdict(lambda: 0)
 
+        heartbeat_time = data[-1][1] - data[0][0]
+        self.heartbeat_times['worker'].append(heartbeat_time)
+
         for event in data:
-            time_per_event = np.sum(list(event.values()))
-            time_per_heartbeat += time_per_event
+            start, stop, event = event
             for node, time in event.items():
                 parent = self.metadata[node]['parent']
                 node_time_per_heartbeat[parent] += time
@@ -55,7 +58,11 @@ class HeartbeatData(object):
     def add_local_collector_data(self, localCollector, data):
         node_time_per_heartbeat = collections.defaultdict(lambda: 0)
 
+        heartbeat_time = data[-1][1] - data[0][0]
+        self.heartbeat_times['localCollector'].append(heartbeat_time)
+
         for contrib in data:
+            start, stop, contrib = contrib
             for node, time in contrib.items():
                 parent = self.metadata[node]['parent']
                 node_time_per_heartbeat[parent] += time
@@ -66,7 +73,12 @@ class HeartbeatData(object):
         self.local_collector_time_per_heartbeat[localCollector] = node_time_per_heartbeat
 
     def add_global_collector_data(self, data):
+
+        heartbeat_time = data[-1][1] - data[0][0]
+        self.heartbeat_times['globalCollector'].append(heartbeat_time)
+
         for contrib in data:
+            start, stop, contrib = contrib
             for node, time in contrib.items():
                 parent = self.metadata[node]['parent']
                 self.total_time_per_heartbeat[parent] += time
@@ -77,7 +89,10 @@ class HeartbeatData(object):
         for node, times in self.local_collector_average.items():
             self.total_time_per_heartbeat[node] += np.average(times)
 
-        self.total_heartbeat_time = np.sum(list(self.total_time_per_heartbeat.values()))
+        self.total_heartbeat_time = 0
+
+        for typ, times in self.heartbeat_times.items():
+            self.total_heartbeat_time += np.average(times)
 
 
 class ProfilerWindow(QtGui.QMainWindow):
@@ -100,6 +115,7 @@ class Profiler(QtCore.QObject):
         if loop is None:
             self.app = QtGui.QApplication([])
             loop = QEventLoop(self.app)
+
         asyncio.set_event_loop(loop)
 
         self.ctx = zmq.asyncio.Context()
@@ -298,10 +314,14 @@ class Profiler(QtCore.QObject):
                     self.time_per_heartbeat_data["heartbeat"][-1] = heartbeat
                     self.time_per_heartbeat_data["heartbeat"] = np.roll(self.time_per_heartbeat_data["heartbeat"], -1)
 
+                    total = 1
                     for node, time in heartbeat_data.total_time_per_heartbeat.items():
                         self.time_per_heartbeat_data[node][-1] = time
                         self.time_per_heartbeat_data[node] = np.roll(self.time_per_heartbeat_data[node], -1)
                         self.percent_per_heartbeat_data[node] = time/heartbeat_data.total_heartbeat_time
+                        total -= time/heartbeat_data.total_heartbeat_time
+
+                    self.percent_per_heartbeat_data['Transfer'] = total
 
                     i = 0
                     for node, times in self.time_per_heartbeat_data.items():
