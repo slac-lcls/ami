@@ -77,7 +77,7 @@ class Map(Transformation):
             func (function): Function node will call
             condition_needs (list): List of condition needs
         """
-        super(Map, self).__init__(**kwargs)
+        super().__init__(**kwargs)
 
 
 class Filter(abc.ABC):
@@ -141,7 +141,7 @@ class FilterOn(Filter):
             condition (function): Condition to evaluate
         """
         self.condition = kwargs.get('condition', lambda cond: cond)
-        super(FilterOn, self).__init__(**kwargs)
+        super().__init__(**kwargs)
 
     def to_operation(self):
         """
@@ -160,7 +160,7 @@ class FilterOff(Filter):
             outputs (list): List of outputs
         """
         self.condition = kwargs.get('condition', lambda cond: not cond)
-        super(FilterOff, self).__init__(**kwargs)
+        super().__init__(**kwargs)
 
     def to_operation(self):
         """
@@ -184,7 +184,7 @@ class StatefulTransformation(Transformation):
         reduction = kwargs.pop('reduction', None)
 
         kwargs.setdefault('func', None)
-        super(StatefulTransformation, self).__init__(**kwargs)
+        super().__init__(**kwargs)
 
         if reduction:
             assert hasattr(reduction, '__call__'), 'reduction is not callable'
@@ -198,6 +198,12 @@ class StatefulTransformation(Transformation):
     def reset(self):
         """
         Reset nodes state.
+        """
+        return
+
+    def heartbeat_finished(self):
+        """
+        Execute at the end of a heartbeat.
         """
         return
 
@@ -223,7 +229,7 @@ class GlobalTransformation(StatefulTransformation):
         """
         is_expanded = kwargs.pop('is_expanded', False)
         num_contributors = kwargs.pop('num_contributors', None)
-        super(GlobalTransformation, self).__init__(**kwargs)
+        super().__init__(**kwargs)
         self.is_global_operation = True
         self.is_expanded = is_expanded
         self.num_contributors = num_contributors
@@ -250,7 +256,6 @@ class ReduceByKey(GlobalTransformation):
         self.res = {}
 
     def __call__(self, *args, **kwargs):
-
         if len(args) == 2:
             # worker
             k, v = args
@@ -271,6 +276,10 @@ class ReduceByKey(GlobalTransformation):
     def reset(self):
         self.res = {}
 
+    def heartbeat_finished(self):
+        if self.color != 'globalCollector':
+            self.reset()
+
 
 class Accumulator(GlobalTransformation):
 
@@ -287,6 +296,10 @@ class Accumulator(GlobalTransformation):
     def reset(self):
         self.res = self.res_factory()
 
+    def heartbeat_finished(self):
+        if self.color != 'globalCollector':
+            self.reset()
+
     def on_expand(self):
         return {'parent': self.parent, 'res_factory': self.res_factory}
 
@@ -295,7 +308,7 @@ class PickN(GlobalTransformation):
 
     def __init__(self, **kwargs):
         N = kwargs.pop('N', 1)
-        super(PickN, self).__init__(**kwargs)
+        super().__init__(**kwargs)
         self.N = N
         self.idx = 0
         self.res = [None]*self.N
@@ -331,7 +344,7 @@ class RollingBuffer(GlobalTransformation):
     def __init__(self, **kwargs):
         N = kwargs.pop('N', 1)
         use_numpy = kwargs.pop('use_numpy', False)
-        super(__class__, self).__init__(**kwargs)
+        super().__init__(**kwargs)
         self.N = N
         self.use_numpy = use_numpy
         self.idx = 0

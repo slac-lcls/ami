@@ -204,6 +204,14 @@ class Graph():
         nodes = list(filter(lambda node: isinstance(node, ami.graph_nodes.StatefulTransformation), self.graph.nodes))
         list(map(lambda node: node.reset(), nodes))
 
+    def heartbeat_finished(self):
+        """
+        Execute post heartbeat hook on StatefulTransmation nodes in the graph.
+        """
+        nodes = list(filter(lambda node: isinstance(node, ami.graph_nodes.StatefulTransformation),
+                            self.graph.nodes))
+        list(map(lambda node: node.heartbeat_finished(), nodes))
+
     def _color_nodes(self):
         """
         Generate all paths from inputs to outputs, for each path look for nodes which have the ``is_global_operation``

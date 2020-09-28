@@ -6,7 +6,6 @@ import json
 import logging
 import argparse
 import time
-import os
 from ami import LogConfig, Defaults
 from ami.comm import Ports, Colors, ResultStore, Node, AutoExport
 from ami.data import MsgTypes, Source, Message, Transition, Transitions
@@ -162,6 +161,9 @@ class Worker(Node):
             # check to see if the graph has been reconfigured after update
             if msg.mtype == MsgTypes.Heartbeat:
                 self.collect(msg.payload)
+
+                for name, graph in self.graphs.items():
+                    graph.heartbeat_finished()
 
                 # check if there are graph updates
                 while True:

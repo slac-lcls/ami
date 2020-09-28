@@ -531,6 +531,10 @@ class GraphBuilder(ContributionBuilder):
             self.pending[eb_key].clear()
 
         self.completion(eb_key, identity, self.pending[eb_key], drop)
+
+        if self.graph:
+            self.graph.heartbeat_finished()
+
         return times
 
     def _update(self, eb_key, eb_id, ver_key, data):
