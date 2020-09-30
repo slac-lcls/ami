@@ -73,7 +73,18 @@ class NodeWindow(QtGui.QMainWindow):
         super().__init__(parent)
         self.proc = proc
 
+    def moveEvent(self, event):
+        super().moveEvent(event)
+        self.proc.node.geometry = self.saveGeometry()
+        self.proc.send_checkpoint(self.proc.node)
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        self.proc.node.geometry = self.saveGeometry()
+        self.proc.send_checkpoint(self.proc.node)
+
     def closeEvent(self, event):
+        self.proc.node.geometry = self.saveGeometry()
         self.proc.send_checkpoint(self.proc.node)
         self.proc.node.clear()
         self.proc.widget = None
@@ -95,6 +106,7 @@ class NodeProcess(QtCore.QObject):
         asyncio.set_event_loop(loop)
 
         self.win = NodeWindow(self)
+        self.win.resize(800, 800)
 
         if msg.node_type == "SourceNode":
             self.node = SourceNode(name=msg.name)
@@ -164,6 +176,9 @@ class NodeProcess(QtCore.QObject):
             self.node.clear()
             self.widget = None
 
+        if msg.geometry:
+            self.win.restoreGeometry(msg.geometry)
+
         if self.widget is None:
             self.widget = self.node.display(msg.topics, msg.terms, self.graphmgr_addr, self.win,
                                             units=msg.units)
@@ -173,7 +188,7 @@ class NodeProcess(QtCore.QObject):
                 self.win.setCentralWidget(cw)
                 layout = QtGui.QGridLayout()
                 cw.setLayout(layout)
-                layout.addWidget(self.ctrlWidget, 0, 0)
+                layout.addWidget(self.ctrlWidget, 0, 0, -1, 1)
                 layout.addWidget(self.widget, 0, 1, -1, -1)
                 layout.setColumnStretch(1, 10)
             elif self.ctrlWidget:

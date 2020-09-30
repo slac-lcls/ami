@@ -399,8 +399,10 @@ class Flowchart(Node):
 
         state = self.saveState()
 
+        state = json.dumps(state, indent=2, separators=(',', ': '), sort_keys=True, cls=amitypes.TypeEncoder)
+
         with open(fileName, 'w') as f:
-            json.dump(state, f, indent=2, separators=(',', ': '), sort_keys=True, cls=amitypes.TypeEncoder)
+            f.write(state)
             f.write('\n')
 
         self.sigFileSaved.emit(fileName)
@@ -433,6 +435,9 @@ class Flowchart(Node):
                 if current_node_state['widget'] != new_node_state['widget']:
                     current_node_state['widget'] = new_node_state['widget']
                     restore_widget = True
+
+            if 'geometry' in new_node_state:
+                node.geometry = QtCore.QByteArray.fromHex(bytes(new_node_state['geometry'], 'ascii'))
 
             if restore_ctrl or restore_widget:
                 node.restoreState(current_node_state)
@@ -675,7 +680,8 @@ class FlowchartCtrlWidget(QtGui.QWidget):
                                                                       state=state,
                                                                       terms=terms,
                                                                       units=node.input_units(),
-                                                                      redisplay=True))
+                                                                      redisplay=True,
+                                                                      geometry=node.geometry))
             elif node.viewable():
                 topics = []
                 views = {}
@@ -714,7 +720,8 @@ class FlowchartCtrlWidget(QtGui.QWidget):
                                                                       state=state,
                                                                       terms=terms,
                                                                       units=node.input_units(),
-                                                                      redisplay=True))
+                                                                      redisplay=True,
+                                                                      geometry=node.geometry))
 
             elif node.exportable():
                 await self.graphCommHandler.export(node.input_vars()['In'], node.values['alias'])
@@ -1054,7 +1061,8 @@ class FlowchartWidget(dockarea.DockArea):
                                                               topics=topics,
                                                               state=state,
                                                               terms=terms,
-                                                              units=node.input_units()))
+                                                              units=node.input_units(),
+                                                              geometry=node.geometry))
 
         self.ctrl.metadata = await self.ctrl.graphCommHandler.metadata
 

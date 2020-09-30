@@ -57,20 +57,22 @@ class CloseNode(NodeMsg):
 
 class DisplayNode(NodeMsg):
 
-    def __init__(self, name, topics, terms, state={}, units={}, redisplay=False):
+    def __init__(self, name, topics, terms, state={}, units={}, redisplay=False, geometry=None):
         super().__init__(name)
         self.topics = topics
         self.terms = terms
         self.state = state
         self.units = units
         self.redisplay = redisplay
+        self.geometry = geometry
 
     def __repr__(self):
         return f"""DisplayNode(name={self.name},
         topics={self.topics},
         terms={self.terms},
         units={self.units},
-        redisplay={self.redisplay})"""
+        redisplay={self.redisplay},
+        geometry={self.geometry})"""
 
 
 class NodeCheckpoint(NodeMsg):

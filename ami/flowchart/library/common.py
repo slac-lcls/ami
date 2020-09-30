@@ -18,6 +18,7 @@ class CtrlNode(Node):
         super().__init__(name=name, terminals=terminals, **kwargs)
         self.widget = None
         self.task = None
+        self.geometry = None
 
         if ui is None:
             if hasattr(self, 'uiTemplate'):
@@ -53,6 +54,9 @@ class CtrlNode(Node):
         if self.widget and hasattr(self.widget, 'saveState'):
             state['widget'] = self.widget.saveState()
 
+        if self.geometry:
+            state['geometry'] = bytes(self.geometry.toHex()).decode('ascii')
+
         return state
 
     def restoreState(self, state):
@@ -64,6 +68,9 @@ class CtrlNode(Node):
 
         if self.widget is not None and 'widget' in state:
             self.widget.restoreState(state['widget'])
+
+        if 'geometry' in state:
+            self.geometry = QtCore.QByteArray.fromHex(bytes(state['geometry'], 'ascii'))
 
     def hideRow(self, name):
         w = self.ctrls[name]
