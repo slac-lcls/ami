@@ -667,6 +667,7 @@ class PsanaSource(HierarchicalDataSource):
         # special attributes that are per run instead of per event from a detectors interface, e.g. calib constants
         self.special_attrs = {
             'calibconst': typing.Dict,
+            'epicsinfo': typing.Dict,
         }
         if psana is None:
             raise NotImplementedError("psana is not available!")
@@ -732,7 +733,8 @@ class PsanaSource(HierarchicalDataSource):
         return det_xface
 
     def _update_group(self, detname, det_xface_name, det_attr_list, is_env_det):
-        if not is_env_det:
+        # ignore env dets and when det_attr_list is empty
+        if not is_env_det and det_attr_list:
             group_name = self.delimiter.join((detname, det_xface_name))
             self.data_types[group_name] = at.Group
             self.grouped_types[group_name] = det_attr_list
@@ -806,7 +808,9 @@ class PsanaSource(HierarchicalDataSource):
         for name in self.requested_data:
             # check if it is a special type like calibconst
             if name in self.special_types:
-                event[name] = self.special_types[name]
+                obj = self.special_types[name]
+                # check if the object is callable or not before adding to the event
+                event[name] = obj() if callable(obj) else obj
             elif name in self.detectors and name not in self.env_detectors:
                 event[name] = self.detectors[name]
             else:
