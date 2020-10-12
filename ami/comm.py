@@ -9,6 +9,7 @@ import logging
 import functools
 import numpy as np
 import zmq.asyncio
+import prometheus_client as pc
 import amitypes as at
 import ami.graph_nodes as gn
 from ami.graphkit_wrapper import Graph
@@ -36,6 +37,7 @@ class Ports(IntEnum):
     Info = 5562
     View = 5563
     Profile = 5564
+    Prometheus = 5565
     Sync = 5600
 
 
@@ -482,6 +484,8 @@ class GraphBuilder(ContributionBuilder):
 
     def flush(self, identity, drop=False):
         times = self.prune(identity, self.latest + 1, drop)
+        if drop and self.graph:
+            self.graph.reset()
         self.latest = 0
         return times
 
@@ -824,6 +828,18 @@ class Node(abc.ABC):
         if exists:
             sys.path.extend(paths)
 
+    def start_prometheus(self):
+        port = Ports.Prometheus
+        while True:
+            try:
+                pc.start_http_server(port)
+                break
+            except OSError:
+                port += 1
+
+        logger.info("%s: Started Prometheus client on port: %d", self.name, port)
+        return port
+
 
 class Collector(abc.ABC):
     """Abstract base class for collecting (via zeromq) results from many
@@ -856,6 +872,9 @@ class Collector(abc.ABC):
         self.running = True
         self.exitcode = 0
         self.deserializer = Deserializer()
+
+        self.event_counter = pc.Counter('ami_events', 'Event Counter', ['type', 'process'])
+        self.idle_time = pc.Gauge('ami_idle_time_secs', 'Idle Time Start', ['process'])
 
     def register(self, sock, handler):
         """
@@ -905,15 +924,23 @@ class Collector(abc.ABC):
         Returns:
             The current value of the exitcode attribute of the class.
         """
+        idle_start = time.time()
+        reset_idle = False
         while self.running:
             for sock, flag in self.poller.poll():
                 if flag != zmq.POLLIN:
                     continue
+                self.idle_time.labels(self.name).set(time.time() - idle_start)
+                reset_idle = True
                 if sock is self.collector:
                     msg = self.collector.recv_serialized(self.deserializer, copy=False)
                     self.process_msg(msg)
                 elif sock in self.handlers:
                     self.handlers[sock]()
+
+            if reset_idle:
+                reset_idle = False
+                idle_start = time.time()
 
         return self.exitcode
 

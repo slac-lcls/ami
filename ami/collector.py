@@ -95,6 +95,7 @@ class GraphCollector(Node, Collector):
                     # complete the current heartbeat
                     times = self.store.complete(msg.name, msg.heartbeat, self.node)
                     self.report_times(times, msg.name, msg.heartbeat)
+                    self.event_counter.labels('Heartbeat', self.name).inc()
                 except Exception as e:
                     logger.exception("%s: Failure encountered while executing graph %s:", self.name, msg.name)
                     self.report("error", e)
@@ -117,6 +118,7 @@ def run_collector(node_num, base_name, num_contribs, color, collector_addr, upst
             upstream_addr,
             graph_addr,
             msg_addr) as collector:
+        collector.start_prometheus()
         return collector.run()
 
 

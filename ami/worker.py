@@ -6,6 +6,7 @@ import json
 import logging
 import argparse
 import time
+import prometheus_client as pc
 from ami import LogConfig, Defaults
 from ami.comm import Ports, Colors, ResultStore, Node, AutoExport
 from ami.data import MsgTypes, Source, Message, Transition, Transitions
@@ -26,7 +27,7 @@ class Worker(Node):
         super(__class__, self).__init__(node, graph_addr, msg_addr, export_addr)
 
         self.src = src
-
+        self.pending_src = False
         self.store = ResultStore(collector_addr, self.ctx)
 
         self.graph_comm.add_command("config", self.send_configure)
@@ -117,11 +118,17 @@ class Worker(Node):
         hb_period = src_cfg['hb_period']
         num_workers = args['num_workers']
         logger.info("%s: Received source configuration", self.name)
-        self.report("info", "Received source configuration")
         try:
             src_cls = Source.find_source(src_type)
             flags = {}
-            self.src = src_cls(self.node, num_workers, hb_period, src_cfg, flags)
+            if self.src is None:
+                self.report("info", "Updated source configuration")
+                self.src = src_cls(self.node, num_workers, hb_period, src_cfg, flags)
+                self.pending_src = False
+            else:
+                self.pending_src = True
+                self.report("info", "Pending source configuration")
+                self.source_args = {'name': name, 'version': version, 'args': args, 'src_cfg': src_cfg}
         except Exception as e:
             self.report("error", e)
             logger.error("%s: Error configuring source", self.name)
@@ -151,74 +158,103 @@ class Worker(Node):
         self.times = {}
         self.event_rate = {}
         self.num_events = 1
+        self.start_prometheus()
 
         while self.src is None:
             logger.info("%s: Waiting for source configuration", self.name)
             self.graph_comm.recv(True)
 
-        for msg in self.src.events():
+        event_counter = pc.Counter('ami_events', 'Event Counter', ['type', 'process'])
+        idle_time = pc.Gauge('ami_idle_time_secs', 'Idle Time Start', ['process'])
+        idle_start = time.time()
 
-            # check to see if the graph has been reconfigured after update
-            if msg.mtype == MsgTypes.Heartbeat:
-                self.collect(msg.payload)
+        while True:
+            for msg in self.src.events():
+                idle_time.labels(self.name).set(time.time() - idle_start)
 
-                for name, graph in self.graphs.items():
-                    graph.heartbeat_finished()
+                # check to see if the graph has been reconfigured after update
+                if msg.mtype == MsgTypes.Heartbeat:
+                    self.collect(msg.payload)
 
-                # check if there are graph updates
-                while True:
-                    try:
-                        self.graph_comm.recv(False)
-                    except zmq.Again:
+                    for name, graph in self.graphs.items():
+                        graph.heartbeat_finished()
+
+                    # check if there are graph updates
+                    while True:
+                        try:
+                            self.graph_comm.recv(False)
+                        except zmq.Again:
+                            break
+
+                    while True:
+                        try:
+                            name, data = self.export_comm.recv(False)
+                            self.exports[name] = {AutoExport.unmangle(k): v
+                                                  for k, v in data.items() if k in self.src.requested_names}
+                        except zmq.Again:
+                            break
+
+                    event_counter.labels('Heartbeat', self.name).inc()
+
+                    if self.pending_src:
                         break
 
-                while True:
-                    try:
-                        name, data = self.export_comm.recv(False)
-                        self.exports[name] = {AutoExport.unmangle(k): v
-                                              for k, v in data.items() if k in self.src.requested_names}
-                    except zmq.Again:
-                        break
-            elif msg.mtype == MsgTypes.Datagram:
-                for name, graph in self.graphs.items():
-                    try:
-                        if graph:
-                            if name in self.exports:
-                                msg.payload.update(self.exports[name])
+                elif msg.mtype == MsgTypes.Datagram:
+                    for name, graph in self.graphs.items():
+                        try:
+                            if graph:
+                                if name in self.exports:
+                                    msg.payload.update(self.exports[name])
 
-                            start = time.time()
-                            graph_result = graph(msg.payload, color=Colors.Worker)
-                            stop = time.time()
+                                start = time.time()
+                                graph_result = graph(msg.payload, color=Colors.Worker)
+                                stop = time.time()
 
-                            self.store.update(name, graph_result)
+                                self.store.update(name, graph_result)
 
-                            if name not in self.event_rate:
-                                self.event_rate[name] = []
+                                if name not in self.event_rate:
+                                    self.event_rate[name] = []
 
-                            self.event_rate[name].append((start, stop))
+                                self.event_rate[name].append((start, stop))
 
-                            if name not in self.times:
-                                self.times[name] = []
+                                if name not in self.times:
+                                    self.times[name] = []
 
-                            self.times[name].append((start, stop, graph.times()))
-                    except Exception as e:
-                        logger.exception("%s: Failure encountered while executing graph (%s, v%d):",
-                                         self.name, name, self.store.version(name))
-                        self.report("error", e)
-                        logger.error("%s: Purging graph (%s v%d)", self.name, name, self.store.version(name))
-                        self.clear_graph(name)
-                        self.report("purge", name)
+                                self.times[name].append((start, stop, graph.times()))
+                        except Exception as e:
+                            logger.exception("%s: Failure encountered while executing graph (%s, v%d):",
+                                             self.name, name, self.store.version(name))
+                            self.report("error", e)
+                            logger.error("%s: Purging graph (%s v%d)", self.name, name, self.store.version(name))
+                            self.clear_graph(name)
+                            self.report("purge", name)
 
-                self.num_events += 1
-            elif msg.mtype == MsgTypes.Transition:
-                if msg.payload.ttype == Transitions.Unconfigure:
-                    if self.src.heartbeat is not None:
-                        self.collect(self.src.heartbeat)
+                    self.num_events += 1
+                    event_counter.labels('Datagram', self.name).inc()
 
-                # forward the transition
+                elif msg.mtype == MsgTypes.Transition:
+                    if msg.payload.ttype == Transitions.Configure:
+                        for name, graph in self.graphs.items():
+                            if graph:
+                                graph.reset()
+                    elif msg.payload.ttype == Transitions.Unconfigure:
+                        if self.src.heartbeat is not None:
+                            self.collect(self.src.heartbeat)
+
+                    # forward the transition
+                    self.store.send(msg)
+                    event_counter.labels('Transition', self.name).inc()
+                else:
+                    self.store.send(msg)
+                    event_counter.labels('Other', self.name).inc()
+
+                idle_start = time.time()
+
+            if self.pending_src:
+                msg = self.src.unconfigure()
                 self.store.send(msg)
-            else:
-                self.store.send(msg)
+                self.src = None
+                self.update_sources(**self.source_args)
 
 
 def run_worker(num, num_workers, hb_period, source, collector_addr, graph_addr, msg_addr, export_addr, flags=None):
@@ -242,7 +278,7 @@ def run_worker(num, num_workers, hb_period, source, collector_addr, graph_addr, 
                 return 1
         elif src_type == 'psana':
             src_cfg = {}
-            cfg = source[1].split(':')
+            cfg = source[1].split(',')
             for c in cfg:
                 k, v = c.split('=')
                 src_cfg[k] = v

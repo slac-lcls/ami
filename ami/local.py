@@ -83,7 +83,7 @@ def build_parser():
         '--heartbeat',
         type=int,
         default=10,
-        help='the heartbeat period (default: 10)'
+        help='the heartbeat period in ms (default: 10)'
     )
 
     parser.add_argument(

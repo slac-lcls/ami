@@ -552,7 +552,9 @@ class ImageWidget(PlotWidget):
                 v = np.rot90(v, self.rotate)
             if self.log_scale_histogram:
                 v = np.log10(v)
-            self.imageItem.setImage(v, autoLevels=self.auto_levels)
+
+            if v.any():
+                self.imageItem.setImage(v, autoLevels=self.auto_levels)
 
     def saveState(self):
         state = super().saveState()

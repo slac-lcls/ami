@@ -40,6 +40,7 @@ class Manager(Collector):
         protocol right now only tells you how to communicate with workers
         """
         super().__init__(results_addr)
+        self.name = "manager"
         self.num_workers = num_workers
         self.num_nodes = num_nodes
         self.heartbeats = {}

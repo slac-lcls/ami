@@ -53,13 +53,20 @@ class LibraryEditor(QtWidgets.QWidget):
 
     def fileDialogFilesSelected(self, pths):
         dirs = set(map(os.path.dirname, pths))
-        sys.path.extend(dirs)
+
+        for pth in dirs:
+            if pth not in sys.path:
+                sys.path.append(pth)
+
         self.paths.update(pths)
 
         for mod in pths:
             mod = os.path.basename(mod)
             mod = os.path.splitext(mod)[0]
             mod = importlib.import_module(mod)
+
+            if mod in self.modules:
+                continue
 
             nodes = [getattr(mod, name) for name in dir(mod) if isNodeClass(getattr(mod, name))]
 
@@ -87,9 +94,18 @@ class LibraryEditor(QtWidgets.QWidget):
         self.sigReloadClicked.emit(mods)
 
     def applyClicked(self):
+        loaded = False
+
         for mod, nodes in self.modules.items():
             for node in nodes:
-                self.library.addNodeType(node, [(mod.__name__, )])
+                try:
+                    self.library.addNodeType(node, [(mod.__name__, )])
+                    loaded = True
+                except Exception:
+                    pass
+
+        if not loaded:
+            return
 
         self.ctrl.ui.clear_model(self.ctrl.ui.node_tree)
         self.ctrl.ui.create_model(self.ctrl.ui.node_tree, self.library.getLabelTree(rebuild=True))
