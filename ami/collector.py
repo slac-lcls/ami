@@ -86,6 +86,8 @@ class GraphCollector(Node, Collector):
                     self.flush(True)
                 elif msg.payload.ttype == Transitions.Unconfigure:
                     self.flush(False)
+
+            self.event_counter.labels('Transition', self.name).inc()
         elif msg.mtype == MsgTypes.Datagram:
             self.store.update(msg.name, msg.heartbeat, msg.identity, msg.version, msg.payload)
             if self.store.ready(msg.name, msg.heartbeat):
@@ -95,7 +97,6 @@ class GraphCollector(Node, Collector):
                     # complete the current heartbeat
                     times = self.store.complete(msg.name, msg.heartbeat, self.node)
                     self.report_times(times, msg.name, msg.heartbeat)
-                    self.event_counter.labels('Heartbeat', self.name).inc()
                 except Exception as e:
                     logger.exception("%s: Failure encountered while executing graph %s:", self.name, msg.name)
                     self.report("error", e)
@@ -105,6 +106,8 @@ class GraphCollector(Node, Collector):
             else:
                 # prune older entries from the event builder
                 self.store.prune(msg.name, self.node)
+
+            self.event_counter.labels('Heartbeat', self.name).inc()
 
 
 def run_collector(node_num, base_name, num_contribs, color, collector_addr, upstream_addr, graph_addr, msg_addr):

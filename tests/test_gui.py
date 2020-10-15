@@ -332,7 +332,7 @@ async def test_editor(qtbot, flowchart, tmp_path):
     await widget.clear()
     assert len(flowchart._graph.edges()) == 0
 
-    flowchart.loadFile(pth)
+    await flowchart.loadFile(pth)
     assert len(flowchart._graph.edges()) == 1
 
 

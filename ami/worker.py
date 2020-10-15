@@ -177,7 +177,8 @@ class Worker(Node):
                     self.collect(msg.payload)
 
                     for name, graph in self.graphs.items():
-                        graph.heartbeat_finished()
+                        if graph:
+                            graph.heartbeat_finished()
 
                     # check if there are graph updates
                     while True:

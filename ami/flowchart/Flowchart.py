@@ -136,26 +136,30 @@ class Flowchart(Node):
         await self.broker.send_string(node.name(), zmq.SNDMORE)
         await self.broker.send_pyobj(fcMsgs.CloseNode())
         ctrl = self.widget()
+        name = node.name()
 
         if hasattr(node, 'to_operation'):
-            self.deleted_nodes.append(node.name())
+            self.deleted_nodes.append(name)
         elif isinstance(node, SourceNode):
             async with ctrl.features_lock:
-                ctrl.features_count[node.name()].discard(node.name())
-                if not ctrl.features_count[node.name()]:
-                    if node.name() in ctrl.features:
-                        del ctrl.features[node.name()]
-                    await ctrl.graphCommHandler.unview(node.name())
+                if name in ctrl.features_count:
+                    ctrl.features_count[name].discard(name)
+                    if not ctrl.features_count[name]:
+                        if name in ctrl.features:
+                            del ctrl.features[name]
+                        await ctrl.graphCommHandler.unview(name)
+                        del ctrl.features_count[name]
         elif node.viewable():
             views = []
             async with ctrl.features_lock:
                 for term, in_var in input_vars.items():
-                    ctrl.features_count[in_var].discard(node.name())
-                    if not ctrl.features_count[in_var]:
-                        if in_var in ctrl.features:
-                            del ctrl.features[in_var]
-                        views.append(in_var)
-
+                    if in_var in ctrl.features_count:
+                        ctrl.features_count[in_var].discard(name)
+                        if not ctrl.features_count[in_var]:
+                            if in_var in ctrl.features:
+                                del ctrl.features[in_var]
+                            views.append(in_var)
+                            del ctrl.features_count[in_var]
             if views:
                 await ctrl.graphCommHandler.unview(views)
 
@@ -253,15 +257,12 @@ class Flowchart(Node):
         state['library'] = self.widget().libraryEditor.saveState()
         return state
 
-    def restoreState(self, state, clear=False):
+    def restoreState(self, state):
         """
         Restore the state of this flowchart from a previous call to `saveState()`.
         """
         self.blockSignals(True)
         try:
-            if clear:
-                self.clear()
-
             if 'source_configuration' in state:
                 src_cfg = state['source_configuration']
                 self.widget().sourceConfigure.restoreState(src_cfg)
@@ -356,26 +357,17 @@ class Flowchart(Node):
         finally:
             self.blockSignals(False)
 
-    def loadFile(self, fileName=None, startDir=None):
+    @asyncSlot(str)
+    async def loadFile(self, fileName=None):
         """
         Load a flowchart (*.fc) file.
         """
-        if fileName is None:
-            if startDir is None:
-                startDir = self.filePath
-            if startDir is None:
-                startDir = '.'
-            self.fileDialog = FileDialog(None, "Load Flowchart..", startDir, "Flowchart (*.fc)")
-            self.fileDialog.show()
-            self.fileDialog.fileSelected.connect(self.loadFile)
-            return
-            #  NOTE: was previously using a real widget for the file dialog's parent,
-            #        but this caused weird mouse event bugs..
-
         with open(fileName, 'r') as f:
             state = json.load(f)
 
-        self.restoreState(state, clear=True)
+        self.clear()
+        await self.widget().applyClicked()
+        self.restoreState(state)
         self.viewBox.autoRange()
         self.sigFileLoaded.emit(fileName)
 
@@ -398,7 +390,6 @@ class Flowchart(Node):
             fileName += ".fc"
 
         state = self.saveState()
-
         state = json.dumps(state, indent=2, separators=(',', ': '), sort_keys=True, cls=amitypes.TypeEncoder)
 
         with open(fileName, 'w') as f:
@@ -411,7 +402,8 @@ class Flowchart(Node):
         """
         Remove all nodes from this flowchart except the original input/output nodes.
         """
-        for name, node in list(self.nodes(data='node')):
+        for name in reversed(list(nx.topological_sort(self._graph))):
+            node = self._graph.nodes[name]['node']
             node.close()  # calls self.nodeClosed(n) by signal
 
     async def updateState(self):
@@ -732,7 +724,12 @@ class FlowchartCtrlWidget(QtGui.QWidget):
         self.metadata = await self.graphCommHandler.metadata
 
     def openClicked(self):
-        self.chart.loadFile()
+        startDir = self.chart.filePath
+        if startDir is None:
+            startDir = '.'
+        self.fileDialog = FileDialog(None, "Load Flowchart..", startDir, "Flowchart (*.fc)")
+        self.fileDialog.show()
+        self.fileDialog.fileSelected.connect(self.chart.loadFile)
 
     def fileSaved(self, fileName):
         self.setCurrentFile(fileName)
