@@ -36,6 +36,7 @@ class Flowchart(Node):
     sigFileLoaded = QtCore.Signal(object)
     sigFileSaved = QtCore.Signal(object)
     sigNodeCreated = QtCore.Signal(object)
+    sigNodeChanged = QtCore.Signal(object)
     # called when output is expected to have changed
 
     def __init__(self, name=None, filePath=None, library=None,
@@ -129,6 +130,7 @@ class Flowchart(Node):
         node.sigTerminalDisconnected.connect(self.nodeDisconnected)
         node.sigNodeEnabled.connect(self.nodeEnabled)
         self.sigNodeCreated.emit(node)
+        self.sigNodeChanged.emit(node)
 
     @asyncSlot(object, object)
     async def nodeClosed(self, node, input_vars):
@@ -357,6 +359,9 @@ class Flowchart(Node):
         finally:
             self.blockSignals(False)
 
+        for name, node in self.nodes(data='node'):
+            self.sigNodeChanged.emit(node)
+
     @asyncSlot(str)
     async def loadFile(self, fileName=None):
         """
@@ -434,6 +439,7 @@ class Flowchart(Node):
             if restore_ctrl or restore_widget:
                 node.restoreState(current_node_state)
                 node.changed = restore_ctrl
+                self.sigNodeChanged.emit(node)
 
             node.viewed = new_node_state['viewed']
 
@@ -526,6 +532,8 @@ class FlowchartCtrlWidget(QtGui.QWidget):
         self.ui.create_model(self.ui.node_tree, self.chart.library.getLabelTree())
         self.ui.create_model(self.ui.source_tree, self.chart.source_library.getLabelTree())
 
+        self.chart.sigNodeChanged.connect(self.ui.setPending)
+
         self.features_lock = asyncio.Lock()
         self.features = {}  # {in_var : topic}
         self.features_count = collections.defaultdict(set)  # {in_var : set(nodes)}
@@ -544,7 +552,7 @@ class FlowchartCtrlWidget(QtGui.QWidget):
         self.ui.navGroup.triggered.connect(self.navClicked)
 
         self.chart.sigFileLoaded.connect(self.setCurrentFile)
-        self.chart.sigFileSaved.connect(self.fileSaved)
+        self.chart.sigFileSaved.connect(self.setCurrentFile)
 
         self.sourceConfigure = SourceConfiguration()
         self.sourceConfigure.sigApply.connect(self.configureApply)
@@ -722,6 +730,7 @@ class FlowchartCtrlWidget(QtGui.QWidget):
             node.changed = False
 
         self.metadata = await self.graphCommHandler.metadata
+        self.ui.setPendingClear()
 
     def openClicked(self):
         startDir = self.chart.filePath
@@ -730,9 +739,6 @@ class FlowchartCtrlWidget(QtGui.QWidget):
         self.fileDialog = FileDialog(None, "Load Flowchart..", startDir, "Flowchart (*.fc)")
         self.fileDialog.show()
         self.fileDialog.fileSelected.connect(self.chart.loadFile)
-
-    def fileSaved(self, fileName):
-        self.setCurrentFile(fileName)
 
     def saveClicked(self):
         if self.currentFileName is None:

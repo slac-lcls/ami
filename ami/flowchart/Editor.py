@@ -281,6 +281,9 @@ class Ui_Toolbar(object):
         self.toolBar.addAction(self.actionComment)
         self.toolBar.insertSeparator(self.actionHome)
 
+        widget = self.toolBar.widgetForAction(self.actionApply)
+        widget.setObjectName("actionApply")
+
         self.source_model = build_model()
         self.source_search = QtGui.QLineEdit()
         self.source_search.setPlaceholderText('Search Sources...')
@@ -317,6 +320,8 @@ class Ui_Toolbar(object):
         self.node_search.textChanged.connect(self.node_search_text_changed)
         self.source_search.textChanged.connect(self.source_search_text_changed)
 
+        self.pending = set()
+
     def populate_tree(self, children, parent):
         for child in sorted(children):
             if type(children[child]) is str:
@@ -350,3 +355,14 @@ class Ui_Toolbar(object):
     def search_text_changed(self, tree, model, text):
         model.setFilterRegExp(text)
         tree.expandAll()
+
+    def setPending(self, node):
+        if node.changed:
+            self.pending.add(node.name())
+            self.toolBar.setStyleSheet("QToolButton#actionApply { background: lightgreen }")
+            self.actionApply.setToolTip(f"Pending changes on: {self.pending}")
+
+    def setPendingClear(self):
+        self.pending = set()
+        self.actionApply.setToolTip("")
+        self.toolBar.setStyleSheet("QToolButton#actionApply { background: none }")
