@@ -21,7 +21,7 @@ def test_projection(qtbot):
     inputs = {"In": node.name()}
     op = node.to_operation(inputs)
     mop = gn.Map(name="projection_operation",
-                 conditions_needs=[],
+                 condition_needs=[],
                  inputs=list(inputs.values()),
                  outputs=[node.name()+'.Out'],
                  func=lambda a: np.sum(a, axis=1))

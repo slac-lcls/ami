@@ -209,7 +209,7 @@ class Combinations(CtrlNode):
                 return [np.array([])]*length
 
         node = gn.Map(name=self.name()+"_operation",
-                      conditions_needs=conditions, inputs=inputs, outputs=outputs,
+                      condition_needs=conditions, inputs=inputs, outputs=outputs,
                       func=func, parent=self.name())
         return node
 
@@ -268,6 +268,9 @@ try:
 
             return self.widget
 
+        def shouldRestoreWidget(self):
+            return True
+
         def to_operation(self, inputs, conditions={}):
             outputs = self.output_vars()
             args = []
@@ -287,6 +290,70 @@ try:
                           condition_needs=conditions,
                           inputs=inputs, outputs=outputs,
                           func=CalcProc(params), parent=self.name())
+
+            return node
+
+except ImportError as e:
+    print(e)
+
+
+try:
+    from ami.flowchart.library.MapWidget import MapWidget
+    import tempfile
+    import importlib
+
+    class MapProc(object):
+
+        def __init__(self, text):
+            self.text = text
+            self.file = None
+            self.mod = None
+
+        def __call__(self, *args, **kwargs):
+            if self.file is None:
+                self.file = tempfile.NamedTemporaryFile(mode='w', suffix='.py')
+                self.file.write(self.text)
+                self.file.flush()
+                spec = importlib.util.spec_from_file_location("module.name", self.file.name)
+                self.mod = importlib.util.module_from_spec(spec)
+                spec.loader.exec_module(self.mod)
+
+            return self.mod.func(*args, **kwargs)
+
+        def __del__(self):
+            if self.file:
+                del self.mod
+                self.file.close()
+
+    class Map(CtrlNode):
+        """
+        Write a python function.
+        """
+
+        nodeName = "Map"
+
+        def __init__(self, name):
+            super().__init__(name,
+                             terminals={'In': {'io': 'in', 'ttype': Any},
+                                        'Out': {'io': 'out', 'ttype': Any}},
+                             allowAddInput=True,
+                             allowAddOutput=True)
+            self.values = {'text': ''}
+
+        def shouldRestoreWidget(self):
+            return True
+
+        def display(self, topics, terms, addr, win, **kwargs):
+            if self.widget is None:
+                self.widget = MapWidget(self.input_vars(), self.output_vars(), win, self.values['text'])
+                self.widget.sigStateChanged.connect(self.state_changed)
+
+            return self.widget
+
+        def to_operation(self, inputs, conditions={}):
+            outputs = self.output_vars()
+            node = gn.Map(name=self.name()+"_operation", inputs=inputs, outputs=outputs,
+                          condition_needs=conditions, func=MapProc(self.values['text']), parent=self.name())
 
             return node
 

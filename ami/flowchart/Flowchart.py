@@ -175,7 +175,8 @@ class Flowchart(Node):
         remoteNode = remoteTerm.node().name()
         key = localNode + '.' + localTerm.name() + '->' + remoteNode + '.' + remoteTerm.name()
         if not self._graph.has_edge(localNode, remoteNode, key=key):
-            self._graph.add_edge(localNode, remoteNode, key=key, from_term=localTerm.name(), to_term=remoteTerm.name())
+            self._graph.add_edge(localNode, remoteNode, key=key,
+                                 from_term=localTerm.name(), to_term=remoteTerm.name())
 
     def nodeDisconnected(self, localTerm, remoteTerm):
         if remoteTerm.isOutput() or localTerm.isCondition():
@@ -430,15 +431,15 @@ class Flowchart(Node):
 
             if 'widget' in new_node_state:
                 if current_node_state['widget'] != new_node_state['widget']:
+                    restore_widget = node.shouldRestoreWidget()
                     current_node_state['widget'] = new_node_state['widget']
-                    restore_widget = True
 
             if 'geometry' in new_node_state:
                 node.geometry = QtCore.QByteArray.fromHex(bytes(new_node_state['geometry'], 'ascii'))
 
             if restore_ctrl or restore_widget:
                 node.restoreState(current_node_state)
-                node.changed = restore_ctrl
+                node.changed = restore_widget or restore_ctrl
                 self.sigNodeChanged.emit(node)
 
             node.viewed = new_node_state['viewed']

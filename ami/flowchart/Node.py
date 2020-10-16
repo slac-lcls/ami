@@ -441,6 +441,9 @@ class Node(QtCore.QObject):
         if 'terminals' in state:
             self.restoreTerminals(state['terminals'])
 
+    def shouldRestoreWidget(self):
+        return False
+
     def saveTerminals(self):
         terms = OrderedDict()
         for n, t in self.terminals.items():
@@ -482,6 +485,7 @@ class Node(QtCore.QObject):
         w = self.ctrlWidget()
         if w is not None:
             w.setParent(None)
+            w.close()
 
     def disconnectAll(self):
         for t in self.terminals.values():

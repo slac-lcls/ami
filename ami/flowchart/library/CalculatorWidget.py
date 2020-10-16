@@ -98,7 +98,7 @@ class CalculatorWidget(QtWidgets.QWidget):
         self.parenOpen = self.createButton("(", self.operatorClicked)
         self.parenClose = self.createButton(")", self.operatorClicked)
 
-        mainLayout = QtWidgets.QGridLayout()
+        mainLayout = QtWidgets.QGridLayout(self)
         # mainLayout.setSizeConstraint(QtWidgets.QLayout.SetFixedSize)
 
         mainLayout.addWidget(self.display, 0, 0, 1, 7)

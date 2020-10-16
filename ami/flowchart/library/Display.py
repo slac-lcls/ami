@@ -162,7 +162,7 @@ class ScatterPlot(CtrlNode):
         outputs = [self.name()+'.'+i for i in inputs.keys()]
         buffer_output = [self.name()]
         nodes = [gn.RollingBuffer(name=self.name()+"_buffer", N=self.values['Num Points'],
-                                  conditions_needs=conditions, inputs=inputs,
+                                  condition_needs=conditions, inputs=inputs,
                                   outputs=buffer_output, parent=self.name()),
                  gn.Map(name=self.name()+"_operation", inputs=buffer_output, outputs=outputs,
                         func=lambda a: zip(*a),
@@ -196,13 +196,13 @@ class ScalarPlot(CtrlNode):
 
         if len(inputs.values()) > 1:
             node = [gn.RollingBuffer(name=self.name()+"_buffer", N=self.values['Num Points'],
-                                     conditions_needs=conditions, inputs=inputs,
+                                     condition_needs=conditions, inputs=inputs,
                                      outputs=buffer_output, parent=self.name()),
                     gn.Map(name=self.name()+"_operation", inputs=buffer_output, outputs=outputs,
                            func=lambda a: zip(*a), parent=self.name())]
         else:
             node = gn.RollingBuffer(name=self.name(), N=self.values['Num Points'],
-                                    conditions_needs=conditions, inputs=inputs,
+                                    condition_needs=conditions, inputs=inputs,
                                     outputs=outputs, parent=self.name())
 
         return node

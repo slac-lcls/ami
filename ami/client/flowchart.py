@@ -63,6 +63,8 @@ def run_editor_window(broker_addr, graphmgr_addr, checkpoint_addr, load=None):
         loop.run_forever()
     finally:
         if not task.done():
+            fc.clear()
+            fc.widget().applyClicked()
             task.cancel()
         loop.close()
 
@@ -86,7 +88,7 @@ class NodeWindow(QtGui.QMainWindow):
     def closeEvent(self, event):
         self.proc.node.geometry = self.saveGeometry()
         self.proc.send_checkpoint(self.proc.node)
-        self.proc.node.clear()
+        self.proc.node.close()
         self.proc.widget = None
         self.proc.show = False
         self.destroy()
@@ -171,9 +173,8 @@ class NodeProcess(QtCore.QObject):
                 return
 
     def display(self, msg):
-
         if self.show and msg.redisplay:
-            self.node.clear()
+            self.node.close()
             self.widget = None
 
         if msg.geometry:

@@ -84,7 +84,9 @@ class CtrlNode(Node):
         w.show()
         label.show()
 
-    def clear(self):
+    def close(self):
+        super().close()
+
         if self.task:
             self.task.cancel()
             self.task = None

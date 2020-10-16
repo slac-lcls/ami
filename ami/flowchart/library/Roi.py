@@ -276,7 +276,7 @@ class Roi0D(CtrlNode):
             return img[x, y]
 
         node = gn.Map(name=self.name()+"_operation",
-                      conditions_needs=conditions, inputs=inputs, outputs=outputs,
+                      condition_needs=conditions, inputs=inputs, outputs=outputs,
                       func=func,
                       parent=self.name())
         return node
