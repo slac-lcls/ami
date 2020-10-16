@@ -332,3 +332,64 @@ class Polynomial(CtrlNode):
                       condition_needs=conditions, inputs=inputs, outputs=outputs,
                       func=poly, parent=self.name())
         return node
+
+
+class Average(GroupedNode):
+
+    """
+    Compute average using np.average
+    """
+
+    nodeName = "Average"
+    uiTemplate = [('axis', 'intSpin', {'value': 0, 'min': 0, 'max': 1})]
+
+    def __init__(self, name):
+        super().__init__(name, terminals={'In': {'io': 'in', 'ttype': Union[Array1d, Array2d]},
+                                          'Out': {'io': 'out', 'ttype': float}},
+                         allowAddInput=True)
+
+    def to_operation(self, inputs, conditions={}):
+        outputs = self.output_vars()
+
+        axis = self.values['axis']
+
+        if len(inputs) == 1:
+            def func(arr):
+                return np.average(arr, axis=axis)
+        else:
+            def func(*arr):
+                return list(map(lambda a: np.average(a, axis=axis), arr))
+
+        node = gn.Map(name=self.name()+"_operation",
+                      condition_needs=conditions, inputs=inputs, outputs=outputs,
+                      func=func, parent=self.name())
+        return node
+
+
+class RMS(GroupedNode):
+
+    """
+    RMS
+    """
+
+    nodeName = "RMS"
+
+    def __init__(self, name):
+        super().__init__(name, terminals={'In': {'io': 'in', 'ttype': Union[Array1d, Array2d]},
+                                          'Out': {'io': 'out', 'ttype': float}},
+                         allowAddInput=True)
+
+    def to_operation(self, inputs, conditions={}):
+        outputs = self.output_vars()
+
+        if len(inputs) == 1:
+            def func(arr):
+                return np.sqrt(np.mean(np.square(arr)))
+        else:
+            def func(*arr):
+                return list(map(lambda a: np.sqrt(np.mean(np.square(a))), arr))
+
+        node = gn.Map(name=self.name()+"_operation",
+                      condition_needs=conditions, inputs=inputs, outputs=outputs,
+                      func=func, parent=self.name())
+        return node
