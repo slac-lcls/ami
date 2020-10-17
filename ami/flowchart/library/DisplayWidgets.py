@@ -111,8 +111,8 @@ class PlotWidget(pg.GraphicsLayoutWidget):
         self.plot_view = self.addPlot()
         if self.node:
             # node is passed in on subprocess
-            self.viewbox_proxy = pg.SignalProxy(self.plot_view.vb.sigStateChanged,
-                                                delay=1,
+            self.viewbox_proxy = pg.SignalProxy(self.plot_view.vb.sigRangeChangedManually,
+                                                delay=0.5,
                                                 slot=lambda args: self.node.sigStateChanged.emit(self.node))
 
         self.plot_view.showGrid(True, True)

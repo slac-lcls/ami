@@ -86,11 +86,11 @@ class NodeWindow(QtGui.QMainWindow):
         self.proc.send_checkpoint(self.proc.node)
 
     def closeEvent(self, event):
+        self.proc.node.viewed = False
         self.proc.node.geometry = self.saveGeometry()
         self.proc.send_checkpoint(self.proc.node)
         self.proc.node.close()
         self.proc.widget = None
-        self.proc.show = False
         self.destroy()
         event.ignore()
 
@@ -142,7 +142,6 @@ class NodeProcess(QtCore.QObject):
 
         self.ctrlWidget = self.node.ctrlWidget(self.win)
         self.widget = None
-        self.show = False
 
         self.win.setWindowTitle(msg.name)
 
@@ -173,7 +172,7 @@ class NodeProcess(QtCore.QObject):
                 return
 
     def display(self, msg):
-        if self.show and msg.redisplay:
+        if self.node.viewed and msg.redisplay:
             self.node.close()
             self.widget = None
 
@@ -207,12 +206,10 @@ class NodeProcess(QtCore.QObject):
 
             self.node.sigStateChanged.connect(self.send_checkpoint)
 
-        if not msg.redisplay:
-            if self.show:
-                self.win.activateWindow()
-            else:
-                self.show = True
-                self.win.show()
+        self.win.show()
+        if self.node.viewed:
+            self.win.activateWindow()
+        self.node.viewed = True
 
     def reloadLibrary(self, msg):
         for mod in msg.mods:
@@ -222,7 +219,6 @@ class NodeProcess(QtCore.QObject):
     @asyncSlot(object)
     async def send_checkpoint(self, node):
         state = node.saveState()
-        state['viewed'] = self.show
 
         msg = fcMsgs.NodeCheckpoint(node.name(),
                                     state=state)

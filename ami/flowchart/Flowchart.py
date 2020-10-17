@@ -376,6 +376,14 @@ class Flowchart(Node):
         self.restoreState(state)
         self.viewBox.autoRange()
         self.sigFileLoaded.emit(fileName)
+        await self.widget().applyClicked()
+
+        for name, node in self.nodes(data='node'):
+            if node.viewed:
+                node = node.graphicsItem()
+                node.setSelected(True)
+                await asyncio.sleep(0.1)
+                self.scene.clearSelection()
 
     def saveFile(self, fileName=None, startDir=None, suggestedFileName='flowchart.fc'):
         """
@@ -986,7 +994,6 @@ class FlowchartWidget(dockarea.DockArea):
                 self.statusText.append(f"[{now}] Pending changes for {pending}. Please apply before trying to view.")
                 return
 
-        node.viewed = True
         if isinstance(node, Node) and node.buffered():
             # buffered nodes are allowed to override their topics/terms
             # this is done because they may want to view intermediate values

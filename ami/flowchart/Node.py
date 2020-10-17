@@ -428,7 +428,7 @@ class Node(QtCore.QObject):
         Subclasses may want to extend this method, adding extra keys to the returned
         dict."""
         pos = self.graphicsItem().pos()
-        state = {'pos': (pos.x(), pos.y()), 'enabled': self._enabled}
+        state = {'pos': (pos.x(), pos.y()), 'enabled': self._enabled, 'viewed': self.viewed}
         state['terminals'] = self.saveTerminals()
         return state
 
@@ -438,6 +438,7 @@ class Node(QtCore.QObject):
         pos = state.get('pos', (0, 0))
         self.graphicsItem().setPos(*pos)
         self._enabled = state.get('enabled')
+        self.viewed = state.get('viewed', False)
         if 'terminals' in state:
             self.restoreTerminals(state['terminals'])
 
