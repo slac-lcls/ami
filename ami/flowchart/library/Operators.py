@@ -261,15 +261,15 @@ try:
 
             self.values = {'operation': ''}
 
+        def isChanged(self, restore_ctrl, restore_widget):
+            return restore_widget
+
         def display(self, topics, terms, addr, win, **kwargs):
             if self.widget is None:
                 self.widget = CalculatorWidget(terms, win, self.values['operation'])
                 self.widget.sigStateChanged.connect(self.state_changed)
 
             return self.widget
-
-        def shouldRestoreWidget(self):
-            return True
 
         def to_operation(self, inputs, conditions={}):
             outputs = self.output_vars()
@@ -340,8 +340,8 @@ try:
                              allowAddOutput=True)
             self.values = {'text': ''}
 
-        def shouldRestoreWidget(self):
-            return True
+        def isChanged(self, restore_ctrl, restore_widget):
+            return restore_widget
 
         def display(self, topics, terms, addr, win, **kwargs):
             if self.widget is None:

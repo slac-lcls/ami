@@ -25,6 +25,9 @@ class Roi2D(CtrlNode):
                                     'Out': {'io': 'out', 'ttype': Array2d}},
                          viewable=True)
 
+    def isChanged(self, restore_ctrl, restore_widget):
+        return restore_ctrl
+
     def display(self, topics, terms, addr, win, **kwargs):
         super().display(topics, terms, addr, win, ImageWidget, **kwargs)
 
@@ -93,6 +96,9 @@ class Roi1D(CtrlNode):
                                           "Out": {"io": "out", "ttype": Array1d}},
                          viewable=True)
 
+    def isChanged(self, restore_ctrl, restore_widget):
+        return restore_ctrl
+
     def display(self, topics, terms, addr, win, **kwargs):
         super().display(topics, terms, addr, win, WaveformWidget, **kwargs)
 
@@ -156,6 +162,9 @@ class ScatterRoi(CtrlNode):
                                           "Out.X": {"io": "out", "ttype": Array1d},
                                           "Out.Y": {"io": "out", "ttype": Array1d}},
                          buffered=True)
+
+    def isChanged(self, restore_ctrl, restore_widget):
+        return restore_ctrl
 
     def display(self, topics, terms, addr, win, **kwargs):
         super().display(topics, terms, addr, win, ScatterWidget, **kwargs)
@@ -241,6 +250,9 @@ class Roi0D(CtrlNode):
                          terminals={'In': {'io': 'in', 'ttype': Array2d},
                                     'Out': {'io': 'out', 'ttype': float}},
                          viewable=True)
+
+    def isChanged(self, restore_ctrl, restore_widget):
+        return restore_ctrl
 
     def display(self, topics, terms, addr, win, **kwargs):
         super().display(topics, terms, addr, win, PixelDetWidget, **kwargs)

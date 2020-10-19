@@ -454,7 +454,7 @@ def generateUi(opts):
         elif t == 'combo':
             w = QtGui.QComboBox(parent=parent)
             for i in o['values']:
-                w.addItem(i)
+                w.addItem(str(i))
             if 'value' in o:
                 w.setCurrentText(o['value'])
         elif t == 'color':

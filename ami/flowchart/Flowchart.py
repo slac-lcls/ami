@@ -190,25 +190,47 @@ class Flowchart(Node):
         if self._graph.has_edge(localNode, remoteNode, key=key):
             self._graph.remove_edge(localNode, remoteNode, key=key)
 
-    def nodeEnabled(self, root):
+    @asyncSlot(object)
+    async def nodeEnabled(self, root):
         enabled = root._enabled
 
         outputs = [n for n, d in self._graph.out_degree() if d == 0]
         sources_targets = list(it.product([root.name()], outputs))
+        ctrl = self.widget()
+        views = []
 
         for s, t in sources_targets:
             paths = list(nx.algorithms.all_simple_paths(self._graph, s, t))
 
             for path in paths:
-                for node in path[1:]:
+                for node in path:
                     node = self._graph.nodes[node]['node']
+                    name = node.name()
                     node.nodeEnabled(enabled)
+                    if not enabled:
+                        self.deleted_nodes.append(name)
+                        if node.viewable():
+                            async with ctrl.features_lock:
+                                for term, in_var in node.input_vars().items():
+                                    if in_var in ctrl.features_count:
+                                        ctrl.features_count[in_var].discard(name)
+                                        if not ctrl.features_count[in_var]:
+                                            if in_var in ctrl.features:
+                                                del ctrl.features[in_var]
+                                            views.append(in_var)
+                                            del ctrl.features_count[in_var]
+                    else:
+                        node.changed = True
                     if node.conditions():
                         preds = self._graph.predecessors(node.name())
                         preds = filter(lambda n: n.startswith("Filter"), preds)
                         for filt in preds:
                             node = self._graph.nodes[filt]['node']
                             node.nodeEnabled(enabled)
+
+        if views:
+            await ctrl.graphCommHandler.unview(views)
+        await ctrl.applyClicked()
 
     def connectTerminals(self, term1, term2, type_file=None):
         """Connect two terminals together within this flowchart."""
@@ -439,7 +461,7 @@ class Flowchart(Node):
 
             if 'widget' in new_node_state:
                 if current_node_state['widget'] != new_node_state['widget']:
-                    restore_widget = node.shouldRestoreWidget()
+                    restore_widget = True
                     current_node_state['widget'] = new_node_state['widget']
 
             if 'geometry' in new_node_state:
@@ -447,7 +469,7 @@ class Flowchart(Node):
 
             if restore_ctrl or restore_widget:
                 node.restoreState(current_node_state)
-                node.changed = restore_widget or restore_ctrl
+                node.changed = node.isChanged(restore_ctrl, restore_widget)
                 self.sigNodeChanged.emit(node)
 
             node.viewed = new_node_state['viewed']

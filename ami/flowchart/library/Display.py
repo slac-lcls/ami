@@ -22,6 +22,9 @@ class ScalarViewer(CtrlNode):
                          terminals={"In": {"io": "in", "ttype": float}},
                          viewable=True)
 
+    def isChanged(self, restore_ctrl, restore_widget):
+        return False
+
     def display(self, topics, terms, addr, win, **kwargs):
         return super().display(topics, terms, addr, win, ScalarWidget, **kwargs)
 
@@ -40,6 +43,9 @@ class WaveformViewer(CtrlNode):
                          allowAddInput=True,
                          viewable=True)
 
+    def isChanged(self, restore_ctrl, restore_widget):
+        return False
+
     def display(self, topics, terms, addr, win, **kwargs):
         return super().display(topics, terms, addr, win, WaveformWidget, **kwargs)
 
@@ -55,6 +61,9 @@ class ImageViewer(CtrlNode):
 
     def __init__(self, name):
         super().__init__(name, terminals={"In": {"io": "in", "ttype": Array2d}}, viewable=True)
+
+    def isChanged(self, restore_ctrl, restore_widget):
+        return False
 
     def display(self, topics, terms, addr, win, **kwargs):
         return super().display(topics, terms, addr, win, ImageWidget, **kwargs)
@@ -72,6 +81,9 @@ class TextViewer(CtrlNode):
     def __init__(self, name):
         super().__init__(name, terminals={"In": {"io": "in", "ttype": Text}}, viewable=True)
 
+    def isChanged(self, restore_ctrl, restore_widget):
+        return False
+
     def display(self, topics, terms, addr, win, **kwargs):
         return super().display(topics, terms, addr, win, TextWidget, **kwargs)
 
@@ -87,6 +99,9 @@ class ObjectViewer(CtrlNode):
 
     def __init__(self, name):
         super().__init__(name, terminals={"In": {"io": "in", "ttype": Any}}, viewable=True)
+
+    def isChanged(self, restore_ctrl, restore_widget):
+        return False
 
     def display(self, topics, terms, addr, win, **kwargs):
         return super().display(topics, terms, addr, win, ObjectWidget, **kwargs)
@@ -107,6 +122,9 @@ class Histogram(CtrlNode):
                                     "Counts": {"io": "in", "ttype": Array1d}},
                          allowAddInput=True,
                          viewable=True)
+
+    def isChanged(self, restore_ctrl, restore_widget):
+        return False
 
     def display(self, topics, terms, addr, win, **kwargs):
         return super().display(topics, terms, addr, win, HistogramWidget, **kwargs)
@@ -132,6 +150,9 @@ class Histogram2D(CtrlNode):
                                     "Counts": {"io": "in", "ttype": Array2d}},
                          viewable=True)
 
+    def isChanged(self, restore_ctrl, restore_widget):
+        return False
+
     def display(self, topics, terms, addr, win, **kwargs):
         return super().display(topics, terms, addr, win, Histogram2DWidget, **kwargs)
 
@@ -153,6 +174,9 @@ class ScatterPlot(CtrlNode):
 
     def display(self, topics, terms, addr, win, **kwargs):
         return super().display(topics, terms, addr, win, ScatterWidget, **kwargs)
+
+    def isChanged(self, restore_ctrl, restore_widget):
+        return restore_ctrl
 
     def addInput(self, **args):
         self.addTerminal(name="X", io='in', ttype=float, **args)
@@ -183,6 +207,9 @@ class ScalarPlot(CtrlNode):
         super().__init__(name, terminals={"Y": {"io": "in", "ttype": float}},
                          allowAddInput=True,
                          buffered=True)
+
+    def isChanged(self, restore_ctrl, restore_widget):
+        return restore_ctrl
 
     def addInput(self, **args):
         self.addTerminal(name="Y", io='in', ttype=float, **args)
@@ -223,6 +250,9 @@ class LinePlot(CtrlNode):
                          allowAddInput=True,
                          viewable=True)
 
+    def isChanged(self, restore_ctrl, restore_widget):
+        return False
+
     def display(self, topics, terms, addr, win, **kwargs):
         return super().display(topics, terms, addr, win, LineWidget, **kwargs)
 
@@ -239,13 +269,16 @@ class TimePlot(CtrlNode):
     """
 
     nodeName = "TimePlot"
-    uiTemplate = [("Num Points", 'intSpin', {'value': 100, 'min': 1})]
+    uiTemplate = [("Num Points", 'intSpin', {'value': 1000, 'min': 1})]
 
     def __init__(self, name):
         super().__init__(name, terminals={"X": {"io": "in", "ttype": float},
                                           "Y": {"io": "in", "ttype": float}},
                          allowAddInput=True,
                          buffered=True)
+
+    def isChanged(self, restore_ctrl, restore_widget):
+        return restore_ctrl
 
     def display(self, topics, terms, addr, win, **kwargs):
         return super().display(topics, terms, addr, win, TimeWidget, **kwargs)

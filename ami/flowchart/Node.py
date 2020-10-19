@@ -442,9 +442,6 @@ class Node(QtCore.QObject):
         if 'terminals' in state:
             self.restoreTerminals(state['terminals'])
 
-    def shouldRestoreWidget(self):
-        return False
-
     def saveTerminals(self):
         terms = OrderedDict()
         for n, t in self.terminals.items():

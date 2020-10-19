@@ -46,6 +46,9 @@ class CtrlNode(Node):
         else:
             self.values[name] = val
 
+    def isChanged(self, restore_ctrl, restore_widget):
+        return restore_ctrl or restore_widget
+
     def saveState(self):
         state = super().saveState()
         if self.stateGroup:
@@ -121,6 +124,9 @@ class SourceNode(CtrlNode):
     def display(self, topics, terms, addr, win, **kwargs):
         if self.widgetType:
             return super().display(topics, terms, addr, win, self.widgetType, **kwargs)
+
+    def isChanged(self, restore_ctrl, restore_widget):
+        return False
 
     def isSource(self):
         return True
