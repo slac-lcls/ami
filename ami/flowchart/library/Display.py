@@ -1,5 +1,5 @@
 from ami.flowchart.library.DisplayWidgets import ScalarWidget, ScatterWidget, WaveformWidget, \
-    ImageWidget, TextWidget, ObjectWidget, LineWidget, ArrayWidget, HistogramWidget, \
+    ImageWidget, TextWidget, ObjectWidget, LineWidget, TimeWidget, ArrayWidget, HistogramWidget, \
     Histogram2DWidget
 from ami.flowchart.library.common import CtrlNode
 from amitypes import Array, Array1d, Array2d
@@ -230,6 +230,40 @@ class LinePlot(CtrlNode):
         group = self.nextGroupName()
         self.addTerminal(name="X", io='in', ttype=Array1d, group=group, **args)
         self.addTerminal(name="Y", io='in', ttype=Array1d, group=group, **args)
+
+
+class TimePlot(CtrlNode):
+
+    """
+    Plot a number against time of day.
+    """
+
+    nodeName = "TimePlot"
+    uiTemplate = [("Num Points", 'intSpin', {'value': 100, 'min': 1})]
+
+    def __init__(self, name):
+        super().__init__(name, terminals={"X": {"io": "in", "ttype": float},
+                                          "Y": {"io": "in", "ttype": float}},
+                         allowAddInput=True,
+                         buffered=True)
+
+    def display(self, topics, terms, addr, win, **kwargs):
+        return super().display(topics, terms, addr, win, TimeWidget, **kwargs)
+
+    def addInput(self, **args):
+        self.addTerminal(name="X", io='in', ttype=float, **args)
+        self.addTerminal(name="Y", io='in', ttype=float, **args)
+
+    def to_operation(self, inputs, conditions={}):
+        outputs = [self.name()+'.'+i for i in inputs.keys()]
+        buffer_output = [self.name()]
+        nodes = [gn.RollingBuffer(name=self.name()+"_buffer", N=self.values['Num Points'],
+                                  condition_needs=conditions, inputs=inputs,
+                                  outputs=buffer_output, parent=self.name()),
+                 gn.Map(name=self.name()+"_operation", inputs=buffer_output, outputs=outputs,
+                        func=lambda a: zip(*a),
+                        parent=self.name())]
+        return nodes
 
 
 class TableView(CtrlNode):

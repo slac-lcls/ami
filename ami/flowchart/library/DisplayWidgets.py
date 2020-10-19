@@ -782,6 +782,36 @@ class LineWidget(PlotWidget):
                 self.plot[name].setData(x=x, y=y, **attrs['point'])
 
 
+class TimeAxisItem(pg.AxisItem):
+
+    epoch = dt.datetime(1990, 1, 1)
+
+    def __init__(self, tscale=1, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.scale = tscale
+
+    def tickStrings(self, values, scale, spacing):
+        # PySide's QTime() initialiser fails miserably and dismisses args/kwargs
+        ticks = []
+
+        for value in values:
+            sec, usec = divmod(value, 1.)
+            usec *= 1.e6
+            delta_t = dt.timedelta(0, sec, usec)
+            t = self.epoch + delta_t
+            ticks.append(t.strftime('%H:%M:%S'))
+
+        return ticks
+
+
+class TimeWidget(LineWidget):
+
+    def __init__(self, topics=None, terms=None, addr=None, parent=None, **kwargs):
+        super().__init__(topics, terms, addr, parent=parent, **kwargs)
+        ax = TimeAxisItem(orientation='bottom')
+        self.plot_view.setAxisItems({'bottom': ax})
+
+
 class ArrayWidget(QtWidgets.QWidget):
 
     def __init__(self, topics=None, terms=None, addr=None, parent=None, **kwargs):
