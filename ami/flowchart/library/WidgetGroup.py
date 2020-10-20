@@ -44,19 +44,7 @@ def restoreSplitter(w, s):
 def comboState(w):
     ind = w.currentIndex()
     data = w.itemData(ind)
-    # if not data.isValid():
-    if data is not None:
-        try:
-            if not data.isValid():
-                data = None
-            else:
-                data = data.toInt()[0]
-        except AttributeError:
-            pass
-    if data is None:
-        return w.itemText(ind)
-    else:
-        return data
+    return data
 
 
 def setComboState(w, v):
@@ -454,7 +442,7 @@ def generateUi(opts):
         elif t == 'combo':
             w = QtGui.QComboBox(parent=parent)
             for i in o['values']:
-                w.addItem(str(i))
+                w.addItem(str(i), i)
             if 'value' in o:
                 w.setCurrentText(o['value'])
         elif t == 'color':
