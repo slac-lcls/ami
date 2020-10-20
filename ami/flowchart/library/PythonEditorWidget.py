@@ -3,7 +3,7 @@ from pyqode.python.backend import server
 from pyqode.python.widgets import PyCodeEdit
 
 
-class MapWidget(QtWidgets.QWidget):
+class PythonEditorWidget(QtWidgets.QWidget):
 
     sigStateChanged = QtCore.Signal(object, object, object)
 

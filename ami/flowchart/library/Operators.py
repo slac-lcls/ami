@@ -298,11 +298,11 @@ except ImportError as e:
 
 
 try:
-    from ami.flowchart.library.MapWidget import MapWidget
+    from ami.flowchart.library.PythonEditorWidget import PythonEditorWidget
     import tempfile
     import importlib
 
-    class MapProc(object):
+    class PythonEditorProc(object):
 
         def __init__(self, text):
             self.text = text
@@ -325,12 +325,12 @@ try:
                 del self.mod
                 self.file.close()
 
-    class Map(CtrlNode):
+    class PythonEditor(CtrlNode):
         """
         Write a python function.
         """
 
-        nodeName = "Map"
+        nodeName = "PythonEditor"
 
         def __init__(self, name):
             super().__init__(name,
@@ -345,7 +345,7 @@ try:
 
         def display(self, topics, terms, addr, win, **kwargs):
             if self.widget is None:
-                self.widget = MapWidget(self.input_vars(), self.output_vars(), win, self.values['text'])
+                self.widget = PythonEditorWidget(self.input_vars(), self.output_vars(), win, self.values['text'])
                 self.widget.sigStateChanged.connect(self.state_changed)
 
             return self.widget
@@ -353,7 +353,8 @@ try:
         def to_operation(self, inputs, conditions={}):
             outputs = self.output_vars()
             node = gn.Map(name=self.name()+"_operation", inputs=inputs, outputs=outputs,
-                          condition_needs=conditions, func=MapProc(self.values['text']), parent=self.name())
+                          condition_needs=conditions, func=PythonEditorProc(self.values['text']),
+                          parent=self.name())
 
             return node
 

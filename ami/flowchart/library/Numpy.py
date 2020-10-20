@@ -393,3 +393,36 @@ class RMS(GroupedNode):
                       condition_needs=conditions, inputs=inputs, outputs=outputs,
                       func=func, parent=self.name())
         return node
+
+
+class WindowedAverage(CtrlNode):
+
+    """
+    Average N events
+    """
+
+    nodeName = "WindowedAverage"
+    uiTemplate = [('N', 'intSpin', {'value': 2, 'min': 2}),
+                  ('axis', 'intSpin', {'value': 0, 'min': 0, 'max': 1})]
+
+    def __init__(self, name):
+        super().__init__(name, terminals={'In': {'io': 'in', 'ttype': Array1d},
+                                          'Out': {'io': 'out', 'ttype': Array1d}})
+
+    def to_operation(self, inputs, conditions={}):
+        outputs = self.output_vars()
+
+        axis = self.values['axis']
+        picked_outputs = [self.name()+'_picked_events']
+
+        def func(arrs):
+            return np.sum(arrs, axis=axis)/len(arrs)
+
+        nodes = [gn.PickN(name=self.name()+"_picked",
+                          inputs=inputs, outputs=picked_outputs, condition_needs=conditions,
+                          N=self.values['N'], parent=self.name()),
+                 gn.Map(name=self.name()+"_operation",
+                        inputs=picked_outputs, outputs=outputs, func=func,
+                        parent=self.name())]
+
+        return nodes
