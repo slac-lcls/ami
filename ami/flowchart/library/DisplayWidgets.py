@@ -435,7 +435,12 @@ class ObjectWidget(pg.LayoutWidget):
         while True:
             await self.fetcher.fetch()
             for k, v in self.fetcher.reply.items():
-                self.label.setText("%s:\n\n%s" % (k, v))
+
+                if type(v) is np.ndarray:
+                    txt = "variable: %s\ntype: %s\nvalue: %s\nshape: %s\ndtype: %s" % (k, type(v), v, v.shape, v.dtype)
+                else:
+                    txt = "variable:%s\ntype: %s\nvalue: %s" % (k, type(v), v)
+                self.label.setText(txt)
 
     def close(self):
         if self.fetcher:
