@@ -2,9 +2,10 @@ from ami.flowchart.library.DisplayWidgets import ImageWidget, WaveformWidget, Pi
     ScatterWidget
 from ami.flowchart.library.common import CtrlNode
 from amitypes import Array2d, Array1d
-import pyqtgraph as pg
 import ami.graph_nodes as gn
 import numpy as np
+import pyqtgraph as pg
+from pyqtgraph import functions as fn
 
 
 class Roi2D(CtrlNode):
@@ -103,7 +104,8 @@ class Roi1D(CtrlNode):
         super().display(topics, terms, addr, win, WaveformWidget, **kwargs)
 
         if self.widget:
-            self.roi = pg.LinearRegionItem((self.values['origin'], self.values['extent']))
+            self.roi = pg.LinearRegionItem((self.values['origin'], self.values['extent']),
+                                           brush=fn.mkBrush(255, 255, 0, 100))
             self.roi.setBounds((0, None))
             self.widget.plot_view.addItem(self.roi)
             self.roi.sigRegionChangeFinished.connect(self.set_values)

@@ -439,7 +439,7 @@ class ObjectWidget(pg.LayoutWidget):
                 if type(v) is np.ndarray:
                     txt = "variable: %s\ntype: %s\nvalue: %s\nshape: %s\ndtype: %s" % (k, type(v), v, v.shape, v.dtype)
                 else:
-                    txt = "variable:%s\ntype: %s\nvalue: %s" % (k, type(v), v)
+                    txt = "variable: %s\ntype: %s\nvalue: %s" % (k, type(v), v)
                 self.label.setText(txt)
 
     def close(self):
