@@ -395,15 +395,68 @@ class RMS(GroupedNode):
         return node
 
 
-class AverageWaveform(CtrlNode):
+class Average0D(CtrlNode):
 
     """
-    Average N waveforms
+    Collect N scalars and average them.
     """
 
-    nodeName = "AverageWaveform"
+    nodeName = "Average0D"
     uiTemplate = [('N', 'intSpin', {'value': 2, 'min': 2}),
-                  ('axis', 'intSpin', {'value': 0, 'min': 0, 'max': 1})]
+                  ('infinite', 'check')]
+
+    def __init__(self, name):
+        super().__init__(name, terminals={'In': {'io': 'in', 'ttype': float},
+                                          'Out': {'io': 'out', 'ttype': float}})
+
+    def to_operation(self, inputs, conditions={}):
+        outputs = self.output_vars()
+
+        accumulated_outputs = [self.name()+'_accumulated_events']
+
+        if self.values['infinite']:
+            def reduction(res, *rest):
+                if type(rest[0]) is list:
+                    res[0] += rest[0][0]
+                    res[1] += rest[0][1]
+                else:
+                    res[0] = res[0] + rest[0]
+                    res[1] = res[1] + 1
+                return res
+
+            def avg(*args, **kwargs):
+                return args[0][0]/args[0][1]
+
+            nodes = [gn.Accumulator(name=self.name()+"_accumulated",
+                                    inputs=inputs, outputs=accumulated_outputs, condition_needs=conditions,
+                                    res_factory=lambda: [0, 0], reduction=reduction, parent=self.name()),
+                     gn.Map(name=self.name()+"_map",
+                            inputs=accumulated_outputs, outputs=outputs,
+                            func=avg, parent=self.name())]
+        else:
+            def func(arrs):
+                return np.average(arrs)
+
+            nodes = [gn.PickN(name=self.name()+"_accumulated",
+                              inputs=inputs, outputs=accumulated_outputs, condition_needs=conditions,
+                              N=self.values['N'], parent=self.name()),
+                     gn.Map(name=self.name()+"_map",
+                            inputs=accumulated_outputs, outputs=outputs, func=func,
+                            parent=self.name())]
+
+        return nodes
+
+
+class Average1D(CtrlNode):
+
+    """
+    Collect N 1d arrays and average them.
+    """
+
+    nodeName = "Average1D"
+    uiTemplate = [('N', 'intSpin', {'value': 2, 'min': 2}),
+                  ('axis', 'intSpin', {'value': 0, 'min': 0, 'max': 1}),
+                  ('infinite', 'check')]
 
     def __init__(self, name):
         super().__init__(name, terminals={'In': {'io': 'in', 'ttype': Array1d},
@@ -413,30 +466,52 @@ class AverageWaveform(CtrlNode):
         outputs = self.output_vars()
 
         axis = self.values['axis']
-        picked_outputs = [self.name()+'_picked_events']
+        accumulated_outputs = [self.name()+'_accumulated_events']
 
-        def func(arrs):
-            return np.sum(arrs, axis=axis)/len(arrs)
+        if self.values['infinite']:
+            def reduction(res, *rest):
+                if type(rest[0]) is list:
+                    res[0] = np.sum([res[0], rest[0][0]], axis=axis)
+                    res[1] += rest[0][1]
+                else:
+                    res[0] = np.sum([res[0], rest[0]], axis=axis)
+                    res[1] = res[1] + 1
+                return res
 
-        nodes = [gn.PickN(name=self.name()+"_picked",
-                          inputs=inputs, outputs=picked_outputs, condition_needs=conditions,
-                          N=self.values['N'], parent=self.name()),
-                 gn.Map(name=self.name()+"_operation",
-                        inputs=picked_outputs, outputs=outputs, func=func,
-                        parent=self.name())]
+            def avg(*args, **kwargs):
+                return args[0][0]/args[0][1]
+
+            nodes = [gn.Accumulator(name=self.name()+"_accumulated",
+                                    inputs=inputs, outputs=accumulated_outputs, condition_needs=conditions,
+                                    res_factory=lambda: [0, 0], reduction=reduction, parent=self.name()),
+                     gn.Map(name=self.name()+"_map",
+                            inputs=accumulated_outputs, outputs=outputs,
+                            func=avg, parent=self.name())]
+
+        else:
+            def func(arrs):
+                return np.sum(arrs, axis=axis)/len(arrs)
+
+            nodes = [gn.PickN(name=self.name()+"_accumulated",
+                              inputs=inputs, outputs=accumulated_outputs, condition_needs=conditions,
+                              N=self.values['N'], parent=self.name()),
+                     gn.Map(name=self.name()+"_map",
+                            inputs=accumulated_outputs, outputs=outputs, func=func,
+                            parent=self.name())]
 
         return nodes
 
 
-class AverageImage(CtrlNode):
+class Average2D(CtrlNode):
 
     """
-    Average N images
+    Collect N 2d arrays and average them.
     """
 
-    nodeName = "AverageImage"
+    nodeName = "Average2D"
     uiTemplate = [('N', 'intSpin', {'value': 2, 'min': 2}),
-                  ('axis', 'intSpin', {'value': 0, 'min': 0, 'max': 2})]
+                  ('axis', 'intSpin', {'value': 0, 'min': 0, 'max': 2}),
+                  ('infinite', 'check')]
 
     def __init__(self, name):
         super().__init__(name, terminals={'In': {'io': 'in', 'ttype': Array2d},
@@ -446,16 +521,36 @@ class AverageImage(CtrlNode):
         outputs = self.output_vars()
 
         axis = self.values['axis']
-        picked_outputs = [self.name()+'_picked_events']
+        accumulated_outputs = [self.name()+'_accumulated_events']
 
-        def func(arrs):
-            return np.sum(arrs, axis=axis)/len(arrs)
+        if self.values['infinite']:
+            def reduction(res, *rest):
+                if type(rest[0]) is list:
+                    res[0] = np.sum([res[0], rest[0][0]], axis=axis)
+                    res[1] += rest[0][1]
+                else:
+                    res[0] = np.sum([res[0], rest[0]], axis=axis)
+                    res[1] = res[1] + 1
+                return res
 
-        nodes = [gn.PickN(name=self.name()+"_picked",
-                          inputs=inputs, outputs=picked_outputs, condition_needs=conditions,
-                          N=self.values['N'], parent=self.name()),
-                 gn.Map(name=self.name()+"_operation",
-                        inputs=picked_outputs, outputs=outputs, func=func,
-                        parent=self.name())]
+            def avg(*args, **kwargs):
+                return args[0][0]/args[0][1]
+
+            nodes = [gn.Accumulator(name=self.name()+"_accumulated",
+                                    inputs=inputs, outputs=accumulated_outputs, condition_needs=conditions,
+                                    res_factory=lambda: [0, 0], reduction=reduction, parent=self.name()),
+                     gn.Map(name=self.name()+"_map",
+                            inputs=accumulated_outputs, outputs=outputs,
+                            func=avg, parent=self.name())]
+        else:
+            def func(arrs):
+                return np.sum(arrs, axis=axis)/len(arrs)
+
+            nodes = [gn.PickN(name=self.name()+"_accumulated",
+                              inputs=inputs, outputs=accumulated_outputs, condition_needs=conditions,
+                              N=self.values['N'], parent=self.name()),
+                     gn.Map(name=self.name()+"_map",
+                            inputs=accumulated_outputs, outputs=outputs, func=func,
+                            parent=self.name())]
 
         return nodes
