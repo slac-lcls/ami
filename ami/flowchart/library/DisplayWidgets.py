@@ -378,8 +378,12 @@ class PlotWidget(pg.GraphicsLayoutWidget):
         self.win.resize(800, 800)
         self.win.show()
 
-    def cursor_hover_evt(self):
-        pass
+    def cursor_hover_evt(self, evt):
+        view = self.plot_view.getViewBox()
+        pos = evt[0]
+        pos = view.mapSceneToView(pos)
+        self.pixel_value.setText(f"x={pos.x():.5g}, y={pos.y():.5g}")
+        self.pixel_value.item.moveBy(0, 10)
 
     def data_updated(self, data):
         pass
