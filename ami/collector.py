@@ -50,6 +50,9 @@ class GraphCollector(Node, Collector):
             logger.exception("%s: Failure encountered while flushing store", self.name)
             self.report("error", e)
 
+    def eb_id(self, identity):
+        return identity - (self.node * self.num_workers)
+
     def report_times(self, times, name, heartbeat):
         if times:
             self.report("profile", {'graph': name,
@@ -79,7 +82,7 @@ class GraphCollector(Node, Collector):
 
     def process_msg(self, msg):
         if msg.mtype == MsgTypes.Transition:
-            self.transitions.update(msg.payload.ttype, msg.identity % self.num_workers, msg.payload.payload)
+            self.transitions.update(msg.payload.ttype, self.eb_id(msg.identity), msg.payload.payload)
             if self.transitions.ready(msg.payload.ttype):
                 self.transitions.complete(msg.payload.ttype, self.node)
                 if msg.payload.ttype == Transitions.Configure:
@@ -89,7 +92,7 @@ class GraphCollector(Node, Collector):
 
             self.event_counter.labels('Transition', self.name).inc()
         elif msg.mtype == MsgTypes.Datagram:
-            self.store.update(msg.name, msg.heartbeat, msg.identity % self.num_workers, msg.version, msg.payload)
+            self.store.update(msg.name, msg.heartbeat, self.eb_id(msg.identity), msg.version, msg.payload)
             if self.store.ready(msg.name, msg.heartbeat):
                 try:
                     # prune entries older than the current heartbeat
