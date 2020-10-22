@@ -105,7 +105,7 @@ class Roi1D(CtrlNode):
 
         if self.widget:
             self.roi = pg.LinearRegionItem((self.values['origin'], self.values['extent']),
-                                           brush=fn.mkBrush(255, 255, 0, 100))
+                                           brush=fn.mkBrush(255, 0, 0, 100))
             self.roi.setBounds((0, None))
             self.widget.plot_view.addItem(self.roi)
             self.roi.sigRegionChangeFinished.connect(self.set_values)
@@ -138,7 +138,7 @@ class Roi1D(CtrlNode):
         extent = self.values['extent']
 
         def func(arr):
-            return arr[slice(origin, origin+extent)]
+            return arr[slice(origin, extent)]
 
         node = gn.Map(name=self.name()+"_operation",
                       condition_needs=conditions, inputs=inputs, outputs=outputs,
@@ -172,8 +172,8 @@ class ScatterRoi(CtrlNode):
         super().display(topics, terms, addr, win, ScatterWidget, **kwargs)
 
         if self.widget:
-            self.roi = pg.LinearRegionItem((self.values['origin'], self.values['extent']))
-            self.roi.setBounds((0, None))
+            self.roi = pg.LinearRegionItem((self.values['origin'], self.values['extent']), swapMode='sort',
+                                           brush=fn.mkBrush(255, 0, 0, 100))
             self.widget.plot_view.addItem(self.roi)
             self.roi.sigRegionChangeFinished.connect(self.set_values)
 
@@ -220,7 +220,7 @@ class ScatterRoi(CtrlNode):
         def func(arr):
             arr = np.array(arr)
 
-            roi = arr[(origin < arr[:, 0]) & (arr[:, 0] < (origin+extent))]
+            roi = arr[(origin < arr[:, 0]) & (arr[:, 0] < extent)]
             if roi.size > 0:
                 return roi[:, 0], roi[:, 1]
             else:
