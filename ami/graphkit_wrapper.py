@@ -501,6 +501,14 @@ class Graph():
                        or globalCollector.
         :raises AssertionError: if compile() has not been falled first or if color is None.
         """
+        missing_inputs = [k for k, v in args[0].items() if v is None]
+
+        for missed in missing_inputs:
+            assert missed in self.inputs[kwargs['color']], "unexpected missing input"
+            for node in self.graph.successors(missed):
+                for inp in node.inputs:
+                    args[0].pop(inp, None)
+
         assert self.graphkit is not None, "call compile first"
         color = kwargs.get('color', None)
         assert color is not None
