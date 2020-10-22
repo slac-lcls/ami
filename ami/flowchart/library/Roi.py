@@ -105,7 +105,7 @@ class Roi1D(CtrlNode):
 
         if self.widget:
             self.roi = pg.LinearRegionItem((self.values['origin'], self.values['extent']),
-                                           brush=fn.mkBrush(255, 0, 0, 100))
+                                           brush=fn.mkBrush(255, 0, 0, 100), swapMode='block')
             self.roi.setBounds((0, None))
             self.widget.plot_view.addItem(self.roi)
             self.roi.sigRegionChangeFinished.connect(self.set_values)
