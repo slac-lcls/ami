@@ -498,8 +498,8 @@ class Manager(Collector):
             self.profile_comm.send_multipart(payload, copy=False)
         elif topic == "purge":
             name = dill.loads(self.node_msg_comm.recv(copy=False))
-            logger.info("Received purge request for graph (%s v%d) from %s", name, self.versions[name], node)
             if self.exists(name):
+                logger.info("Received purge request for graph (%s v%d) from %s", name, self.versions[name], node)
                 # send a null graph to workers
                 self.publish_purge(name, reply=False)
                 # delete the local graph information

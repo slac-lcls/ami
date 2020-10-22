@@ -201,6 +201,10 @@ class Worker(Node):
                         break
 
                 elif msg.mtype == MsgTypes.Datagram:
+                    missing = [k for k, v in msg.payload.items() if v is None]
+                    for k in missing:
+                        del msg.payload[k]
+
                     for name, graph in self.graphs.items():
                         try:
                             if graph:
