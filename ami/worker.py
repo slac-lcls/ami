@@ -201,6 +201,10 @@ class Worker(Node):
                         break
 
                 elif msg.mtype == MsgTypes.Datagram:
+                    if any(v is None for k, v in msg.payload.items()):
+                        logger.info("%s: throwing away event due to None", self.name)
+                        continue
+
                     for name, graph in self.graphs.items():
                         try:
                             if graph:
