@@ -175,43 +175,31 @@ class Ui_Toolbar(object):
 
         # new
         self.actionNew = QtWidgets.QAction(parent)
-        icon = QtGui.QIcon.fromTheme("document-new")
-        self.actionNew.setIcon(icon)
         self.actionNew.setIconText("New")
         self.actionNew.setObjectName("actionNew")
 
         # open
         self.actionOpen = QtWidgets.QAction(parent)
-        icon = QtGui.QIcon.fromTheme("document-open")
-        self.actionOpen.setIcon(icon)
         self.actionOpen.setIconText("Open")
         self.actionOpen.setObjectName("actionOpen")
 
         # save
         self.actionSave = QtWidgets.QAction(parent)
-        icon = QtGui.QIcon.fromTheme("document-save")
-        self.actionSave.setIcon(icon)
         self.actionSave.setIconText("Save")
         self.actionSave.setObjectName("actionSave")
 
         # save
         self.actionSaveAs = QtWidgets.QAction(parent)
-        icon = QtGui.QIcon.fromTheme("document-save")
-        self.actionSaveAs.setIcon(icon)
         self.actionSaveAs.setIconText("Save As")
         self.actionSaveAs.setObjectName("actionSaveAs")
 
         # apply
         self.actionApply = QtWidgets.QAction(parent)
-        icon = QtGui.QIcon.fromTheme("media-playback-start")
-        self.actionApply.setIcon(icon)
         self.actionApply.setIconText("Apply")
         self.actionApply.setObjectName("actionApply")
 
         # configure
         self.actionConfigure = QtWidgets.QAction(parent)
-        icon = QtGui.QIcon.fromTheme("preferences-system")
-        self.actionConfigure.setIcon(icon)
         self.actionConfigure.setIconText("Configure")
         self.actionConfigure.setObjectName("actionConfigure")
 
@@ -222,15 +210,11 @@ class Ui_Toolbar(object):
 
         # reset
         self.actionReset = QtWidgets.QAction(parent)
-        # icon = QtGui.QIcon.fromTheme("media-playback-start")
-        # self.actionApply.setIcon(icon)
         self.actionReset.setIconText("Reset")
         self.actionReset.setObjectName("actionReset")
 
         # home
         self.actionHome = QtWidgets.QAction(parent)
-        icon = QtGui.QIcon.fromTheme("go-home")
-        self.actionHome.setIcon(icon)
         self.actionHome.setIconText("Home")
         self.actionHome.setObjectName("actionHome")
 
@@ -238,8 +222,6 @@ class Ui_Toolbar(object):
 
         # pan
         self.actionPan = QtWidgets.QAction(parent)
-        # icon = QtGui.QIcon.fromTheme("")
-        # self.actionSelect.setIcon(icon)
         self.actionPan.setIconText("Pan")
         self.actionPan.setObjectName("actionPan")
         self.actionPan.setCheckable(True)
@@ -248,8 +230,6 @@ class Ui_Toolbar(object):
 
         # select
         self.actionSelect = QtWidgets.QAction(parent)
-        icon = QtGui.QIcon.fromTheme("draw-selection")
-        self.actionSelect.setIcon(icon)
         self.actionSelect.setIconText("Select")
         self.actionSelect.setObjectName("actionSelect")
         self.actionSelect.setCheckable(True)
@@ -257,8 +237,6 @@ class Ui_Toolbar(object):
 
         # comment
         self.actionComment = QtWidgets.QAction(parent)
-        # icon = QtGui.QIcon.fromTheme("")
-        # self.actionSelect.setIcon(icon)
         self.actionComment.setIconText("Comment")
         self.actionComment.setObjectName("actionComment")
         self.actionComment.setCheckable(True)

@@ -432,6 +432,8 @@ class Flowchart(Node):
             f.write(state)
             f.write('\n')
 
+        now = datetime.now().strftime('%H:%M:%S')
+        self.widget().chartWidget.statusText.append(f"[{now}] Saved graph to: {fileName}")
         self.sigFileSaved.emit(fileName)
 
     def clear(self):
