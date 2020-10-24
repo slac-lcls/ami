@@ -60,13 +60,48 @@ class BlobFinder(CtrlNode):
         return node
 
 
-class Linregress(Node):
+class Linregress0d(CtrlNode):
+
+    """
+    Collect N scalars and apply Scipy.stats.linregress
+    """
+
+    nodeName = "Linregress0d"
+    uiTemplate = [('N', 'intSpin', {'value': 2, 'min': 2})]
+
+    def __init__(self, name):
+        super().__init__(name, terminals={'X.In': {'io': 'in', 'ttype': float},
+                                          'Y.In': {'io': 'in', 'ttype': float},
+                                          'X': {'io': 'out', 'ttype': Array1d},
+                                          'Y': {'io': 'out', 'ttype': Array1d},
+                                          'Fit': {'io': 'out', 'ttype': Array1d}})
+
+    def to_operation(self, inputs, conditions={}):
+        outputs = self.output_vars()
+
+        def fit(arr):
+            arr = np.array(arr)
+            slope, intercept, r_value, p_value, stderr = stats.linregress(arr[:, 0], arr[:, 1])
+            return arr[:, 0], arr[:, 1], slope*arr[:, 0] + intercept
+
+        picked_outputs = [self.name()+"_accumulated"]
+        nodes = [gn.PickN(name=self.name()+"_picked",
+                          condition_needs=conditions, inputs=inputs, outputs=picked_outputs,
+                          N=self.values['N'], parent=self.name()),
+                 gn.Map(name=self.name()+"_operation",
+                        inputs=picked_outputs, outputs=outputs,
+                        func=fit, parent=self.name())]
+
+        return nodes
+
+
+class Linregress1d(Node):
 
     """
     Scipy.stats.linregress
     """
 
-    nodeName = "Linregress"
+    nodeName = "Linregress1d"
 
     def __init__(self, name):
         super().__init__(name, terminals={'X': {'io': 'in', 'ttype': Array1d},

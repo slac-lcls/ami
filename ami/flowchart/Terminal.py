@@ -248,7 +248,7 @@ class TerminalGraphicsItem(GraphicsObject):
         self.term = term
         GraphicsObject.__init__(self, parent)
         self.brush = fn.mkBrush(0, 0, 0)
-        self.box = QtGui.QGraphicsRectItem(0, 0, 15, 15, self)
+        self.box = QtGui.QGraphicsRectItem(0, 0, 10, 10, self)
         self.label = QtGui.QGraphicsTextItem(self.term.name(), self)
         self.label.scale(0.7, 0.7)
         self.newConnection = None
