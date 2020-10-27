@@ -74,7 +74,8 @@ class Linregress0d(CtrlNode):
                                           'Y.In': {'io': 'in', 'ttype': float},
                                           'X': {'io': 'out', 'ttype': Array1d},
                                           'Y': {'io': 'out', 'ttype': Array1d},
-                                          'Fit': {'io': 'out', 'ttype': Array1d}})
+                                          'Fit': {'io': 'out', 'ttype': Array1d},
+                                          'rvalue': {'io': 'out', 'ttype': float}})
 
     def to_operation(self, inputs, conditions={}):
         outputs = self.output_vars()
@@ -82,7 +83,7 @@ class Linregress0d(CtrlNode):
         def fit(arr):
             arr = np.array(arr)
             slope, intercept, r_value, p_value, stderr = stats.linregress(arr[:, 0], arr[:, 1])
-            return arr[:, 0], arr[:, 1], slope*arr[:, 0] + intercept
+            return arr[:, 0], arr[:, 1], slope*arr[:, 0] + intercept, r_value
 
         picked_outputs = [self.name()+"_accumulated"]
         nodes = [gn.PickN(name=self.name()+"_picked",

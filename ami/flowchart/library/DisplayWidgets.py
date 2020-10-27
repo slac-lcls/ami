@@ -375,7 +375,7 @@ class PlotWidget(pg.GraphicsLayoutWidget):
             self.plot_view.vb.setState(state['viewbox'])
 
     def configure_plot(self):
-        self.win.resize(800, 800)
+        self.win.resize(800, 1000)
         self.win.show()
 
     def cursor_hover_evt(self, evt):
