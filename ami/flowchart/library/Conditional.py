@@ -85,7 +85,7 @@ class If(CtrlNode):
     def to_operation(self, inputs, conditions={}):
         outputs = self.output_vars()
         args = []
-        expr = self.operation
+        expr = self.values['operation']
 
         # sympy doesn't like symbols name likes Sum.0.Out, need to remove dots.
         for arg in self.input_vars().values():

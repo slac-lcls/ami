@@ -104,7 +104,8 @@ class Graph():
         """
 
         assert op not in self.graph.nodes(), "Operation may only be added once %s" % op.name
-        assert op.parent not in self.children_of_global_operations, "Operation may only be added once %s" % op.name
+        if op.is_global_operation:
+            assert op.parent not in self.children_of_global_operations, "Operation may only be added once %s" % op.name
 
         for i in op.inputs:
             self.graph.add_edge(i, op)
@@ -154,8 +155,7 @@ class Graph():
         Raises:
             AssertionError: if inputs and outputs of new_node do not match existing node.
         """
-
-        if new_node.parent in self.children_of_global_operations:
+        if new_node.parent in self.children_of_global_operations and new_node.is_global_operation:
             descendants = set()
             ancestors = set()
             for child in self.children_of_global_operations[new_node.parent]:

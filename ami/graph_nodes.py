@@ -108,6 +108,7 @@ class Filter(abc.ABC):
 
         self.parent = kwargs.get('parent', None)
         self.color = ""
+        self.is_global_operation = False
 
     @abc.abstractmethod
     def to_operation(self):
