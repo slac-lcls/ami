@@ -142,6 +142,7 @@ class Flowchart(Node):
 
         if hasattr(node, 'to_operation'):
             self.deleted_nodes.append(name)
+            self.sigNodeChanged.emit(node)
         elif isinstance(node, SourceNode):
             async with ctrl.features_lock:
                 if name in ctrl.features_count:
@@ -208,8 +209,9 @@ class Flowchart(Node):
                     name = node.name()
                     node.nodeEnabled(enabled)
                     if not enabled:
-                        self.deleted_nodes.append(name)
-                        if node.viewable():
+                        if hasattr(node, 'to_operation'):
+                            self.deleted_nodes.append(name)
+                        elif node.viewable():
                             async with ctrl.features_lock:
                                 for term, in_var in node.input_vars().items():
                                     if in_var in ctrl.features_count:

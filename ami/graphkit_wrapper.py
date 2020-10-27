@@ -104,7 +104,7 @@ class Graph():
         """
 
         assert op not in self.graph.nodes(), "Operation may only be added once %s" % op.name
-        assert op.name not in self.children_of_global_operations, "Operation may only be added once %s" % op.name
+        assert op.parent not in self.children_of_global_operations, "Operation may only be added once %s" % op.name
 
         for i in op.inputs:
             self.graph.add_edge(i, op)
@@ -155,10 +155,10 @@ class Graph():
             AssertionError: if inputs and outputs of new_node do not match existing node.
         """
 
-        if new_node.name in self.children_of_global_operations:
+        if new_node.parent in self.children_of_global_operations:
             descendants = set()
             ancestors = set()
-            for child in self.children_of_global_operations[new_node.name]:
+            for child in self.children_of_global_operations[new_node.parent]:
                 if child.name == '%s_worker' % new_node.name:
                     descendants.add(child)
                     descendants.update(nx.dag.descendants(self.graph, child))
@@ -173,7 +173,7 @@ class Graph():
             for node in nodes_to_remove:
                 if node in self.expanded_global_operations:
                     self.expanded_global_operations.remove(node)
-            del self.children_of_global_operations[new_node.name]
+            del self.children_of_global_operations[new_node.parent]
         else:
             old_node = None
             for n in self.graph.nodes:
@@ -264,7 +264,7 @@ class Graph():
             inputs = node.inputs
             outputs = node.outputs
             condition_needs = node.condition_needs
-            self.children_of_global_operations[node.name] = set()
+            self.children_of_global_operations[node.parent] = set()
 
             self.graph.remove_node(node)
             NewNode = getattr(ami.graph_nodes, node.__class__.__name__)
@@ -288,7 +288,7 @@ class Graph():
                                           **extras)
                     worker_node.color = color
                     worker_node.is_global_operation = False
-                    self.children_of_global_operations[node.name].add(worker_node)
+                    self.children_of_global_operations[node.parent].add(worker_node)
                     self.outputs[color].update(worker_outputs)
                     for i in inputs:
                         self.graph.add_edge(i, worker_node)
@@ -313,7 +313,7 @@ class Graph():
                                                    num_contributors=workers_per_local_collector, **extras)
                     local_collector_node.color = color
                     local_collector_node.is_global_operation = False
-                    self.children_of_global_operations[node.name].add(local_collector_node)
+                    self.children_of_global_operations[node.parent].add(local_collector_node)
                     self.outputs[color].update(local_collector_outputs)
                     for i in worker_outputs:
                         self.graph.add_edge(i, local_collector_node)
@@ -331,7 +331,7 @@ class Graph():
                                                     outputs=outputs, reduction=node.reduction, N=N, is_expanded=True,
                                                     num_contributors=num_local_collectors, **extras)
                     global_collector_node.color = color
-                    self.children_of_global_operations[node.name].add(global_collector_node)
+                    self.children_of_global_operations[node.parent].add(global_collector_node)
                     self.expanded_global_operations.add(global_collector_node)
                     for i in local_collector_outputs:
                         self.graph.add_edge(i, global_collector_node)
