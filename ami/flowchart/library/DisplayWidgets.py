@@ -740,10 +740,10 @@ class WaveformWidget(PlotWidget):
 
         for term, name in self.terms.items():
             if name not in self.plot:
-                symbol, color = symbols_colors[i]
+                _, color = symbols_colors[i]
                 idx = f"trace.{i}"
                 i += 1
-                legend_name = self.update_legend_layout(idx, name, symbol=symbol, color=color)
+                legend_name = self.update_legend_layout(idx, name, symbol='None', color=color)
                 attrs = self.legend_editors[idx].attrs
                 self.trace_attrs[name] = attrs
                 self.plot[name] = self.plot_view.plot(y=data[name], name=legend_name,
@@ -778,10 +778,10 @@ class LineWidget(PlotWidget):
             y = data[y]
 
             if name not in self.plot:
-                symbol, color = symbols_colors[i]
+                _, color = symbols_colors[i]
                 idx = f"trace.{i}"
                 i += 1
-                legend_name = self.update_legend_layout(idx, name, symbol=symbol, color=color)
+                legend_name = self.update_legend_layout(idx, name, symbol='None', color=color)
                 attrs = self.legend_editors[idx].attrs
                 self.trace_attrs[name] = attrs
                 self.plot[name] = self.plot_view.plot(x=x, y=y,

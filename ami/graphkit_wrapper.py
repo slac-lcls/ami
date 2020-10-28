@@ -328,7 +328,8 @@ class Graph():
 
                     global_collector_node = NewNode(name=node.name+'_globalCollector',
                                                     inputs=local_collector_outputs,
-                                                    outputs=outputs, reduction=node.reduction, N=N, is_expanded=True,
+                                                    outputs=outputs, reduction=node.reduction, N=N,
+                                                    is_expanded=True,
                                                     num_contributors=num_local_collectors, **extras)
                     global_collector_node.color = color
                     self.children_of_global_operations[node.parent].add(global_collector_node)

@@ -105,7 +105,7 @@ class Roi1D(CtrlNode):
 
         if self.widget:
             self.roi = pg.LinearRegionItem((self.values['origin'], self.values['extent']),
-                                           brush=fn.mkBrush(255, 0, 0, 100), swapMode='block')
+                                           brush=fn.mkBrush(255, 0, 0, 100), swapMode='None')
             self.roi.setBounds((0, None))
             self.widget.plot_view.addItem(self.roi)
             self.roi.sigRegionChangeFinished.connect(self.set_values)
@@ -136,9 +136,10 @@ class Roi1D(CtrlNode):
 
         origin = self.values['origin']
         extent = self.values['extent']
+        size = list(sorted([origin, extent]))
 
         def func(arr):
-            return arr[slice(origin, extent)]
+            return arr[slice(*size)]
 
         node = gn.Map(name=self.name()+"_operation",
                       condition_needs=conditions, inputs=inputs, outputs=outputs,
