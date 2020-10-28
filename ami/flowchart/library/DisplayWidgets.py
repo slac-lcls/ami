@@ -149,7 +149,7 @@ class PlotWidget(pg.GraphicsLayoutWidget):
         if uiTemplate is None:
             uiTemplate = [('Title', 'text'),
                           ('Show Grid', 'check', {'checked': True}),
-                          ('Auto Range', 'check', {'checked': True}),
+                          # ('Auto Range', 'check', {'checked': True}),
                           # x axis
                           ('Label', 'text', {'group': 'X Axis'}),
                           ('Log Scale', 'check', {'group': 'X Axis', 'checked': False}),
@@ -294,12 +294,12 @@ class PlotWidget(pg.GraphicsLayoutWidget):
         show_grid = self.plot_attrs.get('Show Grid', True)
         self.plot_view.showGrid(x=show_grid, y=show_grid, alpha=1.0)
 
-        if "Auto Range" in self.plot_attrs:
-            auto_range = self.plot_attrs["Auto Range"]
-            if auto_range:
-                self.plot_view.vb.enableAutoRange()
-            else:
-                self.plot_view.vb.disableAutoRange()
+        # if "Auto Range" in self.plot_attrs:
+        #     auto_range = self.plot_attrs["Auto Range"]
+        #     if auto_range:
+        #         self.plot_view.vb.enableAutoRange()
+        #     else:
+        #         self.plot_view.vb.disableAutoRange()
 
         if 'Legend' in self.ctrls:
             self.legend.clear()
