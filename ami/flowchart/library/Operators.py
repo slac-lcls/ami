@@ -1,10 +1,31 @@
 from typing import Union, Any
 from amitypes import Array1d, Array2d, Array3d
-from ami.flowchart.library.common import CtrlNode
+from ami.flowchart.library.common import CtrlNode, GroupedNode
 from ami.flowchart.library.CalculatorWidget import CalculatorWidget
 import ami.graph_nodes as gn
 import numpy as np
 import itertools
+
+
+class Identity(GroupedNode):
+
+    """
+    Identity
+    """
+
+    nodeName = "Identity"
+
+    def __init__(self, name):
+        super().__init__(name, terminals={"In": {'io': 'in', 'ttype': Any},
+                                          "Out": {'io': 'out', 'ttype': Any}},
+                         allowAddInput=True)
+
+    def to_operation(self, inputs, conditions={}):
+        outputs = self.output_vars()
+
+        node = gn.Map(name=self.name()+"_operation", inputs=inputs, outputs=outputs,
+                      condition_needs=conditions, func=lambda *args: args, parent=self.name())
+        return node
 
 
 class MeanVsScan(CtrlNode):
