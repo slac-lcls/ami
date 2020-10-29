@@ -90,6 +90,7 @@ class If(CtrlNode):
         # sympy doesn't like symbols name likes Sum.0.Out, need to remove dots.
         for arg in self.input_vars().values():
             rarg = arg.replace('.', '')
+            rarg = rarg.replace(':', '')
             args.append(rarg)
             expr = expr.replace(arg, rarg)
 
