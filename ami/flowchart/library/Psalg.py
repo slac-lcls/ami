@@ -336,7 +336,6 @@ try:
             actions = self.menu.actions()
             addInput = actions[2]
 
-            self.menu.removeAction(addInput)
             self.output_group = QtWidgets.QActionGroup(self.menu)
 
             for attr in peak_attrs:
