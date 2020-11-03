@@ -148,6 +148,12 @@ def build_parser():
         help='data source configuration (exampes: static://test.json, psana://exp=xcsdaq13:run=14)'
     )
 
+    parser.add_argument(
+        '--prometheus-dir',
+        help='directory for prometheus configuration',
+        default=None
+    )
+
     return parser
 
 
@@ -253,7 +259,7 @@ def run_ami(args, queue=None):
                 name='worker%03d-n0' % i,
                 target=functools.partial(_sys_exit, run_worker),
                 args=(i, args.num_workers, args.heartbeat, src_cfg,
-                      collector_addr, graph_addr, msg_addr, export_addr, flags)
+                      collector_addr, graph_addr, msg_addr, export_addr, flags, args.prometheus_dir)
             )
             proc.daemon = True
             proc.start()
@@ -262,7 +268,7 @@ def run_ami(args, queue=None):
         collector_proc = mp.Process(
             name='nodecol-n0',
             target=functools.partial(_sys_exit, run_node_collector),
-            args=(0, args.num_workers, collector_addr, globalcol_addr, graph_addr, msg_addr)
+            args=(0, args.num_workers, collector_addr, globalcol_addr, graph_addr, msg_addr, args.prometheus_dir)
         )
         collector_proc.daemon = True
         collector_proc.start()
@@ -271,7 +277,7 @@ def run_ami(args, queue=None):
         globalcol_proc = mp.Process(
             name='globalcol',
             target=functools.partial(_sys_exit, run_global_collector),
-            args=(0, 1, globalcol_addr, results_addr, graph_addr, msg_addr)
+            args=(0, 1, globalcol_addr, results_addr, graph_addr, msg_addr, args.prometheus_dir)
         )
         globalcol_proc.daemon = True
         globalcol_proc.start()

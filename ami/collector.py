@@ -11,8 +11,9 @@ logger = logging.getLogger(__name__)
 
 
 class GraphCollector(Node, Collector):
-    def __init__(self, node, base_name, num_workers, color, collector_addr, downstream_addr, graph_addr, msg_addr):
-        Node.__init__(self, node, graph_addr, msg_addr)
+    def __init__(self, node, base_name, num_workers, color, collector_addr, downstream_addr, graph_addr,
+                 msg_addr, prometheus_dir):
+        Node.__init__(self, node, graph_addr, msg_addr, prometheus_dir=prometheus_dir)
         Collector.__init__(self, collector_addr, ctx=self.ctx)
         self.base_name = base_name
         self.num_workers = num_workers
@@ -113,7 +114,8 @@ class GraphCollector(Node, Collector):
             self.event_counter.labels('Heartbeat', self.name).inc()
 
 
-def run_collector(node_num, base_name, num_contribs, color, collector_addr, upstream_addr, graph_addr, msg_addr):
+def run_collector(node_num, base_name, num_contribs, color, collector_addr, upstream_addr, graph_addr, msg_addr,
+                  prometheus_dir):
     logger.info('Starting collector on node # %d', node_num)
     with GraphCollector(
             node_num,
@@ -123,12 +125,14 @@ def run_collector(node_num, base_name, num_contribs, color, collector_addr, upst
             collector_addr,
             upstream_addr,
             graph_addr,
-            msg_addr) as collector:
+            msg_addr,
+            prometheus_dir) as collector:
         collector.start_prometheus()
         return collector.run()
 
 
-def run_node_collector(node_num, num_contribs, collector_addr, upstream_addr, graph_addr, msg_addr):
+def run_node_collector(node_num, num_contribs, collector_addr, upstream_addr, graph_addr, msg_addr,
+                       prometheus_dir):
     return run_collector(node_num,
                          "localCollector%03d",
                          num_contribs,
@@ -136,10 +140,12 @@ def run_node_collector(node_num, num_contribs, collector_addr, upstream_addr, gr
                          collector_addr,
                          upstream_addr,
                          graph_addr,
-                         msg_addr)
+                         msg_addr,
+                         prometheus_dir)
 
 
-def run_global_collector(node_num, num_contribs, collector_addr, upstream_addr, graph_addr, msg_addr):
+def run_global_collector(node_num, num_contribs, collector_addr, upstream_addr, graph_addr, msg_addr,
+                         prometheus_dir):
     return run_collector(node_num,
                          "globalCollector%03d",
                          num_contribs,
@@ -147,7 +153,8 @@ def run_global_collector(node_num, num_contribs, collector_addr, upstream_addr, 
                          collector_addr,
                          upstream_addr,
                          graph_addr,
-                         msg_addr)
+                         msg_addr,
+                         prometheus_dir)
 
 
 def main(color, upstream_port, downstream_port):
@@ -219,6 +226,12 @@ def main(color, upstream_port, downstream_port):
         help='an optional file to write the log output to'
     )
 
+    parser.add_argument(
+        '--prometheus-dir',
+        help='directory for prometheus configuration',
+        default=None
+    )
+
     args = parser.parse_args()
     collector_addr = "tcp://*:%d" % (args.collector)
     downstream_addr = "tcp://%s:%d" % (args.host, args.downstream)
@@ -238,14 +251,16 @@ def main(color, upstream_port, downstream_port):
                                       collector_addr,
                                       downstream_addr,
                                       graph_addr,
-                                      msg_addr)
+                                      msg_addr,
+                                      args.prometheus_dir)
         elif color == Colors.GlobalCollector:
             return run_global_collector(args.node_num,
                                         args.num_contribs,
                                         collector_addr,
                                         downstream_addr,
                                         graph_addr,
-                                        msg_addr)
+                                        msg_addr,
+                                        args.prometheus_dir)
         else:
             logger.critical("Invalid option collector color '%s' chosen!", color)
             return 1

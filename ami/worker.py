@@ -17,14 +17,14 @@ logger = logging.getLogger(__name__)
 
 
 class Worker(Node):
-    def __init__(self, node, src, collector_addr, graph_addr, msg_addr, export_addr):
+    def __init__(self, node, src, collector_addr, graph_addr, msg_addr, export_addr, prometheus_dir):
         """
         node : int
             a unique integer identifying this worker
         src : object
             object with an events() method that is an iterable (like psana.DataSource)
         """
-        super(__class__, self).__init__(node, graph_addr, msg_addr, export_addr)
+        super(__class__, self).__init__(node, graph_addr, msg_addr, export_addr, prometheus_dir=prometheus_dir)
 
         self.src = src
         self.pending_src = False
@@ -262,7 +262,8 @@ class Worker(Node):
                 self.update_sources(**self.source_args)
 
 
-def run_worker(num, num_workers, hb_period, source, collector_addr, graph_addr, msg_addr, export_addr, flags=None):
+def run_worker(num, num_workers, hb_period, source, collector_addr, graph_addr, msg_addr, export_addr,
+               flags=None, prometheus_dir=None):
 
     logger.info('Starting worker # %d, sending to collector at %s', num, collector_addr)
 
@@ -299,7 +300,7 @@ def run_worker(num, num_workers, hb_period, source, collector_addr, graph_addr, 
             logger.critical("worker%03d: unknown data source type: %s", num, source[0])
             return 1
 
-    with Worker(num, src, collector_addr, graph_addr, msg_addr, export_addr) as worker:
+    with Worker(num, src, collector_addr, graph_addr, msg_addr, export_addr, prometheus_dir) as worker:
         return worker.run()
 
 
@@ -389,6 +390,12 @@ def main():
     )
 
     parser.add_argument(
+        '--prometheus-dir',
+        help='directory for prometheus configuration',
+        default=None
+    )
+
+    parser.add_argument(
         'source',
         nargs='?',
         metavar='SOURCE',
@@ -434,7 +441,8 @@ def main():
                           graph_addr,
                           msg_addr,
                           export_addr,
-                          flags)
+                          flags,
+                          args.prometheus_dir)
     except KeyboardInterrupt:
         logger.info("Worker killed by user...")
         return 0

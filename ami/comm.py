@@ -1,9 +1,11 @@
 import abc
+import socket
 import os
 import sys
 import time
 import zmq
 import dill
+import json
 import asyncio
 import logging
 import functools
@@ -672,7 +674,7 @@ class Node(abc.ABC):
             passed it creates one.
     """
 
-    def __init__(self, node, graph_addr, msg_addr, export_addr=None, ctx=None):
+    def __init__(self, node, graph_addr, msg_addr, export_addr=None, ctx=None, prometheus_dir=None):
         self.node = node
         if ctx is None:
             self.ctx = zmq.Context()
@@ -700,6 +702,8 @@ class Node(abc.ABC):
         self.node_msg_comm = self.ctx.socket(zmq.PUSH)
         self.node_msg_comm.connect(msg_addr)
         self.serializer = Serializer()
+
+        self.prometheus_dir = prometheus_dir
 
     @property
     @abc.abstractmethod
@@ -836,6 +840,13 @@ class Node(abc.ABC):
                 break
             except OSError:
                 port += 1
+
+        if self.prometheus_dir:
+            pth = f"drpami_{socket.gethostname()}_{self.name}.json"
+            pth = os.path.join(self.prometheus_dir, pth)
+            conf = [{"targets": [f"{socket.gethostname()}:{port}"]}]
+            with open(pth, 'w') as f:
+                json.dump(conf, f)
 
         logger.info("%s: Started Prometheus client on port: %d", self.name, port)
         return port
