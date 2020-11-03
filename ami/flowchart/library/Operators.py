@@ -301,6 +301,7 @@ try:
             for arg in self.input_vars().values():
                 rarg = arg.replace('.', '')
                 rarg = rarg.replace(':', '')
+                rarg = rarg.replace(' ', '')
                 args.append(rarg)
                 expr = expr.replace(arg, rarg)
 

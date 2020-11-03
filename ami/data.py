@@ -678,6 +678,8 @@ class PsanaSource(HierarchicalDataSource):
     @property
     def ds(self):
         ps_kwargs = {k: self.config[k] for k in self.ds_keys if k in self.config}
+        if 'files' in ps_kwargs and type(ps_kwargs['files']) is list:
+            ps_kwargs['files'] = ps_kwargs['files'][0]
         return psana.DataSource(**ps_kwargs)
 
     @property

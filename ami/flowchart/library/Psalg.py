@@ -167,6 +167,53 @@ try:
 
             return node
 
+    import psana.hexanode.HitFinder as psfHitFinder
+
+    class HitFinder(CtrlNode):
+
+        """
+        HitFinder
+        """
+
+        nodeName = "HitFinder"
+        uiTemplate = [('runtime_u', 'doubleSpin'),
+                      ('runtime_v', 'doubleSpin'),
+                      ('tsum_avg_u', 'doubleSpin'),
+                      ('tsum_hw_u', 'doubleSpin'),
+                      ('tsum_avg_v', 'doubleSpin'),
+                      ('tsum_hw_v', 'doubleSpin'),
+                      ('f_u', 'doubleSpin'),
+                      ('f_v', 'doubleSpin'),
+                      ('Rmax', 'doubleSpin')]
+
+        def __init__(self, name):
+            super().__init__(name, terminals={'Num of Hits': {'io': 'in', 'ttype': Array1d},
+                                              'Peak Times': {'io': 'in', 'ttype': Array2d},
+                                              'X': {'io': 'out', 'ttype': Array1d},
+                                              'Y': {'io': 'out', 'ttype': Array1d},
+                                              'T': {'io': 'out', 'ttype': Array1d}})
+
+        def to_operation(self, inputs, conditions={}):
+            outputs = self.output_vars()
+
+            HF = psfHitFinder.HitFinder(self.values)
+
+            def func(nhits, pktsec):
+                HF.FindHits(pktsec[4, :nhits[4]],
+                            pktsec[0, :nhits[0]],
+                            pktsec[1, :nhits[1]],
+                            pktsec[2, :nhits[2]],
+                            pktsec[3, :nhits[3]])
+                return HF.GetXYT()
+
+            node = gn.Map(name=self.name()+"_operation",
+                          condition_needs=conditions,
+                          inputs=inputs, outputs=outputs,
+                          func=func,
+                          parent=self.name())
+
+            return node
+
 except ImportError as e:
     print(e)
 
