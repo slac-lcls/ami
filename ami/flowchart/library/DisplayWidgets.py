@@ -1,7 +1,6 @@
 import zmq
 import logging
 import asyncio
-import zmq.asyncio
 import datetime as dt
 import itertools as it
 import numpy as np
@@ -21,18 +20,29 @@ symbols = ['o', 's', 't', 'd', '+']
 symbols_colors = list(it.product(symbols, colors))
 
 
-class AsyncFetcher(object):
+class AsyncFetcher(QtCore.QThread):
 
-    def __init__(self, topics, terms, addr):
+    sig = QtCore.Signal()
+
+    def __init__(self, topics, terms, addr, parent=None):
+        super(__class__, self).__init__(parent)
         self.addr = addr
-        self.ctx = zmq.asyncio.Context()
-        self.poller = zmq.asyncio.Poller()
+        self.running = True
+        self.ctx = zmq.Context()
+        self.poller = zmq.Poller()
         self.sockets = {}
         self.data = {}
         self.timestamps = {}
         self.last_updated = "Last Updated: None"
         self.deserializer = Deserializer()
         self.update_topics(topics, terms)
+        self.recv_interrupt = self.ctx.socket(zmq.REP)
+        self.recv_interrupt.bind("inproc://fetcher_interrupt")
+        self.poller.register(self.recv_interrupt)
+        self.send_interrupt = self.ctx.socket(zmq.REQ)
+        self.send_interrupt.connect("inproc://fetcher_interrupt")
+        if parent is not None:
+            self.sig.connect(parent.update)
 
     @property
     def reply(self):
@@ -79,20 +89,30 @@ class AsyncFetcher(object):
                 sock, count = self.sockets[name]
                 self.sockets[name] = (sock, count+1)
 
-    async def fetch(self):
-        for sock, flag in await self.poller.poll():
-            if flag != zmq.POLLIN:
-                continue
-            topic = await sock.recv_string()
-            heartbeat = await sock.recv_pyobj()
-            reply = await sock.recv_serialized(self.deserializer, copy=False)
-            self.data[self.view_subs[topic]] = reply
-            self.timestamps[self.view_subs[topic]] = heartbeat
+    def run(self):
+        while self.running:
+            for sock, flag in self.poller.poll():
+                if flag != zmq.POLLIN:
+                    continue
+                if sock == self.recv_interrupt and sock.recv_pyobj():
+                    break
+                topic = sock.recv_string()
+                heartbeat = sock.recv_pyobj()
+                reply = sock.recv_serialized(self.deserializer, copy=False)
+                self.data[self.view_subs[topic]] = reply
+                self.timestamps[self.view_subs[topic]] = heartbeat
+            if self.reply:
+                self.sig.emit()
 
     def close(self):
+        self.running = False
+        # signal asyncfetcher thread to die then wait
+        self.send_interrupt.send_pyobj(True)
+        self.wait()
         for name, sock_count in self.sockets.items():
             sock, count = sock_count
             self.poller.unregister(sock)
+            self.poller.unregister(self.recv_interrupt)
             sock.close()
 
         self.ctx.destroy()
@@ -107,7 +127,8 @@ class PlotWidget(pg.GraphicsLayoutWidget):
 
         self.fetcher = None
         if addr:
-            self.fetcher = AsyncFetcher(topics, terms, addr)
+            self.fetcher = AsyncFetcher(topics, terms, addr, parent=self)
+            self.fetcher.start()
 
         self.plot_view = self.addPlot()
         if self.node:
@@ -389,13 +410,12 @@ class PlotWidget(pg.GraphicsLayoutWidget):
     def data_updated(self, data):
         pass
 
-    async def update(self):
-        while True:
-            await self.fetcher.fetch()
-            if self.fetcher.reply:
-                self.last_updated.setText(self.fetcher.last_updated)
-                self.last_updated.item.moveBy(13, -5)
-                self.data_updated(self.fetcher.reply)
+    @QtCore.pyqtSlot()
+    def update(self):
+        if self.fetcher.reply:
+            self.last_updated.setText(self.fetcher.last_updated)
+            self.last_updated.item.moveBy(13, -5)
+            self.data_updated(self.fetcher.reply)
 
     def close(self):
         if self.fetcher:

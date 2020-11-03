@@ -17,7 +17,6 @@ class CtrlNode(Node):
     def __init__(self, name, ui=None, terminals={}, **kwargs):
         super().__init__(name=name, terminals=terminals, **kwargs)
         self.widget = None
-        self.task = None
         self.geometry = None
 
         if ui is None:
@@ -90,10 +89,6 @@ class CtrlNode(Node):
     def close(self):
         super().close()
 
-        if self.task:
-            self.task.cancel()
-            self.task = None
-
         if self.widget:
             self.widget.close()
 
@@ -103,9 +98,6 @@ class CtrlNode(Node):
 
         if self.widget is None and widget:
             self.widget = widget(topics, terms, addr, parent=win, node=self, **kwargs)
-
-        if self.task is None and self.widget and addr:
-            self.task = asyncio.ensure_future(self.widget.update())
 
         return self.widget
 
