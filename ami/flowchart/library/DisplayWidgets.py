@@ -743,7 +743,7 @@ class WaveformWidget(PlotWidget):
                 _, color = symbols_colors[i]
                 idx = f"trace.{i}"
                 i += 1
-                legend_name = self.update_legend_layout(idx, name, symbol='None', color=color)
+                legend_name = self.update_legend_layout(idx, name, symbol='None', line_color=color)
                 attrs = self.legend_editors[idx].attrs
                 self.trace_attrs[name] = attrs
                 self.plot[name] = self.plot_view.plot(y=data[name], name=legend_name,

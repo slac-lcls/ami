@@ -28,7 +28,7 @@ class TraceEditor(QtWidgets.QWidget):
                 ('Brush', 'color', {'value': kwargs.get('color', (0, 0, 255)), 'group': 'Point'}),
                 ('Size', 'intSpin', {'min': 1, 'value': 14, 'group': 'Point'}),
                 # Line
-                ('color', 'color', {'group': 'Line'}),
+                ('color', 'color', {'group': 'Line', 'value': kwargs.get('line_color', (255, 255, 255))}),
                 ('width', 'intSpin', {'min': 1, 'value': 1, 'group': 'Line'}),
                 ('style', 'combo',
                  {'values': line_styles.keys(), 'value': kwargs.get('style', 'Solid'), 'group': 'Line'})]
