@@ -4,60 +4,75 @@ from ami.flowchart.library.common import CtrlNode
 from amitypes import Array1d, Array2d
 import ami.graph_nodes as gn
 import numpy as np
-import scipy.ndimage.measurements as smt
 import scipy.stats as stats
 
 
-class BlobFinder(CtrlNode):
+try:
+    from psana.peakFinder import blobfinder
 
-    """
-    Find blobs in an image.
-    """
+    class BlobFinder1D(CtrlNode):
 
-    nodeName = "BlobFinder"
-    uiTemplate = [('threshold', 'doubleSpin', {'value': 10, 'min': 0.01}),
-                  ('min sum', 'doubleSpin', {'value': 1, 'min': 0.01})]
+        """
+        Find blobs in a waveform.
+        """
 
-    def __init__(self, name):
-        super().__init__(name, terminals={
-            'In': {'io': 'in', 'ttype': Array2d},
-            'NBlobs': {'io': 'out', 'ttype': int},
-            'X': {'io': 'out', 'ttype': Array1d},
-            'Y': {'io': 'out', 'ttype': Array1d},
-            'Sum': {'io': 'out', 'ttype': Array1d}
-        })
+        nodeName = "BlobFinder1D"
+        uiTemplate = [('threshold', 'doubleSpin'),
+                      ('min sum', 'doubleSpin')]
 
-    def to_operation(self, inputs, conditions={}):
-        outputs = self.output_vars()
+        def __init__(self, name):
+            super().__init__(name, terminals={
+                'In': {'io': 'in', 'ttype': Array1d},
+                'NBlobs': {'io': 'out', 'ttype': int},
+                'X': {'io': 'out', 'ttype': Array1d},
+                'Sum': {'io': 'out', 'ttype': Array1d}
+            })
 
-        threshold = self.values['threshold']
-        min_sum = self.values['min sum']
+        def to_operation(self, inputs, conditions={}):
+            outputs = self.output_vars()
 
-        def find_blobs(img):
-            blobs, nblobs = smt.label(img > threshold)
-            if nblobs > 0:
-                index = np.arange(1, nblobs+1)
-                adu_sum = smt.sum(img, blobs, index)
-                x, y = zip(*smt.center_of_mass(img, blobs, index))
-                x = np.array(x, dtype=np.float32)
-                y = np.array(y, dtype=np.float32)
-                ind, = np.where(adu_sum > min_sum)
-                nblobs = ind.size
-                adu_sum = adu_sum[ind]
-                x = x[ind]
-                y = y[ind]
-            else:
-                nblobs = 0
-                x = np.zeros(0, dtype=np.float32)
-                y = np.zeros(0, dtype=np.float32)
-                adu_sum = np.zeros(0, dtype=np.float32)
-            return nblobs, x, y, adu_sum
+            threshold = self.values['threshold']
+            min_sum = self.values['min sum']
 
-        node = gn.Map(name=self.name()+"_operation",
-                      condition_needs=conditions, inputs=inputs, outputs=outputs,
-                      func=find_blobs,
-                      parent=self.name())
-        return node
+            node = gn.Map(name=self.name()+"_operation",
+                          condition_needs=conditions, inputs=inputs, outputs=outputs,
+                          func=lambda arr: blobfinder.find_blobs_1d(arr, threshold, min_sum),
+                          parent=self.name())
+            return node
+
+    class BlobFinder2D(CtrlNode):
+
+        """
+        Find blobs in an image.
+        """
+
+        nodeName = "BlobFinder2D"
+        uiTemplate = [('threshold', 'doubleSpin'),
+                      ('min sum', 'doubleSpin')]
+
+        def __init__(self, name):
+            super().__init__(name, terminals={
+                'In': {'io': 'in', 'ttype': Array2d},
+                'NBlobs': {'io': 'out', 'ttype': int},
+                'X': {'io': 'out', 'ttype': Array1d},
+                'Y': {'io': 'out', 'ttype': Array1d},
+                'Sum': {'io': 'out', 'ttype': Array1d}
+            })
+
+        def to_operation(self, inputs, conditions={}):
+            outputs = self.output_vars()
+
+            threshold = self.values['threshold']
+            min_sum = self.values['min sum']
+
+            node = gn.Map(name=self.name()+"_operation",
+                          condition_needs=conditions, inputs=inputs, outputs=outputs,
+                          func=lambda arr: blobfinder.find_blobs_2d(arr, threshold, min_sum),
+                          parent=self.name())
+            return node
+
+except ImportError as e:
+    print(e)
 
 
 class Linregress0d(CtrlNode):
