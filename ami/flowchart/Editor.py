@@ -19,6 +19,8 @@ class LibraryEditor(QtWidgets.QWidget):
     def __init__(self, ctrlWidget, library):
         super().__init__()
 
+        self.setWindowTitle("Manage Library")
+
         self.modules = {}  # {mod : [nodes]}
         self.paths = set()
 
