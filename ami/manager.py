@@ -7,6 +7,9 @@ import dill
 import logging
 import collections
 import argparse
+import json
+import socket
+import prometheus_client as pc
 from ami import LogConfig
 from ami.comm import Ports, AutoExport, Collector, Store
 from ami.data import MsgTypes, Transitions, Serializer, Deserializer
@@ -35,7 +38,8 @@ class Manager(Collector):
                  info_addr,
                  export_addr,
                  view_addr,
-                 profile_addr):
+                 profile_addr,
+                 prometheus_dir):
         """
         protocol right now only tells you how to communicate with workers
         """
@@ -89,6 +93,8 @@ class Manager(Collector):
         self.view_comm.setsockopt(zmq.XPUB_VERBOSE, True)
         self.view_comm.bind(view_addr)
         self.register(self.view_comm, self.view_request)
+
+        self.prometheus_dir = prometheus_dir
 
     def __enter__(self):
         return self
@@ -606,6 +612,25 @@ class Manager(Collector):
         self.export.send_string(name, zmq.SNDMORE)
         self.export.send_pyobj(self.heartbeats[name])
 
+    def start_prometheus(self):
+        port = Ports.Prometheus
+        while True:
+            try:
+                pc.start_http_server(port)
+                break
+            except OSError:
+                port += 1
+
+        if self.prometheus_dir:
+            pth = f"drpami_{socket.gethostname()}_{self.name}.json"
+            pth = os.path.join(self.prometheus_dir, pth)
+            conf = [{"targets": [f"{socket.gethostname()}:{port}"]}]
+            with open(pth, 'w') as f:
+                json.dump(conf, f)
+
+        logger.info("%s: Started Prometheus client on port: %d", self.name, port)
+        return port
+
 
 def run_manager(num_workers,
                 num_nodes,
@@ -616,7 +641,8 @@ def run_manager(num_workers,
                 info_addr,
                 export_addr,
                 view_addr,
-                profile_addr):
+                profile_addr,
+                prometheus_dir):
     logger.info('Starting manager, controlling %d workers on %d nodes', num_workers, num_nodes)
     with Manager(
             num_workers,
@@ -628,7 +654,9 @@ def run_manager(num_workers,
             info_addr,
             export_addr,
             view_addr,
-            profile_addr) as manager:
+            profile_addr,
+            prometheus_dir) as manager:
+        manager.start_prometheus()
         return manager.run()
 
 
@@ -731,6 +759,12 @@ def main():
                         default=Ports.Profile,
                         help='port for profiling inforation communication (default: %d)' % Ports.Profile)
 
+    parser.add_argument(
+        '--prometheus-dir',
+        help='directory for prometheus configuration',
+        default=None
+    )
+
     args = parser.parse_args()
 
     results_addr = "tcp://%s:%d" % (args.host, args.results)
@@ -758,7 +792,8 @@ def main():
                            info_addr,
                            export_addr,
                            view_addr,
-                           profile_addr)
+                           profile_addr,
+                           args.prometheus_dir)
     except KeyboardInterrupt:
         logger.info("Manager killed by user...")
         return 0

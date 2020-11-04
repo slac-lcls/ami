@@ -286,8 +286,8 @@ def run_ami(args, queue=None):
         manager_proc = mp.Process(
             name='manager',
             target=functools.partial(_sys_exit, run_manager),
-            args=(args.num_workers, 1, results_addr, graph_addr, comm_addr, msg_addr, info_addr, export_addr, view_addr,
-                  profile_addr)
+            args=(args.num_workers, 1, results_addr, graph_addr, comm_addr, msg_addr, info_addr, export_addr,
+                  view_addr, profile_addr, args.prometheus_dir)
         )
         manager_proc.daemon = True
         manager_proc.start()
