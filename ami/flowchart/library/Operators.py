@@ -264,6 +264,11 @@ try:
             if self.func is None:
                 self.func = sympy.lambdify(**self.params, modules=["numpy", "scipy"])
 
+            args = list(args)
+            for idx, arg in enumerate(args):
+                if type(arg) is np.ndarray:
+                    args[idx] = arg.astype(np.float64, copy=False)
+
             return self.func(*args, **kwargs)
 
     class Calculator(CtrlNode):

@@ -13,7 +13,11 @@ class PythonEditorWidget(QtWidgets.QWidget):
 
         self.inputs = inputs
         self.outputs = outputs
-        self.editor = PyCodeEdit(server_script=server.__file__, parent=self)
+        try:
+            self.editor = PyCodeEdit(server_script=server.__file__, parent=self)
+        except Exception as e:
+            print(e)
+            self.editor = QtWidgets.QPlainTextEdit(parent=self)
 
         if text:
             self.editor.setPlainText(text)
