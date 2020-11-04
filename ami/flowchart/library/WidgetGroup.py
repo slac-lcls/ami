@@ -420,6 +420,8 @@ def generateUi(opts):
                 w.setMinimum(-MAX)
             if 'value' in o:
                 w.setValue(o['value'])
+            else:
+                val = 0
         elif t == 'doubleSpin':
             w = ScientificDoubleSpinBox(parent=parent)
             if 'max' in o:
@@ -428,6 +430,8 @@ def generateUi(opts):
                 w.setMinimum(o['min'])
             if 'value' in o:
                 w.setValue(o['value'])
+            else:
+                val = 0.0
         elif t == 'spin':
             w = SpinBox(parent=widget)
             w.setOpts(**o)

@@ -396,6 +396,12 @@ def main():
     )
 
     parser.add_argument(
+        '--hutch',
+        help='hutch for prometheus label',
+        default=None
+    )
+
+    parser.add_argument(
         'source',
         nargs='?',
         metavar='SOURCE',
@@ -442,7 +448,8 @@ def main():
                           msg_addr,
                           export_addr,
                           flags,
-                          args.prometheus_dir)
+                          args.prometheus_dir,
+                          args.hutch)
     except KeyboardInterrupt:
         logger.info("Worker killed by user...")
         return 0

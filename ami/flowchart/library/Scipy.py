@@ -5,6 +5,7 @@ from amitypes import Array1d, Array2d
 import ami.graph_nodes as gn
 import numpy as np
 import scipy.stats as stats
+import scipy.ndimage as ndimage
 
 
 try:
@@ -205,3 +206,36 @@ try:
 
 except ImportError as e:
     print(e)
+
+
+class GaussianFilter1D(CtrlNode):
+
+    """
+    Scipy Gaussian Filter 1D
+    """
+
+    nodeName = "GaussianFilter1D"
+
+    uiTemplate = [('sigma', 'doubleSpin'),
+                  ('axis', 'intSpin', {'value': -1, 'min': -1, 'max': 1}),
+                  ('order', 'intSpin'),
+                  ('mode', 'combo', {'value': 'reflect',
+                                     'values': ['reflect', 'constant', 'nearest', 'mirror', 'wrap']}),
+                  ('cval', 'doubleSpin'),
+                  ('truncate', 'doubleSpin', {'value': 4.0})]
+
+    def __init__(self, name):
+        super().__init__(name, terminals={'In': {'io': 'in', 'ttype': Array1d},
+                                          'Out': {'io': 'out', 'ttype': Array1d}})
+
+    def to_operation(self, inputs, conditions={}):
+        outputs = self.output_vars()
+        args = dict(self.values)
+
+        node = gn.Map(name=self.name()+"_operation",
+                      condition_needs=conditions,
+                      inputs=inputs, outputs=outputs,
+                      func=lambda arr: ndimage.gaussian_filter1d(arr, **args),
+                      parent=self.name())
+
+        return node
