@@ -29,7 +29,15 @@ class PythonEditorWidget(QtWidgets.QWidget):
         self.layout.addWidget(self.editor, 0, 0, -1, -1)
 
     def generate_template(self):
-        args = ', '.join([v.replace('.', '') for k, v in self.inputs.items()])
+        args = []
+
+        for arg in self.inputs.values():
+            rarg = arg.replace('.', '_')
+            rarg = rarg.replace(':', '_')
+            rarg = rarg.replace(' ', '_')
+            args.append(rarg)
+
+        args = ', '.join(args)
         template = f"""
 
 # entry point must be called func
