@@ -202,7 +202,7 @@ class Worker(Node):
 
                 elif msg.mtype == MsgTypes.Datagram:
                     if any(v is None for k, v in msg.payload.items()):
-                        logger.info("%s: throwing away event due to None", self.name)
+                        event_counter.labels(self.hutch, 'Skipped', self.name).inc()
                         continue
 
                     for name, graph in self.graphs.items():
