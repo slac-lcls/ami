@@ -12,9 +12,9 @@ logger = logging.getLogger(__name__)
 
 class GraphCollector(Node, Collector):
     def __init__(self, node, base_name, num_workers, color, collector_addr, downstream_addr, graph_addr,
-                 msg_addr, prometheus_dir):
-        Node.__init__(self, node, graph_addr, msg_addr, prometheus_dir=prometheus_dir)
-        Collector.__init__(self, collector_addr, ctx=self.ctx)
+                 msg_addr, prometheus_dir, hutch):
+        Node.__init__(self, node, graph_addr, msg_addr, prometheus_dir=prometheus_dir, hutch=hutch)
+        Collector.__init__(self, collector_addr, ctx=self.ctx, hutch=hutch)
         self.base_name = base_name
         self.num_workers = num_workers
         self.transitions = TransitionBuilder(self.num_workers, downstream_addr, self.ctx)
@@ -91,7 +91,7 @@ class GraphCollector(Node, Collector):
                 elif msg.payload.ttype == Transitions.Unconfigure:
                     self.flush(False)
 
-            self.event_counter.labels('Transition', self.name).inc()
+            self.event_counter.labels(self.hutch, 'Transition', self.name).inc()
         elif msg.mtype == MsgTypes.Datagram:
             self.store.update(msg.name, msg.heartbeat, self.eb_id(msg.identity), msg.version, msg.payload)
             if self.store.ready(msg.name, msg.heartbeat):
@@ -111,11 +111,12 @@ class GraphCollector(Node, Collector):
                 # prune older entries from the event builder
                 self.store.prune(msg.name, self.node)
 
-            self.event_counter.labels('Heartbeat', self.name).inc()
+            self.event_counter.labels(self.hutch, 'Heartbeat', self.name).inc()
 
 
-def run_collector(node_num, base_name, num_contribs, color, collector_addr, upstream_addr, graph_addr, msg_addr,
-                  prometheus_dir):
+def run_collector(node_num, base_name, num_contribs, color,
+                  collector_addr, upstream_addr, graph_addr, msg_addr,
+                  prometheus_dir, hutch):
     logger.info('Starting collector on node # %d', node_num)
     with GraphCollector(
             node_num,
@@ -126,13 +127,14 @@ def run_collector(node_num, base_name, num_contribs, color, collector_addr, upst
             upstream_addr,
             graph_addr,
             msg_addr,
-            prometheus_dir) as collector:
+            prometheus_dir, hutch) as collector:
         collector.start_prometheus()
         return collector.run()
 
 
-def run_node_collector(node_num, num_contribs, collector_addr, upstream_addr, graph_addr, msg_addr,
-                       prometheus_dir):
+def run_node_collector(node_num, num_contribs,
+                       collector_addr, upstream_addr, graph_addr, msg_addr,
+                       prometheus_dir, hutch):
     return run_collector(node_num,
                          "localCollector%03d",
                          num_contribs,
@@ -141,11 +143,13 @@ def run_node_collector(node_num, num_contribs, collector_addr, upstream_addr, gr
                          upstream_addr,
                          graph_addr,
                          msg_addr,
-                         prometheus_dir)
+                         prometheus_dir,
+                         hutch)
 
 
-def run_global_collector(node_num, num_contribs, collector_addr, upstream_addr, graph_addr, msg_addr,
-                         prometheus_dir):
+def run_global_collector(node_num, num_contribs,
+                         collector_addr, upstream_addr, graph_addr, msg_addr,
+                         prometheus_dir, hutch):
     return run_collector(node_num,
                          "globalCollector%03d",
                          num_contribs,
@@ -154,7 +158,8 @@ def run_global_collector(node_num, num_contribs, collector_addr, upstream_addr, 
                          upstream_addr,
                          graph_addr,
                          msg_addr,
-                         prometheus_dir)
+                         prometheus_dir,
+                         hutch)
 
 
 def main(color, upstream_port, downstream_port):
@@ -232,6 +237,12 @@ def main(color, upstream_port, downstream_port):
         default=None
     )
 
+    parser.add_argument(
+        '--hutch',
+        help='hutch for prometheus label',
+        default=None
+    )
+
     args = parser.parse_args()
     collector_addr = "tcp://*:%d" % (args.collector)
     downstream_addr = "tcp://%s:%d" % (args.host, args.downstream)
@@ -252,7 +263,8 @@ def main(color, upstream_port, downstream_port):
                                       downstream_addr,
                                       graph_addr,
                                       msg_addr,
-                                      args.prometheus_dir)
+                                      args.prometheus_dir,
+                                      args.hutch)
         elif color == Colors.GlobalCollector:
             return run_global_collector(args.node_num,
                                         args.num_contribs,
@@ -260,7 +272,8 @@ def main(color, upstream_port, downstream_port):
                                         downstream_addr,
                                         graph_addr,
                                         msg_addr,
-                                        args.prometheus_dir)
+                                        args.prometheus_dir,
+                                        args.hutch)
         else:
             logger.critical("Invalid option collector color '%s' chosen!", color)
             return 1

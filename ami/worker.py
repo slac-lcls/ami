@@ -17,14 +17,14 @@ logger = logging.getLogger(__name__)
 
 
 class Worker(Node):
-    def __init__(self, node, src, collector_addr, graph_addr, msg_addr, export_addr, prometheus_dir):
+    def __init__(self, node, src, collector_addr, graph_addr, msg_addr, export_addr, prometheus_dir, hutch):
         """
         node : int
             a unique integer identifying this worker
         src : object
             object with an events() method that is an iterable (like psana.DataSource)
         """
-        super(__class__, self).__init__(node, graph_addr, msg_addr, export_addr, prometheus_dir=prometheus_dir)
+        super().__init__(node, graph_addr, msg_addr, export_addr, prometheus_dir=prometheus_dir, hutch=hutch)
 
         self.src = src
         self.pending_src = False
@@ -164,13 +164,13 @@ class Worker(Node):
             logger.info("%s: Waiting for source configuration", self.name)
             self.graph_comm.recv(True)
 
-        event_counter = pc.Counter('ami_events', 'Event Counter', ['type', 'process'])
-        idle_time = pc.Gauge('ami_idle_time_secs', 'Idle Time Start', ['process'])
+        event_counter = pc.Counter('ami_events', 'Event Counter', ['hutch', 'type', 'process'])
+        idle_time = pc.Gauge('ami_idle_time_secs', 'Idle Time Start', ['hutch', 'process'])
         idle_start = time.time()
 
         while True:
             for msg in self.src.events():
-                idle_time.labels(self.name).set(time.time() - idle_start)
+                idle_time.labels(self.hutch, self.name).set(time.time() - idle_start)
 
                 # check to see if the graph has been reconfigured after update
                 if msg.mtype == MsgTypes.Heartbeat:
@@ -195,7 +195,7 @@ class Worker(Node):
                         except zmq.Again:
                             break
 
-                    event_counter.labels('Heartbeat', self.name).inc()
+                    event_counter.labels(self.hutch, 'Heartbeat', self.name).inc()
 
                     if self.pending_src:
                         break
@@ -235,7 +235,7 @@ class Worker(Node):
                             self.report("purge", name)
 
                     self.num_events += 1
-                    event_counter.labels('Datagram', self.name).inc()
+                    event_counter.labels(self.hutch, 'Datagram', self.name).inc()
 
                 elif msg.mtype == MsgTypes.Transition:
                     if msg.payload.ttype == Transitions.Configure:
@@ -248,10 +248,10 @@ class Worker(Node):
 
                     # forward the transition
                     self.store.send(msg)
-                    event_counter.labels('Transition', self.name).inc()
+                    event_counter.labels(self.hutch, 'Transition', self.name).inc()
                 else:
                     self.store.send(msg)
-                    event_counter.labels('Other', self.name).inc()
+                    event_counter.labels(self.hutch, 'Other', self.name).inc()
 
                 idle_start = time.time()
 
@@ -263,7 +263,7 @@ class Worker(Node):
 
 
 def run_worker(num, num_workers, hb_period, source, collector_addr, graph_addr, msg_addr, export_addr,
-               flags=None, prometheus_dir=None):
+               flags=None, prometheus_dir=None, hutch=None):
 
     logger.info('Starting worker # %d, sending to collector at %s', num, collector_addr)
 
@@ -300,7 +300,7 @@ def run_worker(num, num_workers, hb_period, source, collector_addr, graph_addr, 
             logger.critical("worker%03d: unknown data source type: %s", num, source[0])
             return 1
 
-    with Worker(num, src, collector_addr, graph_addr, msg_addr, export_addr, prometheus_dir) as worker:
+    with Worker(num, src, collector_addr, graph_addr, msg_addr, export_addr, prometheus_dir, hutch) as worker:
         return worker.run()
 
 

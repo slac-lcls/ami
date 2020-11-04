@@ -39,11 +39,12 @@ class Manager(Collector):
                  export_addr,
                  view_addr,
                  profile_addr,
-                 prometheus_dir):
+                 prometheus_dir,
+                 hutch):
         """
         protocol right now only tells you how to communicate with workers
         """
-        super().__init__(results_addr)
+        super().__init__(results_addr, hutch=hutch)
         self.name = "manager"
         self.num_workers = num_workers
         self.num_nodes = num_nodes
@@ -642,7 +643,8 @@ def run_manager(num_workers,
                 export_addr,
                 view_addr,
                 profile_addr,
-                prometheus_dir):
+                prometheus_dir,
+                hutch):
     logger.info('Starting manager, controlling %d workers on %d nodes', num_workers, num_nodes)
     with Manager(
             num_workers,
@@ -655,7 +657,8 @@ def run_manager(num_workers,
             export_addr,
             view_addr,
             profile_addr,
-            prometheus_dir) as manager:
+            prometheus_dir,
+            hutch) as manager:
         manager.start_prometheus()
         return manager.run()
 
@@ -765,6 +768,12 @@ def main():
         default=None
     )
 
+    parser.add_argument(
+        '--hutch',
+        help='hutch for prometheus label',
+        default=None
+    )
+
     args = parser.parse_args()
 
     results_addr = "tcp://%s:%d" % (args.host, args.results)
@@ -793,7 +802,8 @@ def main():
                            export_addr,
                            view_addr,
                            profile_addr,
-                           args.prometheus_dir)
+                           args.prometheus_dir,
+                           args.hutch)
     except KeyboardInterrupt:
         logger.info("Manager killed by user...")
         return 0

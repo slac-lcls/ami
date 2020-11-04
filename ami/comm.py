@@ -674,7 +674,7 @@ class Node(abc.ABC):
             passed it creates one.
     """
 
-    def __init__(self, node, graph_addr, msg_addr, export_addr=None, ctx=None, prometheus_dir=None):
+    def __init__(self, node, graph_addr, msg_addr, export_addr=None, ctx=None, prometheus_dir=None, hutch=None):
         self.node = node
         if ctx is None:
             self.ctx = zmq.Context()
@@ -704,6 +704,7 @@ class Node(abc.ABC):
         self.serializer = Serializer()
 
         self.prometheus_dir = prometheus_dir
+        self.hutch = hutch
 
     @property
     @abc.abstractmethod
@@ -870,7 +871,7 @@ class Collector(abc.ABC):
             passed it creates one.
     """
 
-    def __init__(self, addr, ctx=None):
+    def __init__(self, addr, ctx=None, hutch=None):
         if ctx is None:
             self.ctx = zmq.Context()
         else:
@@ -883,9 +884,10 @@ class Collector(abc.ABC):
         self.running = True
         self.exitcode = 0
         self.deserializer = Deserializer()
+        self.hutch = hutch
 
-        self.event_counter = pc.Counter('ami_events', 'Event Counter', ['type', 'process'])
-        self.idle_time = pc.Gauge('ami_idle_time_secs', 'Idle Time Start', ['process'])
+        self.event_counter = pc.Counter('ami_events', 'Event Counter', ['hutch', 'type', 'process'])
+        self.idle_time = pc.Gauge('ami_idle_time_secs', 'Idle Time Start', ['hutch', 'process'])
 
     def register(self, sock, handler):
         """
@@ -941,7 +943,7 @@ class Collector(abc.ABC):
             for sock, flag in self.poller.poll():
                 if flag != zmq.POLLIN:
                     continue
-                self.idle_time.labels(self.name).set(time.time() - idle_start)
+                self.idle_time.labels(self.hutch, self.name).set(time.time() - idle_start)
                 reset_idle = True
                 if sock is self.collector:
                     msg = self.collector.recv_serialized(self.deserializer, copy=False)
