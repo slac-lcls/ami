@@ -44,10 +44,6 @@ class GraphCollector(Node, Collector):
         try:
             if configure:
                 self.store.flush(self.node, drop=True)
-            else:
-                for name, hb_times in self.store.flush(self.node).items():
-                    for heartbeat, times in hb_times:
-                        self.report_times(times, name, heartbeat)
         except Exception as e:
             logger.exception("%s: Failure encountered while flushing store", self.name)
             self.report("error", e)
