@@ -886,8 +886,8 @@ class Collector(abc.ABC):
         self.deserializer = Deserializer()
         self.hutch = hutch
 
-        self.event_counter = pc.Counter('ami_events', 'Event Counter', ['hutch', 'type', 'process'])
-        self.idle_time = pc.Gauge('ami_idle_time_secs', 'Idle Time Start', ['hutch', 'process'])
+        self.event_counter = pc.Counter('ami_event_count', 'Event Counter', ['hutch', 'type', 'process'])
+        self.event_time = pc.Gauge('ami_event_time_secs', 'Event Time', ['hutch', 'type', 'process'])
 
     def register(self, sock, handler):
         """
@@ -943,9 +943,10 @@ class Collector(abc.ABC):
             for sock, flag in self.poller.poll():
                 if flag != zmq.POLLIN:
                     continue
-                self.idle_time.labels(self.hutch, self.name).set(time.time() - idle_start)
-                reset_idle = True
+
                 if sock is self.collector:
+                    self.event_time.labels(self.hutch, 'Idle', self.name).set(time.time() - idle_start)
+                    reset_idle = True
                     msg = self.collector.recv_serialized(self.deserializer, copy=False)
                     self.process_msg(msg)
                 elif sock in self.handlers:

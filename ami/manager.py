@@ -9,6 +9,7 @@ import collections
 import argparse
 import json
 import socket
+import time
 import prometheus_client as pc
 from ami import LogConfig
 from ami.comm import Ports, AutoExport, Collector, Store
@@ -55,7 +56,7 @@ class Manager(Collector):
         self.view_req = re.compile(r"view:(?P<graph>.*):(?P<name>.*)")
         self.graphs = {}
         self.paths = collections.defaultdict(set)
-        self.versions = {}
+        self.versions = {}  # { graph_name : version_number}
         self.purged = set()
         self.global_cmds = {"list_graphs"}
         self.no_auto_create_cmds = {"create_graph", "destroy_graph"}
@@ -88,7 +89,6 @@ class Manager(Collector):
         self.profile_comm = self.ctx.socket(zmq.XPUB)
         self.profile_comm.setsockopt(zmq.XPUB_VERBOSE, True)
         self.profile_comm.bind(profile_addr)
-        self.register(self.profile_comm, self.push_metadata_on_connect)
 
         self.view_comm = self.ctx.socket(zmq.XPUB)
         self.view_comm.setsockopt(zmq.XPUB_VERBOSE, True)
@@ -108,6 +108,7 @@ class Manager(Collector):
 
     def process_msg(self, msg):
         if msg.mtype == MsgTypes.Datagram:
+            datagram_start = time.time()
             if msg.name not in self.feature_stores:
                 if msg.name in self.purged:
                     logger.debug("Received data from deleted graph '%s'!", msg.name)
@@ -135,6 +136,9 @@ class Manager(Collector):
                 self.export_heartbeat(msg.name)
                 # export data for viewing in the AMI GUI
                 self.export_view(msg.name)
+
+            self.event_counter.labels(self.hutch, 'Heartbeat', self.name).inc()
+            self.event_time.labels(self.hutch, 'Heartbeat', self.name).set(time.time() - datagram_start)
         elif (msg.mtype == MsgTypes.Transition) and (msg.payload.ttype == Transitions.Configure):
             changed = (msg.payload.payload != self.partition)
             self.partition = msg.payload.payload
@@ -305,9 +309,8 @@ class Manager(Collector):
             if self.graphs[name] is None:
                 self.graphs[name] = Graph(name)
             self.graphs[name].add(nodes)
-            graph = self.compile_graph(name)
+            self.compile_graph(name)
             self.publish_delta(name, "add", nodes)
-            self.push_metadata(name, graph)
         except (AssertionError, TypeError):
             if isinstance(nodes, list):
                 logger.exception("Failure encountered adding nodes \"%s\" to the graph:",
@@ -327,13 +330,11 @@ class Manager(Collector):
                     self.graphs[name].remove(node)
                 # Check if the resulting graph is non-empty
                 if self.graphs[name]:
-                    graph = self.compile_graph(name)
+                    self.compile_graph(name)
                 else:
                     # if the graph is empty remove it
                     self.graphs[name] = None
-                    graph = None
                 self.publish_delta(name, "del", nodes)
-                self.push_metadata(name, graph)
             except (AssertionError, TypeError):
                 logger.exception("Failure encountered removing nodes \"%s\" from the graph:", nodes)
                 self.graphs[name] = dill.loads(backup)
@@ -469,40 +470,15 @@ class Manager(Collector):
             self.graph_comm.send_string("cmd", zmq.SNDMORE)
             self.graph_comm.send_string("config")
 
-    def push_metadata_on_connect(self):
-        request = self.profile_comm.recv_string()
-
-        if request.startswith("\x01"):
-            for name in self.graphs:
-                graph = self.compile_graph(name)
-                self.push_metadata(name, graph)
-
-    def push_metadata(self, name, graph):
-        msg = {}
-        if graph:
-            metadata = graph.metadata()
-        else:
-            metadata = {}
-
-        msg['graph'] = name
-        msg['version'] = self.versions[name]
-        msg['metadata'] = metadata
-        self.profile_comm.send_string(name, zmq.SNDMORE)
-        self.profile_comm.send_string("manager", zmq.SNDMORE)
-        self.profile_comm.send_string("metadata", zmq.SNDMORE)
-        self.profile_comm.send_serialized(msg, self.serializer, flags=zmq.NOBLOCK, copy=False)
-
     def node_request(self):
         topic = self.node_msg_comm.recv_string()
         node = self.node_msg_comm.recv_string()
 
         if topic == "profile":
-            graph = self.node_msg_comm.recv_string()
-            payload = self.node_msg_comm.recv_multipart(copy=False)
-            self.profile_comm.send_string(graph, zmq.NOBLOCK | zmq.SNDMORE)
-            self.profile_comm.send_string(node, zmq.NOBLOCK | zmq.SNDMORE)
-            self.profile_comm.send_string(topic, zmq.NOBLOCK | zmq.SNDMORE)
-            self.profile_comm.send_multipart(payload, copy=False)
+            # graph = self.node_msg_comm.recv_string()
+            # payload = self.node_msg_comm.recv_multipart(copy=False)
+            self.node_msg_comm.recv_string()
+            self.node_msg_comm.recv_multipart(copy=False)
         elif topic == "purge":
             name = dill.loads(self.node_msg_comm.recv(copy=False))
             if self.exists(name):

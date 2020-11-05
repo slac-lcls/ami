@@ -138,13 +138,13 @@ class Worker(Node):
         self.store.collect(self.node, heartbeat)
 
         # update the profiler data
-        if self.times:
-            for name, exec_times in self.times.items():
-                self.report("profile", {'graph': name,
-                                        'heartbeat': heartbeat,
-                                        'times': exec_times,
-                                        'version': self.store.version(name)})
-            self.times = {}
+        # if self.times:
+        #     for name, exec_times in self.times.items():
+        #         self.report("profile", {'graph': name,
+        #                                 'heartbeat': heartbeat,
+        #                                 'times': exec_times,
+        #                                 'version': self.store.version(name)})
+        #     self.times = {}
 
         if self.event_rate:
             self.event_rate['num_events'] = self.num_events
@@ -164,13 +164,17 @@ class Worker(Node):
             logger.info("%s: Waiting for source configuration", self.name)
             self.graph_comm.recv(True)
 
-        event_counter = pc.Counter('ami_events', 'Event Counter', ['hutch', 'type', 'process'])
-        idle_time = pc.Gauge('ami_idle_time_secs', 'Idle Time Start', ['hutch', 'process'])
+        event_counter = pc.Counter('ami_event_count', 'Event Counter', ['hutch', 'type', 'process'])
+        event_time = pc.Gauge('ami_event_time_secs', 'Event Time', ['hutch', 'type', 'process'])
         idle_start = time.time()
+        idle_stop = time.time()
+        heartbeat_start = time.time()
+        heartbeat_stop = time.time()
 
         while True:
             for msg in self.src.events():
-                idle_time.labels(self.hutch, self.name).set(time.time() - idle_start)
+                idle_stop = time.time()
+                event_time.labels(self.hutch, 'Idle', self.name).set(idle_stop - idle_start)
 
                 # check to see if the graph has been reconfigured after update
                 if msg.mtype == MsgTypes.Heartbeat:
@@ -200,9 +204,15 @@ class Worker(Node):
                     if self.pending_src:
                         break
 
+                    heartbeat_stop = time.time()
+                    event_time.labels(self.hutch, 'Heartbeat', self.name).set(heartbeat_stop - heartbeat_start)
+                    heartbeat_start = time.time()
+
                 elif msg.mtype == MsgTypes.Datagram:
+                    datagram_start = time.time()
                     if any(v is None for k, v in msg.payload.items()):
                         event_counter.labels(self.hutch, 'Skipped', self.name).inc()
+                        datagram_stop = time.time()
                         continue
 
                     for name, graph in self.graphs.items():
@@ -226,6 +236,7 @@ class Worker(Node):
                                     self.times[name] = []
 
                                 self.times[name].append((start, stop, graph.times()))
+
                         except Exception as e:
                             logger.exception("%s: Failure encountered while executing graph (%s, v%d):",
                                              self.name, name, self.store.version(name))
@@ -236,6 +247,8 @@ class Worker(Node):
 
                     self.num_events += 1
                     event_counter.labels(self.hutch, 'Datagram', self.name).inc()
+                    datagram_stop = time.time()
+                    event_time.labels(self.hutch, 'Datagram', self.name).set(datagram_stop - datagram_start)
 
                 elif msg.mtype == MsgTypes.Transition:
                     if msg.payload.ttype == Transitions.Configure:

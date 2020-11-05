@@ -581,7 +581,7 @@ class FlowchartCtrlWidget(QtGui.QWidget):
         self.ui.actionConfigure.triggered.connect(self.configureClicked)
         self.ui.actionApply.triggered.connect(self.applyClicked)
         self.ui.actionReset.triggered.connect(self.resetClicked)
-        self.ui.actionProfiler.triggered.connect(self.profilerClicked)
+        # self.ui.actionProfiler.triggered.connect(self.profilerClicked)
 
         self.ui.actionHome.triggered.connect(self.homeClicked)
         self.ui.navGroup.triggered.connect(self.navClicked)

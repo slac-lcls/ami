@@ -2,6 +2,7 @@
 import sys
 import logging
 import argparse
+import time
 from ami import LogConfig, Defaults
 from ami.comm import Ports, Colors, Node, Collector, TransitionBuilder, EventBuilder
 from ami.data import MsgTypes, Transitions
@@ -93,6 +94,7 @@ class GraphCollector(Node, Collector):
 
             self.event_counter.labels(self.hutch, 'Transition', self.name).inc()
         elif msg.mtype == MsgTypes.Datagram:
+            datagram_start = time.time()
             self.store.update(msg.name, msg.heartbeat, self.eb_id(msg.identity), msg.version, msg.payload)
             if self.store.ready(msg.name, msg.heartbeat):
                 try:
@@ -101,8 +103,9 @@ class GraphCollector(Node, Collector):
                     if pruned:
                         self.event_counter.labels(self.hutch, 'Pruned Heartbeat', self.name).inc()
                     # complete the current heartbeat
-                    times = self.store.complete(msg.name, msg.heartbeat, self.node)
-                    self.report_times(times, msg.name, msg.heartbeat)
+                    self.store.complete(msg.name, msg.heartbeat, self.node)
+                    # times = self.store.complete(msg.name, msg.heartbeat, self.node)
+                    # self.report_times(times, msg.name, msg.heartbeat)
                 except Exception as e:
                     logger.exception("%s: Failure encountered while executing graph %s:", self.name, msg.name)
                     self.report("error", e)
@@ -116,6 +119,7 @@ class GraphCollector(Node, Collector):
                     self.event_counter.labels(self.hutch, 'Pruned Heartbeat', self.name).inc()
 
             self.event_counter.labels(self.hutch, 'Heartbeat', self.name).inc()
+            self.event_time.labels(self.hutch, 'Heartbeat', self.name).set(time.time() - datagram_start)
 
 
 def run_collector(node_num, base_name, num_contribs, color,
