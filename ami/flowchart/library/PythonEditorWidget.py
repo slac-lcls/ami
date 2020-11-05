@@ -50,7 +50,7 @@ class MyPythonCodeEdit(widgets.PyCodeEditBase):
         self.modes.append(pymodes.PyAutoCompleteMode())
         self.modes.append(pymodes.PyAutoIndentMode())
         self.modes.append(pymodes.PyIndenterMode())
-
+        self.modes.append(pymodes.PythonSH(self.document()))
 
 class PythonEditorWidget(QtWidgets.QWidget):
 
@@ -65,7 +65,6 @@ class PythonEditorWidget(QtWidgets.QWidget):
         # try:
         #     self.editor = PyCodeEdit(server_script=server.__file__, parent=self)
         # except Exception as e:
-
         #     self.editor = QtWidgets.QPlainTextEdit(parent=self)
         self.editor = MyPythonCodeEdit(parent=self)
         
