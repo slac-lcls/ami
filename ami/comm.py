@@ -467,7 +467,7 @@ class GraphBuilder(ContributionBuilder):
             self.graph.compile(**args)
 
     def prune(self, identity, prune_key=None, drop=False):
-        times = {}
+        pruned = False
         if prune_key is None:
             depth = self.depth
         elif prune_key < self.latest:
@@ -480,16 +480,16 @@ class GraphBuilder(ContributionBuilder):
         if len(self.pending) > depth:
             for eb_key in reversed(sorted(self.pending.keys(), reverse=True)[depth:]):
                 logger.debug("Pruned uncompleted key %d", eb_key)
-                times[eb_key] = self.complete(eb_key, identity, drop)
-
-        return times
+                self.complete(eb_key, identity, drop)
+                pruned = True
+        return pruned
 
     def flush(self, identity, drop=False):
-        times = self.prune(identity, self.latest + 1, drop)
+        pruned = self.prune(identity, self.latest + 1, drop)
         if drop and self.graph:
             self.graph.reset()
         self.latest = 0
-        return times
+        return pruned
 
     def set_graph(self, name, ver_key, args, graph):
         self.pending_graphs[ver_key] = (False, "set", name, args, graph)
@@ -595,10 +595,10 @@ class EventBuilder(ZmqHandler):
         return self.builders[name].prune(identity, prune_key, drop)
 
     def flush(self, identity, drop=False):
-        times = {}
+        pruned_heartbeats = []
         for name, builder in self.builders.items():
-            times[name] = builder.flush(identity, drop)
-        return times
+            pruned_heartbeats.append(builder.flush(identity, drop))
+        return any(pruned_heartbeats)
 
     def set_graph(self, name, ver_key, args, graph):
         if name not in self.builders:

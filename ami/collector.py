@@ -97,7 +97,9 @@ class GraphCollector(Node, Collector):
             if self.store.ready(msg.name, msg.heartbeat):
                 try:
                     # prune entries older than the current heartbeat
-                    self.store.prune(msg.name, self.node, msg.heartbeat)
+                    pruned = self.store.prune(msg.name, self.node, msg.heartbeat)
+                    if pruned:
+                        self.event_counter.labels(self.hutch, 'Pruned Heartbeat', self.name).inc()
                     # complete the current heartbeat
                     times = self.store.complete(msg.name, msg.heartbeat, self.node)
                     self.report_times(times, msg.name, msg.heartbeat)
@@ -109,7 +111,9 @@ class GraphCollector(Node, Collector):
                     self.report("purge", msg.name)
             else:
                 # prune older entries from the event builder
-                self.store.prune(msg.name, self.node)
+                pruned = self.store.prune(msg.name, self.node)
+                if pruned:
+                    self.event_counter.labels(self.hutch, 'Pruned Heartbeat', self.name).inc()
 
             self.event_counter.labels(self.hutch, 'Heartbeat', self.name).inc()
 
