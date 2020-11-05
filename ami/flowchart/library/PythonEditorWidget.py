@@ -1,6 +1,55 @@
 from pyqtgraph.Qt import QtWidgets, QtCore
 from pyqode.python.backend import server
-from pyqode.python.widgets import PyCodeEdit
+# from pyqode.python.widgets import PyCodeEdit
+from pyqode.core import api, modes, panels
+from pyqode.python import modes as pymodes, panels as pypanels, widgets
+
+
+class MyPythonCodeEdit(widgets.PyCodeEditBase):
+    def __init__(self, parent=None):
+        super().__init__(parent=parent)
+
+        # starts the default pyqode.python server (which enable the jedi code
+        # completion worker).
+        self.backend.start(server.__file__)
+
+        # some other modes/panels require the analyser mode, the best is to
+        # install it first
+        # self.modes.append(pymodes.DocumentAnalyserMode())
+
+        #--- core panels
+        self.panels.append(panels.FoldingPanel())
+        self.panels.append(panels.LineNumberPanel())
+        self.panels.append(panels.CheckerPanel())
+        # self.panels.append(panels.SearchAndReplacePanel(),
+        #                    panels.SearchAndReplacePanel.Position.BOTTOM)
+        # self.panels.append(panels.EncodingPanel(), api.Panel.Position.TOP)
+       # add a context menu separator between editor's
+        # builtin action and the python specific actions
+        self.add_separator()
+
+        #--- python specific panels
+        self.panels.append(pypanels.QuickDocPanel(), api.Panel.Position.BOTTOM)
+
+        #--- core modes
+        self.modes.append(modes.CaretLineHighlighterMode())
+        self.modes.append(modes.CodeCompletionMode())
+        self.modes.append(modes.ExtendedSelectionMode())
+        self.modes.append(modes.FileWatcherMode())
+        self.modes.append(modes.OccurrencesHighlighterMode())
+        self.modes.append(modes.RightMarginMode())
+        self.modes.append(modes.SmartBackSpaceMode())
+        self.modes.append(modes.SymbolMatcherMode())
+        self.modes.append(modes.ZoomMode())
+
+        #---  python specific modes
+        self.modes.append(pymodes.CommentsMode())
+        self.modes.append(pymodes.CalltipsMode())
+        self.modes.append(pymodes.FrostedCheckerMode())
+        self.modes.append(pymodes.PEP8CheckerMode())
+        self.modes.append(pymodes.PyAutoCompleteMode())
+        self.modes.append(pymodes.PyAutoIndentMode())
+        self.modes.append(pymodes.PyIndenterMode())
 
 
 class PythonEditorWidget(QtWidgets.QWidget):
@@ -13,12 +62,13 @@ class PythonEditorWidget(QtWidgets.QWidget):
 
         self.inputs = inputs
         self.outputs = outputs
-        try:
-            self.editor = PyCodeEdit(server_script=server.__file__, parent=self)
-        except Exception as e:
-            print(e)
-            self.editor = QtWidgets.QPlainTextEdit(parent=self)
+        # try:
+        #     self.editor = PyCodeEdit(server_script=server.__file__, parent=self)
+        # except Exception as e:
 
+        #     self.editor = QtWidgets.QPlainTextEdit(parent=self)
+        self.editor = MyPythonCodeEdit(parent=self)
+        
         if text:
             self.editor.setPlainText(text)
         elif self.inputs:
