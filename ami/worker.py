@@ -317,6 +317,28 @@ def run_worker(num, num_workers, hb_period, source, collector_addr, graph_addr, 
         return worker.run()
 
 
+def parse_args(args):
+    flags = {}
+    for flag in args.flags:
+        try:
+            key, value = flag.split('=')
+            flags[key] = value
+        except ValueError:
+            logger.exception("Problem parsing data source flag %s", flag)
+
+    if args.source is not None:
+        src_url_match = re.match('(?P<prot>.*)://(?P<body>.*)', args.source)
+        if src_url_match:
+            src_cfg = src_url_match.groups()
+        else:
+            logger.critical("Invalid data source config string: %s", args.source)
+            return 1
+    else:
+        src_cfg = None
+
+    return flags, src_cfg
+
+
 def main():
     parser = argparse.ArgumentParser(description='AMII Worker App')
 
@@ -426,7 +448,6 @@ def main():
     graph_addr = "tcp://%s:%d" % (args.host, args.graph)
     msg_addr = "tcp://%s:%d" % (args.host, args.message)
     export_addr = "tcp://%s:%d" % (args.host, args.export)
-    flags = {}
 
     log_handlers = [logging.StreamHandler()]
     if args.log_file is not None:
@@ -435,22 +456,7 @@ def main():
     logging.basicConfig(format=LogConfig.Format, level=log_level, handlers=log_handlers)
 
     try:
-        for flag in args.flags:
-            try:
-                key, value = flag.split('=')
-                flags[key] = value
-            except ValueError:
-                logger.exception("Problem parsing data source flag %s", flag)
-
-        if args.source is not None:
-            src_url_match = re.match('(?P<prot>.*)://(?P<body>.*)', args.source)
-            if src_url_match:
-                src_cfg = src_url_match.groups()
-            else:
-                logger.critical("Invalid data source config string: %s", args.source)
-                return 1
-        else:
-            src_cfg = None
+        flags, src_cfg = parse_args(args)
 
         return run_worker(args.node_num,
                           args.num_workers,

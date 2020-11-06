@@ -3,6 +3,8 @@ import sys
 import logging
 import argparse
 import time
+import ami.multiproc as mp
+from ami.worker import run_worker, parse_args
 from ami import LogConfig, Defaults
 from ami.comm import Ports, Colors, Node, Collector, TransitionBuilder, EventBuilder
 from ami.data import MsgTypes, Transitions
@@ -247,7 +249,49 @@ def main(color, upstream_port, downstream_port):
         default=None
     )
 
+    subparsers = parser.add_subparsers(help='spawn workers', dest='worker')
+    worker_subparser = subparsers.add_parser('worker', help='worker arguments')
+
+    worker_subparser.add_argument(
+        'source',
+        nargs='?',
+        metavar='SOURCE',
+        help='data source configuration (exampes: static://test.json, random://test.json, psana://exp=xcsdaq13:run=14)'
+    )
+    worker_subparser.add_argument(
+        '-W',
+        '--num-nodes',
+        type=int,
+        default=1,
+        help='total number of nodes'
+    )
+
+    worker_subparser.add_argument(
+        '-e',
+        '--export',
+        type=int,
+        default=Ports.Export,
+        help='port for receiving exported graph results (default: %d)' % Ports.Export
+    )
+
+    worker_subparser.add_argument(
+        '-b',
+        '--heartbeat',
+        type=int,
+        default=10,
+        help='the heartbeat period (default: 10)'
+    )
+
+    worker_subparser.add_argument(
+        '-f',
+        '--flags',
+        action='append',
+        default=[],
+        help='extra flags as key=value pairs that are passed to the data source'
+    )
+
     args = parser.parse_args()
+
     collector_addr = "tcp://*:%d" % (args.collector)
     downstream_addr = "tcp://%s:%d" % (args.host, args.downstream)
     graph_addr = "tcp://%s:%d" % (args.host, args.graph)
@@ -261,6 +305,26 @@ def main(color, upstream_port, downstream_port):
 
     try:
         if color == Colors.LocalCollector:
+            if args.worker:
+                local_collector_addr = "tcp://localhost:%d" % args.collector
+                export_addr = "tcp://%s:%d" % (args.host, args.export)
+                flags, src_cfg = parse_args(args)
+                for n in range(0, args.num_contribs):
+                    worker = mp.Process(name='worker', target=run_worker,
+                                        args=(args.node_num*args.num_nodes+n,
+                                              args.num_contribs,
+                                              args.heartbeat,
+                                              src_cfg,
+                                              local_collector_addr,
+                                              graph_addr,
+                                              msg_addr,
+                                              export_addr,
+                                              flags,
+                                              args.prometheus_dir,
+                                              args.hutch),
+                                        daemon=True)
+                    worker.start()
+
             return run_node_collector(args.node_num,
                                       args.num_contribs,
                                       collector_addr,
@@ -283,7 +347,7 @@ def main(color, upstream_port, downstream_port):
             return 1
 
     except KeyboardInterrupt:
-        logger.info("Worker killed by user...")
+        logger.info("collector killed by user...")
         return 0
 
 
