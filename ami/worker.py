@@ -168,8 +168,7 @@ class Worker(Node):
         event_time = pc.Gauge('ami_event_time_secs', 'Event Time', ['hutch', 'type', 'process'])
         idle_start = time.time()
         idle_stop = time.time()
-        heartbeat_start = time.time()
-        heartbeat_stop = time.time()
+        heartbeat_time = 0
 
         while True:
             for msg in self.src.events():
@@ -178,6 +177,7 @@ class Worker(Node):
 
                 # check to see if the graph has been reconfigured after update
                 if msg.mtype == MsgTypes.Heartbeat:
+                    heartbeat_start = time.time()
                     self.collect(msg.payload)
 
                     for name, graph in self.graphs.items():
@@ -205,14 +205,16 @@ class Worker(Node):
                         break
 
                     heartbeat_stop = time.time()
-                    event_time.labels(self.hutch, 'Heartbeat', self.name).set(heartbeat_stop - heartbeat_start)
-                    heartbeat_start = time.time()
+                    heartbeat_time += heartbeat_stop - heartbeat_start
+                    event_time.labels(self.hutch, 'Heartbeat', self.name).set(heartbeat_time)
+                    heartbeat_time = 0
 
                 elif msg.mtype == MsgTypes.Datagram:
                     datagram_start = time.time()
                     if any(v is None for k, v in msg.payload.items()):
                         event_counter.labels(self.hutch, 'Skipped', self.name).inc()
                         datagram_stop = time.time()
+                        event_time.labels(self.hutch, 'Datagram', self.name).set(datagram_stop - datagram_start)
                         continue
 
                     for name, graph in self.graphs.items():
@@ -249,6 +251,7 @@ class Worker(Node):
                     event_counter.labels(self.hutch, 'Datagram', self.name).inc()
                     datagram_stop = time.time()
                     event_time.labels(self.hutch, 'Datagram', self.name).set(datagram_stop - datagram_start)
+                    heartbeat_time += datagram_stop - datagram_start
 
                 elif msg.mtype == MsgTypes.Transition:
                     if msg.payload.ttype == Transitions.Configure:

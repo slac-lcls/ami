@@ -301,7 +301,10 @@ def main(color, upstream_port, downstream_port):
     if args.log_file is not None:
         log_handlers.append(logging.FileHandler(args.log_file))
     log_level = getattr(logging, args.log_level.upper(), logging.INFO)
-    logging.basicConfig(format=LogConfig.Format, level=log_level, handlers=log_handlers)
+    if args.worker:
+        logging.basicConfig(format=LogConfig.FullFormat, level=log_level, handlers=log_handlers)
+    else:
+        logging.basicConfig(format=LogConfig.Format, level=log_level, handlers=log_handlers)
 
     try:
         if color == Colors.LocalCollector:
