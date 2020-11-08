@@ -944,9 +944,10 @@ class Collector(abc.ABC):
                 if flag != zmq.POLLIN:
                     continue
 
+                self.event_time.labels(self.hutch, 'Idle', self.name).set(time.time() - idle_start)
+                reset_idle = True
+
                 if sock is self.collector:
-                    self.event_time.labels(self.hutch, 'Idle', self.name).set(time.time() - idle_start)
-                    reset_idle = True
                     msg = self.collector.recv_serialized(self.deserializer, copy=False)
                     self.process_msg(msg)
                 elif sock in self.handlers:

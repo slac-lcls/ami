@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 from datetime import datetime
-from pyqtgraph.Qt import QtCore, QtGui
+from pyqtgraph.Qt import QtCore, QtGui, QtWidgets
 from pyqtgraph.pgcollections import OrderedDict
 from pyqtgraph import FileDialog
 from pyqtgraph.debug import printExc
@@ -603,6 +603,8 @@ class FlowchartCtrlWidget(QtGui.QWidget):
         disconnectedNodes = []
         displays = set()
         now = datetime.now().strftime('%H:%M:%S')
+        msg = QtWidgets.QMessageBox(parent=self)
+        msg.setText("Failed to submit graph! See status.")
 
         if self.chart.deleted_nodes:
             await self.graphCommHandler.remove(self.chart.deleted_nodes)
@@ -682,10 +684,12 @@ class FlowchartCtrlWidget(QtGui.QWidget):
             for node in disconnectedNodes:
                 self.chartWidget.statusText.append(f"[{now}] {node.name()} disconnected!")
                 node.setException(True)
-            graph_nodes = []
+            msg.exec()
+            return
 
         if failed_nodes:
             self.chartWidget.statusText.append(f"[{now}] failed to submit graph")
+            msg.exec()
             return
 
         if graph_nodes:

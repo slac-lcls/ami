@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-from pyqtgraph.Qt import QtCore, QtGui
+from pyqtgraph.Qt import QtCore, QtGui, QtWidgets
 from pyqtgraph.graphicsItems.GraphicsObject import GraphicsObject
 from pyqtgraph import functions as fn
 from pyqtgraph.Point import Point
@@ -159,7 +159,7 @@ class Terminal(object):
                     types["Output"] = t
 
             if not checkType(types, type_file):
-                raise Exception("Invalid types. Expected: %s Got: %s", self.type(), term.type())
+                raise Exception(f"Invalid types. Expected: {self.type()} Got: {term.type()}")
         except Exception:
             if connectionItem is not None:
                 connectionItem.close()
@@ -369,9 +369,9 @@ class TerminalGraphicsItem(GraphicsObject):
                             self.term.connectTo(i.term, self.newConnection)
                             gotTarget = True
                         except Exception as e:
-                            self.scene().removeItem(self.newConnection)
-                            self.newConnection = None
-                            raise e
+                            msg = QtWidgets.QMessageBox()
+                            msg.setText(str(e))
+                            msg.exec()
                         break
 
                 if not gotTarget:
@@ -403,7 +403,7 @@ class TerminalGraphicsItem(GraphicsObject):
 class ConnectionItem(GraphicsObject):
 
     def __init__(self, source, target=None):
-        super().__init__()
+        super().__init__(source)
         self.setFlags(
             self.ItemIsSelectable |
             self.ItemIsFocusable
