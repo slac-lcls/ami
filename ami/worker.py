@@ -249,9 +249,9 @@ class Worker(Node):
 
                     self.num_events += 1
                     event_counter.labels(self.hutch, 'Datagram', self.name).inc()
-                    datagram_stop = time.time()
-                    event_time.labels(self.hutch, 'Datagram', self.name).set(datagram_stop - datagram_start)
-                    heartbeat_time += datagram_stop - datagram_start
+                    datagram_duration = time.time() - datagram_start
+                    event_time.labels(self.hutch, 'Datagram', self.name).set(datagram_duration)
+                    heartbeat_time += datagram_duration
 
                 elif msg.mtype == MsgTypes.Transition:
                     if msg.payload.ttype == Transitions.Configure:

@@ -3,6 +3,7 @@ import sys
 import logging
 import argparse
 import time
+import collections
 import ami.multiproc as mp
 from ami.worker import run_worker, parse_args
 from ami import LogConfig, Defaults
@@ -24,6 +25,7 @@ class GraphCollector(Node, Collector):
         self.store = EventBuilder(self.num_workers, 10, color, downstream_addr, self.ctx)
         self.pickers = {}
         self.strategies = {}
+        self.heartbeat_time = collections.defaultdict(lambda: 0)
 
         self.downstream_addr = downstream_addr
 
@@ -110,14 +112,19 @@ class GraphCollector(Node, Collector):
                     logger.error("%s: Purging graph (%s v%d)", self.name, msg.name, self.store.version(msg.name))
                     self.store.destroy(msg.name)
                     self.report("purge", msg.name)
+
+                self.event_counter.labels(self.hutch, 'Heartbeat', self.name).inc()
+                self.heartbeat_time[msg.heartbeat] += time.time() - datagram_start
+                heartbeat_time = self.heartbeat_time.pop(msg.heartbeat, 0)
+                self.event_time.labels(self.hutch, 'Heartbeat', self.name).set(heartbeat_time)
             else:
                 # prune older entries from the event builder
                 pruned = self.store.prune(msg.name, self.node)
                 if pruned:
                     self.event_counter.labels(self.hutch, 'Pruned Heartbeat', self.name).inc()
+                    self.heartbeat_time.pop(msg.heartbeat, 0)
 
-            self.event_counter.labels(self.hutch, 'Heartbeat', self.name).inc()
-            self.event_time.labels(self.hutch, 'Heartbeat', self.name).set(time.time() - datagram_start)
+            self.heartbeat_time[msg.heartbeat] += time.time() - datagram_start
 
 
 def run_collector(node_num, base_name, num_contribs, color,
