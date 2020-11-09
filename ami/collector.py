@@ -265,13 +265,6 @@ def main(color, upstream_port, downstream_port):
         metavar='SOURCE',
         help='data source configuration (exampes: static://test.json, random://test.json, psana://exp=xcsdaq13:run=14)'
     )
-    worker_subparser.add_argument(
-        '-W',
-        '--num-nodes',
-        type=int,
-        default=1,
-        help='total number of nodes'
-    )
 
     worker_subparser.add_argument(
         '-e',
@@ -321,7 +314,7 @@ def main(color, upstream_port, downstream_port):
                 flags, src_cfg = parse_args(args)
                 for n in range(0, args.num_contribs):
                     worker = mp.Process(name='worker', target=run_worker,
-                                        args=(args.node_num*args.num_nodes+n,
+                                        args=(args.node_num*args.num_contribs+n,
                                               args.num_contribs,
                                               args.heartbeat,
                                               src_cfg,
