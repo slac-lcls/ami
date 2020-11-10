@@ -508,8 +508,8 @@ class GraphBuilder(ContributionBuilder):
                     init, cmd, name, args, obj = self.pending_graphs[version]
                     self._init(name)
                     self._edit(cmd, obj)
-                    self._compile(args)
                     del self.pending_graphs[version]
+                self._compile(args)
                 self.version = ver_key
                 return True
             else:
