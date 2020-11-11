@@ -144,25 +144,13 @@ class Flowchart(Node):
             self.deleted_nodes.append(name)
             self.sigNodeChanged.emit(node)
         elif isinstance(node, SourceNode):
-            async with ctrl.features_lock:
-                if name in ctrl.features_count:
-                    ctrl.features_count[name].discard(name)
-                    if not ctrl.features_count[name]:
-                        if name in ctrl.features:
-                            del ctrl.features[name]
-                        await ctrl.graphCommHandler.unview(name)
-                        del ctrl.features_count[name]
+            ctrl.features.discard(name, name)
+            await ctrl.graphCommHandler.unview(name)
         elif node.viewable():
             views = []
-            async with ctrl.features_lock:
-                for term, in_var in input_vars.items():
-                    if in_var in ctrl.features_count:
-                        ctrl.features_count[in_var].discard(name)
-                        if not ctrl.features_count[in_var]:
-                            if in_var in ctrl.features:
-                                del ctrl.features[in_var]
-                            views.append(in_var)
-                            del ctrl.features_count[in_var]
+            for term, in_var in input_vars.items():
+                await ctrl.features.discard(name, in_var)
+                views.append(in_var)
             if views:
                 await ctrl.graphCommHandler.unview(views)
 
@@ -212,15 +200,10 @@ class Flowchart(Node):
                         if hasattr(node, 'to_operation'):
                             self.deleted_nodes.append(name)
                         elif node.viewable():
-                            async with ctrl.features_lock:
-                                for term, in_var in node.input_vars().items():
-                                    if in_var in ctrl.features_count:
-                                        ctrl.features_count[in_var].discard(name)
-                                        if not ctrl.features_count[in_var]:
-                                            if in_var in ctrl.features:
-                                                del ctrl.features[in_var]
-                                            views.append(in_var)
-                                            del ctrl.features_count[in_var]
+                            for term, in_var in node.input_vars().items():
+                                discarded = await self.ctrl.features.discard(name, in_var)
+                                if discarded:
+                                    views.append(in_var)
                     else:
                         node.changed = True
                     if node.conditions():
@@ -395,19 +378,20 @@ class Flowchart(Node):
         with open(fileName, 'r') as f:
             state = json.load(f)
 
+        ctrl = self.widget()
         self.clear()
-        await self.widget().applyClicked()
+        await ctrl.applyClicked()
         self.restoreState(state)
         self.viewBox.autoRange()
         self.sigFileLoaded.emit(fileName)
-        await self.widget().applyClicked()
+        await ctrl.applyClicked(build_views=False)
 
+        nodes = []
         for name, node in self.nodes(data='node'):
             if node.viewed:
-                node = node.graphicsItem()
-                node.setSelected(True)
-                await asyncio.sleep(0.1)
-                self.scene.clearSelection()
+                nodes.append(node)
+
+        await ctrl.chartWidget.build_views(nodes, ctrl=True, export=True)
 
     def saveFile(self, fileName=None, startDir=None, suggestedFileName='flowchart.fc'):
         """
@@ -569,9 +553,7 @@ class FlowchartCtrlWidget(QtGui.QWidget):
 
         self.chart.sigNodeChanged.connect(self.ui.setPending)
 
-        self.features_lock = asyncio.Lock()
-        self.features = {}  # {in_var : topic}
-        self.features_count = collections.defaultdict(set)  # {in_var : set(nodes)}
+        self.features = Features(self.graphCommHandler)
 
         self.ui.actionNew.triggered.connect(self.clear)
         self.ui.actionOpen.triggered.connect(self.openClicked)
@@ -598,7 +580,7 @@ class FlowchartCtrlWidget(QtGui.QWidget):
         self.ui.libraryConfigure.clicked.connect(self.libraryEditor.show)
 
     @asyncSlot()
-    async def applyClicked(self):
+    async def applyClicked(self, build_views=True):
         graph_nodes = set()
         disconnectedNodes = []
         displays = set()
@@ -617,9 +599,7 @@ class FlowchartCtrlWidget(QtGui.QWidget):
                 gnode = gnode['node']
                 gnode.changed = True
             # reset reference counting on views
-            async with self.features_lock:
-                self.features = {}
-                self.features_count = collections.defaultdict(set)
+            await self.features.reset()
 
         outputs = [n for n, d in self.chart._graph.out_degree() if d == 0]
         changed_nodes = set()
@@ -699,71 +679,9 @@ class FlowchartCtrlWidget(QtGui.QWidget):
             self.chartWidget.statusText.append(f"[{now}] Submitted {node_names}")
 
         node_names = ', '.join(set(map(lambda node: node.name(), displays)))
-        if node_names:
+        if displays and build_views:
             self.chartWidget.statusText.append(f"[{now}] Redisplaying {node_names}")
-
-        for node in displays:
-
-            if node.buffered():
-                topics = node.buffered_topics()
-                terms = node.buffered_terms()
-
-                node.display(topics=None, terms=None, addr=None, win=None)
-                state = {}
-                if hasattr(node.widget, 'saveState'):
-                    state = node.widget.saveState()
-
-                await self.chart.broker.send_string(node.name(), zmq.SNDMORE)
-                await self.chart.broker.send_pyobj(fcMsgs.DisplayNode(name=node.name(),
-                                                                      topics=topics,
-                                                                      state=state,
-                                                                      terms=terms,
-                                                                      units=node.input_units(),
-                                                                      redisplay=True,
-                                                                      geometry=node.geometry))
-            elif node.viewable():
-                topics = []
-                views = {}
-                terms = {"In": node.name()} if node.isSource() else node.input_vars()
-
-                # make sure we don't leak any reference counts
-                if node.changed:
-                    for in_var, viewers in self.features_count.items():
-                        viewers.discard(node.name())
-                        if not viewers and node.name() in self.features:
-                            del self.features[node.name()]
-
-                for term, in_var in terms.items():
-                    if in_var in self.features:
-                        topic = self.features[in_var]
-                    else:
-                        topic = self.graphCommHandler.auto(in_var)
-                        async with self.features_lock:
-                            self.features[in_var] = topic
-                            self.features_count[in_var].add(node.name())
-                        views[in_var] = node.name()
-
-                    topics.append((in_var, topic))
-
-                if views:
-                    await self.graphCommHandler.view(views)
-
-                node.display(topics=None, terms=None, addr=None, win=None)
-                state = {}
-                if hasattr(node.widget, 'saveState'):
-                    state = node.widget.saveState()
-
-                await self.chart.broker.send_string(node.name(), zmq.SNDMORE)
-                await self.chart.broker.send_pyobj(fcMsgs.DisplayNode(name=node.name(),
-                                                                      topics=dict(topics),
-                                                                      state=state,
-                                                                      terms=terms,
-                                                                      units=node.input_units(),
-                                                                      redisplay=True,
-                                                                      geometry=node.geometry))
-
-            elif node.exportable():
-                await self.graphCommHandler.export(node.input_vars()['In'], node.values['alias'])
+            await self.chartWidget.build_views(displays, export=True, redisplay=True)
 
         for node in changed_nodes:
             node.changed = False
@@ -1019,93 +937,86 @@ class FlowchartWidget(dockarea.DockArea):
                             pending.add(node.name())
 
             if pending:
-                now = datetime.now().strftime('%H:%M:%S')
                 pending = ', '.join(pending)
-                self.statusText.append(f"[{now}] Pending changes for {pending}. Please apply before trying to view.")
+                msg = QtWidgets.QMessageBox(parent=self)
+                msg.setText(f"Pending changes for {pending}. Please apply before trying to view.")
+                msg.exec()
                 return
 
-        if isinstance(node, Node) and node.buffered():
-            # buffered nodes are allowed to override their topics/terms
-            # this is done because they may want to view intermediate values
-            topics = node.buffered_topics()
-            terms = node.buffered_terms()
+        await self.build_views([node], ctrl=True)
+        self.ctrl.metadata = await self.ctrl.graphCommHandler.metadata
 
-        elif isinstance(node, SourceNode) and node.viewable():
+    async def build_views(self, nodes, ctrl=False, export=False, redisplay=False):
+        views = {}
+        display_args = []
+
+        for node in nodes:
             name = node.name()
-            topics = {}
-            views = {}
-            terms = {"In": name}
 
-            if name in self.ctrl.features:
-                topic = self.ctrl.features[name]
-                async with self.ctrl.features_lock:
-                    self.ctrl.features_count[name].add(name)
-            else:
-                topic = self.ctrl.graphCommHandler.auto(name)
-                async with self.ctrl.features_lock:
-                    self.ctrl.features[name] = topic
-                    self.ctrl.features_count[name].add(name)
-                views = {name: name}
+            node.display(topics=None, terms=None, addr=None, win=None)
+            state = {}
+            if hasattr(node.widget, 'saveState'):
+                state = node.widget.saveState()
 
-            topics[name] = topic
+            args = {'name': name,
+                    'state': state,
+                    'redisplay': redisplay,
+                    'geometry': node.geometry,
+                    'units': node.input_units()}
 
-            if views:
-                await self.ctrl.graphCommHandler.view(views)
+            if node.buffered():
+                # buffered nodes are allowed to override their topics/terms
+                # this is done because they may want to view intermediate values
+                args['topics'] = node.buffered_topics()
+                args['terms'] = node.buffered_terms()
 
-        elif isinstance(node, Node) and node.viewable():
-            topics = {}
-            views = {}
-            terms = node.input_vars()
+            elif isinstance(node, SourceNode) and node.viewable():
+                topic = await self.ctrl.features.get(name, name)
+                views[name] = name
 
-            if len(node.inputs()) != len(node.input_vars()):
-                return
+                args['terms'] = {'In': name}
+                args['topics'] = {name: topic}
 
-            for term, in_var in node.input_vars().items():
+            elif isinstance(node, Node) and node.viewable():
+                topics = {}
 
-                if in_var in self.ctrl.features:
-                    topic = self.ctrl.features[in_var]
-                    async with self.ctrl.features_lock:
-                        self.ctrl.features_count[in_var].add(node.name())
-                else:
-                    topic = self.ctrl.graphCommHandler.auto(in_var)
-                    async with self.ctrl.features_lock:
-                        self.ctrl.features[in_var] = topic
-                        self.ctrl.features_count[in_var].add(node.name())
+                if len(node.inputs()) != len(node.input_vars()):
+                    continue
+
+                if node.changed:
+                    await self.ctrl.features.discard(name)
+
+                for term, in_var in node.input_vars().items():
+                    topic = await self.ctrl.features.get(node.name(), in_var)
+                    topics[in_var] = topic
                     views[in_var] = node.name()
 
-                topics[in_var] = topic
+                args['terms'] = node.input_vars()
+                args['topics'] = topics
 
-            if views:
-                await self.ctrl.graphCommHandler.view(views)
+            elif isinstance(node, CtrlNode) and ctrl:
+                args['terms'] = node.input_vars()
+                args['topics'] = {}
 
-        elif isinstance(node, CtrlNode):
-            topics = {}
-            terms = node.input_vars()
+            display_args.append(args)
 
-        else:
-            return
+            if node.exportable() and export:
+                await self.graphCommHandler.export(node.input_vars()['In'], node.values['alias'])
 
-        if not node.created:
-            state = node.saveState()
-            msg = fcMsgs.CreateNode(node.name(), node.__class__.__name__, state=state)
-            await self.chart.broker.send_string(node.name(), zmq.SNDMORE)
-            await self.chart.broker.send_pyobj(msg)
-            node.created = True
+            if not node.created:
+                state = node.saveState()
+                msg = fcMsgs.CreateNode(node.name(), node.__class__.__name__, state=state)
+                await self.chart.broker.send_string(node.name(), zmq.SNDMORE)
+                await self.chart.broker.send_pyobj(msg)
+                node.created = True
 
-        node.display(topics=None, terms=None, addr=None, win=None)
-        state = {}
-        if hasattr(node.widget, 'saveState'):
-            state = node.widget.saveState()
+        if views:
+            await self.ctrl.graphCommHandler.view(views)
 
-        await self.chart.broker.send_string(node.name(), zmq.SNDMORE)
-        await self.chart.broker.send_pyobj(fcMsgs.DisplayNode(name=node.name(),
-                                                              topics=topics,
-                                                              state=state,
-                                                              terms=terms,
-                                                              units=node.input_units(),
-                                                              geometry=node.geometry))
-
-        self.ctrl.metadata = await self.ctrl.graphCommHandler.metadata
+        for args in display_args:
+            name = args['name']
+            await self.chart.broker.send_string(name, zmq.SNDMORE)
+            await self.chart.broker.send_pyobj(fcMsgs.DisplayNode(**args))
 
     def hoverOver(self, items):
         obj = None
@@ -1218,3 +1129,45 @@ class FlowchartWidget(dockarea.DockArea):
 
     def clear(self):
         self.hoverText.setPlainText('')
+
+
+class Features(object):
+
+    def __init__(self, graphCommHandler):
+        self.features_count = collections.defaultdict(set)
+        self.features = {}
+        self.graphCommHandler = graphCommHandler
+        self.lock = asyncio.Lock()
+
+    async def get(self, name, in_var):
+        async with self.lock:
+            if name in self.features:
+                topic = self.features[in_var]
+            else:
+                topic = self.graphCommHandler.auto(in_var)
+                self.features[in_var] = topic
+                self.features_count[in_var].add(name)
+
+                return topic
+
+    async def discard(self, name, in_var=None):
+        async with self.lock:
+            if in_var and in_var in self.features_count:
+                self.features_count[in_var].discard(name)
+                if not self.features_count[in_var]:
+                    del self.features[in_var]
+                    del self.features_count[in_var]
+                return True
+            else:
+                for in_var, viewers in self.features_count.items():
+                    viewers.discard(name)
+                    if not viewers and name in self.features:
+                        del self.features[name]
+                return True
+
+        return False
+
+    async def reset(self):
+        async with self.lock:
+            self.features = {}
+            self.features_count = collections.defaultdict(set)
