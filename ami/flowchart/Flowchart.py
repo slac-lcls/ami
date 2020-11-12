@@ -971,8 +971,9 @@ class FlowchartWidget(dockarea.DockArea):
                 args['terms'] = node.buffered_terms()
 
             elif isinstance(node, SourceNode) and node.viewable():
-                topic = await self.ctrl.features.get(name, name)
-                views[name] = name
+                new, topic = await self.ctrl.features.get(name, name)
+                if new:
+                    views[name] = name
 
                 args['terms'] = {'In': name}
                 args['topics'] = {name: topic}
@@ -987,9 +988,10 @@ class FlowchartWidget(dockarea.DockArea):
                     await self.ctrl.features.discard(name)
 
                 for term, in_var in node.input_vars().items():
-                    topic = await self.ctrl.features.get(node.name(), in_var)
+                    new, topic = await self.ctrl.features.get(node.name(), in_var)
                     topics[in_var] = topic
-                    views[in_var] = node.name()
+                    if new:
+                        views[in_var] = node.name()
 
                 args['terms'] = node.input_vars()
                 args['topics'] = topics
@@ -1143,12 +1145,14 @@ class Features(object):
         async with self.lock:
             if name in self.features:
                 topic = self.features[in_var]
+                new = False
             else:
                 topic = self.graphCommHandler.auto(in_var)
                 self.features[in_var] = topic
-                self.features_count[in_var].add(name)
+                new = True
 
-                return topic
+            self.features_count[in_var].add(name)
+            return new, topic
 
     async def discard(self, name, in_var=None):
         async with self.lock:
