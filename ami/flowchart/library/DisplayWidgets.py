@@ -40,7 +40,8 @@ class AsyncFetcher(object):
         if self.data.keys() == set(self.subs) and len(heartbeats) == 1:
             now = dt.datetime.now()
             now = now.strftime("%H:%M:%S")
-            self.last_updated = f"Last Updated: {now}"
+            heartbeat = heartbeats.pop()
+            self.last_updated = f"Last Updated: {now} HB: {heartbeat}"
 
             res = {}
             for name, topic in self.topics.items():
