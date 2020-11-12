@@ -149,8 +149,9 @@ class Flowchart(Node):
         elif node.viewable():
             views = []
             for term, in_var in input_vars.items():
-                await ctrl.features.discard(name, in_var)
-                views.append(in_var)
+                discarded = await ctrl.features.discard(name, in_var)
+                if discarded:
+                    views.append(in_var)
             if views:
                 await ctrl.graphCommHandler.unview(views)
 
