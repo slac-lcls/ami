@@ -144,7 +144,7 @@ class Flowchart(Node):
             self.deleted_nodes.append(name)
             self.sigNodeChanged.emit(node)
         elif isinstance(node, SourceNode):
-            ctrl.features.discard(name, name)
+            await ctrl.features.discard(name, name)
             await ctrl.graphCommHandler.unview(name)
         elif node.viewable():
             views = []
