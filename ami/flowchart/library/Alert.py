@@ -1,9 +1,8 @@
-from qtpy import QtWidgets
+from qtpy import QtWidgets, QtCore
 from amitypes import Array1d
 from ami.flowchart.library.common import CtrlNode
 from ami.flowchart.library.DisplayWidgets import AsyncFetcher
 import ami.graph_nodes as gn
-import asyncio
 
 
 class DialogWidget(QtWidgets.QWidget):
@@ -13,18 +12,27 @@ class DialogWidget(QtWidgets.QWidget):
         self.fetcher = None
         self.terms = terms
         self.sleep_clicked = False
+        self.active = True
+        self.sleep = QtCore.QTimer()
+        self.sleep.timeout.connect(self.set_active)
         if addr:
-            self.fetcher = AsyncFetcher(topics, terms, addr)
+            self.fetcher = AsyncFetcher(topics, terms, addr, parent=self)
+            self.fetcher.start()
 
-    async def update(self):
-        while True:
-            if self.sleep_clicked:
-                self.sleep_clicked = False
-                await asyncio.sleep(30)
+    @QtCore.Slot()
+    def set_active(self):
+        self.active = True
 
-            await self.fetcher.fetch()
-            if self.fetcher.reply:
-                self.value_updated(self.fetcher.reply)
+    @QtCore.Slot()
+    def update(self):
+        if self.sleep_clicked:
+            self.sleep_clicked = False
+            self.active = False
+            self.sleep(30000)
+        else:
+            while self.fetcher.ready:
+                if self.active:
+                    self.value_updated(self.fetcher.reply)
 
     def value_updated(self, data):
         for term, name in self.terms.items():

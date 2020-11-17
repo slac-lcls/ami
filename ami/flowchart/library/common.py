@@ -6,7 +6,6 @@ from ami.flowchart.library.WidgetGroup import generateUi
 from ami.flowchart.library.DisplayWidgets import ScalarWidget, WaveformWidget, ImageWidget, \
         TextWidget, ObjectWidget
 from amitypes import Array1d, Array2d
-import asyncio
 
 
 class CtrlNode(Node):

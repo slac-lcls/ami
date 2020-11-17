@@ -1,11 +1,11 @@
 import zmq
+import queue
 import logging
-import asyncio
 import datetime as dt
 import itertools as it
 import numpy as np
 import pyqtgraph as pg
-from pyqtgraph.Qt import QtGui, QtWidgets, QtCore
+from qtpy import QtGui, QtWidgets, QtCore
 from ami import LogConfig
 from ami.data import Deserializer
 from ami.flowchart.library.WidgetGroup import generateUi
@@ -24,7 +24,7 @@ class AsyncFetcher(QtCore.QThread):
 
     sig = QtCore.Signal()
 
-    def __init__(self, topics, terms, addr, parent=None):
+    def __init__(self, topics, terms, addr, parent=None, ratelimit=None):
         super(__class__, self).__init__(parent)
         self.addr = addr
         self.running = True
@@ -33,6 +33,7 @@ class AsyncFetcher(QtCore.QThread):
         self.sockets = {}
         self.data = {}
         self.timestamps = {}
+        self.reply_queue = queue.Queue()
         self.last_updated = "Last Updated: None"
         self.deserializer = Deserializer()
         self.update_topics(topics, terms)
@@ -42,23 +43,22 @@ class AsyncFetcher(QtCore.QThread):
         self.send_interrupt = self.ctx.socket(zmq.REQ)
         self.send_interrupt.connect("inproc://fetcher_interrupt")
         if parent is not None:
-            self.sig.connect(parent.update)
+            if ratelimit is None:
+                self.sig.connect(parent.update)
+            else:
+                self.sig_proxy = pg.SignalProxy(self.sig,
+                                                ratelimit=ratelimit,
+                                                slot=parent.update)
+
+    @property
+    def ready(self):
+        return not self.reply_queue.empty()
 
     @property
     def reply(self):
-        heartbeats = set(self.timestamps.values())
-        if self.data.keys() == set(self.subs) and len(heartbeats) == 1:
-            now = dt.datetime.now()
-            now = now.strftime("%H:%M:%S")
-            heartbeat = heartbeats.pop()
-            self.last_updated = f"Last Updated: {now} HB: {heartbeat}"
-
-            res = {}
-            for name, topic in self.topics.items():
-                res[name] = self.data[topic]
-
-            return res
-        else:
+        try:
+            return self.reply_queue.get(block=False)
+        except queue.Empty:
             return {}
 
     def update_topics(self, topics, terms):
@@ -101,8 +101,22 @@ class AsyncFetcher(QtCore.QThread):
                 reply = sock.recv_serialized(self.deserializer, copy=False)
                 self.data[self.view_subs[topic]] = reply
                 self.timestamps[self.view_subs[topic]] = heartbeat
-            if self.reply:
-                self.sig.emit()
+                # check if the data is ready
+                heartbeats = set(self.timestamps.values())
+                if self.data.keys() == set(self.subs) and len(heartbeats) == 1:
+                    now = dt.datetime.now()
+                    now = now.strftime("%H:%M:%S")
+                    heartbeat = heartbeats.pop()
+                    self.last_updated = f"Last Updated: {now} HB: {heartbeat}"
+
+                    res = {}
+                    for name, topic in self.topics.items():
+                        res[name] = self.data[topic]
+
+                    # put results on the reply queue
+                    self.reply_queue.put(res)
+                    # send a signal that data is ready
+                    self.sig.emit()
 
     def close(self):
         self.running = False
@@ -410,9 +424,9 @@ class PlotWidget(pg.GraphicsLayoutWidget):
     def data_updated(self, data):
         pass
 
-    @QtCore.pyqtSlot()
+    @QtCore.Slot()
     def update(self):
-        if self.fetcher.reply:
+        while self.fetcher.ready:
             self.last_updated.setText(self.fetcher.last_updated)
             self.last_updated.item.moveBy(13, -5)
             self.data_updated(self.fetcher.reply)
@@ -428,14 +442,15 @@ class TextWidget(pg.LayoutWidget):
 
         self.fetcher = None
         if addr:
-            self.fetcher = AsyncFetcher(topics, terms, addr)
+            self.fetcher = AsyncFetcher(topics, terms, addr, parent=self)
+            self.fetcher.start()
 
         self.label = self.addLabel()
         self.label.setMinimumSize(150, 50)
 
-    async def update(self):
-        while True:
-            await self.fetcher.fetch()
+    @QtCore.Slot()
+    def update(self):
+        while self.fetcher.ready:
             for k, v in self.fetcher.reply.items():
                 self.label.setText(v)
 
@@ -450,15 +465,16 @@ class ObjectWidget(pg.LayoutWidget):
 
         self.fetcher = None
         if addr:
-            self.fetcher = AsyncFetcher(topics, terms, addr)
+            self.fetcher = AsyncFetcher(topics, terms, addr, parent=self)
+            self.fetcher.start()
 
         self.label = self.addLabel()
         self.label.setMinimumSize(360, 180)
         self.label.setWordWrap(True)
 
-    async def update(self):
-        while True:
-            await self.fetcher.fetch()
+    @QtCore.Slot()
+    def update(self):
+        while self.fetcher.ready:
             for k, v in self.fetcher.reply.items():
 
                 if type(v) is np.ndarray:
@@ -479,14 +495,15 @@ class ScalarWidget(QtWidgets.QLCDNumber):
 
         self.fetcher = None
         if addr:
-            self.fetcher = AsyncFetcher(topics, terms, addr)
+            self.fetcher = AsyncFetcher(topics, terms, addr, parent=self)
+            self.fetcher.start()
 
         self.setMinimumSize(300, 100)
         self.setDigitCount(10)
 
-    async def update(self):
-        while True:
-            await self.fetcher.fetch()
+    @QtCore.Slot()
+    def update(self):
+        while self.fetcher.ready:
             for k, v in self.fetcher.reply.items():
                 self.display(v)
 
@@ -847,10 +864,6 @@ class ArrayWidget(QtWidgets.QWidget):
     def __init__(self, topics=None, terms=None, addr=None, parent=None, **kwargs):
         super().__init__(parent)
 
-        self.fetcher = None
-        if addr:
-            self.fetcher = AsyncFetcher(topics, terms, addr)
-
         self.terms = terms
         self.update_rate = kwargs.get('update_rate', 30)
         self.grid = QtGui.QGridLayout(self)
@@ -860,13 +873,18 @@ class ArrayWidget(QtWidgets.QWidget):
         self.grid.setRowStretch(0, 10)
         self.grid.addWidget(self.last_updated, 1, 0)
 
-    async def update(self):
-        while True:
-            await self.fetcher.fetch()
+        self.fetcher = None
+        if addr:
+            self.fetcher = AsyncFetcher(topics, terms, addr,
+                                        parent=self, ratelimit=1.0/self.update_rate)
+            self.fetcher.start()
+
+    @QtCore.Slot()
+    def update(self):
+        while self.fetcher.ready:
             if self.fetcher.reply:
                 self.last_updated.setText(self.fetcher.last_updated)
                 self.array_updated(self.fetcher.reply)
-            await asyncio.sleep(self.update_rate)
 
     def array_updated(self, data):
         for term, name in self.terms.items():
