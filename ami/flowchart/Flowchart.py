@@ -202,7 +202,7 @@ class Flowchart(Node):
                             self.deleted_nodes.append(name)
                         elif node.viewable():
                             for term, in_var in node.input_vars().items():
-                                discarded = await self.ctrl.features.discard(name, in_var)
+                                discarded = await ctrl.features.discard(name, in_var)
                                 if discarded:
                                     views.append(in_var)
                     else:
