@@ -180,7 +180,8 @@ def manager_proc(ipc_dir):
         name='manager',
         target=run_manager,
         args=(1, 1, addrs['results'], addrs['graph'], addrs['comm'],
-              addrs['msg'], addrs['info'], addrs['export'], addrs['view'], addrs['profile'])
+              addrs['msg'], addrs['info'], addrs['export'], addrs['view'], addrs['profile'],
+              None, None)
     )
     proc.daemon = False
     proc.start()

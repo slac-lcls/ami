@@ -132,7 +132,7 @@ def test_psana_source(xtcwriter):
         'files': [str(xtcwriter)],
     }
     # these are broken in xtcwriter
-    excludes = {'HX2:DVD:GCC:01:PMON', 'HX2:DVD:GPI:01:PMON'}
+    excludes = {'HX2:DVD:GCC:01:PMON', 'HX2:DVD:GPI:01:PMON', 'motor1', 'motor2'}
     expected_cfg = {
         'HX2:DVD:GCC:01:PMON': float,
         'HX2:DVD:GPI:01:PMON': str,
