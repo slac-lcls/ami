@@ -17,21 +17,21 @@ class MyPythonCodeEdit(widgets.PyCodeEditBase):
         # install it first
         # self.modes.append(pymodes.DocumentAnalyserMode())
 
-        #--- core panels
+        # --- core panels
         self.panels.append(panels.FoldingPanel())
         self.panels.append(panels.LineNumberPanel())
         self.panels.append(panels.CheckerPanel())
         # self.panels.append(panels.SearchAndReplacePanel(),
         #                    panels.SearchAndReplacePanel.Position.BOTTOM)
         # self.panels.append(panels.EncodingPanel(), api.Panel.Position.TOP)
-       # add a context menu separator between editor's
+        # add a context menu separator between editor's
         # builtin action and the python specific actions
         self.add_separator()
 
-        #--- python specific panels
+        # --- python specific panels
         self.panels.append(pypanels.QuickDocPanel(), api.Panel.Position.BOTTOM)
 
-        #--- core modes
+        # --- core modes
         self.modes.append(modes.CaretLineHighlighterMode())
         self.modes.append(modes.CodeCompletionMode())
         self.modes.append(modes.ExtendedSelectionMode())
@@ -42,7 +42,7 @@ class MyPythonCodeEdit(widgets.PyCodeEditBase):
         self.modes.append(modes.SymbolMatcherMode())
         self.modes.append(modes.ZoomMode())
 
-        #---  python specific modes
+        # ---  python specific modes
         self.modes.append(pymodes.CommentsMode())
         self.modes.append(pymodes.CalltipsMode())
         self.modes.append(pymodes.FrostedCheckerMode())
@@ -51,6 +51,7 @@ class MyPythonCodeEdit(widgets.PyCodeEditBase):
         self.modes.append(pymodes.PyAutoIndentMode())
         self.modes.append(pymodes.PyIndenterMode())
         self.modes.append(pymodes.PythonSH(self.document()))
+
 
 class PythonEditorWidget(QtWidgets.QWidget):
 
@@ -67,7 +68,7 @@ class PythonEditorWidget(QtWidgets.QWidget):
         # except Exception as e:
         #     self.editor = QtWidgets.QPlainTextEdit(parent=self)
         self.editor = MyPythonCodeEdit(parent=self)
-        
+
         if text:
             self.editor.setPlainText(text)
         elif self.inputs:
