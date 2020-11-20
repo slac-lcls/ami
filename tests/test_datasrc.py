@@ -112,7 +112,7 @@ def test_hdf5_source(hdf5writer):
 
             count += 1
         elif evt.mtype == MsgTypes.Heartbeat:
-            assert count == heartbeat_period * (evt.payload + 1)
+            assert count == heartbeat_period * (evt.payload.identity + 1)
 
     # check that the last evt was an unconfigure
     assert evt.mtype == MsgTypes.Transition and evt.payload.ttype == Transitions.Unconfigure
@@ -417,7 +417,7 @@ def test_source_request(sim_src_cfg):
         if msg.mtype == MsgTypes.Datagram:
             assert set(msg.payload.keys()) == source.requested_names
         elif msg.mtype == MsgTypes.Heartbeat:
-            source.request(expected_names[msg.payload])
+            source.request(expected_names[msg.payload.identity])
 
 
 def test_source_badrequest(sim_src_cfg):

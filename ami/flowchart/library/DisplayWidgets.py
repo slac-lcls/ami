@@ -39,7 +39,7 @@ class AsyncFetcher(QtCore.QThread):
         self.update_topics(topics, terms)
         self.recv_interrupt = self.ctx.socket(zmq.REP)
         self.recv_interrupt.bind("inproc://fetcher_interrupt")
-        self.poller.register(self.recv_interrupt)
+        self.poller.register(self.recv_interrupt, zmq.POLLIN)
         self.send_interrupt = self.ctx.socket(zmq.REQ)
         self.send_interrupt.connect("inproc://fetcher_interrupt")
         if parent is not None:
@@ -105,9 +105,10 @@ class AsyncFetcher(QtCore.QThread):
                 heartbeats = set(self.timestamps.values())
                 if self.data.keys() == set(self.subs) and len(heartbeats) == 1:
                     now = dt.datetime.now()
-                    now = now.strftime("%H:%M:%S")
+                    now = now.strftime("%F %T")
                     heartbeat = heartbeats.pop()
-                    self.last_updated = f"Last Updated: {now} HB: {heartbeat}"
+                    hbts = dt.datetime.fromtimestamp(heartbeat.timestamp).strftime("%F %T.%f")
+                    self.last_updated = f"Last Updated: {now} HB: {hbts}"
 
                     res = {}
                     for name, topic in self.topics.items():

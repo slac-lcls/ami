@@ -6,6 +6,7 @@ import dill
 import typing
 import inspect
 import logging
+import datetime
 import pickle
 try:
     import h5py
@@ -68,6 +69,44 @@ class Transition:
         return cls(**data)
 
 
+@dataclass(frozen=True)
+class Heartbeat:
+    """
+    Heartbeat contatiner.
+
+    Comparison/equality operators are implemented so that it can be
+    compared to integers.
+
+    Args:
+        identity (int): Heartbeat integer id number
+        timestamp (float): Unix timestamp associated with heartbeat
+    """
+    identity: int = 0
+    timestamp: float = 0.0
+
+    def __eq__(self, other):
+        return self.identity == other
+
+    def __lt__(self, other):
+        return self.identity < other
+
+    def __le__(self, other):
+        return self.identity <= other
+
+    def __gt__(self, other):
+        return self.identity > other
+
+    def __ge__(self, other):
+        return self.identity >= other
+
+    def _serialize(self):
+        return asdict(self)
+
+    @classmethod
+    def _deserialize(cls, data):
+        return cls(**data)
+
+
 @dataclass
 class Datagram:
     name: str
@@ -120,7 +159,7 @@ class CollectorMessage(Message):
 
         version (int): version
     """
-    heartbeat: int = 0
+    heartbeat: Heartbeat = Heartbeat()
     name: str = ""
     version: int = 0
 
@@ -139,7 +178,8 @@ def build_serialization_context():
                           custom_deserializer=cls._deserialize)
 
     context = pa.SerializationContext()
-    for cls in [MsgTypes, Transitions, Message, CollectorMessage, Transition, Datagram]:
+    for cls in [MsgTypes, Transitions, Heartbeat, Message,
+                CollectorMessage, Transition, Datagram]:
         register(context, cls)
     for cls in at.PyArrowTypes:
         register(context, cls)
@@ -231,6 +271,7 @@ class TimestampConverter:
         self.shift = shift
         self.mask = (1 << self.shift) - 1
         self.heartbeat = heartbeat
+        self.epics_epoch_dt = datetime.datetime(1990, 1, 1, tzinfo=datetime.timezone.utc)
 
     def decode(self, raw_ts, as_float=False):
         sec = (raw_ts >> self.shift) & self.mask
@@ -243,9 +284,14 @@ class TimestampConverter:
     def encode(self, sec, nsec):
         return ((sec & self.mask) << self.shift) | (nsec & self.mask)
 
-    def __call__(self, raw_ts):
+    def unix_timestamp(self, epics_timestamp):
+        unix_epoch_dt = self.epics_epoch_dt + datetime.timedelta(seconds=epics_timestamp)
+        return unix_epoch_dt.timestamp()
+
+    def __call__(self, raw_ts, epics_epoch=True):
         timestamp = self.decode(raw_ts, as_float=True)
-        return timestamp, int(timestamp * self.heartbeat)
+        unix_ts = self.unix_timestamp(timestamp) if epics_epoch else timestamp
+        return timestamp, int(timestamp * self.heartbeat), unix_ts
 
 
 class Source(abc.ABC):
@@ -342,24 +388,28 @@ class Source(abc.ABC):
         self.heartbeat = None
         self.old_heartbeat = None
 
-    def check_heartbeat_boundary(self, timestamp):
+    def check_heartbeat_boundary(self, value, timestamp=None):
         """
-        Checks if the timestamp given has crossed into another heartbeat
+        Checks if the value given has crossed into another heartbeat
         period than the current one.
 
         Args:
-            timestamp (int): The timestamp to use for the check
+            value (int): The value to use for the check
+            timestamp (float): optional timestamp to associate with
+                heartbeat. Defaults to the current time if not specified
 
         Returns:
             If a heartbeat boundary has been crossed a value of `True` is
             returned.
         """
+        if timestamp is None:
+            timestamp = time.time()
         if self.heartbeat is None:
-            self.heartbeat = (timestamp // self.heartbeat_period)
+            self.heartbeat = Heartbeat(value // self.heartbeat_period, timestamp)
             return False
-        elif (timestamp // self.heartbeat_period) > (self.heartbeat):
+        elif (value // self.heartbeat_period) > self.heartbeat:
             self.old_heartbeat = self.heartbeat
-            self.heartbeat = (timestamp // self.heartbeat_period)
+            self.heartbeat = Heartbeat(value // self.heartbeat_period, timestamp)
             return True
         else:
             return False
@@ -491,7 +541,11 @@ class Source(abc.ABC):
         Returns:
             An object of type `Message` which includes the data for the event.
         """
-        base = [('timestamp', timestamp), ('heartbeat', self.heartbeat), ('source', self.source)]
+        base = [
+            ('timestamp', timestamp),
+            ('heartbeat', self.heartbeat.identity if self.heartbeat is not None else None),
+            ('source', self.source)
+        ]
         data.update({k: v for k, v in base if k in self.requested_names})
         msg = Message(mtype=MsgTypes.Datagram, identity=self.idnum, payload=data, timestamp=timestamp)
         yield msg
@@ -571,19 +625,34 @@ class HierarchicalDataSource(Source):
         pass
 
     def timestamp(self, evt):
+        """
+        A function for the getting the timestamp information from an event
+        object. There are three parts to the timestamp. A monotonic timestamp
+        (if the event does not have one a counter is used here),
+        the timestamp to use for heartbeat calculations (must be an integer),
+        and the unix timestamp to associate with the event.
+
+        Args:
+            evt: a reference to the event object
+
+        Returns:
+            A tuple of three timestamp components
+        """
         counter = self.counter
-        timestamp, heartbeat = self._timestamp(evt)
+        timestamp, heartbeat, unix_timestamp = self._timestamp(evt)
+        if unix_timestamp is None:
+            unix_timestamp = time.time()
         if timestamp is None:
             # If the source does not provide timestamps use the counter
-            return counter, counter
+            return counter, counter, unix_timestamp
         elif self.counting_mode:
             # If in counting mode then force use the counter for heartbeats
-            return timestamp, counter
+            return timestamp, counter, unix_timestamp
         elif heartbeat is None:
             # If no heartbeat adjusted timestamp is provided just use the raw timestamp
-            return timestamp, timestamp
+            return timestamp, timestamp, unix_timestamp
         else:
-            return timestamp, heartbeat
+            return timestamp, heartbeat, unix_timestamp
 
     @property
     def repeat_mode(self):
@@ -635,9 +704,9 @@ class HierarchicalDataSource(Source):
                     for evt in self._events(step):
                         self.source.evt = evt
                         # get the subclasses timestamp implementation
-                        timestamp, heartbeat = self.timestamp(evt)
+                        timestamp, heartbeat, unix_ts = self.timestamp(evt)
                         # check the heartbeat
-                        if self.check_heartbeat_boundary(heartbeat):
+                        if self.check_heartbeat_boundary(heartbeat, timestamp=unix_ts):
                             yield self.heartbeat_msg()
 
                         # emit the processed event data
@@ -907,7 +976,7 @@ class Hdf5Source(HierarchicalDataSource):
 
     def _timestamp(self, evt):
         if self.hdf5_ts is None:
-            return None, None
+            return None, None, None
         else:
             index, run = evt
             return self.ts_converter(run[self.hdf5_ts][index])

@@ -114,17 +114,17 @@ class GraphCollector(Node, Collector):
                     self.report("purge", msg.name)
 
                 self.event_counter.labels(self.hutch, 'Heartbeat', self.name).inc()
-                self.heartbeat_time[msg.heartbeat] += time.time() - datagram_start
-                heartbeat_time = self.heartbeat_time.pop(msg.heartbeat, 0)
+                self.heartbeat_time[msg.heartbeat.identity] += time.time() - datagram_start
+                heartbeat_time = self.heartbeat_time.pop(msg.heartbeat.identity, 0)
                 self.event_time.labels(self.hutch, 'Heartbeat', self.name).set(heartbeat_time)
             else:
                 # prune older entries from the event builder
                 pruned = self.store.prune(msg.name, self.node)
                 if pruned:
                     self.event_counter.labels(self.hutch, 'Pruned Heartbeat', self.name).inc()
-                    self.heartbeat_time.pop(msg.heartbeat, 0)
+                    self.heartbeat_time.pop(msg.heartbeat.identity, 0)
 
-            self.heartbeat_time[msg.heartbeat] += time.time() - datagram_start
+            self.heartbeat_time[msg.heartbeat.identity] += time.time() - datagram_start
 
 
 def run_collector(node_num, base_name, num_contribs, color,
