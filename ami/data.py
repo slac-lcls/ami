@@ -655,6 +655,9 @@ class HierarchicalDataSource(Source):
                 self.source.run = None
                 # call the subclass cleanup method
                 self._cleanup()
+            # To avoid reconnecting to the previous shmem server (which is
+            # being destroyed), hold off attempting to connect again
+            time.sleep(1)
 
 
 class PsanaSource(HierarchicalDataSource):
