@@ -599,11 +599,16 @@ class Manager(Collector):
                 port += 1
 
         if self.prometheus_dir:
+            if not os.path.exists(self.prometheus_dir):
+                os.makedirs(self.prometheus_dir)
             pth = f"drpami_{socket.gethostname()}_{self.name}.json"
             pth = os.path.join(self.prometheus_dir, pth)
             conf = [{"targets": [f"{socket.gethostname()}:{port}"]}]
-            with open(pth, 'w') as f:
-                json.dump(conf, f)
+            try:
+                with open(pth, 'w') as f:
+                    json.dump(conf, f)
+            except PermissionError:
+                pass
 
         logger.info("%s: Started Prometheus client on port: %d", self.name, port)
         return port
