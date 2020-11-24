@@ -63,8 +63,7 @@ def run_editor_window(broker_addr, graphmgr_addr, checkpoint_addr, load=None):
         loop.run_forever()
     finally:
         if not task.done():
-            fc.clear()
-            fc.widget().applyClicked()
+            loop.run_until_complete(fc.widget().clear())
             task.cancel()
         loop.close()
 

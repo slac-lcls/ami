@@ -85,8 +85,8 @@ class CtrlNode(Node):
         w.show()
         label.show()
 
-    def close(self):
-        super().close()
+    def close(self, emit=True):
+        super().close(emit)
 
         if self.widget:
             self.widget.close()

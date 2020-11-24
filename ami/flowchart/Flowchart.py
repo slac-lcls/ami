@@ -380,8 +380,7 @@ class Flowchart(Node):
             state = json.load(f)
 
         ctrl = self.widget()
-        self.clear()
-        await ctrl.applyClicked()
+        await ctrl.clear()
         self.restoreState(state)
         self.viewBox.autoRange()
         self.sigFileLoaded.emit(fileName)
@@ -423,13 +422,17 @@ class Flowchart(Node):
         self.widget().chartWidget.statusText.append(f"[{now}] Saved graph to: {fileName}")
         self.sigFileSaved.emit(fileName)
 
-    def clear(self):
+    async def clear(self):
         """
         Remove all nodes from this flowchart except the original input/output nodes.
         """
-        for name in reversed(list(nx.topological_sort(self._graph))):
-            node = self._graph.nodes[name]['node']
-            node.close()  # calls self.nodeClosed(n) by signal
+        for name, gnode in self._graph.nodes().items():
+            node = gnode['node']
+            await self.broker.send_string(name, zmq.SNDMORE)
+            await self.broker.send_pyobj(fcMsgs.CloseNode())
+            node.close(emit=False)
+
+        self._graph = nx.MultiDiGraph()
 
     async def updateState(self):
         while True:
@@ -751,11 +754,12 @@ class FlowchartCtrlWidget(QtGui.QWidget):
 
     @asyncSlot()
     async def clear(self):
-        self.chart.clear()
+        await self.graphCommHandler.clear()
+        await self.chart.clear()
         self.chartWidget.clear()
         self.setCurrentFile(None)
         self.chart.sigFileLoaded.emit('')
-        await self.applyClicked()
+        self.features = Features(self.graphCommHandler)
 
     def configureClicked(self):
         self.sourceConfigure.show()

@@ -471,9 +471,10 @@ class Node(QtCore.QObject):
         self._conditions = OrderedDict()
         self._outputs = OrderedDict()
 
-    def close(self):
+    def close(self, emit=True):
         """Cleans up after the node--removes terminals, graphicsItem, widget"""
-        self.sigClosed.emit(self, self.input_vars())
+        if emit:
+            self.sigClosed.emit(self, self.input_vars())
         self.disconnectAll()
         self.clearTerminals()
         item = self.graphicsItem()
