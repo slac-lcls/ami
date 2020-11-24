@@ -621,7 +621,8 @@ def run_manager(num_workers,
                 profile_addr,
                 prometheus_dir,
                 hutch):
-    logger.info('Starting manager, controlling %d workers on %d nodes', num_workers, num_nodes)
+    logger.info('Starting manager, controlling %d workers on %d nodes PID: %d',
+                num_workers, num_nodes, os.getpid())
     with Manager(
             num_workers,
             num_nodes,

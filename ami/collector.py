@@ -1,4 +1,5 @@
 #!/usr/bin/env python
+import os
 import sys
 import logging
 import argparse
@@ -130,7 +131,7 @@ class GraphCollector(Node, Collector):
 def run_collector(node_num, base_name, num_contribs, color,
                   collector_addr, upstream_addr, graph_addr, msg_addr,
                   prometheus_dir, hutch):
-    logger.info('Starting collector on node # %d', node_num)
+    logger.info('Starting collector on node # %d PID: %d', node_num, os.getpid())
     with GraphCollector(
             node_num,
             base_name,

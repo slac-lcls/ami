@@ -1,4 +1,5 @@
 #!/usr/bin/env python
+import os
 import re
 import sys
 import zmq
@@ -281,7 +282,7 @@ class Worker(Node):
 def run_worker(num, num_workers, hb_period, source, collector_addr, graph_addr, msg_addr, export_addr,
                flags=None, prometheus_dir=None, hutch=None):
 
-    logger.info('Starting worker # %d, sending to collector at %s', num, collector_addr)
+    logger.info('Starting worker # %d, sending to collector at %s PID: %d', num, collector_addr, os.getpid())
 
     src = None
     if source is not None:

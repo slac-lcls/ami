@@ -88,7 +88,7 @@ class Heartbeat:
         return hash(self.identity)
 
     def __eq__(self, other):
-        return self.identity == other.identity
+        return self.identity == other
 
     def __lt__(self, other):
         return self.identity < other
