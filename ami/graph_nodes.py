@@ -326,10 +326,7 @@ class PickN(GlobalTransformation):
             args = args[0]
 
         for arg in args:
-            if type(arg) is np.ndarray:
-                self.res[self.idx] = np.copy(arg)
-            else:
-                self.res[self.idx] = arg
+            self.res[self.idx] = arg
             self.idx = (self.idx + 1) % self.N
 
         if not any(x is None for x in self.res):
