@@ -471,7 +471,7 @@ class GraphBuilder(ContributionBuilder):
         if prune_key is None:
             depth = self.depth
         elif prune_key < self.latest:
-            depth = self.latest - prune_key
+            depth = self.latest.identity - prune_key.identity
         elif prune_key > self.latest:
             depth = 0
         else:
@@ -485,7 +485,7 @@ class GraphBuilder(ContributionBuilder):
         return pruned
 
     def flush(self, identity, drop=False):
-        pruned = self.prune(identity, self.latest + 1, drop)
+        pruned = self.prune(identity, self.latest.identity + 1, drop)
         if drop and self.graph:
             self.graph.reset()
         self.latest = 0

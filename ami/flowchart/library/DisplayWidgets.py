@@ -108,7 +108,8 @@ class AsyncFetcher(QtCore.QThread):
                     now = now.strftime("%F %T")
                     heartbeat = heartbeats.pop()
                     hbts = dt.datetime.fromtimestamp(heartbeat.timestamp).strftime("%F %T.%f")
-                    self.last_updated = f"Last Updated: {now} HB: {hbts}"
+                    latency = dt.datetime.now() - dt.datetime.fromtimestamp(heartbeat.timestamp)
+                    self.last_updated = f"Last Updated: {now} HB: {hbts} Latency: {latency}"
 
                     res = {}
                     for name, topic in self.topics.items():

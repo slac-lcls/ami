@@ -84,8 +84,11 @@ class Heartbeat:
     identity: int = 0
     timestamp: float = 0.0
 
+    def __hash__(self):
+        return hash(self.identity)
+
     def __eq__(self, other):
-        return self.identity == other
+        return self.identity == other.identity
 
     def __lt__(self, other):
         return self.identity < other
