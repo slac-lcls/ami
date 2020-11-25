@@ -125,10 +125,10 @@ class AsyncFetcher(QtCore.QThread):
         # signal asyncfetcher thread to die then wait
         self.send_interrupt.send_pyobj(True)
         self.wait()
+        self.poller.unregister(self.recv_interrupt)
         for name, sock_count in self.sockets.items():
             sock, count = sock_count
             self.poller.unregister(sock)
-            self.poller.unregister(self.recv_interrupt)
             sock.close()
 
         self.ctx.destroy()
@@ -152,6 +152,7 @@ class PlotWidget(pg.GraphicsLayoutWidget):
             self.viewbox_proxy = pg.SignalProxy(self.plot_view.vb.sigRangeChangedManually,
                                                 delay=0.5,
                                                 slot=lambda args: self.node.sigStateChanged.emit(self.node))
+            self.plot_view.autoBtn.clicked.connect(lambda args: self.node.sigStateChanged.emit(self.node))
 
         self.plot_view.showGrid(True, True)
 
