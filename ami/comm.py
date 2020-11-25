@@ -15,7 +15,8 @@ import prometheus_client as pc
 import amitypes as at
 import ami.graph_nodes as gn
 from ami.graphkit_wrapper import Graph
-from ami.data import MsgTypes, Message, Transition, CollectorMessage, Datagram, Serializer, Deserializer
+from ami.data import MsgTypes, Message, Transition, CollectorMessage, Datagram, Serializer, Deserializer, \
+    Heartbeat
 from enum import IntEnum
 
 
@@ -443,7 +444,7 @@ class GraphBuilder(ContributionBuilder):
         super().__init__(num_contribs)
         self.depth = depth
         self.color = color
-        self.latest = 0
+        self.latest = Heartbeat(0, 0)
         self.graph = None
         self.pending_graphs = {}
         self.version = None
@@ -488,7 +489,7 @@ class GraphBuilder(ContributionBuilder):
         pruned = self.prune(identity, self.latest.identity + 1, drop)
         if drop and self.graph:
             self.graph.reset()
-        self.latest = 0
+        self.latest = Heartbeat(0, 0)
         return pruned
 
     def set_graph(self, name, ver_key, args, graph):
