@@ -2,7 +2,7 @@ import pytest
 import zmq
 import dill
 
-from ami.data import MsgTypes, Transitions, Message, CollectorMessage, Deserializer
+from ami.data import MsgTypes, Transitions, Message, CollectorMessage, Deserializer, Heartbeat
 from ami.comm import Colors, ContributionBuilder, TransitionBuilder, EventBuilder
 from ami.graphkit_wrapper import Graph
 from ami.graph_nodes import PickN
@@ -186,11 +186,11 @@ def test_eb_depth(event_builder):
     event_builder.create(name)
 
     for hb in range(num_hb):
-        event_builder.update(name, hb, 0, 0, {})
+        event_builder.update(name, Heartbeat(hb, 0), 0, 0, {})
         event_builder.prune(name, 0)
         assert event_builder.latest(name) == hb
         expected_depth = hb + 1 if hb < depth else depth
-        expected_keys = {val for val in range(hb + 1) if (event_builder.latest(name) - val) < depth}
+        expected_keys = {val for val in range(hb + 1) if (event_builder.latest(name).identity - val) < depth}
         # check that the contribs and pending dictionaries have the expected num of entries
         assert len(event_builder.contribs(name).keys()) == expected_depth
         assert len(event_builder.pending(name).keys()) == expected_depth
