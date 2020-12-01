@@ -452,7 +452,7 @@ class Flowchart(Node):
             f.write('\n')
 
         ctrl = self.widget()
-        ctrl.self.graph_info.labels(self.chart.hutch, ctrl.graph_name).info({'graph': state})
+        ctrl.graph_info.labels(self.hutch, ctrl.graph_name).info({'graph': state})
         now = datetime.now().strftime('%H:%M:%S')
         ctrl.chartWidget.statusText.append(f"[{now}] Saved graph to: {fileName}")
         self.sigFileSaved.emit(fileName)
