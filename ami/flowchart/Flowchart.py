@@ -796,7 +796,7 @@ class FlowchartCtrlWidget(QtGui.QWidget):
 
     @asyncSlot()
     async def clear(self):
-        await self.graphCommHandler.clear()
+        await self.graphCommHandler.destroy()
         await self.chart.clear()
         self.chartWidget.clear()
         self.setCurrentFile(None)
