@@ -5,6 +5,7 @@ from pyqtgraph.pgcollections import OrderedDict
 from pyqtgraph import FileDialog
 from pyqtgraph.debug import printExc
 from pyqtgraph import dockarea as dockarea
+from ami import LogConfig
 from ami.asyncqt import asyncSlot
 from ami.flowchart.FlowchartGraphicsView import FlowchartGraphicsView
 from ami.flowchart.Terminal import Terminal, TerminalGraphicsItem, ConnectionItem
@@ -13,7 +14,7 @@ from ami.flowchart.library.common import SourceNode, CtrlNode
 from ami.flowchart.Node import Node, NodeGraphicsItem, find_nearest
 from ami.flowchart.NodeLibrary import SourceLibrary
 from ami.flowchart.SourceConfiguration import SourceConfiguration
-from ami.comm import AsyncGraphCommHandler
+from ami.comm import AsyncGraphCommHandler, Ports
 from ami.client import flowchart_messages as fcMsgs
 
 import ami.flowchart.Editor as EditorTemplate
@@ -30,6 +31,12 @@ import itertools as it
 import collections
 import os
 import typing  # noqa
+import logging
+import socket
+import prometheus_client as pc
+
+
+logger = logging.getLogger(LogConfig.get_package_name(__name__))
 
 
 class Flowchart(Node):
@@ -40,7 +47,8 @@ class Flowchart(Node):
     # called when output is expected to have changed
 
     def __init__(self, name=None, filePath=None, library=None,
-                 broker_addr="", graphmgr_addr="", checkpoint_addr=""):
+                 broker_addr="", graphmgr_addr="", checkpoint_addr="",
+                 prometheus_dir=None, hutch=None):
         super().__init__(name)
         self.socks = []
         self.library = library or LIBRARY
@@ -72,6 +80,9 @@ class Flowchart(Node):
 
         self.deleted_nodes = []
 
+        self.prometheus_dir = prometheus_dir
+        self.hutch = hutch
+
     def __enter__(self):
         return self
 
@@ -84,6 +95,28 @@ class Flowchart(Node):
         if self._widget is not None:
             self._widget.graphCommHandler.close()
         self.ctx.term()
+
+    def start_prometheus(self):
+        port = Ports.Prometheus
+        while True:
+            try:
+                pc.start_http_server(port)
+                break
+            except OSError:
+                port += 1
+
+        if self.prometheus_dir:
+            if not os.path.exists(self.prometheus_dir):
+                os.makedirs(self.prometheus_dir)
+            pth = f"drpami_{socket.gethostname()}_client.json"
+            pth = os.path.join(self.prometheus_dir, pth)
+            conf = [{"targets": [f"{socket.gethostname()}:{port}"]}]
+            try:
+                with open(pth, 'w') as f:
+                    json.dump(conf, f)
+            except PermissionError:
+                logging.error("Permission denied: %s", pth)
+                pass
 
     def setLibrary(self, lib):
         self.library = lib
@@ -418,8 +451,10 @@ class Flowchart(Node):
             f.write(state)
             f.write('\n')
 
+        ctrl = self.widget()
+        ctrl.self.graph_info.labels(self.chart.hutch, ctrl.graph_name).info({'graph': state})
         now = datetime.now().strftime('%H:%M:%S')
-        self.widget().chartWidget.statusText.append(f"[{now}] Saved graph to: {fileName}")
+        ctrl.chartWidget.statusText.append(f"[{now}] Saved graph to: {fileName}")
         self.sigFileSaved.emit(fileName)
 
     async def clear(self):
@@ -583,6 +618,8 @@ class FlowchartCtrlWidget(QtGui.QWidget):
         self.libraryEditor.sigReloadClicked.connect(self.libraryReloaded)
         self.ui.libraryConfigure.clicked.connect(self.libraryEditor.show)
 
+        self.graph_info = pc.Info('ami_graph', 'AMI Client graph', ['hutch', 'name'])
+
     @asyncSlot()
     async def applyClicked(self, build_views=True):
         graph_nodes = set()
@@ -692,6 +729,11 @@ class FlowchartCtrlWidget(QtGui.QWidget):
 
         self.metadata = await self.graphCommHandler.metadata
         self.ui.setPendingClear()
+
+        version = str(await self.graphCommHandler.graphVersion)
+        state = self.chart.saveState()
+        state = json.dumps(state, indent=2, separators=(',', ': '), sort_keys=True, cls=amitypes.TypeEncoder)
+        self.graph_info.labels(self.chart.hutch, self.graph_name).info({'graph': state, 'version': version})
 
     def openClicked(self):
         startDir = self.chart.filePath

@@ -16,12 +16,13 @@ logger = logging.getLogger(__name__)
 GraphMgrAddress = collections.namedtuple('GraphMgrAddress', ['name', 'comm', 'view', 'info', 'profile'])
 
 
-def run_client(graph_name, comm_addr, info_addr, view_addr, profile_addr, load, use_legacy=True):
+def run_client(graph_name, comm_addr, info_addr, view_addr, profile_addr, load,
+               use_legacy=True, prometheus_dir=None, hutch=None):
     graphmgr_addr = GraphMgrAddress(graph_name, comm_addr, view_addr, info_addr, profile_addr)
     if use_legacy:
         return legacy.run_client(graphmgr_addr, load)
     else:
-        return flowchart.run_client(graphmgr_addr, load)
+        return flowchart.run_client(graphmgr_addr, load, prometheus_dir, hutch)
 
 
 def main():
@@ -63,6 +64,18 @@ def main():
         '--graph-name',
         default=Defaults.GraphName,
         help='the name of the graph used (default: %s)' % Defaults.GraphName
+    )
+
+    parser.add_argument(
+        '--prometheus-dir',
+        help='directory for prometheus configuration',
+        default=None
+    )
+
+    parser.add_argument(
+        '--hutch',
+        help='hutch for prometheus label',
+        default=None
     )
 
     parser.add_argument(
@@ -149,7 +162,8 @@ def main():
         profile_addr = "tcp://%s:%d" % (args.host, profile)
 
     try:
-        return run_client(args.graph_name, comm_addr, info_addr, view_addr, profile_addr, args.load, args.gui_mode)
+        return run_client(args.graph_name, comm_addr, info_addr, view_addr, profile_addr, args.load,
+                          args.gui_mode, args.prometheus_dir, args.hutch)
     except KeyboardInterrupt:
         logger.info("Client killed by user...")
         return 0

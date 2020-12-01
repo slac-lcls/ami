@@ -24,7 +24,7 @@ from pyqtgraph.Qt import QtGui, QtCore, QtWidgets
 logger = logging.getLogger(LogConfig.get_package_name(__name__))
 
 
-def run_editor_window(broker_addr, graphmgr_addr, checkpoint_addr, load=None):
+def run_editor_window(broker_addr, graphmgr_addr, checkpoint_addr, load=None, prometheus_dir=None, hutch=None):
     app = QtGui.QApplication([])
 
     loop = QEventLoop(app)
@@ -37,7 +37,10 @@ def run_editor_window(broker_addr, graphmgr_addr, checkpoint_addr, load=None):
     # Create flowchart, define input/output terminals
     fc = Flowchart(broker_addr=broker_addr,
                    graphmgr_addr=graphmgr_addr,
-                   checkpoint_addr=checkpoint_addr)
+                   checkpoint_addr=checkpoint_addr,
+                   prometheus_dir=prometheus_dir, hutch=hutch)
+
+    fc.start_prometheus()
 
     def update_title(filename):
         if filename:
@@ -227,7 +230,7 @@ class NodeProcess(QtCore.QObject):
 
 class MessageBroker(object):
 
-    def __init__(self, graphmgr_addr, load, ipcdir=None):
+    def __init__(self, graphmgr_addr, load, ipcdir=None, prometheus_dir=None, hutch=None):
 
         if ipcdir is None:
             ipcdir = tempfile.mkdtemp()
@@ -264,6 +267,9 @@ class MessageBroker(object):
         self.checkpoint_pub_sock = self.ctx.socket(zmq.PUB)            # sends messages to editor
         self.checkpoint_pub_sock.bind(self.checkpoint_pub_addr)
 
+        self.prometheus_dir = prometheus_dir
+        self.hutch = hutch
+
         self.profiler = None
 
     def __enter__(self):
@@ -290,7 +296,9 @@ class MessageBroker(object):
             args=(self.broker_sub_addr,
                   self.graphmgr_addr,
                   self.checkpoint_pub_addr,
-                  self.load),
+                  self.load,
+                  self.prometheus_dir,
+                  self.hutch),
             daemon=True)
         editor_proc.start()
 
@@ -434,9 +442,9 @@ class MessageBroker(object):
                              self.monitor_processes())
 
 
-def run_client(graphmgr_addr, load):
+def run_client(graphmgr_addr, load, prometheus_dir, hutch):
     with tempfile.TemporaryDirectory() as ipcdir:
-        mb = MessageBroker(graphmgr_addr, load, ipcdir=ipcdir)
+        mb = MessageBroker(graphmgr_addr, load, ipcdir=ipcdir, prometheus_dir=prometheus_dir, hutch=hutch)
         mb.launch_editor_window()
         loop = asyncio.get_event_loop()
         task = asyncio.ensure_future(mb.run())
