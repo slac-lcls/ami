@@ -15,6 +15,7 @@ class FakeBuilder(ContributionBuilder):
 
     def _complete(self, eb_key, identity, drop):
         self.completed.add((eb_key, identity))
+        return {}, 0
 
     def _update(self, eb_key, eb_id, data):
         if eb_key not in self.pending:

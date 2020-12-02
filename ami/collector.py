@@ -100,11 +100,13 @@ class GraphCollector(Node, Collector):
             if self.store.ready(msg.name, msg.heartbeat):
                 try:
                     # prune entries older than the current heartbeat
-                    pruned = self.store.prune(msg.name, self.node, msg.heartbeat)
-                    if pruned:
+                    pruned_size = self.store.prune(msg.name, self.node, msg.heartbeat)
+                    if pruned_size:
                         self.event_counter.labels(self.hutch, 'Pruned Heartbeat', self.name).inc()
+                        self.event_size.labels(self.hutch, self.name).set(pruned_size)
                     # complete the current heartbeat
-                    self.store.complete(msg.name, msg.heartbeat, self.node)
+                    times, size = self.store.complete(msg.name, msg.heartbeat, self.node)
+
                     # times = self.store.complete(msg.name, msg.heartbeat, self.node)
                     # self.report_times(times, msg.name, msg.heartbeat)
                 except Exception as e:
@@ -118,6 +120,7 @@ class GraphCollector(Node, Collector):
                 self.heartbeat_time[msg.heartbeat.identity] += time.time() - datagram_start
                 heartbeat_time = self.heartbeat_time.pop(msg.heartbeat.identity, 0)
                 self.event_time.labels(self.hutch, 'Heartbeat', self.name).set(heartbeat_time)
+                self.event_size.labels(self.hutch, self.name).set(size)
             else:
                 # prune older entries from the event builder
                 pruned = self.store.prune(msg.name, self.node)

@@ -452,7 +452,9 @@ class Manager(Collector):
     def publish_view(self, topic, timestamp, data):
         self.view_comm.send_string(topic, zmq.SNDMORE)
         self.view_comm.send_pyobj(timestamp, zmq.SNDMORE)
-        self.view_comm.send_serialized(data, self.serializer, copy=False, flags=zmq.NOBLOCK)
+        data = self.serializer(data)
+        self.view_comm.send_multipart(data, copy=False, flags=zmq.NOBLOCK)
+        return self.serializer.sizeof(data)
 
     def graph_request(self):
         request = self.graph_comm.recv_string()
@@ -516,10 +518,12 @@ class Manager(Collector):
                 logger.warn("Received invalid view request: %s", request)
 
     def export_view(self, name):
+        size = 0
         for key, value in self.feature_stores[name].namespace.items():
-            self.publish_view("view:%s:%s" % (name, key),
-                              self.heartbeats[name],
-                              value)
+            size += self.publish_view("view:%s:%s" % (name, key),
+                                      self.heartbeats[name],
+                                      value)
+        self.event_size.labels(self.hutch, self.name).set(size)
 
     def export_request(self):
         request = self.export.recv_string()

@@ -198,6 +198,10 @@ class ModuleSerializer:
     def __call__(self, msg):
         return [self.module.dumps(msg)]
 
+    def sizeof(self, msg):
+        assert type(msg) is list and type(msg[0]) is bytes, "Excepts serialized message!"
+        return sys.getsizeof(msg[0])
+
 
 class ModuleDeserializer:
 
@@ -228,6 +232,13 @@ class ArrowSerializer:
         views = list(map(memoryview, comp['data']))
         serialized_msg.extend(views)
         return serialized_msg
+
+    def sizeof(self, msg):
+        assert type(msg) is list and type(msg[0]) is bytes, "Excepts serialized message!"
+        size = sys.getsizeof(msg[0])
+        for c in msg[1:]:
+            size += c.nbytes
+        return size
 
 
 class ArrowDeserializer:

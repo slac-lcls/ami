@@ -136,7 +136,7 @@ class Worker(Node):
 
     def collect(self, heartbeat):
         # send the data from the store to collector
-        self.store.collect(self.node, heartbeat)
+        size = self.store.collect(self.node, heartbeat)
 
         # update the profiler data
         # if self.times:
@@ -154,6 +154,7 @@ class Worker(Node):
 
         # clear the data from the store after collecting
         self.store.clear()
+        return size
 
     def run(self):
         self.times = {}
@@ -167,6 +168,8 @@ class Worker(Node):
 
         event_counter = pc.Counter('ami_event_count', 'Event Counter', ['hutch', 'type', 'process'])
         event_time = pc.Gauge('ami_event_time_secs', 'Event Time', ['hutch', 'type', 'process'])
+        event_size = pc.Gauge('ami_event_size_bytes', 'Event Size', ['hutch', 'process'])
+
         idle_start = time.time()
         idle_stop = time.time()
         heartbeat_time = 0
@@ -179,7 +182,7 @@ class Worker(Node):
                 # check to see if the graph has been reconfigured after update
                 if msg.mtype == MsgTypes.Heartbeat:
                     heartbeat_start = time.time()
-                    self.collect(msg.payload)
+                    size = self.collect(msg.payload)
 
                     for name, graph in self.graphs.items():
                         if graph:
@@ -208,6 +211,7 @@ class Worker(Node):
                     heartbeat_stop = time.time()
                     heartbeat_time += heartbeat_stop - heartbeat_start
                     event_time.labels(self.hutch, 'Heartbeat', self.name).set(heartbeat_time)
+                    event_size.labels(self.hutch, self.name).set(size)
                     heartbeat_time = 0
 
                 elif msg.mtype == MsgTypes.Datagram:

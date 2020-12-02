@@ -336,16 +336,18 @@ class ZmqHandler:
         self.serializer = Serializer()
 
     def send(self, msg):
-        self.collector.send_serialized(msg, self.serializer, flags=zmq.NOBLOCK, copy=False)
+        msg = self.serializer(msg)
+        self.collector.send_multipart(msg, flags=zmq.NOBLOCK, copy=False)
+        return self.serializer.sizeof(msg)
 
     def message(self, mtype, identity, payload):
         msg = Message(mtype=mtype, identity=identity, payload=payload)
-        self.send(msg)
+        return self.send(msg)
 
     def collector_message(self, identity, heartbeat, name, version, payload):
         msg = CollectorMessage(mtype=MsgTypes.Datagram, identity=identity, heartbeat=heartbeat,
                                name=name, version=version, payload=payload)
-        self.send(msg)
+        return self.send(msg)
 
 
 class ResultStore(ZmqHandler):
@@ -382,8 +384,10 @@ class ResultStore(ZmqHandler):
         self.stores[name].update(updates)
 
     def collect(self, identity, heartbeat):
+        size = 0
         for name, store in self.stores.items():
-            self.collector_message(identity, heartbeat, name, store.version, store.namespace)
+            size += self.collector_message(identity, heartbeat, name, store.version, store.namespace)
+        return size
 
     def version(self, name):
         return self.stores[name].version
@@ -412,11 +416,11 @@ class ContributionBuilder(abc.ABC):
 
     def complete(self, eb_key, identity, drop=False):
         if eb_key in self.pending:
-            times = self._complete(eb_key, identity, drop)
+            times, size = self._complete(eb_key, identity, drop)
             del self.pending[eb_key]
             del self.contribs[eb_key]
             logger.debug("Completed key %s", eb_key)
-            return times
+            return times, size
 
     def mark(self, eb_key, eb_id):
         if 0 <= eb_id < self.num_contribs:
@@ -468,7 +472,7 @@ class GraphBuilder(ContributionBuilder):
             self.graph.compile(**args)
 
     def prune(self, identity, prune_key=None, drop=False):
-        pruned = False
+        size = 0
         if prune_key is None:
             depth = self.depth
         elif prune_key < self.latest:
@@ -481,16 +485,16 @@ class GraphBuilder(ContributionBuilder):
         if len(self.pending) > depth:
             for eb_key in reversed(sorted(self.pending.keys(), reverse=True)[depth:]):
                 logger.debug("Pruned uncompleted key %d", eb_key)
-                self.complete(eb_key, identity, drop)
-                pruned = True
-        return pruned
+                size = self.complete(eb_key, identity, drop)
+
+        return size
 
     def flush(self, identity, drop=False):
-        pruned = self.prune(identity, self.latest.identity + 1, drop)
+        size = self.prune(identity, self.latest.identity + 1, drop)
         if drop and self.graph:
             self.graph.reset()
         self.latest = Heartbeat(0, 0)
-        return pruned
+        return size
 
     def set_graph(self, name, ver_key, args, graph):
         self.pending_graphs[ver_key] = (False, "set", name, args, graph)
@@ -537,12 +541,12 @@ class GraphBuilder(ContributionBuilder):
         else:
             self.pending[eb_key].clear()
 
-        self.completion(eb_key, identity, self.pending[eb_key], drop)
+        size = self.completion(eb_key, identity, self.pending[eb_key], drop)
 
         if self.graph:
             self.graph.heartbeat_finished()
 
-        return times
+        return times, size
 
     def _update(self, eb_key, eb_id, ver_key, data):
         if eb_key not in self.pending:
@@ -565,6 +569,7 @@ class TransitionBuilder(ContributionBuilder, ZmqHandler):
     def _complete(self, eb_key, identity, drop):
         if not drop:
             self.message(MsgTypes.Transition, identity, Transition(eb_key, self.pending[eb_key]))
+        return [], 0
 
     def _update(self, eb_key, eb_id, payload):
         if eb_key not in self.pending:
@@ -625,7 +630,7 @@ class EventBuilder(ZmqHandler):
 
     def completion(self, name, eb_key, identity, payload, drop):
         if not drop:
-            self.collector_message(identity, eb_key, name, payload.version, payload.namespace)
+            return self.collector_message(identity, eb_key, name, payload.version, payload.namespace)
 
     def update(self, name, eb_key, eb_id, ver_key, data):
         if name not in self.builders:
@@ -895,6 +900,7 @@ class Collector(abc.ABC):
 
         self.event_counter = pc.Counter('ami_event_count', 'Event Counter', ['hutch', 'type', 'process'])
         self.event_time = pc.Gauge('ami_event_time_secs', 'Event Time', ['hutch', 'type', 'process'])
+        self.event_size = pc.Gauge('ami_event_size_bytes', 'Event Size', ['hutch', 'process'])
 
     def register(self, sock, handler):
         """
