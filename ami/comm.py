@@ -880,7 +880,7 @@ class Collector(abc.ABC):
 
     def __init__(self, addr, ctx=None, hutch=None):
         if ctx is None:
-            self.ctx = zmq.Context()
+            self.ctx = zmq.Context(io_threads=2)
         else:
             self.ctx = ctx
         self.poller = zmq.Poller()
