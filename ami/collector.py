@@ -5,6 +5,7 @@ import logging
 import argparse
 import time
 import collections
+import datetime as dt
 import ami.multiproc as mp
 from ami.worker import run_worker, parse_args
 from ami import LogConfig, Defaults
@@ -24,6 +25,7 @@ class GraphCollector(Node, Collector):
         self.num_workers = num_workers
         self.transitions = TransitionBuilder(self.num_workers, downstream_addr, self.ctx)
         self.store = EventBuilder(self.num_workers, 10, color, downstream_addr, self.ctx)
+        self.sender = 'worker%03d' if color == 'localCollector' else 'localCollector%03d'
         self.pickers = {}
         self.strategies = {}
         self.heartbeat_time = collections.defaultdict(lambda: 0)
@@ -95,12 +97,15 @@ class GraphCollector(Node, Collector):
 
             self.event_counter.labels(self.hutch, 'Transition', self.name).inc()
         elif msg.mtype == MsgTypes.Datagram:
+            latency = dt.datetime.now() - dt.datetime.fromtimestamp(msg.heartbeat.timestamp)
+            self.event_latency.labels(self.hutch, self.sender % msg.identity,
+                                      self.name).set(latency.total_seconds())
             datagram_start = time.time()
             self.store.update(msg.name, msg.heartbeat, self.eb_id(msg.identity), msg.version, msg.payload)
             if self.store.ready(msg.name, msg.heartbeat):
                 try:
                     # prune entries older than the current heartbeat
-                    pruned_size = self.store.prune(msg.name, self.node, msg.heartbeat)
+                    pruned_times, pruned_size = self.store.prune(msg.name, self.node, msg.heartbeat)
                     if pruned_size:
                         self.event_counter.labels(self.hutch, 'Pruned Heartbeat', self.name).inc()
                         self.event_size.labels(self.hutch, self.name).set(pruned_size)

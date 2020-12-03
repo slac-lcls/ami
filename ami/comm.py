@@ -422,6 +422,8 @@ class ContributionBuilder(abc.ABC):
             logger.debug("Completed key %s", eb_key)
             return times, size
 
+        return [], 0
+
     def mark(self, eb_key, eb_id):
         if 0 <= eb_id < self.num_contribs:
             if eb_key not in self.contribs:
@@ -472,6 +474,7 @@ class GraphBuilder(ContributionBuilder):
             self.graph.compile(**args)
 
     def prune(self, identity, prune_key=None, drop=False):
+        times = {}
         size = 0
         if prune_key is None:
             depth = self.depth
@@ -485,9 +488,9 @@ class GraphBuilder(ContributionBuilder):
         if len(self.pending) > depth:
             for eb_key in reversed(sorted(self.pending.keys(), reverse=True)[depth:]):
                 logger.debug("Pruned uncompleted key %d", eb_key)
-                size = self.complete(eb_key, identity, drop)
+                times, size = self.complete(eb_key, identity, drop)
 
-        return size
+        return times, size
 
     def flush(self, identity, drop=False):
         size = self.prune(identity, self.latest.identity + 1, drop)
@@ -901,6 +904,7 @@ class Collector(abc.ABC):
         self.event_counter = pc.Counter('ami_event_count', 'Event Counter', ['hutch', 'type', 'process'])
         self.event_time = pc.Gauge('ami_event_time_secs', 'Event Time', ['hutch', 'type', 'process'])
         self.event_size = pc.Gauge('ami_event_size_bytes', 'Event Size', ['hutch', 'process'])
+        self.event_latency = pc.Gauge('ami_event_latency_secs', 'Event Latency', ['hutch', 'sender', 'process'])
 
     def register(self, sock, handler):
         """

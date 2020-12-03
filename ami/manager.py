@@ -10,6 +10,7 @@ import argparse
 import json
 import socket
 import time
+import datetime as dt
 import prometheus_client as pc
 from ami import LogConfig
 from ami.comm import Ports, AutoExport, Collector, Store
@@ -108,6 +109,9 @@ class Manager(Collector):
 
     def process_msg(self, msg):
         if msg.mtype == MsgTypes.Datagram:
+            latency = dt.datetime.now() - dt.datetime.fromtimestamp(msg.heartbeat.timestamp)
+            self.event_latency.labels(self.hutch, 'globalCollector%03d' % msg.identity,
+                                      self.name).set(latency.total_seconds())
             datagram_start = time.time()
             if msg.name not in self.feature_stores:
                 if msg.name in self.purged:
