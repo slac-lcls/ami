@@ -453,8 +453,7 @@ class Flowchart(Node):
 
         ctrl = self.widget()
         ctrl.graph_info.labels(self.hutch, ctrl.graph_name).info({'graph': state})
-        now = datetime.now().strftime('%H:%M:%S')
-        ctrl.chartWidget.statusText.append(f"[{now}] Saved graph to: {fileName}")
+        ctrl.chartWidget.updateStatus(f"Saved graph to: {fileName}")
         self.sigFileSaved.emit(fileName)
 
     async def clear(self):
@@ -508,7 +507,6 @@ class Flowchart(Node):
             topic = await self.graphinfo.recv_string()
             source = await self.graphinfo.recv_string()
             msg = await self.graphinfo.recv_pyobj()
-            now = datetime.now().strftime('%H:%M:%S')
 
             if topic == 'sources':
                 source_library = SourceLibrary()
@@ -530,7 +528,7 @@ class Flowchart(Node):
                 ctrl.ui.clear_model(tree)
                 ctrl.ui.create_model(ctrl.ui.source_tree, self.source_library.getLabelTree())
 
-                ctrl.chartWidget.statusText.append(f"[{now}] Updated sources.")
+                ctrl.chartWidget.updateStatus("Updated sources.")
 
             elif topic == 'event_rate':
                 if num_workers is None:
@@ -559,9 +557,9 @@ class Flowchart(Node):
                     node_name = ctrl.metadata[msg.node_name]['parent']
                     node = self.nodes(data='node')[node_name]
                     node.setException(msg)
-                    ctrl.chartWidget.statusText.append(f"[{now}] {source} {node.name()}: {msg}")
+                    ctrl.chartWidget.updateStatus(f"{source} {node.name()}: {msg}", color='red')
                 else:
-                    ctrl.chartWidget.statusText.append(f"[{now}] {source}: {msg}")
+                    ctrl.chartWidget.updateStatus(f"{source}: {msg}", color='red')
 
     async def run(self):
         await asyncio.gather(self.updateState(),
@@ -625,7 +623,7 @@ class FlowchartCtrlWidget(QtGui.QWidget):
         graph_nodes = set()
         disconnectedNodes = []
         displays = set()
-        now = datetime.now().strftime('%H:%M:%S')
+
         msg = QtWidgets.QMessageBox(parent=self)
         msg.setText("Failed to submit graph! See status.")
 
@@ -685,7 +683,7 @@ class FlowchartCtrlWidget(QtGui.QWidget):
                                     nodes = node.to_operation(inputs=node.input_vars(),
                                                               conditions=node.condition_vars())
                                 except Exception:
-                                    self.chartWidget.statusText.append(f"[{now}] {node.name()} error!")
+                                    self.chartWidget.updateStatus(f"{node.name()} error!", color='red')
                                     printExc(f"{node.name()} raised exception! See console for stacktrace.")
                                     node.setException(True)
                                     failed_nodes.add(node)
@@ -703,13 +701,13 @@ class FlowchartCtrlWidget(QtGui.QWidget):
 
         if disconnectedNodes:
             for node in disconnectedNodes:
-                self.chartWidget.statusText.append(f"[{now}] {node.name()} disconnected!")
+                self.chartWidget.updateStatus(f"{node.name()} disconnected!", color='red')
                 node.setException(True)
             msg.exec()
             return
 
         if failed_nodes:
-            self.chartWidget.statusText.append(f"[{now}] failed to submit graph")
+            self.chartWidget.updateStatus("failed to submit graph", color='red')
             msg.exec()
             return
 
@@ -717,11 +715,11 @@ class FlowchartCtrlWidget(QtGui.QWidget):
             await self.graphCommHandler.add(list(graph_nodes))
 
             node_names = ', '.join(set(map(lambda node: node.parent, graph_nodes)))
-            self.chartWidget.statusText.append(f"[{now}] Submitted {node_names}")
+            self.chartWidget.updateStatus(f"Submitted {node_names}")
 
         node_names = ', '.join(set(map(lambda node: node.name(), displays)))
         if displays and build_views:
-            self.chartWidget.statusText.append(f"[{now}] Redisplaying {node_names}")
+            self.chartWidget.updateStatus(f"Redisplaying {node_names}")
             await self.chartWidget.build_views(displays, export=True, redisplay=True)
 
         for node in changed_nodes:
@@ -818,9 +816,8 @@ class FlowchartCtrlWidget(QtGui.QWidget):
         if not missing:
             await self.graphCommHandler.updateSources(src_cfg)
         else:
-            now = datetime.now().strftime('%H:%M:%S')
             missing = ' '.join(missing)
-            self.chartWidget.statusText.append(f"[{now}] Missing {missing}!")
+            self.chartWidget.updateStatus(f"Missing {missing}!", color='red')
 
     @asyncSlot()
     async def profilerClicked(self):
@@ -836,8 +833,7 @@ class FlowchartCtrlWidget(QtGui.QWidget):
         dirs = set(map(os.path.dirname, self.libraryEditor.paths))
         await self.graphCommHandler.updatePath(dirs)
 
-        now = datetime.now().strftime('%H:%M:%S')
-        self.chartWidget.statusText.append(f"[{now}] Loaded modules.")
+        self.chartWidget.updateStatus("Loaded modules.")
 
     @asyncSlot(object)
     async def libraryReloaded(self, mods):
@@ -849,8 +845,7 @@ class FlowchartCtrlWidget(QtGui.QWidget):
                 await self.chart.broker.send_string(node.name(), zmq.SNDMORE)
                 await self.chart.broker.send_pyobj(fcMsgs.ReloadLibrary(name=node.name(),
                                                                         mods=smods))
-                now = datetime.now().strftime('%H:%M:%S')
-                self.chartWidget.statusText.append(f"[{now}] Reloaded {node.name()}.")
+                self.chartWidget.updateStatus(f"Reloaded {node.name()}.")
 
 
 class FlowchartWidget(dockarea.DockArea):
@@ -1178,6 +1173,11 @@ class FlowchartWidget(dockarea.DockArea):
 
     def clear(self):
         self.hoverText.setPlainText('')
+
+    def updateStatus(self, text, color='black'):
+        now = datetime.now().strftime('%H:%M:%S')
+        self.statusText.insertHtml(f"<font color={color}>[{now}] {text}</font>")
+        self.statusText.append("")
 
 
 class Features(object):

@@ -413,7 +413,7 @@ class Node(QtCore.QObject):
 
     def recolor(self, typ=None):
         if typ == "exception":
-            self.graphicsItem().setPen(QtGui.QPen(QtGui.QColor(255, 0, 0), 3))
+            self.graphicsItem().setPen(QtGui.QPen(QtGui.QColor(255, 0, 0), 5))
         elif typ == "selected":
             self.graphicsItem().setPen(QtGui.QPen(QtGui.QColor(250, 150, 0), 3))
         else:
