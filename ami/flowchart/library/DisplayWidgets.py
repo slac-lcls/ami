@@ -8,6 +8,7 @@ import pyqtgraph as pg
 from qtpy import QtGui, QtWidgets, QtCore
 from ami import LogConfig
 from ami.data import Deserializer
+from ami.comm import ZMQ_TOPIC_DELIM
 from ami.flowchart.library.WidgetGroup import generateUi
 from ami.flowchart.library.Editors import TraceEditor, HistEditor, \
     LineEditor, CircleEditor, RectEditor
@@ -81,7 +82,7 @@ class AsyncFetcher(QtCore.QThread):
                 sub_topic = "view:%s:%s" % (self.addr.name, topic)
                 self.view_subs[sub_topic] = topic
                 sock = self.ctx.socket(zmq.SUB)
-                sock.setsockopt_string(zmq.SUBSCRIBE, sub_topic)
+                sock.setsockopt_string(zmq.SUBSCRIBE, sub_topic + ZMQ_TOPIC_DELIM)
                 sock.connect(self.addr.view)
                 self.poller.register(sock, zmq.POLLIN)
                 self.sockets[name] = (sock, 1)  # reference count
@@ -97,6 +98,7 @@ class AsyncFetcher(QtCore.QThread):
                 if sock == self.recv_interrupt and sock.recv_pyobj():
                     break
                 topic = sock.recv_string()
+                topic = topic.rstrip('\0')
                 heartbeat = sock.recv_pyobj()
                 reply = sock.recv_serialized(self.deserializer, copy=False)
                 self.data[self.view_subs[topic]] = reply

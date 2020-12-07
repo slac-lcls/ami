@@ -21,6 +21,7 @@ from enum import IntEnum
 
 
 logger = logging.getLogger(__name__)
+ZMQ_TOPIC_DELIM = '\0'
 
 
 class Colors:

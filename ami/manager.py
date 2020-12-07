@@ -13,7 +13,7 @@ import time
 import datetime as dt
 import prometheus_client as pc
 from ami import LogConfig
-from ami.comm import Ports, AutoExport, Collector, Store
+from ami.comm import Ports, AutoExport, Collector, Store, ZMQ_TOPIC_DELIM
 from ami.data import MsgTypes, Transitions, Serializer, Deserializer
 from ami.graphkit_wrapper import Graph
 
@@ -454,7 +454,7 @@ class Manager(Collector):
         self.info_comm.send(payload)
 
     def publish_view(self, topic, timestamp, data):
-        self.view_comm.send_string(topic, zmq.SNDMORE)
+        self.view_comm.send_string(topic + ZMQ_TOPIC_DELIM, zmq.SNDMORE)
         self.view_comm.send_pyobj(timestamp, zmq.SNDMORE)
         data = self.serializer(data)
         self.view_comm.send_multipart(data, copy=False, flags=zmq.NOBLOCK)
