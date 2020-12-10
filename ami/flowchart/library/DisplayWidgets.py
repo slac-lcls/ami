@@ -554,6 +554,7 @@ class ImageWidget(PlotWidget):
         self.view.addItem(self.imageItem)
 
         self.histogramLUT = pg.HistogramLUTItem(self.imageItem)
+        self.histogramLUT.gradient.loadPreset('thermal')
         self.histogram_connected = False
         self.addItem(self.histogramLUT)
         if self.node:
