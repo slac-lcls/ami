@@ -525,11 +525,10 @@ class Manager(Collector):
         size = 0
 
         for key, value in self.feature_stores[name].namespace.items():
-            if keys and key not in keys:
-                continue
-            size += self.publish_view("view:%s:%s" % (name, key),
-                                      self.heartbeats[name],
-                                      value)
+            if key in keys:
+                size += self.publish_view("view:%s:%s" % (name, key),
+                                          self.heartbeats[name],
+                                          value)
         self.event_size.labels(self.hutch, self.name).set(size)
 
     def export_request(self):
