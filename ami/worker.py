@@ -216,11 +216,9 @@ class Worker(Node):
 
                 elif msg.mtype == MsgTypes.Datagram:
                     datagram_start = time.time()
+
                     if any(v is None for k, v in msg.payload.items()):
-                        event_counter.labels(self.hutch, 'Skipped', self.name).inc()
-                        datagram_stop = time.time()
-                        event_time.labels(self.hutch, 'Datagram', self.name).set(datagram_stop - datagram_start)
-                        continue
+                        event_counter.labels(self.hutch, 'Partial', self.name).inc()
 
                     for name, graph in self.graphs.items():
                         try:

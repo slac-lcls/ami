@@ -1,8 +1,8 @@
 import networkx as nx
 import itertools as it
 import collections
+import ami.graph_nodes as gn
 from networkfox import compose
-import ami.graph_nodes
 
 
 class Graph():
@@ -200,14 +200,14 @@ class Graph():
         """
         Resets the state of all StatefulTransmation nodes in the graph.
         """
-        nodes = list(filter(lambda node: isinstance(node, ami.graph_nodes.StatefulTransformation), self.graph.nodes))
+        nodes = list(filter(lambda node: isinstance(node, gn.StatefulTransformation), self.graph.nodes))
         list(map(lambda node: node.reset(), nodes))
 
     def heartbeat_finished(self):
         """
         Execute post heartbeat hook on StatefulTransmation nodes in the graph.
         """
-        nodes = list(filter(lambda node: isinstance(node, ami.graph_nodes.StatefulTransformation),
+        nodes = list(filter(lambda node: isinstance(node, gn.StatefulTransformation),
                             self.graph.nodes))
         list(map(lambda node: node.heartbeat_finished(), nodes))
 
@@ -217,33 +217,38 @@ class Graph():
         attribute set to True. If in a given path for which we've found a global operation node there is no
         other node with ``is_global_operation`` true which preceeds it then we mark that node for expansion.
         """
-        inputs = [n for n, d in self.graph.in_degree() if d == 0]
-        outputs = [n for n, d in self.graph.out_degree() if d == 0]
-
         self.global_operations = set()
-        sources_targets = list(it.product(inputs, outputs))
-        for s, t in sources_targets:
-            paths = list(nx.algorithms.all_simple_paths(self.graph, s, t))
-            for nodes in paths:
-                reductions = list(filter(lambda node: getattr(node, 'is_global_operation', False), nodes))
 
-                for reduction in reductions:
-                    if reduction in self.expanded_global_operations:
-                        continue
-                    before = list(filter(lambda node: getattr(node, 'is_global_operation', False),
-                                         nx.algorithms.dag.ancestors(self.graph, reduction)))
-                    if before == []:
-                        self.global_operations.add(reduction)
+        global_operations = filter(lambda node: getattr(node, 'is_global_operation', False), self.graph.nodes)
+        for node in global_operations:
+            if node in self.expanded_global_operations:
+                continue
 
-                color = 'worker'
-                for node in nodes:
-                    if type(node) is str:
+            node.color = 'globalCollector'
+            before = list(filter(lambda node: getattr(node, 'is_global_operation', False),
+                                 nx.algorithms.dag.ancestors(self.graph, node)))
+            if before == []:
+                self.global_operations.add(node)
+
+                for ancestor in nx.algorithms.dag.ancestors(self.graph, node):
+                    if type(ancestor) is str:
                         continue
 
-                    if node in self.global_operations or node in self.expanded_global_operations:
-                        color = 'globalCollector'
-                    if node.color == "":
-                        node.color = color
+                    if ancestor.color == '':
+                        ancestor.color = 'worker'
+
+            for descendant in nx.algorithms.dag.descendants(self.graph, node):
+                if type(descendant) is str:
+                    continue
+
+                if descendant.color == '':
+                    descendant.color = 'globalCollector'
+
+        for node in nx.algorithms.topological_sort(self.graph):
+            if type(node) is str:
+                continue
+            if node.color == '':
+                node.color = 'worker'
 
     def _expand_global_operations(self, num_workers, num_local_collectors):
         """
@@ -266,7 +271,7 @@ class Graph():
             self.children_of_global_operations[node.name] = set()
 
             self.graph.remove_node(node)
-            NewNode = getattr(ami.graph_nodes, node.__class__.__name__)
+            NewNode = getattr(gn, node.__class__.__name__)
 
             color_order = ['worker', 'localCollector', 'globalCollector']
             worker_outputs = None
@@ -379,6 +384,7 @@ class Graph():
 
         global_collector_nodes = list(filter(lambda node: getattr(node, 'color', '') == 'globalCollector',
                                              self.graph.nodes))
+
         for node in global_collector_nodes:
             new_inputs = []
             update_inputs = False
@@ -386,7 +392,7 @@ class Graph():
                 continue
             for i in node.inputs:
                 if i in inputs:
-                    pickone = ami.graph_nodes.PickN(name=i.name+"_pick1", inputs=[i], outputs=["one_"+i.name])
+                    pickone = gn.PickN(name=i+"_pick1", inputs=[i], outputs=["one_"+i])
                     self.global_operations.add(pickone)
                     self.add(pickone)
                     update_inputs = True
@@ -429,7 +435,7 @@ class Graph():
 
         seen = set()
         branch_merge_candidates = [n for n, d in self.graph.in_degree() if d >= 2 and type(n) is str]
-        graph_filters = list(filter(lambda node: isinstance(node, ami.graph_nodes.Filter), self.graph.nodes))
+        graph_filters = list(filter(lambda node: isinstance(node, gn.Filter), self.graph.nodes))
         outputs = [n for n, d in self.graph.out_degree() if d == 0]
         body = []
 
@@ -503,11 +509,8 @@ class Graph():
         """
         missing_inputs = [k for k, v in args[0].items() if v is None]
 
-        for missed in missing_inputs:
-            assert missed in self.inputs[kwargs['color']], "unexpected missing input"
-            for node in self.graph.successors(missed):
-                for inp in node.inputs:
-                    args[0].pop(inp, None)
+        for missed_inputs in missing_inputs:
+            args[0].pop(missed_inputs)
 
         assert self.graphkit is not None, "call compile first"
         color = kwargs.get('color', None)

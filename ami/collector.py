@@ -114,23 +114,24 @@ class GraphCollector(Node, Collector):
 
                     # times = self.store.complete(msg.name, msg.heartbeat, self.node)
                     # self.report_times(times, msg.name, msg.heartbeat)
+
+                    self.event_counter.labels(self.hutch, 'Heartbeat', self.name).inc()
+                    self.heartbeat_time[msg.heartbeat.identity] += time.time() - datagram_start
+                    heartbeat_time = self.heartbeat_time.pop(msg.heartbeat.identity, 0)
+                    self.event_time.labels(self.hutch, 'Heartbeat', self.name).set(heartbeat_time)
+                    self.event_size.labels(self.hutch, self.name).set(size)
                 except Exception as e:
                     logger.exception("%s: Failure encountered while executing graph %s:", self.name, msg.name)
                     self.report("error", e)
                     logger.error("%s: Purging graph (%s v%d)", self.name, msg.name, self.store.version(msg.name))
                     self.store.destroy(msg.name)
                     self.report("purge", msg.name)
-
-                self.event_counter.labels(self.hutch, 'Heartbeat', self.name).inc()
-                self.heartbeat_time[msg.heartbeat.identity] += time.time() - datagram_start
-                heartbeat_time = self.heartbeat_time.pop(msg.heartbeat.identity, 0)
-                self.event_time.labels(self.hutch, 'Heartbeat', self.name).set(heartbeat_time)
-                self.event_size.labels(self.hutch, self.name).set(size)
             else:
                 # prune older entries from the event builder
-                pruned = self.store.prune(msg.name, self.node)
-                if pruned:
+                pruned_times, pruned_size = self.store.prune(msg.name, self.node)
+                if pruned_size:
                     self.event_counter.labels(self.hutch, 'Pruned Heartbeat', self.name).inc()
+                    self.event_size.labels(self.hutch, self.name).set(pruned_size)
                     self.heartbeat_time.pop(msg.heartbeat.identity, 0)
 
             self.heartbeat_time[msg.heartbeat.identity] += time.time() - datagram_start
