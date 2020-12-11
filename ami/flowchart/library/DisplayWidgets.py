@@ -16,7 +16,7 @@ from ami.flowchart.library.Editors import TraceEditor, HistEditor, \
 
 logger = logging.getLogger(LogConfig.get_package_name(__name__))
 
-colors = [(0, 0, 255), (0, 255, 0), (255, 0, 0)]
+colors = [(255, 255, 255), (0, 0, 255), (0, 255, 0), (255, 0, 0)]
 symbols = ['o', 's', 't', 'd', '+']
 symbols_colors = list(it.product(symbols, colors))
 
