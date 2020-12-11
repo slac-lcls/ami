@@ -139,7 +139,7 @@ class Manager(Collector):
                 # export the heartbeat to epics
                 self.export_heartbeat(msg.name)
                 # export data for viewing in the AMI GUI
-                self.export_view(msg.name)
+                self.export_view(msg.name, keys=msg.payload.keys())
 
             self.event_counter.labels(self.hutch, 'Heartbeat', self.name).inc()
             self.event_time.labels(self.hutch, 'Heartbeat', self.name).set(time.time() - datagram_start)
@@ -521,12 +521,14 @@ class Manager(Collector):
             else:
                 logger.warn("Received invalid view request: %s", request)
 
-    def export_view(self, name):
+    def export_view(self, name, keys=[]):
         size = 0
+
         for key, value in self.feature_stores[name].namespace.items():
-            size += self.publish_view("view:%s:%s" % (name, key),
-                                      self.heartbeats[name],
-                                      value)
+            if key in keys:
+                size += self.publish_view("view:%s:%s" % (name, key),
+                                          self.heartbeats[name],
+                                          value)
         self.event_size.labels(self.hutch, self.name).set(size)
 
     def export_request(self):

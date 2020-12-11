@@ -374,7 +374,7 @@ class Node(QtCore.QObject):
         elif localTerm.isCondition():
             self._condition_vars[localTerm.name()] = node.name()
 
-        self.changed = True
+        self.changed = localTerm.isInput()
         self.sigTerminalConnected.emit(localTerm, remoteTerm)
 
     def disconnected(self, localTerm, remoteTerm):
@@ -384,7 +384,7 @@ class Node(QtCore.QObject):
         elif localTerm.isCondition():
             del self._condition_vars[localTerm.name()]
 
-        self.changed = True
+        self.changed = localTerm.isInput()
         self.sigTerminalDisconnected.emit(localTerm, remoteTerm)
 
     def isConnected(self):

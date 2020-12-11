@@ -620,7 +620,7 @@ class FlowchartCtrlWidget(QtGui.QWidget):
 
     @asyncSlot()
     async def applyClicked(self, build_views=True):
-        graph_nodes = set()
+        graph_nodes = []
         disconnectedNodes = []
         displays = set()
 
@@ -692,9 +692,9 @@ class FlowchartCtrlWidget(QtGui.QWidget):
                                 seen.add(node)
 
                                 if type(nodes) is list:
-                                    graph_nodes.update(nodes)
+                                    graph_nodes.extend(nodes)
                                 else:
-                                    graph_nodes.add(nodes)
+                                    graph_nodes.append(nodes)
 
                             if (node.viewable() or node.buffered()) and node.viewed:
                                 displays.add(node)
@@ -712,7 +712,7 @@ class FlowchartCtrlWidget(QtGui.QWidget):
             return
 
         if graph_nodes:
-            await self.graphCommHandler.add(list(graph_nodes))
+            await self.graphCommHandler.add(graph_nodes)
 
             node_names = ', '.join(set(map(lambda node: node.parent, graph_nodes)))
             self.chartWidget.updateStatus(f"Submitted {node_names}")
@@ -776,6 +776,8 @@ class FlowchartCtrlWidget(QtGui.QWidget):
 
     @asyncSlot()
     async def resetClicked(self):
+        await self.graphCommHandler.destroy()
+
         for name, gnode in self.chart._graph.nodes().items():
             gnode = gnode['node']
             gnode.changed = True
@@ -1045,7 +1047,7 @@ class FlowchartWidget(dockarea.DockArea):
             display_args.append(args)
 
             if node.exportable() and export:
-                await self.graphCommHandler.export(node.input_vars()['In'], node.values['alias'])
+                await self.ctrl.graphCommHandler.export(node.input_vars()['In'], node.values['alias'])
 
             if not node.created:
                 state = node.saveState()
