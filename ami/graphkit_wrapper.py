@@ -102,7 +102,8 @@ class Graph():
         Raises:
             AssertionError: if an operation already exists in the graph
         """
-
+        assert not any(op.name == n.name for n in self.graph.nodes if type(n) is not str), \
+            "Operation may only be added once %s" % op.name
         assert op not in self.graph.nodes(), "Operation may only be added once %s" % op.name
         assert op.name not in self.children_of_global_operations, "Operation may only be added once %s" % op.name
 
@@ -154,7 +155,7 @@ class Graph():
         Raises:
             AssertionError: if inputs and outputs of new_node do not match existing node.
         """
-        if new_node.parent in self.children_of_global_operations:
+        if new_node.is_global_operation and new_node.parent in self.children_of_global_operations:
             descendants = set()
             ancestors = set()
             for child in self.children_of_global_operations[new_node.parent]:
@@ -183,7 +184,7 @@ class Graph():
                     break
 
             assert old_node is not None, "Old node not found: %s" % new_node.name
-            assert set(old_node.inputs) == set(new_node.inputs), "Inputs must match."
+            # assert set(old_node.inputs) == set(new_node.inputs), "Inputs must match."
 
             self.graph.remove_node(old_node)
 
