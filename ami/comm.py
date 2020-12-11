@@ -41,8 +41,8 @@ class Ports(IntEnum):
     Info = 5562
     View = 5563
     Profile = 5564
-    Prometheus = 5565
     Sync = 5600
+    Prometheus = 9200
 
 
 class AutoName:
