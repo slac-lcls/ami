@@ -1047,7 +1047,7 @@ class FlowchartWidget(dockarea.DockArea):
             display_args.append(args)
 
             if node.exportable() and export:
-                await self.graphCommHandler.export(node.input_vars()['In'], node.values['alias'])
+                await self.ctrl.graphCommHandler.export(node.input_vars()['In'], node.values['alias'])
 
             if not node.created:
                 state = node.saveState()
