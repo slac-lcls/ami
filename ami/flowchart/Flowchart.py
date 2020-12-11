@@ -776,6 +776,8 @@ class FlowchartCtrlWidget(QtGui.QWidget):
 
     @asyncSlot()
     async def resetClicked(self):
+        await self.graphCommHandler.destroy()
+
         for name, gnode in self.chart._graph.nodes().items():
             gnode = gnode['node']
             gnode.changed = True
