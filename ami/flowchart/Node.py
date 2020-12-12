@@ -493,6 +493,8 @@ class Node(QtCore.QObject):
     def isSource(self):
         return False
 
+    def isChanged(self, restore_ctrl, restore_widget):
+        return False
 
 class NodeGraphicsItem(GraphicsObject):
 

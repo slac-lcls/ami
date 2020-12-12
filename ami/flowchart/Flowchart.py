@@ -163,7 +163,8 @@ class Flowchart(Node):
         node.sigTerminalDisconnected.connect(self.nodeDisconnected)
         node.sigNodeEnabled.connect(self.nodeEnabled)
         self.sigNodeCreated.emit(node)
-        self.sigNodeChanged.emit(node)
+        if node.isChanged(True, True):
+            self.sigNodeChanged.emit(node)
 
     @asyncSlot(object, object)
     async def nodeClosed(self, node, input_vars):
@@ -200,6 +201,7 @@ class Flowchart(Node):
         if not self._graph.has_edge(localNode, remoteNode, key=key):
             self._graph.add_edge(localNode, remoteNode, key=key,
                                  from_term=localTerm.name(), to_term=remoteTerm.name())
+        self.sigNodeChanged.emit(localTerm.node())
 
     def nodeDisconnected(self, localTerm, remoteTerm):
         if remoteTerm.isOutput() or localTerm.isCondition():
@@ -212,6 +214,7 @@ class Flowchart(Node):
         key = localNode + '.' + localTerm.name() + '->' + remoteNode + '.' + remoteTerm.name()
         if self._graph.has_edge(localNode, remoteNode, key=key):
             self._graph.remove_edge(localNode, remoteNode, key=key)
+        self.sigNodeChanged.emit(localTerm.node())
 
     @asyncSlot(object)
     async def nodeEnabled(self, root):
@@ -496,7 +499,8 @@ class Flowchart(Node):
             if restore_ctrl or restore_widget:
                 node.restoreState(current_node_state)
                 node.changed = node.isChanged(restore_ctrl, restore_widget)
-                self.sigNodeChanged.emit(node)
+                if node.changed:
+                    self.sigNodeChanged.emit(node)
 
             node.viewed = new_node_state['viewed']
 

@@ -164,7 +164,8 @@ class ScatterPlot(CtrlNode):
     """
 
     nodeName = "ScatterPlot"
-    uiTemplate = [("Num Points", 'intSpin', {'value': 100, 'min': 1})]
+    uiTemplate = [("Num Points", 'intSpin', {'value': 100, 'min': 1}),
+                  ('Unique', 'check')]
 
     def __init__(self, name):
         super().__init__(name, terminals={"X": {"io": "in", "ttype": float},
@@ -185,7 +186,8 @@ class ScatterPlot(CtrlNode):
     def to_operation(self, inputs, conditions={}):
         outputs = [self.name()+'.'+i for i in inputs.keys()]
         buffer_output = [self.name()]
-        nodes = [gn.RollingBuffer(name=self.name()+"_buffer", N=self.values['Num Points'],
+        nodes = [gn.RollingBuffer(name=self.name()+"_buffer",
+                                  N=self.values['Num Points'], unique=self.values['Unique'],
                                   condition_needs=conditions, inputs=inputs,
                                   outputs=buffer_output, parent=self.name()),
                  gn.Map(name=self.name()+"_operation", inputs=buffer_output, outputs=outputs,

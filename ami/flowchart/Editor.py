@@ -337,10 +337,9 @@ class Ui_Toolbar(object):
         tree.expandAll()
 
     def setPending(self, node):
-        if node.changed:
-            self.pending.add(node.name())
-            self.toolBar.setStyleSheet("QToolButton#actionApply { background: lightgreen }")
-            self.actionApply.setToolTip(f"Pending changes on: {self.pending}")
+        self.pending.add(node.name())
+        self.toolBar.setStyleSheet("QToolButton#actionApply { background: lightgreen }")
+        self.actionApply.setToolTip(f"Pending changes on: {self.pending}")
 
     def setPendingClear(self):
         self.pending = set()

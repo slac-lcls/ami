@@ -345,15 +345,16 @@ class RollingBuffer(GlobalTransformation):
     def __init__(self, **kwargs):
         N = kwargs.pop('N', 1)
         use_numpy = kwargs.pop('use_numpy', False)
+        unique = kwargs.pop('unique', False)
         super().__init__(**kwargs)
         self.N = N
         self.use_numpy = use_numpy
+        self.unique = unique
         self.idx = 0
         self.count = 0
         self.res = None if use_numpy else []
 
     def __call__(self, *args):
-
         if len(args) == 1:
             dims = 0
             args = args[0]
@@ -386,14 +387,22 @@ class RollingBuffer(GlobalTransformation):
                 self.res.extend(args)
                 self.idx = min(self.idx + len(args), self.N)
             else:
-                self.res.append(args)
-                self.idx = min(self.idx + 1, self.N)
+                if not self.unique:
+                    self.res.append(args)
+                    self.idx = min(self.idx + 1, self.N)
+                elif self.unique:
+                    if len(self.res) == 0:
+                        self.res.append(args)
+                        self.idx = min(self.idx + 1, self.N)
+                    elif self.res[self.idx-1] != args:
+                        self.res.append(args)
+                        self.idx = min(self.idx + 1, self.N)
             self.res = self.res[-self.idx:]
 
         return self.res[-self.idx:]
 
     def on_expand(self):
-        return {'parent': self.parent, 'use_numpy': self.use_numpy}
+        return {'parent': self.parent, 'use_numpy': self.use_numpy, 'unique': self.unique}
 
     def reset(self):
         self.idx = 0
