@@ -102,10 +102,14 @@ class Graph():
         Raises:
             AssertionError: if an operation already exists in the graph
         """
-        assert not any(op.name == n.name for n in self.graph.nodes if type(n) is not str), \
-            "Operation may only be added once %s" % op.name
         assert op not in self.graph.nodes(), "Operation may only be added once %s" % op.name
         assert op.name not in self.children_of_global_operations, "Operation may only be added once %s" % op.name
+        if op.is_global_operation:
+            for n in self.graph.nodes:
+                if type(n) is str:
+                    continue
+                if n.is_global_operation and n.parent == op.parent:
+                    assert False, "Operation may only be added once %s" % op.name
 
         for i in op.inputs:
             self.graph.add_edge(i, op)
@@ -183,15 +187,15 @@ class Graph():
                     old_node = n
                     break
 
-            assert old_node is not None, "Old node not found: %s" % new_node.name
-            # assert set(old_node.inputs) == set(new_node.inputs), "Inputs must match."
+            if old_node is not None:
+                # assert old_node is not None, "Old node not found: %s" % new_node.name
+                # assert set(old_node.inputs) == set(new_node.inputs), "Inputs must match."
+                self.graph.remove_node(old_node)
 
-            self.graph.remove_node(old_node)
-
-            diff = set(old_node.outputs).difference(new_node.outputs)
-            for node in diff:
-                desc = nx.dag.descendants(self.graph, node)
-                self.graph.remove_nodes_from(desc)
+                diff = set(old_node.outputs).difference(new_node.outputs)
+                for node in diff:
+                    desc = nx.dag.descendants(self.graph, node)
+                    self.graph.remove_nodes_from(desc)
 
         self.insert(new_node)
 
