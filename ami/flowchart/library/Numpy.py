@@ -395,6 +395,35 @@ class RMS(GroupedNode):
         return node
 
 
+class MeanRMS(Node):
+
+    """
+    MeanRMS
+    """
+
+    nodeName = "MeanRMS"
+
+    def __init__(self, name):
+        super().__init__(name, terminals={'In': {'io': 'in', 'ttype': Array1d},
+                                          'Mean': {'io': 'out', 'ttype': float},
+                                          'Stdev': {'io': 'out', 'ttype': float}})
+
+    def to_operation(self, inputs, conditions={}):
+        outputs = self.output_vars()
+
+        def func(arr):
+            centers = np.arange(len(arr))
+            mean = np.average(centers, 0, arr)
+            var = np.average((centers-mean)**2, 0, arr)
+            std = np.sqrt(var)
+            return mean, std
+
+        node = gn.Map(name=self.name()+"_operation",
+                      condition_needs=conditions, inputs=inputs, outputs=outputs,
+                      func=func, parent=self.name())
+        return node
+
+
 class Average0D(CtrlNode):
 
     """
