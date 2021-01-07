@@ -581,5 +581,8 @@ def checkType(terminals, type_file=None):
             f.write(f"def {f_out}:\n\tpass")
             f.write(f"\n{f_in_name}({f_out_name}())")
             f.flush()
-            status = subprocess.run(["mypy", "--follow-imports", "silent", f.name])
-            return status.returncode == 0
+            status = subprocess.call(["dmypy", "check", f.name])
+            if status == 2:
+                subprocess.call(["dmypy", "start"])
+                status = subprocess.call(["dmypy", "check", f.name])
+            return status == 0

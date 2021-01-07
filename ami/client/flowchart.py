@@ -7,6 +7,7 @@ import tempfile
 import asyncio
 import zmq
 import zmq.asyncio
+import subprocess
 import ami.multiproc as mp
 import pyqtgraph as pg
 
@@ -25,6 +26,8 @@ logger = logging.getLogger(LogConfig.get_package_name(__name__))
 
 
 def run_editor_window(broker_addr, graphmgr_addr, checkpoint_addr, load=None, prometheus_dir=None, hutch=None):
+    subprocess.call(["dmypy", "start"])
+
     app = QtGui.QApplication([])
 
     loop = QEventLoop(app)
@@ -69,6 +72,8 @@ def run_editor_window(broker_addr, graphmgr_addr, checkpoint_addr, load=None, pr
             loop.run_until_complete(fc.widget().clear())
             task.cancel()
         loop.close()
+
+    subprocess.call(["dmypy", "stop"])
 
 
 class NodeWindow(QtGui.QMainWindow):
