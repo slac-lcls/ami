@@ -644,7 +644,6 @@ class FlowchartCtrlWidget(QtGui.QWidget):
             # reset reference counting on views
             await self.features.reset()
 
-        outputs = [n for n, d in self.chart._graph.out_degree() if d == 0]
         changed_nodes = set()
         failed_nodes = set()
         seen = set()
@@ -671,37 +670,33 @@ class FlowchartCtrlWidget(QtGui.QWidget):
                         displays.add(gnode)
                     continue
 
+                outputs = [name]
+                outputs.extend(nx.algorithms.dag.descendants(self.chart._graph, name))
+
                 for output in outputs:
-                    paths = list(nx.algorithms.all_simple_paths(self.chart._graph, name, output))
+                    gnode = self.chart._graph.nodes[output]
+                    node = gnode['node']
 
-                    if not paths:
-                        paths = [[output]]
+                    if hasattr(node, 'to_operation') and node not in seen:
+                        try:
+                            nodes = node.to_operation(inputs=node.input_vars(),
+                                                      conditions=node.condition_vars())
+                        except Exception:
+                            self.chartWidget.updateStatus(f"{node.name()} error!", color='red')
+                            printExc(f"{node.name()} raised exception! See console for stacktrace.")
+                            node.setException(True)
+                            failed_nodes.add(node)
+                            continue
 
-                    for path in paths:
-                        for gnode in path:
-                            gnode = self.chart._graph.nodes[gnode]
-                            node = gnode['node']
+                        seen.add(node)
 
-                            if hasattr(node, 'to_operation') and node not in seen:
-                                try:
-                                    nodes = node.to_operation(inputs=node.input_vars(),
-                                                              conditions=node.condition_vars())
-                                except Exception:
-                                    self.chartWidget.updateStatus(f"{node.name()} error!", color='red')
-                                    printExc(f"{node.name()} raised exception! See console for stacktrace.")
-                                    node.setException(True)
-                                    failed_nodes.add(node)
-                                    continue
+                        if type(nodes) is list:
+                            graph_nodes.extend(nodes)
+                        else:
+                            graph_nodes.append(nodes)
 
-                                seen.add(node)
-
-                                if type(nodes) is list:
-                                    graph_nodes.extend(nodes)
-                                else:
-                                    graph_nodes.append(nodes)
-
-                            if (node.viewable() or node.buffered()) and node.viewed:
-                                displays.add(node)
+                    if (node.viewable() or node.buffered()) and node.viewed:
+                        displays.add(node)
 
         if disconnectedNodes:
             for node in disconnectedNodes:

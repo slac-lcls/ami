@@ -108,7 +108,7 @@ class Graph():
             for n in self.graph.nodes:
                 if type(n) is str:
                     continue
-                if n.is_global_operation and n.parent == op.parent:
+                if n.is_global_operation and n.parent == op.parent and n.outputs == op.outputs:
                     assert False, "Operation may only be added once %s" % op.name
 
         for i in op.inputs:
