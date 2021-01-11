@@ -1,211 +1,65 @@
-import re
 import zmq
+import queue
 import logging
-import asyncio
-import zmq.asyncio
 import datetime as dt
 import itertools as it
 import numpy as np
 import pyqtgraph as pg
-from pyqtgraph.Qt import QtGui, QtWidgets, QtCore
-from pyqtgraph.widgets.SpinBox import SpinBox
-from pyqtgraph.WidgetGroup import WidgetGroup
-from pyqtgraph.widgets.ColorButton import ColorButton
+from qtpy import QtGui, QtWidgets, QtCore
 from ami import LogConfig
+from ami.data import Deserializer
+from ami.comm import ZMQ_TOPIC_DELIM
+from ami.flowchart.library.WidgetGroup import generateUi
+from ami.flowchart.library.Editors import TraceEditor, HistEditor, \
+    LineEditor, CircleEditor, RectEditor
 
 
 logger = logging.getLogger(LogConfig.get_package_name(__name__))
 
-colors = ['b', 'g', 'r']
+colors = [(255, 255, 255), (0, 0, 255), (0, 255, 0), (255, 0, 0)]
 symbols = ['o', 's', 't', 'd', '+']
 symbols_colors = list(it.product(symbols, colors))
-_float_re = re.compile(r'(([+-]?\d+(\.\d*)?|\.\d+)([eE][+-]?\d+)?)')
 
 
-def valid_float_string(string):
-    match = _float_re.search(string)
-    return match.groups()[0] == string if match else False
+class AsyncFetcher(QtCore.QThread):
 
+    sig = QtCore.Signal()
 
-def format_float(value):
-    """Modified form of the 'g' format specifier."""
-    string = "{:g}".format(value).replace("e+", "e")
-    string = re.sub("e(-?)0*(\\d+)", r"e\1\2", string)
-    return string
-
-
-class FloatValidator(QtGui.QValidator):
-
-    def validate(self, string, position):
-        if valid_float_string(string):
-            state = QtGui.QValidator.Acceptable
-        elif string == "" or string[position-1] in 'e.-+':
-            state = QtGui.QValidator.Intermediate
-        else:
-            state = QtGui.QValidator.Invalid
-        return (state, string, position)
-
-    def fixup(self, text):
-        match = _float_re.search(text)
-        return match.groups()[0] if match else ""
-
-
-class ScientificDoubleSpinBox(QtGui.QDoubleSpinBox):
-
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        self.setMinimum(-np.inf)
-        self.setMaximum(np.inf)
-        self.validator = FloatValidator()
-        self.setDecimals(1000)
-
-    def validate(self, text, position):
-        return self.validator.validate(text, position)
-
-    def fixup(self, text):
-        return self.validator.fixup(text)
-
-    def valueFromText(self, text):
-        return float(text)
-
-    def textFromValue(self, value):
-        return format_float(value)
-
-    def stepBy(self, steps):
-        text = self.cleanText()
-        groups = _float_re.search(text).groups()
-        decimal = float(groups[1])
-        decimal += steps
-        new_string = "{:g}".format(decimal) + (groups[3] if groups[3] else "")
-        self.lineEdit().setText(new_string)
-
-    def widgetGroupInterface(self):
-        return (lambda w: w.valueChanged,
-                QtGui.QDoubleSpinBox.value,
-                QtGui.QDoubleSpinBox.setValue)
-
-
-def generateUi(opts):
-    """Convenience function for generating common UI types"""
-    if len(opts) == 0:
-        return None, None, None
-
-    widget = QtGui.QWidget()
-    layout = QtGui.QFormLayout()
-    layout.setSpacing(0)
-    widget.setLayout(layout)
-    ctrls = {}
-    row = 0
-    group = WidgetGroup()
-    groupboxes = {}
-    focused = False
-    for opt in opts:
-        if len(opt) == 2:
-            k, t = opt
-            o = {}
-        elif len(opt) == 3:
-            k, t, o = opt
-        else:
-            raise Exception("Widget specification must be (name, type) or (name, type, {opts})")
-
-        hidden = o.pop('hidden', False)
-        tip = o.pop('tip', None)
-
-        if t == 'intSpin':
-            w = QtGui.QSpinBox()
-            if 'max' in o:
-                w.setMaximum(o['max'])
-            if 'min' in o:
-                w.setMinimum(o['min'])
-            if 'value' in o:
-                w.setValue(o['value'])
-        elif t == 'doubleSpin':
-            w = ScientificDoubleSpinBox()
-            if 'max' in o:
-                w.setMaximum(o['max'])
-            if 'min' in o:
-                w.setMinimum(o['min'])
-            if 'value' in o:
-                w.setValue(o['value'])
-        elif t == 'spin':
-            w = SpinBox()
-            w.setOpts(**o)
-        elif t == 'check':
-            w = QtGui.QCheckBox()
-            w.setFocus()
-            if 'checked' in o:
-                w.setChecked(o['checked'])
-        elif t == 'combo':
-            w = QtGui.QComboBox()
-            for i in o['values']:
-                w.addItem(i)
-        elif t == 'color':
-            w = ColorButton()
-        elif t == 'text':
-            w = QtGui.QLineEdit()
-            if 'placeholder' in o:
-                w.setPlaceholderText(o['placeholder'])
-        else:
-            raise Exception("Unknown widget type '%s'" % str(t))
-
-        if tip is not None:
-            w.setToolTip(tip)
-
-        w.setObjectName(k)
-
-        if t != 'text' and not focused:
-            w.setFocus()
-            focused = True
-
-        if 'group' in o:
-            groupbox_name = o['group']
-            if groupbox_name not in groupboxes:
-                groupbox = QtWidgets.QGroupBox()
-                groupbox_layout = QtGui.QFormLayout()
-                groupbox.setLayout(groupbox_layout)
-                groupboxes[groupbox_name] = (groupbox, groupbox_layout)
-                groupbox.setTitle(groupbox_name)
-                layout.addWidget(groupbox)
-                ctrls[groupbox_name] = groupbox
-            else:
-                groupbox, groupbox_layout = groupboxes[groupbox_name]
-
-            groupbox_name = groupbox_name.replace(' ', '_')
-            w.groupbox_name = groupbox_name
-            groupbox_layout.addRow(k, w)
-            ctrls[k+"_"+groupbox_name] = w
-            group.addWidget(w, k+"_"+groupbox_name)
-        else:
-            layout.addRow(k, w)
-            if hidden:
-                w.hide()
-                label = layout.labelForField(w)
-                label.hide()
-
-            w.rowNum = row
-            ctrls[k] = w
-            group.addWidget(w, k)
-            row += 1
-
-    return widget, group, ctrls
-
-
-class AsyncFetcher(object):
-
-    def __init__(self, topics, terms, addr):
+    def __init__(self, topics, terms, addr, parent=None, ratelimit=None):
+        super(__class__, self).__init__(parent)
         self.addr = addr
-        self.ctx = zmq.asyncio.Context()
-        self.poller = zmq.asyncio.Poller()
+        self.running = True
+        self.ctx = zmq.Context()
+        self.poller = zmq.Poller()
         self.sockets = {}
         self.data = {}
+        self.timestamps = {}
+        self.reply_queue = queue.Queue()
         self.last_updated = "Last Updated: None"
+        self.deserializer = Deserializer()
         self.update_topics(topics, terms)
+        self.recv_interrupt = self.ctx.socket(zmq.REP)
+        self.recv_interrupt.bind("inproc://fetcher_interrupt")
+        self.poller.register(self.recv_interrupt, zmq.POLLIN)
+        self.send_interrupt = self.ctx.socket(zmq.REQ)
+        self.send_interrupt.connect("inproc://fetcher_interrupt")
+        if parent is not None:
+            if ratelimit is None:
+                self.sig.connect(parent.update)
+            else:
+                self.sig_proxy = pg.SignalProxy(self.sig,
+                                                ratelimit=ratelimit,
+                                                slot=parent.update)
+
+    @property
+    def ready(self):
+        return not self.reply_queue.empty()
 
     @property
     def reply(self):
-        if self.data.keys() == set(self.subs):
-            return {name: self.data[topic] for name, topic in self.topics.items()}
-        else:
+        try:
+            return self.reply_queue.get(block=False)
+        except queue.Empty:
             return {}
 
     def update_topics(self, topics, terms):
@@ -228,7 +82,7 @@ class AsyncFetcher(object):
                 sub_topic = "view:%s:%s" % (self.addr.name, topic)
                 self.view_subs[sub_topic] = topic
                 sock = self.ctx.socket(zmq.SUB)
-                sock.setsockopt_string(zmq.SUBSCRIBE, sub_topic)
+                sock.setsockopt_string(zmq.SUBSCRIBE, sub_topic + ZMQ_TOPIC_DELIM)
                 sock.connect(self.addr.view)
                 self.poller.register(sock, zmq.POLLIN)
                 self.sockets[name] = (sock, 1)  # reference count
@@ -236,17 +90,50 @@ class AsyncFetcher(object):
                 sock, count = self.sockets[name]
                 self.sockets[name] = (sock, count+1)
 
-    async def fetch(self):
-        for sock, flag in await self.poller.poll():
-            if flag != zmq.POLLIN:
-                continue
-            topic = await sock.recv_string()
-            await sock.recv_pyobj()
-            reply = await sock.recv_pyobj()
-            now = dt.datetime.now()
-            now = now.strftime("%H:%M:%S")
-            self.last_updated = f"Last Updated: {now}"
-            self.data[self.view_subs[topic]] = reply
+    def run(self):
+        while self.running:
+            for sock, flag in self.poller.poll():
+                if flag != zmq.POLLIN:
+                    continue
+                if sock == self.recv_interrupt and sock.recv_pyobj():
+                    break
+                topic = sock.recv_string()
+                topic = topic.rstrip('\0')
+                heartbeat = sock.recv_pyobj()
+                reply = sock.recv_serialized(self.deserializer, copy=False)
+                self.data[self.view_subs[topic]] = reply
+                self.timestamps[self.view_subs[topic]] = heartbeat
+                # check if the data is ready
+                heartbeats = set(self.timestamps.values())
+                if self.data.keys() == set(self.subs) and len(heartbeats) == 1:
+                    now = dt.datetime.now()
+                    now = now.strftime("%F %T")
+                    heartbeat = heartbeats.pop()
+                    hbts = dt.datetime.fromtimestamp(heartbeat.timestamp).strftime("%F %T.%f")
+                    latency = dt.datetime.now() - dt.datetime.fromtimestamp(heartbeat.timestamp)
+                    self.last_updated = f"Last Updated: {now} HB: {hbts} Latency: {latency}"
+
+                    res = {}
+                    for name, topic in self.topics.items():
+                        res[name] = self.data[topic]
+
+                    # put results on the reply queue
+                    self.reply_queue.put(res)
+                    # send a signal that data is ready
+                    self.sig.emit()
+
+    def close(self):
+        self.running = False
+        # signal asyncfetcher thread to die then wait
+        self.send_interrupt.send_pyobj(True)
+        self.wait()
+        self.poller.unregister(self.recv_interrupt)
+        for name, sock_count in self.sockets.items():
+            sock, count = sock_count
+            self.poller.unregister(sock)
+            sock.close()
+
+        self.ctx.destroy()
 
 
 class PlotWidget(pg.GraphicsLayoutWidget):
@@ -254,22 +141,30 @@ class PlotWidget(pg.GraphicsLayoutWidget):
     def __init__(self, topics=None, terms=None, addr=None, uiTemplate=None, parent=None, **kwargs):
         super().__init__(parent)
         self.node = kwargs.get('node', None)
+        self.units = kwargs.get('units', {})
 
         self.fetcher = None
         if addr:
-            self.fetcher = AsyncFetcher(topics, terms, addr)
+            self.fetcher = AsyncFetcher(topics, terms, addr, parent=self)
+            self.fetcher.start()
 
         self.plot_view = self.addPlot()
         if self.node:
-            self.viewbox_proxy = pg.SignalProxy(self.plot_view.vb.sigStateChanged,
-                                                delay=1,
+            # node is passed in on subprocess
+            self.viewbox_proxy = pg.SignalProxy(self.plot_view.vb.sigRangeChangedManually,
+                                                delay=0.5,
                                                 slot=lambda args: self.node.sigStateChanged.emit(self.node))
+            self.plot_view.autoBtn.clicked.connect(lambda args: self.node.sigStateChanged.emit(self.node))
+
+        self.plot_view.showGrid(True, True)
 
         ax = self.plot_view.getAxis('bottom')
-        ax.enableAutoSIPrefix(enable=False)
+        ax.enableAutoSIPrefix(enable=bool(self.units))
+        ax.setZValue(100)
 
         ay = self.plot_view.getAxis('left')
-        ay.enableAutoSIPrefix(enable=False)
+        ay.enableAutoSIPrefix(enable=bool(self.units))
+        ay.setZValue(100)
 
         self.plot_view.setMenuEnabled(False)
 
@@ -279,6 +174,11 @@ class PlotWidget(pg.GraphicsLayoutWidget):
 
         self.plot = {}  # { name : PlotDataItem }
         self.trace_ids = {}  # { trace_idx : name }
+        self.trace_attrs = {}
+        self.legend_editors = {}
+        self.annotation_editors = {}
+        self.annotation_traces = {}
+
         self.terms = terms
 
         self.last_updated = pg.LabelItem(parent=self.plot_view)
@@ -289,8 +189,8 @@ class PlotWidget(pg.GraphicsLayoutWidget):
 
         if uiTemplate is None:
             uiTemplate = [('Title', 'text'),
-                          ('Show Grid', 'check', {'checked': False}),
-                          ('Auto Range', 'check', {'checked': True}),
+                          ('Show Grid', 'check', {'checked': True}),
+                          # ('Auto Range', 'check', {'checked': True}),
                           # x axis
                           ('Label', 'text', {'group': 'X Axis'}),
                           ('Log Scale', 'check', {'group': 'X Axis', 'checked': False}),
@@ -299,109 +199,173 @@ class PlotWidget(pg.GraphicsLayoutWidget):
                           ('Log Scale', 'check', {'group': 'Y Axis', 'checked': False})]
 
         self.uiTemplate = uiTemplate
-        self.init_values(self.uiTemplate)
-        self.ui, self.stateGroup, self.ctrls = generateUi(self.uiTemplate)
+        self.ui, self.stateGroup, self.ctrls, self.plot_attrs = generateUi(self.uiTemplate)
 
         if self.stateGroup:
             self.stateGroup.sigChanged.connect(self.state_changed)
 
         ctrl_layout = self.ui.layout()
 
+        self.legend = None
         if kwargs.get('legend', True):
             self.legend = self.plot_view.addLegend()
-
             self.legend_layout = QtGui.QFormLayout()
 
-            groupbox = QtWidgets.QGroupBox()
-            groupbox.setTitle("Legend")
-            groupbox.setCheckable(True)
-            groupbox.setLayout(self.legend_layout)
-            ctrl_layout.addWidget(groupbox)
-            self.ctrls["Legend"] = groupbox
+            self.legend_groupbox = QtWidgets.QGroupBox()
+            self.legend_groupbox.setTitle("Legend")
+            self.legend_groupbox.setLayout(self.legend_layout)
+            ctrl_layout.addWidget(self.legend_groupbox)
+            self.ctrls["Legend"] = self.legend_groupbox
+
+        self.annotation_layout = QtGui.QFormLayout()
+        self.annotation_groupbox = QtWidgets.QGroupBox()
+        self.annotation_groupbox.setTitle("Annotations")
+        self.annotation_groupbox.setLayout(self.annotation_layout)
+        ctrl_layout.addWidget(self.annotation_groupbox)
+        self.ctrls["Annotations"] = self.annotation_groupbox
+
+        self.annotation_type = QtGui.QComboBox(parent=self.annotation_groupbox)
+        self.annotation_type.addItem("Line", LineEditor)
+        self.annotation_type.addItem("Circle", CircleEditor)
+        self.annotation_type.addItem("Rect", RectEditor)
+        self.annotation_layout.addWidget(self.annotation_type)
+
+        self.add_annotation_btn = QtWidgets.QPushButton("Add", self.annotation_groupbox)
+        self.add_annotation_btn.clicked.connect(self.add_annotation)
+        self.annotation_layout.addWidget(self.add_annotation_btn)
 
         self.apply_btn = QtWidgets.QPushButton("Apply", self.ui)
         self.apply_btn.clicked.connect(self.apply_clicked)
         ctrl_layout.addWidget(self.apply_btn)
 
-    def update_legend_layout(self, idx, data_name, name=None):
+        self.win = QtGui.QMainWindow()
+        scrollArea = QtWidgets.QScrollArea(parent=self.win)
+        scrollArea.setWidgetResizable(True)
+        scrollArea.setWidget(self.ui)
+        self.win.setCentralWidget(scrollArea)
+        if self.node:
+            self.win.setWindowTitle(self.node.name() + ' configuration')
+
+    def update_legend_layout(self, idx, data_name, name=None, **kwargs):
+        restore = kwargs.get('restore', False)
+
         if idx not in self.trace_ids:
             if name is None:
                 name = data_name
+
             self.trace_ids[idx] = data_name
             w = QtGui.QLineEdit(name)
-            w.trace_id = idx
             self.ctrls[idx] = w
             self.stateGroup.addWidget(w, idx)
-            setattr(self, idx, name)
             self.legend_layout.addRow(idx, w)
+
+            editor = self.editor(node=self.node, parent=self.legend_groupbox, **kwargs)
+            if restore:
+                state = kwargs.get("editor_state", {})
+                editor.restoreState(state)
+            self.legend_editors[idx] = editor
+            self.legend_layout.addWidget(editor)
+        elif restore:
+            editor = self.legend_editors[idx]
+            state = kwargs.get("editor_state", {})
+            editor.restoreState(state)
 
         return self.ctrls[idx].text()
 
-    def init_values(self, opts):
-        for opt in opts:
+    def add_annotation(self, name=None, state=None):
+        if name:
+            editor_class, idx = name.split('.')
+            editor = eval(editor_class)(node=self.node, parent=self.annotation_groupbox, name=name)
+            editor.restoreState(state)
+        else:
+            editor_class = self.annotation_type.currentData()
+            idx = len(self.annotation_editors)
+            name = f"{editor_class.__name__}.{idx}"
+            editor = editor_class(node=self.node, parent=self.annotation_groupbox, name=name)
 
-            if len(opt) < 3:
-                continue
+        editor.sigRemoved.connect(self.remove_annotation)
+        self.annotation_editors[name] = editor
+        self.annotation_layout.addWidget(editor)
 
-            k, t, o = opt
-            k = k.replace(" ", "_")
+    def remove_annotation(self, name):
+        if name in self.annotation_traces:
+            item = self.annotation_traces[name]
+            self.plot_view.removeItem(item)
+            self.legend.removeItem(item)
+            del self.annotation_traces[name]
 
-            if 'group' in o:
-                k = k+'_'+o['group']
-            if 'value' in o:
-                setattr(self, k, o['value'])
-            elif 'values' in o:
-                setattr(self, k, o['values'][0])
-            elif 'index' in o:
-                setattr(self, k, o['values'][o['index']])
-            elif 'checked' in o:
-                setattr(self, k, o['checked'])
+        editor = self.annotation_editors[name]
+        self.annotation_layout.removeWidget(editor.ui)
+        editor.deleteLater()
+        del self.annotation_editors[name]
 
-            if t == "text" and 'value' not in o:
-                setattr(self, k, "")
+    def editor(self, node, parent, **kwargs):
+        return TraceEditor(node=node, parent=parent, **kwargs)
 
     def state_changed(self, *args, **kwargs):
-        if args:
-            name, val = args
-            name = name.replace(" ", "_")
-            setattr(self, name, val)
+        name, group, val = args
+        if group:
+            self.plot_attrs[group][name] = val
+        else:
+            self.plot_attrs[name] = val
 
         if self.node:
             self.node.sigStateChanged.emit(self.node)
 
     def apply_clicked(self):
-        title = getattr(self, "Title", "")
-        self.plot_view.setTitle(title)
+        title = self.plot_attrs.get('Title', None)
+        if title:
+            self.plot_view.setTitle(title)
 
-        x_axis_lbl = getattr(self, "Label_X_Axis", "")
-        self.plot_view.setLabel('bottom', x_axis_lbl)
+        x_axis = self.plot_attrs.get('X Axis', {})
+        y_axis = self.plot_attrs.get('Y Axis', {})
 
-        xlog_scale = getattr(self, "Log_Scale_X_Axis", False)
-        ylog_scale = getattr(self, "Log_Scale_Y_Axis", False)
+        x_lbl = x_axis.get('Label', None)
+        if x_lbl:
+            self.plot_view.setLabel('bottom', x_lbl)
+
+        y_lbl = y_axis.get('Label', None)
+        if y_lbl:
+            self.plot_view.setLabel('left', y_lbl)
+
+        xlog_scale = x_axis.get('Log Scale', False)
+        ylog_scale = y_axis.get('Log Scale', False)
         self.plot_view.setLogMode(x=xlog_scale, y=ylog_scale)
 
-        y_axis_lbl = getattr(self, "Label_Y_Axis", "")
-        self.plot_view.setLabel('left', y_axis_lbl)
-
-        show_grid = getattr(self, "Show_Grid", False)
+        show_grid = self.plot_attrs.get('Show Grid', True)
         self.plot_view.showGrid(x=show_grid, y=show_grid, alpha=1.0)
 
-        auto_range = getattr(self, "Auto_Range", False)
-        if auto_range:
-            self.plot_view.vb.enableAutoRange()
-        else:
-            self.plot_view.vb.disableAutoRange()
+        # if "Auto Range" in self.plot_attrs:
+        #     auto_range = self.plot_attrs["Auto Range"]
+        #     if auto_range:
+        #         self.plot_view.vb.enableAutoRange()
+        #     else:
+        #         self.plot_view.vb.disableAutoRange()
 
         if 'Legend' in self.ctrls:
-            if self.ctrls['Legend'].isChecked():
-                self.legend.show()
-                self.legend.clear()
-                for idx, name in self.trace_ids.items():
-                    if name in self.plot:
-                        item = self.plot[name]
-                        self.legend.addItem(item, self.ctrls[idx].text())
+            self.legend.clear()
+            for idx, name in self.trace_ids.items():
+                if name in self.plot:
+                    item = self.plot[name]
+                    attrs = self.legend_editors[idx].attrs
+                    self.legend.addItem(item, self.ctrls[idx].text())
+                    if 'pen' in attrs:
+                        item.setPen(attrs['pen'])
+                    self.trace_attrs[name] = attrs
+
+        for name, editor in self.annotation_editors.items():
+            x, y = editor.trace_data()
+            pen = editor.attrs['pen']
+            point = editor.attrs['point']
+            if name not in self.annotation_traces:
+                self.annotation_traces[name] = self.plot_view.plot(x, y, pen=pen,
+                                                                   name=editor.ctrls["name"].text(),
+                                                                   **point)
             else:
-                self.legend.hide()
+                item = self.annotation_traces[name]
+                item.setData(x, y, pen=pen, **point)
+                if self.legend:
+                    self.legend.addItem(item, editor.ctrls["name"].text())
 
     def saveState(self):
         state = {}
@@ -411,16 +375,24 @@ class PlotWidget(pg.GraphicsLayoutWidget):
 
             legend = {}
 
-            for k, ctrl in self.ctrls.items():
-                if hasattr(ctrl, 'trace_id'):
-                    legend[k] = (self.trace_ids[ctrl.trace_id], ctrl.text())
-                elif isinstance(ctrl, QtGui.QLineEdit):
-                    state['ctrl'][k] = ctrl.text()
+            for trace_id, trace_editor in self.legend_editors.items():
+                editor_state = trace_editor.saveState()
+                ctrl = self.ctrls[trace_id]
+                legend[trace_id] = (self.trace_ids[trace_id], ctrl.text(), editor_state)
 
             if legend:
                 state['legend'] = legend
 
+            annotations = {}
+
+            for name, editor in self.annotation_editors.items():
+                annotations[name] = editor.saveState()
+
+            if annotations:
+                state['annotations'] = annotations
+
         state['viewbox'] = self.plot_view.vb.getState()
+
         return state
 
     def restoreState(self, state):
@@ -430,13 +402,13 @@ class PlotWidget(pg.GraphicsLayoutWidget):
 
             legendstate = state.get('legend', {})
             for k, v in legendstate.items():
-                self.update_legend_layout(k, *v)
+                if len(v) == 3:
+                    data_name, name, editor_state = v
+                    self.update_legend_layout(k, data_name, name, editor_state=editor_state, restore=True)
 
-            for k, ctrl in self.ctrls.items():
-                if isinstance(ctrl, QtGui.QLineEdit) and k in ctrlstate:
-                    ctrl.setText(ctrlstate[k])
-                if k in ctrlstate:
-                    self.state_changed(k, ctrlstate[k])
+            annotation_state = state.get('annotations', {})
+            for name, state in annotation_state.items():
+                self.add_annotation(name, state)
 
             self.apply_clicked()
 
@@ -444,21 +416,81 @@ class PlotWidget(pg.GraphicsLayoutWidget):
             self.plot_view.vb.setState(state['viewbox'])
 
     def configure_plot(self):
-        self.ui.show()
+        self.win.resize(800, 1000)
+        self.win.show()
 
-    def cursor_hover_evt(self):
-        pass
+    def cursor_hover_evt(self, evt):
+        view = self.plot_view.getViewBox()
+        pos = evt[0]
+        pos = view.mapSceneToView(pos)
+        self.pixel_value.setText(f"x={pos.x():.5g}, y={pos.y():.5g}")
+        self.pixel_value.item.moveBy(0, 10)
 
     def data_updated(self, data):
         pass
 
-    async def update(self):
-        while True:
-            await self.fetcher.fetch()
+    @QtCore.Slot()
+    def update(self):
+        while self.fetcher.ready:
             self.last_updated.setText(self.fetcher.last_updated)
             self.last_updated.item.moveBy(13, -5)
-            if self.fetcher.reply:
-                self.data_updated(self.fetcher.reply)
+            self.data_updated(self.fetcher.reply)
+
+    def close(self):
+        if self.fetcher:
+            self.fetcher.close()
+
+
+class TextWidget(pg.LayoutWidget):
+    def __init__(self, topics=None, terms=None, addr=None, parent=None, **kwargs):
+        super().__init__(parent)
+
+        self.fetcher = None
+        if addr:
+            self.fetcher = AsyncFetcher(topics, terms, addr, parent=self)
+            self.fetcher.start()
+
+        self.label = self.addLabel()
+        self.label.setMinimumSize(150, 50)
+
+    @QtCore.Slot()
+    def update(self):
+        while self.fetcher.ready:
+            for k, v in self.fetcher.reply.items():
+                self.label.setText(v)
+
+    def close(self):
+        if self.fetcher:
+            self.fetcher.close()
+
+
+class ObjectWidget(pg.LayoutWidget):
+    def __init__(self, topics=None, terms=None, addr=None, parent=None, **kwargs):
+        super().__init__(parent)
+
+        self.fetcher = None
+        if addr:
+            self.fetcher = AsyncFetcher(topics, terms, addr, parent=self)
+            self.fetcher.start()
+
+        self.label = self.addLabel()
+        self.label.setMinimumSize(360, 180)
+        self.label.setWordWrap(True)
+
+    @QtCore.Slot()
+    def update(self):
+        while self.fetcher.ready:
+            for k, v in self.fetcher.reply.items():
+
+                if type(v) is np.ndarray:
+                    txt = "variable: %s\ntype: %s\nvalue: %s\nshape: %s\ndtype: %s" % (k, type(v), v, v.shape, v.dtype)
+                else:
+                    txt = "variable: %s\ntype: %s\nvalue: %s" % (k, type(v), v)
+                self.label.setText(txt)
+
+    def close(self):
+        if self.fetcher:
+            self.fetcher.close()
 
 
 class ScalarWidget(QtWidgets.QLCDNumber):
@@ -468,44 +500,66 @@ class ScalarWidget(QtWidgets.QLCDNumber):
 
         self.fetcher = None
         if addr:
-            self.fetcher = AsyncFetcher(topics, terms, addr)
+            self.fetcher = AsyncFetcher(topics, terms, addr, parent=self)
+            self.fetcher.start()
 
-        self.setGeometry(QtCore.QRect(320, 180, 191, 81))
+        self.setMinimumSize(300, 100)
         self.setDigitCount(10)
 
-    async def update(self):
-        while True:
-            await self.fetcher.fetch()
+    @QtCore.Slot()
+    def update(self):
+        while self.fetcher.ready:
             for k, v in self.fetcher.reply.items():
                 self.display(v)
+
+    def close(self):
+        if self.fetcher:
+            self.fetcher.close()
 
 
 class ImageWidget(PlotWidget):
 
     def __init__(self, topics=None, terms=None, addr=None, parent=None, **kwargs):
-        uiTemplate = kwargs.pop("uiTemplate", [])
-        uiTemplate.extend([('Auto Range', 'check', {'group': 'Histogram', 'checked': True}),
-                           ('Auto Levels', 'check', {'group': 'Histogram', 'checked': True})])
+        uiTemplate = [('Title', 'text'),
+                      ('Show Grid', 'check', {'checked': True}),
+                      # x axis
+                      ('Label', 'text', {'group': 'X Axis'}),
+                      ('Log Scale', 'check', {'group': 'X Axis', 'checked': False}),
+                      # y axis
+                      ('Label', 'text', {'group': 'Y Axis'}),
+                      ('Log Scale', 'check', {'group': 'Y Axis', 'checked': False}),
+                      # histogram
+                      ('Auto Range', 'check', {'group': 'Histogram', 'checked': True}),
+                      ('Auto Levels', 'check', {'group': 'Histogram', 'checked': True}),
+                      ('Log Scale', 'check', {'group': 'Histogram', 'checked': False})]
+
+        display = kwargs.pop("display", True)
+        if display:
+            uiTemplate.append(('Flip', 'check', {'group': 'Display', 'checked': False}))
+            uiTemplate.append(('Rotate Counter Clockwise', 'combo',
+                               {'group': 'Display', 'value': '0',
+                                'values': ['0', '90', '180', '270']}))
 
         super().__init__(topics, terms, addr, uiTemplate=uiTemplate, parent=parent, legend=False, **kwargs)
 
-        self.fetcher = None
-        if addr:
-            self.fetcher = AsyncFetcher(topics, terms, addr)
+        self.flip = False
+        self.rotate = 0
+        self.log_scale_histogram = False
+        self.auto_levels = True
 
         self.view = self.plot_view.getViewBox()
-        if not kwargs.get('axis', False):
-            self.view.removeItem(self.plot_view.getAxis('bottom'))
-            self.view.removeItem(self.plot_view.getAxis('left'))
 
         self.imageItem = pg.ImageItem()
+        self.imageItem.setZValue(-99)
         self.view.addItem(self.imageItem)
 
         self.histogramLUT = pg.HistogramLUTItem(self.imageItem)
+        self.histogramLUT.gradient.loadPreset('thermal')
+        self.histogram_connected = False
         self.addItem(self.histogramLUT)
         if self.node:
-            self.histogramLUT.sigLookupTableChanged.connect(lambda args: self.node.sigStateChanged.emit(self.node))
-            self.histogramLUT.sigLevelChangeFinished.connect(lambda args: self.node.sigStateChanged.emit(self.node))
+            self.histogramLUT.sigLookupTableChanged.connect(
+                lambda args: self.node.sigStateChanged.emit(self.node))
 
     def cursor_hover_evt(self, evt):
         pos = evt[0]
@@ -519,10 +573,26 @@ class ImageWidget(PlotWidget):
                 self.pixel_value.setText(f"x={x}, y={y}, z={z:.5g}")
                 self.pixel_value.item.moveBy(0, 10)
 
-    def applyClicked(self):
-        super().applyClicked()
-        autorange_histogram = getattr(self, "Auto_Range_Histogram", True)
+    def apply_clicked(self):
+        super().apply_clicked()
 
+        if 'Display' in self.plot_attrs:
+            self.flip = self.plot_attrs['Display']['Flip']
+            self.rotate = int(self.plot_attrs['Display']['Rotate Counter Clockwise'])/90
+
+        self.auto_levels = self.plot_attrs['Histogram']['Auto Levels']
+        if not self.auto_levels:
+            self.histogram_connected = True
+            self.histogramLUT.sigLevelChangeFinished.connect(
+                lambda args: self.node.sigStateChanged.emit(self.node))
+        else:
+            if self.histogram_connected:
+                self.histogramLUT.sigLevelChangeFinished.disconnect()
+                self.histogram_connected = False
+
+        self.log_scale_histogram = self.plot_attrs['Histogram']['Log Scale']
+
+        autorange_histogram = self.plot_attrs['Histogram']['Auto Range']
         if autorange_histogram:
             self.histogramLUT.autoHistogramRange()
         else:
@@ -530,7 +600,15 @@ class ImageWidget(PlotWidget):
 
     def data_updated(self, data):
         for k, v in data.items():
-            self.imageItem.setImage(v, autoLevels=self.Auto_Levels_Histogram)
+            if self.flip:
+                v = np.flip(v)
+            if self.rotate != 0:
+                v = np.rot90(v, self.rotate)
+            if self.log_scale_histogram:
+                v = np.log10(v)
+
+            if v.any():
+                self.imageItem.setImage(v, autoLevels=self.auto_levels)
 
     def saveState(self):
         state = super().saveState()
@@ -541,7 +619,10 @@ class ImageWidget(PlotWidget):
 
     def restoreState(self, state):
         super().restoreState(state)
-        self.histogramLUT.restoreState(state['histogramLUT'])
+
+        if 'histogramLUT' in state:
+            self.histogramLUT.restoreState(state['histogramLUT'])
+
         if 'histogramLUT_viewbox' in state:
             self.histogramLUT.vb.setState(state['histogramLUT_viewbox'])
 
@@ -551,7 +632,7 @@ class PixelDetWidget(ImageWidget):
     sigClicked = QtCore.Signal(object, object)
 
     def __init__(self, topics=None, terms=None, addr=None, parent=None, **kwargs):
-        super().__init__(topics, terms, addr, parent, **kwargs)
+        super().__init__(topics, terms, addr, parent, display=False, **kwargs)
         self.point = self.plot_view.plot([0], [0], symbolBrush=(200, 0, 0), symbol='+', symbolSize=25)
 
     def mousePressEvent(self, ev):
@@ -574,51 +655,15 @@ class PixelDetWidget(ImageWidget):
         self.point = self.plot_view.plot([x], [y], symbolBrush=(200, 0, 0), symbol='+', symbolSize=25)
 
 
-class AreaDetWidget(pg.ImageView):
-
-    def __init__(self, topics=None, terms=None, addr=None, parent=None, **kwargs):
-        super().__init__(parent)
-
-        self.fetcher = None
-        if addr:
-            self.fetcher = AsyncFetcher(topics, terms, addr)
-
-        handles = self.roi.getHandles()
-        self.view.disableAutoRange()
-        self.roi.removeHandle(handles[1])
-        self.last_updated = pg.LabelItem(parent=self.getView())
-        self.pixel_value = pg.LabelItem(parent=self.getView())
-        self.proxy = pg.SignalProxy(self.scene.sigMouseMoved,
-                                    rateLimit=30,
-                                    slot=self.cursor_hover_evt)
-
-    def cursor_hover_evt(self, evt):
-        pos = evt[0]
-        pos = self.view.mapSceneToView(pos)
-        if self.imageItem.image is not None:
-            shape = self.imageItem.image.shape
-            if 0 <= pos.x() <= shape[0] and 0 <= pos.y() <= shape[1]:
-                x = int(pos.x())
-                y = int(pos.y())
-                z = self.imageItem.image[x, y]
-                self.pixel_value.setText(f"x={x}, y={y}, z={z:.5g}")
-                self.pixel_value.item.moveBy(0, 12)
-
-    async def update(self):
-        while True:
-            await self.fetcher.fetch()
-            self.last_updated.setText(self.fetcher.last_updated)
-            for k, v in self.fetcher.reply.items():
-                self.setImage(v, autoLevels=False, autoHistogramRange=False)
-
-
 class HistogramWidget(PlotWidget):
 
     def __init__(self, topics=None, terms=None, addr=None, parent=None, **kwargs):
         super().__init__(topics, terms, addr, parent=parent, **kwargs)
 
+    def editor(self, node, parent, **kwargs):
+        return HistEditor(node=node, parent=parent, **kwargs)
+
     def data_updated(self, data):
-        i = 0
 
         num_terms = int(len(self.terms)/2)
         for i in range(0, num_terms):
@@ -638,41 +683,25 @@ class HistogramWidget(PlotWidget):
 
             if name not in self.plot:
                 _, color = symbols_colors[i]
-                legend_name = self.update_legend_layout(f"trace.{i}", name)
+                idx = f"trace.{i}"
+                legend_name = self.update_legend_layout(idx, name, color=color)
+                attrs = self.legend_editors[idx].attrs
+                self.trace_attrs[name] = attrs
                 self.plot[name] = self.plot_view.plot(x, y, name=legend_name, brush=color,
                                                       stepMode=True, fillLevel=0)
             else:
-                self.plot[name].setData(x=x, y=y)
+                attrs = self.trace_attrs[name]
+                self.plot[name].setData(x=x, y=y, **attrs)
 
 
 class Histogram2DWidget(ImageWidget):
 
     def __init__(self, topics=None, terms=None, addr=None, parent=None, **kwargs):
-        uiTemplate = [('Title', 'text'),
-                      # x axis
-                      ('Label', 'text', {'group': 'X Axis'}),
-                      ('Log Scale', 'check', {'group': 'X Axis', 'checked': False}),
-                      # y axis
-                      ('Label', 'text', {'group': 'Y Axis'}),
-                      ('Log Scale', 'check', {'group': 'Y Axis', 'checked': False}),
-                      # z axis
-                      ('Log Scale', 'check', {'group': 'Z Axis', 'checked': False})]
+        super().__init__(topics, terms, addr, parent, display=False, axis=True, **kwargs)
 
-        super().__init__(topics, terms, addr, parent, uiTemplate=uiTemplate, axis=True, **kwargs)
-
-        self.Show_Grid = True
-        self.Auto_Range = True
-        self.plot_view.showGrid(True, True)
-
-        ax = self.plot_view.getAxis('bottom')
-        ax.setZValue(100)
-
-        ay = self.plot_view.getAxis('left')
-        ay.setZValue(100)
-
-        self.transform = QtGui.QTransform()
         self.xbins = None
         self.ybins = None
+        self.transform = QtGui.QTransform()
 
     def cursor_hover_evt(self, evt):
         pos = evt[0]
@@ -701,13 +730,12 @@ class Histogram2DWidget(ImageWidget):
         self.xbins = data[xbins]
         self.ybins = data[ybins]
         counts = data[counts]
-        if self.Log_Scale_Z_Axis:
+        if self.log_scale_histogram:
             counts = np.log10(counts)
         xscale = (self.xbins[-1] - self.xbins[0])/self.xbins.shape
         yscale = (self.ybins[-1] - self.ybins[0])/self.ybins.shape
 
-        self.imageItem.setImage(counts, autoLevels=self.Auto_Levels_Histogram)
-        self.imageItem.setZValue(-99)
+        self.imageItem.setImage(counts, autoLevels=self.auto_levels)
         self.transform = QtGui.QTransform(xscale, 0, 0, yscale, self.xbins[0], self.ybins[0])
         self.imageItem.setTransform(self.transform)
 
@@ -735,14 +763,15 @@ class ScatterWidget(PlotWidget):
             y = data[y]
 
             if name not in self.plot:
-                legend_name = self.update_legend_layout(f"trace.{i}", name)
-                self.plot[name] = pg.ScatterPlotItem(name=legend_name)
-                self.plot_view.addItem(self.plot[name])
-                self.legend.addItem(self.plot[name], name=legend_name)
-
-            scatter = self.plot[name]
-            symbol, color = symbols_colors[i]
-            scatter.setData(x=x, y=y, symbol=symbol, brush=color)
+                symbol, color = symbols_colors[i]
+                idx = f"trace.{i}"
+                legend_name = self.update_legend_layout(idx, name, symbol=symbol, color=color, style='None')
+                attrs = self.legend_editors[idx].attrs
+                self.trace_attrs[name] = attrs
+                self.plot[name] = self.plot_view.plot(x=x, y=y, name=legend_name, pen=None, **attrs['point'])
+            else:
+                attrs = self.trace_attrs[name]
+                self.plot[name].setData(x=x, y=y, **attrs['point'])
 
 
 class WaveformWidget(PlotWidget):
@@ -755,13 +784,18 @@ class WaveformWidget(PlotWidget):
 
         for term, name in self.terms.items():
             if name not in self.plot:
-                legend_name = self.update_legend_layout(f"trace.{i}", name)
-                symbol, color = symbols_colors[i]
+                _, color = symbols_colors[i]
+                idx = f"trace.{i}"
                 i += 1
-                self.plot[name] = self.plot_view.plot(y=np.array(data[name]), name=legend_name,
-                                                      symbol=symbol, symbolBrush=color)
+                legend_name = self.update_legend_layout(idx, name, symbol='None', line_color=color)
+                attrs = self.legend_editors[idx].attrs
+                self.trace_attrs[name] = attrs
+                self.plot[name] = self.plot_view.plot(y=data[name], name=legend_name,
+                                                      pen=attrs['pen'],
+                                                      **attrs['point'])
             else:
-                self.plot[name].setData(y=np.array(data[name]))
+                attrs = self.trace_attrs[name]
+                self.plot[name].setData(y=data[name], **attrs['point'])
 
 
 class LineWidget(PlotWidget):
@@ -788,58 +822,53 @@ class LineWidget(PlotWidget):
             y = data[y]
 
             if name not in self.plot:
-                legend_name = self.update_legend_layout(f"trace.{i}", name)
-                symbol, color = symbols_colors[i]
+                _, color = symbols_colors[i]
+                idx = f"trace.{i}"
                 i += 1
-                self.plot[name] = self.plot_view.plot(x=x, y=y, name=legend_name, symbol=symbol, symbolBrush=color)
+                legend_name = self.update_legend_layout(idx, name, symbol='None', color=color)
+                attrs = self.legend_editors[idx].attrs
+                self.trace_attrs[name] = attrs
+                self.plot[name] = self.plot_view.plot(x=x, y=y,
+                                                      name=legend_name, pen=attrs['pen'], **attrs['point'])
             else:
-                self.plot[name].setData(x=x, y=y)
+                attrs = self.trace_attrs[name]
+                self.plot[name].setData(x=x, y=y, **attrs['point'])
 
 
-class FitWidget(PlotWidget):
+class TimeAxisItem(pg.AxisItem):
+
+    epoch = dt.datetime(1990, 1, 1)
+
+    def __init__(self, tscale=1, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.scale = tscale
+
+    def tickStrings(self, values, scale, spacing):
+        # PySide's QTime() initialiser fails miserably and dismisses args/kwargs
+        ticks = []
+
+        for value in values:
+            sec, usec = divmod(value, 1.)
+            usec *= 1.e6
+            delta_t = dt.timedelta(0, sec, usec)
+            t = self.epoch + delta_t
+            ticks.append(t.strftime('%H:%M:%S'))
+
+        return ticks
+
+
+class TimeWidget(LineWidget):
 
     def __init__(self, topics=None, terms=None, addr=None, parent=None, **kwargs):
         super().__init__(topics, terms, addr, parent=parent, **kwargs)
-
-    def data_updated(self, data):
-        x = self.terms["X"]
-        y = self.terms["Y"]
-        name = " vs ".join((y, x))
-
-        x = data[x]
-        y = data[y]
-        i = 0
-
-        if name not in self.plot:
-            legend_name = self.update_legend_layout(f"trace.0", name)
-            self.plot[name] = pg.ScatterPlotItem(name=legend_name)
-            self.plot_view.addItem(self.plot[name])
-            self.legend.addItem(self.plot[name], name=legend_name)
-
-        scatter = self.plot[name]
-        symbol, color = symbols_colors[i]
-        scatter.setData(x=x, y=y, symbol=symbol, brush=color)
-
-        fit = self.terms["Fit"]
-        fit = data[fit]
-        name = self.terms["Fit"]
-
-        if name not in self.plot:
-            legend_name = self.update_legend_layout(f"trace.1", name)
-            symbol, color = symbols_colors[1]
-            self.plot[name] = self.plot_view.plot(x=x, y=fit, name=legend_name)
-        else:
-            self.plot[name].setData(x=x, y=fit)
+        ax = TimeAxisItem(orientation='bottom')
+        self.plot_view.setAxisItems({'bottom': ax})
 
 
 class ArrayWidget(QtWidgets.QWidget):
 
     def __init__(self, topics=None, terms=None, addr=None, parent=None, **kwargs):
         super().__init__(parent)
-
-        self.fetcher = None
-        if addr:
-            self.fetcher = AsyncFetcher(topics, terms, addr)
 
         self.terms = terms
         self.update_rate = kwargs.get('update_rate', 30)
@@ -850,14 +879,23 @@ class ArrayWidget(QtWidgets.QWidget):
         self.grid.setRowStretch(0, 10)
         self.grid.addWidget(self.last_updated, 1, 0)
 
-    async def update(self):
-        while True:
-            await self.fetcher.fetch()
-            self.last_updated.setText(self.fetcher.last_updated)
+        self.fetcher = None
+        if addr:
+            self.fetcher = AsyncFetcher(topics, terms, addr,
+                                        parent=self, ratelimit=1.0/self.update_rate)
+            self.fetcher.start()
+
+    @QtCore.Slot()
+    def update(self):
+        while self.fetcher.ready:
             if self.fetcher.reply:
+                self.last_updated.setText(self.fetcher.last_updated)
                 self.array_updated(self.fetcher.reply)
-            await asyncio.sleep(self.update_rate)
 
     def array_updated(self, data):
         for term, name in self.terms.items():
             self.table.setData(data[name])
+
+    def close(self):
+        if self.fetcher:
+            self.fetcher.close()

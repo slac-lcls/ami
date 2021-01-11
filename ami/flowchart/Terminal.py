@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-from pyqtgraph.Qt import QtCore, QtGui
+from pyqtgraph.Qt import QtCore, QtGui, QtWidgets
 from pyqtgraph.graphicsItems.GraphicsObject import GraphicsObject
 from pyqtgraph import functions as fn
 from pyqtgraph.Point import Point
@@ -11,7 +11,7 @@ import tempfile
 
 
 class Terminal(object):
-    def __init__(self, node, name, io, ttype, group=None, pos=None, removable=False):
+    def __init__(self, node, name, io, ttype, group=None, pos=None, removable=False, unit=None):
         """
         Construct a new terminal.
 
@@ -24,6 +24,7 @@ class Terminal(object):
         group           Terminal group
         pos             [x, y], the position of the terminal within its node's boundaries
         removable       (bool) Whether the terminal can be removed by the user
+        unit            Pint Unit
         ==============  =================================================================================
         """
         self._io = io
@@ -34,6 +35,7 @@ class Terminal(object):
         self._group = group
 
         self._type = ttype
+        self._unit = unit
         self._graphicsItem = TerminalGraphicsItem(self, parent=self._node().graphicsItem())
 
         self.recolor()
@@ -66,6 +68,13 @@ class Terminal(object):
 
     def setType(self, type):
         self._type = type
+
+    def unit(self):
+        return self._unit
+
+    def setUnit(self, unit):
+        assert self._unit is None  # TODO handle conversions
+        self._unit = unit
 
     def connections(self):
         return self._connections
@@ -144,12 +153,13 @@ class Terminal(object):
                     if len(t.connections()) > 0:
                         raise Exception(
                             "Cannot connect %s <-> %s: Terminal %s is already connected to %s \
-                            (and does not allow multiple connections)" % (self, term, t, list(t.connections().keys())))
+                            (and does not allow multiple connections)" % (self, term, t,
+                                                                          list(t.connections().keys())))
                 elif t.isOutput():
                     types["Output"] = t
 
             if not checkType(types, type_file):
-                raise Exception("Invalid types. Expected: %s Got: %s", self.type(), term.type())
+                raise Exception(f"Invalid types. Expected: {self.type()} Got: {term.type()}")
         except Exception:
             if connectionItem is not None:
                 connectionItem.close()
@@ -165,6 +175,11 @@ class Terminal(object):
 
         self.connected(term)
         term.connected(self)
+
+        if self.isInput() and term.isOutput():
+            self.setUnit(term.unit())
+        elif self.isOutput() and term.isInput():
+            term.setUnit(self.unit())
 
         return connectionItem
 
@@ -354,9 +369,9 @@ class TerminalGraphicsItem(GraphicsObject):
                             self.term.connectTo(i.term, self.newConnection)
                             gotTarget = True
                         except Exception as e:
-                            self.scene().removeItem(self.newConnection)
-                            self.newConnection = None
-                            raise e
+                            msg = QtWidgets.QMessageBox()
+                            msg.setText(str(e))
+                            msg.exec()
                         break
 
                 if not gotTarget:
@@ -388,7 +403,7 @@ class TerminalGraphicsItem(GraphicsObject):
 class ConnectionItem(GraphicsObject):
 
     def __init__(self, source, target=None):
-        super().__init__()
+        super().__init__(source)
         self.setFlags(
             self.ItemIsSelectable |
             self.ItemIsFocusable
@@ -566,5 +581,8 @@ def checkType(terminals, type_file=None):
             f.write(f"def {f_out}:\n\tpass")
             f.write(f"\n{f_in_name}({f_out_name}())")
             f.flush()
-            status = subprocess.run(["mypy", "--follow-imports", "silent", f.name])
-            return status.returncode == 0
+            status = subprocess.call(["dmypy", "check", f.name])
+            if status == 2:
+                subprocess.call(["dmypy", "start"])
+                status = subprocess.call(["dmypy", "check", f.name])
+            return status == 0

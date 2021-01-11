@@ -1,12 +1,19 @@
 #!/usr/bin/env python
 import re
+import os
 import sys
 import zmq
 import dill
 import logging
+import collections
 import argparse
+import json
+import socket
+import time
+import datetime as dt
+import prometheus_client as pc
 from ami import LogConfig
-from ami.comm import Ports, AutoExport, Collector, Store
+from ami.comm import Ports, AutoExport, Collector, Store, ZMQ_TOPIC_DELIM
 from ami.data import MsgTypes, Transitions, Serializer, Deserializer
 from ami.graphkit_wrapper import Graph
 
@@ -33,11 +40,14 @@ class Manager(Collector):
                  info_addr,
                  export_addr,
                  view_addr,
-                 profile_addr):
+                 profile_addr,
+                 prometheus_dir,
+                 hutch):
         """
         protocol right now only tells you how to communicate with workers
         """
-        super().__init__(results_addr)
+        super().__init__(results_addr, hutch=hutch)
+        self.name = "manager"
         self.num_workers = num_workers
         self.num_nodes = num_nodes
         self.heartbeats = {}
@@ -46,7 +56,8 @@ class Manager(Collector):
         self.feature_req = re.compile(r"(?P<type>fetch):(?P<name>.*)")
         self.view_req = re.compile(r"view:(?P<graph>.*):(?P<name>.*)")
         self.graphs = {}
-        self.versions = {}
+        self.paths = collections.defaultdict(set)
+        self.versions = {}  # { graph_name : version_number}
         self.purged = set()
         self.global_cmds = {"list_graphs"}
         self.no_auto_create_cmds = {"create_graph", "destroy_graph"}
@@ -74,15 +85,18 @@ class Manager(Collector):
 
         self.node_msg_comm = self.ctx.socket(zmq.PULL)
         self.node_msg_comm.bind(msg_addr)
+        self.register(self.node_msg_comm, self.node_request)
+
         self.profile_comm = self.ctx.socket(zmq.XPUB)
         self.profile_comm.setsockopt(zmq.XPUB_VERBOSE, True)
         self.profile_comm.bind(profile_addr)
-        self.register(self.node_msg_comm, self.node_request)
 
         self.view_comm = self.ctx.socket(zmq.XPUB)
         self.view_comm.setsockopt(zmq.XPUB_VERBOSE, True)
         self.view_comm.bind(view_addr)
         self.register(self.view_comm, self.view_request)
+
+        self.prometheus_dir = prometheus_dir
 
     def __enter__(self):
         return self
@@ -95,6 +109,10 @@ class Manager(Collector):
 
     def process_msg(self, msg):
         if msg.mtype == MsgTypes.Datagram:
+            latency = dt.datetime.now() - dt.datetime.fromtimestamp(msg.heartbeat.timestamp)
+            self.event_latency.labels(self.hutch, 'globalCollector%03d' % msg.identity,
+                                      self.name).set(latency.total_seconds())
+            datagram_start = time.time()
             if msg.name not in self.feature_stores:
                 if msg.name in self.purged:
                     logger.debug("Received data from deleted graph '%s'!", msg.name)
@@ -121,7 +139,10 @@ class Manager(Collector):
                 # export the heartbeat to epics
                 self.export_heartbeat(msg.name)
                 # export data for viewing in the AMI GUI
-                self.export_view(msg.name)
+                self.export_view(msg.name, keys=msg.payload.keys())
+
+            self.event_counter.labels(self.hutch, 'Heartbeat', self.name).inc()
+            self.event_time.labels(self.hutch, 'Heartbeat', self.name).set(time.time() - datagram_start)
         elif (msg.mtype == MsgTypes.Transition) and (msg.payload.ttype == Transitions.Configure):
             changed = (msg.payload.payload != self.partition)
             self.partition = msg.payload.payload
@@ -133,7 +154,7 @@ class Manager(Collector):
             self.export_config()
 
     @property
-    def compilier_args(self):
+    def compiler_args(self):
         return {'num_workers': self.num_workers, 'num_local_collectors': self.num_nodes}
 
     def exists(self, name):
@@ -219,7 +240,7 @@ class Manager(Collector):
             name (str): the name of the graph to compile.
         """
         graph = dill.loads(dill.dumps(self.graphs[name]))
-        graph.compile(**self.compilier_args)
+        graph.compile(**self.compiler_args)
         return graph
 
     def cmd_unknown(self, name=None):
@@ -240,6 +261,9 @@ class Manager(Collector):
     def cmd_get_features(self, name):
         self.comm.send_pyobj(self.features(name))
 
+    def cmd_get_compiler_args(self, name):
+        self.comm.send_pyobj(self.compiler_args)
+
     def cmd_get_names(self, name):
         self.comm.send_pyobj(self.names(name))
 
@@ -248,6 +272,9 @@ class Manager(Collector):
 
     def cmd_get_sources(self, name):
         self.comm.send_pyobj(self.partition)
+
+    def cmd_get_paths(self, name):
+        self.comm.send_pyobj(list(self.paths[name]))
 
     def cmd_create_graph(self, name):
         if not self.exists(name):
@@ -350,8 +377,27 @@ class Manager(Collector):
         self.graph_comm.send(dill.dumps(src_cfg))
         self.comm.send_string('ok')
 
+    def cmd_update_path(self, name):
+        paths = self.comm.recv_pyobj()
+        exists = True
+        for pth in paths:
+            if not os.path.exists(pth):
+                logger.error("Path: %s not accessible from manager!", pth)
+                exists = False
+
+        if not exists:
+            self.comm.send_string('error')
+            return
+
+        self.paths[name].update(paths)
+        sys.path.extend(paths)
+        self.graph_comm.send_string("update_path", zmq.SNDMORE)
+        self.graph_comm.send_pyobj(self.publish_info(name), zmq.SNDMORE)
+        self.graph_comm.send(dill.dumps(paths))
+        self.comm.send_string('ok')
+
     def publish_info(self, name):
-        return name, self.versions[name], self.compilier_args
+        return name, self.versions[name], self.compiler_args
 
     def publish_purge(self, name, reply=True):
         logger.info("Purging requested graph...")
@@ -408,15 +454,21 @@ class Manager(Collector):
         self.info_comm.send(payload)
 
     def publish_view(self, topic, timestamp, data):
-        self.view_comm.send_string(topic, zmq.SNDMORE)
+        self.view_comm.send_string(topic + ZMQ_TOPIC_DELIM, zmq.SNDMORE)
         self.view_comm.send_pyobj(timestamp, zmq.SNDMORE)
-        self.view_comm.send_pyobj(data)
+        data = self.serializer(data)
+        self.view_comm.send_multipart(data, copy=False, flags=zmq.NOBLOCK)
+        return self.serializer.sizeof(data)
 
     def graph_request(self):
         request = self.graph_comm.recv_string()
 
         if request == "\x01":
             for name, graph in self.graphs.items():
+                if name in self.paths:
+                    self.graph_comm.send_string("update_path", zmq.SNDMORE)
+                    self.graph_comm.send_pyobj(self.publish_info(name), zmq.SNDMORE)
+                    self.graph_comm.send(dill.dumps(self.paths[name]))
                 self.graph_comm.send_string("init", zmq.SNDMORE)
                 self.graph_comm.send_pyobj(self.publish_info(name), zmq.SNDMORE)
                 self.graph_comm.send(dill.dumps(graph))
@@ -429,14 +481,14 @@ class Manager(Collector):
         node = self.node_msg_comm.recv_string()
 
         if topic == "profile":
-            payload = self.node_msg_comm.recv_multipart(copy=False)
-            self.profile_comm.send_string(topic, zmq.SNDMORE)
-            self.profile_comm.send_string(node, zmq.SNDMORE)
-            self.profile_comm.send_multipart(payload, copy=False)
+            # graph = self.node_msg_comm.recv_string()
+            # payload = self.node_msg_comm.recv_multipart(copy=False)
+            self.node_msg_comm.recv_string()
+            self.node_msg_comm.recv_multipart(copy=False)
         elif topic == "purge":
             name = dill.loads(self.node_msg_comm.recv(copy=False))
-            logger.info("Received purge request for graph (%s v%d) from %s", name, self.versions[name], node)
             if self.exists(name):
+                logger.info("Received purge request for graph (%s v%d) from %s", name, self.versions[name], node)
                 # send a null graph to workers
                 self.publish_purge(name, reply=False)
                 # delete the local graph information
@@ -469,11 +521,15 @@ class Manager(Collector):
             else:
                 logger.warn("Received invalid view request: %s", request)
 
-    def export_view(self, name):
+    def export_view(self, name, keys=[]):
+        size = 0
+
         for key, value in self.feature_stores[name].namespace.items():
-            self.publish_view("view:%s:%s" % (name, key),
-                              self.heartbeats[name],
-                              value)
+            if key in keys:
+                size += self.publish_view("view:%s:%s" % (name, key),
+                                          self.heartbeats[name],
+                                          value)
+        self.event_size.labels(self.hutch, self.name).set(size)
 
     def export_request(self):
         request = self.export.recv_string()
@@ -543,6 +599,30 @@ class Manager(Collector):
         self.export.send_string(name, zmq.SNDMORE)
         self.export.send_pyobj(self.heartbeats[name])
 
+    def start_prometheus(self):
+        port = Ports.Prometheus
+        while True:
+            try:
+                pc.start_http_server(port)
+                break
+            except OSError:
+                port += 1
+
+        if self.prometheus_dir:
+            if not os.path.exists(self.prometheus_dir):
+                os.makedirs(self.prometheus_dir)
+            pth = f"drpami_{socket.gethostname()}_{self.name}.json"
+            pth = os.path.join(self.prometheus_dir, pth)
+            conf = [{"targets": [f"{socket.gethostname()}:{port}"]}]
+            try:
+                with open(pth, 'w') as f:
+                    json.dump(conf, f)
+            except PermissionError:
+                pass
+
+        logger.info("%s: Started Prometheus client on port: %d", self.name, port)
+        return port
+
 
 def run_manager(num_workers,
                 num_nodes,
@@ -553,8 +633,11 @@ def run_manager(num_workers,
                 info_addr,
                 export_addr,
                 view_addr,
-                profile_addr):
-    logger.info('Starting manager, controlling %d workers on %d nodes', num_workers, num_nodes)
+                profile_addr,
+                prometheus_dir,
+                hutch):
+    logger.info('Starting manager, controlling %d workers on %d nodes PID: %d',
+                num_workers, num_nodes, os.getpid())
     with Manager(
             num_workers,
             num_nodes,
@@ -565,7 +648,10 @@ def run_manager(num_workers,
             info_addr,
             export_addr,
             view_addr,
-            profile_addr) as manager:
+            profile_addr,
+            prometheus_dir,
+            hutch) as manager:
+        manager.start_prometheus()
         return manager.run()
 
 
@@ -668,6 +754,18 @@ def main():
                         default=Ports.Profile,
                         help='port for profiling inforation communication (default: %d)' % Ports.Profile)
 
+    parser.add_argument(
+        '--prometheus-dir',
+        help='directory for prometheus configuration',
+        default=None
+    )
+
+    parser.add_argument(
+        '--hutch',
+        help='hutch for prometheus label',
+        default=None
+    )
+
     args = parser.parse_args()
 
     results_addr = "tcp://%s:%d" % (args.host, args.results)
@@ -695,7 +793,9 @@ def main():
                            info_addr,
                            export_addr,
                            view_addr,
-                           profile_addr)
+                           profile_addr,
+                           args.prometheus_dir,
+                           args.hutch)
     except KeyboardInterrupt:
         logger.info("Manager killed by user...")
         return 0

@@ -6,6 +6,7 @@ import dill
 import typing
 import inspect
 import logging
+import datetime
 import pickle
 try:
     import h5py
@@ -44,8 +45,9 @@ class MsgTypes(Enum):
 class Transitions(Enum):
     Allocate = 0
     Configure = 1
-    Enable = 2
-    Disable = 3
+    Unconfigure = 2
+    Enable = 3
+    Disable = 4
 
     def _serialize(transitionType):
         return {'type': transitionType.value}
@@ -58,6 +60,47 @@ class Transitions(Enum):
 class Transition:
     ttype: Transitions
     payload: dict
+
+    def _serialize(self):
+        return asdict(self)
+
+    @classmethod
+    def _deserialize(cls, data):
+        return cls(**data)
+
+
+@dataclass(frozen=True)
+class Heartbeat:
+    """
+    Heartbeat contatiner.
+
+    Comparison/equality operators are implemented so that it can be
+    compared to integers.
+
+    Args:
+        identity (int): Heartbeat integer id number
+        timestamp (float): Unix timestamp associated with heartbeat
+    """
+    identity: int = 0
+    timestamp: float = 0.0
+
+    def __hash__(self):
+        return hash(self.identity)
+
+    def __eq__(self, other):
+        return self.identity == other
+
+    def __lt__(self, other):
+        return self.identity < other
+
+    def __le__(self, other):
+        return self.identity <= other
+
+    def __gt__(self, other):
+        return self.identity > other
+
+    def __ge__(self, other):
+        return self.identity >= other
 
     def _serialize(self):
         return asdict(self)
@@ -119,7 +162,7 @@ class CollectorMessage(Message):
 
         version (int): version
     """
-    heartbeat: int = 0
+    heartbeat: Heartbeat = Heartbeat()
     name: str = ""
     version: int = 0
 
@@ -138,7 +181,10 @@ def build_serialization_context():
                           custom_deserializer=cls._deserialize)
 
     context = pa.SerializationContext()
-    for cls in [MsgTypes, Transitions, Message, CollectorMessage, Transition, Datagram]:
+    for cls in [MsgTypes, Transitions, Heartbeat, Message,
+                CollectorMessage, Transition, Datagram]:
+        register(context, cls)
+    for cls in at.PyArrowTypes:
         register(context, cls)
 
     return context
@@ -151,6 +197,10 @@ class ModuleSerializer:
 
     def __call__(self, msg):
         return [self.module.dumps(msg)]
+
+    def sizeof(self, msg):
+        assert type(msg) is list and type(msg[0]) is bytes, "Excepts serialized message!"
+        return sys.getsizeof(msg[0])
 
 
 class ModuleDeserializer:
@@ -177,11 +227,18 @@ class ArrowSerializer:
         serialized_msg = []
         ser = pa.serialize(msg, context=self.context)
         comp = ser.to_components()
-        metadata = {k: comp[k] for k in ['num_tensors', 'num_ndarrays', 'num_buffers']}
+        metadata = {k: comp[k] for k in ['num_tensors', 'num_ndarrays', 'num_buffers', 'num_sparse_tensors']}
         serialized_msg.append(pickle.dumps(metadata))
         views = list(map(memoryview, comp['data']))
         serialized_msg.extend(views)
         return serialized_msg
+
+    def sizeof(self, msg):
+        assert type(msg) is list and type(msg[0]) is bytes, "Excepts serialized message!"
+        size = sys.getsizeof(msg[0])
+        for c in msg[1:]:
+            size += c.nbytes
+        return size
 
 
 class ArrowDeserializer:
@@ -228,6 +285,7 @@ class TimestampConverter:
         self.shift = shift
         self.mask = (1 << self.shift) - 1
         self.heartbeat = heartbeat
+        self.epics_epoch_dt = datetime.datetime(1990, 1, 1, tzinfo=datetime.timezone.utc)
 
     def decode(self, raw_ts, as_float=False):
         sec = (raw_ts >> self.shift) & self.mask
@@ -240,13 +298,18 @@ class TimestampConverter:
     def encode(self, sec, nsec):
         return ((sec & self.mask) << self.shift) | (nsec & self.mask)
 
-    def __call__(self, raw_ts):
+    def unix_timestamp(self, epics_timestamp):
+        unix_epoch_dt = self.epics_epoch_dt + datetime.timedelta(seconds=epics_timestamp)
+        return unix_epoch_dt.timestamp()
+
+    def __call__(self, raw_ts, epics_epoch=True):
         timestamp = self.decode(raw_ts, as_float=True)
-        return timestamp, int(timestamp * self.heartbeat)
+        unix_ts = self.unix_timestamp(timestamp) if epics_epoch else timestamp
+        return timestamp, int(timestamp * self.heartbeat), unix_ts
 
 
 class Source(abc.ABC):
-    def __init__(self, idnum, num_workers, heartbeat_period, src_cfg, flags=None):
+    def __init__(self, idnum, num_workers, heartbeat_period, src_cfg, flags=None, ts_type=None):
         """
         Args:
             idnum (int): Id number
@@ -267,9 +330,11 @@ class Source(abc.ABC):
         self.requested_special = {}
         self.config = src_cfg
         self.flags = flags or {}
+        self.source = at.DataSource(self.config)
         self._base_types = {
-            'timestamp': int,
+            'timestamp': int if ts_type is None else ts_type,
             'heartbeat': int,
+            'source': type(self.source),
         }
         self._base_names = set(self._base_types)
         self._flag_types = {
@@ -277,6 +342,7 @@ class Source(abc.ABC):
             'init_time': float,
             'bound': int,
             'repeat': lambda s: s.lower() == 'true',
+            'counting': lambda s: s.lower() == 'true',
             'files': lambda f: f.split(','),
         }
         # Apply flags to the config dictionary
@@ -286,6 +352,13 @@ class Source(abc.ABC):
                 self.config[flag] = self._flag_types[flag](value)
             else:
                 self.config[flag] = value
+        # If 'type' has not been passed in the config dictionary then set it
+        if 'type' not in self.config:
+            base_name = __class__.__name__
+            type_name = type(self).__name__
+            if type_name.endswith(base_name):
+                type_name = type_name[:-len(base_name)]
+            self.config['type'] = type_name.lower()
 
     @property
     def interval(self):
@@ -310,24 +383,47 @@ class Source(abc.ABC):
         """
         return self.config.get('init_time', 0)
 
-    def check_heartbeat_boundary(self, timestamp):
+    @property
+    def src_type(self):
+
         """
-        Checks if the timestamp given has crossed into another heartbeat
+        Getter for the type value set in the source configuration. This tells
+        which type of source it is. e.g. sim, psana, hdf5.
+
+        Returns:
+            The type value set in the source configuration.
+        """
+        return self.config.get('type', 'generic')
+
+    def reset_heartbeat(self):
+        """
+        Resets the heartbeat to its initial state.
+        """
+        self.heartbeat = None
+        self.old_heartbeat = None
+
+    def check_heartbeat_boundary(self, value, timestamp=None):
+        """
+        Checks if the value given has crossed into another heartbeat
         period than the current one.
 
         Args:
-            timestamp (int): The timestamp to use for the check
+            value (int): The value to use for the check
+            timestamp (float): optional timestamp to associate with
+                heartbeat. Defaults to the current time if not specified
 
         Returns:
             If a heartbeat boundary has been crossed a value of `True` is
             returned.
         """
+        if timestamp is None:
+            timestamp = time.time()
         if self.heartbeat is None:
-            self.heartbeat = (timestamp // self.heartbeat_period)
+            self.heartbeat = Heartbeat(value // self.heartbeat_period, timestamp)
             return False
-        elif (timestamp // self.heartbeat_period) > (self.heartbeat):
+        elif (value // self.heartbeat_period) > self.heartbeat:
             self.old_heartbeat = self.heartbeat
-            self.heartbeat = (timestamp // self.heartbeat_period)
+            self.heartbeat = Heartbeat(value // self.heartbeat_period, timestamp)
             return True
         else:
             return False
@@ -350,7 +446,7 @@ class Source(abc.ABC):
                                       lambda x:
                                       inspect.isclass(x) and not inspect.isabstract(x) and issubclass(x, cls))
         for clsname, clsobj in cls_list:
-            if (clsname == name) or (clsname == name.capitalize() + 'Source'):
+            if (clsname == name) or (clsname == name.capitalize() + cls.__name__):
                 return clsobj
 
     @abc.abstractmethod
@@ -416,14 +512,26 @@ class Source(abc.ABC):
         Constructs a properly formatted configure message
 
         Returns:
-            An object of type `Message` which includes a list of
-            names of the currently available detectors/data.
+            An object of type `Message` which includes a dict of
+            names:types of the currently available detectors/data.
         """
+        self.reset_heartbeat()
         self.request(self.requested_names)
         flatten_types = {name: at.dumps(dtype) for name, dtype in self.types.items()}
         return Message(MsgTypes.Transition,
                        self.idnum,
                        Transition(Transitions.Configure, flatten_types))
+
+    def unconfigure(self):
+        """
+        Constructs a properly formatted unconfigure message
+
+        Returns:
+            An object of type `Message` which includes an empty dict.
+        """
+        return Message(MsgTypes.Transition,
+                       self.idnum,
+                       Transition(Transitions.Unconfigure, {}))
 
     def heartbeat_msg(self):
         """
@@ -447,7 +555,11 @@ class Source(abc.ABC):
         Returns:
             An object of type `Message` which includes the data for the event.
         """
-        base = [('timestamp', timestamp), ('heartbeat', self.heartbeat)]
+        base = [
+            ('timestamp', timestamp),
+            ('heartbeat', self.heartbeat.identity if self.heartbeat is not None else None),
+            ('source', self.source)
+        ]
         data.update({k: v for k, v in base if k in self.requested_names})
         msg = Message(mtype=MsgTypes.Datagram, identity=self.idnum, payload=data, timestamp=timestamp)
         yield msg
@@ -484,19 +596,23 @@ class Source(abc.ABC):
 
 
 class HierarchicalDataSource(Source):
-    def __init__(self, idnum, num_workers, heartbeat_period, src_cfg, flags=None):
-        super().__init__(idnum, num_workers, heartbeat_period, src_cfg, flags)
+    def __init__(self, idnum, num_workers, heartbeat_period, src_cfg, flags=None, ts_type=None):
+        super().__init__(idnum, num_workers, heartbeat_period, src_cfg, flags, ts_type)
         self._counter = None
         self.loop_count = 0
         self.delimiter = ":"
         self.data_types = {}
         self.special_types = {}
+        self.grouped_types = {}
 
     def _names(self):
         return set(self.data_types)
 
     def _types(self):
         return self.data_types
+
+    def _steps(self, run):
+        yield run
 
     @abc.abstractmethod
     def _runs(self):
@@ -511,7 +627,11 @@ class HierarchicalDataSource(Source):
         pass
 
     @abc.abstractmethod
-    def _process(self, run):
+    def _process(self, evt):
+        pass
+
+    @abc.abstractmethod
+    def _cleanup(self):
         pass
 
     @abc.abstractmethod
@@ -519,24 +639,42 @@ class HierarchicalDataSource(Source):
         pass
 
     def timestamp(self, evt):
+        """
+        A function for the getting the timestamp information from an event
+        object. There are three parts to the timestamp. A monotonic timestamp
+        (if the event does not have one a counter is used here),
+        the timestamp to use for heartbeat calculations (must be an integer),
+        and the unix timestamp to associate with the event.
+
+        Args:
+            evt: a reference to the event object
+
+        Returns:
+            A tuple of three timestamp components
+        """
         counter = self.counter
-        timestamp, heartbeat = self._timestamp(evt)
+        timestamp, heartbeat, unix_timestamp = self._timestamp(evt)
+        if unix_timestamp is None:
+            unix_timestamp = time.time()
         if timestamp is None:
             # If the source does not provide timestamps use the counter
-            return counter, counter
-        elif self.repeat_mode:
-            # If in repeat mode (a.k.a. looping forever over the same events)
-            # then use fake ts for heartbeats
-            return timestamp, counter
+            return counter, counter, unix_timestamp
+        elif self.counting_mode:
+            # If in counting mode then force use the counter for heartbeats
+            return timestamp, counter, unix_timestamp
         elif heartbeat is None:
-            # If no heartbeat adjusted timestamp is provider just the raw timestamp
-            return timestamp, timestamp
+            # If no heartbeat adjusted timestamp is provided just use the raw timestamp
+            return timestamp, timestamp, unix_timestamp
         else:
-            return timestamp, heartbeat
+            return timestamp, heartbeat, unix_timestamp
 
     @property
     def repeat_mode(self):
         return self.config.get('repeat', False)
+
+    @property
+    def counting_mode(self):
+        return self.config.get('counting', True)
 
     @property
     def repeat(self):
@@ -561,29 +699,53 @@ class HierarchicalDataSource(Source):
 
         while self.repeat:
             for run in self._runs():
+                self.source.run = run
+                self.source.key += 1
                 # clear type info from previous runs
                 self.data_types = {}
                 self.special_types = {}
+                self.grouped_types = {}
                 # call the subclasses update function then emit the configure message
                 self._update(run)
                 yield self.configure()
 
-                for evt in self._events(run):
-                    # get the subclasses timestamp implementation
-                    timestamp, heartbeat = self.timestamp(evt)
-                    # check the heartbeat
-                    if self.check_heartbeat_boundary(heartbeat):
-                        yield self.heartbeat_msg()
+                # loop over the steps in the run (if any)
+                for step in self._steps(run):
+                    # add the step to the source
+                    self.source.step = step
 
-                    # emit the processed event data
-                    yield from self.event(timestamp, self._process(evt))
-                    time.sleep(self.interval)
+                    # loop over the events in the step
+                    for evt in self._events(step):
+                        self.source.evt = evt
+                        # get the subclasses timestamp implementation
+                        timestamp, heartbeat, unix_ts = self.timestamp(evt)
+                        # check the heartbeat
+                        if self.check_heartbeat_boundary(heartbeat, timestamp=unix_ts):
+                            yield self.heartbeat_msg()
+
+                        # emit the processed event data
+                        yield from self.event(timestamp, self._process(evt))
+                        time.sleep(self.interval)
+                        # remove reference to evt object
+                        self.source.evt = None
+
+                    # remove reference to step object
+                    self.source.step = None
+
+                # signal that the run has ended
+                yield self.unconfigure()
+                # remove reference to run object
+                self.source.run = None
+                # call the subclass cleanup method
+                self._cleanup()
+            # To avoid reconnecting to the previous shmem server (which is
+            # being destroyed), hold off attempting to connect again
+            time.sleep(1)
 
 
 class PsanaSource(HierarchicalDataSource):
-
     def __init__(self, idnum, num_workers, heartbeat_period, src_cfg, flags=None):
-        super().__init__(idnum, num_workers, heartbeat_period, src_cfg, flags)
+        super().__init__(idnum, num_workers, heartbeat_period, src_cfg, flags, float)
         self.ts_converter = TimestampConverter()
         self.ds_keys = {
             'exp', 'dir', 'files', 'shmem', 'filter', 'batch_size', 'max_events', 'sel_det_ids', 'det_name', 'run'
@@ -591,25 +753,57 @@ class PsanaSource(HierarchicalDataSource):
         # special attributes that are per run instead of per event from a detectors interface, e.g. calib constants
         self.special_attrs = {
             'calibconst': typing.Dict,
+            'epicsinfo': typing.Dict,
         }
-        if psana is not None:
-            ps_kwargs = {k: self.config[k] for k in self.ds_keys if k in self.config}
-            self.ds = psana.DataSource(**ps_kwargs)
-        else:
+        if psana is None:
             raise NotImplementedError("psana is not available!")
 
     def _timestamp(self, evt):
         return self.ts_converter(evt.timestamp)
 
     @property
+    def ds(self):
+        ps_kwargs = {k: self.config[k] for k in self.ds_keys if k in self.config}
+        if 'files' in ps_kwargs and type(ps_kwargs['files']) is list:
+            ps_kwargs['files'] = ps_kwargs['files'][0]
+
+        if 'run' in ps_kwargs:
+            ps_kwargs['run'] = int(ps_kwargs['run'])
+
+        return psana.DataSource(**ps_kwargs)
+
+    @property
     def repeat_mode(self):
-        return super().repeat_mode and (not self.config.get('shmem', False))
+        return self.config.get('repeat', self.config.get('shmem', False))
+
+    @property
+    def counting_mode(self):
+        return self.config.get('counting', not self.config.get('shmem', False))
 
     def _runs(self):
         yield from self.ds.runs()
 
-    def _events(self, run):
-        yield from run.events()
+    def _steps(self, run):
+        yield from run.steps()
+
+    def _events(self, step):
+        yield from step.events()
+
+    def _get_attr_name(self, detname, det_xface_name, attr, is_env_det):
+        if is_env_det:
+            return detname
+        else:
+            return self.delimiter.join((detname, det_xface_name, attr))
+
+    def _detinfo(self, run):
+        for (detname, det_xface_name), det_attr_list in run.detinfo.items():
+            yield detname, det_xface_name, det_attr_list, False
+        for (detname, det_xface_name), det_attr_list in run.stepinfo.items():
+            yield detname, det_xface_name, det_attr_list, False
+        for (detname, det_xface_name), det_attr in run.epicsinfo.items():
+            yield detname, det_xface_name, [det_attr], True
+        for (detname, det_xface_name), det_attr in run.scaninfo.items():
+            yield detname, det_xface_name, [det_attr], True
 
     def _update_special_attrs(self, detname, det_interface):
         for attr, attr_type in self.special_attrs.items():
@@ -618,12 +812,37 @@ class PsanaSource(HierarchicalDataSource):
                 self.data_types[attr_name] = attr_type
                 self.special_types[attr_name] = getattr(det_interface, attr)
 
-    def _update_hsd_segment(self, seg_name, seg_type, seg_chans):
+    def _update_dets(self, run, detname, is_env_det):
+        if detname not in self.detectors:
+            det_xface = run.Detector(detname)
+            self.detectors[detname] = at.Detector(detname, self.src_type, det_xface._dettype, det_xface)
+        else:
+            det_xface = self.detectors[detname].det
+
+        if not is_env_det:
+            self.data_types[detname] = at.Detector
+
+        return det_xface
+
+    def _update_group(self, detname, det_xface_name, det_attr_list, is_env_det):
+        # ignore env dets and when det_attr_list is empty
+        if not is_env_det and det_attr_list:
+            group_name = self.delimiter.join((detname, det_xface_name))
+            self.data_types[group_name] = at.Group
+            self.grouped_types[group_name] = det_attr_list
+
+    def _update_hsd_segment(self, hsd_name, hsd_type, seg_chans):
         for seg_key, chanlist in seg_chans.items():
+            # add the segment itself
             seg_key_name = str(seg_key)
-            seg_key_type, seg_value_type = seg_type.__args__
-            for chan_key_name, chan_type in typing.get_type_hints(seg_value_type).items():
-                chan_name = self.delimiter.join((seg_name, seg_key_name, chan_key_name))
+            seg_key_type, seg_type = hsd_type.__args__
+            seg_name = self.delimiter.join((hsd_name, seg_key_name))
+            self.data_types[seg_name] = seg_type
+            seg_accessor = (lambda o, s: o.get(s, {}), (seg_key,), {})
+            self.special_names[seg_name] = (hsd_name, seg_accessor)
+            # add the channels of the segment
+            for chan_key_name, chan_type in typing.get_type_hints(seg_type).items():
+                chan_name = self.delimiter.join((hsd_name, seg_key_name, chan_key_name))
                 # for the HSD cast the channel ids to expected type
                 try:
                     chan_key = seg_key_type(chan_key_name)
@@ -632,29 +851,32 @@ class PsanaSource(HierarchicalDataSource):
                 if not isinstance(chan_key, seg_key_type) or chan_key in chanlist:
                     accessor = (lambda o, s, c: o.get(s, {}).get(c), (seg_key, chan_key), {})
                     self.data_types[chan_name] = chan_type
-                    self.special_names[chan_name] = (seg_name, accessor)
+                    self.special_names[chan_name] = (hsd_name, accessor)
 
     def _update(self, run):
-        detinfo = run.detinfo
         self.detectors = {}
+        self.env_detectors = set()
         self.special_names = {}
-        for (detname, det_xface_name), det_attr_list in detinfo.items():
-            det_interface = run.Detector(detname)
-
+        for detname, det_xface_name, det_attr_list, is_env_det in self._detinfo(run):
             # make & cache the psana Detector object
-            self.detectors[detname] = det_interface
+            det_interface = self._update_dets(run, detname, is_env_det)
 
             # check if the detector has calibconstants
             self._update_special_attrs(detname, det_interface)
 
             for attr in det_attr_list:
-                attr_name = self.delimiter.join((detname, det_xface_name, attr))
+                attr_name = self._get_attr_name(detname, det_xface_name, attr, is_env_det)
+                if is_env_det:
+                    self.env_detectors.add(attr_name)
                 try:
-                    attr_sig = inspect.signature(getattr(getattr(det_interface, det_xface_name), attr))
-                    if attr_sig.return_annotation is attr_sig.empty:
-                        attr_type = typing.Any
+                    if is_env_det:
+                        attr_type = det_interface.dtype
                     else:
-                        attr_type = attr_sig.return_annotation
+                        attr_sig = inspect.signature(getattr(getattr(det_interface, det_xface_name), attr))
+                        if attr_sig.return_annotation is attr_sig.empty:
+                            attr_type = typing.Any
+                        else:
+                            attr_type = attr_sig.return_annotation
                 except ValueError:
                     attr_type = typing.Any
                 if attr_type in at.HSDTypes:
@@ -664,8 +886,13 @@ class PsanaSource(HierarchicalDataSource):
                         self._update_hsd_segment(attr_name, attr_type, seg_chans)
                     else:
                         logger.debug("DataSrc: unsupported HSDType: %s", attr_type)
+                    # add the overall hsdtype too
+                    self.data_types[attr_name] = attr_type
                 else:
                     self.data_types[attr_name] = attr_type
+
+            # if the det interface has more than one attr make a grouped source
+            self._update_group(detname, det_xface_name, det_attr_list, is_env_det)
 
     def _process(self, evt):
         event = {}
@@ -673,24 +900,41 @@ class PsanaSource(HierarchicalDataSource):
         for name in self.requested_data:
             # check if it is a special type like calibconst
             if name in self.special_types:
-                event[name] = self.special_types[name]
+                obj = self.special_types[name]
+                # check if the object is callable or not before adding to the event
+                event[name] = obj() if callable(obj) else obj
+            elif name in self.detectors and name not in self.env_detectors:
+                event[name] = self.detectors[name]
             else:
-                # each name is like "detname:drp_class_name:attrN"
-                namesplit = name.split(':')
-                detname = namesplit[0]
+                if name in self.env_detectors:
+                    namesplit = []
+                    detname = name
+                else:
+                    # each name is like "detname:drp_class_name:attrN"
+                    namesplit = name.split(':')
+                    detname = namesplit[0]
 
-                # loop to the bottom level of the Det obj and get data
-                obj = self.detectors[detname]
-                for token in namesplit[1:]:
-                    obj = getattr(obj, token)
-                event[name] = obj(evt)
+                if name in self.grouped_types:
+                    obj = self.detectors[detname].det
+                    for token in namesplit[1:]:
+                        obj = getattr(obj, token)
+                    grouped = {}
+                    for attr in self.grouped_types[name]:
+                        grouped[attr] = getattr(obj, attr)(evt)
+                    event[name] = at.Group(name, self.src_type, type(obj).__name__, grouped)
+                else:
+                    # loop to the bottom level of the Det obj and get data
+                    obj = self.detectors[detname].det
+                    for token in namesplit[1:]:
+                        obj = getattr(obj, token)
+                    event[name] = obj(evt)
 
         for name, sub_names in self.requested_special.items():
             namesplit = name.split(':')
             detname = namesplit[0]
 
             # loop to the bottom level of the Det obj and get data
-            obj = self.detectors[detname]
+            obj = self.detectors[detname].det
             for token in namesplit[1:]:
                 obj = getattr(obj, token)
             data = obj(evt)
@@ -702,6 +946,10 @@ class PsanaSource(HierarchicalDataSource):
                     event[sub_name] = meth(data, *args, **kwargs)
 
         return event
+
+    def _cleanup(self):
+        # clear the references to the detector interface
+        self.detectors.clear()
 
 
 class Hdf5Source(HierarchicalDataSource):
@@ -746,7 +994,7 @@ class Hdf5Source(HierarchicalDataSource):
 
     def _timestamp(self, evt):
         if self.hdf5_ts is None:
-            return None, None
+            return None, None, None
         else:
             index, run = evt
             return self.ts_converter(run[self.hdf5_ts][index])
@@ -766,7 +1014,10 @@ class Hdf5Source(HierarchicalDataSource):
                 break
 
     def _update_data_names(self, name, obj):
-        if isinstance(obj, h5py.Dataset):
+        if isinstance(obj, h5py.Group):
+            self.data_types[self.encode(name)] = at.Group
+            self.grouped_types[self.encode(name)] = obj
+        elif isinstance(obj, h5py.Dataset):
             ndims = len(obj.shape) - 1
             if ndims < 0:
                 logger.debug("DataSrc: ignoring empty dataset %s", name)
@@ -777,7 +1028,9 @@ class Hdf5Source(HierarchicalDataSource):
                 if isinstance(h5_native_type, h5py.h5t.TypeBitfieldID):
                     self.special_types[self.encode(name)] = np.bool
                 # assign type based on the dimensions of the dataset
-                if ndims == 2:
+                if ndims == 3:
+                    self.data_types[self.encode(name)] = at.Array3d
+                elif ndims == 2:
                     self.data_types[self.encode(name)] = at.Array2d
                 elif ndims == 1:
                     self.data_types[self.encode(name)] = at.Array1d
@@ -796,6 +1049,7 @@ class Hdf5Source(HierarchicalDataSource):
             for obj in grp.values():
                 if isinstance(obj, h5py.Group):
                     groups.append(obj)
+                    self._update_data_names(obj.name.strip('/'), obj)
                 elif isinstance(obj, h5py.Dataset):
                     self._update_data_names(obj.name.strip('/'), obj)
                 else:
@@ -811,10 +1065,25 @@ class Hdf5Source(HierarchicalDataSource):
                 dset = run[self.decode(name)]
                 with dset.astype(self.special_types[name]):
                     event[name] = dset[index]
+            elif name in self.grouped_types:
+                grouped = {}
+                groups = [(self.grouped_types[name], grouped)]
+                while groups:
+                    grp, dset = groups.pop()
+                    for oname, obj in grp.items():
+                        if isinstance(obj, h5py.Group):
+                            dset[oname] = {}
+                            groups.append((obj, dset[oname]))
+                        elif isinstance(obj, h5py.Dataset):
+                            dset[oname] = obj[index]
+                event[name] = at.Group(name, self.src_type, type(self.grouped_types[name]).__name__, grouped)
             else:
                 event[name] = run[self.decode(name)][index]
 
         return event
+
+    def _cleanup(self):
+        pass
 
 
 class SimSource(Source):
@@ -889,6 +1158,8 @@ class RandomSource(SimSource):
                         logger.warn("DataSrc: %s has unknown type %s", name, config['dtype'])
             yield from self.event(timestamp, event)
             time.sleep(self.interval)
+        # signal source has finished
+        yield self.unconfigure()
 
 
 class StaticSource(SimSource):
@@ -919,3 +1190,5 @@ class StaticSource(SimSource):
             if count >= self.bound:
                 break
             time.sleep(self.interval)
+        # signal source has finished
+        yield self.unconfigure()

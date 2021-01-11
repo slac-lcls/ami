@@ -44,7 +44,7 @@ from pyqtgraph.Qt import QtWidgets, QtCore
 
 
 class Button(QtWidgets.QToolButton):
-    def __init__(self, text, parent=None):
+    def __init__(self, parent=None, text=""):
         super().__init__(parent)
 
         self.setSizePolicy(QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Preferred)
@@ -59,19 +59,16 @@ class Button(QtWidgets.QToolButton):
 
 class CalculatorWidget(QtWidgets.QWidget):
     NumDigitButtons = 10
-    sigStateChanged = QtCore.Signal(object, object)
+    sigStateChanged = QtCore.Signal(object, object, object)
 
     def __init__(self, terms, parent=None, operation=""):
         super().__init__(parent)
         self.terms = terms
 
-        self.display = QtWidgets.QLineEdit(operation)
-        self.display.setReadOnly(True)
+        self.display = QtWidgets.QLineEdit(operation, parent=self)
+        self.display.setFocus()
         self.display.setAlignment(QtCore.Qt.AlignRight)
-
-        # font = self.display.font()
-        # font.setPointSize(font.pointSize() + 8)
-        # self.display.setFont(font)
+        self.display.textChanged.connect(self.stateChanged)
 
         self.digitButtons = []
 
@@ -101,7 +98,7 @@ class CalculatorWidget(QtWidgets.QWidget):
         self.parenOpen = self.createButton("(", self.operatorClicked)
         self.parenClose = self.createButton(")", self.operatorClicked)
 
-        mainLayout = QtWidgets.QGridLayout()
+        mainLayout = QtWidgets.QGridLayout(self)
         # mainLayout.setSizeConstraint(QtWidgets.QLayout.SetFixedSize)
 
         mainLayout.addWidget(self.display, 0, 0, 1, 7)
@@ -130,6 +127,11 @@ class CalculatorWidget(QtWidgets.QWidget):
         mainLayout.addWidget(self.minusButton, 4, 5)
         mainLayout.addWidget(self.plusButton, 5, 5)
 
+        self.layout = mainLayout
+        self.setLayout(mainLayout)
+
+        self.setWindowTitle("Calculator")
+
         if terms:
             self.variable_widget = QtWidgets.QWidget(parent=self)
             self.variable_layout = QtWidgets.QGridLayout()
@@ -150,16 +152,10 @@ class CalculatorWidget(QtWidgets.QWidget):
                     row += 1
 
             self.variable_widget.setLayout(self.variable_layout)
-            mainLayout.addWidget(self.variable_widget, 6, 0, 1, 7)
+            self.layout.addWidget(self.variable_widget, 6, 0, 1, 7)
 
-        self.layout = mainLayout
-        self.setLayout(mainLayout)
-
-        self.setWindowTitle("Calculator")
-
-    def stateChanged(self):
-        text = self.display.text()
-        self.sigStateChanged.emit("operation", text)
+    def stateChanged(self, text):
+        self.sigStateChanged.emit("operation", None, text)
 
     def digitClicked(self):
         clickedButton = self.sender()
@@ -169,7 +165,6 @@ class CalculatorWidget(QtWidgets.QWidget):
             return
 
         self.display.setText(self.display.text() + str(digitValue))
-        self.stateChanged()
 
     def updateTerms(self, terms):
         self.terms = terms
@@ -182,7 +177,6 @@ class CalculatorWidget(QtWidgets.QWidget):
             value = clickedButton.text()
 
         self.display.setText(self.display.text() + value)
-        self.stateChanged()
 
     def backspaceClicked(self):
         text = self.display.text()[:-1]
@@ -190,16 +184,86 @@ class CalculatorWidget(QtWidgets.QWidget):
             text = ''
 
         self.display.setText(text)
-        self.stateChanged()
 
     def clear(self):
         self.display.setText('')
 
     def createButton(self, text, member, op=None):
-        button = Button(text)
+        button = Button(parent=self, text=text)
         button.op = op
         button.clicked.connect(member)
         return button
+
+    def saveState(self):
+        return {'operation': self.display.text()}
+
+    def restoreState(self, state):
+        self.display.setText(state['operation'])
+
+
+class LogicalCalculatorWidget(QtWidgets.QWidget):
+
+    sigStateChanged = QtCore.Signal(object, object, object)
+
+    def __init__(self, terms, parent=None, operation=""):
+        super().__init__(parent)
+
+        self.terms = terms
+        self.layout = QtWidgets.QGridLayout()
+        self.setLayout(self.layout)
+
+        self.display = QtWidgets.QLineEdit(operation, self)
+        self.display.setFocus()
+        self.display.textChanged.connect(self.stateChanged)
+
+        entryLayout = QtWidgets.QHBoxLayout()
+        lbl = QtWidgets.QLabel("<b><span style=\" font-size: 12pt\";>If(</b></span>", self)
+        lbl2 = QtWidgets.QLabel("<b><span style=\" font-size: 12pt;\">)</b></span>", self)
+        entryLayout.addWidget(lbl)
+        entryLayout.addWidget(self.display)
+        entryLayout.addWidget(lbl2)
+
+        self.layout.addLayout(entryLayout, 0, 0)
+
+        if terms:
+            self.variable_widget = QtWidgets.QWidget(parent=self)
+            self.variable_layout = QtWidgets.QGridLayout()
+
+            self.variables = []
+
+            for _, term in terms.items():
+                self.variables.append(self.createButton(term, self.operatorClicked))
+
+            row = 0
+            col = 0
+            for i in range(0, len(terms)):
+                self.variable_layout.addWidget(self.variables[i], row, col)
+                if col < 3:
+                    col += 1
+                else:
+                    col = 0
+                    row += 1
+
+            self.variable_widget.setLayout(self.variable_layout)
+            self.layout.addWidget(self.variable_widget, 1, 0)
+
+    def createButton(self, text, member, op=None):
+        button = Button(parent=self, text=text)
+        button.op = op
+        button.clicked.connect(member)
+        return button
+
+    def operatorClicked(self):
+        clickedButton = self.sender()
+        if clickedButton.op:
+            value = clickedButton.op
+        else:
+            value = clickedButton.text()
+
+        self.display.setText(self.display.text() + value)
+
+    def stateChanged(self, text):
+        self.sigStateChanged.emit("operation", None, text)
 
     def saveState(self):
         return {'operation': self.display.text()}
@@ -217,6 +281,6 @@ if __name__ == '__main__':
     for i in range(0, 9):
         terms[f'In.{i}'] = f'Input.{i}'
 
-    calc = CalculatorWidget(terms)
+    calc = LogicalCalculatorWidget(terms)
     calc.show()
     sys.exit(app.exec_())

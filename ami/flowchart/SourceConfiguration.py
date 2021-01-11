@@ -6,8 +6,8 @@ class SourceConfiguration(QtGui.QWidget):
 
     sigApply = QtCore.Signal(object)  # src_cfg dict
 
-    def __init__(self):
-        super().__init__()
+    def __init__(self, parent=None):
+        super().__init__(parent)
         self.setWindowTitle("Configure")
         self.formLayout = QtWidgets.QFormLayout(self)
 

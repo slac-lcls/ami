@@ -13,15 +13,16 @@ from ami.client import flowchart, legacy
 logger = logging.getLogger(__name__)
 
 
-GraphMgrAddress = collections.namedtuple('GraphMgrAddress', ['name', 'comm', 'view', 'info'])
+GraphMgrAddress = collections.namedtuple('GraphMgrAddress', ['name', 'comm', 'view', 'info', 'profile'])
 
 
-def run_client(graph_name, comm_addr, info_addr, view_addr, load, use_legacy=True):
-    graphmgr_addr = GraphMgrAddress(graph_name, comm_addr, view_addr, info_addr)
+def run_client(graph_name, comm_addr, info_addr, view_addr, profile_addr, load,
+               use_legacy=True, prometheus_dir=None, hutch=None):
+    graphmgr_addr = GraphMgrAddress(graph_name, comm_addr, view_addr, info_addr, profile_addr)
     if use_legacy:
         return legacy.run_client(graphmgr_addr, load)
     else:
-        return flowchart.run_client(graphmgr_addr, load)
+        return flowchart.run_client(graphmgr_addr, load, prometheus_dir, hutch)
 
 
 def main():
@@ -40,10 +41,10 @@ def main():
         '-p',
         '--port',
         type=int,
-        nargs=3,
-        default=(Ports.Comm, Ports.Info, Ports.View),
-        help='port for manager/client (GUI) communication and status info (default: %d, %d, %d)' %
-             (Ports.Comm, Ports.Info, Ports.View)
+        nargs=4,
+        default=(Ports.Comm, Ports.Info, Ports.View, Ports.Profile),
+        help='port for manager/client (GUI) communication, status, view, profile info (default: %d, %d, %d, %d)' %
+             (Ports.Comm, Ports.Info, Ports.View, Ports.Profile)
     )
 
     addr_group.add_argument(
@@ -63,6 +64,18 @@ def main():
         '--graph-name',
         default=Defaults.GraphName,
         help='the name of the graph used (default: %s)' % Defaults.GraphName
+    )
+
+    parser.add_argument(
+        '--prometheus-dir',
+        help='directory for prometheus configuration',
+        default=None
+    )
+
+    parser.add_argument(
+        '--hutch',
+        help='hutch for prometheus label',
+        default=None
     )
 
     parser.add_argument(
@@ -115,6 +128,7 @@ def main():
                 comm_addr = "ipc://%s/comm" % ipc_list[0]
                 info_addr = "ipc://%s/info" % ipc_list[0]
                 view_addr = "ipc://%s/view" % ipc_list[0]
+                profile_addr = "ipc://%s/profile" % ipc_list[0]
             else:
                 prompt = "Found %d ipc file descriptors:\n" % len(ipc_list)
                 for i, ipc_name in enumerate(ipc_list):
@@ -125,6 +139,7 @@ def main():
                     comm_addr = "ipc://%s/comm" % ipc_list[int(choice)]
                     info_addr = "ipc://%s/info" % ipc_list[int(choice)]
                     view_addr = "ipc://%s/view" % ipc_list[int(choice)]
+                    profile_addr = "ipc://%s/profile" % ipc_list[int(choice)]
                 except ValueError:
                     logger.critical("Invalid option '%s' chosen!", choice)
                     return 1
@@ -138,14 +153,17 @@ def main():
         comm_addr = "ipc://%s/comm" % args.ipc_dir
         info_addr = "ipc://%s/info" % args.ipc_dir
         view_addr = "ipc://%s/view" % args.ipc_dir
+        profile_addr = "ipc://%s/profile" % args.ipc_dir
     else:
-        comm, info, view = args.port
+        comm, info, view, profile = args.port
         comm_addr = "tcp://%s:%d" % (args.host, comm)
         info_addr = "tcp://%s:%d" % (args.host, info)
         view_addr = "tcp://%s:%d" % (args.host, view)
+        profile_addr = "tcp://%s:%d" % (args.host, profile)
 
     try:
-        return run_client(args.graph_name, comm_addr, info_addr, view_addr, args.load, args.gui_mode)
+        return run_client(args.graph_name, comm_addr, info_addr, view_addr, profile_addr, args.load,
+                          args.gui_mode, args.prometheus_dir, args.hutch)
     except KeyboardInterrupt:
         logger.info("Client killed by user...")
         return 0

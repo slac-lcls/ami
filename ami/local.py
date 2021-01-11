@@ -7,9 +7,10 @@ import logging
 import tempfile
 import argparse
 import functools
-import multiprocessing as mp
+import ami.multiproc as mp
 
-from ami import LogConfig, Defaults, check_mp_start_method
+from ami import LogConfig, Defaults
+from ami.multiproc import check_mp_start_method
 from ami.comm import Ports, GraphCommHandler
 from ami.manager import run_manager
 from ami.worker import run_worker
@@ -82,7 +83,7 @@ def build_parser():
         '--heartbeat',
         type=int,
         default=10,
-        help='the heartbeat period (default: 10)'
+        help='the heartbeat period in ms (default: 10)'
     )
 
     parser.add_argument(
@@ -95,7 +96,7 @@ def build_parser():
     parser.add_argument(
         '-f',
         '--flags',
-        nargs='*',
+        action='append',
         default=[],
         help='extra flags as key=value pairs that are passed to the data source of the worker'
     )
@@ -145,6 +146,18 @@ def build_parser():
         nargs='?',
         metavar='SOURCE',
         help='data source configuration (exampes: static://test.json, psana://exp=xcsdaq13:run=14)'
+    )
+
+    parser.add_argument(
+        '--prometheus-dir',
+        help='directory for prometheus configuration',
+        default=None
+    )
+
+    parser.add_argument(
+        '--hutch',
+        help='hutch for prometheus label',
+        default=None
     )
 
     return parser
@@ -252,7 +265,7 @@ def run_ami(args, queue=None):
                 name='worker%03d-n0' % i,
                 target=functools.partial(_sys_exit, run_worker),
                 args=(i, args.num_workers, args.heartbeat, src_cfg,
-                      collector_addr, graph_addr, msg_addr, export_addr, flags)
+                      collector_addr, graph_addr, msg_addr, export_addr, flags, args.prometheus_dir, args.hutch)
             )
             proc.daemon = True
             proc.start()
@@ -261,7 +274,8 @@ def run_ami(args, queue=None):
         collector_proc = mp.Process(
             name='nodecol-n0',
             target=functools.partial(_sys_exit, run_node_collector),
-            args=(0, args.num_workers, collector_addr, globalcol_addr, graph_addr, msg_addr)
+            args=(0, args.num_workers, collector_addr, globalcol_addr, graph_addr, msg_addr,
+                  args.prometheus_dir, args.hutch)
         )
         collector_proc.daemon = True
         collector_proc.start()
@@ -270,7 +284,8 @@ def run_ami(args, queue=None):
         globalcol_proc = mp.Process(
             name='globalcol',
             target=functools.partial(_sys_exit, run_global_collector),
-            args=(0, 1, globalcol_addr, results_addr, graph_addr, msg_addr)
+            args=(0, 1, globalcol_addr, results_addr, graph_addr, msg_addr,
+                  args.prometheus_dir, args.hutch)
         )
         globalcol_proc.daemon = True
         globalcol_proc.start()
@@ -279,8 +294,8 @@ def run_ami(args, queue=None):
         manager_proc = mp.Process(
             name='manager',
             target=functools.partial(_sys_exit, run_manager),
-            args=(args.num_workers, 1, results_addr, graph_addr, comm_addr, msg_addr, info_addr, export_addr, view_addr,
-                  profile_addr)
+            args=(args.num_workers, 1, results_addr, graph_addr, comm_addr, msg_addr, info_addr, export_addr,
+                  view_addr, profile_addr, args.prometheus_dir, args.hutch)
         )
         manager_proc.daemon = True
         manager_proc.start()
@@ -303,7 +318,8 @@ def run_ami(args, queue=None):
             client_proc = mp.Process(
                 name='client',
                 target=run_client,
-                args=(args.graph_name, comm_addr, info_addr, view_addr, args.load, args.gui_mode)
+                args=(args.graph_name, comm_addr, info_addr, view_addr, profile_addr, args.load, args.gui_mode,
+                      args.prometheus_dir, args.hutch)
             )
             client_proc.daemon = False
             client_proc.start()

@@ -1,12 +1,11 @@
 # -*- coding: utf-8 -*-
-from pyqtgraph.Qt import QtCore, QtGui
+from pyqtgraph.Qt import QtCore
+
 from ami.flowchart.Node import Node
-from ami.flowchart.library.DisplayWidgets import generateUi, ScalarWidget, WaveformWidget, ImageWidget
+from ami.flowchart.library.WidgetGroup import generateUi
+from ami.flowchart.library.DisplayWidgets import ScalarWidget, WaveformWidget, ImageWidget, \
+        TextWidget, ObjectWidget
 from amitypes import Array1d, Array2d
-import asyncio
-
-
-MAX = 2147483647
 
 
 class CtrlNode(Node):
@@ -17,7 +16,7 @@ class CtrlNode(Node):
     def __init__(self, name, ui=None, terminals={}, **kwargs):
         super().__init__(name=name, terminals=terminals, **kwargs)
         self.widget = None
-        self.task = None
+        self.geometry = None
 
         if ui is None:
             if hasattr(self, 'uiTemplate'):
@@ -25,33 +24,13 @@ class CtrlNode(Node):
             else:
                 ui = []
 
-        self.ui, self.stateGroup, self.ctrls = generateUi(ui)
-        self.init_values(ui)
+        self.ui, self.stateGroup, self.ctrls, self.values = generateUi(ui)
         if self.stateGroup:
             self.stateGroup.sigChanged.connect(self.state_changed)
 
-    def init_values(self, opts):
-        for opt in opts:
-            assert(len(opt) == 3)
-
-            k, t, o = opt
-            k = k.replace(" ", "_")
-
-            if 'group' in o:
-                k = k+'_'+o['group']
-            if 'value' in o:
-                setattr(self, k, o['value'])
-            elif 'values' in o:
-                setattr(self, k, o['values'][0])
-            elif 'index' in o:
-                setattr(self, k, o['values'][o['index']])
-            elif 'checked' in o:
-                setattr(self, k, o['checked'])
-
-            if t == "text" and 'value' not in o:
-                setattr(self, k, "")
-
-    def ctrlWidget(self):
+    def ctrlWidget(self, parent=None):
+        if parent and self.ui:
+            self.ui.setParent(parent)
         return self.ui
 
     def state_changed(self, *args, **kwargs):
@@ -59,22 +38,25 @@ class CtrlNode(Node):
         self.sigStateChanged.emit(self)
 
     def update(self, *args, **kwargs):
-        if args:
-            name, val = args
-            name = name.replace(" ", "_")
-            setattr(self, name, val)
+        name, group, val = args
+        if group:
+            self.values[group][name] = val
+        else:
+            self.values[name] = val
+
+    def isChanged(self, restore_ctrl, restore_widget):
+        return restore_ctrl or restore_widget
 
     def saveState(self):
         state = super().saveState()
         if self.stateGroup:
             state['ctrl'] = self.stateGroup.state()
 
-            for k, ctrl in self.ctrls.items():
-                if isinstance(ctrl, QtGui.QLineEdit):
-                    state['ctrl'][k] = ctrl.text()
-
         if self.widget and hasattr(self.widget, 'saveState'):
             state['widget'] = self.widget.saveState()
+
+        if self.geometry:
+            state['geometry'] = bytes(self.geometry.toHex()).decode('ascii')
 
         return state
 
@@ -85,15 +67,11 @@ class CtrlNode(Node):
             ctrlstate = state.get('ctrl', {})
             self.stateGroup.setState(ctrlstate)
 
-            for k, ctrl in self.ctrls.items():
-                if isinstance(ctrl, QtGui.QLineEdit) and k in ctrlstate:
-                    ctrl.setText(ctrlstate[k])
-                # call update because stateGroup won't emit a signal if the value of the widget has not changed
-                if k in ctrlstate:
-                    self.update(k, ctrlstate[k])
-
         if self.widget is not None and 'widget' in state:
             self.widget.restoreState(state['widget'])
+
+        if 'geometry' in state:
+            self.geometry = QtCore.QByteArray.fromHex(bytes(state['geometry'], 'ascii'))
 
     def hideRow(self, name):
         w = self.ctrls[name]
@@ -107,19 +85,18 @@ class CtrlNode(Node):
         w.show()
         label.show()
 
-    def clear(self):
-        if self.task:
-            self.task.cancel()
-            self.task = None
+    def close(self, emit=True):
+        super().close(emit)
+
+        if self.widget:
+            self.widget.close()
 
         self.widget = None
 
     def display(self, topics, terms, addr, win, widget=None, **kwargs):
-        if self.widget is None and widget:
-            self.widget = widget(topics, terms, addr, win, node=self, **kwargs)
 
-        if self.task is None and self.widget and addr:
-            self.task = asyncio.ensure_future(self.widget.update())
+        if self.widget is None and widget:
+            self.widget = widget(topics, terms, addr, parent=win, node=self, **kwargs)
 
         return self.widget
 
@@ -129,25 +106,63 @@ class SourceNode(CtrlNode):
     def __init__(self, **kwargs):
         kwargs['viewable'] = True
         kwargs['allowAddCondition'] = False
-        super(SourceNode, self).__init__(**kwargs)
+        super().__init__(**kwargs)
 
         self.widgetType = None
-
-        terminals = kwargs['terminals']
-        ttype = terminals['Out']['ttype']
-
-        if ttype is int or ttype is float or ttype is bool:
-            self.widgetType = ScalarWidget
-        elif ttype is Array1d:
-            self.widgetType = WaveformWidget
-        elif ttype is Array2d:
-            self.widgetType = ImageWidget
-
+        self.setWidgetType()
         self._input_vars["In"] = self.name()
 
     def display(self, topics, terms, addr, win, **kwargs):
         if self.widgetType:
             return super().display(topics, terms, addr, win, self.widgetType, **kwargs)
 
+    def isChanged(self, restore_ctrl, restore_widget):
+        return False
+
     def isSource(self):
         return True
+
+    def setWidgetType(self):
+        if 'Out' in self.terminals:
+            ttype = self.terminals['Out']._type
+            if ttype is int or ttype is float or ttype is bool:
+                self.widgetType = ScalarWidget
+            elif ttype is Array1d:
+                self.widgetType = WaveformWidget
+            elif ttype is Array2d:
+                self.widgetType = ImageWidget
+            elif ttype is str:
+                self.widgetType = TextWidget
+            else:
+                self.widgetType = ObjectWidget
+
+    def restoreState(self, state):
+        super().restoreState(state)
+        self.setWidgetType()
+
+
+class GroupedNode(CtrlNode):
+
+    def __init__(self, name, *args, **kwargs):
+        super().__init__(name, *args, **kwargs)
+        self.sigTerminalConnected.connect(self.setType)
+
+    def addInput(self, **kwargs):
+        group = self.nextGroupName()
+        kwargs['group'] = group
+        super().addInput(**kwargs)
+        super().addOutput(**kwargs)
+
+    def setType(self, localTerm, remoteTerm):
+        pass
+
+    def find_output_term(self, localTerm):
+        group = localTerm.group()
+        if group:
+            group = self._groups[group]
+            for name in group:
+                term = self.terminals[name]
+                if term.isOutput():
+                    return term
+        else:
+            return self.terminals['Out']

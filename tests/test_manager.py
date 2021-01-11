@@ -8,7 +8,7 @@ import multiprocessing as mp
 import ami.graph_nodes as gn
 import amitypes as at
 
-from ami.data import MsgTypes, Transitions, Transition
+from ami.data import MsgTypes, Transitions, Transition, Heartbeat
 from ami.comm import AutoExport, Store, Node, ZmqHandler, GraphCommHandler
 from ami.manager import run_manager
 
@@ -107,7 +107,7 @@ class ResultsInjector(Node, ZmqHandler):
 
     def mark(self):
         count = self.wait_counter + 1
-        self.collector_message(self.node, count, self.name, self.version, {})
+        self.collector_message(self.node, Heartbeat(count, 0), self.name, self.version, {})
         return count
 
     def partition(self, payload, wait=False):
@@ -119,7 +119,7 @@ class ResultsInjector(Node, ZmqHandler):
             return self.mark
 
     def data(self, hb, payload, wait=False):
-        self.collector_message(self.node, hb, self.name, self.version, payload)
+        self.collector_message(self.node, Heartbeat(hb, 0), self.name, self.version, payload)
         if wait:
             self.wait_for(hb)
         else:
@@ -180,7 +180,8 @@ def manager_proc(ipc_dir):
         name='manager',
         target=run_manager,
         args=(1, 1, addrs['results'], addrs['graph'], addrs['comm'],
-              addrs['msg'], addrs['info'], addrs['export'], addrs['view'], addrs['profile'])
+              addrs['msg'], addrs['info'], addrs['export'], addrs['view'], addrs['profile'],
+              None, None)
     )
     proc.daemon = False
     proc.start()

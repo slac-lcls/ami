@@ -62,8 +62,8 @@ class NodeLibrary:
     def getNodeTree(self):
         return self.nodeTree
 
-    def getLabelTree(self):
-        if self.labelTree:
+    def getLabelTree(self, rebuild=False):
+        if self.labelTree and not rebuild:
             return self.labelTree
 
         for root, children in self.nodeTree.items():
@@ -121,8 +121,12 @@ class SourceLibrary:
             for n in path:
                 if n not in root:
                     root[n] = OrderedDict()
+                elif not isinstance(root[n], OrderedDict):
+                    # turn leaf into a branch
+                    root[n] = OrderedDict()
                 root = root[n]
-            root[name] = name
+            if name not in root:
+                root[name] = name
 
     def getSourceType(self, name):
         try:

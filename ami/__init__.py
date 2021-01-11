@@ -1,4 +1,10 @@
-__version__ = '2.0.0'
+def get_version():
+    import pkg_resources
+    try:
+        return pkg_resources.get_distribution(__name__).version
+    except pkg_resources.DistributionNotFound:
+        # package is not installed
+        pass
 
 
 def psana_available():
@@ -7,18 +13,6 @@ def psana_available():
         return True
     except ImportError:
         return False
-
-
-def check_mp_start_method():
-    import sys
-    import warnings
-    import multiprocessing as mp
-    if sys.platform == 'darwin':
-        method = mp.get_start_method(allow_none=True)
-        if method is None:
-            mp.set_start_method('spawn')
-        elif method != 'spawn':
-            warnings.warn("AMI may not work properly on macOS with the %s start method" % mp.get_start_method())
 
 
 class LogConfig:
@@ -49,3 +43,6 @@ class Defaults:
             "laser": {"dtype": "Scalar", "range": [0, 2], "integer": True},
         },
     }
+
+
+__version__ = get_version()

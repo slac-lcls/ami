@@ -1,7 +1,9 @@
 from ami.flowchart.library.DisplayWidgets import ScalarWidget, ScatterWidget, WaveformWidget, \
-    ImageWidget, LineWidget, ArrayWidget, HistogramWidget, Histogram2DWidget
-from ami.flowchart.library.common import CtrlNode, MAX
+    ImageWidget, TextWidget, ObjectWidget, LineWidget, TimeWidget, ArrayWidget, HistogramWidget, \
+    Histogram2DWidget
+from ami.flowchart.library.common import CtrlNode
 from amitypes import Array, Array1d, Array2d
+from typing import Any, Text
 import ami.graph_nodes as gn
 import asyncio
 
@@ -19,6 +21,9 @@ class ScalarViewer(CtrlNode):
         super().__init__(name,
                          terminals={"In": {"io": "in", "ttype": float}},
                          viewable=True)
+
+    def isChanged(self, restore_ctrl, restore_widget):
+        return False
 
     def display(self, topics, terms, addr, win, **kwargs):
         return super().display(topics, terms, addr, win, ScalarWidget, **kwargs)
@@ -38,6 +43,9 @@ class WaveformViewer(CtrlNode):
                          allowAddInput=True,
                          viewable=True)
 
+    def isChanged(self, restore_ctrl, restore_widget):
+        return False
+
     def display(self, topics, terms, addr, win, **kwargs):
         return super().display(topics, terms, addr, win, WaveformWidget, **kwargs)
 
@@ -54,8 +62,49 @@ class ImageViewer(CtrlNode):
     def __init__(self, name):
         super().__init__(name, terminals={"In": {"io": "in", "ttype": Array2d}}, viewable=True)
 
+    def isChanged(self, restore_ctrl, restore_widget):
+        return False
+
     def display(self, topics, terms, addr, win, **kwargs):
         return super().display(topics, terms, addr, win, ImageWidget, **kwargs)
+
+
+class TextViewer(CtrlNode):
+
+    """
+    TextViewer displays text.
+    """
+
+    nodeName = "TextViewer"
+    uiTemplate = []
+
+    def __init__(self, name):
+        super().__init__(name, terminals={"In": {"io": "in", "ttype": Text}}, viewable=True)
+
+    def isChanged(self, restore_ctrl, restore_widget):
+        return False
+
+    def display(self, topics, terms, addr, win, **kwargs):
+        return super().display(topics, terms, addr, win, TextWidget, **kwargs)
+
+
+class ObjectViewer(CtrlNode):
+
+    """
+    ObjectViewer displays string representation of a python object.
+    """
+
+    nodeName = "ObjectViewer"
+    uiTemplate = []
+
+    def __init__(self, name):
+        super().__init__(name, terminals={"In": {"io": "in", "ttype": Any}}, viewable=True)
+
+    def isChanged(self, restore_ctrl, restore_widget):
+        return False
+
+    def display(self, topics, terms, addr, win, **kwargs):
+        return super().display(topics, terms, addr, win, ObjectWidget, **kwargs)
 
 
 class Histogram(CtrlNode):
@@ -73,6 +122,9 @@ class Histogram(CtrlNode):
                                     "Counts": {"io": "in", "ttype": Array1d}},
                          allowAddInput=True,
                          viewable=True)
+
+    def isChanged(self, restore_ctrl, restore_widget):
+        return False
 
     def display(self, topics, terms, addr, win, **kwargs):
         return super().display(topics, terms, addr, win, HistogramWidget, **kwargs)
@@ -98,6 +150,9 @@ class Histogram2D(CtrlNode):
                                     "Counts": {"io": "in", "ttype": Array2d}},
                          viewable=True)
 
+    def isChanged(self, restore_ctrl, restore_widget):
+        return False
+
     def display(self, topics, terms, addr, win, **kwargs):
         return super().display(topics, terms, addr, win, Histogram2DWidget, **kwargs)
 
@@ -109,7 +164,8 @@ class ScatterPlot(CtrlNode):
     """
 
     nodeName = "ScatterPlot"
-    uiTemplate = [("Num Points", 'intSpin', {'value': 100, 'min': 1, 'max': MAX})]
+    uiTemplate = [("Num Points", 'intSpin', {'value': 100, 'min': 1}),
+                  ('Unique', 'check')]
 
     def __init__(self, name):
         super().__init__(name, terminals={"X": {"io": "in", "ttype": float},
@@ -120,6 +176,9 @@ class ScatterPlot(CtrlNode):
     def display(self, topics, terms, addr, win, **kwargs):
         return super().display(topics, terms, addr, win, ScatterWidget, **kwargs)
 
+    def isChanged(self, restore_ctrl, restore_widget):
+        return restore_ctrl
+
     def addInput(self, **args):
         self.addTerminal(name="X", io='in', ttype=float, **args)
         self.addTerminal(name="Y", io='in', ttype=float, **args)
@@ -127,10 +186,12 @@ class ScatterPlot(CtrlNode):
     def to_operation(self, inputs, conditions={}):
         outputs = [self.name()+'.'+i for i in inputs.keys()]
         buffer_output = [self.name()]
-        nodes = [gn.RollingBuffer(name=self.name()+"_buffer", N=self.Num_Points,
-                                  conditions_needs=list(conditions.values()), inputs=list(inputs.values()),
+        nodes = [gn.RollingBuffer(name=self.name()+"_buffer",
+                                  N=self.values['Num Points'], unique=self.values['Unique'],
+                                  condition_needs=conditions, inputs=inputs,
                                   outputs=buffer_output, parent=self.name()),
-                 gn.Map(name=self.name()+"_operation", inputs=buffer_output, outputs=outputs, func=lambda a: zip(*a),
+                 gn.Map(name=self.name()+"_operation", inputs=buffer_output, outputs=outputs,
+                        func=lambda a: zip(*a),
                         parent=self.name())]
         return nodes
 
@@ -142,12 +203,15 @@ class ScalarPlot(CtrlNode):
     """
 
     nodeName = "ScalarPlot"
-    uiTemplate = [("Num Points", 'intSpin', {'value': 100, 'min': 1, 'max': MAX})]
+    uiTemplate = [("Num Points", 'intSpin', {'value': 100, 'min': 1})]
 
     def __init__(self, name):
         super().__init__(name, terminals={"Y": {"io": "in", "ttype": float}},
                          allowAddInput=True,
                          buffered=True)
+
+    def isChanged(self, restore_ctrl, restore_widget):
+        return restore_ctrl
 
     def addInput(self, **args):
         self.addTerminal(name="Y", io='in', ttype=float, **args)
@@ -160,14 +224,14 @@ class ScalarPlot(CtrlNode):
         buffer_output = [self.name()]
 
         if len(inputs.values()) > 1:
-            node = [gn.RollingBuffer(name=self.name()+"_buffer", N=self.Num_Points,
-                                     conditions_needs=list(conditions.values()), inputs=list(inputs.values()),
+            node = [gn.RollingBuffer(name=self.name()+"_buffer", N=self.values['Num Points'],
+                                     condition_needs=conditions, inputs=inputs,
                                      outputs=buffer_output, parent=self.name()),
                     gn.Map(name=self.name()+"_operation", inputs=buffer_output, outputs=outputs,
                            func=lambda a: zip(*a), parent=self.name())]
         else:
-            node = gn.RollingBuffer(name=self.name(), N=self.Num_Points,
-                                    conditions_needs=list(conditions.values()), inputs=list(inputs.values()),
+            node = gn.RollingBuffer(name=self.name(), N=self.values['Num Points'],
+                                    condition_needs=conditions, inputs=inputs,
                                     outputs=outputs, parent=self.name())
 
         return node
@@ -188,6 +252,9 @@ class LinePlot(CtrlNode):
                          allowAddInput=True,
                          viewable=True)
 
+    def isChanged(self, restore_ctrl, restore_widget):
+        return False
+
     def display(self, topics, terms, addr, win, **kwargs):
         return super().display(topics, terms, addr, win, LineWidget, **kwargs)
 
@@ -195,6 +262,43 @@ class LinePlot(CtrlNode):
         group = self.nextGroupName()
         self.addTerminal(name="X", io='in', ttype=Array1d, group=group, **args)
         self.addTerminal(name="Y", io='in', ttype=Array1d, group=group, **args)
+
+
+class TimePlot(CtrlNode):
+
+    """
+    Plot a number against time of day.
+    """
+
+    nodeName = "TimePlot"
+    uiTemplate = [("Num Points", 'intSpin', {'value': 1000, 'min': 1})]
+
+    def __init__(self, name):
+        super().__init__(name, terminals={"X": {"io": "in", "ttype": float},
+                                          "Y": {"io": "in", "ttype": float}},
+                         allowAddInput=True,
+                         buffered=True)
+
+    def isChanged(self, restore_ctrl, restore_widget):
+        return restore_ctrl
+
+    def display(self, topics, terms, addr, win, **kwargs):
+        return super().display(topics, terms, addr, win, TimeWidget, **kwargs)
+
+    def addInput(self, **args):
+        self.addTerminal(name="X", io='in', ttype=float, **args)
+        self.addTerminal(name="Y", io='in', ttype=float, **args)
+
+    def to_operation(self, inputs, conditions={}):
+        outputs = [self.name()+'.'+i for i in inputs.keys()]
+        buffer_output = [self.name()]
+        nodes = [gn.RollingBuffer(name=self.name()+"_buffer", N=self.values['Num Points'],
+                                  condition_needs=conditions, inputs=inputs,
+                                  outputs=buffer_output, parent=self.name()),
+                 gn.Map(name=self.name()+"_operation", inputs=buffer_output, outputs=outputs,
+                        func=lambda a: zip(*a),
+                        parent=self.name())]
+        return nodes
 
 
 class TableView(CtrlNode):
@@ -212,7 +316,7 @@ class TableView(CtrlNode):
 
     def display(self, topics, terms, addr, win, **kwargs):
         if self.widget is None:
-            kwargs['update_rate'] = int(self.Update_Rate)
+            kwargs['update_rate'] = int(self.values['Update Rate'])
             self.widget = ArrayWidget(topics, terms, addr, win, **kwargs)
 
         if self.task is None:

@@ -1,4 +1,4 @@
-# ami
+# ami [![Build Status](https://travis-ci.org/slac-lcls/ami.svg?branch=master)](https://travis-ci.org/slac-lcls/ami)
 The LCLS-II online graphical analysis monitoring package.
 
 # Examples

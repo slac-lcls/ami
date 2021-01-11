@@ -72,6 +72,10 @@ class PvaExportRpcHandler:
     def view(self, graph, name):
         return self._get_comm(graph).view(name)
 
+    @rpc(NTScalar('?'))
+    def export(self, graph, name, alias):
+        return self._get_comm(graph).export(name, alias)
+
 
 class PvaExportServer:
     def __init__(self, name, comm_addr, export_addr, aggregate=False):

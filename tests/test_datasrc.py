@@ -1,8 +1,17 @@
 import pytest
+import typing
 import numpy as np
 import amitypes as at
+try:
+    import psana
+except ImportError:
+    psana = None
+try:
+    import h5py
+except ImportError:
+    h5py = None
 
-from conftest import psanatest
+from conftest import psanatest, hdf5test
 from ami.data import MsgTypes, Source, Transition, Transitions
 
 
@@ -32,6 +41,83 @@ def test_find_source():
     assert src_cls is None
 
 
+@hdf5test
+def test_hdf5_source(hdf5writer):
+    src_cls = Source.find_source('hdf5')
+    assert src_cls is not None
+    idnum = 0
+    num_workers = 1
+    heartbeat_period = 5
+    src_cfg = {
+        'type': 'hdf5',
+        'interval':  0,
+        'init_time':  0,
+        'files': [str(hdf5writer)],
+    }
+    expected_cfg = {
+        'gasdet': float,
+        'ec': int,
+        'camera': at.Group,
+        'camera:image': at.Array2d,
+        'camera:raw': at.Array3d,
+        'timestamp': int,
+        'heartbeat': int,
+        'source': at.DataSource,
+    }
+    expected_grps = {
+        'camera': {
+            'image': at.Array2d,
+            'raw': at.Array3d,
+        }
+    }
+
+    source = src_cls(idnum, num_workers, heartbeat_period, src_cfg)
+
+    assert source.src_type == 'hdf5'
+
+    # request all the sources
+    source.request(set(expected_cfg))
+
+    # loop over all the events
+    count = 0
+    for evt in source.events():
+        if evt.mtype == MsgTypes.Transition:
+            assert evt.identity == idnum
+            assert isinstance(evt.payload, Transition)
+            if evt.payload.ttype == Transitions.Configure:
+                sources = {k: at.loads(v) for k, v in evt.payload.payload.items()}
+                assert sources == expected_cfg
+        elif evt.mtype == MsgTypes.Datagram:
+            assert set(evt.payload) == set(expected_cfg)
+            for name, data in evt.payload.items():
+                if type(data) in at.NumPyTypeDict:
+                    assert at.NumPyTypeDict[type(data)] == expected_cfg[name]
+                else:
+                    assert isinstance(data, expected_cfg[name])
+
+                if isinstance(data, at.DataSource):
+                    assert data.cfg == src_cfg
+                    assert data.key == 1
+                    assert isinstance(data.run, h5py.File)
+                    assert data.evt == (count, data.run)
+                elif isinstance(data, at.Group):
+                    assert data.src == source.src_type
+                    assert data.type == 'Group'
+                    assert data.name == name
+                    assert name in expected_grps
+                    assert set(data) == set(expected_grps[name])
+                    # check the types of the group
+                    for k, v in expected_grps[name].items():
+                        assert isinstance(data[k], v)
+
+            count += 1
+        elif evt.mtype == MsgTypes.Heartbeat:
+            assert count == heartbeat_period * (evt.payload.identity + 1)
+
+    # check that the last evt was an unconfigure
+    assert evt.mtype == MsgTypes.Transition and evt.payload.ttype == Transitions.Unconfigure
+
+
 @psanatest
 def test_psana_source(xtcwriter):
     psana_src_cls = Source.find_source('psana')
@@ -40,16 +126,102 @@ def test_psana_source(xtcwriter):
     num_workers = 1
     heartbeat_period = 10
     src_cfg = {
+        'type': 'psana',
         'interval':  0,
         'init_time':  0,
-        'files': str(xtcwriter),
+        'files': [str(xtcwriter)],
+    }
+    # these are broken in xtcwriter
+    excludes = {'HX2:DVD:GCC:01:PMON', 'HX2:DVD:GPI:01:PMON', 'motor1', 'motor2'}
+    expected_cfg = {
+        'HX2:DVD:GCC:01:PMON': float,
+        'HX2:DVD:GPI:01:PMON': str,
+        'motor1': float,
+        'motor2': float,
+        'xpphsd': at.Detector,
+        'xpphsd:calibconst': typing.Dict,
+        'xpphsd:raw:calib': at.Array1d,
+        'xpphsd:raw': at.Group,
+        'xpphsd:fex:calib': at.Array1d,
+        'xpphsd:fex': at.Group,
+        'xppcspad': at.Detector,
+        'xppcspad:calibconst': typing.Dict,
+        'xppcspad:raw:calib': at.Array3d,
+        'xppcspad:raw:image': at.Array2d,
+        'xppcspad:raw:raw': at.Array3d,
+        'xppcspad:raw': at.Group,
+        'epicsinfo': at.Detector,
+        'epicsinfo:epicsinfo': typing.Dict,
+        'epicsinfo:calibconst': typing.Dict,
+        'timestamp': float,
+        'heartbeat': int,
+        'source': at.DataSource,
+    }
+    expected_grps = {
+        'xpphsd:raw': {
+            'calib': at.Array1d,
+        },
+        'xpphsd:fex': {
+            'calib': at.Array1d,
+        },
+        'xppcspad:raw': {
+            'calib': at.Array3d,
+            'image': at.Array2d,
+            'raw': at.Array3d,
+        },
+    }
+    expected_grp_types = {
+        'xpphsd:raw': 'hsd_raw_0_0_0',
+        'xpphsd:fex': 'hsd_fex_4_5_6',
+        'xppcspad:raw': 'cspad_raw_2_3_42',
     }
     psana_source = psana_src_cls(idnum, num_workers, heartbeat_period, src_cfg)
+
+    assert psana_source.src_type == 'psana'
+
     evtgen = psana_source.events()
-    next(evtgen)  # first event is the config
-    psana_source.request(['xppcspad:raw:raw'])
-    evt = next(evtgen)
-    assert evt.payload['xppcspad:raw:raw'].shape == (2, 3, 6)
+
+    # check the returned configuration message
+    config = next(evtgen)  # first event is the config
+    assert config.mtype == MsgTypes.Transition
+    assert config.identity == idnum
+    assert isinstance(config.payload, Transition)
+    assert config.payload.ttype == Transitions.Configure
+    sources = {k: at.loads(v) for k, v in config.payload.payload.items()}
+    assert sources == expected_cfg
+
+    # request all the sources
+    psana_source.request(set(expected_cfg))
+
+    # loop over all the events
+    for count, msg in enumerate(evtgen):
+        if msg.mtype == MsgTypes.Datagram:
+            assert set(msg.payload) == set(expected_cfg)
+            for name, data in msg.payload.items():
+                if name in excludes:
+                    continue
+
+                assert isinstance(data, expected_cfg[name])
+
+                if isinstance(data, at.DataSource):
+                    assert data.cfg == src_cfg
+                    assert data.key == 1
+                    assert isinstance(data.run, psana.psexp.run.Run)
+                    assert isinstance(data.evt, psana.event.Event)
+                elif isinstance(data, at.Group):
+                    assert name in expected_grps and name in expected_grp_types
+                    assert data.src == psana_source.src_type
+                    assert data.type == expected_grp_types[name]
+                    assert data.name == name
+                    assert set(data) == set(expected_grps[name])
+                    # check the types of the group
+                    for k, v in expected_grps[name].items():
+                        assert isinstance(data[k], v)
+        elif msg.mtype == MsgTypes.Heartbeat:
+            break
+
+    # check the number of events we processed
+    assert count == heartbeat_period
 
 
 def test_static_source(sim_src_cfg):
@@ -62,12 +234,14 @@ def test_static_source(sim_src_cfg):
 
     source = src_cls(idnum, num_workers, heartbeat_period, sim_src_cfg)
 
+    assert source.src_type == 'static'
+
     # check the names from the source are correct
-    expected_names = {'timestamp', 'heartbeat'}
+    expected_names = {'timestamp', 'heartbeat', 'source'}
     expected_names.update(sim_src_cfg['config'].keys())
     assert source.names == expected_names
     # check the types from the source are correct
-    expected_dtypes = {'timestamp': int, 'heartbeat': int}
+    expected_dtypes = {'timestamp': int, 'heartbeat': int, 'source': at.DataSource}
     for name, cfg in sim_src_cfg['config'].items():
         if cfg["dtype"] == "Scalar":
             if cfg.get("integer", False):
@@ -137,12 +311,14 @@ def test_random_source(sim_src_cfg):
 
     source = src_cls(idnum, num_workers, heartbeat_period, sim_src_cfg)
 
+    assert source.src_type == 'random'
+
     # check the names from the source are correct
-    expected_names = {'timestamp', 'heartbeat'}
+    expected_names = {'timestamp', 'heartbeat', 'source'}
     expected_names.update(sim_src_cfg['config'].keys())
     assert source.names == expected_names
     # check the types from the source are correct
-    expected_dtypes = {'timestamp': int, 'heartbeat': int}
+    expected_dtypes = {'timestamp': int, 'heartbeat': int, 'source': at.DataSource}
     for name, cfg in sim_src_cfg['config'].items():
         if cfg["dtype"] == "Scalar":
             if cfg.get("integer", False):
@@ -241,7 +417,7 @@ def test_source_request(sim_src_cfg):
         if msg.mtype == MsgTypes.Datagram:
             assert set(msg.payload.keys()) == source.requested_names
         elif msg.mtype == MsgTypes.Heartbeat:
-            source.request(expected_names[msg.payload])
+            source.request(expected_names[msg.payload.identity])
 
 
 def test_source_badrequest(sim_src_cfg):

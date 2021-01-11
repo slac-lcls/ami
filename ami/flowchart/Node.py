@@ -5,7 +5,6 @@ from pyqtgraph import functions as fn
 from pyqtgraph.pgcollections import OrderedDict
 from pyqtgraph.debug import printExc
 from ami.flowchart.Terminal import Terminal
-from typing import Any
 import weakref
 
 
@@ -99,6 +98,7 @@ class Node(QtCore.QObject):
         self._editor = None
         self._enabled = True
 
+        self.created = False
         self.changed = True
         self.viewed = False
         self.exception = None
@@ -186,7 +186,7 @@ class Node(QtCore.QObject):
         keyword arguments are passed to Terminal.__init__.
 
         This is a convenience function that just calls addTerminal(io='condition', ...)"""
-        return self.addTerminal(name, io='condition', ttype=Any, **kwargs)
+        return self.addTerminal(name, io='condition', ttype=bool, **kwargs)
 
     def removeTerminal(self, term):
         """Remove the specified terminal from this Node. May specify either the
@@ -303,6 +303,15 @@ class Node(QtCore.QObject):
 
         return input_vars
 
+    def input_units(self):
+        units = {}
+
+        for key, term in self.terminals.items():
+            if key in self._input_vars:
+                units[key] = term.unit()
+
+        return units
+
     def output_vars(self):
         output_vars = []
 
@@ -365,7 +374,7 @@ class Node(QtCore.QObject):
         elif localTerm.isCondition():
             self._condition_vars[localTerm.name()] = node.name()
 
-        self.changed = True
+        self.changed = localTerm.isInput()
         self.sigTerminalConnected.emit(localTerm, remoteTerm)
 
     def disconnected(self, localTerm, remoteTerm):
@@ -375,7 +384,7 @@ class Node(QtCore.QObject):
         elif localTerm.isCondition():
             del self._condition_vars[localTerm.name()]
 
-        self.changed = True
+        self.changed = localTerm.isInput()
         self.sigTerminalDisconnected.emit(localTerm, remoteTerm)
 
     def isConnected(self):
@@ -404,7 +413,7 @@ class Node(QtCore.QObject):
 
     def recolor(self, typ=None):
         if typ == "exception":
-            self.graphicsItem().setPen(QtGui.QPen(QtGui.QColor(255, 0, 0), 3))
+            self.graphicsItem().setPen(QtGui.QPen(QtGui.QColor(255, 0, 0), 5))
         elif typ == "selected":
             self.graphicsItem().setPen(QtGui.QPen(QtGui.QColor(250, 150, 0), 3))
         else:
@@ -419,7 +428,7 @@ class Node(QtCore.QObject):
         Subclasses may want to extend this method, adding extra keys to the returned
         dict."""
         pos = self.graphicsItem().pos()
-        state = {'pos': (pos.x(), pos.y()), 'enabled': self._enabled}
+        state = {'pos': (pos.x(), pos.y()), 'enabled': self._enabled, 'viewed': self.viewed}
         state['terminals'] = self.saveTerminals()
         return state
 
@@ -429,6 +438,7 @@ class Node(QtCore.QObject):
         pos = state.get('pos', (0, 0))
         self.graphicsItem().setPos(*pos)
         self._enabled = state.get('enabled')
+        self.viewed = state.get('viewed', False)
         if 'terminals' in state:
             self.restoreTerminals(state['terminals'])
 
@@ -461,9 +471,10 @@ class Node(QtCore.QObject):
         self._conditions = OrderedDict()
         self._outputs = OrderedDict()
 
-    def close(self):
+    def close(self, emit=True):
         """Cleans up after the node--removes terminals, graphicsItem, widget"""
-        self.sigClosed.emit(self, self.input_vars())
+        if emit:
+            self.sigClosed.emit(self, self.input_vars())
         self.disconnectAll()
         self.clearTerminals()
         item = self.graphicsItem()
@@ -473,12 +484,16 @@ class Node(QtCore.QObject):
         w = self.ctrlWidget()
         if w is not None:
             w.setParent(None)
+            w.close()
 
     def disconnectAll(self):
         for t in self.terminals.values():
             t.disconnectAll()
 
     def isSource(self):
+        return False
+
+    def isChanged(self, restore_ctrl, restore_widget):
         return False
 
 

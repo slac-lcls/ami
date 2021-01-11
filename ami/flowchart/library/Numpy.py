@@ -1,6 +1,6 @@
 from typing import Union, List
 from amitypes import Array, Array1d, Array2d, Array3d
-from ami.flowchart.library.common import CtrlNode, MAX
+from ami.flowchart.library.common import CtrlNode, GroupedNode
 from ami.flowchart.Node import Node
 import ami.graph_nodes as gn
 import numpy as np
@@ -23,32 +23,8 @@ class Sum(Node):
     def to_operation(self, inputs, conditions={}):
         outputs = self.output_vars()
         node = gn.Map(name=self.name()+"_operation",
-                      condition_needs=list(conditions.values()), inputs=list(inputs.values()), outputs=outputs,
+                      condition_needs=conditions, inputs=inputs, outputs=outputs,
                       func=lambda a: np.sum(a, dtype=np.float64), parent=self.name())
-        return node
-
-
-class Projection(CtrlNode):
-
-    """
-    Projection projects a 2d array along the selected axis.
-    """
-
-    nodeName = "Projection"
-    uiTemplate = [('axis', 'intSpin', {'value': 0, 'min': 0, 'max': 1})]
-
-    def __init__(self, name):
-        super().__init__(name, terminals={
-            'In': {'io': 'in', 'ttype': Array2d},
-            'Out': {'io': 'out', 'ttype': Array1d}
-        })
-
-    def to_operation(self, inputs, conditions={}):
-        outputs = self.output_vars()
-        axis = self.axis
-        node = gn.Map(name=self.name()+"_operation",
-                      condition_needs=list(conditions.values()), inputs=list(inputs.values()), outputs=outputs,
-                      func=lambda a: np.sum(a, axis=axis), parent=self.name())
         return node
 
 
@@ -59,10 +35,10 @@ class Binning(CtrlNode):
     """
 
     nodeName = "Binning"
-    uiTemplate = [('bins', 'intSpin', {'value': 10, 'min': 1, 'max': MAX}),
+    uiTemplate = [('bins', 'intSpin', {'value': 10, 'min': 1}),
                   ('auto range', 'check', {'checked': False}),
-                  ('range min', 'doubleSpin', {'value': 1, 'min': -MAX, 'max': MAX}),
-                  ('range max', 'doubleSpin', {'value': 100, 'min': -MAX, 'max': MAX}),
+                  ('range min', 'doubleSpin', {'value': 1}),
+                  ('range max', 'doubleSpin', {'value': 100}),
                   ('weighted', 'check', {'checked': False}),
                   ('density', 'check', {'checked': False})]
 
@@ -74,8 +50,8 @@ class Binning(CtrlNode):
         })
         self.weighted = None
 
-    def changed(self, *args, **kwargs):
-        super().changed(*args, **kwargs)
+    def state_changed(self, *args, **kwargs):
+        super().state_changed(*args, **kwargs)
 
         if "weighted" == args[0] and args[1]:
             self.addTerminal("Weights", io='in', ttype=Union[float, Array1d])
@@ -88,12 +64,12 @@ class Binning(CtrlNode):
     def to_operation(self, inputs, conditions={}):
         outputs = self.output_vars()
         map_outputs = [self.name()+"_bins", self.name()+"_counts"]
-        nbins = self.bins
-        density = self.density
+        nbins = self.values['bins']
+        density = self.values['density']
 
         range = None
-        if not self.auto_range:
-            range = (self.range_min, self.range_max)
+        if not self.values['auto range']:
+            range = (self.values['range min'], self.values['range max'])
 
         def bin(arr, weights=None):
             counts, bins = np.histogram(arr, bins=nbins, range=range, density=density, weights=weights)
@@ -105,8 +81,8 @@ class Binning(CtrlNode):
             return res
 
         node = [gn.Map(name=self.name()+"_map",
-                       condition_needs=list(conditions.values()), inputs=list(inputs.values()), outputs=map_outputs,
-                       func=bin, parent=self.name()),
+                       condition_needs=conditions, inputs=inputs,
+                       outputs=map_outputs, func=bin, parent=self.name()),
                 gn.Accumulator(name=self.name()+"_accumulated", inputs=map_outputs, outputs=outputs,
                                res_factory=lambda: [None, 0], reduction=reduction, parent=self.name())]
         return node
@@ -119,12 +95,12 @@ class Binning2D(CtrlNode):
     """
 
     nodeName = "Binning2D"
-    uiTemplate = [('x bins', 'intSpin', {'value': 10, 'min': 1, 'max': MAX}),
-                  ('y bins', 'intSpin', {'value': 10, 'min': 1, 'max': MAX}),
-                  ('range x min', 'doubleSpin', {'value': 1, 'min': -MAX, 'max': MAX}),
-                  ('range x max', 'doubleSpin', {'value': 100, 'min': -MAX, 'max': MAX}),
-                  ('range y min', 'doubleSpin', {'value': 1, 'min': -MAX, 'max': MAX}),
-                  ('range y max', 'doubleSpin', {'value': 100, 'min': -MAX, 'max': MAX}),
+    uiTemplate = [('x bins', 'intSpin', {'value': 10, 'min': 1}),
+                  ('y bins', 'intSpin', {'value': 10, 'min': 1}),
+                  ('range x min', 'doubleSpin', {'value': 1}),
+                  ('range x max', 'doubleSpin', {'value': 100}),
+                  ('range y min', 'doubleSpin', {'value': 1}),
+                  ('range y max', 'doubleSpin', {'value': 100}),
                   ('density', 'check', {'checked': False})]
 
     def __init__(self, name):
@@ -148,13 +124,13 @@ class Binning2D(CtrlNode):
     def to_operation(self, inputs, conditions={}):
         outputs = self.output_vars()
         map_outputs = [self.name()+"_xbins", self.name()+"_ybins", self.name()+"_counts"]
-        nxbins = self.x_bins
-        nybins = self.y_bins
-        xmin = self.range_x_min
-        xmax = self.range_x_max
-        ymin = self.range_y_min
-        ymax = self.range_y_max
-        density = self.density
+        nxbins = self.values['x bins']
+        nybins = self.values['y bins']
+        xmin = self.values['range x min']
+        xmax = self.values['range x max']
+        ymin = self.values['range y min']
+        ymax = self.values['range y max']
+        density = self.values['density']
 
         if self.x_type == float and self.y_type == float:
             def bin(x, y):
@@ -174,8 +150,8 @@ class Binning2D(CtrlNode):
             return res
 
         node = [gn.Map(name=self.name()+"_map",
-                       condition_needs=list(conditions.values()), inputs=list(inputs.values()), outputs=map_outputs,
-                       func=bin, parent=self.name()),
+                       condition_needs=conditions, inputs=inputs,
+                       outputs=map_outputs, func=bin, parent=self.name()),
                 gn.Accumulator(name=self.name()+"_accumulated", inputs=map_outputs, outputs=outputs,
                                res_factory=lambda: [None, None, 0], reduction=reduction, parent=self.name())]
         return node
@@ -198,7 +174,7 @@ class Split(CtrlNode):
     def to_operation(self, inputs, conditions={}):
         outputs = self.output_vars()
 
-        axis = self.axis
+        axis = self.values['axis']
         sections = len(outputs)
 
         def split(arr):
@@ -210,7 +186,7 @@ class Split(CtrlNode):
             return list(splits)
 
         node = gn.Map(name=self.name()+"_operation",
-                      condition_needs=list(conditions.values()), inputs=list(inputs.values()), outputs=outputs,
+                      condition_needs=conditions, inputs=inputs, outputs=outputs,
                       func=split, parent=self.name())
         return node
 
@@ -225,46 +201,56 @@ class Stack(CtrlNode):
     uiTemplate = [('axis', 'intSpin', {'value': 0, 'min': 0, 'max': 1})]
 
     def __init__(self, name):
-        super().__init__(name, terminals={"In": {'io': 'in', 'ttype': Array1d},
+        super().__init__(name, terminals={"In": {'io': 'in', 'ttype': Union[Array1d, List[Array1d]]},
                                           "Out": {'io': 'out', 'ttype': Array2d}},
                          allowAddInput=True)
 
     def to_operation(self, inputs, conditions={}):
         outputs = self.output_vars()
 
-        axis = self.axis
+        axis = self.values['axis']
 
-        node = gn.Map(name=self.name()+"_operation",
-                      condition_needs=list(conditions.values()), inputs=list(inputs.values()), outputs=outputs,
-                      func=lambda *arr: np.stack(arr, axis=axis), parent=self.name())
+        if len(self.inputs()) > 1:
+            node = gn.Map(name=self.name()+"_operation",
+                          condition_needs=conditions, inputs=inputs, outputs=outputs,
+                          func=lambda *arr: np.stack(arr, axis=axis), parent=self.name())
+        else:
+            node = gn.Map(name=self.name()+"_operation",
+                          condition_needs=conditions, inputs=inputs, outputs=outputs,
+                          func=lambda arr: np.stack(arr, axis=axis), parent=self.name())
+
         return node
 
 
-class GroupedNode(CtrlNode):
+class Projection(GroupedNode):
 
-    def __init__(self, name, *args, **kwargs):
-        super().__init__(name, *args, **kwargs)
-        self.sigTerminalConnected.connect(self.setType)
+    """
+    Projection projects a 2d array along the selected axis.
+    """
 
-    def addInput(self, **kwargs):
-        group = self.nextGroupName()
-        kwargs['group'] = group
-        super().addInput(**kwargs)
-        super().addOutput(**kwargs)
+    nodeName = "Projection"
+    uiTemplate = [('axis', 'intSpin', {'value': 0, 'min': 0, 'max': 1})]
 
-    def setType(self, localTerm, remoteTerm):
-        pass
+    def __init__(self, name):
+        super().__init__(name, terminals={'In': {'io': 'in', 'ttype': Array2d},
+                                          'Out': {'io': 'out', 'ttype': Array1d}},
+                         allowAddInput=True)
 
-    def find_output_term(self, localTerm):
-        group = localTerm.group()
-        if group:
-            group = self._groups[group]
-            for name in group:
-                term = self.terminals[name]
-                if term.isOutput():
-                    return term
+    def to_operation(self, inputs, conditions={}):
+        outputs = self.output_vars()
+        axis = self.values['axis']
+
+        if len(inputs) == 1:
+            def func(arr):
+                return np.sum(arr, axis=axis)
         else:
-            return self.terminals['Out']
+            def func(*arr):
+                return list(map(lambda a: np.sum(a, axis=axis), arr))
+
+        node = gn.Map(name=self.name()+"_operation",
+                      condition_needs=conditions, inputs=inputs, outputs=outputs,
+                      func=func, parent=self.name())
+        return node
 
 
 class Take(GroupedNode):
@@ -275,7 +261,7 @@ class Take(GroupedNode):
 
     nodeName = "Take"
     uiTemplate = [('axis', 'intSpin', {'value': 0, 'min': 0, 'max': 2}),
-                  ('index', 'intSpin', {'value': 0, 'min': -MAX, 'max': MAX}),
+                  ('index', 'intSpin', {'value': 0}),
                   ('mode', 'combo', {'values': ['raise', 'wrap', 'clip']})]
 
     def __init__(self, name):
@@ -286,9 +272,9 @@ class Take(GroupedNode):
     def to_operation(self, inputs, conditions={}):
         outputs = self.output_vars()
 
-        axis = self.axis
-        index = self.index
-        mode = self.mode
+        axis = self.values['axis']
+        index = self.values['index']
+        mode = self.values['mode']
 
         if len(inputs) == 1:
             def func(arr):
@@ -298,13 +284,14 @@ class Take(GroupedNode):
                 return list(map(lambda a: np.take(a, index, axis=axis, mode=mode), arr))
 
         node = gn.Map(name=self.name()+"_operation",
-                      condition_needs=list(conditions.values()), inputs=list(inputs.values()), outputs=outputs,
+                      condition_needs=conditions, inputs=inputs, outputs=outputs,
                       func=func, parent=self.name())
         return node
 
     def setType(self, localTerm, remoteTerm):
         if localTerm.isInput():
             term = self.find_output_term(localTerm)
+            term.setUnit(remoteTerm.unit())
 
             if remoteTerm.type() == Array3d:
                 term._type = Array2d
@@ -321,9 +308,9 @@ class Polynomial(CtrlNode):
     """
 
     nodeName = "Polynomial"
-    uiTemplate = [('c0', 'doubleSpin', {'value': 1, 'min': -MAX, 'max': MAX}),
-                  ('c1', 'doubleSpin', {'value': 1, 'min': -MAX, 'max': MAX}),
-                  ('c2', 'doubleSpin', {'value': 1, 'min': -MAX, 'max': MAX})]
+    uiTemplate = [('c0', 'doubleSpin', {'value': 1}),
+                  ('c1', 'doubleSpin', {'value': 1}),
+                  ('c2', 'doubleSpin', {'value': 1})]
 
     def __init__(self, name):
         super().__init__(name, terminals={
@@ -333,15 +320,266 @@ class Polynomial(CtrlNode):
 
     def to_operation(self, inputs, conditions={}):
         outputs = self.output_vars()
-        c0 = self.c0
-        c1 = self.c1
-        c2 = self.c2
+        c0 = self.values['c0']
+        c1 = self.values['c1']
+        c2 = self.values['c2']
 
         def poly(x):
             coeffs = [c0, c1, c2]
             return np.polynomial.polynomial.polyval(x, coeffs)
 
         node = gn.Map(name=self.name()+"_operation",
-                      condition_needs=list(conditions.values()), inputs=list(inputs.values()), outputs=outputs,
+                      condition_needs=conditions, inputs=inputs, outputs=outputs,
                       func=poly, parent=self.name())
         return node
+
+
+class Average(GroupedNode):
+
+    """
+    Compute average using np.average
+    """
+
+    nodeName = "Average"
+    uiTemplate = [('axis', 'intSpin', {'value': 0, 'min': 0, 'max': 1})]
+
+    def __init__(self, name):
+        super().__init__(name, terminals={'In': {'io': 'in', 'ttype': Union[Array1d, Array2d]},
+                                          'Out': {'io': 'out', 'ttype': float}},
+                         allowAddInput=True)
+
+    def to_operation(self, inputs, conditions={}):
+        outputs = self.output_vars()
+
+        axis = self.values['axis']
+
+        if len(inputs) == 1:
+            def func(arr):
+                return np.average(arr, axis=axis)
+        else:
+            def func(*arr):
+                return list(map(lambda a: np.average(a, axis=axis), arr))
+
+        node = gn.Map(name=self.name()+"_operation",
+                      condition_needs=conditions, inputs=inputs, outputs=outputs,
+                      func=func, parent=self.name())
+        return node
+
+
+class RMS(GroupedNode):
+
+    """
+    RMS
+    """
+
+    nodeName = "RMS"
+
+    def __init__(self, name):
+        super().__init__(name, terminals={'In': {'io': 'in', 'ttype': Union[Array1d, Array2d]},
+                                          'Out': {'io': 'out', 'ttype': float}},
+                         allowAddInput=True)
+
+    def to_operation(self, inputs, conditions={}):
+        outputs = self.output_vars()
+
+        if len(inputs) == 1:
+            def func(arr):
+                return np.sqrt(np.mean(np.square(arr)))
+        else:
+            def func(*arr):
+                return list(map(lambda a: np.sqrt(np.mean(np.square(a))), arr))
+
+        node = gn.Map(name=self.name()+"_operation",
+                      condition_needs=conditions, inputs=inputs, outputs=outputs,
+                      func=func, parent=self.name())
+        return node
+
+
+class MeanRMS(Node):
+
+    """
+    MeanRMS
+    """
+
+    nodeName = "MeanRMS"
+
+    def __init__(self, name):
+        super().__init__(name, terminals={'In': {'io': 'in', 'ttype': Array1d},
+                                          'Mean': {'io': 'out', 'ttype': float},
+                                          'Stdev': {'io': 'out', 'ttype': float}})
+
+    def to_operation(self, inputs, conditions={}):
+        outputs = self.output_vars()
+
+        def func(arr):
+            centers = np.arange(len(arr))
+            mean = np.average(centers, 0, arr)
+            var = np.average((centers-mean)**2, 0, arr)
+            std = np.sqrt(var)
+            return mean, std
+
+        node = gn.Map(name=self.name()+"_operation",
+                      condition_needs=conditions, inputs=inputs, outputs=outputs,
+                      func=func, parent=self.name())
+        return node
+
+
+class Average0D(CtrlNode):
+
+    """
+    Collect N scalars and average them.
+    """
+
+    nodeName = "Average0D"
+    uiTemplate = [('N', 'intSpin', {'value': 2, 'min': 2}),
+                  ('infinite', 'check')]
+
+    def __init__(self, name):
+        super().__init__(name, terminals={'In': {'io': 'in', 'ttype': float},
+                                          'Out': {'io': 'out', 'ttype': float}})
+
+    def to_operation(self, inputs, conditions={}):
+        outputs = self.output_vars()
+
+        accumulated_outputs = [self.name()+'_accumulated_events']
+
+        if self.values['infinite']:
+            def reduction(res, *rest):
+                if type(rest[0]) is list:
+                    res[0] += rest[0][0]
+                    res[1] += rest[0][1]
+                else:
+                    res[0] = res[0] + rest[0]
+                    res[1] = res[1] + 1
+                return res
+
+            def avg(*args, **kwargs):
+                return args[0][0]/args[0][1]
+
+            nodes = [gn.Accumulator(name=self.name()+"_accumulated",
+                                    inputs=inputs, outputs=accumulated_outputs, condition_needs=conditions,
+                                    res_factory=lambda: [0, 0], reduction=reduction, parent=self.name()),
+                     gn.Map(name=self.name()+"_map",
+                            inputs=accumulated_outputs, outputs=outputs,
+                            func=avg, parent=self.name())]
+        else:
+            def func(arrs):
+                return np.average(arrs)
+
+            nodes = [gn.PickN(name=self.name()+"_accumulated",
+                              inputs=inputs, outputs=accumulated_outputs, condition_needs=conditions,
+                              N=self.values['N'], parent=self.name()),
+                     gn.Map(name=self.name()+"_map",
+                            inputs=accumulated_outputs, outputs=outputs, func=func,
+                            parent=self.name())]
+
+        return nodes
+
+
+class Average1D(CtrlNode):
+
+    """
+    Collect N 1d arrays and average them.
+    """
+
+    nodeName = "Average1D"
+    uiTemplate = [('N', 'intSpin', {'value': 2, 'min': 2}),
+                  ('axis', 'intSpin', {'value': 0, 'min': 0, 'max': 1}),
+                  ('infinite', 'check')]
+
+    def __init__(self, name):
+        super().__init__(name, terminals={'In': {'io': 'in', 'ttype': Array1d},
+                                          'Out': {'io': 'out', 'ttype': Array1d}})
+
+    def to_operation(self, inputs, conditions={}):
+        outputs = self.output_vars()
+
+        axis = self.values['axis']
+        accumulated_outputs = [self.name()+'_accumulated_events']
+
+        if self.values['infinite']:
+            def reduction(res, *rest):
+                if type(rest[0]) is list:
+                    res[0] = np.sum([res[0], rest[0][0]], axis=axis)
+                    res[1] += rest[0][1]
+                else:
+                    res[0] = np.sum([res[0], rest[0]], axis=axis)
+                    res[1] = res[1] + 1
+                return res
+
+            def avg(*args, **kwargs):
+                return args[0][0]/args[0][1]
+
+            nodes = [gn.Accumulator(name=self.name()+"_accumulated",
+                                    inputs=inputs, outputs=accumulated_outputs, condition_needs=conditions,
+                                    res_factory=lambda: [0, 0], reduction=reduction, parent=self.name()),
+                     gn.Map(name=self.name()+"_map",
+                            inputs=accumulated_outputs, outputs=outputs,
+                            func=avg, parent=self.name())]
+
+        else:
+            def func(arrs):
+                return np.sum(arrs, axis=axis)/len(arrs)
+
+            nodes = [gn.PickN(name=self.name()+"_accumulated",
+                              inputs=inputs, outputs=accumulated_outputs, condition_needs=conditions,
+                              N=self.values['N'], parent=self.name()),
+                     gn.Map(name=self.name()+"_map",
+                            inputs=accumulated_outputs, outputs=outputs, func=func,
+                            parent=self.name())]
+
+        return nodes
+
+
+class Average2D(CtrlNode):
+
+    """
+    Collect N 2d arrays and average them.
+    """
+
+    nodeName = "Average2D"
+    uiTemplate = [('N', 'intSpin', {'value': 2, 'min': 2}),
+                  ('axis', 'intSpin', {'value': 0, 'min': 0, 'max': 2}),
+                  ('infinite', 'check')]
+
+    def __init__(self, name):
+        super().__init__(name, terminals={'In': {'io': 'in', 'ttype': Array2d},
+                                          'Out': {'io': 'out', 'ttype': Array2d}})
+
+    def to_operation(self, inputs, conditions={}):
+        outputs = self.output_vars()
+
+        axis = self.values['axis']
+        accumulated_outputs = [self.name()+'_accumulated_events']
+
+        if self.values['infinite']:
+            def reduction(res, *rest):
+                if type(rest[0]) is list:
+                    res[0] = np.sum([res[0], rest[0][0]], axis=axis)
+                    res[1] += rest[0][1]
+                else:
+                    res[0] = np.sum([res[0], rest[0]], axis=axis)
+                    res[1] = res[1] + 1
+                return res
+
+            def avg(*args, **kwargs):
+                return args[0][0]/args[0][1]
+
+            nodes = [gn.Accumulator(name=self.name()+"_accumulated",
+                                    inputs=inputs, outputs=accumulated_outputs, condition_needs=conditions,
+                                    res_factory=lambda: [0, 0], reduction=reduction, parent=self.name()),
+                     gn.Map(name=self.name()+"_map",
+                            inputs=accumulated_outputs, outputs=outputs,
+                            func=avg, parent=self.name())]
+        else:
+            def func(arrs):
+                return np.sum(arrs, axis=axis)/len(arrs)
+
+            nodes = [gn.PickN(name=self.name()+"_accumulated",
+                              inputs=inputs, outputs=accumulated_outputs, condition_needs=conditions,
+                              N=self.values['N'], parent=self.name()),
+                     gn.Map(name=self.name()+"_map",
+                            inputs=accumulated_outputs, outputs=outputs, func=func,
+                            parent=self.name())]
+
+        return nodes

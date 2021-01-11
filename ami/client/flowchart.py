@@ -1,24 +1,33 @@
 #!/usr/bin/env python
+import os
+import sys
 import logging
-import multiprocessing as mp
+import importlib
 import tempfile
 import asyncio
 import zmq
 import zmq.asyncio
+import subprocess
+import ami.multiproc as mp
+import pyqtgraph as pg
 
+from ami import LogConfig
 from ami.client import flowchart_messages as fcMsgs
+from ami.profiler import Profiler
 from ami.flowchart.Flowchart import Flowchart
 from ami.flowchart.library import LIBRARY
+from ami.flowchart.NodeLibrary import isNodeClass
 from ami.flowchart.library.common import SourceNode
-from ami import LogConfig
-from pyqtgraph.Qt import QtGui, QtCore, QtWidgets
 from ami.asyncqt import QEventLoop, asyncSlot
+from pyqtgraph.Qt import QtGui, QtCore, QtWidgets
 
 
 logger = logging.getLogger(LogConfig.get_package_name(__name__))
 
 
-def run_editor_window(broker_addr, graphmgr_addr, checkpoint_addr, load=None):
+def run_editor_window(broker_addr, graphmgr_addr, checkpoint_addr, load=None, prometheus_dir=None, hutch=None):
+    subprocess.call(["dmypy", "start"])
+
     app = QtGui.QApplication([])
 
     loop = QEventLoop(app)
@@ -31,7 +40,10 @@ def run_editor_window(broker_addr, graphmgr_addr, checkpoint_addr, load=None):
     # Create flowchart, define input/output terminals
     fc = Flowchart(broker_addr=broker_addr,
                    graphmgr_addr=graphmgr_addr,
-                   checkpoint_addr=checkpoint_addr)
+                   checkpoint_addr=checkpoint_addr,
+                   prometheus_dir=prometheus_dir, hutch=hutch)
+
+    fc.start_prometheus()
 
     def update_title(filename):
         if filename:
@@ -57,8 +69,11 @@ def run_editor_window(broker_addr, graphmgr_addr, checkpoint_addr, load=None):
         loop.run_forever()
     finally:
         if not task.done():
+            loop.run_until_complete(fc.widget().clear())
             task.cancel()
         loop.close()
+
+    subprocess.call(["dmypy", "stop"])
 
 
 class NodeWindow(QtGui.QMainWindow):
@@ -67,32 +82,61 @@ class NodeWindow(QtGui.QMainWindow):
         super().__init__(parent)
         self.proc = proc
 
-    def closeEvent(self, event):
+    def moveEvent(self, event):
+        super().moveEvent(event)
+        self.proc.node.geometry = self.saveGeometry()
         self.proc.send_checkpoint(self.proc.node)
-        self.proc.node.clear()
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        self.proc.node.geometry = self.saveGeometry()
+        self.proc.send_checkpoint(self.proc.node)
+
+    def closeEvent(self, event):
+        self.proc.node.viewed = False
+        self.proc.node.geometry = self.saveGeometry()
+        self.proc.send_checkpoint(self.proc.node)
+        self.proc.node.close()
         self.proc.widget = None
-        self.proc.show = False
         self.destroy()
         event.ignore()
 
 
 class NodeProcess(QtCore.QObject):
 
-    def __init__(self, msg=None, broker_addr="", graphmgr_addr="", checkpoint_addr="", loop=None):
+    def __init__(self, msg, broker_addr="", graphmgr_addr="", checkpoint_addr="", loop=None,
+                 library_paths=None):
         super().__init__()
 
         if loop is None:
             self.app = QtGui.QApplication([])
             loop = QEventLoop(self.app)
+
         asyncio.set_event_loop(loop)
 
         self.win = NodeWindow(self)
+        self.win.resize(800, 800)
 
-        try:
+        if msg.node_type == "SourceNode":
+            self.node = SourceNode(name=msg.name)
+        else:
+            if library_paths:
+                dirs = set(map(os.path.dirname, library_paths))
+                sys.path.extend(dirs)
+
+                for mod in library_paths:
+                    mod = os.path.basename(mod)
+                    mod = os.path.splitext(mod)[0]
+                    mod = importlib.import_module(mod)
+
+                    nodes = [getattr(mod, name) for name in dir(mod) if isNodeClass(getattr(mod, name))]
+
+                    for node in nodes:
+                        LIBRARY.addNodeType(node, [(mod.__name__, )])
+
             self.node = LIBRARY.getNodeType(msg.node_type)(msg.name)
-        except KeyError:
-            self.node = SourceNode(name=msg.name, terminals={'Out': {'io': 'out', 'ttype': msg.node_type}})
 
+        self.node.restoreState(msg.state)
         self.graphmgr_addr = graphmgr_addr
         self.ctx = zmq.asyncio.Context()
 
@@ -103,13 +147,10 @@ class NodeProcess(QtCore.QObject):
         self.checkpoint = self.ctx.socket(zmq.PUB)
         self.checkpoint.connect(checkpoint_addr)
 
-        self.ctrlWidget = self.node.ctrlWidget()
+        self.ctrlWidget = self.node.ctrlWidget(self.win)
         self.widget = None
-        self.show = False
 
-        if msg:
-            self.name = msg.name
-            self.win.setWindowTitle(msg.name)
+        self.win.setWindowTitle(msg.name)
 
         with loop:
             loop.run_until_complete(asyncio.gather(self.process(), self.monitor_node_task()))
@@ -132,64 +173,69 @@ class NodeProcess(QtCore.QObject):
 
             if isinstance(msg, fcMsgs.DisplayNode):
                 self.display(msg)
-            elif isinstance(msg, fcMsgs.NodeCheckpoint):
-                self.restore_checkpoint(msg)
+            elif isinstance(msg, fcMsgs.ReloadLibrary):
+                self.reloadLibrary(msg)
             elif isinstance(msg, fcMsgs.CloseNode):
                 return
 
     def display(self, msg):
-        if self.show and msg.redisplay:
-            self.node.clear()
+        if self.node.viewed and msg.redisplay:
+            self.node.close()
             self.widget = None
 
+        if msg.geometry:
+            self.win.restoreGeometry(msg.geometry)
+
         if self.widget is None:
-            self.widget = self.node.display(msg.topics, msg.terms, self.graphmgr_addr, self.win)
+            self.widget = self.node.display(msg.topics, msg.terms, self.graphmgr_addr, self.win,
+                                            units=msg.units)
 
             if self.ctrlWidget and self.widget:
                 cw = QtGui.QWidget()
                 self.win.setCentralWidget(cw)
                 layout = QtGui.QGridLayout()
                 cw.setLayout(layout)
-                layout.addWidget(self.ctrlWidget, 0, 0)
+                layout.addWidget(self.ctrlWidget, 0, 0, -1, 1)
                 layout.addWidget(self.widget, 0, 1, -1, -1)
                 layout.setColumnStretch(1, 10)
-                self.node.update()
             elif self.ctrlWidget:
                 scrollarea = QtWidgets.QScrollArea()
                 scrollarea.setWidget(self.ctrlWidget)
                 self.win.setCentralWidget(scrollarea)
             elif self.widget:
-                self.win.setCentralWidget(self.widget)
+                scrollarea = QtWidgets.QScrollArea()
+                scrollarea.setWidgetResizable(True)
+                scrollarea.setWidget(self.widget)
+                self.win.setCentralWidget(scrollarea)
 
             if msg.state and hasattr(self.widget, 'restoreState'):
                 self.widget.restoreState(msg.state)
 
             self.node.sigStateChanged.connect(self.send_checkpoint)
 
-        if not msg.redisplay:
-            if self.show:
-                self.win.activateWindow()
-            else:
-                self.show = True
-                self.win.show()
+        self.win.show()
+        if self.node.viewed:
+            self.win.activateWindow()
+        self.node.viewed = True
+
+    def reloadLibrary(self, msg):
+        for mod in msg.mods:
+            mod = sys.modules[mod]
+            pg.reload.reload(mod)
 
     @asyncSlot(object)
     async def send_checkpoint(self, node):
         state = node.saveState()
-        state['viewed'] = self.show
 
         msg = fcMsgs.NodeCheckpoint(node.name(),
                                     state=state)
         await self.checkpoint.send_string(node.name(), zmq.SNDMORE)
         await self.checkpoint.send_pyobj(msg)
 
-    def restore_checkpoint(self, checkpoint):
-        self.node.restoreState(checkpoint.state)
-
 
 class MessageBroker(object):
 
-    def __init__(self, graphmgr_addr, load, ipcdir=None):
+    def __init__(self, graphmgr_addr, load, ipcdir=None, prometheus_dir=None, hutch=None):
 
         if ipcdir is None:
             ipcdir = tempfile.mkdtemp()
@@ -202,6 +248,7 @@ class MessageBroker(object):
         self.checkpoint_pub_addr = "ipc://%s/checkpoint_pub" % ipcdir
 
         self.load = load
+        self.library_paths = set()
 
         self.lock = asyncio.Lock()
         self.msgs = {}
@@ -225,6 +272,11 @@ class MessageBroker(object):
         self.checkpoint_pub_sock = self.ctx.socket(zmq.PUB)            # sends messages to editor
         self.checkpoint_pub_sock.bind(self.checkpoint_pub_addr)
 
+        self.prometheus_dir = prometheus_dir
+        self.hutch = hutch
+
+        self.profiler = None
+
     def __enter__(self):
         return self
 
@@ -244,11 +296,14 @@ class MessageBroker(object):
 
     def launch_editor_window(self):
         editor_proc = mp.Process(
+            name='editor',
             target=run_editor_window,
             args=(self.broker_sub_addr,
                   self.graphmgr_addr,
                   self.checkpoint_pub_addr,
-                  self.load),
+                  self.load,
+                  self.prometheus_dir,
+                  self.hutch),
             daemon=True)
         editor_proc.start()
 
@@ -308,25 +363,26 @@ class MessageBroker(object):
             async with self.lock:
                 for name in dead_procs:
                     typ, proc = self.widget_procs[name]
-                    msg = fcMsgs.CreateNode(name, typ)
+
+                    state = {}
+                    if name in self.checkpoints:
+                        state = self.checkpoints[name].state
+
+                    msg = fcMsgs.CreateNode(name, typ, state)
 
                     # don't resend last message
                     del self.msgs[msg.name]
 
                     proc = mp.Process(
                         target=NodeProcess,
+                        name=msg.name,
                         args=(msg, self.broker_pub_addr, self.graphmgr_addr, self.checkpoint_sub_addr),
+                        kwargs={'library_paths': self.library_paths},
                         daemon=True
                     )
                     proc.start()
                     logger.info("restarting process: %s pid: %d", msg.name, proc.pid)
                     self.widget_procs[msg.name] = (msg.node_type, proc)
-
-                    if name in self.checkpoints:
-                        checkpoint = self.checkpoints[name]
-                        self.msgs[name] = checkpoint
-                        await self.broker_pub_sock.send_string(name, zmq.SNDMORE)
-                        await self.broker_pub_sock.send_pyobj(checkpoint)
 
     async def process_messages(self):
 
@@ -337,7 +393,9 @@ class MessageBroker(object):
             if isinstance(msg, fcMsgs.CreateNode):
                 proc = mp.Process(
                     target=NodeProcess,
+                    name=msg.name,
                     args=(msg, self.broker_pub_addr, self.graphmgr_addr, self.checkpoint_sub_addr),
+                    kwargs={'library_paths': self.library_paths},
                     daemon=True
                 )
                 proc.start()
@@ -345,14 +403,25 @@ class MessageBroker(object):
                 async with self.lock:
                     self.widget_procs[msg.name] = (msg.node_type, proc)
 
+            elif isinstance(msg, fcMsgs.Profiler):
+                if self.profiler is None:
+                    self.profiler = mp.Process(target=Profiler,
+                                               args=(self.broker_pub_addr, self.graphmgr_addr.profile, msg.name),
+                                               daemon=True)
+                    self.profiler.start()
+                    logger.info("creating process: Profiler pid: %d", self.profiler.pid)
+
+                async with self.lock:
+                    self.msgs[topic] = msg
+
+                await self.broker_pub_sock.send_string(topic, zmq.SNDMORE)
+                await self.broker_pub_sock.send_pyobj(msg)
+
             elif isinstance(msg, fcMsgs.DisplayNode):
                 await self.forward_message_to_node(topic, msg)
 
-            elif isinstance(msg, fcMsgs.NodeCheckpoint):
-                # Receive checkpoints from editor when we load a saved graph
+            elif isinstance(msg, fcMsgs.ReloadLibrary):
                 await self.forward_message_to_node(topic, msg)
-                async with self.lock:
-                    self.checkpoints[topic] = msg
 
             elif isinstance(msg, fcMsgs.CloseNode):
                 await self.forward_message_to_node(topic, msg)
@@ -368,6 +437,9 @@ class MessageBroker(object):
                     if topic in self.msgs:
                         del self.msgs[topic]
 
+            elif isinstance(msg, fcMsgs.Library):
+                self.library_paths.update(msg.paths)
+
     async def run(self):
         await asyncio.gather(self.handle_connect(),
                              self.handle_checkpoint(),
@@ -375,9 +447,9 @@ class MessageBroker(object):
                              self.monitor_processes())
 
 
-def run_client(graphmgr_addr, load):
+def run_client(graphmgr_addr, load, prometheus_dir, hutch):
     with tempfile.TemporaryDirectory() as ipcdir:
-        mb = MessageBroker(graphmgr_addr, load, ipcdir=ipcdir)
+        mb = MessageBroker(graphmgr_addr, load, ipcdir=ipcdir, prometheus_dir=prometheus_dir, hutch=hutch)
         mb.launch_editor_window()
         loop = asyncio.get_event_loop()
         task = asyncio.ensure_future(mb.run())

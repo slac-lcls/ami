@@ -1,5 +1,18 @@
 # CHANGELOG
 
+## 2.0.11 5/12/20
+* xtcav algorithm integration
+
+## 2.0.10 4/28/20
+* Fix display memory leaks
+* POP algorithm integration
+
+## 2.0.9 4/8/20
+* Save views for plots
+* Add color to histogram2d and image viewer
+* Timetool integration
+* Profiler
+
 ## 2.0.8 3/16/20
 * Add Calculator node.
 * Right click source submenu

@@ -1,19 +1,27 @@
 import abc
+import socket
+import os
+import sys
+import time
 import zmq
 import dill
+import json
 import asyncio
 import logging
 import functools
 import numpy as np
 import zmq.asyncio
+import prometheus_client as pc
 import amitypes as at
 import ami.graph_nodes as gn
 from ami.graphkit_wrapper import Graph
-from ami.data import MsgTypes, Message, Transition, CollectorMessage, Datagram, Serializer, Deserializer
+from ami.data import MsgTypes, Message, Transition, CollectorMessage, Datagram, Serializer, Deserializer, \
+    Heartbeat
 from enum import IntEnum
 
 
 logger = logging.getLogger(__name__)
+ZMQ_TOPIC_DELIM = '\0'
 
 
 class Colors:
@@ -34,6 +42,7 @@ class Ports(IntEnum):
     View = 5563
     Profile = 5564
     Sync = 5600
+    Prometheus = 9200
 
 
 class AutoName:
@@ -328,16 +337,18 @@ class ZmqHandler:
         self.serializer = Serializer()
 
     def send(self, msg):
-        self.collector.send_serialized(msg, self.serializer, flags=zmq.NOBLOCK, copy=False)
+        msg = self.serializer(msg)
+        self.collector.send_multipart(msg, flags=zmq.NOBLOCK, copy=False)
+        return self.serializer.sizeof(msg)
 
     def message(self, mtype, identity, payload):
         msg = Message(mtype=mtype, identity=identity, payload=payload)
-        self.send(msg)
+        return self.send(msg)
 
     def collector_message(self, identity, heartbeat, name, version, payload):
         msg = CollectorMessage(mtype=MsgTypes.Datagram, identity=identity, heartbeat=heartbeat,
                                name=name, version=version, payload=payload)
-        self.send(msg)
+        return self.send(msg)
 
 
 class ResultStore(ZmqHandler):
@@ -374,8 +385,10 @@ class ResultStore(ZmqHandler):
         self.stores[name].update(updates)
 
     def collect(self, identity, heartbeat):
+        size = 0
         for name, store in self.stores.items():
-            self.collector_message(identity, heartbeat, name, store.version, store.namespace)
+            size += self.collector_message(identity, heartbeat, name, store.version, store.namespace)
+        return size
 
     def version(self, name):
         return self.stores[name].version
@@ -395,20 +408,22 @@ class ContributionBuilder(abc.ABC):
         self.contribs = {}
 
     @abc.abstractmethod
-    def _complete(self, eb_key, identity):
+    def _complete(self, eb_key, identity, drop):
         pass
 
     @abc.abstractmethod
     def _update(self, eb_key, identity, *args, **kwargs):
         pass
 
-    def complete(self, eb_key, identity):
+    def complete(self, eb_key, identity, drop=False):
         if eb_key in self.pending:
-            times = self._complete(eb_key, identity)
+            times, size = self._complete(eb_key, identity, drop)
             del self.pending[eb_key]
             del self.contribs[eb_key]
             logger.debug("Completed key %s", eb_key)
-            return times
+            return times, size
+
+        return [], 0
 
     def mark(self, eb_key, eb_id):
         if 0 <= eb_id < self.num_contribs:
@@ -436,12 +451,11 @@ class GraphBuilder(ContributionBuilder):
         super().__init__(num_contribs)
         self.depth = depth
         self.color = color
-        self.latest = 0
+        self.latest = Heartbeat(0, 0)
         self.graph = None
         self.pending_graphs = {}
         self.version = None
         self.completion = completion
-        self.times = None
 
     def _init(self, name):
         if self.graph is None:
@@ -460,19 +474,31 @@ class GraphBuilder(ContributionBuilder):
         if self.graph:
             self.graph.compile(**args)
 
-    def prune(self, identity, prune_key=None):
+    def prune(self, identity, prune_key=None, drop=False):
+        times = {}
+        size = 0
         if prune_key is None:
             depth = self.depth
         elif prune_key < self.latest:
-            depth = self.latest - prune_key
+            depth = self.latest.identity - prune_key.identity
         elif prune_key > self.latest:
             depth = 0
         else:
             depth = 1
+
         if len(self.pending) > depth:
             for eb_key in reversed(sorted(self.pending.keys(), reverse=True)[depth:]):
                 logger.debug("Pruned uncompleted key %d", eb_key)
-                self.complete(eb_key, identity)
+                times, size = self.complete(eb_key, identity, drop)
+
+        return times, size
+
+    def flush(self, identity, drop=False):
+        size = self.prune(identity, self.latest.identity + 1, drop)
+        if drop and self.graph:
+            self.graph.reset()
+        self.latest = Heartbeat(0, 0)
+        return size
 
     def set_graph(self, name, ver_key, args, graph):
         self.pending_graphs[ver_key] = (False, "set", name, args, graph)
@@ -491,8 +517,8 @@ class GraphBuilder(ContributionBuilder):
                     init, cmd, name, args, obj = self.pending_graphs[version]
                     self._init(name)
                     self._edit(cmd, obj)
-                    self._compile(args)
                     del self.pending_graphs[version]
+                self._compile(args)
                 self.version = ver_key
                 return True
             else:
@@ -502,21 +528,29 @@ class GraphBuilder(ContributionBuilder):
         else:
             return False
 
-    def _complete(self, eb_key, identity):
+    def _complete(self, eb_key, identity, drop):
+        times = []
         if self.apply_graph(self.pending[eb_key].version):
             contribs = self.pending[eb_key].namespace
             self.pending[eb_key].clear()
             if self.graph:
                 for data in contribs.values():
+                    start = time.time()
                     res = self.graph(data, color=self.color)
+                    stop = time.time()
                     self.pending[eb_key].update(res)
-                    self.times = self.graph.times()
+                    exec_time = self.graph.times()
+                    if exec_time:
+                        times.append((start, stop, exec_time))
         else:
             self.pending[eb_key].clear()
-            self.times = None
 
-        self.completion(eb_key, identity, self.pending[eb_key])
-        return self.times
+        size = self.completion(eb_key, identity, self.pending[eb_key], drop)
+
+        if self.graph:
+            self.graph.heartbeat_finished()
+
+        return times, size
 
     def _update(self, eb_key, eb_id, ver_key, data):
         if eb_key not in self.pending:
@@ -536,8 +570,10 @@ class TransitionBuilder(ContributionBuilder, ZmqHandler):
         ContributionBuilder.__init__(self, num_contribs)
         ZmqHandler.__init__(self, addr, ctx)
 
-    def _complete(self, eb_key, identity):
-        self.message(MsgTypes.Transition, identity, Transition(eb_key, self.pending[eb_key]))
+    def _complete(self, eb_key, identity, drop):
+        if not drop:
+            self.message(MsgTypes.Transition, identity, Transition(eb_key, self.pending[eb_key]))
+        return [], 0
 
     def _update(self, eb_key, eb_id, payload):
         if eb_key not in self.pending:
@@ -565,8 +601,14 @@ class EventBuilder(ZmqHandler):
     def destroy(self, name):
         del self.builders[name]
 
-    def prune(self, name, identity, prune_key=None):
-        self.builders[name].prune(identity, prune_key)
+    def prune(self, name, identity, prune_key=None, drop=False):
+        return self.builders[name].prune(identity, prune_key, drop)
+
+    def flush(self, identity, drop=False):
+        pruned_heartbeats = []
+        for name, builder in self.builders.items():
+            pruned_heartbeats.append(builder.flush(identity, drop))
+        return any(pruned_heartbeats)
 
     def set_graph(self, name, ver_key, args, graph):
         if name not in self.builders:
@@ -587,11 +629,12 @@ class EventBuilder(ZmqHandler):
         if name in self.builders:
             self.destroy(name)
 
-    def complete(self, name, eb_key, identity):
-        return self.builders[name].complete(eb_key, identity)
+    def complete(self, name, eb_key, identity, drop=False):
+        return self.builders[name].complete(eb_key, identity, drop)
 
-    def completion(self, name, eb_key, identity, payload):
-        self.collector_message(identity, eb_key, name, payload.version, payload.namespace)
+    def completion(self, name, eb_key, identity, payload, drop):
+        if not drop:
+            return self.collector_message(identity, eb_key, name, payload.version, payload.namespace)
 
     def update(self, name, eb_key, eb_id, ver_key, data):
         if name not in self.builders:
@@ -641,7 +684,7 @@ class Node(abc.ABC):
             passed it creates one.
     """
 
-    def __init__(self, node, graph_addr, msg_addr, export_addr=None, ctx=None):
+    def __init__(self, node, graph_addr, msg_addr, export_addr=None, ctx=None, prometheus_dir=None, hutch=None):
         self.node = node
         if ctx is None:
             self.ctx = zmq.Context()
@@ -659,6 +702,7 @@ class Node(abc.ABC):
         self.graph_comm.add_handler("add", self.recv_graph_add)
         self.graph_comm.add_handler("del", self.recv_graph_del)
         self.graph_comm.add_handler("purge", self.recv_graph_purge)
+        self.graph_comm.add_handler("update_path", self.update_path)
 
         if export_addr is None:
             self.export_comm = None
@@ -668,6 +712,9 @@ class Node(abc.ABC):
         self.node_msg_comm = self.ctx.socket(zmq.PUSH)
         self.node_msg_comm.connect(msg_addr)
         self.serializer = Serializer()
+
+        self.prometheus_dir = prometheus_dir
+        self.hutch = hutch
 
     @property
     @abc.abstractmethod
@@ -778,12 +825,48 @@ class Node(abc.ABC):
             payload (obj): the payload of the report. This can be any arbitrary
                 object that can be serialized using dill.
         """
-        self.node_msg_comm.send_string(topic, zmq.SNDMORE)
-        self.node_msg_comm.send_string(self.name, zmq.SNDMORE)
+        self.node_msg_comm.send_string(topic, zmq.NOBLOCK | zmq.SNDMORE)
+        self.node_msg_comm.send_string(self.name, zmq.NOBLOCK | zmq.SNDMORE)
         if topic == "profile":
-            self.node_msg_comm.send_serialized(payload, self.serializer, copy=False)
+            self.node_msg_comm.send_string(payload['graph'], zmq.NOBLOCK | zmq.SNDMORE)
+            self.node_msg_comm.send_serialized(payload, self.serializer, zmq.NOBLOCK, copy=False)
         else:
-            self.node_msg_comm.send(dill.dumps(payload), copy=False)
+            self.node_msg_comm.send(dill.dumps(payload), zmq.NOBLOCK, copy=False)
+
+    def update_path(self, name, version, args, paths):
+        exists = True
+        for pth in paths:
+            if not os.path.exists(pth):
+                self.report("error", f"{pth} not accessible!")
+                exists = False
+
+        if exists:
+            sys.path.extend(paths)
+
+    def start_prometheus(self):
+        port = Ports.Prometheus
+        while True:
+            try:
+                pc.start_http_server(port)
+                break
+            except OSError:
+                port += 1
+
+        if self.prometheus_dir:
+            if not os.path.exists(self.prometheus_dir):
+                os.makedirs(self.prometheus_dir)
+            pth = f"drpami_{socket.gethostname()}_{self.name}.json"
+            pth = os.path.join(self.prometheus_dir, pth)
+            conf = [{"targets": [f"{socket.gethostname()}:{port}"]}]
+            try:
+                with open(pth, 'w') as f:
+                    json.dump(conf, f)
+            except PermissionError:
+                logging.error("Permission denied: %s", pth)
+                pass
+
+        logger.info("%s: Started Prometheus client on port: %d", self.name, port)
+        return port
 
 
 class Collector(abc.ABC):
@@ -804,9 +887,9 @@ class Collector(abc.ABC):
             passed it creates one.
     """
 
-    def __init__(self, addr, ctx=None):
+    def __init__(self, addr, ctx=None, hutch=None):
         if ctx is None:
-            self.ctx = zmq.Context()
+            self.ctx = zmq.Context(io_threads=2)
         else:
             self.ctx = ctx
         self.poller = zmq.Poller()
@@ -817,6 +900,12 @@ class Collector(abc.ABC):
         self.running = True
         self.exitcode = 0
         self.deserializer = Deserializer()
+        self.hutch = hutch
+
+        self.event_counter = pc.Counter('ami_event_count', 'Event Counter', ['hutch', 'type', 'process'])
+        self.event_time = pc.Gauge('ami_event_time_secs', 'Event Time', ['hutch', 'type', 'process'])
+        self.event_size = pc.Gauge('ami_event_size_bytes', 'Event Size', ['hutch', 'process'])
+        self.event_latency = pc.Gauge('ami_event_latency_secs', 'Event Latency', ['hutch', 'sender', 'process'])
 
     def register(self, sock, handler):
         """
@@ -866,15 +955,25 @@ class Collector(abc.ABC):
         Returns:
             The current value of the exitcode attribute of the class.
         """
+        idle_start = time.time()
+        reset_idle = False
         while self.running:
             for sock, flag in self.poller.poll():
                 if flag != zmq.POLLIN:
                     continue
+
+                self.event_time.labels(self.hutch, 'Idle', self.name).set(time.time() - idle_start)
+                reset_idle = True
+
                 if sock is self.collector:
                     msg = self.collector.recv_serialized(self.deserializer, copy=False)
                     self.process_msg(msg)
                 elif sock in self.handlers:
                     self.handlers[sock]()
+
+            if reset_idle:
+                reset_idle = False
+                idle_start = time.time()
 
         return self.exitcode
 
@@ -1400,6 +1499,16 @@ class CommHandler(abc.ABC):
         return self._request('get_versions')
 
     @property
+    def compilerArgs(self):
+        """
+        Arguments for compiling graph.
+
+        Returns:
+            Returns dictionary of graph compiler args.
+        """
+        return self._request("get_compiler_args")
+
+    @property
     def graphVersion(self):
         """
         The current graph version.
@@ -1429,8 +1538,21 @@ class CommHandler(abc.ABC):
         """
         return self._request_dill('get_metadata')
 
+    @property
+    def paths(self):
+        """
+        The current graph's python path.
+
+        Returns:
+            A list of paths.
+        """
+        return self._request("get_paths")
+
     def updateSources(self, src_cfg):
         return self._post_dill("update_sources", src_cfg)
+
+    def updatePath(self, paths):
+        return self._post_dill("update_path", paths)
 
     def fetch(self, names):
         """

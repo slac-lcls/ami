@@ -1,5 +1,124 @@
-from qtpy import QtGui, QtWidgets, QtCore
-from pyqtgraph import dockarea
+import os
+import sys
+import importlib
+import logging
+import pyqtgraph as pg
+from pyqtgraph import dockarea, FileDialog
+from pyqtgraph.Qt import QtGui, QtWidgets, QtCore
+from ami.flowchart.NodeLibrary import isNodeClass
+
+
+logger = logging.getLogger(__name__)
+
+
+class LibraryEditor(QtWidgets.QWidget):
+
+    sigApplyClicked = QtCore.Signal()
+    sigReloadClicked = QtCore.Signal(object)
+
+    def __init__(self, ctrlWidget, library):
+        super().__init__()
+
+        self.setWindowTitle("Manage Library")
+
+        self.modules = {}  # {mod : [nodes]}
+        self.paths = set()
+
+        self.ctrl = ctrlWidget
+        self.library = library
+
+        self.layout = QtWidgets.QGridLayout(self)
+
+        self.loadBtn = QtWidgets.QPushButton("Load Modules", parent=self)
+        self.loadBtn.clicked.connect(self.loadFile)
+
+        # self.reloadBtn = QtWidgets.QPushButton("Reload Selected Modules", parent=self)
+        # self.reloadBtn.clicked.connect(self.reloadFile)
+
+        self.tree = QtWidgets.QTreeWidget(parent=self)
+        self.tree.setHeaderHidden(True)
+
+        self.applyBtn = QtWidgets.QPushButton("Apply", parent=self)
+        self.applyBtn.clicked.connect(self.applyClicked)
+
+        self.layout.addWidget(self.loadBtn, 1, 1, 1, -1)
+        # self.layout.addWidget(self.reloadBtn, 1, 2, 1, 1)
+        self.layout.addWidget(self.tree, 2, 1, 1, -1)
+        self.layout.addWidget(self.applyBtn, 3, 1, 1, -1)
+
+    def loadFile(self):
+        file_filters = "*.py"
+        self.fileDialog = FileDialog(None, "Load Nodes", None, file_filters)
+        self.fileDialog.setFileMode(FileDialog.ExistingFiles)
+        self.fileDialog.filesSelected.connect(self.fileDialogFilesSelected)
+        self.fileDialog.show()
+
+    def fileDialogFilesSelected(self, pths):
+        dirs = set(map(os.path.dirname, pths))
+
+        for pth in dirs:
+            if pth not in sys.path:
+                sys.path.append(pth)
+
+        self.paths.update(pths)
+
+        for mod in pths:
+            mod = os.path.basename(mod)
+            mod = os.path.splitext(mod)[0]
+            mod = importlib.import_module(mod)
+
+            if mod in self.modules:
+                continue
+
+            nodes = [getattr(mod, name) for name in dir(mod) if isNodeClass(getattr(mod, name))]
+
+            if not nodes:
+                continue
+
+            self.modules[mod] = nodes
+
+            parent = QtWidgets.QTreeWidgetItem(self.tree, [mod.__name__])
+            parent.mod = mod
+            for node in nodes:
+                child = QtWidgets.QTreeWidgetItem(parent, [node.__name__])
+                child.mod = mod
+
+            self.tree.expandAll()
+
+    def reloadFile(self):
+        mods = set()
+        for item in self.tree.selectedItems():
+            mods.add(item.mod)
+
+        for mod in mods:
+            pg.reload.reload(mod)
+
+        self.sigReloadClicked.emit(mods)
+
+    def applyClicked(self):
+        loaded = False
+
+        for mod, nodes in self.modules.items():
+            for node in nodes:
+                try:
+                    self.library.addNodeType(node, [(mod.__name__, )])
+                    loaded = True
+                except Exception:
+                    pass
+
+        if not loaded:
+            return
+
+        self.ctrl.ui.clear_model(self.ctrl.ui.node_tree)
+        self.ctrl.ui.create_model(self.ctrl.ui.node_tree, self.library.getLabelTree(rebuild=True))
+
+        self.sigApplyClicked.emit()
+
+    def saveState(self):
+        return {'paths': list(self.paths)}
+
+    def restoreState(self, state):
+        self.fileDialogFilesSelected(state['paths'])
 
 
 class SearchProxyModel(QtCore.QSortFilterProxyModel):
@@ -34,15 +153,16 @@ def build_model():
     return model
 
 
-def build_tree(model):
-    tree = QtGui.QTreeView()
+def build_tree(model=None, parent=None):
+    tree = QtGui.QTreeView(parent=parent)
     tree.setSortingEnabled(True)
     tree.sortByColumn(0, QtCore.Qt.AscendingOrder)
     tree.setEditTriggers(QtGui.QAbstractItemView.NoEditTriggers)
     tree.setHeaderHidden(True)
     tree.setRootIsDecorated(True)
     tree.setUniformRowHeights(True)
-    tree.setModel(model)
+    if model:
+        tree.setModel(model)
     tree.setSelectionMode(QtWidgets.QAbstractItemView.SingleSelection)
     tree.setDragEnabled(True)
     return tree
@@ -58,57 +178,46 @@ class Ui_Toolbar(object):
 
         # new
         self.actionNew = QtWidgets.QAction(parent)
-        icon = QtGui.QIcon.fromTheme("document-new")
-        self.actionNew.setIcon(icon)
         self.actionNew.setIconText("New")
         self.actionNew.setObjectName("actionNew")
 
         # open
         self.actionOpen = QtWidgets.QAction(parent)
-        icon = QtGui.QIcon.fromTheme("document-open")
-        self.actionOpen.setIcon(icon)
         self.actionOpen.setIconText("Open")
         self.actionOpen.setObjectName("actionOpen")
 
         # save
         self.actionSave = QtWidgets.QAction(parent)
-        icon = QtGui.QIcon.fromTheme("document-save")
-        self.actionSave.setIcon(icon)
         self.actionSave.setIconText("Save")
         self.actionSave.setObjectName("actionSave")
 
         # save as
         self.actionSaveAs = QtWidgets.QAction(parent)
-        icon = QtGui.QIcon.fromTheme("document-save")
-        self.actionSaveAs.setIcon(icon)
         self.actionSaveAs.setIconText("Save As")
         self.actionSaveAs.setObjectName("actionSaveAs")
 
-        # configure
-        self.actionConfigure = QtWidgets.QAction(parent)
-        icon = QtGui.QIcon.fromTheme("preferences-system")
-        self.actionConfigure.setIcon(icon)
-        self.actionConfigure.setIconText("Configure")
-        self.actionConfigure.setObjectName("actionConfigure")
-
         # apply
         self.actionApply = QtWidgets.QAction(parent)
-        icon = QtGui.QIcon.fromTheme("media-playback-start")
-        self.actionApply.setIcon(icon)
         self.actionApply.setIconText("Apply")
         self.actionApply.setObjectName("actionApply")
 
+        # configure
+        self.actionConfigure = QtWidgets.QAction(parent)
+        self.actionConfigure.setIconText("Configure")
+        self.actionConfigure.setObjectName("actionConfigure")
+
+        # profile
+        # self.actionProfiler = QtWidgets.QAction(parent)
+        # self.actionProfiler.setIconText("Profiler")
+        # self.actionProfiler.setObjectName("actionProfiler")
+
         # reset
         self.actionReset = QtWidgets.QAction(parent)
-        # icon = QtGui.QIcon.fromTheme("media-playback-start")
-        # self.actionApply.setIcon(icon)
         self.actionReset.setIconText("Reset")
         self.actionReset.setObjectName("actionReset")
 
         # home
         self.actionHome = QtWidgets.QAction(parent)
-        icon = QtGui.QIcon.fromTheme("go-home")
-        self.actionHome.setIcon(icon)
         self.actionHome.setIconText("Home")
         self.actionHome.setObjectName("actionHome")
 
@@ -116,8 +225,6 @@ class Ui_Toolbar(object):
 
         # pan
         self.actionPan = QtWidgets.QAction(parent)
-        # icon = QtGui.QIcon.fromTheme("")
-        # self.actionSelect.setIcon(icon)
         self.actionPan.setIconText("Pan")
         self.actionPan.setObjectName("actionPan")
         self.actionPan.setCheckable(True)
@@ -126,8 +233,6 @@ class Ui_Toolbar(object):
 
         # select
         self.actionSelect = QtWidgets.QAction(parent)
-        icon = QtGui.QIcon.fromTheme("draw-selection")
-        self.actionSelect.setIcon(icon)
         self.actionSelect.setIconText("Select")
         self.actionSelect.setObjectName("actionSelect")
         self.actionSelect.setCheckable(True)
@@ -135,8 +240,6 @@ class Ui_Toolbar(object):
 
         # comment
         self.actionComment = QtWidgets.QAction(parent)
-        # icon = QtGui.QIcon.fromTheme("")
-        # self.actionSelect.setIcon(icon)
         self.actionComment.setIconText("Comment")
         self.actionComment.setObjectName("actionComment")
         self.actionComment.setCheckable(True)
@@ -150,6 +253,8 @@ class Ui_Toolbar(object):
         self.toolBar.addAction(self.actionConfigure)
         self.toolBar.addAction(self.actionApply)
         self.toolBar.addAction(self.actionReset)
+        # self.toolBar.addAction(self.actionProfiler)
+
         self.toolBar.insertSeparator(self.actionConfigure)
 
         self.toolBar.addAction(self.actionHome)
@@ -158,15 +263,18 @@ class Ui_Toolbar(object):
         self.toolBar.addAction(self.actionComment)
         self.toolBar.insertSeparator(self.actionHome)
 
+        widget = self.toolBar.widgetForAction(self.actionApply)
+        widget.setObjectName("actionApply")
+
         self.source_model = build_model()
         self.source_search = QtGui.QLineEdit()
         self.source_search.setPlaceholderText('Search Sources...')
-        self.source_tree = build_tree(self.source_model)
+        self.source_tree = build_tree(self.source_model, parent)
 
         self.node_model = build_model()
         self.node_search = QtGui.QLineEdit()
         self.node_search.setPlaceholderText('Search Operations...')
-        self.node_tree = build_tree(self.node_model)
+        self.node_tree = build_tree(self.node_model, parent)
 
         self.gridLayout.addWidget(self.toolBar, 0, 0, 1, -1)
 
@@ -179,12 +287,22 @@ class Ui_Toolbar(object):
         self.node_dock.addWidget(self.node_tree, 4, 0, 1, 1)
         chart.addDock(self.node_dock, 'left')
 
-        self.gridLayout.addWidget(chart, 1, 1, -1, -1)
+        self.rateLbl = QtWidgets.QLabel("")
+        self.rateLbl.setAlignment(QtCore.Qt.AlignRight | QtCore.Qt.AlignBottom)
+
+        self.libraryConfigure = QtWidgets.QPushButton("Manage Library")
+
+        self.gridLayout.addWidget(chart, 1, 1, 1, -1)
+        self.gridLayout.addWidget(self.libraryConfigure, 2, 1)
+        self.gridLayout.addWidget(self.rateLbl, 2, 2, 1, -1)
+
         self.gridLayout.setRowStretch(1, 10)
-        self.gridLayout.setColumnStretch(1, 10)
+        self.gridLayout.setColumnStretch(2, 10)
 
         self.node_search.textChanged.connect(self.node_search_text_changed)
         self.source_search.textChanged.connect(self.source_search_text_changed)
+
+        self.pending = set()
 
     def populate_tree(self, children, parent):
         for child in sorted(children):
@@ -219,3 +337,13 @@ class Ui_Toolbar(object):
     def search_text_changed(self, tree, model, text):
         model.setFilterRegExp(text)
         tree.expandAll()
+
+    def setPending(self, node):
+        self.pending.add(node.name())
+        self.toolBar.setStyleSheet("QToolButton#actionApply { background: lightgreen }")
+        self.actionApply.setToolTip(f"Pending changes on: {self.pending}")
+
+    def setPendingClear(self):
+        self.pending = set()
+        self.actionApply.setToolTip("")
+        self.toolBar.setStyleSheet("QToolButton#actionApply { background: none }")

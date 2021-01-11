@@ -1,10 +1,13 @@
 #!/usr/bin/env python
+import os
 import re
 import sys
 import zmq
 import json
 import logging
 import argparse
+import time
+import prometheus_client as pc
 from ami import LogConfig, Defaults
 from ami.comm import Ports, Colors, ResultStore, Node, AutoExport
 from ami.data import MsgTypes, Source, Message, Transition, Transitions
@@ -15,17 +18,17 @@ logger = logging.getLogger(__name__)
 
 
 class Worker(Node):
-    def __init__(self, node, src, collector_addr, graph_addr, msg_addr, export_addr):
+    def __init__(self, node, src, collector_addr, graph_addr, msg_addr, export_addr, prometheus_dir, hutch):
         """
         node : int
             a unique integer identifying this worker
         src : object
             object with an events() method that is an iterable (like psana.DataSource)
         """
-        super(__class__, self).__init__(node, graph_addr, msg_addr, export_addr)
+        super().__init__(node, graph_addr, msg_addr, export_addr, prometheus_dir=prometheus_dir, hutch=hutch)
 
         self.src = src
-
+        self.pending_src = False
         self.store = ResultStore(collector_addr, self.ctx)
 
         self.graph_comm.add_command("config", self.send_configure)
@@ -62,6 +65,8 @@ class Worker(Node):
             self.graphs[name] = None
         if name in self.store:
             self.store.clear(name)
+        if name in self.times:
+            del self.times[name]
         self.update_requests()
 
     def update_requests(self):
@@ -97,6 +102,8 @@ class Worker(Node):
             del self.graphs[name]
         if name in self.store:
             self.store.remove(name)
+        if name is self.times:
+            del self.times[name]
         self.update_requests()
 
     def recv_graph_exception(self, name, version, exception):
@@ -111,80 +118,180 @@ class Worker(Node):
         src_type = src_cfg['type']
         hb_period = src_cfg['hb_period']
         num_workers = args['num_workers']
-        logger.info("%s: Received source configuration (%s v%d)", self.name, name, version)
-        self.report("info", "Received source configuration (%s v%d)" % (name, version))
+        logger.info("%s: Received source configuration", self.name)
         try:
             src_cls = Source.find_source(src_type)
             flags = {}
-            self.src = src_cls(self.node, num_workers, hb_period, src_cfg, flags)
+            if self.src is None:
+                self.report("info", "Updated source configuration")
+                self.src = src_cls(self.node, num_workers, hb_period, src_cfg, flags)
+                self.pending_src = False
+            else:
+                self.pending_src = True
+                self.report("info", "Pending source configuration")
+                self.source_args = {'name': name, 'version': version, 'args': args, 'src_cfg': src_cfg}
         except Exception as e:
             self.report("error", e)
             logger.error("%s: Error configuring source", self.name)
 
+    def collect(self, heartbeat):
+        # send the data from the store to collector
+        size = self.store.collect(self.node, heartbeat)
+
+        # update the profiler data
+        # if self.times:
+        #     for name, exec_times in self.times.items():
+        #         self.report("profile", {'graph': name,
+        #                                 'heartbeat': heartbeat,
+        #                                 'times': exec_times,
+        #                                 'version': self.store.version(name)})
+        #     self.times = {}
+
+        if self.event_rate:
+            self.event_rate['num_events'] = self.num_events
+            self.report("event_rate", self.event_rate)
+            self.event_rate = {}
+
+        # clear the data from the store after collecting
+        self.store.clear()
+        return size
+
     def run(self):
-        times = {}
+        self.times = {}
+        self.event_rate = {}
+        self.num_events = 1
+        self.start_prometheus()
 
         while self.src is None:
             logger.info("%s: Waiting for source configuration", self.name)
             self.graph_comm.recv(True)
 
-        for msg in self.src.events():
+        event_counter = pc.Counter('ami_event_count', 'Event Counter', ['hutch', 'type', 'process'])
+        event_time = pc.Gauge('ami_event_time_secs', 'Event Time', ['hutch', 'type', 'process'])
+        event_size = pc.Gauge('ami_event_size_bytes', 'Event Size', ['hutch', 'process'])
 
-            # check to see if the graph has been reconfigured after update
-            if msg.mtype == MsgTypes.Heartbeat:
-                self.store.collect(self.node, msg.payload)
+        idle_start = time.time()
+        idle_stop = time.time()
+        heartbeat_time = 0
 
-                # clear the data from the store after collecting
-                self.store.clear()
-                # check if there are graph updates
-                while True:
-                    try:
-                        self.graph_comm.recv(False)
-                    except zmq.Again:
-                        break
-                if times:
-                    self.report("profile", times)
-                    times = {}
+        while True:
+            for msg in self.src.events():
+                idle_stop = time.time()
+                event_time.labels(self.hutch, 'Idle', self.name).set(idle_stop - idle_start)
 
-                while True:
-                    try:
-                        name, data = self.export_comm.recv(False)
-                        self.exports[name] = {AutoExport.unmangle(k): v
-                                              for k, v in data.items() if k in self.src.requested_names}
-                    except zmq.Again:
-                        break
-            elif msg.mtype == MsgTypes.Datagram:
-                for name, graph in self.graphs.items():
-                    try:
+                # check to see if the graph has been reconfigured after update
+                if msg.mtype == MsgTypes.Heartbeat:
+                    heartbeat_start = time.time()
+                    size = self.collect(msg.payload)
+
+                    for name, graph in self.graphs.items():
                         if graph:
-                            if name in self.exports:
-                                msg.payload.update(self.exports[name])
-                            graph_result = graph(msg.payload, color=Colors.Worker)
-                            self.store.update(name, graph_result)
-                            if name not in times:
-                                times[name] = []
-                            times[name].append(graph.times())
-                    except Exception as e:
-                        logger.exception("%s: Failure encountered while executing graph (%s, v%d):",
-                                         self.name, name, self.store.version(name))
-                        self.report("error", e)
-                        logger.error("%s: Purging graph (%s v%d)", self.name, name, self.store.version(name))
-                        self.clear_graph(name)
-                        self.report("purge", name)
-            else:
+                            graph.heartbeat_finished()
+
+                    # check if there are graph updates
+                    while True:
+                        try:
+                            self.graph_comm.recv(False)
+                        except zmq.Again:
+                            break
+
+                    while True:
+                        try:
+                            name, data = self.export_comm.recv(False)
+                            self.exports[name] = {AutoExport.unmangle(k): v
+                                                  for k, v in data.items() if k in self.src.requested_names}
+                        except zmq.Again:
+                            break
+
+                    event_counter.labels(self.hutch, 'Heartbeat', self.name).inc()
+
+                    if self.pending_src:
+                        break
+
+                    heartbeat_stop = time.time()
+                    heartbeat_time += heartbeat_stop - heartbeat_start
+                    event_time.labels(self.hutch, 'Heartbeat', self.name).set(heartbeat_time)
+                    event_size.labels(self.hutch, self.name).set(size)
+                    heartbeat_time = 0
+
+                elif msg.mtype == MsgTypes.Datagram:
+                    datagram_start = time.time()
+
+                    if any(v is None for k, v in msg.payload.items()):
+                        event_counter.labels(self.hutch, 'Partial', self.name).inc()
+
+                    for name, graph in self.graphs.items():
+                        try:
+                            if graph:
+                                if name in self.exports:
+                                    msg.payload.update(self.exports[name])
+
+                                start = time.time()
+                                graph_result = graph(msg.payload, color=Colors.Worker)
+                                stop = time.time()
+
+                                self.store.update(name, graph_result)
+
+                                if name not in self.event_rate:
+                                    self.event_rate[name] = []
+
+                                self.event_rate[name].append((start, stop))
+
+                                if name not in self.times:
+                                    self.times[name] = []
+
+                                self.times[name].append((start, stop, graph.times()))
+
+                        except Exception as e:
+                            logger.exception("%s: Failure encountered while executing graph (%s, v%d):",
+                                             self.name, name, self.store.version(name))
+                            self.report("error", e)
+                            logger.error("%s: Purging graph (%s v%d)", self.name, name, self.store.version(name))
+                            self.clear_graph(name)
+                            self.report("purge", name)
+
+                    self.num_events += 1
+                    event_counter.labels(self.hutch, 'Datagram', self.name).inc()
+                    datagram_duration = time.time() - datagram_start
+                    event_time.labels(self.hutch, 'Datagram', self.name).set(datagram_duration)
+                    heartbeat_time += datagram_duration
+
+                elif msg.mtype == MsgTypes.Transition:
+                    if msg.payload.ttype == Transitions.Configure:
+                        for name, graph in self.graphs.items():
+                            if graph:
+                                graph.reset()
+                    elif msg.payload.ttype == Transitions.Unconfigure:
+                        if self.src.heartbeat is not None:
+                            self.collect(self.src.heartbeat)
+
+                    # forward the transition
+                    self.store.send(msg)
+                    event_counter.labels(self.hutch, 'Transition', self.name).inc()
+                else:
+                    self.store.send(msg)
+                    event_counter.labels(self.hutch, 'Other', self.name).inc()
+
+                idle_start = time.time()
+
+            if self.pending_src:
+                msg = self.src.unconfigure()
                 self.store.send(msg)
+                self.src = None
+                self.update_sources(**self.source_args)
 
 
-def run_worker(num, num_workers, hb_period, source, collector_addr, graph_addr, msg_addr, export_addr, flags=None):
+def run_worker(num, num_workers, hb_period, source, collector_addr, graph_addr, msg_addr, export_addr,
+               flags=None, prometheus_dir=None, hutch=None):
 
-    logger.info('Starting worker # %d, sending to collector at %s', num, collector_addr)
+    logger.info('Starting worker # %d, sending to collector at %s PID: %d', num, collector_addr, os.getpid())
 
     src = None
     if source is not None:
         src_type = source[0]
         if isinstance(source[1], dict):
             src_cfg = source[1]
-        else:
+        elif source[1].endswith('.json'):
             try:
                 with open(source[1], 'r') as cnf:
                     src_cfg = json.load(cnf)
@@ -194,6 +301,12 @@ def run_worker(num, num_workers, hb_period, source, collector_addr, graph_addr, 
             except json.decoder.JSONDecodeError:
                 logger.exception("worker%03d: problem parsing json file (%s):", num, source[1])
                 return 1
+        elif src_type == 'psana':
+            src_cfg = {}
+            cfg = source[1].split(',')
+            for c in cfg:
+                k, v = c.split('=')
+                src_cfg[k] = v
 
         src_cls = Source.find_source(src_type)
         if src_cls is not None:
@@ -206,8 +319,30 @@ def run_worker(num, num_workers, hb_period, source, collector_addr, graph_addr, 
             logger.critical("worker%03d: unknown data source type: %s", num, source[0])
             return 1
 
-    with Worker(num, src, collector_addr, graph_addr, msg_addr, export_addr) as worker:
+    with Worker(num, src, collector_addr, graph_addr, msg_addr, export_addr, prometheus_dir, hutch) as worker:
         return worker.run()
+
+
+def parse_args(args):
+    flags = {}
+    for flag in args.flags:
+        try:
+            key, value = flag.split('=')
+            flags[key] = value
+        except ValueError:
+            logger.exception("Problem parsing data source flag %s", flag)
+
+    if args.source is not None:
+        src_url_match = re.match('(?P<prot>.*)://(?P<body>.*)', args.source)
+        if src_url_match:
+            src_cfg = src_url_match.groups()
+        else:
+            logger.critical("Invalid data source config string: %s", args.source)
+            return 1
+    else:
+        src_cfg = None
+
+    return flags, src_cfg
 
 
 def main():
@@ -279,7 +414,7 @@ def main():
     parser.add_argument(
         '-f',
         '--flags',
-        nargs='*',
+        action='append',
         default=[],
         help='extra flags as key=value pairs that are passed to the data source'
     )
@@ -296,6 +431,18 @@ def main():
     )
 
     parser.add_argument(
+        '--prometheus-dir',
+        help='directory for prometheus configuration',
+        default=None
+    )
+
+    parser.add_argument(
+        '--hutch',
+        help='hutch for prometheus label',
+        default=None
+    )
+
+    parser.add_argument(
         'source',
         nargs='?',
         metavar='SOURCE',
@@ -307,7 +454,6 @@ def main():
     graph_addr = "tcp://%s:%d" % (args.host, args.graph)
     msg_addr = "tcp://%s:%d" % (args.host, args.message)
     export_addr = "tcp://%s:%d" % (args.host, args.export)
-    flags = {}
 
     log_handlers = [logging.StreamHandler()]
     if args.log_file is not None:
@@ -316,22 +462,7 @@ def main():
     logging.basicConfig(format=LogConfig.Format, level=log_level, handlers=log_handlers)
 
     try:
-        for flag in args.flags:
-            try:
-                key, value = flag.split('=')
-                flags[key] = value
-            except ValueError:
-                logger.exception("Problem parsing data source flag %s", flag)
-
-        if args.source is not None:
-            src_url_match = re.match('(?P<prot>.*)://(?P<body>.*)', args.source)
-            if src_url_match:
-                src_cfg = src_url_match.groups()
-            else:
-                logger.critical("Invalid data source config string: %s", args.source)
-                return 1
-        else:
-            src_cfg = None
+        flags, src_cfg = parse_args(args)
 
         return run_worker(args.node_num,
                           args.num_workers,
@@ -341,7 +472,9 @@ def main():
                           graph_addr,
                           msg_addr,
                           export_addr,
-                          flags)
+                          flags,
+                          args.prometheus_dir,
+                          args.hutch)
     except KeyboardInterrupt:
         logger.info("Worker killed by user...")
         return 0

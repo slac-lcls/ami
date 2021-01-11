@@ -19,8 +19,10 @@ def run_console(name, addr, load):
         'banner2': " - using manager at %s\n - use 'amicli?' for help\n" % addr,
     }
     exec_lines = [
+        'import sys',
         'from ami.comm import GraphCommHandler',
         'amicli = GraphCommHandler("%s", "%s")' % (name, addr),
+        'sys.path.extend(amicli.paths)'
     ]
     if load is not None:
         exec_lines.append('amicli.load("%s")' % load)

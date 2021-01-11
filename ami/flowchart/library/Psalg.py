@@ -1,7 +1,9 @@
 from pyqtgraph.Qt import QtGui, QtWidgets
-from amitypes import Array1d, Array2d
-from ami.flowchart.Node import NodeGraphicsItem
-from ami.flowchart.library.common import CtrlNode, MAX
+from amitypes import DataSource, Detector, Array1d, Array2d
+from ami.flowchart.Node import Node, NodeGraphicsItem
+from ami.flowchart.Units import ureg
+from ami.flowchart.library.common import CtrlNode
+from ami.flowchart.library.Editors import ChannelEditor
 import ami.graph_nodes as gn
 import numpy as np
 import typing
@@ -17,14 +19,14 @@ try:
         """
 
         nodeName = "CFD"
-        uiTemplate = [('Sample Interval', 'doubleSpin', {'value': 1, 'min': 0.01, 'max': MAX}),
-                      ('horpos', 'doubleSpin', {'value': 0, 'min': 0, 'max': MAX}),
-                      ('gain', 'doubleSpin', {'value': 1, 'min': 0.01, 'max': MAX}),
-                      ('offset', 'doubleSpin', {'value': 0, 'min': 0, 'max': MAX}),
-                      ('delay', 'intSpin', {'value': 1, 'min': 0, 'max': MAX}),
-                      ('walk', 'doubleSpin', {'value': 0, 'min': 0, 'max': MAX}),
-                      ('threshold', 'doubleSpin', {'value': 0, 'min': 0, 'max': MAX}),
-                      ('fraction', 'doubleSpin', {'value': 0.5, 'min': 0, 'max': MAX})]
+        uiTemplate = [('Sample Interval', 'doubleSpin', {'value': 1, 'min': 0.01}),
+                      ('horpos', 'doubleSpin', {'value': 0, 'min': 0}),
+                      ('gain', 'doubleSpin', {'value': 1, 'min': 0.01}),
+                      ('offset', 'doubleSpin', {'value': 0, 'min': 0}),
+                      ('delay', 'intSpin', {'value': 1, 'min': 0}),
+                      ('walk', 'doubleSpin', {'value': 0, 'min': 0}),
+                      ('threshold', 'doubleSpin', {'value': 0, 'min': 0}),
+                      ('fraction', 'doubleSpin', {'value': 0.5, 'min': 0})]
 
         def __init__(self, name):
             super().__init__(name, terminals={'In': {'io': 'in', 'ttype': Array1d},
@@ -33,22 +35,22 @@ try:
         def to_operation(self, inputs, conditions={}):
             outputs = self.output_vars()
 
-            sampleInterval = self.Sample_Interval
-            horpos = self.horpos
-            gain = self.gain
-            offset = self.offset
-            delay = self.delay
-            walk = self.walk
-            threshold = self.threshold
-            fraction = self.fraction
+            sampleInterval = self.values['Sample Interval']
+            horpos = self.values['horpos']
+            gain = self.values['gain']
+            offset = self.values['offset']
+            delay = self.values['delay']
+            walk = self.values['walk']
+            threshold = self.values['threshold']
+            fraction = self.values['fraction']
 
             def cfd_func(waveform):
                 return cfd.cfd(sampleInterval, horpos, gain, offset, waveform, delay, walk, threshold, fraction)
 
             node = gn.Map(name=self.name()+"_operation",
-                          condition_needs=list(conditions.values()), inputs=list(inputs.values()), outputs=outputs,
-                          func=cfd_func,
-                          parent=self.name())
+                          condition_needs=conditions,
+                          inputs=inputs, outputs=outputs,
+                          func=cfd_func, parent=self.name())
             return node
 
 except ImportError as e:
@@ -57,24 +59,6 @@ except ImportError as e:
 try:
     import psana.hexanode.WFPeaks as psWFPeaks
 
-    def build_layout(channels):
-        template = [('num chans', 'combo', {'values': ["5"]}),
-                    ('num hits', 'intSpin', {'value': 16, 'min': 1, 'max': MAX})]
-
-        for channel in channels:
-            channel_group = [('delay', 'doubleSpin', {'group': channel}),
-                             ('fraction', 'doubleSpin', {'group': channel}),
-                             ('offset', 'doubleSpin', {'group': channel}),
-                             ('polarity', 'combo', {'values': ["Negative"], 'group': channel}),
-                             ('sample_interval', 'doubleSpin', {'group': channel}),
-                             ('threshold', 'doubleSpin', {'group': channel}),
-                             ('timerange_high', 'doubleSpin', {'group': channel}),
-                             ('timerange_low', 'doubleSpin', {'group': channel}),
-                             ('walk', 'doubleSpin', {'group': channel})]
-            template.extend(channel_group)
-
-        return template
-
     class WFPeaks(CtrlNode):
 
         """
@@ -82,10 +66,6 @@ try:
         """
 
         nodeName = "WFPeaks"
-        channels = ['mcp', 'x1', 'x2', 'y1', 'y2']
-        channel_attrs = ['delay', 'fraction', 'offset', 'polarity', 'sample_interval',
-                         'threshold', 'timerange_high', 'timerange_low', 'walk']
-        uiTemplate = build_layout(channels)
 
         def __init__(self, name):
             super().__init__(name, terminals={'Times': {'io': 'in', 'ttype': Array2d},
@@ -94,19 +74,31 @@ try:
                                               'Index': {'io': 'out', 'ttype': Array2d},
                                               'Values': {'io': 'out', 'ttype': Array2d},
                                               'Peak Times': {'io': 'out', 'ttype': Array2d}})
+            self.values = {}
+
+        def display(self, topics, terms, addr, win, **kwargs):
+            if self.widget is None:
+                self.widget = ChannelEditor(parent=win)
+                self.values = self.widget.values
+                self.widget.sigStateChanged.connect(self.state_changed)
+
+            return self.widget
 
         def to_operation(self, inputs, conditions={}):
             outputs = self.output_vars()
+            numchs = len(self.widget.channel_groups)
+            cfdpars = {'numchs': numchs,
+                       'numhits': self.values['num hits'],
+                       'DLD': self.values['DLD'],
+                       'version': 4,
+                       'cfd_wfbinbeg': self.values['cfd_wfbinbeg'],
+                       'cfd_wfbinend': self.values['cfd_wfbinend']}
 
-            cfdpars = {'numchs': int(self.num_chans),
-                       'numhits': self.num_hits}
+            paramsCFD = {}
+            for chn in range(0, numchs):
+                paramsCFD[chn] = self.values[f"Channel {chn}"]
 
-            for channel in WFPeaks.channels:
-                attrs = {}
-                for attr in WFPeaks.channel_attrs:
-                    attrs[attr] = getattr(self, attr+'_'+channel)
-                cfdpars[channel] = attrs
-
+            cfdpars['paramsCFD'] = paramsCFD
             wfpeaks = psWFPeaks.WFPeaks(**cfdpars)
 
             def peakFinder(wts, wfs):
@@ -114,7 +106,8 @@ try:
                 return peaks
 
             node = gn.Map(name=self.name()+"_operation",
-                          condition_needs=list(conditions.values()), inputs=list(inputs.values()), outputs=outputs,
+                          condition_needs=conditions,
+                          inputs=inputs, outputs=outputs,
                           func=peakFinder, parent=self.name())
             return node
 
@@ -129,9 +122,6 @@ try:
         def __call__(self, nev, nhits, pktsec, calib):
             if self.params['consts'] != calib:
                 self.params['consts'] = calib
-                self.proc = None
-
-            if self.proc is None:
                 self.proc = psfDLD.DLDProcessor(**self.params)
 
             r = self.proc.xyrt_list(nev, nhits, pktsec)
@@ -149,11 +139,11 @@ try:
 
         nodeName = "Hexanode"
         uiTemplate = [('num chans', 'combo', {'values': ["5", "7"]}),
-                      ('num hits', 'intSpin', {'value': 16, 'min': 1, 'max': MAX}),
+                      ('num hits', 'intSpin', {'value': 16, 'min': 1}),
                       ('verbose', 'check', {'checked': False})]
 
         def __init__(self, name):
-            super().__init__(name, terminals={'Event Number': {'io': 'in', 'ttype': int},
+            super().__init__(name, terminals={'Event Number': {'io': 'in', 'ttype': float},
                                               'Num of Hits': {'io': 'in', 'ttype': Array1d},
                                               'Peak Times': {'io': 'in', 'ttype': Array2d},
                                               'Calib': {'io': 'in', 'ttype': typing.Dict},
@@ -165,14 +155,137 @@ try:
         def to_operation(self, inputs, conditions={}):
             outputs = self.output_vars()
 
-            dldpars = {'numchs': int(self.num_chans),
-                       'numhits': self.num_hits,
-                       'verbose': self.verbose,
+            dldpars = {'numchs': int(self.values['num chans']),
+                       'numhits': self.values['num hits'],
+                       'verbose': self.values['verbose'],
                        'consts': None}
 
             node = gn.Map(name=self.name()+"_operation",
-                          condition_needs=list(conditions.values()), inputs=list(inputs.values()), outputs=outputs,
+                          condition_needs=conditions,
+                          inputs=inputs, outputs=outputs,
                           func=DLDProc(**dldpars), parent=self.name())
+
+            return node
+
+    import psana.hexanode.HitFinder as psfHitFinder
+
+    class HitFinder(CtrlNode):
+
+        """
+        HitFinder
+        """
+
+        nodeName = "HitFinder"
+        uiTemplate = [('runtime_u', 'doubleSpin'),
+                      ('runtime_v', 'doubleSpin'),
+                      ('tsum_avg_u', 'doubleSpin'),
+                      ('tsum_hw_u', 'doubleSpin'),
+                      ('tsum_avg_v', 'doubleSpin'),
+                      ('tsum_hw_v', 'doubleSpin'),
+                      ('f_u', 'doubleSpin'),
+                      ('f_v', 'doubleSpin'),
+                      ('Rmax', 'doubleSpin')]
+
+        def __init__(self, name):
+            super().__init__(name, terminals={'Num of Hits': {'io': 'in', 'ttype': Array1d},
+                                              'Peak Times': {'io': 'in', 'ttype': Array2d},
+                                              'X': {'io': 'out', 'ttype': Array1d},
+                                              'Y': {'io': 'out', 'ttype': Array1d},
+                                              'T': {'io': 'out', 'ttype': Array1d}})
+
+        def to_operation(self, inputs, conditions={}):
+            outputs = self.output_vars()
+
+            HF = psfHitFinder.HitFinder(self.values)
+
+            def func(nhits, pktsec):
+                HF.FindHits(pktsec[4, :nhits[4]],
+                            pktsec[0, :nhits[0]],
+                            pktsec[1, :nhits[1]],
+                            pktsec[2, :nhits[2]],
+                            pktsec[3, :nhits[3]])
+                return HF.GetXYT()
+
+            node = gn.Map(name=self.name()+"_operation",
+                          condition_needs=conditions,
+                          inputs=inputs, outputs=outputs,
+                          func=func,
+                          parent=self.name())
+
+            return node
+
+except ImportError as e:
+    print(e)
+
+try:
+    import psana.xtcav.LasingOnCharacterization as psLOC
+
+    class LOCProc():
+
+        def __init__(self, **params):
+            self.params = params
+            self.proc = None
+            self.dets = None
+            self.src_key = 0
+
+        def __call__(self, src, cam, pars):
+            time = None
+            power = None
+            agreement = None
+            pulse = None
+
+            if self.proc is None or self.src_key != src.key:
+                if src.cfg['type'] == 'psana':
+                    self.src_key = src.key
+                    self.dets = psLOC.setDetectors(src.run, camera=cam.det, xtcavpars=pars.det)
+                    self.proc = psLOC.LasingOnCharacterization(self.params, src.run, self.dets)
+                else:
+                    raise NotImplementedError("XTCAVLasingOn does not support the %s source type!" % src.cfg['type'])
+
+            if self.proc.processEvent(src.evt):
+                time, power, agreement, pulse = self.proc.resultsProcessImage()
+
+            return time, power, agreement, pulse
+
+    class XTCAVLasingOn(CtrlNode):
+
+        """
+        XTCAVLasingOn
+        """
+
+        nodeName = "XTCAVLasingOn"
+        uiTemplate = [('num bunches', 'intSpin', {'value': 1, 'min': 1}),
+                      ('snr filter', 'doubleSpin', {'value': 10.0, 'min': 0}),
+                      ('roi expand', 'doubleSpin', {'value': 1.0}),
+                      ('roi fraction', 'doubleSpin', {'value': 0.001, 'min': 0, 'max': 1}),
+                      ('island split method',  'combo', {'values': ["scipyLabel", "contourLabel"]}),
+                      ('island split par1', 'doubleSpin', {'value': 3.0}),
+                      ('island split par2', 'doubleSpin', {'value': 5.0})]
+
+        def __init__(self, name):
+            super().__init__(name, terminals={'src': {'io': 'in', 'ttype': DataSource},
+                                              'cam': {'io': 'in', 'ttype': Detector},
+                                              'pars': {'io': 'in', 'ttype': Detector},
+                                              'time': {'io': 'out', 'ttype': Array2d, 'unit': ureg.femtosecond},
+                                              'power': {'io': 'out', 'ttype': Array2d, 'unit': ureg.gigawatt},
+                                              'agreement': {'io': 'out', 'ttype': float},
+                                              'pulse': {'io': 'out', 'ttype': Array1d}})
+
+        def to_operation(self, inputs, conditions={}):
+            outputs = self.output_vars()
+
+            locpars = {'num_bunches': self.values['num bunches'],
+                       'snr_filter': self.values['snr filter'],
+                       'roi_expand': self.values['roi expand'],
+                       'roi_fraction': self.values['roi fraction'],
+                       'island_split_method': self.values['island split method'],
+                       'island_split_par1': self.values['island split par1'],
+                       'island_split_par2': self.values['island split par2']}
+
+            node = gn.Map(name=self.name()+"_operation",
+                          condition_needs=conditions,
+                          inputs=inputs, outputs=outputs,
+                          func=LOCProc(**locpars), parent=self.name())
 
             return node
 
@@ -189,8 +302,8 @@ try:
         """
 
         nodeName = "PeakFinder1D"
-        uiTemplate = [('threshold lo', 'doubleSpin', {'value': 0, 'min': -MAX, 'max': MAX}),
-                      ('threshold hi', 'doubleSpin', {'value': 1, 'min': -MAX, 'max': MAX})]
+        uiTemplate = [('threshold lo', 'doubleSpin', {'value': 0}),
+                      ('threshold hi', 'doubleSpin', {'value': 1})]
 
         def __init__(self, name):
             super().__init__(name, terminals={"Waveform": {'io': 'in', 'ttype': Array1d},
@@ -200,8 +313,8 @@ try:
         def to_operation(self, inputs, conditions={}):
             outputs = self.output_vars()
 
-            threshold_lo = self.threshold_lo
-            threshold_hi = self.threshold_hi
+            threshold_lo = self.values['threshold lo']
+            threshold_hi = self.values['threshold hi']
 
             @jit(nopython=True)
             def peakfinder1d(waveform):
@@ -247,7 +360,8 @@ try:
                 return np.array(centroids), np.array(widths)
 
             node = gn.Map(name=self.name()+"_operation",
-                          condition_needs=list(conditions.values()), inputs=list(inputs.values()), outputs=outputs,
+                          condition_needs=conditions,
+                          inputs=inputs, outputs=outputs,
                           func=peakfinder1d, parent=self.name())
             return node
 
@@ -269,7 +383,6 @@ try:
             actions = self.menu.actions()
             addInput = actions[2]
 
-            self.menu.removeAction(addInput)
             self.output_group = QtWidgets.QActionGroup(self.menu)
 
             for attr in peak_attrs:
@@ -285,6 +398,28 @@ try:
             self.node.addTerminal(action.attr, io='out', ttype=Array1d, removable=True)
             self.buildMenu(reset=True)
 
+    class PeakfinderAlgos():
+
+        def __init__(self, constructor_params={}, call_params={}, outputs=[]):
+            self.constructor_params = constructor_params
+            self.call_params = call_params
+            self.outputs = outputs
+            self.proc = None
+
+        def __call__(self, img):
+            if self.proc is None:
+                self.proc = peak_finder_algos(pbits=0)
+                self.proc.set_peak_selection_parameters(**self.constructor_params)
+
+            mask = np.ones(img.shape, dtype=np.uint16)
+            peaks = self.proc.peak_finder_v4r3_d2(img, mask, **self.call_params)
+
+            outputs = []
+            for output in self.outputs:
+                outputs.append(np.array(list(map(lambda peak: getattr(peak, output), peaks))))
+
+            return outputs
+
     class PeakFinderV4R3(CtrlNode):
 
         """
@@ -292,39 +427,17 @@ try:
         """
 
         nodeName = "PeakFinderV4R3"
-        uiTemplate = [('npix min', 'doubleSpin', {'value': 20, 'min': -MAX, 'max': MAX}),
-                      ('npix max', 'doubleSpin', {'value': 25, 'min': -MAX, 'max': MAX}),
-                      ('amax thr', 'doubleSpin', {'value': 0, 'min': -MAX, 'max': MAX}),
-                      ('atot thr', 'doubleSpin', {'value': 0, 'min': -MAX, 'max': MAX}),
-                      ('son min', 'doubleSpin', {'value': 0, 'min': -MAX, 'max': MAX}),
+        uiTemplate = [('npix min', 'doubleSpin', {'value': 20}),
+                      ('npix max', 'doubleSpin', {'value': 25}),
+                      ('amax thr', 'doubleSpin', {'value': 0}),
+                      ('atot thr', 'doubleSpin', {'value': 0}),
+                      ('son min', 'doubleSpin', {'value': 0}),
                       # pass to peak_finder_v4r3_d2
-                      ('thr low', 'doubleSpin', {'value': 35, 'min': -MAX, 'max': MAX}),
-                      ('thr high', 'doubleSpin', {'value': 100, 'min': -MAX, 'max': MAX}),
-                      ('rank', 'doubleSpin', {'value': 2, 'min': -MAX, 'max': MAX}),
-                      ('r0', 'doubleSpin', {'value': 4, 'min': -MAX, 'max': MAX}),
-                      ('dr', 'doubleSpin', {'value': 0.05, 'min': -MAX, 'max': MAX})]
-
-        class PeakfinderAlgos():
-
-            def __init__(self, constructor_params={}, call_params={}, outputs=[]):
-                self.constructor_params = constructor_params
-                self.call_params = call_params
-                self.outputs = outputs
-                self.proc = None
-
-            def __call__(self, img):
-                if self.proc is None:
-                    self.proc = peak_finder_algos(pbits=0)
-                    self.proc.set_peak_selection_parameters(**self.constructor_params)
-
-                mask = np.ones(img.shape, dtype=np.uint16)
-                peaks = self.proc.peak_finder_v4r3_d2(img, mask, **self.call_params)
-
-                outputs = []
-                for output in self.outputs:
-                    outputs.append(np.array(list(map(lambda peak: getattr(peak, output), peaks))))
-
-                return outputs
+                      ('thr low', 'doubleSpin', {'value': 35}),
+                      ('thr high', 'doubleSpin', {'value': 100}),
+                      ('rank', 'doubleSpin', {'value': 2}),
+                      ('r0', 'doubleSpin', {'value': 4}),
+                      ('dr', 'doubleSpin', {'value': 0.05})]
 
         def __init__(self, name):
             super().__init__(name, terminals={'Image': {'io': 'in', 'ttype': Array2d},
@@ -343,22 +456,78 @@ try:
         def to_operation(self, inputs, conditions={}):
             outputs = self.output_vars()
 
-            constructor_params = {'npix_min': self.npix_min,
-                                  'npix_max': self.npix_max,
-                                  'amax_thr': self.amax_thr,
-                                  'atot_thr': self.atot_thr,
-                                  'son_min': self.son_min}
+            constructor_params = {'npix_min': self.values['npix min'],
+                                  'npix_max': self.values['npix max'],
+                                  'amax_thr': self.values['amax thr'],
+                                  'atot_thr': self.values['atot thr'],
+                                  'son_min': self.values['son min']}
 
-            call_params = {'thr_low': self.thr_low,
-                           'thr_high': self.thr_high,
-                           'rank': self.rank,
-                           'r0': self.r0,
-                           'dr': self.dr}
+            call_params = {'thr_low': self.values['thr low'],
+                           'thr_high': self.values['thr high'],
+                           'rank': self.values['rank'],
+                           'r0': self.values['r0'],
+                           'dr': self.values['dr']}
 
             node = gn.Map(name=self.name()+"_operation",
-                          condition_needs=list(conditions.values()), inputs=list(inputs.values()), outputs=outputs,
-                          func=self.PeakfinderAlgos(constructor_params, call_params, list(self.outputs().keys())),
+                          condition_needs=conditions,
+                          inputs=inputs, outputs=outputs,
+                          func=PeakfinderAlgos(constructor_params, call_params, list(self.outputs().keys())),
                           parent=self.name())
+
+            return node
+
+except ImportError as e:
+    print(e)
+
+
+try:
+    from psana.pyalgos.generic import edgefinder
+
+    class EdgeFinderProc():
+
+        def __init__(self, calibconsts={}):
+            self.calibconsts = calibconsts
+            self.proc = None
+
+        def __call__(self, image, iir, calib):
+
+            if self.calibconsts.keys() != calib.keys():
+                self.calibconsts = calib
+                self.proc = edgefinder.EdgeFinder(self.calibconsts)
+            elif all(np.array_equal(self.calibconsts[key], calib[key]) for key in calib):
+                self.calibconsts = calib
+                self.proc = edgefinder.EdgeFinder(self.calibconsts)
+
+            r = self.proc(image, iir)
+            if r:
+                return r.edge, r.fwhm, r.amplitude, r.amplitude_next, r.ref_amplitude
+            return np.nan, np.nan, np.nan, np.nan, np.nan
+
+    class EdgeFinder(Node):
+
+        """
+        psana edgefinder
+        """
+
+        nodeName = "EdgeFinder"
+
+        def __init__(self, name):
+            super().__init__(name, terminals={'Image': {'io': 'in', 'ttype': Array1d},
+                                              'IIR': {'io': 'in', 'ttype': Array1d},
+                                              'Calib': {'io': 'in', 'ttype': typing.Dict},
+                                              'edge': {'io': 'out', 'ttype': float},
+                                              'fwhm': {'io': 'out', 'ttype': float},
+                                              'amplitude': {'io': 'out', 'ttype': float},
+                                              'amplitude_next': {'io': 'out', 'ttype': float},
+                                              'ref_amplitude': {'io': 'out', 'ttype': float}})
+
+        def to_operation(self, inputs, conditions={}):
+            outputs = self.output_vars()
+
+            node = gn.Map(name=self.name()+"_operation",
+                          condition_needs=conditions,
+                          inputs=inputs, outputs=outputs,
+                          func=EdgeFinderProc({}), parent=self.name())
 
             return node
 

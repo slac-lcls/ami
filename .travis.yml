@@ -1,0 +1,48 @@
+language: generic
+
+dist:
+  - xenial
+
+services:
+  - xvfb
+
+env:
+  - PYVER="3.7"
+
+os:
+  - linux
+#  - osx
+
+branches:
+  only:
+    - master
+
+install:
+  - if [[ $TRAVIS_OS_NAME == osx ]]; then
+      echo "134.79.138.124 pswww.slac.stanford.edu" | sudo tee -a /etc/hosts;
+      wget https://repo.continuum.io/miniconda/Miniconda3-latest-MacOSX-x86_64.sh -O miniconda.sh;
+    else
+      wget https://repo.continuum.io/miniconda/Miniconda3-latest-Linux-x86_64.sh -O miniconda.sh;
+    fi
+  - bash miniconda.sh -b -p $HOME/miniconda
+  - source "$HOME/miniconda/etc/profile.d/conda.sh"
+  - conda config --set always_yes yes --set changeps1 no
+  - conda config --add channels lcls-ii
+  - conda config --append channels conda-forge
+  - conda info -a
+  - conda create -q -n myrel python=${PYVER}
+  - conda install -q -n myrel --only-deps ami
+  - conda install -q -n myrel flake8
+  - conda activate myrel
+  - python setup.py install --single-version-externally-managed --record=record.txt
+
+script:
+  - flake8
+  - pytest
+
+notifications:
+  email:
+    recipients:
+      - ddamiani@slac.stanford.edu
+    on_success: change # default: change
+    on_failure: always # default: always

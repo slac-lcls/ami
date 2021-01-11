@@ -1,8 +1,8 @@
 import networkx as nx
 import itertools as it
 import collections
+import ami.graph_nodes as gn
 from networkfox import compose
-import ami.graph_nodes
 
 
 class Graph():
@@ -102,9 +102,14 @@ class Graph():
         Raises:
             AssertionError: if an operation already exists in the graph
         """
-
         assert op not in self.graph.nodes(), "Operation may only be added once %s" % op.name
         assert op.name not in self.children_of_global_operations, "Operation may only be added once %s" % op.name
+        if op.is_global_operation:
+            for n in self.graph.nodes:
+                if type(n) is str:
+                    continue
+                if n.is_global_operation and n.parent == op.parent and n.outputs == op.outputs:
+                    assert False, "Operation may only be added once %s" % op.name
 
         for i in op.inputs:
             self.graph.add_edge(i, op)
@@ -154,11 +159,10 @@ class Graph():
         Raises:
             AssertionError: if inputs and outputs of new_node do not match existing node.
         """
-
-        if new_node.name in self.children_of_global_operations:
+        if new_node.is_global_operation and new_node.parent in self.children_of_global_operations:
             descendants = set()
             ancestors = set()
-            for child in self.children_of_global_operations[new_node.name]:
+            for child in self.children_of_global_operations[new_node.parent]:
                 if child.name == '%s_worker' % new_node.name:
                     descendants.add(child)
                     descendants.update(nx.dag.descendants(self.graph, child))
@@ -173,7 +177,7 @@ class Graph():
             for node in nodes_to_remove:
                 if node in self.expanded_global_operations:
                     self.expanded_global_operations.remove(node)
-            del self.children_of_global_operations[new_node.name]
+            del self.children_of_global_operations[new_node.parent]
         else:
             old_node = None
             for n in self.graph.nodes:
@@ -183,15 +187,15 @@ class Graph():
                     old_node = n
                     break
 
-            assert old_node is not None, "Old node not found: %s" % new_node.name
-            assert set(old_node.inputs) == set(new_node.inputs), "Inputs must match."
+            if old_node is not None:
+                # assert old_node is not None, "Old node not found: %s" % new_node.name
+                # assert set(old_node.inputs) == set(new_node.inputs), "Inputs must match."
+                self.graph.remove_node(old_node)
 
-            self.graph.remove_node(old_node)
-
-            diff = set(old_node.outputs).difference(new_node.outputs)
-            for node in diff:
-                desc = nx.dag.descendants(self.graph, node)
-                self.graph.remove_nodes_from(desc)
+                diff = set(old_node.outputs).difference(new_node.outputs)
+                for node in diff:
+                    desc = nx.dag.descendants(self.graph, node)
+                    self.graph.remove_nodes_from(desc)
 
         self.insert(new_node)
 
@@ -201,8 +205,16 @@ class Graph():
         """
         Resets the state of all StatefulTransmation nodes in the graph.
         """
-        nodes = list(filter(lambda node: isinstance(node, ami.graph_nodes.StatefulTransformation), self.graph.nodes))
+        nodes = list(filter(lambda node: isinstance(node, gn.StatefulTransformation), self.graph.nodes))
         list(map(lambda node: node.reset(), nodes))
+
+    def heartbeat_finished(self):
+        """
+        Execute post heartbeat hook on StatefulTransmation nodes in the graph.
+        """
+        nodes = list(filter(lambda node: isinstance(node, gn.StatefulTransformation),
+                            self.graph.nodes))
+        list(map(lambda node: node.heartbeat_finished(), nodes))
 
     def _color_nodes(self):
         """
@@ -210,33 +222,38 @@ class Graph():
         attribute set to True. If in a given path for which we've found a global operation node there is no
         other node with ``is_global_operation`` true which preceeds it then we mark that node for expansion.
         """
-        inputs = [n for n, d in self.graph.in_degree() if d == 0]
-        outputs = [n for n, d in self.graph.out_degree() if d == 0]
-
         self.global_operations = set()
-        sources_targets = list(it.product(inputs, outputs))
-        for s, t in sources_targets:
-            paths = list(nx.algorithms.all_simple_paths(self.graph, s, t))
-            for nodes in paths:
-                reductions = list(filter(lambda node: getattr(node, 'is_global_operation', False), nodes))
 
-                for reduction in reductions:
-                    if reduction in self.expanded_global_operations:
-                        continue
-                    before = list(filter(lambda node: getattr(node, 'is_global_operation', False),
-                                         nx.algorithms.dag.ancestors(self.graph, reduction)))
-                    if before == []:
-                        self.global_operations.add(reduction)
+        global_operations = filter(lambda node: getattr(node, 'is_global_operation', False), self.graph.nodes)
+        for node in global_operations:
+            if node in self.expanded_global_operations:
+                continue
 
-                color = 'worker'
-                for node in nodes:
-                    if type(node) is str:
+            node.color = 'globalCollector'
+            before = list(filter(lambda node: getattr(node, 'is_global_operation', False),
+                                 nx.algorithms.dag.ancestors(self.graph, node)))
+            if before == []:
+                self.global_operations.add(node)
+
+                for ancestor in nx.algorithms.dag.ancestors(self.graph, node):
+                    if type(ancestor) is str:
                         continue
 
-                    if node in self.global_operations or node in self.expanded_global_operations:
-                        color = 'globalCollector'
-                    if node.color == "":
-                        node.color = color
+                    if ancestor.color == '':
+                        ancestor.color = 'worker'
+
+            for descendant in nx.algorithms.dag.descendants(self.graph, node):
+                if type(descendant) is str:
+                    continue
+
+                if descendant.color == '':
+                    descendant.color = 'globalCollector'
+
+        for node in nx.algorithms.topological_sort(self.graph):
+            if type(node) is str:
+                continue
+            if node.color == '':
+                node.color = 'worker'
 
     def _expand_global_operations(self, num_workers, num_local_collectors):
         """
@@ -256,10 +273,10 @@ class Graph():
             inputs = node.inputs
             outputs = node.outputs
             condition_needs = node.condition_needs
-            self.children_of_global_operations[node.name] = set()
+            self.children_of_global_operations[node.parent] = set()
 
             self.graph.remove_node(node)
-            NewNode = getattr(ami.graph_nodes, node.__class__.__name__)
+            NewNode = getattr(gn, node.__class__.__name__)
 
             color_order = ['worker', 'localCollector', 'globalCollector']
             worker_outputs = None
@@ -280,7 +297,7 @@ class Graph():
                                           **extras)
                     worker_node.color = color
                     worker_node.is_global_operation = False
-                    self.children_of_global_operations[node.name].add(worker_node)
+                    self.children_of_global_operations[node.parent].add(worker_node)
                     self.outputs[color].update(worker_outputs)
                     for i in inputs:
                         self.graph.add_edge(i, worker_node)
@@ -305,7 +322,7 @@ class Graph():
                                                    num_contributors=workers_per_local_collector, **extras)
                     local_collector_node.color = color
                     local_collector_node.is_global_operation = False
-                    self.children_of_global_operations[node.name].add(local_collector_node)
+                    self.children_of_global_operations[node.parent].add(local_collector_node)
                     self.outputs[color].update(local_collector_outputs)
                     for i in worker_outputs:
                         self.graph.add_edge(i, local_collector_node)
@@ -320,10 +337,11 @@ class Graph():
 
                     global_collector_node = NewNode(name=node.name+'_globalCollector',
                                                     inputs=local_collector_outputs,
-                                                    outputs=outputs, reduction=node.reduction, N=N, is_expanded=True,
+                                                    outputs=outputs, reduction=node.reduction, N=N,
+                                                    is_expanded=True,
                                                     num_contributors=num_local_collectors, **extras)
                     global_collector_node.color = color
-                    self.children_of_global_operations[node.name].add(global_collector_node)
+                    self.children_of_global_operations[node.parent].add(global_collector_node)
                     self.expanded_global_operations.add(global_collector_node)
                     for i in local_collector_outputs:
                         self.graph.add_edge(i, global_collector_node)
@@ -371,6 +389,7 @@ class Graph():
 
         global_collector_nodes = list(filter(lambda node: getattr(node, 'color', '') == 'globalCollector',
                                              self.graph.nodes))
+
         for node in global_collector_nodes:
             new_inputs = []
             update_inputs = False
@@ -378,7 +397,7 @@ class Graph():
                 continue
             for i in node.inputs:
                 if i in inputs:
-                    pickone = ami.graph_nodes.PickN(name=i.name+"_pick1", inputs=[i], outputs=["one_"+i.name])
+                    pickone = gn.PickN(name=i+"_pick1", inputs=[i], outputs=["one_"+i], parent=node.parent)
                     self.global_operations.add(pickone)
                     self.add(pickone)
                     update_inputs = True
@@ -421,7 +440,7 @@ class Graph():
 
         seen = set()
         branch_merge_candidates = [n for n, d in self.graph.in_degree() if d >= 2 and type(n) is str]
-        graph_filters = list(filter(lambda node: isinstance(node, ami.graph_nodes.Filter), self.graph.nodes))
+        graph_filters = list(filter(lambda node: isinstance(node, gn.Filter), self.graph.nodes))
         outputs = [n for n, d in self.graph.out_degree() if d == 0]
         body = []
 
@@ -493,6 +512,11 @@ class Graph():
                        or globalCollector.
         :raises AssertionError: if compile() has not been falled first or if color is None.
         """
+        missing_inputs = [k for k, v in args[0].items() if v is None]
+
+        for missed_inputs in missing_inputs:
+            args[0].pop(missed_inputs)
+
         assert self.graphkit is not None, "call compile first"
         color = kwargs.get('color', None)
         assert color is not None

@@ -16,14 +16,14 @@ class Pick1(Node):
     nodeName = "Pick1"
 
     def __init__(self, name):
-        super(Pick1, self).__init__(name,
-                                    terminals={'In': {'io': 'in', 'ttype': T},
-                                               'Out': {'io': 'out', 'ttype': T}})
+        super().__init__(name,
+                         terminals={'In': {'io': 'in', 'ttype': T},
+                                    'Out': {'io': 'out', 'ttype': T}})
 
     def to_operation(self, inputs, conditions={}):
         outputs = self.output_vars()
         node = gn.PickN(name=self.name()+"_operation",
-                        inputs=list(inputs.values()), outputs=outputs, condition_needs=list(conditions.values()),
+                        inputs=inputs, outputs=outputs, condition_needs=conditions,
                         N=1, parent=self.name())
         return node
 
@@ -35,18 +35,17 @@ class PickN(CtrlNode):
     """
 
     nodeName = "PickN"
-    uiTemplate = [('N', 'intSpin', {'value': 2, 'min': 2, 'max': 4096})]
+    uiTemplate = [('N', 'intSpin', {'value': 2, 'min': 2})]
 
     def __init__(self, name):
-        super(PickN, self).__init__(name,
-                                    terminals={'In': {'io': 'in', 'ttype': T},
-                                               'Out': {'io': 'out', 'ttype': Array1d}},
-                                    allowAddInput=True)
-        self.N = 2
+        super().__init__(name,
+                         terminals={'In': {'io': 'in', 'ttype': T},
+                                    'Out': {'io': 'out', 'ttype': Array1d}},
+                         allowAddInput=True)
 
     def to_operation(self, inputs, conditions={}):
         outputs = self.output_vars()
         node = gn.PickN(name=self.name()+"_operation",
-                        inputs=list(inputs.values()), outputs=outputs, condition_needs=list(conditions.values()),
-                        N=self.N, parent=self.name())
+                        inputs=inputs, outputs=outputs, condition_needs=conditions,
+                        N=self.values['N'], parent=self.name())
         return node
