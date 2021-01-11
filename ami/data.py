@@ -798,8 +798,6 @@ class PsanaSource(HierarchicalDataSource):
     def _detinfo(self, run):
         for (detname, det_xface_name), det_attr_list in run.detinfo.items():
             yield detname, det_xface_name, det_attr_list, False
-        for (detname, det_xface_name), det_attr_list in run.stepinfo.items():
-            yield detname, det_xface_name, det_attr_list, False
         for (detname, det_xface_name), det_attr in run.epicsinfo.items():
             yield detname, det_xface_name, [det_attr], True
         for (detname, det_xface_name), det_attr in run.scaninfo.items():
@@ -813,6 +811,7 @@ class PsanaSource(HierarchicalDataSource):
                 self.special_types[attr_name] = getattr(det_interface, attr)
 
     def _update_dets(self, run, detname, is_env_det):
+        print(f'update_dets {detname},{is_env_det}')
         if detname not in self.detectors:
             det_xface = run.Detector(detname)
             self.detectors[detname] = at.Detector(detname, self.src_type, det_xface._dettype, det_xface)
@@ -872,6 +871,7 @@ class PsanaSource(HierarchicalDataSource):
                     if is_env_det:
                         attr_type = det_interface.dtype
                     else:
+                        print(f'getattr {detname},{det_xface_name},{attr}')
                         attr_sig = inspect.signature(getattr(getattr(det_interface, det_xface_name), attr))
                         if attr_sig.return_annotation is attr_sig.empty:
                             attr_type = typing.Any
