@@ -19,9 +19,9 @@ echo "ranks: $ranks";
 echo "workers: $workers";
 echo "num worker nodes: $num_worker_nodes"
 echo "manager: $manager";
-ami-manager -n $ranks -N $num_worker_nodes --prometheus-dir /cds/group/psdm/psdatmgr/etc/config/prom --hutch local &
+ami-manager -n $ranks -N $num_worker_nodes &
 MANAGER_PID=$!
-ami-global -N 0 -n $num_worker_nodes -H $manager --prometheus-dir /cds/group/psdm/psdatmgr/etc/config/prom --hutch local &
+ami-global -N 0 -n $num_worker_nodes -H $manager &
 GLOBAL_PID=$!
 `which mpirun` -np $ranks -H $workers -x LD_LIBRARY_PATH -x PYTHONPATH -x PATH ami-remote -H $manager -f interval=0.01 -f repeat=True $@ &
 WORKER_PID=$!
