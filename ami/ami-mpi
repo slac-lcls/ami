@@ -1,5 +1,15 @@
 #!/bin/bash
 
+usage() {
+    echo "Usage: $0 [ -n RANKS ] [ -H HOSTS ] psana://<exp>:<run>" 1>&2
+}
+
+NUMARGS=$#
+if [ $NUMARGS -ne 5 ]; then
+    usage
+    exit 1
+fi
+
 while getopts n:H: flag
 do
     case "${flag}" in
