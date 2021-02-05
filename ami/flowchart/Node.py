@@ -102,6 +102,7 @@ class Node(QtCore.QObject):
         self.changed = True
         self.viewed = False
         self.exception = None
+        self.isSubgraph = False
 
         self._input_vars = {}  # term:var
         self._condition_vars = {}  # term:var
@@ -523,6 +524,7 @@ class NodeGraphicsItem(GraphicsObject):
         self.nameItem.setDefaultTextColor(QtGui.QColor(50, 50, 50))
         self.nameItem.moveBy(self.bounds.width()/2. - self.nameItem.boundingRect().width()/2., 0)
 
+        self.terminals = {}
         self.updateTerminals()
 
         self.menu = None
@@ -538,12 +540,24 @@ class NodeGraphicsItem(GraphicsObject):
         self.brush = brush
         self.update()
 
-    def updateTerminals(self):
-        bounds = self.bounds
-        self.terminals = {}
+    def shouldResize(self):
+        inputs = len(self.node.inputs()) + len(self.node.conditions())
+        outputs = len(self.node.outputs())
+        return (inputs > 4 and inputs % 4 > 0) or (outputs > 4 and outputs % 4 > 0)
 
+    def updateTerminals(self):
         inp = self.node.inputs()
         conds = self.node.conditions()
+        out = self.node.outputs()
+
+        t = max(len(inp)+len(conds), len(out))
+        bounds = QtCore.QRectF(0, 0, 100, 100*((t // 4) + 1))
+
+        if bounds != self.bounds:
+            self.bounds = bounds
+            self.update()
+
+        self.terminals = {}
 
         dy = bounds.height() / (len(inp)+len(conds)+1)
         y = dy
@@ -563,7 +577,6 @@ class NodeGraphicsItem(GraphicsObject):
             self.terminals[i] = (t, item)
             y += dy
 
-        out = self.node.outputs()
         dy = bounds.height() / (len(out)+1)
         y = dy
         for i, t in out.items():
@@ -704,3 +717,39 @@ class NodeGraphicsItem(GraphicsObject):
         self.node.addCondition(removable=True)
         self.menu.removeAction(self.add_condition)
         self.add_condition = None
+
+
+class SubgraphNode(Node):
+
+    """
+    Subgraph
+    """
+
+    def __init__(self, name, **kwargs):
+        super().__init__(name, **kwargs)
+        self.isSubgraph = True
+        self._subgraphInputs = Node('Inputs', allowAddCondition=False)
+        self._subgraphOutputs = SubgraphNodeOutput('Outputs', allowAddInput=True, allowAddCondition=False)
+
+    def addInput(self, name=None, **kwargs):
+        if name:
+            self._subgraphInputs.addTerminal(name, io='out', ttype=kwargs['ttype'])
+            return self.addTerminal(name, io='in', ttype=kwargs['ttype'])
+
+    def addOutput(self, name=None, **kwargs):
+        if name:
+            self._subgraphOutputs.addOutput(name, **kwargs)
+            return self.addTerminal(name, io='out', ttype=kwargs['ttype'])
+
+    def subgraphInputs(self):
+        return self._subgraphInputs
+
+    def subgraphOutputs(self):
+        return self._subgraphOutputs
+
+
+class SubgraphNodeOutput(Node):
+
+    def addOutput(self, name=None, **kwargs):
+        if name:
+            return self.addTerminal(name, io='in', ttype=kwargs['ttype'])

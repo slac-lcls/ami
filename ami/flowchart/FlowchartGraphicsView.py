@@ -2,7 +2,7 @@ from pyqtgraph.Qt import QtGui, QtCore, QtWidgets
 from pyqtgraph.widgets.GraphicsView import GraphicsView
 from pyqtgraph.graphicsItems.ViewBox import ViewBox
 from pyqtgraph import GridItem, GraphicsWidget
-from ami.flowchart.Node import NodeGraphicsItem, find_nearest
+from ami.flowchart.Node import SubgraphNode, NodeGraphicsItem, find_nearest
 from ami.flowchart.library.common import SourceNode
 
 
@@ -194,9 +194,9 @@ class ViewManager(QtWidgets.QWidget):
 
     def __init__(self, widget, parent=None):
         super().__init__(parent)
-        self.widget = widget
-        self.chart = widget.chart
-        self.ctrl = widget.ctrl
+        self.widget = widget  # FlowchartWidget
+        self.chart = widget.chart  # Flowchart
+        self.ctrl = widget.ctrl  # FlowchartCtrlWidget
 
         self.layout = QtGui.QGridLayout()
         self.setLayout(self.layout)
@@ -207,6 +207,8 @@ class ViewManager(QtWidgets.QWidget):
 
         self.actions = {}
         self.actionRoot = QtWidgets.QAction("root", parent)
+        self.actionRoot.subgraph = "root"
+        self.actionRoot.triggered.connect(self.displayView)
         self.actionRoot.setCheckable(True)
         self.actionRoot.setChecked(True)
         self.toolBar.addAction(self.actionRoot)
@@ -219,11 +221,13 @@ class ViewManager(QtWidgets.QWidget):
         self.layout.addWidget(self.currentView, 1, 0, -1, -1)
 
     def addView(self, nodes, name=None):
+        graph = self.chart._graph
+
         if name is None:
             n = 0
             while True:
                 name = f"combined.{n}"
-                if name not in self.chart._graph.nodes():
+                if name not in graph.nodes():
                     break
                 n += 1
 
@@ -232,13 +236,67 @@ class ViewManager(QtWidgets.QWidget):
         self.layout.addWidget(view, 1, 0, -1, -1)
 
         actionSubgraph = QtWidgets.QAction(name, self.parentWidget())
+        actionSubgraph.subgraph = name
         actionSubgraph.setCheckable(True)
+        actionSubgraph.triggered.connect(self.displayView)
         self.toolBar.addAction(actionSubgraph)
         self.graphGroup.addAction(actionSubgraph)
         self.actions[name] = actionSubgraph
 
+        subgraphNode = SubgraphNode(name, allowAddInput=True, allowAddCondition=True)
+        names = list(map(lambda node: node.name(), nodes))
+
+        inputs = set()
+        for fnode, tnode, data in graph.in_edges(names, data=True):
+            if fnode in names and tnode in names:
+                continue
+
+            input_name = '.'.join([fnode, data['from_term']])
+            if input_name not in inputs:
+                fnode = graph.nodes[fnode]['node']
+                subgraphNode.addInput(name=input_name, ttype=fnode.terminals[data['from_term']].type())
+                inputs.add(input_name)
+
+        outputs = set()
+        for fnode, tnode, data in graph.out_edges(names, data=True):
+            if fnode in names and tnode in names:
+                continue
+
+            output_name = '.'.join([fnode, data['from_term']])
+            if output_name not in outputs:
+                fnode = graph.nodes[fnode]['node']
+                subgraphNode.addOutput(name=output_name, ttype=fnode.terminals[data['from_term']].type())
+                outputs.add(output_name)
+
+        if inputs:
+            view.viewBox().addItem(subgraphNode.subgraphInputs().graphicsItem())
+        if outputs:
+            view.viewBox().addItem(subgraphNode.subgraphOutputs().graphicsItem())
+
+        item = subgraphNode.graphicsItem()
+        self.currentView.viewBox().addItem(item)
+        item.moveBy(*nodes[0].graphicsItem().pos())
+
+        for node in nodes:
+            view.viewBox().addItem(node.graphicsItem())
+            for name, term in node.terminals.items():
+                for _, connection in term.connections().items():
+                    view.viewBox().addItem(connection)
+            node.recolor()
+
+        actionSubgraph.trigger()
+
+        self.ctrl.ui.actionPan.trigger()
+
     def displayView(self):
-        pass
+        sender = self.sender()
+        if sender is None:
+            return
+
+        subgraph = sender.subgraph
+        self.currentView.hide()
+        self.currentView = self.views[subgraph]
+        self.currentView.show()
 
     def removeView(self, name):
         pass
@@ -255,12 +313,12 @@ class FlowchartGraphicsView(GraphicsView):
     sigHoverOver = QtCore.Signal(object)
     sigClicked = QtCore.Signal(object)
 
-    def __init__(self, widget, manager, isRoot=False, *args):
+    def __init__(self, widget, manager, isRoot=False, *args, **kwargs):
         super().__init__(*args, useOpenGL=False, background=0.75)
         self.widget = widget
         self.isRoot = isRoot
         self.setAcceptDrops(True)
-        self._vb = FlowchartViewBox(widget, manager, isRoot=True, lockAspect=True, invertY=True)
+        self._vb = FlowchartViewBox(widget, manager, isRoot=isRoot, lockAspect=True, invertY=True, **kwargs)
         self.setCentralItem(self._vb)
         self.setRenderHint(QtGui.QPainter.Antialiasing, True)
 

@@ -283,6 +283,7 @@ class TerminalGraphicsItem(GraphicsObject):
         else:
             self.box.setPos(pos.x()-br.width(), pos.y()-br.height()/2.)
             self.label.setPos(pos.x()-br.width()-lr.width(), pos.y()-lr.height()/2.)
+
         self.updateConnections()
 
     def updateConnections(self):
