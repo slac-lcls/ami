@@ -496,6 +496,7 @@ class Node(QtCore.QObject):
     def isChanged(self, restore_ctrl, restore_widget):
         return False
 
+
 class NodeGraphicsItem(GraphicsObject):
 
     def __init__(self, node, brush=None):
