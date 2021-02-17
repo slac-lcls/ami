@@ -199,9 +199,9 @@ class PvaExportServer:
     def update_heartbeat(self, graph, heartbeat):
         pvname = self.graph_pvname(graph, 'heartbeat')
         if pvname not in self.pvs:
-            self.create_pv(pvname, NTScalar('d'), heartbeat)
+            self.create_pv(pvname, NTScalar('d'), heartbeat.identity)
         else:
-            self.pvs[pvname].post(heartbeat)
+            self.pvs[pvname].post(heartbeat.identity)
 
     def update_info(self, data):
         # add the unaggregated version of the pvs

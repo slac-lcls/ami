@@ -424,7 +424,7 @@ class Flowchart(Node):
 
         nodes = []
         for name, node in self.nodes(data='node'):
-            if node.viewed:
+            if node.viewed or node.exportable():
                 nodes.append(node)
 
         await ctrl.chartWidget.build_views(nodes, ctrl=True, export=True)
@@ -960,6 +960,9 @@ class FlowchartWidget(dockarea.DockArea):
         if not node.enabled():
             return
 
+        if not hasattr(node, 'display'):
+            return
+
         if node.viewable():
             inputs = [n for n, d, in self.chart._graph.in_degree() if d == 0]
             seen = set()
@@ -1047,6 +1050,8 @@ class FlowchartWidget(dockarea.DockArea):
 
             if node.exportable() and export:
                 await self.ctrl.graphCommHandler.export(node.input_vars()['In'], node.values['alias'])
+                if not ctrl:
+                    display_args.pop()
 
             if not node.created:
                 state = node.saveState()
