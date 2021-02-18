@@ -1,3 +1,4 @@
+import os
 import sys
 import abc
 import zmq
@@ -337,19 +338,25 @@ class Source(abc.ABC):
             'source': type(self.source),
         }
         self._base_names = set(self._base_types)
-        self._flag_types = {
+        self._cfgkey_types = {
             'interval': float,
             'init_time': float,
             'bound': int,
             'repeat': lambda s: s.lower() == 'true',
             'counting': lambda s: s.lower() == 'true',
-            'files': lambda f: f.split(','),
+            'files': lambda n: [os.path.expanduser(f) for f in n.split(',')],
         }
+        # Correct the types of special keys in the dictionary that might have
+        # been passed as strings (can happen when specifying config on the
+        # command line.
+        for key, value in self.config.items():
+            if key in self._cfgkey_types:
+                self.config[key] = self._cfgkey_types[key](value)
         # Apply flags to the config dictionary
         for flag, value in self.flags.items():
             # if there is type info for a flag cast before adding it
-            if flag in self._flag_types:
-                self.config[flag] = self._flag_types[flag](value)
+            if cfgkey in self._cfgkey_types:
+                self.config[cfgkey] = self._cfgkey_types[flag](value)
             else:
                 self.config[flag] = value
         # If 'type' has not been passed in the config dictionary then set it

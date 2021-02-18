@@ -302,7 +302,7 @@ def run_worker(num, num_workers, hb_period, source, collector_addr, graph_addr, 
             except json.decoder.JSONDecodeError:
                 logger.exception("worker%03d: problem parsing json file (%s):", num, source[1])
                 return 1
-        elif src_type == 'psana':
+        else:
             src_cfg = {}
             cfg = source[1].split(',')
             for c in cfg:
