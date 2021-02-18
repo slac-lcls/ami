@@ -74,7 +74,8 @@ class Worker(Node):
         for graph in self.graphs.values():
             if graph is not None:
                 requests.update(graph.sources)
-        self.src.request(requests)
+        if self.src is not None:
+            self.src.request(requests)
 
     def update_graph(self, name, version, args):
         if self.graphs[name]:
