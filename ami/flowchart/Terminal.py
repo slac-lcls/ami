@@ -124,7 +124,7 @@ class Terminal(object):
         """Return the list of terms which receive input from this terminal."""
         return set([t for t in self.connections() if t.isInput()])
 
-    def connectTo(self, term, connectionItem=None, type_file=None):
+    def connectTo(self, term, connectionItem=None, type_file=None, signal=True):
         try:
             if self.connectedTo(term):
                 raise Exception('Already connected')
@@ -173,8 +173,9 @@ class Terminal(object):
 
         self.recolor()
 
-        self.connected(term)
-        term.connected(self)
+        if signal:
+            self.connected(term)
+            term.connected(self)
 
         if self.isInput() and term.isOutput():
             self.setUnit(term.unit())
@@ -183,18 +184,19 @@ class Terminal(object):
 
         return connectionItem
 
-    def disconnectFrom(self, term):
+    def disconnectFrom(self, term, signal=True):
         if not self.connectedTo(term):
             return
         item = self._connections[term]
         item.close()
-        del self._connections[term]
-        del term._connections[self]
+        self._connections.pop(term, None)
+        term._connections.pop(self, None)
         self.recolor()
         term.recolor()
 
-        self.disconnected(term)
-        term.disconnected(self)
+        if signal:
+            self.disconnected(term)
+            term.disconnected(self)
 
     def disconnectAll(self):
         for t in list(self._connections.keys()):
@@ -433,6 +435,10 @@ class ConnectionItem(GraphicsObject):
 
     def setTarget(self, target):
         self.target = target
+        self.updateLine()
+
+    def setSource(self, source):
+        self.source = source
         self.updateLine()
 
     def setStyle(self, **kwds):

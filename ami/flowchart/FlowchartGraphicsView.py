@@ -192,6 +192,8 @@ class SelectionRect(GraphicsWidget):
 
 class ViewManager(QtWidgets.QWidget):
 
+    sigViewAdded = QtCore.Signal()
+
     def __init__(self, widget, parent=None):
         super().__init__(parent)
         self.widget = widget  # FlowchartWidget
@@ -245,33 +247,76 @@ class ViewManager(QtWidgets.QWidget):
 
         subgraphNode = SubgraphNode(name, allowAddInput=True, allowAddCondition=True)
         names = list(map(lambda node: node.name(), nodes))
+        connections = []
 
+        input_pos = None
         inputs = set()
-        for fnode, tnode, data in graph.in_edges(names, data=True):
-            if fnode in names and tnode in names:
+        for fnode_name, tnode_name, data in graph.in_edges(names, data=True):
+            if fnode_name in names and tnode_name in names:
                 continue
 
-            input_name = '.'.join([fnode, data['from_term']])
+            input_name = '.'.join([fnode_name, data['from_term']])
+
+            fnode = graph.nodes[fnode_name]['node']
+            tnode = graph.nodes[tnode_name]['node']
+
             if input_name not in inputs:
-                fnode = graph.nodes[fnode]['node']
                 subgraphNode.addInput(name=input_name, ttype=fnode.terminals[data['from_term']].type())
                 inputs.add(input_name)
 
+            # root
+            target = subgraphNode.terminals[input_name]
+            source = fnode.terminals[data['from_term']]
+            connections.append({'source': source, 'old_target': tnode.terminals[data['to_term']],
+                                'new_target': target, 'type': 'root'})
+
+            # internal
+            old_source = source
+            source = subgraphNode.subgraphInputs.terminals[input_name]
+            target = tnode.terminals[data['to_term']]
+            connections.append({'new_source': source, 'old_source': old_source,
+                                'target': target, 'type': 'in'})
+
+            if input_pos is None:
+                input_pos = fnode.graphicsItem().pos()
+
+        output_pos = None
         outputs = set()
-        for fnode, tnode, data in graph.out_edges(names, data=True):
-            if fnode in names and tnode in names:
+        for fnode_name, tnode_name, data in graph.out_edges(names, data=True):
+            if fnode_name in names and tnode_name in names:
                 continue
 
-            output_name = '.'.join([fnode, data['from_term']])
+            output_name = '.'.join([fnode_name, data['from_term']])
+
+            fnode = graph.nodes[fnode_name]['node']
+            tnode = graph.nodes[tnode_name]['node']
+
             if output_name not in outputs:
-                fnode = graph.nodes[fnode]['node']
                 subgraphNode.addOutput(name=output_name, ttype=fnode.terminals[data['from_term']].type())
                 outputs.add(output_name)
 
+            # root
+            source = subgraphNode.terminals[output_name]
+            target = tnode.terminals[data['to_term']]
+            connections.append({'new_source': source, 'old_source': fnode.terminals[data['from_term']],
+                                'target': target, 'type': 'root'})
+
+            # internal
+            old_target = target
+            target = subgraphNode.subgraphOutputs.terminals[output_name]
+            source = fnode.terminals[data['from_term']]
+            connections.append({'new_target': target, 'old_target': old_target,
+                                'source': source, 'type': 'out'})
+
+            if output_pos is None:
+                output_pos = tnode.graphicsItem().pos()
+
         if inputs:
-            view.viewBox().addItem(subgraphNode.subgraphInputs().graphicsItem())
+            view.viewBox().addItem(subgraphNode.subgraphInputs.graphicsItem())
+            subgraphNode.subgraphInputs.graphicsItem().moveBy(*input_pos)
         if outputs:
-            view.viewBox().addItem(subgraphNode.subgraphOutputs().graphicsItem())
+            view.viewBox().addItem(subgraphNode.subgraphOutputs.graphicsItem())
+            subgraphNode.subgraphOutputs.graphicsItem().moveBy(*output_pos)
 
         item = subgraphNode.graphicsItem()
         self.currentView.viewBox().addItem(item)
@@ -284,9 +329,42 @@ class ViewManager(QtWidgets.QWidget):
                     view.viewBox().addItem(connection)
             node.recolor()
 
-        actionSubgraph.trigger()
+        for connection in connections:
+            if connection['type'] == 'root':
+                if 'new_source' in connection:
+                    new_source = connection['new_source']
+                    old_source = connection['old_source']
+                    target = connection['target']
 
-        self.ctrl.ui.actionPan.trigger()
+                    old_source.disconnectFrom(target, signal=False)
+                    target.connectTo(new_source, signal=False)
+                elif 'new_target' in connection:
+                    source = connection['source']
+                    old_target = connection['old_target']
+                    new_target = connection['new_target']
+
+                    old_target.disconnectFrom(source, signal=False)
+                    source.connectTo(new_target, signal=False)
+
+            elif connection['type'] == 'in':
+                new_source = connection['new_source']
+                old_source = connection['old_source']
+                target = connection['target']
+
+                old_source.disconnectFrom(target, signal=False)
+                new_source.connectTo(target, signal=False)
+
+            elif connection['type'] == 'out':
+                new_target = connection['new_target']
+                old_target = connection['old_target']
+                source = connection['source']
+
+                old_target.disconnectFrom(source, signal=False)
+                if not new_target.connectedTo(source):
+                    new_target.connectTo(source, signal=False)
+
+        actionSubgraph.trigger()
+        self.sigViewAdded.emit()
 
     def displayView(self):
         sender = self.sender()
@@ -297,6 +375,8 @@ class ViewManager(QtWidgets.QWidget):
         self.currentView.hide()
         self.currentView = self.views[subgraph]
         self.currentView.show()
+
+        self.ctrl.ui.actionPan.trigger()
 
     def removeView(self, name):
         pass

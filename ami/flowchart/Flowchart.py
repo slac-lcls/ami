@@ -859,6 +859,7 @@ class FlowchartWidget(dockarea.DockArea):
 
         #  build user interface (it was easier to do it here than via developer)
         self.view = ViewManager(self, ctrl)
+        self.view.sigViewAdded.connect(self.viewAdded)
         self.viewDock = dockarea.Dock('view', size=(1000, 600))
         self.viewDock.nStyle = ""
         self.viewDock.addWidget(self.view)
@@ -877,6 +878,10 @@ class FlowchartWidget(dockarea.DockArea):
         self.statusDock.addWidget(self.statusText)
         self.addDock(self.statusDock, 'bottom')
 
+        self.scene().selectionChanged.connect(self.selectionChanged)
+        self.scene().sigMouseHover.connect(self.hoverOver)
+
+    def viewAdded(self):
         self.scene().selectionChanged.connect(self.selectionChanged)
         self.scene().sigMouseHover.connect(self.hoverOver)
 
@@ -993,6 +998,9 @@ class FlowchartWidget(dockarea.DockArea):
 
         for node in nodes:
             name = node.name()
+
+            if not hasattr(node, 'display'):
+                continue
 
             node.display(topics=None, terms=None, addr=None, win=None)
             state = {}

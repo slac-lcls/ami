@@ -381,9 +381,9 @@ class Node(QtCore.QObject):
     def disconnected(self, localTerm, remoteTerm):
         """Called whenever one of this node's terminals is disconnected from another."""
         if localTerm.isInput() and remoteTerm.isOutput():
-            del self._input_vars[localTerm.name()]
+            self._input_vars.pop(localTerm.name(), None)
         elif localTerm.isCondition():
-            del self._condition_vars[localTerm.name()]
+            self._condition_vars.pop(localTerm.name(), None)
 
         self.changed = localTerm.isInput()
         self.sigTerminalDisconnected.emit(localTerm, remoteTerm)
@@ -741,14 +741,20 @@ class SubgraphNode(Node):
             self._subgraphOutputs.addOutput(name, **kwargs)
             return self.addTerminal(name, io='out', ttype=kwargs['ttype'])
 
+    @property
     def subgraphInputs(self):
         return self._subgraphInputs
 
+    @property
     def subgraphOutputs(self):
         return self._subgraphOutputs
 
 
 class SubgraphNodeOutput(Node):
+
+    """
+    Output
+    """
 
     def addOutput(self, name=None, **kwargs):
         if name:
