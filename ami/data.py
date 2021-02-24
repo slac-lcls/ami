@@ -342,9 +342,9 @@ class Source(abc.ABC):
             'interval': float,
             'init_time': float,
             'bound': int,
-            'repeat': lambda s: s.lower() == 'true',
-            'counting': lambda s: s.lower() == 'true',
-            'files': lambda n: [os.path.expanduser(f) for f in n.split(',')],
+            'repeat': lambda s: s if isinstance(s, bool) else s.lower() == 'true',
+            'counting': lambda s: s if isinstance(s, bool) else s.lower() == 'true',
+            'files': lambda n: n if isinstance(n, list) else [os.path.expanduser(f) for f in n.split(',')],
         }
         # Correct the types of special keys in the dictionary that might have
         # been passed as strings (can happen when specifying config on the
@@ -355,8 +355,8 @@ class Source(abc.ABC):
         # Apply flags to the config dictionary
         for flag, value in self.flags.items():
             # if there is type info for a flag cast before adding it
-            if cfgkey in self._cfgkey_types:
-                self.config[cfgkey] = self._cfgkey_types[flag](value)
+            if flag in self._cfgkey_types:
+                self.config[flag] = self._cfgkey_types[flag](value)
             else:
                 self.config[flag] = value
         # If 'type' has not been passed in the config dictionary then set it
