@@ -3,7 +3,6 @@ from pyqtgraph.Qt import QtCore, QtGui, QtWidgets
 from pyqtgraph.graphicsItems.GraphicsObject import GraphicsObject
 from pyqtgraph import functions as fn
 from pyqtgraph.Point import Point
-import amitypes  # noqa
 import subprocess
 import inspect
 import weakref
@@ -33,7 +32,6 @@ class Terminal(object):
         self._removable = removable
         self._connections = {}
         self._group = group
-
         self._type = ttype
         self._unit = unit
         self._graphicsItem = TerminalGraphicsItem(self, parent=self._node().graphicsItem())

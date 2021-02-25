@@ -1,10 +1,7 @@
-from typing import TypeVar
-from amitypes import Array1d
+from amitypes import Array1d, T
 from ami.flowchart.Node import Node
 from ami.flowchart.library.common import CtrlNode
 import ami.graph_nodes as gn
-
-T = TypeVar('T')
 
 
 class Pick1(Node):

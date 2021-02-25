@@ -6,6 +6,8 @@ from pyqtgraph.pgcollections import OrderedDict
 from pyqtgraph.debug import printExc
 from ami.flowchart.Terminal import Terminal
 import weakref
+import amitypes  # noqa
+import typing  # noqa
 
 
 def strDict(d):
@@ -453,6 +455,9 @@ class Node(QtCore.QObject):
             if name not in state:
                 self.removeTerminal(name)
         for name, opts in state.items():
+            if type(opts['ttype']) is str:
+                opts['ttype'] = eval(opts['ttype'])
+
             if name in self.terminals:
                 term = self[name]
                 term.setOpts(**opts)
