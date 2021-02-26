@@ -23,7 +23,8 @@ try:
         """
 
         nodeName = "Caput"
-        uiTemplate = [('pvname', 'text')]
+        uiTemplate = [('pvname', 'text'),
+                      ('global', 'check', {'checked': True})]
 
         def __init__(self, name):
             super().__init__(name, terminals={"In": {'io': 'in', 'ttype': Union[str, int, float, Array1d]}})
@@ -32,12 +33,18 @@ try:
             outputs = [self.name()+"_unused"]
             picked_outputs = [self.name()+"_pickedoutput"]
 
-            nodes = [gn.PickN(name=self.name()+"_picked",
-                              condition_needs=conditions, inputs=inputs, outputs=picked_outputs,
-                              N=1, parent=self.name()),
-                     gn.Map(name=self.name()+"_operation",
-                            condition_needs=conditions, inputs=picked_outputs, outputs=outputs,
-                            func=CaputProc(self.values['pvname']), parent=self.name())]
+            if self.values['global']:
+                nodes = [gn.PickN(name=self.name()+"_picked",
+                                  condition_needs=conditions, inputs=inputs, outputs=picked_outputs,
+                                  N=1, parent=self.name()),
+                         gn.Map(name=self.name()+"_operation",
+                                condition_needs=conditions, inputs=picked_outputs, outputs=outputs,
+                                func=CaputProc(self.values['pvname']), parent=self.name())]
+            else:
+                nodes = [gn.Map(name=self.name()+"_operation",
+                         condition_needs=conditions, inputs=inputs, outputs=outputs,
+                         func=CaputProc(self.values['pvname']), parent=self.name())]
+
             return nodes
 
 except ImportError as e:
@@ -63,7 +70,8 @@ try:
         """
 
         nodeName = "Pvput"
-        uiTemplate = [('pvname', 'text')]
+        uiTemplate = [('pvname', 'text'),
+                      ('global', 'check', {'checked': True})]
 
         def __init__(self, name):
             super().__init__(name, terminals={"In": {'io': 'in', 'ttype': Union[str, int, float, Array1d, Array2d]}})
@@ -72,12 +80,18 @@ try:
             outputs = [self.name()+"_unused"]
             picked_outputs = [self.name()+"_pickedoutput"]
 
-            nodes = [gn.PickN(name=self.name()+"_picked",
-                              condition_needs=conditions, inputs=inputs, outputs=picked_outputs,
-                              N=1, parent=self.name()),
-                     gn.Map(name=self.name()+"_operation",
-                            condition_needs=conditions, inputs=picked_outputs, outputs=outputs,
-                            func=PvputProc(self.values['pvname']), parent=self.name())]
+            if self.values['global']:
+                nodes = [gn.PickN(name=self.name()+"_picked",
+                                  condition_needs=conditions, inputs=inputs, outputs=picked_outputs,
+                                  N=1, parent=self.name()),
+                         gn.Map(name=self.name()+"_operation",
+                                condition_needs=conditions, inputs=picked_outputs, outputs=outputs,
+                                func=PvputProc(self.values['pvname']), parent=self.name())]
+            else:
+                nodes = [gn.Map(name=self.name()+"_operation",
+                                condition_needs=conditions, inputs=inputs, outputs=outputs,
+                                func=PvputProc(self.values['pvname']), parent=self.name())]
+
             return nodes
 
 
