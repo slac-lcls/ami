@@ -426,13 +426,45 @@ class RMS(GroupedNode):
         return node
 
 
-class MeanRMS(Node):
+class TimeMeanRMS(CtrlNode):
 
     """
-    MeanRMS
+    TimeMeanRMS
     """
 
-    nodeName = "MeanRMS"
+    nodeName = "TimeMeanRMS"
+    uiTemplate = [('N', 'intSpin', {'value': 2, 'min': 2})]
+
+    def __init__(self, name):
+        super().__init__(name, terminals={'In': {'io': 'in', 'ttype': float},
+                                          'Mean': {'io': 'out', 'ttype': float},
+                                          'RMS': {'io': 'out', 'ttype': float}})
+
+    def to_operation(self, inputs, conditions={}):
+        outputs = self.output_vars()
+
+        def func(arr):
+            mean = np.mean(arr)
+            rms = np.sqrt(np.mean(np.square(arr)))
+            return mean, rms
+
+        accumulated_outputs = [self.name()+'_accumulated_events']
+
+        nodes = [gn.PickN(name=self.name()+'_picked', condition_needs=conditions, N=self.values['N'],
+                          inputs=inputs, outputs=accumulated_outputs, parent=self.name()),
+                 gn.Map(name=self.name()+'_operation', inputs=accumulated_outputs, outputs=outputs,
+                        func=func, parent=self.name())]
+
+        return nodes
+
+
+class HistMeanRMS(Node):
+
+    """
+    HistMeanRMS
+    """
+
+    nodeName = "HistMeanRMS"
 
     def __init__(self, name):
         super().__init__(name, terminals={'In': {'io': 'in', 'ttype': Array1d},
