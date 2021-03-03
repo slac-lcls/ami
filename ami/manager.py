@@ -315,7 +315,7 @@ class Manager(Collector):
             self.graphs[name].add(nodes)
             self.compile_graph(name)
             self.publish_delta(name, "add", nodes)
-        except (AssertionError, TypeError):
+        except Exception:
             if isinstance(nodes, list):
                 logger.exception("Failure encountered adding nodes \"%s\" to the graph:",
                                  ", ".join(n.name for n in nodes))
