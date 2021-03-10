@@ -17,6 +17,11 @@ pyver=$(python -c "import sys; print(str(sys.version_info.major)+'.'+str(sys.ver
 # "python setup.py develop" seems to not create this for you
 # (although "install" does)
 mkdir -p $INSTDIR/lib/python$pyver/site-packages/
+if [ $pyInstallStyle == "develop" ]; then
+    pipOptions="--editable"
+else
+    pipOptions=""
+fi
 
 # to build ami with setuptools
-python setup.py $pyInstallStyle --no-deps --prefix=$INSTDIR
+pip install --no-deps --prefix=$INSTDIR $pipOptions .
