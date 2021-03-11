@@ -712,7 +712,6 @@ class FlowchartCtrlWidget(QtGui.QWidget):
 
         if graph_nodes:
             await self.graphCommHandler.add(graph_nodes)
-
             node_names = ', '.join(set(map(lambda node: node.parent, graph_nodes)))
             self.chartWidget.updateStatus(f"Submitted {node_names}")
 

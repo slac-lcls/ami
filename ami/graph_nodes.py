@@ -38,7 +38,7 @@ class Transformation(abc.ABC):
 
         self.func = kwargs['func']
         self.parent = kwargs.get('parent', None)
-        self.color = ""
+        self.color = kwargs.get('color', "")
         self.is_global_operation = False
 
     def __hash__(self):
