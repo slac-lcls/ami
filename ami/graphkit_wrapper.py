@@ -2,7 +2,7 @@ import networkx as nx
 import itertools as it
 import collections
 import ami.graph_nodes as gn
-from networkfox import compose
+from networkfox import compose, modifiers
 
 
 class Graph():
@@ -468,16 +468,21 @@ class Graph():
                 # for nodes in paths:
                 # add missing input
                 filter_output = nodes.pop()
-                node_inputs = list(filter_output.inputs)
-                node_inputs.remove(nodes[-1])
-                missing_input = gn.Map(name=filter_output.name+"_missing",
-                                       inputs=nodes[2].inputs, outputs=node_inputs,
-                                       color=filter_output.color, parent=filter_output.parent,
-                                       func=lambda *args: float("nan"))
-                for i in node_inputs:
-                    self.graph.add_edge(missing_input, i)
-                nodes.append(missing_input)
-                nodes.extend(node_inputs)
+                inputs = []
+                for node_input in filter_output.inputs:
+                    inputs.append(modifiers.optional(node_input))
+                filter_output.inputs = inputs
+                # node_inputs = list(filter_output.inputs)
+                # node_inputs.remove(nodes[-1])
+                # breakpoint()
+                # missing_input = gn.Map(name=filter_output.name+"_missing",
+                #                        inputs=nodes[2].inputs, outputs=node_inputs,
+                #                        color=filter_output.color, parent=filter_output.parent,
+                #                        func=lambda *args: float("nan"))
+                # for i in node_inputs:
+                #     self.graph.add_edge(missing_input, i)
+                # nodes.append(missing_input)
+                # nodes.extend(node_inputs)
                 for o in outputs:
                     paths = list(nx.algorithms.all_simple_paths(self.graph, f, o))
                     for path in paths:

@@ -354,12 +354,18 @@ class RollingBuffer(GlobalTransformation):
         self.count = 0
         self.res = None if use_numpy else []
 
-    def __call__(self, *args):
+    def __call__(self, *args, **kwargs):
         if len(args) == 1:
             dims = 0
             args = args[0]
-        else:
+        elif args:
             dims = len(args)
+        elif kwargs:
+            args = [kwargs.get(arg, np.nan) for arg in self.inputs]
+            dims = len(args)
+            if len(args) == 1:
+                dims = 0
+                args = args[0]
 
         if self.is_expanded:
             if self.count == 0:
