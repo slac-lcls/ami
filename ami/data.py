@@ -310,7 +310,7 @@ class TimestampConverter:
 
 
 class Source(abc.ABC):
-    def __init__(self, idnum, num_workers, heartbeat_period, src_cfg, flags=None, ts_type=None):
+    def __init__(self, idnum, num_workers, heartbeat_period, src_cfg, flags=None, evtid_type=None):
         """
         Args:
             idnum (int): Id number
@@ -333,7 +333,8 @@ class Source(abc.ABC):
         self.flags = flags or {}
         self.source = at.DataSource(self.config)
         self._base_types = {
-            'timestamp': int if ts_type is None else ts_type,
+            'eventid': int if evtid_type is None else evtid_type,
+            'timestamp': float,
             'heartbeat': int,
             'source': type(self.source),
         }
@@ -550,12 +551,14 @@ class Source(abc.ABC):
         """
         return Message(MsgTypes.Heartbeat, self.idnum, self.old_heartbeat)
 
-    def event(self, timestamp, data):
+    def event(self, eventid, timestamp, data):
         """
         Constructs a properly formatted event message
 
         Args:
-            timestamp (int): timestamp of the event
+            eventid: the unique id of the event
+
+            timestamp (float): timestamp of the event
 
             data (dict): the data of the event
 
@@ -563,12 +566,13 @@ class Source(abc.ABC):
             An object of type `Message` which includes the data for the event.
         """
         base = [
+            ('eventid', eventid),
             ('timestamp', timestamp),
             ('heartbeat', self.heartbeat.identity if self.heartbeat is not None else None),
             ('source', self.source)
         ]
         data.update({k: v for k, v in base if k in self.requested_names})
-        msg = Message(mtype=MsgTypes.Datagram, identity=self.idnum, payload=data, timestamp=timestamp)
+        msg = Message(mtype=MsgTypes.Datagram, identity=self.idnum, payload=data, timestamp=eventid)
         yield msg
 
     def request(self, names):
@@ -603,8 +607,8 @@ class Source(abc.ABC):
 
 
 class HierarchicalDataSource(Source):
-    def __init__(self, idnum, num_workers, heartbeat_period, src_cfg, flags=None, ts_type=None):
-        super().__init__(idnum, num_workers, heartbeat_period, src_cfg, flags, ts_type)
+    def __init__(self, idnum, num_workers, heartbeat_period, src_cfg, flags=None, evtid_type=None):
+        super().__init__(idnum, num_workers, heartbeat_period, src_cfg, flags, evtid_type)
         self._counter = None
         self.loop_count = 0
         self.delimiter = ":"
@@ -725,13 +729,13 @@ class HierarchicalDataSource(Source):
                     for evt in self._events(step):
                         self.source.evt = evt
                         # get the subclasses timestamp implementation
-                        timestamp, heartbeat, unix_ts = self.timestamp(evt)
+                        eventid, heartbeat, unix_ts = self.timestamp(evt)
                         # check the heartbeat
                         if self.check_heartbeat_boundary(heartbeat, timestamp=unix_ts):
                             yield self.heartbeat_msg()
 
                         # emit the processed event data
-                        yield from self.event(timestamp, self._process(evt))
+                        yield from self.event(eventid, unix_ts, self._process(evt))
                         time.sleep(self.interval)
                         # remove reference to evt object
                         self.source.evt = None
@@ -1132,7 +1136,7 @@ class SimSource(Source):
             return self.ts_src.recv_pyobj()
         else:
             self.count += 1
-            return self.num_workers * self.count + self.idnum
+            return self.num_workers * self.count + self.idnum, time.time()
 
 
 class RandomSource(SimSource):
@@ -1146,8 +1150,8 @@ class RandomSource(SimSource):
         while True:
             event = {}
             # get the timestamp and check heartbeat
-            timestamp = self.timestamp
-            if self.check_heartbeat_boundary(timestamp):
+            eventid, timestamp = self.timestamp
+            if self.check_heartbeat_boundary(eventid):
                 yield self.heartbeat_msg()
             for name, config in self.simulated.items():
                 if name in self.requested_data:
@@ -1161,7 +1165,7 @@ class RandomSource(SimSource):
                         event[name] = np.random.normal(config['pedestal'], config['width'], config['shape'])
                     else:
                         logger.warn("DataSrc: %s has unknown type %s", name, config['dtype'])
-            yield from self.event(timestamp, event)
+            yield from self.event(eventid, timestamp, event)
             time.sleep(self.interval)
         # signal source has finished
         yield self.unconfigure()
@@ -1179,8 +1183,8 @@ class StaticSource(SimSource):
         while True:
             event = {}
             # get the timestamp and check heartbeat
-            timestamp = self.timestamp
-            if self.check_heartbeat_boundary(timestamp):
+            eventid, timestamp = self.timestamp
+            if self.check_heartbeat_boundary(eventid):
                 yield self.heartbeat_msg()
             for name, config in self.simulated.items():
                 if name in self.requested_data:
@@ -1191,7 +1195,7 @@ class StaticSource(SimSource):
                     else:
                         logger.warn("DataSrc: %s has unknown type %s", name, config['dtype'])
             count += 1
-            yield from self.event(timestamp, event)
+            yield from self.event(eventid, timestamp, event)
             if count >= self.bound:
                 break
             time.sleep(self.interval)

@@ -60,7 +60,8 @@ def test_hdf5_source(hdf5writer):
         'camera': at.Group,
         'camera:image': at.Array2d,
         'camera:raw': at.Array3d,
-        'timestamp': int,
+        'eventid': int,
+        'timestamp': float,
         'heartbeat': int,
         'source': at.DataSource,
     }
@@ -153,6 +154,7 @@ def test_psana_source(xtcwriter):
         'epicsinfo': at.Detector,
         'epicsinfo:epicsinfo': typing.Dict,
         'epicsinfo:calibconst': typing.Dict,
+        'eventid': float,
         'timestamp': float,
         'heartbeat': int,
         'source': at.DataSource,
@@ -237,11 +239,11 @@ def test_static_source(sim_src_cfg):
     assert source.src_type == 'static'
 
     # check the names from the source are correct
-    expected_names = {'timestamp', 'heartbeat', 'source'}
+    expected_names = {'eventid', 'timestamp', 'heartbeat', 'source'}
     expected_names.update(sim_src_cfg['config'].keys())
     assert source.names == expected_names
     # check the types from the source are correct
-    expected_dtypes = {'timestamp': int, 'heartbeat': int, 'source': at.DataSource}
+    expected_dtypes = {'eventid': int, 'timestamp': float, 'heartbeat': int, 'source': at.DataSource}
     for name, cfg in sim_src_cfg['config'].items():
         if cfg["dtype"] == "Scalar":
             if cfg.get("integer", False):
@@ -294,7 +296,7 @@ def test_static_source(sim_src_cfg):
             count += 1
             expected_ts = num_workers * count + idnum + sim_src_cfg['bound']
             assert msg.timestamp == expected_ts
-            assert msg.payload['timestamp'] == expected_ts
+            assert msg.payload['eventid'] == expected_ts
             assert msg.payload['heartbeat'] == expected_ts // heartbeat_period
 
     # check that the static source returned the correct number of events
@@ -314,11 +316,11 @@ def test_random_source(sim_src_cfg):
     assert source.src_type == 'random'
 
     # check the names from the source are correct
-    expected_names = {'timestamp', 'heartbeat', 'source'}
+    expected_names = {'eventid', 'timestamp', 'heartbeat', 'source'}
     expected_names.update(sim_src_cfg['config'].keys())
     assert source.names == expected_names
     # check the types from the source are correct
-    expected_dtypes = {'timestamp': int, 'heartbeat': int, 'source': at.DataSource}
+    expected_dtypes = {'eventid': int, 'timestamp': float, 'heartbeat': int, 'source': at.DataSource}
     for name, cfg in sim_src_cfg['config'].items():
         if cfg["dtype"] == "Scalar":
             if cfg.get("integer", False):

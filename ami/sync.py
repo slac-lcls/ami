@@ -83,7 +83,7 @@ class SimSync:
         """
         request = self.sock.recv_string()
         if request == 'ts':
-            self.sock.send_pyobj(self.ts)
+            self.sock.send_pyobj((self.ts, time.time()))
             self.ts += 1
             if self.ts % self.interval == 0:
                 tcurrent = time.time()

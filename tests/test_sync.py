@@ -1,5 +1,6 @@
 import pytest
 import zmq
+import time
 import multiprocessing as mp
 
 from ami.sync import run_syncer
@@ -71,11 +72,13 @@ def test_timestamps(sync_proc, iterations):
     for i in range(iterations):
         for c, sync in enumerate(syncs):
             sync.send_string('ts')
-            ts = sync.recv_pyobj()
+            evtid, ts = sync.recv_pyobj()
 
             # check the returned timestamp
-            assert isinstance(ts, int)
-            assert ts == start + (nclients * i + c)
+            assert isinstance(evtid, int)
+            assert evtid == start + (nclients * i + c)
+            assert isinstance(ts, float)
+            assert ts <= time.time()
 
 
 @pytest.mark.parametrize('sync_proc', [1], indirect=True)
@@ -87,11 +90,13 @@ def test_badrequests(sync_proc):
 
     # send a good request
     sync.send_string('ts')
-    ts = sync.recv_pyobj()
+    evtid, ts = sync.recv_pyobj()
 
     # check the returned timestamp
-    assert isinstance(ts, int)
-    assert ts == expected
+    assert isinstance(evtid, int)
+    assert evtid == expected
+    assert isinstance(ts, float)
+    assert ts <= time.time()
 
     # increment the expected value
     expected += 1
@@ -105,8 +110,10 @@ def test_badrequests(sync_proc):
 
     # send a good request
     sync.send_string('ts')
-    ts = sync.recv_pyobj()
+    evtid, ts = sync.recv_pyobj()
 
     # check the returned timestamp
-    assert isinstance(ts, int)
-    assert ts == expected
+    assert isinstance(evtid, int)
+    assert evtid == expected
+    assert isinstance(ts, float)
+    assert ts <= time.time()
