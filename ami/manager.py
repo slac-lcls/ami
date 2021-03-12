@@ -118,6 +118,11 @@ class Manager(Collector):
                     logger.debug("Received data from deleted graph '%s'!", msg.name)
                 else:
                     logger.warning("Received data from unknown graph '%s'!", msg.name)
+            elif msg.version > self.versions[msg.name]:
+                logger.debug("Received data from version %d of the graph '%s' which is newer the actual version %d",
+                             msg.version,
+                             msg.name,
+                             self.versions[msg.name])
             elif msg.version < self.feature_stores[msg.name].version:
                 logger.warning("Received data from version %d of the graph '%s' when version %d or newer was expected!",
                                msg.version,
