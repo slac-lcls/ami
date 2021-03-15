@@ -114,10 +114,6 @@ class Terminal(object):
         """Return the terminal(s) that give input to this one."""
         return [t for t in self.connections() if t.isOutput()]
 
-    def dependentNodes(self):
-        """Return the list of nodes which receive input from this terminal."""
-        return set([t.node() for t in self.connections() if t.isInput()])
-
     def dependentTerms(self):
         """Return the list of terms which receive input from this terminal."""
         return set([t for t in self.connections() if t.isInput()])

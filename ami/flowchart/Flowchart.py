@@ -162,6 +162,7 @@ class Flowchart(Node):
         node.sigTerminalConnected.connect(self.nodeConnected)
         node.sigTerminalDisconnected.connect(self.nodeDisconnected)
         node.sigNodeEnabled.connect(self.nodeEnabled)
+        node.setGraph(self._graph)
         self.sigNodeCreated.emit(node)
         if node.isChanged(True, True):
             self.sigNodeChanged.emit(node)
@@ -253,10 +254,6 @@ class Flowchart(Node):
         if views:
             await ctrl.graphCommHandler.unview(views)
         await ctrl.applyClicked()
-
-    def connectTerminals(self, term1, term2, type_file=None):
-        """Connect two terminals together within this flowchart."""
-        term1.connectTo(term2, type_file=type_file)
 
     def chartGraphicsItem(self):
         """
@@ -364,7 +361,7 @@ class Flowchart(Node):
                         node2 = nodes[n2]
                         term2 = node2[t2]
 
-                        self.connectTerminals(term1, term2, type_file)
+                        term1.connectTo(term2, type_file=type_file)
                         if term1.isInput() or term1.isCondition:
                             in_name = node1.name() + '_' + term1.name()
                             in_name = in_name.replace('.', '_')
