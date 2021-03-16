@@ -444,11 +444,11 @@ class Graph():
         outputs = [n for n, d in self.graph.out_degree() if d == 0]
         graph_filters = list(filter(lambda node: isinstance(node, gn.Filter), self.graph.nodes))
         body = []
+        branch_merge_candidates = set()
 
         if len(graph_filters) > 1:
             all_descendants = list(map(lambda f: nx.dag.descendants(self.graph, f), graph_filters))
             all_merge_candidates = all_descendants[0].intersection(*all_descendants[1:])
-            branch_merge_candidates = set()
             for node in nx.algorithms.topological_sort(self.graph):
                 if node in all_merge_candidates:
                     branch_merge_candidates.add(node)
@@ -465,24 +465,12 @@ class Graph():
                 paths = list(nx.algorithms.all_simple_paths(self.graph, f, t))
                 assert(len(paths) == 1)
                 nodes = paths[0]
-                # for nodes in paths:
-                # add missing input
                 filter_output = nodes.pop()
                 inputs = []
                 for node_input in filter_output.inputs:
                     inputs.append(modifiers.optional(node_input))
                 filter_output.inputs = inputs
-                # node_inputs = list(filter_output.inputs)
-                # node_inputs.remove(nodes[-1])
-                # breakpoint()
-                # missing_input = gn.Map(name=filter_output.name+"_missing",
-                #                        inputs=nodes[2].inputs, outputs=node_inputs,
-                #                        color=filter_output.color, parent=filter_output.parent,
-                #                        func=lambda *args: float("nan"))
-                # for i in node_inputs:
-                #     self.graph.add_edge(missing_input, i)
-                # nodes.append(missing_input)
-                # nodes.extend(node_inputs)
+
                 for o in outputs:
                     paths = list(nx.algorithms.all_simple_paths(self.graph, f, o))
                     for path in paths:
