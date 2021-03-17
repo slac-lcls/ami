@@ -642,7 +642,7 @@ def test_manager_store(manager_ctrl, result_data):
     assert comm.create()
 
     # inject data into the manager
-    injector.version = 1
+    injector.version = comm.graphVersion
     injector.data(hb, result_data, wait=True)
 
     # test the data returned by features
