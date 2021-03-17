@@ -113,7 +113,7 @@ def rollingBuffer_graph(request):
                             (4, 4, 2, (2, [2], [4])),
                             (1, 4, 2, (2, [2], [4], [4], [4])),
                             (4, 1, 1, (4, [1, 2, 3, 4], [5, 6, 7, 8], [5, 6, 7, 8], [5, 6, 7, 8])),
-                            (4, 1, 1, (2, [1, 2], [3, 4], [3, 4], [3, 4])),
+                            (4, 1, 1, (2, [1, 2], [3, 4], [1, 2, 3, 4], [1, 2, 3, 4])),
                          ],
                          indirect=True)
 def test_rollingBuffer(rollingBuffer_graph):
@@ -171,7 +171,7 @@ def rollingBufferNumpy_graph(request):
                             (4, 4, 2, (2, [2], [4])),
                             (1, 4, 2, (2, [2], [4], [4], [4])),
                             (4, 1, 1, (4, [1, 2, 3, 4], [5, 6, 7, 8], [5, 6, 7, 8], [5, 6, 7, 8])),
-                            (4, 1, 1, (2, [1, 2], [3, 4], [3, 4], [3, 4])),
+                            (4, 1, 1, (2, [1, 2], [3, 4], [1, 2, 3, 4], [1, 2, 3, 4])),
                          ],
                          indirect=True)
 def test_rollingBufferNumpy(rollingBufferNumpy_graph):
@@ -206,6 +206,5 @@ def test_rollingBufferNumpy(rollingBufferNumpy_graph):
 
     assert np.array_equal(worker1['ncspads_worker'], expected1)
     assert np.array_equal(worker2['ncspads_worker'], expected2)
-
     assert np.array_equal(localCollector['ncspads_localCollector'], expected3)
     assert np.array_equal(globalCollector['ncspads'], expected4)
