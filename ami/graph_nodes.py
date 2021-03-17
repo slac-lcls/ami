@@ -367,11 +367,6 @@ class RollingBuffer(GlobalTransformation):
                 dims = 0
                 args = args[0]
 
-        if self.is_expanded:
-            if self.count == 0:
-                self.idx = 0
-            self.count = (self.count + 1) % self.num_contributors
-
         if self.use_numpy:
             if self.is_expanded:
                 dtype = args.dtype
