@@ -48,7 +48,7 @@ class AsyncFetcher(QtCore.QThread):
                 self.sig.connect(parent.update)
             else:
                 self.sig_proxy = pg.SignalProxy(self.sig,
-                                                ratelimit=ratelimit,
+                                                rateLimit=ratelimit,
                                                 slot=parent.update)
 
     @property
@@ -852,7 +852,7 @@ class ArrayWidget(QtWidgets.QWidget):
         super().__init__(parent)
 
         self.terms = terms
-        self.update_rate = kwargs.get('update_rate', 30)
+        self.update_rate = kwargs.get('update_rate', 60)
         self.grid = QtGui.QGridLayout(self)
         self.table = pg.TableWidget()
         self.last_updated = QtWidgets.QLabel(parent=self)
@@ -875,8 +875,14 @@ class ArrayWidget(QtWidgets.QWidget):
 
     def array_updated(self, data):
         for term, name in self.terms.items():
-            self.table.setData(data[name])
+            if name in data:
+                self.table.setData(data[name])
 
     def close(self):
         if self.fetcher:
             self.fetcher.close()
+
+    def set_update_rate(self, update_rate):
+        self.update_rate = update_rate
+        if self.fetcher:
+            self.fetcher.sig_proxy.rateLimit = 1.0/self.update_rate

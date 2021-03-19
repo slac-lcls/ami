@@ -675,8 +675,7 @@ class NodeGraphicsItem(GraphicsObject):
         for name, from_term in self.node.terminals.items():
             if from_term.isInput() and not from_term.isConnected():
                 term_menu = QtGui.QMenu(self.node.name() + '.' + name)
-                self.connectTo.addMenu(term_menu)
-                self.connectToSubMenus.append(term_menu)
+                add_term_menu = False
 
                 for node_name, node in graph.nodes(data='node'):
                     if node == self.node:
@@ -688,20 +687,23 @@ class NodeGraphicsItem(GraphicsObject):
                     for term_name, to_term in node.terminals.items():
                         if to_term.isOutput():
                             added = True
+                            add_term_menu = True
                             action = node_menu.addAction(term_name)
                             action.from_term = from_term
                             action.to_term = to_term
 
                     if added:
                         term_menu.addMenu(node_menu)
-                        # node_menu.triggered.connect(lambda a: a.from_term.connectTo(a.to_term))
                         node_menu.triggered.connect(connect)
                         self.connectToSubMenus.append(node_menu)
 
+                if add_term_menu:
+                    self.connectTo.addMenu(term_menu)
+                    self.connectToSubMenus.append(term_menu)
+
             if from_term.isOutput():
                 term_menu = QtGui.QMenu(self.node.name() + '.' + name)
-                self.connectTo.addMenu(term_menu)
-                self.connectToSubMenus.append(term_menu)
+                add_term_menu = False
 
                 for node_name, node in graph.nodes(data='node'):
                     if node == self.node:
@@ -713,15 +715,19 @@ class NodeGraphicsItem(GraphicsObject):
                     for term_name, to_term in node.terminals.items():
                         if (to_term.isInput() or to_term.isCondition()) and not to_term.isConnected():
                             added = True
+                            add_term_menu = True
                             action = node_menu.addAction(term_name)
                             action.from_term = from_term
                             action.to_term = to_term
 
                     if added:
                         term_menu.addMenu(node_menu)
-                        # node_menu.triggered.connect(lambda a: a.from_term.connectTo(a.to_term))
                         node_menu.triggered.connect(connect)
                         self.connectToSubMenus.append(node_menu)
+
+                if add_term_menu:
+                    self.connectTo.addMenu(term_menu)
+                    self.connectToSubMenus.append(term_menu)
 
         self.menu.addMenu(self.connectTo)
 

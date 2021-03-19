@@ -448,7 +448,7 @@ def generateUi(opts):
             for i in o['values']:
                 w.addItem(str(i), i)
             if 'value' in o:
-                w.setCurrentText(o['value'])
+                setComboState(w, o['value'])
         elif t == 'color':
             w = ColorButton(parent=parent)
             if 'value' in o:

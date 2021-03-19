@@ -5,7 +5,6 @@ from ami.flowchart.library.common import CtrlNode
 from amitypes import Array, Array1d, Array2d
 from typing import Any, Text
 import ami.graph_nodes as gn
-import asyncio
 
 
 class ScalarViewer(CtrlNode):
@@ -301,14 +300,14 @@ class TimePlot(CtrlNode):
         return nodes
 
 
-class TableView(CtrlNode):
+class TableViewer(CtrlNode):
 
     """
     Display array values in a table.
     """
 
-    nodeName = "TableView"
-    uiTemplate = [("Update Rate", 'combo', {'values': list(map(str, range(60, 0, -10))), 'index': 0})]
+    nodeName = "TableViewer"
+    uiTemplate = [("Update Rate", 'combo', {'values': list(map(str, range(60, 0, -10))), 'value': 60})]
 
     def __init__(self, name):
         super().__init__(name, terminals={"In": {"io": "in", "ttype": Array}},
@@ -319,16 +318,9 @@ class TableView(CtrlNode):
             kwargs['update_rate'] = int(self.values['Update Rate'])
             self.widget = ArrayWidget(topics, terms, addr, win, **kwargs)
 
-        if self.task is None:
-            self.task = asyncio.ensure_future(self.widget.update())
-
         return self.widget
 
     def update(self, *args, **kwargs):
         super().update(*args, **kwargs)
         if self.widget:
-            self.widget.update_rate = int(self.Update_Rate)
-
-        if self.task:
-            self.task.cancel()
-            self.task = asyncio.ensure_future(self.widget.update())
+            self.widget.set_update_rate(int(self.values['Update Rate']))

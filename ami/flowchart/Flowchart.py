@@ -470,11 +470,11 @@ class Flowchart(Node):
 
     async def updateState(self):
         while True:
-            node_name = await self.checkpoint.recv_string()
-            # there is something wrong with this
-            # in ami.client.flowchart.NodeProcess.send_checkpoint we send a
-            # fcMsgs.NodeCheckPoint but we are only ever receiving the state
-            new_node_state = await self.checkpoint.recv_pyobj()
+            await self.checkpoint.recv_string()
+            msg = await self.checkpoint.recv_pyobj()
+            node_name = msg.name
+            new_node_state = msg.state
+
             node = self._graph.nodes[node_name]['node']
             current_node_state = node.saveState()
             restore_ctrl = False

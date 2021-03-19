@@ -13,7 +13,7 @@ import pyqtgraph as pg
 
 from ami import LogConfig
 from ami.client import flowchart_messages as fcMsgs
-from ami.profiler import Profiler
+from ami.comm import ZMQ_TOPIC_DELIM
 from ami.flowchart.Flowchart import Flowchart
 from ami.flowchart.library import LIBRARY
 from ami.flowchart.NodeLibrary import isNodeClass
@@ -142,7 +142,7 @@ class NodeProcess(QtCore.QObject):
 
         self.broker = self.ctx.socket(zmq.SUB)
         self.broker.connect(broker_addr)
-        self.broker.setsockopt_string(zmq.SUBSCRIBE, msg.name)
+        self.broker.setsockopt_string(zmq.SUBSCRIBE, msg.name + ZMQ_TOPIC_DELIM)
 
         self.checkpoint = self.ctx.socket(zmq.PUB)
         self.checkpoint.connect(checkpoint_addr)
@@ -153,18 +153,7 @@ class NodeProcess(QtCore.QObject):
         self.win.setWindowTitle(msg.name)
 
         with loop:
-            loop.run_until_complete(asyncio.gather(self.process(), self.monitor_node_task()))
-
-    async def monitor_node_task(self):
-        if hasattr(self.node, 'task'):
-            while self.node.task is None:
-                await asyncio.sleep(0.1)
-            # await the node task so we can see any exceptions it raised
-            try:
-                await self.node.task
-            except asyncio.CancelledError:
-                # ignore cancelled errors just means the window was closed
-                pass
+            loop.run_until_complete(self.process())
 
     async def process(self):
         while True:
@@ -229,7 +218,7 @@ class NodeProcess(QtCore.QObject):
 
         msg = fcMsgs.NodeCheckpoint(node.name(),
                                     state=state)
-        await self.checkpoint.send_string(node.name(), zmq.SNDMORE)
+        await self.checkpoint.send_string(node.name() + ZMQ_TOPIC_DELIM, zmq.SNDMORE)
         await self.checkpoint.send_pyobj(msg)
 
 
@@ -275,7 +264,7 @@ class MessageBroker(object):
         self.prometheus_dir = prometheus_dir
         self.hutch = hutch
 
-        self.profiler = None
+        # self.profiler = None
 
     def __enter__(self):
         return self
@@ -316,13 +305,13 @@ class MessageBroker(object):
 
         while True:
             topic = await self.broker_pub_sock.recv_string()
-
             if topic.startswith('\x01'):
                 topic = topic.lstrip('\x01')
+                topic = topic.rstrip(ZMQ_TOPIC_DELIM)
                 async with self.lock:
                     if topic in self.msgs:
                         msg = self.msgs[topic]
-                        self.broker_pub_sock.send_string(topic, zmq.SNDMORE)
+                        self.broker_pub_sock.send_string(topic + ZMQ_TOPIC_DELIM, zmq.SNDMORE)
                         self.broker_pub_sock.send_pyobj(msg)
                     else:
                         continue
@@ -331,13 +320,14 @@ class MessageBroker(object):
 
         while True:
             topic = await self.checkpoint_sub_sock.recv_string()
+            topic = topic.rstrip(ZMQ_TOPIC_DELIM)
             msg = await self.checkpoint_sub_sock.recv_pyobj()
 
             async with self.lock:
                 self.checkpoints[topic] = msg
 
-            await self.checkpoint_pub_sock.send_string(topic)
-            await self.checkpoint_pub_sock.send_pyobj(msg.state)
+            await self.checkpoint_pub_sock.send_string(topic + ZMQ_TOPIC_DELIM)
+            await self.checkpoint_pub_sock.send_pyobj(msg)
 
     async def forward_message_to_node(self, topic, msg):
 
@@ -346,7 +336,7 @@ class MessageBroker(object):
             async with self.lock:
                 self.msgs[topic] = msg
 
-            await self.broker_pub_sock.send_string(topic, zmq.SNDMORE)
+            await self.broker_pub_sock.send_string(topic + ZMQ_TOPIC_DELIM, zmq.SNDMORE)
             await self.broker_pub_sock.send_pyobj(msg)
 
     async def monitor_processes(self):
@@ -370,8 +360,11 @@ class MessageBroker(object):
 
                     msg = fcMsgs.CreateNode(name, typ, state)
 
-                    # don't resend last message
-                    del self.msgs[msg.name]
+                    if type(self.msgs[msg.name]) is fcMsgs.DisplayNode and state:
+                        self.msgs[msg.name].state = state['widget']
+                    else:
+                        # don't resend last message
+                        del self.msgs[msg.name]
 
                     proc = mp.Process(
                         target=NodeProcess,
@@ -403,20 +396,6 @@ class MessageBroker(object):
                 async with self.lock:
                     self.widget_procs[msg.name] = (msg.node_type, proc)
 
-            elif isinstance(msg, fcMsgs.Profiler):
-                if self.profiler is None:
-                    self.profiler = mp.Process(target=Profiler,
-                                               args=(self.broker_pub_addr, self.graphmgr_addr.profile, msg.name),
-                                               daemon=True)
-                    self.profiler.start()
-                    logger.info("creating process: Profiler pid: %d", self.profiler.pid)
-
-                async with self.lock:
-                    self.msgs[topic] = msg
-
-                await self.broker_pub_sock.send_string(topic, zmq.SNDMORE)
-                await self.broker_pub_sock.send_pyobj(msg)
-
             elif isinstance(msg, fcMsgs.DisplayNode):
                 await self.forward_message_to_node(topic, msg)
 
@@ -441,10 +420,10 @@ class MessageBroker(object):
                 self.library_paths.update(msg.paths)
 
     async def run(self):
-        await asyncio.gather(self.handle_connect(),
-                             self.handle_checkpoint(),
-                             self.process_messages(),
-                             self.monitor_processes())
+        asyncio.create_task(self.handle_connect())
+        asyncio.create_task(self.handle_checkpoint())
+        asyncio.create_task(self.process_messages())
+        asyncio.create_task(self.monitor_processes())
 
 
 def run_client(graphmgr_addr, load, prometheus_dir, hutch):
