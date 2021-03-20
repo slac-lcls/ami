@@ -121,6 +121,7 @@ class GraphCollector(Node, Collector):
                     self.event_time.labels(self.hutch, 'Heartbeat', self.name).set(heartbeat_time)
                     self.event_size.labels(self.hutch, self.name).set(size)
                 except Exception as e:
+                    e.graph_name = msg.name
                     logger.exception("%s: Failure encountered while executing graph %s:", self.name, msg.name)
                     self.report("error", e)
                     logger.error("%s: Purging graph (%s v%d)", self.name, msg.name, self.store.version(msg.name))

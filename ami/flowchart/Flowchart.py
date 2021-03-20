@@ -539,6 +539,8 @@ class Flowchart(Node):
                     events_per_second = [None]*num_workers
                     total_events = [None]*num_workers
 
+                if ctrl.graph_name not in msg:
+                    continue
                 time_per_event = msg[ctrl.graph_name]
                 worker = int(re.search(r'(\d)+', source).group())
                 events_per_second[worker] = len(time_per_event)/(time_per_event[-1][1] - time_per_event[0][0])
@@ -555,6 +557,8 @@ class Flowchart(Node):
             elif topic == 'error':
                 ctrl = self.widget()
                 if hasattr(msg, 'node_name'):
+                    if msg.graph_name != ctrl.graph_name:
+                        continue
                     node_name = ctrl.metadata[msg.node_name]['parent']
                     node = self.nodes(data='node')[node_name]
                     node.setException(msg)
@@ -563,8 +567,8 @@ class Flowchart(Node):
                     ctrl.chartWidget.updateStatus(f"{source}: {msg}", color='red')
 
     async def run(self):
-        await asyncio.gather(self.updateState(),
-                             self.updateSources())
+        asyncio.create_task(self.updateState())
+        asyncio.create_task(self.updateSources())
 
 
 class FlowchartCtrlWidget(QtGui.QWidget):

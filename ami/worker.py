@@ -65,8 +65,8 @@ class Worker(Node):
             self.graphs[name] = None
         if name in self.store:
             self.store.clear(name)
-        if name in self.times:
-            del self.times[name]
+        # if name in self.times:
+        #     del self.times[name]
         self.update_requests()
 
     def update_requests(self):
@@ -103,8 +103,8 @@ class Worker(Node):
             del self.graphs[name]
         if name in self.store:
             self.store.remove(name)
-        if name is self.times:
-            del self.times[name]
+        # if name is self.times:
+        #     del self.times[name]
         self.update_requests()
 
     def recv_graph_exception(self, name, version, exception):
@@ -158,7 +158,7 @@ class Worker(Node):
         return size
 
     def run(self):
-        self.times = {}
+        # self.times = {}
         self.event_rate = {}
         self.num_events = 1
         self.start_prometheus()
@@ -238,12 +238,12 @@ class Worker(Node):
 
                                 self.event_rate[name].append((start, stop))
 
-                                if name not in self.times:
-                                    self.times[name] = []
-
-                                self.times[name].append((start, stop, graph.times()))
+                                # if name not in self.times:
+                                #     self.times[name] = []
+                                # self.times[name].append((start, stop, graph.times()))
 
                         except Exception as e:
+                            e.graph_name = name
                             logger.exception("%s: Failure encountered while executing graph (%s, v%d):",
                                              self.name, name, self.store.version(name))
                             self.report("error", e)
