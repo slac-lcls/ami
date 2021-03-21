@@ -436,6 +436,7 @@ class FlowchartViewBox(ViewBox):
 
         self.copy = False
         self.paste_pos = None
+        self.mouse_pos = None
 
         self.commentRect = None
         self.commentId = 0
@@ -464,6 +465,7 @@ class FlowchartViewBox(ViewBox):
             self.selected_node_menu.addAction("Delete", self.deleteSelectedNodes)
             self._fc_menu.addMenu(self.selected_node_menu)
 
+        self.mouse_pos = self.mapToView(ev.pos())
         return self._fc_menu
 
     def copySelectedNodes(self):

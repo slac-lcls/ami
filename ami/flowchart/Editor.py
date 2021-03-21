@@ -254,7 +254,6 @@ class Ui_Toolbar(object):
         self.toolBar.addAction(self.actionApply)
         self.toolBar.addAction(self.actionReset)
         # self.toolBar.addAction(self.actionProfiler)
-
         self.toolBar.insertSeparator(self.actionConfigure)
 
         self.toolBar.addAction(self.actionHome)

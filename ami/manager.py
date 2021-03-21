@@ -59,6 +59,7 @@ class Manager(Collector):
         self.paths = collections.defaultdict(set)
         self.versions = {}  # { graph_name : version_number}
         self.purged = set()
+        self.purged_graphs = {}  # { graph_name : dill.dumps(graph) }
         self.global_cmds = {"list_graphs"}
         self.no_auto_create_cmds = {"create_graph", "destroy_graph"}
 
@@ -118,6 +119,11 @@ class Manager(Collector):
                     logger.debug("Received data from deleted graph '%s'!", msg.name)
                 else:
                     logger.warning("Received data from unknown graph '%s'!", msg.name)
+            elif msg.version > self.versions[msg.name]:
+                logger.debug("Received data from version %d of the graph '%s' which is newer the actual version %d",
+                             msg.version,
+                             msg.name,
+                             self.versions[msg.name])
             elif msg.version < self.feature_stores[msg.name].version:
                 logger.warning("Received data from version %d of the graph '%s' when version %d or newer was expected!",
                                msg.version,
@@ -306,6 +312,12 @@ class Manager(Collector):
     def cmd_get_graph(self, name):
         self.comm.send(dill.dumps(self.graphs[name]))
 
+    def cmd_get_purged_graph(self, name):
+        if name in self.purged_graphs:
+            self.comm.send(self.purged_graphs[name])
+        else:
+            self.comm.send(dill.dumps(None))
+
     def cmd_add_graph(self, name):
         nodes = dill.loads(self.comm.recv())
         backup = dill.dumps(self.graphs[name])
@@ -315,7 +327,7 @@ class Manager(Collector):
             self.graphs[name].add(nodes)
             self.compile_graph(name)
             self.publish_delta(name, "add", nodes)
-        except (AssertionError, TypeError):
+        except Exception:
             if isinstance(nodes, list):
                 logger.exception("Failure encountered adding nodes \"%s\" to the graph:",
                                  ", ".join(n.name for n in nodes))
@@ -402,6 +414,7 @@ class Manager(Collector):
     def publish_purge(self, name, reply=True):
         logger.info("Purging requested graph...")
         try:
+            self.purged_graphs[name] = dill.dumps(self.graphs[name])
             self.graphs[name] = None
             self.versions[name] += 1
             self.graph_comm.send_string("purge", zmq.SNDMORE)

@@ -1,15 +1,13 @@
 # -*- coding: utf-8 -*-
-from pyqtgraph.Qt import QtCore, QtGui
+from pyqtgraph.Qt import QtCore, QtGui, QtWidgets
 from pyqtgraph.graphicsItems.GraphicsObject import GraphicsObject
 from pyqtgraph import functions as fn
 from pyqtgraph.pgcollections import OrderedDict
 from pyqtgraph.debug import printExc
 from ami.flowchart.Terminal import Terminal
 import weakref
-
-
-def strDict(d):
-    return dict([(str(k), v) for k, v in d.items()])
+import amitypes  # noqa
+import typing  # noqa
 
 
 def find_nearest(x):
@@ -343,13 +341,6 @@ class Node(QtCore.QObject):
         """Return the name of this node."""
         return self._name
 
-    def dependentNodes(self):
-        """Return the list of nodes which provide direct input to this node"""
-        nodes = set()
-        for t in self.inputs().values():
-            nodes |= set([i.node() for i in t.inputTerminals()])
-        return nodes
-
     def __repr__(self):
         return "<Node %s @%x>" % (self.name(), id(self))
 
@@ -454,12 +445,14 @@ class Node(QtCore.QObject):
             if name not in state:
                 self.removeTerminal(name)
         for name, opts in state.items():
+            if type(opts['ttype']) is str:
+                opts['ttype'] = eval(opts['ttype'])
+
             if name in self.terminals:
                 term = self[name]
                 term.setOpts(**opts)
                 continue
             try:
-                # opts = strDict(opts)
                 self.addTerminal(name, **opts)
             except Exception:
                 printExc("Error restoring terminal %s (%s):" % (str(name), str(opts)))
@@ -497,6 +490,9 @@ class Node(QtCore.QObject):
     def isChanged(self, restore_ctrl, restore_widget):
         return False
 
+    def setGraph(self, graph):
+        self._graph = graph
+
 
 class NodeGraphicsItem(GraphicsObject):
 
@@ -528,6 +524,7 @@ class NodeGraphicsItem(GraphicsObject):
         self.updateTerminals()
 
         self.menu = None
+        self.connectedTo = None
         self.add_condition = None
         self.enabled = QtGui.QAction("Enabled", self.menu, checkable=True, checked=True)
         self.buildMenu()
@@ -673,12 +670,91 @@ class NodeGraphicsItem(GraphicsObject):
         return GraphicsObject.itemChange(self, change, val)
 
     def getMenu(self):
+        if not self.node._graph:
+            return self.menu
+
+        graph = self.node._graph
+        self.connectTo = QtGui.QMenu("Connect To")
+        self.connectToSubMenus = []
+
+        def connect(action):
+            try:
+                action.from_term.connectTo(action.to_term)
+            except Exception as e:
+                msg = QtWidgets.QMessageBox()
+                msg.setText(str(e))
+                msg.exec()
+
+        for name, from_term in self.node.terminals.items():
+            if from_term.isInput() and not from_term.isConnected():
+                term_menu = QtGui.QMenu(self.node.name() + '.' + name)
+                add_term_menu = False
+
+                for node_name, node in graph.nodes(data='node'):
+                    if node == self.node:
+                        continue
+
+                    added = False
+                    node_menu = QtGui.QMenu(node_name)
+
+                    for term_name, to_term in node.terminals.items():
+                        if to_term.isOutput():
+                            added = True
+                            add_term_menu = True
+                            action = node_menu.addAction(term_name)
+                            action.from_term = from_term
+                            action.to_term = to_term
+
+                    if added:
+                        term_menu.addMenu(node_menu)
+                        node_menu.triggered.connect(connect)
+                        self.connectToSubMenus.append(node_menu)
+
+                if add_term_menu:
+                    self.connectTo.addMenu(term_menu)
+                    self.connectToSubMenus.append(term_menu)
+
+            if from_term.isOutput():
+                term_menu = QtGui.QMenu(self.node.name() + '.' + name)
+                add_term_menu = False
+
+                for node_name, node in graph.nodes(data='node'):
+                    if node == self.node:
+                        continue
+
+                    added = False
+                    node_menu = QtGui.QMenu(node_name)
+
+                    for term_name, to_term in node.terminals.items():
+                        if (to_term.isInput() or to_term.isCondition()) and not to_term.isConnected():
+                            added = True
+                            add_term_menu = True
+                            action = node_menu.addAction(term_name)
+                            action.from_term = from_term
+                            action.to_term = to_term
+
+                    if added:
+                        term_menu.addMenu(node_menu)
+                        node_menu.triggered.connect(connect)
+                        self.connectToSubMenus.append(node_menu)
+
+                if add_term_menu:
+                    self.connectTo.addMenu(term_menu)
+                    self.connectToSubMenus.append(term_menu)
+
+        self.menu.addMenu(self.connectTo)
+
         return self.menu
 
     def raiseContextMenu(self, ev):
         menu = self.scene().addParentContextMenus(self, self.getMenu(), ev)
         pos = ev.screenPos()
         menu.popup(QtCore.QPoint(pos.x(), pos.y()))
+
+        if self.connectedTo:
+            action = self.connectedTo.menuAction()
+            self.menu.removeAction(action)
+            del self.connectTo
 
     def buildMenu(self, reset=False):
         if reset:

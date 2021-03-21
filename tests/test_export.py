@@ -9,6 +9,8 @@ import multiprocessing as mp
 import ami.graph_nodes as gn
 
 from ami.graphkit_wrapper import Graph
+from ami.data import Heartbeat
+
 try:
     from ami.export import run_export
     from ami.export.nt import CUSTOM_TYPE_WRAPPERS
@@ -148,7 +150,7 @@ def exporter(ipc_dir):
                       })
         injector.send('heartbeat',
                       'test',
-                      5)
+                      Heartbeat(5, 0))
         yield pvbase, injector
 
         # cleanup the manager process

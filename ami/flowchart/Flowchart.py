@@ -161,6 +161,7 @@ class Flowchart(QtCore.QObject):
         node.sigTerminalConnected.connect(self.nodeConnected)
         node.sigTerminalDisconnected.connect(self.nodeDisconnected)
         node.sigNodeEnabled.connect(self.nodeEnabled)
+        node.setGraph(self._graph)
         self.sigNodeCreated.emit(node)
         if node.isChanged(True, True):
             self.sigNodeChanged.emit(node)
@@ -252,10 +253,6 @@ class Flowchart(QtCore.QObject):
         if views:
             await ctrl.graphCommHandler.unview(views)
         await ctrl.applyClicked()
-
-    def connectTerminals(self, term1, term2, type_file=None):
-        """Connect two terminals together within this flowchart."""
-        term1.connectTo(term2, type_file=type_file)
 
     def chartGraphicsItem(self):
         """
@@ -424,7 +421,7 @@ class Flowchart(QtCore.QObject):
 
         nodes = []
         for name, node in self.nodes(data='node'):
-            if node.viewed:
+            if node.viewed or node.exportable():
                 nodes.append(node)
 
         await ctrl.chartWidget.build_views(nodes, ctrl=True, export=True)
@@ -473,11 +470,11 @@ class Flowchart(QtCore.QObject):
 
     async def updateState(self):
         while True:
-            node_name = await self.checkpoint.recv_string()
-            # there is something wrong with this
-            # in ami.client.flowchart.NodeProcess.send_checkpoint we send a
-            # fcMsgs.NodeCheckPoint but we are only ever receiving the state
-            new_node_state = await self.checkpoint.recv_pyobj()
+            await self.checkpoint.recv_string()
+            msg = await self.checkpoint.recv_pyobj()
+            node_name = msg.name
+            new_node_state = msg.state
+
             node = self._graph.nodes[node_name]['node']
             current_node_state = node.saveState()
             restore_ctrl = False
@@ -542,6 +539,8 @@ class Flowchart(QtCore.QObject):
                     events_per_second = [None]*num_workers
                     total_events = [None]*num_workers
 
+                if ctrl.graph_name not in msg:
+                    continue
                 time_per_event = msg[ctrl.graph_name]
                 worker = int(re.search(r'(\d)+', source).group())
                 events_per_second[worker] = len(time_per_event)/(time_per_event[-1][1] - time_per_event[0][0])
@@ -558,6 +557,8 @@ class Flowchart(QtCore.QObject):
             elif topic == 'error':
                 ctrl = self.widget()
                 if hasattr(msg, 'node_name'):
+                    if msg.graph_name != ctrl.graph_name:
+                        continue
                     node_name = ctrl.metadata[msg.node_name]['parent']
                     node = self.nodes(data='node')[node_name]
                     node.setException(msg)
@@ -565,9 +566,11 @@ class Flowchart(QtCore.QObject):
                 else:
                     ctrl.chartWidget.updateStatus(f"{source}: {msg}", color='red')
 
-    async def run(self):
-        await asyncio.gather(self.updateState(),
-                             self.updateSources())
+    async def run(self, load=None):
+        asyncio.create_task(self.updateState())
+        asyncio.create_task(self.updateSources())
+        if load:
+            await self.loadFile(load)
 
 
 class FlowchartCtrlWidget(QtGui.QWidget):
@@ -712,7 +715,6 @@ class FlowchartCtrlWidget(QtGui.QWidget):
 
         if graph_nodes:
             await self.graphCommHandler.add(graph_nodes)
-
             node_names = ', '.join(set(map(lambda node: node.parent, graph_nodes)))
             self.chartWidget.updateStatus(f"Submitted {node_names}")
 
@@ -936,13 +938,15 @@ class FlowchartWidget(dockarea.DockArea):
 
     def operationMenuTriggered(self, action):
         nodeType = action.nodeType
-        pos = self.viewBox().mapSceneToView(action.pos)
+        pos = self.viewBox().mouse_pos
+        pos = (50 * round(pos.x() / 50), 50 * round(pos.y() / 50))
         self.chart.createNode(nodeType, pos=pos)
 
     def sourceMenuTriggered(self, action):
         node = action.nodeType
         if node not in self.chart._graph:
-            pos = self.viewBox().mapSceneToView(action.pos)
+            pos = self.viewBox().mouse_pos
+            pos = (50 * round(pos.x() / 50), 50 * round(pos.y() / 50))
             node_type = self.chart.source_library.getSourceType(node)
             node = SourceNode(name=node, terminals={'Out': {'io': 'out', 'ttype': node_type}})
             self.chart.addNode(node=node, pos=pos)
@@ -961,6 +965,9 @@ class FlowchartWidget(dockarea.DockArea):
 
         node = item.node
         if not node.enabled():
+            return
+
+        if not hasattr(node, 'display'):
             return
 
         if node.viewable():
@@ -998,9 +1005,6 @@ class FlowchartWidget(dockarea.DockArea):
 
         for node in nodes:
             name = node.name()
-
-            if not hasattr(node, 'display'):
-                continue
 
             node.display(topics=None, terms=None, addr=None, win=None)
             state = {}
@@ -1053,6 +1057,8 @@ class FlowchartWidget(dockarea.DockArea):
 
             if node.exportable() and export:
                 await self.ctrl.graphCommHandler.export(node.input_vars()['In'], node.values['alias'])
+                if not ctrl:
+                    display_args.pop()
 
             if not node.created:
                 state = node.saveState()

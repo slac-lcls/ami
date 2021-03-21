@@ -191,13 +191,44 @@ class Split(CtrlNode):
         return node
 
 
-class Stack(CtrlNode):
+class Stack1d(CtrlNode):
+
+    """
+    Stacks scalars into 1d array using np.stack
+    """
+
+    nodeName = "Stack1d"
+    uiTemplate = [('axis', 'intSpin', {'value': 0, 'min': 0, 'max': 0})]
+
+    def __init__(self, name):
+        super().__init__(name, terminals={"In": {'io': 'in', 'ttype': Union[float, List[float]]},
+                                          "Out": {'io': 'out', 'ttype': Array1d}},
+                         allowAddInput=True)
+
+    def to_operation(self, inputs, conditions={}):
+        outputs = self.output_vars()
+
+        axis = self.values['axis']
+
+        if len(self.inputs()) > 1:
+            node = gn.Map(name=self.name()+"_operation",
+                          condition_needs=conditions, inputs=inputs, outputs=outputs,
+                          func=lambda *arr: np.stack(arr, axis=axis), parent=self.name())
+        else:
+            node = gn.Map(name=self.name()+"_operation",
+                          condition_needs=conditions, inputs=inputs, outputs=outputs,
+                          func=lambda arr: np.stack(arr, axis=axis), parent=self.name())
+
+        return node
+
+
+class Stack2d(CtrlNode):
 
     """
     Stacks 1d arrays into 2d array using np.stack
     """
 
-    nodeName = "Stack"
+    nodeName = "Stack2d"
     uiTemplate = [('axis', 'intSpin', {'value': 0, 'min': 0, 'max': 1})]
 
     def __init__(self, name):
@@ -395,13 +426,45 @@ class RMS(GroupedNode):
         return node
 
 
-class MeanRMS(Node):
+class TimeMeanRMS(CtrlNode):
 
     """
-    MeanRMS
+    TimeMeanRMS
     """
 
-    nodeName = "MeanRMS"
+    nodeName = "TimeMeanRMS"
+    uiTemplate = [('N', 'intSpin', {'value': 2, 'min': 2})]
+
+    def __init__(self, name):
+        super().__init__(name, terminals={'In': {'io': 'in', 'ttype': float},
+                                          'Mean': {'io': 'out', 'ttype': float},
+                                          'RMS': {'io': 'out', 'ttype': float}})
+
+    def to_operation(self, inputs, conditions={}):
+        outputs = self.output_vars()
+
+        def func(arr):
+            mean = np.mean(arr)
+            rms = np.sqrt(np.mean(np.square(arr)))
+            return mean, rms
+
+        accumulated_outputs = [self.name()+'_accumulated_events']
+
+        nodes = [gn.PickN(name=self.name()+'_picked', condition_needs=conditions, N=self.values['N'],
+                          inputs=inputs, outputs=accumulated_outputs, parent=self.name()),
+                 gn.Map(name=self.name()+'_operation', inputs=accumulated_outputs, outputs=outputs,
+                        func=func, parent=self.name())]
+
+        return nodes
+
+
+class HistMeanRMS(Node):
+
+    """
+    HistMeanRMS
+    """
+
+    nodeName = "HistMeanRMS"
 
     def __init__(self, name):
         super().__init__(name, terminals={'In': {'io': 'in', 'ttype': Array1d},

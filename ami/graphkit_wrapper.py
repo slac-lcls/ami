@@ -2,7 +2,7 @@ import networkx as nx
 import itertools as it
 import collections
 import ami.graph_nodes as gn
-from networkfox import compose
+from networkfox import compose, modifiers
 
 
 class Graph():
@@ -366,6 +366,8 @@ class Graph():
         subgraph = self.graph.subgraph(nodes)
         inputs = [n for n, d in subgraph.in_degree() if d == 0]
         inputs = list(it.chain.from_iterable([i.inputs for i in inputs]))
+        if '' in inputs:
+            inputs.remove('')
         outputs = [n for n, d in subgraph.out_degree() if d == 0]
         nodes = list(filter(lambda node: not isinstance(node, str), nodes))
         nodes = list(map(lambda node: node.to_operation(), nodes))
@@ -439,19 +441,42 @@ class Graph():
         self._expand_global_operations(num_workers, num_local_collectors)
 
         seen = set()
-        branch_merge_candidates = [n for n, d in self.graph.in_degree() if d >= 2 and type(n) is str]
-        graph_filters = list(filter(lambda node: isinstance(node, gn.Filter), self.graph.nodes))
         outputs = [n for n, d in self.graph.out_degree() if d == 0]
+        graph_filters = list(filter(lambda node: isinstance(node, gn.Filter), self.graph.nodes))
         body = []
+        branch_merge_candidates = set()
 
-        # There are two cases that need to be handled when converting filter nodes.
-        # Filters which merge two branches of the graph and filters which don't merge branches.
+        if len(graph_filters) > 1:
+            all_descendants = list(map(lambda f: nx.dag.descendants(self.graph, f), graph_filters))
+            all_merge_candidates = all_descendants[0].intersection(*all_descendants[1:])
+            for node in nx.algorithms.topological_sort(self.graph):
+                if node in all_merge_candidates:
+                    branch_merge_candidates.add(node)
+                    all_merge_candidates.remove(node)
+                    all_merge_candidates = all_merge_candidates.difference(nx.dag.descendants(self.graph, node))
+                    if not all_merge_candidates:
+                        break
 
-        filters_targets = list(it.product(graph_filters, branch_merge_candidates))
-        for f, t in filters_targets:
-            paths = list(nx.algorithms.all_simple_paths(self.graph, f, t))
+            # There are two cases that need to be handled when converting filter nodes.
+            # Filters which merge two branches of the graph and filters which don't merge branches.
+            filters_targets = list(it.product(graph_filters, branch_merge_candidates))
 
-            for nodes in paths:
+            for f, t in filters_targets:
+                paths = list(nx.algorithms.all_simple_paths(self.graph, f, t))
+                assert(len(paths) == 1)
+                nodes = paths[0]
+                filter_output = nodes.pop()
+                inputs = []
+                for node_input in filter_output.inputs:
+                    inputs.append(modifiers.optional(node_input))
+                filter_output.inputs = inputs
+
+                for o in outputs:
+                    paths = list(nx.algorithms.all_simple_paths(self.graph, f, o))
+                    for path in paths:
+                        for node in path:
+                            if node not in nodes:
+                                nodes.append(node)
                 filter_node = self._generate_filter_node(seen, f, nodes)
                 body.append(filter_node)
 

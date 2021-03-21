@@ -57,11 +57,13 @@ setup(
             'ami-client = ami.client:main',
             'ami-console = ami.console:main',
             'ami-local = ami.local:main',
+            'ami-remote = ami.remote:main',
             'ami-export = ami.export:main',
             'ami-syncer = ami.sync:main',
-            'ami-profiler = ami.profiler:main'
+            'ami-monitor = ami.monitor:main'
         ]
     },
+    scripts=['ami/ami-mpi'],
     classifiers=[
         'Development Status :: 1 - Planning'
         'Environment :: Other Environment',

@@ -239,3 +239,30 @@ class GaussianFilter1D(CtrlNode):
                       parent=self.name())
 
         return node
+
+
+class Rotate(CtrlNode):
+
+    """
+    Scipy.ndimage.rotate
+    """
+
+    nodeName = "Rotate"
+
+    uiTemplate = [('angle', 'doubleSpin')]
+
+    def __init__(self, name):
+        super().__init__(name, terminals={'In': {'io': 'in', 'ttype': Array2d},
+                                          'Out': {'io': 'out', 'ttype': Array2d}})
+
+    def to_operation(self, inputs, conditions={}):
+        outputs = self.output_vars()
+        args = dict(self.values)
+
+        node = gn.Map(name=self.name()+"_operation",
+                      condition_needs=conditions,
+                      inputs=inputs, outputs=outputs,
+                      func=lambda arr: ndimage.rotate(arr, **args),
+                      parent=self.name())
+
+        return node

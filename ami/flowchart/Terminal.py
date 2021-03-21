@@ -3,7 +3,6 @@ from pyqtgraph.Qt import QtCore, QtGui, QtWidgets
 from pyqtgraph.graphicsItems.GraphicsObject import GraphicsObject
 from pyqtgraph import functions as fn
 from pyqtgraph.Point import Point
-import amitypes  # noqa
 import subprocess
 import inspect
 import weakref
@@ -33,7 +32,6 @@ class Terminal(object):
         self._removable = removable
         self._connections = {}
         self._group = group
-
         self._type = ttype
         self._unit = unit
         self._graphicsItem = TerminalGraphicsItem(self, parent=self._node().graphicsItem())
@@ -116,10 +114,6 @@ class Terminal(object):
         """Return the terminal(s) that give input to this one."""
         return [t for t in self.connections() if t.isOutput()]
 
-    def dependentNodes(self):
-        """Return the list of nodes which receive input from this terminal."""
-        return set([t.node() for t in self.connections() if t.isInput()])
-
     def dependentTerms(self):
         """Return the list of terms which receive input from this terminal."""
         return set([t for t in self.connections() if t.isInput()])
@@ -176,6 +170,11 @@ class Terminal(object):
         if signal:
             self.connected(term)
             term.connected(self)
+
+        if self.isInput() and term.isOutput():
+            self.setUnit(term.unit())
+        elif self.isOutput() and term.isInput():
+            term.setUnit(self.unit())
 
         if self.isInput() and term.isOutput():
             self.setUnit(term.unit())

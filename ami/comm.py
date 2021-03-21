@@ -536,9 +536,9 @@ class GraphBuilder(ContributionBuilder):
             if self.graph:
                 for data in contribs.values():
                     start = time.time()
-                    res = self.graph(data, color=self.color)
+                    graph_result = self.graph(data, color=self.color)
                     stop = time.time()
-                    self.pending[eb_key].update(res)
+                    self.pending[eb_key].update(graph_result)
                     exec_time = self.graph.times()
                     if exec_time:
                         times.append((start, stop, exec_time))
@@ -1437,6 +1437,16 @@ class CommHandler(abc.ABC):
             An object of type `Graph` representing the current analysis graph.
         """
         return self._request_dill('get_graph')
+
+    @property
+    def purged_graph(self):
+        """
+        Fetches the current graph instance from the manager.
+
+        Returns:
+            An object of type `Graph` representing the current analysis graph.
+        """
+        return self._request_dill('get_purged_graph')
 
     @property
     def features(self):
