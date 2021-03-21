@@ -60,12 +60,8 @@ def run_editor_window(broker_addr, graphmgr_addr, checkpoint_addr, load=None, pr
     win.setCentralWidget(fc.widget())
     win.show()
 
-    # Load a flowchart chart into the editor window
-    if load:
-        fc.loadFile(load)
-
     try:
-        task = asyncio.ensure_future(fc.run())
+        task = asyncio.create_task(fc.run(load))
         loop.run_forever()
     finally:
         if not task.done():

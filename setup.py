@@ -60,7 +60,7 @@ setup(
             'ami-remote = ami.remote:main',
             'ami-export = ami.export:main',
             'ami-syncer = ami.sync:main',
-            'ami-profiler = ami.profiler:main'
+            'ami-monitor = ami.monitor:main'
         ]
     },
     scripts=['ami/ami-mpi'],

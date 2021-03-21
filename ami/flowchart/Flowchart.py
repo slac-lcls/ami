@@ -566,9 +566,11 @@ class Flowchart(Node):
                 else:
                     ctrl.chartWidget.updateStatus(f"{source}: {msg}", color='red')
 
-    async def run(self):
+    async def run(self, load=None):
         asyncio.create_task(self.updateState())
         asyncio.create_task(self.updateSources())
+        if load:
+            await self.loadFile(load)
 
 
 class FlowchartCtrlWidget(QtGui.QWidget):
@@ -933,13 +935,15 @@ class FlowchartWidget(dockarea.DockArea):
 
     def operationMenuTriggered(self, action):
         nodeType = action.nodeType
-        pos = self.viewBox().mapSceneToView(action.pos)
+        pos = self.viewBox().mouse_pos
+        pos = (50 * round(pos.x() / 50), 50 * round(pos.y() / 50))
         self.chart.createNode(nodeType, pos=pos)
 
     def sourceMenuTriggered(self, action):
         node = action.nodeType
         if node not in self.chart._graph:
-            pos = self.viewBox().mapSceneToView(action.pos)
+            pos = self.viewBox().mouse_pos
+            pos = (50 * round(pos.x() / 50), 50 * round(pos.y() / 50))
             node_type = self.chart.source_library.getSourceType(node)
             node = SourceNode(name=node, terminals={'Out': {'io': 'out', 'ttype': node_type}})
             self.chart.addNode(node=node, pos=pos)
