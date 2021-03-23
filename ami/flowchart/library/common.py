@@ -105,7 +105,7 @@ class SourceNode(CtrlNode):
 
     def __init__(self, **kwargs):
         kwargs['viewable'] = True
-        kwargs['allowAddCondition'] = False
+        kwargs['allowOptional'] = False
         super().__init__(**kwargs)
 
         self.widgetType = None

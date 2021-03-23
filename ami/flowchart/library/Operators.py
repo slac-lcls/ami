@@ -20,12 +20,8 @@ class Identity(GroupedNode):
                                           "Out": {'io': 'out', 'ttype': Any}},
                          allowAddInput=True)
 
-    def to_operation(self, inputs, conditions={}):
-        outputs = self.output_vars()
-
-        node = gn.Map(name=self.name()+"_operation", inputs=inputs, outputs=outputs,
-                      condition_needs=conditions, func=lambda *args: args, parent=self.name())
-        return node
+    def to_operation(self, **kwargs):
+        return gn.Map(name=self.name()+"_operation", **kwargs, func=lambda *args: args)
 
 
 class MeanVsScan(CtrlNode):
@@ -50,7 +46,7 @@ class MeanVsScan(CtrlNode):
             'Counts': {'io': 'out', 'ttype': Array1d}
         })
 
-    def to_operation(self, inputs, conditions={}):
+    def to_operation(self, inputs, outputs, **kwargs):
         outputs = self.output_vars()
 
         if self.values['binned']:
@@ -76,12 +72,12 @@ class MeanVsScan(CtrlNode):
 
             nodes = [
                 gn.Map(name=self.name()+'_map', inputs=inputs, outputs=map_outputs,
-                       condition_needs=conditions, func=func, parent=self.name()),
+                       func=func, **kwargs),
                 gn.ReduceByKey(name=self.name()+'_reduce',
                                inputs=map_outputs, outputs=reduce_outputs,
-                               reduction=lambda cv, v: (cv[0]+v[0], cv[1]+v[1]), parent=self.name()),
+                               reduction=lambda cv, v: (cv[0]+v[0], cv[1]+v[1]), **kwargs),
                 gn.Map(name=self.name()+'_mean', inputs=reduce_outputs, outputs=outputs, func=mean,
-                       parent=self.name())
+                       **kwargs)
             ]
         else:
             map_outputs = [self.name()+'_map_count']
@@ -96,12 +92,12 @@ class MeanVsScan(CtrlNode):
 
             nodes = [
                 gn.Map(name=self.name()+'_map', inputs=[inputs['Value']], outputs=map_outputs,
-                       condition_needs=conditions, func=lambda a: (a, 1), parent=self.name()),
+                       func=lambda a: (a, 1), **kwargs),
                 gn.ReduceByKey(name=self.name()+'_reduce',
                                inputs=[inputs['Bin']]+map_outputs, outputs=reduce_outputs,
-                               reduction=lambda cv, v: (cv[0]+v[0], cv[1]+v[1]), parent=self.name()),
+                               reduction=lambda cv, v: (cv[0]+v[0], cv[1]+v[1]), **kwargs),
                 gn.Map(name=self.name()+'_mean', inputs=reduce_outputs, outputs=outputs, func=mean,
-                       parent=self.name())
+                       **kwargs)
             ]
 
         return nodes
@@ -130,9 +126,7 @@ class MeanWaveformVsScan(CtrlNode):
             'Counts': {'io': 'out', 'ttype': Array2d}
         })
 
-    def to_operation(self, inputs, conditions={}):
-        outputs = self.output_vars()
-
+    def to_operation(self, inputs, outputs, **kwargs):
         if self.values['binned']:
             bins = np.histogram_bin_edges(np.arange(self.values['min'], self.values['max']),
                                           bins=self.values['bins'],
@@ -162,12 +156,12 @@ class MeanWaveformVsScan(CtrlNode):
 
             nodes = [
                 gn.Map(name=self.name()+'_map', inputs=inputs, outputs=map_outputs,
-                       condition_needs=conditions, func=func, parent=self.name()),
+                       func=func, **kwargs),
                 gn.ReduceByKey(name=self.name()+'_reduce',
                                inputs=map_outputs, outputs=reduce_outputs,
-                               reduction=lambda cv, v: (cv[0]+v[0], cv[1]+v[1]), parent=self.name()),
+                               reduction=lambda cv, v: (cv[0]+v[0], cv[1]+v[1]), **kwargs),
                 gn.Map(name=self.name()+'_mean', inputs=reduce_outputs, outputs=outputs, func=mean,
-                       parent=self.name())
+                       **kwargs)
             ]
         else:
             map_outputs = [self.name()+'_map_count']
@@ -183,12 +177,12 @@ class MeanWaveformVsScan(CtrlNode):
 
             nodes = [
                 gn.Map(name=self.name()+'_map', inputs=[inputs['Value']], outputs=map_outputs,
-                       condition_needs=conditions, func=lambda a: (a, 1), parent=self.name()),
+                       func=lambda a: (a, 1), **kwargs),
                 gn.ReduceByKey(name=self.name()+'_reduce',
                                inputs=[inputs['Bin']]+map_outputs, outputs=reduce_outputs,
-                               reduction=lambda cv, v: (cv[0]+v[0], cv[1]+v[1]), parent=self.name()),
+                               reduction=lambda cv, v: (cv[0]+v[0], cv[1]+v[1]), **kwargs),
                 gn.Map(name=self.name()+'_mean', inputs=reduce_outputs, outputs=outputs, func=mean,
-                       parent=self.name())
+                       **kwargs)
             ]
 
         return nodes
@@ -217,9 +211,7 @@ class Combinations(CtrlNode):
         while len(self.output_vars()) < self.values['length']:
             self.output_terms.append(self.addOutput())
 
-    def to_operation(self, inputs, conditions={}):
-        outputs = self.output_vars()
-
+    def to_operation(self, **kwargs):
         length = self.values['length']
 
         def func(*args):
@@ -229,10 +221,7 @@ class Combinations(CtrlNode):
             else:
                 return [np.array([])]*length
 
-        node = gn.Map(name=self.name()+"_operation",
-                      condition_needs=conditions, inputs=inputs, outputs=outputs,
-                      func=func, parent=self.name())
-        return node
+        return gn.Map(name=self.name()+"_operation", func=func, **kwargs)
 
 
 class Export(CtrlNode):
@@ -297,8 +286,7 @@ try:
 
             return self.widget
 
-        def to_operation(self, inputs, conditions={}):
-            outputs = self.output_vars()
+        def to_operation(self, **kwargs):
             args = []
             expr = self.values['operation']
 
@@ -313,12 +301,7 @@ try:
             params = {'args': args,
                       'expr': expr}
 
-            node = gn.Map(name=self.name()+"_operation",
-                          condition_needs=conditions,
-                          inputs=inputs, outputs=outputs,
-                          func=CalcProc(params), parent=self.name())
-
-            return node
+            return gn.Map(name=self.name()+"_operation", **kwargs, func=CalcProc(params))
 
 except ImportError as e:
     print(e)
@@ -377,13 +360,8 @@ try:
 
             return self.widget
 
-        def to_operation(self, inputs, conditions={}):
-            outputs = self.output_vars()
-            node = gn.Map(name=self.name()+"_operation", inputs=inputs, outputs=outputs,
-                          condition_needs=conditions, func=PythonEditorProc(self.values['text']),
-                          parent=self.name())
-
-            return node
+        def to_operation(self, **kwargs):
+            return gn.Map(name=self.name()+"_operation", **kwargs, func=PythonEditorProc(self.values['text']))
 
 except ImportError as e:
     print(e)

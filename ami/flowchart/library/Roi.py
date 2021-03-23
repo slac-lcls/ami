@@ -64,9 +64,7 @@ class Roi2D(CtrlNode):
             self.roi.setPos(self.values['origin x'], y=self.values['origin y'], finish=False)
             self.roi.setSize((self.values['extent x'], self.values['extent y']), finish=False)
 
-    def to_operation(self, inputs, conditions={}):
-        outputs = self.output_vars()
-
+    def to_operation(self, **kwargs):
         ox = self.values['origin x']
         ex = self.values['extent x']
         oy = self.values['origin y']
@@ -75,11 +73,7 @@ class Roi2D(CtrlNode):
         def func(img):
             return img[slice(ox, ox+ex), slice(oy, oy+ey)]
 
-        node = gn.Map(name=self.name()+"_operation",
-                      condition_needs=conditions, inputs=inputs, outputs=outputs,
-                      func=func,
-                      parent=self.name())
-        return node
+        return gn.Map(name=self.name()+"_operation", **kwargs, func=func)
 
 
 class Roi1D(CtrlNode):
@@ -131,9 +125,7 @@ class Roi1D(CtrlNode):
         if self.widget:
             self.roi.setRegion((self.values['origin'], self.values['extent']))
 
-    def to_operation(self, inputs, conditions={}):
-        outputs = self.output_vars()
-
+    def to_operation(self, **kwargs):
         origin = self.values['origin']
         extent = self.values['extent']
         size = list(sorted([origin, extent]))
@@ -141,11 +133,7 @@ class Roi1D(CtrlNode):
         def func(arr):
             return arr[slice(*size)]
 
-        node = gn.Map(name=self.name()+"_operation",
-                      condition_needs=conditions, inputs=inputs, outputs=outputs,
-                      func=func,
-                      parent=self.name())
-        return node
+        return gn.Map(name=self.name()+"_operation", **kwargs, func=func)
 
 
 class ScatterRoi(CtrlNode):
@@ -206,8 +194,7 @@ class ScatterRoi(CtrlNode):
         terms = self.input_vars()
         return {"X": terms["X"], "Y": terms["Y"]}
 
-    def to_operation(self, inputs, conditions={}):
-        outputs = self.output_vars()
+    def to_operation(self, inputs, outputs, **kwargs):
         pickn_outputs = [self.name()+"_picked"]
         display_outputs = [self.name()+"_displayX", self.name()+"_displayY"]
 
@@ -227,13 +214,13 @@ class ScatterRoi(CtrlNode):
             else:
                 return np.array([]), np.array([])
 
-        nodes = [gn.PickN(name=self.name()+"_pickN", condition_needs=conditions,
-                          inputs=inputs, outputs=pickn_outputs, parent=self.name(),
+        nodes = [gn.PickN(name=self.name()+"_pickN",
+                          inputs=inputs, outputs=pickn_outputs, **kwargs,
                           N=self.values['Num Points']),
                  gn.Map(name=self.name()+"_operation", inputs=pickn_outputs, outputs=outputs, func=func,
-                        parent=self.name()),
+                        **kwargs),
                  gn.Map(name=self.name()+"_display", inputs=pickn_outputs, outputs=display_outputs,
-                        parent=self.name(), func=display_func)]
+                        **kwargs, func=display_func)]
 
         return nodes
 
@@ -281,17 +268,11 @@ class Roi0D(CtrlNode):
         if self.widget:
             self.widget.update_cursor(**self.values)
 
-    def to_operation(self, inputs, conditions={}):
-        outputs = self.output_vars()
-
+    def to_operation(self, **kwargs):
         x = self.values['x']
         y = self.values['y']
 
         def func(img):
             return img[x, y]
 
-        node = gn.Map(name=self.name()+"_operation",
-                      condition_needs=conditions, inputs=inputs, outputs=outputs,
-                      func=func,
-                      parent=self.name())
-        return node
+        return gn.Map(name=self.name()+"_operation", **kwargs, func=func)
