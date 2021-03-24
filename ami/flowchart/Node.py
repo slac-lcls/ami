@@ -42,6 +42,7 @@ class Node(QtCore.QObject):
     sigTerminalRemoved = QtCore.Signal(object, object)  # self, term
     sigTerminalConnected = QtCore.Signal(object, object)  # localTerm, remoteTerm
     sigTerminalDisconnected = QtCore.Signal(object, object)  # localTerm, remoteTerm
+    sigTerminalOptional = QtCore.Signal(object, object)  # self, term
     sigNodeEnabled = QtCore.Signal(object)  # self
 
     def __init__(self, name, **kwargs):
@@ -466,6 +467,7 @@ class Node(QtCore.QObject):
         if self._allowOptional:
             checked = all([term.isInput() and term.optional() for name, term in self.terminals.items()])
             self.graphicsItem().optional.setChecked(checked)
+            self.sigTerminalOptional.emit(self, term)
 
 
 class NodeGraphicsItem(GraphicsObject):

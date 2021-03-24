@@ -13,7 +13,7 @@ class Terminal(QtCore.QObject):
 
     sigTerminalOptional = QtCore.Signal(object)  # self
 
-    def __init__(self, node, name, io, ttype, group=None, pos=None, removable=False, optional=None, unit=None):
+    def __init__(self, node, name, io, ttype, group=None, pos=None, removable=False, optional=False, unit=None):
         """
         Construct a new terminal.
 
@@ -44,11 +44,16 @@ class Terminal(QtCore.QObject):
 
         self.recolor()
 
+        if self._allowOptional:
+            self.sigTerminalOptional.emit(self)
+
     def setOpts(self, **opts):
         self._removable = opts.get('removable', self._removable)
         self._type = opts.get('type', self._type)
         self._group = opts.get('group', None)
         self._optional = opts.get('optional', False)
+        if self._allowOptional:
+            self.sigTerminalOptional.emit(self)
 
     def connected(self, term):
         """
@@ -85,7 +90,6 @@ class Terminal(QtCore.QObject):
         return self._optional
 
     def setOptional(self, optional):
-        print("SET OPTIONAL", self.name(), optional)
         if self._allowOptional:
             self._optional = optional
             self.sigTerminalOptional.emit(self)

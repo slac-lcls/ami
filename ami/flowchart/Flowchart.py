@@ -162,6 +162,7 @@ class Flowchart(Node):
         node.sigTerminalConnected.connect(self.nodeConnected)
         node.sigTerminalDisconnected.connect(self.nodeDisconnected)
         node.sigNodeEnabled.connect(self.nodeEnabled)
+        node.sigTerminalOptional.connect(self.nodeTermOptional)
         node.setGraph(self._graph)
         self.sigNodeCreated.emit(node)
         if node.isChanged(True, True):
@@ -216,6 +217,10 @@ class Flowchart(Node):
         if self._graph.has_edge(localNode, remoteNode, key=key):
             self._graph.remove_edge(localNode, remoteNode, key=key)
         self.sigNodeChanged.emit(localTerm.node())
+
+    def nodeTermOptional(self, node, term):
+        node.changed = True
+        self.sigNodeChanged.emit(node)
 
     @asyncSlot(object)
     async def nodeEnabled(self, root):
@@ -488,7 +493,9 @@ class Flowchart(Node):
                 node.geometry = QtCore.QByteArray.fromHex(bytes(new_node_state['geometry'], 'ascii'))
 
             if restore_ctrl or restore_widget:
+                self.blockSignals(True)
                 node.restoreState(current_node_state)
+                self.blockSignals(False)
                 node.changed = node.isChanged(restore_ctrl, restore_widget)
                 if node.changed:
                     self.sigNodeChanged.emit(node)
