@@ -41,6 +41,7 @@
 #############################################################################
 
 from pyqtgraph.Qt import QtWidgets, QtCore
+from ami.flowchart.library.common import generateUi
 
 
 class Button(QtWidgets.QToolButton):
@@ -201,42 +202,42 @@ class CalculatorWidget(QtWidgets.QWidget):
         self.display.setText(state['operation'])
 
 
-class LogicalCalculatorWidget(QtWidgets.QWidget):
+class FilterWidget(QtWidgets.QWidget):
 
     sigStateChanged = QtCore.Signal(object, object, object)
 
-    def __init__(self, terms, parent=None, operation=""):
+    def __init__(self, inputs={}, outputs=[], parent=None):
         super().__init__(parent)
-
-        self.terms = terms
-        self.layout = QtWidgets.QGridLayout()
+        self.inputs = inputs
+        self.outputs = outputs
+        self.layout = QtWidgets.QFormLayout()
         self.setLayout(self.layout)
 
-        self.display = QtWidgets.QLineEdit(operation, self)
-        self.display.setFocus()
-        self.display.textChanged.connect(self.stateChanged)
+        addBtn = QtWidgets.QPushButton("Add", parent=self)
+        addBtn.clicked.connect(self.add_condition)
 
-        entryLayout = QtWidgets.QHBoxLayout()
-        lbl = QtWidgets.QLabel("<b><span style=\" font-size: 12pt\";>If(</b></span>", self)
-        lbl2 = QtWidgets.QLabel("<b><span style=\" font-size: 12pt;\">)</b></span>", self)
-        entryLayout.addWidget(lbl)
-        entryLayout.addWidget(self.display)
-        entryLayout.addWidget(lbl2)
+        removeBtn = QtWidgets.QPushButton("Remove", parent=self)
+        removeBtn.clicked.connect(self.remove_condition)
 
-        self.layout.addLayout(entryLayout, 0, 0)
+        hbox = QtWidgets.QHBoxLayout()
+        hbox.addWidget(addBtn)
+        hbox.addWidget(removeBtn)
+        self.layout.addRow(hbox)
 
-        if terms:
+        self.values = {}
+        self.condition_groups = {}
+
+        if self.inputs:
             self.variable_widget = QtWidgets.QWidget(parent=self)
             self.variable_layout = QtWidgets.QGridLayout()
-
             self.variables = []
 
-            for _, term in terms.items():
+            for _, term in self.inputs.items():
                 self.variables.append(self.createButton(term, self.operatorClicked))
 
             row = 0
             col = 0
-            for i in range(0, len(terms)):
+            for i in range(0, len(self.inputs)):
                 self.variable_layout.addWidget(self.variables[i], row, col)
                 if col < 3:
                     col += 1
@@ -245,7 +246,9 @@ class LogicalCalculatorWidget(QtWidgets.QWidget):
                     row += 1
 
             self.variable_widget.setLayout(self.variable_layout)
-            self.layout.addWidget(self.variable_widget, 1, 0)
+            self.layout.addRow(self.variable_widget)
+
+            self.add_condition()
 
     def createButton(self, text, member, op=None):
         button = Button(parent=self, text=text)
@@ -260,16 +263,112 @@ class LogicalCalculatorWidget(QtWidgets.QWidget):
         else:
             value = clickedButton.text()
 
-        self.display.setText(self.display.text() + value)
+        widget = self.focusWidget()
+        if isinstance(widget, QtWidgets.QLineEdit):
+            widget.setText(widget.text() + value)
 
-    def stateChanged(self, text):
-        self.sigStateChanged.emit("operation", None, text)
+    def add_condition(self, name=''):
+        if len(self.condition_groups) >= len(self.outputs):
+            return
+
+        if not name:
+            name = f"Condition {len(self.condition_groups)}"
+
+        condition_group = [('condition', 'text', {'values': '', 'group': name})]
+
+        inputs = list(self.inputs.values())
+        inputs.append("None")
+        for output in self.outputs:
+            condition_group.append((output, 'combo', {'values': inputs, 'value': 'None', 'group': name}))
+
+        self.condition_groups[name] = generateUi(condition_group)
+        ui, stateGroup, ctrls, attrs = self.condition_groups[name]
+        ctrls[name]['condition'].setFocus()
+        self.values[name] = attrs[name]
+
+        self.layout.addWidget(ui)
+        stateGroup.sigChanged.connect(self.state_changed)
+
+        return ui, stateGroup, ctrls, attrs
+
+    def remove_condition(self):
+        condition = len(self.condition_groups)-1
+        if condition == 0:
+            return
+
+        name = f"Condition {condition}"
+        ui, stateGroup, ctrls, attrs = self.condition_groups[name]
+        self.layout.removeWidget(ui)
+        ctrls[name]['groupbox'].deleteLater()
+        del self.condition_groups[name]
+
+    def state_changed(self, *args, **kwargs):
+        attr, group, val = args
+
+        if group:
+            self.values[group][attr] = val
+        else:
+            self.values[attr] = val
+
+        self.sigStateChanged.emit(attr, group, val)
 
     def saveState(self):
-        return {'operation': self.display.text()}
+        state = {'conditions': len(self.condition_groups),
+                 'inputs': self.inputs,
+                 'outputs': self.outputs}
+
+        for name, group in self.condition_groups.items():
+            _, stateGroup, _, _ = group
+            state[name] = stateGroup.state()[name]
+
+        return state
 
     def restoreState(self, state):
-        self.display.setText(state['operation'])
+        conditions = state['conditions']
+        if not self.inputs:
+            self.inputs = state.get('inputs', {})
+        if not self.outputs:
+            self.outputs = state.get('outputs', [])
+
+        for condition in range(0, conditions):
+            name = f"Condition {condition}"
+            if name not in self.condition_groups:
+                _, stateGroup, _, _ = self.add_condition(name=name)
+            else:
+                _, stateGroup, _, _ = self.condition_groups[name]
+
+            self.values[name] = state[name]
+            stateGroup.setState({name: state[name]})
+
+
+def gen_filter_func(values, inputs, outputs):
+    assert(len(values) >= 1)
+
+    filter_func = """
+def func(*args, **kwargs):
+\t%s = args
+\tif %s:
+\t\treturn %s
+""" % (', '.join(inputs), values['Condition 0']['condition'],
+       ', '.join(map(lambda x: values['Condition 0'].get(x),
+                     outputs)))
+
+    for condition in range(0, len(values)):
+        if condition == 0:
+            continue
+
+        condition = values['Condition %d' % condition]
+
+        elif_condition = """
+\telif %s:
+\t\treturn %s
+        """ % (condition['condition'],
+               ', '.join(map(lambda x: condition.get(x),
+                             outputs)))
+
+        filter_func += elif_condition
+
+    return filter_func
 
 
 if __name__ == '__main__':
@@ -281,6 +380,6 @@ if __name__ == '__main__':
     for i in range(0, 9):
         terms[f'In.{i}'] = f'Input.{i}'
 
-    calc = LogicalCalculatorWidget(terms)
+    calc = FilterWidget(terms)
     calc.show()
     sys.exit(app.exec_())

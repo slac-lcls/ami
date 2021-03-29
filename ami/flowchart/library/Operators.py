@@ -1,10 +1,11 @@
 from typing import Union, Any
 from amitypes import Array1d, Array2d, Array3d
 from ami.flowchart.library.common import CtrlNode, GroupedNode
-from ami.flowchart.library.CalculatorWidget import CalculatorWidget
+from ami.flowchart.library.CalculatorWidget import CalculatorWidget, FilterWidget, gen_filter_func
 import ami.graph_nodes as gn
 import numpy as np
 import itertools
+import collections
 
 
 class Identity(GroupedNode):
@@ -362,6 +363,42 @@ try:
 
         def to_operation(self, **kwargs):
             return gn.Map(name=self.name()+"_operation", **kwargs, func=PythonEditorProc(self.values['text']))
+
+    class Filter(CtrlNode):
+        """
+        Filter
+        """
+
+        nodeName = "Filter"
+
+        def __init__(self, name):
+            super().__init__(name,
+                             terminals={'In': {'io': 'in', 'ttype': Any},
+                                        'Out': {'io': 'out', 'ttype': Any}},
+                             allowAddInput=True,
+                             allowAddOutput=True)
+            self.values = collections.defaultdict(dict)
+
+        def display(self, topics, terms, addr, win, **kwargs):
+            if self.widget is None:
+                self.widget = FilterWidget(terms, self.output_vars(), win)
+                self.widget.sigStateChanged.connect(self.state_changed)
+
+            return self.widget
+
+        def to_operation(self, **kwargs):
+            values = self.values
+            inputs = list(self.input_vars().values())
+            outputs = list(self.output_vars())
+
+            for idx, inp in enumerate(inputs):
+                inp = inp.replace('.', '')
+                inp = inp.replace(':', '')
+                inp = inp.replace(' ', '')
+                inputs[idx] = inp
+
+            func = gen_filter_func(values, inputs, outputs)
+            return gn.Map(name=self.name()+"_operation", **kwargs, func=PythonEditorProc(func))
 
 except ImportError as e:
     print(e)

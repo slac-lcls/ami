@@ -163,6 +163,8 @@ class Flowchart(Node):
         node.sigTerminalDisconnected.connect(self.nodeDisconnected)
         node.sigNodeEnabled.connect(self.nodeEnabled)
         node.sigTerminalOptional.connect(self.nodeTermOptional)
+        node.sigTerminalAdded.connect(self.nodeTermChanged)
+        node.sigTerminalRemoved.connect(self.nodeTermChanged)
         node.setGraph(self._graph)
         self.sigNodeCreated.emit(node)
         if node.isChanged(True, True):
@@ -221,6 +223,10 @@ class Flowchart(Node):
     def nodeTermOptional(self, node, term):
         node.changed = True
         self.sigNodeChanged.emit(node)
+
+    def nodeTermChanged(self, node, term):
+        # print(node, term)
+        pass
 
     @asyncSlot(object)
     async def nodeEnabled(self, root):

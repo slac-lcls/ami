@@ -42,6 +42,7 @@ class Node(QtCore.QObject):
     sigTerminalRemoved = QtCore.Signal(object, object)  # self, term
     sigTerminalConnected = QtCore.Signal(object, object)  # localTerm, remoteTerm
     sigTerminalDisconnected = QtCore.Signal(object, object)  # localTerm, remoteTerm
+    sigTerminalEdited = QtCore.Signal(object, object)
     sigTerminalOptional = QtCore.Signal(object, object)  # self, term
     sigNodeEnabled = QtCore.Signal(object)  # self
 

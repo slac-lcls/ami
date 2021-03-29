@@ -215,11 +215,13 @@ class PickN(GlobalTransformation):
         self.res = [None]*self.N
         self.clear = False
 
-    def __call__(self, *args):
+    def __call__(self, *args, **kwargs):
         if self.clear:
             self.res = [None]*self.N
             self.clear = False
 
+        if not args and kwargs:
+            args = list(kwargs.values())
         if len(args) > 1:
             args = [args]
         elif self.is_expanded and len(args) == 1 and type(args[0]) is list and self.N > 1:
