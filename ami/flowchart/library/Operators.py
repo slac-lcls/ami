@@ -1,7 +1,7 @@
 from typing import Union, Any
 from amitypes import Array1d, Array2d, Array3d
 from ami.flowchart.library.common import CtrlNode, GroupedNode
-from ami.flowchart.library.CalculatorWidget import CalculatorWidget, FilterWidget, gen_filter_func
+from ami.flowchart.library.CalculatorWidget import CalculatorWidget, FilterWidget, gen_filter_func, sanitize_name
 import ami.graph_nodes as gn
 import numpy as np
 import itertools
@@ -293,9 +293,7 @@ try:
 
             # sympy doesn't like symbols name likes Sum.0.Out, need to remove dots.
             for arg in self.input_vars().values():
-                rarg = arg.replace('.', '')
-                rarg = rarg.replace(':', '')
-                rarg = rarg.replace(' ', '')
+                rarg = sanitize_name(arg)
                 args.append(rarg)
                 expr = expr.replace(arg, rarg)
 
@@ -392,10 +390,7 @@ try:
             outputs = list(self.output_vars())
 
             for idx, inp in enumerate(inputs):
-                inp = inp.replace('.', '')
-                inp = inp.replace(':', '')
-                inp = inp.replace(' ', '')
-                inputs[idx] = inp
+                inputs[idx] = sanitize_name(inp)
 
             func = gen_filter_func(values, inputs, outputs)
             return gn.Map(name=self.name()+"_operation", **kwargs, func=PythonEditorProc(func))

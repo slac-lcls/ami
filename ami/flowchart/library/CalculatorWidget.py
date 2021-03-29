@@ -344,13 +344,15 @@ class FilterWidget(QtWidgets.QWidget):
 def gen_filter_func(values, inputs, outputs):
     assert(len(values) >= 1)
 
+    cond = sanitize_name(values['Condition 0']['condition'], space=False)
+
     filter_func = """
 def func(*args, **kwargs):
 \t%s = args
 \tif %s:
 \t\treturn %s
-""" % (', '.join(inputs), values['Condition 0']['condition'],
-       ', '.join(map(lambda x: values['Condition 0'].get(x),
+""" % (', '.join(inputs), cond,
+       ', '.join(map(lambda x: sanitize_name(values['Condition 0'].get(x)),
                      outputs)))
 
     for condition in range(0, len(values)):
@@ -358,17 +360,26 @@ def func(*args, **kwargs):
             continue
 
         condition = values['Condition %d' % condition]
+        cond = sanitize_name(condition['condition'], space=False)
 
         elif_condition = """
 \telif %s:
 \t\treturn %s
-        """ % (condition['condition'],
-               ', '.join(map(lambda x: condition.get(x),
+        """ % (cond,
+               ', '.join(map(lambda x: sanitize_name(condition.get(x)),
                              outputs)))
 
         filter_func += elif_condition
 
     return filter_func
+
+
+def sanitize_name(name, space=True):
+    name = name.replace('.', '')
+    name = name.replace(':', '')
+    if space:
+        name = name.replace(' ', '')
+    return name
 
 
 if __name__ == '__main__':
