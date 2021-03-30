@@ -371,6 +371,7 @@ def func(*args, **kwargs):
 
         filter_func += elif_condition
 
+    filter_func += "\n\treturn %s" % (', '.join([str(None)]*len(outputs)))
     return filter_func
 
 
