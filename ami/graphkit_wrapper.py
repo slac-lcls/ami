@@ -109,7 +109,7 @@ class Graph():
         assert op.name not in self.children_of_global_operations, "Operation may only be added once %s" % op.name
         if op.is_global_operation:
             for n in self.graph.nodes:
-                if type(n) is str or type(n) is modifiers.optional:
+                if skip(n):
                     continue
                 if n.is_global_operation and n.parent == op.parent and n.outputs == op.outputs:
                     assert False, "Operation may only be added once %s" % op.name
@@ -235,7 +235,7 @@ class Graph():
                 self.global_operations.add(node)
 
                 for ancestor in nx.algorithms.dag.ancestors(self.graph, node):
-                    if type(ancestor) is str or type(ancestor) is modifiers.optional:
+                    if skip(ancestor):
                         continue
 
                     if ancestor.color == '':

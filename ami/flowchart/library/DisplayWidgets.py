@@ -6,6 +6,7 @@ import itertools as it
 import numpy as np
 import pyqtgraph as pg
 from qtpy import QtGui, QtWidgets, QtCore
+from networkfox import modifiers
 from ami import LogConfig
 from ami.data import Deserializer
 from ami.comm import ZMQ_TOPIC_DELIM
@@ -66,7 +67,8 @@ class AsyncFetcher(QtCore.QThread):
         self.topics = topics
         self.terms = terms
         self.names = list(topics.keys())
-        self.subs = list(topics.values())
+        self.subs = set(topics.values())
+        self.optional = set([value for key, value in topics.items() if type(key) is modifiers.optional])
 
         for name, sock_count in self.sockets.items():
             sock, count = sock_count
@@ -105,18 +107,25 @@ class AsyncFetcher(QtCore.QThread):
                 self.timestamps[self.view_subs[topic]] = heartbeat
                 # check if the data is ready
                 heartbeats = set(self.timestamps.values())
-                if self.data.keys() == set(self.subs) and len(heartbeats) == 1:
+                num_heartbeats = len(heartbeats)
+                res = {}
+
+                if self.data.keys() == self.subs and num_heartbeats == 1:
+                    for name, topic in self.topics.items():
+                        res[name] = self.data[topic]
+
+                elif self.optional.issuperset(self.data.keys()):
+                    for name, topic in self.topics.items():
+                        if topic in self.data:
+                            res[name] = self.data[topic]
+
+                if res:
                     now = dt.datetime.now()
                     now = now.strftime("%F %T")
                     heartbeat = heartbeats.pop()
                     hbts = dt.datetime.fromtimestamp(heartbeat.timestamp).strftime("%F %T.%f")
                     latency = dt.datetime.now() - dt.datetime.fromtimestamp(heartbeat.timestamp)
                     self.last_updated = f"Last Updated: {now} HB: {hbts} Latency: {latency}"
-
-                    res = {}
-                    for name, topic in self.topics.items():
-                        res[name] = self.data[topic]
-
                     # put results on the reply queue
                     self.reply_queue.put(res)
                     # send a signal that data is ready
@@ -780,9 +789,11 @@ class WaveformWidget(PlotWidget):
         super().__init__(topics, terms, addr, parent=parent, **kwargs)
 
     def data_updated(self, data):
-        i = 0
+        i = len(self.plot)
 
         for term, name in self.terms.items():
+            if name not in data:
+                continue
             if name not in self.plot:
                 _, color = symbols_colors[i]
                 idx = f"trace.{i}"
@@ -817,6 +828,9 @@ class LineWidget(PlotWidget):
             x = self.terms[x]
             y = self.terms[y]
             name = " vs ".join((y, x))
+
+            if x not in data or y not in data:
+                continue
 
             x = data[x]
             y = data[y]
