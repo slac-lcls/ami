@@ -89,10 +89,11 @@ class Terminal(QtCore.QObject):
     def optional(self):
         return self._optional
 
-    def setOptional(self, optional):
+    def setOptional(self, optional, emit=True):
         if self._allowOptional:
             self._optional = optional
-            self.sigTerminalOptional.emit(self)
+            if emit:
+                self.sigTerminalOptional.emit(self)
 
     def connections(self):
         return self._connections

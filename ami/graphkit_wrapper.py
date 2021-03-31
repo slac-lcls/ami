@@ -177,7 +177,8 @@ class Graph():
             for node in nodes_to_remove:
                 if node in self.expanded_global_operations:
                     self.expanded_global_operations.remove(node)
-            del self.children_of_global_operations[new_node.parent]
+
+            self.children_of_global_operations[new_node.parent].difference_update(nodes_to_remove)
         else:
             old_node = None
             for n in self.graph.nodes:
@@ -271,7 +272,8 @@ class Graph():
         for node in self.global_operations:
             inputs = node.inputs
             outputs = node.outputs
-            self.children_of_global_operations[node.parent] = set()
+            if node.parent not in self.children_of_global_operations:
+                self.children_of_global_operations[node.parent] = set()
 
             self.graph.remove_node(node)
             NewNode = getattr(gn, node.__class__.__name__)

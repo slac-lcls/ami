@@ -743,7 +743,8 @@ class NodeGraphicsItem(GraphicsObject):
             term, graphicsItem = term
             if term._allowOptional and graphicsItem.menu:
                 graphicsItem.menu.optionalAct.setChecked(checked)
-            term.setOptional(checked)
+            term.setOptional(checked, emit=False)
+            self.node.sigTerminalOptional.emit(self.node, term)
 
     def addInputFromMenu(self):
         # called when add input is clicked in context menu
