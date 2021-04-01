@@ -69,6 +69,7 @@ class Node(QtCore.QObject):
                         context menu.
         allowRemove     bool; whether the user is allowed to remove this node by the
                         context menu.
+        allowOptional   bool; whether terminals are allowed to be optional
         viewable        bool; whether a pick one should be inserted into the graph to
                         view node inputs
         buffered        bool; whether a node has a to_operation which returns a rolling

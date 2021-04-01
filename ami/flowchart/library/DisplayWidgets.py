@@ -5,6 +5,7 @@ import datetime as dt
 import itertools as it
 import numpy as np
 import pyqtgraph as pg
+from pyqtgraph.GraphicsScene.exportDialog import ExportDialog
 from qtpy import QtGui, QtWidgets, QtCore
 from networkfox import modifiers
 from ami import LogConfig
@@ -12,11 +13,10 @@ from ami.data import Deserializer
 from ami.comm import ZMQ_TOPIC_DELIM
 from ami.flowchart.library.WidgetGroup import generateUi
 from ami.flowchart.library.Editors import TraceEditor, HistEditor, \
-    LineEditor, CircleEditor, RectEditor
+    LineEditor, CircleEditor, RectEditor, camera, pixmapFromBase64
 
 
 logger = logging.getLogger(LogConfig.get_package_name(__name__))
-
 colors = [(255, 255, 255), (0, 0, 255), (0, 255, 0), (255, 0, 0)]
 symbols = ['o', 's', 't', 'd', '+']
 symbols_colors = list(it.product(symbols, colors))
@@ -177,9 +177,12 @@ class PlotWidget(pg.GraphicsLayoutWidget):
 
         self.plot_view.setMenuEnabled(False)
 
-        self.configure_btn = pg.ButtonItem(pg.pixmaps.getPixmap('ctrl'), 14, parentItem=self.plot_view)
+        self.configure_btn = pg.ButtonItem(pg.icons.getPixmap('ctrl'), 14, parentItem=self.plot_view)
         self.configure_btn.clicked.connect(self.configure_plot)
-        self.configure_btn.show()
+
+        self.export_btn = pg.ButtonItem(pixmapFromBase64(camera), 24, parentItem=self.plot_view)
+        self.exporter = ExportDialog(self.plot_view.vb.scene())
+        self.export_btn.clicked.connect(self.export_plot)
 
         self.plot = {}  # { name : PlotDataItem }
         self.trace_ids = {}  # { trace_idx : name }
@@ -428,12 +431,15 @@ class PlotWidget(pg.GraphicsLayoutWidget):
         self.win.resize(800, 1000)
         self.win.show()
 
+    def export_plot(self):
+        self.exporter.updateItemList()
+        self.exporter.show()
+
     def cursor_hover_evt(self, evt):
         view = self.plot_view.getViewBox()
         pos = evt[0]
         pos = view.mapSceneToView(pos)
         self.pixel_value.setText(f"x={pos.x():.5g}, y={pos.y():.5g}")
-        self.pixel_value.item.moveBy(0, 10)
 
     def data_updated(self, data):
         pass
@@ -442,12 +448,37 @@ class PlotWidget(pg.GraphicsLayoutWidget):
     def update(self):
         while self.fetcher.ready:
             self.last_updated.setText(self.fetcher.last_updated)
-            self.last_updated.item.moveBy(13, -5)
             self.data_updated(self.fetcher.reply)
 
     def close(self):
         if self.fetcher:
             self.fetcher.close()
+
+    def itemPos(self, attr):
+        if hasattr(self, attr):
+            item = getattr(self, attr)
+            rect = self.plot_view.mapRectFromItem(item, item.boundingRect())
+            return rect
+
+    def resizeEvent(self, ev):
+        super().resizeEvent(ev)
+
+        if hasattr(self, 'plot_view'):
+            self.configure_btn.setPos(0, 0)
+
+            rect = self.itemPos('configure_btn')
+            x = rect.topRight().x()
+            self.export_btn.setPos(x, -5.5)
+
+            rect = self.itemPos('export_btn')
+            x = rect.topRight().x()
+            y = rect.topRight().y()
+            self.last_updated.setPos(x - 3, y + 2)
+
+            rect = self.itemPos('last_updated')
+            x = rect.bottomLeft().x()
+            y = rect.bottomLeft().y()
+            self.pixel_value.setPos(x - 1, y - 9)
 
 
 class TextWidget(pg.LayoutWidget):
@@ -580,7 +611,6 @@ class ImageWidget(PlotWidget):
                 y = int(pos.y())
                 z = self.imageItem.image[x, y]
                 self.pixel_value.setText(f"x={x}, y={y}, z={z:.5g}")
-                self.pixel_value.item.moveBy(0, 10)
 
     def apply_clicked(self):
         super().apply_clicked()
@@ -729,7 +759,6 @@ class Histogram2DWidget(ImageWidget):
                 y = self.ybins[idxy]
                 z = self.imageItem.image[idxx, idxy]
                 self.pixel_value.setText(f"x={x:.5g}, y={y:.5g}, z={z:.5g}")
-                self.pixel_value.item.moveBy(0, 12)
 
     def data_updated(self, data):
         xbins = self.terms['XBins']
