@@ -27,6 +27,16 @@ logger = logging.getLogger(LogConfig.get_package_name(__name__))
 
 def run_editor_window(broker_addr, graphmgr_addr, checkpoint_addr, load=None, prometheus_dir=None, hutch=None):
     subprocess.call(["dmypy", "start"])
+    check_file = None
+    with tempfile.NamedTemporaryFile(mode='w', delete=False) as f:
+        f.write("from typing import *\n")
+        f.write("from mypy_extensions import TypedDict\n")
+        f.write("import numbers\n")
+        f.write("import amitypes\n")
+        f.write("T = TypeVar('T')\n")
+        f.flush()
+        check_file = f.name
+        proc = subprocess.Popen(["dmypy", "check", f.name])
 
     app = QtGui.QApplication([])
 
@@ -69,6 +79,9 @@ def run_editor_window(broker_addr, graphmgr_addr, checkpoint_addr, load=None, pr
             task.cancel()
         loop.close()
 
+    if check_file:
+        proc.communicate()
+        os.remove(check_file)
     subprocess.call(["dmypy", "stop"])
 
 
