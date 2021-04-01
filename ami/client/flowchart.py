@@ -79,10 +79,15 @@ def run_editor_window(broker_addr, graphmgr_addr, checkpoint_addr, load=None, pr
             task.cancel()
         loop.close()
 
-    if check_file:
-        proc.communicate()
-        os.remove(check_file)
-    subprocess.call(["dmypy", "stop"])
+    try:
+        proc.communicate(timeout=1)
+        subprocess.call(["dmypy", "stop"])
+    except subprocess.TimeoutExpired:
+        proc.terminate()
+        subprocess.call(["dmypy", "kill"])
+    finally:
+        if check_file:
+            os.remove(check_file)
 
 
 class NodeWindow(QtGui.QMainWindow):
