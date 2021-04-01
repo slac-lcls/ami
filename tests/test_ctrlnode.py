@@ -19,15 +19,13 @@ def test_projection(qtbot):
     assert node.values['axis'] == 1
 
     inputs = {"In": node.name()}
-    op = node.to_operation(inputs)
+    op = node.to_operation(inputs=inputs, outputs=["projection.Out"])
     mop = gn.Map(name="projection_operation",
-                 condition_needs=[],
                  inputs=list(inputs.values()),
                  outputs=[node.name()+'.Out'],
                  func=lambda a: np.sum(a, axis=1))
 
     assert op.name == mop.name
-    assert op.condition_needs == mop.condition_needs
     assert op.inputs == mop.inputs
     assert op.outputs == mop.outputs
 
@@ -44,15 +42,14 @@ def test_pickn(qtbot):
     assert node.values['N'] == 3
 
     inputs = {"In": node.name()}
-    op = node.to_operation(inputs)
+    outputs = ['pickn.Out']
+    op = node.to_operation(inputs=inputs, outputs=outputs)
     pop = gn.PickN(name="pickn_operation",
-                   condition_needs=[],
                    inputs=list(inputs.values()),
                    outputs=[node.name()+'.Out'],
                    N=3)
 
     assert op.name == pop.name
-    assert op.condition_needs == pop.condition_needs
     assert op.inputs == pop.inputs
     assert op.outputs == pop.outputs
     assert op.N == pop.N
@@ -79,7 +76,7 @@ def test_binning(qtbot):
         qtbot.keyPress(node.ctrls['range max'], QtCore.Qt.Key_Up)
     assert node.values['range max'] == 110
 
-    op = node.to_operation(inputs={"In": node.name()})
+    op = node.to_operation(inputs={"In": node.name()}, outputs=['binning.out'])
     assert len(op) == 2
     assert type(op[0]) == gn.Map
     assert type(op[1]) == gn.Accumulator
@@ -98,7 +95,7 @@ def test_scatterplot(qtbot):
 
     inputs = {"X": "X",
               "Y": "Y"}
-    op = node.to_operation(inputs)
+    op = node.to_operation(inputs=inputs, outputs=['x', 'y'])
     assert type(op[0]) == gn.RollingBuffer
     assert type(op[1]) == gn.Map
     assert op[0].N == 101
@@ -128,7 +125,7 @@ def test_scalarplot(qtbot):
     assert node.values['Num Points'] == 98
 
     inputs = {"Y": "Y"}
-    op = node.to_operation(inputs)
+    op = node.to_operation(inputs=inputs, outputs=['y'])
     assert type(op) == gn.RollingBuffer
     assert op.N == 98
 

@@ -71,15 +71,14 @@ class ArrayThreshold(CtrlNode):
     def display(self, topics, terms, addr, win, **kwargs):
         return super().display(topics, terms, addr, win, DialogWidget, **kwargs)
 
-    def to_operation(self, inputs, conditions={}):
+    def to_operation(self, inputs, outputs, **kwargs):
         map_outputs = [self.name()+"_map"]
-        outputs = [self.name()]
         threshold = self.values['Threshold']
         count = self.values['Count']
 
         nodes = [gn.Map(name=self.name()+"_operation",
-                        condition_needs=conditions, inputs=inputs, outputs=map_outputs,
-                        func=lambda arr: len(arr[arr > threshold]) > count, parent=self.name()),
-                 gn.PickN(name=self.name()+"_pickN", inputs=map_outputs, outputs=outputs, parent=self.name())]
+                        inputs=inputs, outputs=map_outputs, **kwargs,
+                        func=lambda arr: len(arr[arr > threshold]) > count),
+                 gn.PickN(name=self.name()+"_pickN", inputs=map_outputs, outputs=outputs, **kwargs)]
 
         return nodes

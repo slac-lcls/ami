@@ -451,8 +451,6 @@ async def test_modify_graph_async(graph_comm, complex_graph):
         comm.addMap:        ('test_map', 'signal', 'test_value', (lambda x: x + 2,)),
         comm.addPickN:      ('test_pickn', 'cspad', 'test_pick_val', (2,)),
         comm.addReduce:     ('test_reduce', ['delta_t', 'laser'], 'test_reduce_value', ()),
-        comm.addFilterOn:   ('test_filteron', ['laser'], 'test_laser_on', ()),
-        comm.addFilterOff:  ('test_filteroff', ['laser'], 'test_laser_off', ()),
     }
 
     # Loop over the set of functions to test
@@ -503,8 +501,6 @@ def test_modify_graph(graph_comm, complex_graph):
         comm.addMap:        ('test_map', 'signal', 'test_value', (lambda x: x + 2,)),
         comm.addPickN:      ('test_pickn', 'cspad', 'test_pick_val', (2,)),
         comm.addReduce:     ('test_reduce', ['delta_t', 'laser'], 'test_reduce_value', ()),
-        comm.addFilterOn:   ('test_filteron', ['laser'], 'test_laser_on', ()),
-        comm.addFilterOff:  ('test_filteroff', ['laser'], 'test_laser_off', ()),
     }
 
     # Loop over the set of functions to test

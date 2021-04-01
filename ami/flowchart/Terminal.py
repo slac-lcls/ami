@@ -9,8 +9,11 @@ import weakref
 import tempfile
 
 
-class Terminal(object):
-    def __init__(self, node, name, io, ttype, group=None, pos=None, removable=False, unit=None):
+class Terminal(QtCore.QObject):
+
+    sigTerminalOptional = QtCore.Signal(object)  # self
+
+    def __init__(self, node, name, io, ttype, group=None, pos=None, removable=False, optional=False, unit=None):
         """
         Construct a new terminal.
 
@@ -18,7 +21,7 @@ class Terminal(object):
         **Arguments:**
         node            the node to which this terminal belongs
         name            string, the name of the terminal
-        io              'in', 'out', or 'condition'
+        io              'in', 'out'
         ttype           type terminal expects/returns
         group           Terminal group
         pos             [x, y], the position of the terminal within its node's boundaries
@@ -26,6 +29,7 @@ class Terminal(object):
         unit            Pint Unit
         ==============  =================================================================================
         """
+        super().__init__()
         self._io = io
         self._node = weakref.ref(node)
         self._name = name
@@ -33,15 +37,23 @@ class Terminal(object):
         self._connections = {}
         self._group = group
         self._type = ttype
+        self._allowOptional = optional or self._io == 'in'
+        self._optional = optional
         self._unit = unit
         self._graphicsItem = TerminalGraphicsItem(self, parent=self._node().graphicsItem())
 
         self.recolor()
 
+        if self._allowOptional:
+            self.sigTerminalOptional.emit(self)
+
     def setOpts(self, **opts):
         self._removable = opts.get('removable', self._removable)
         self._type = opts.get('type', self._type)
         self._group = opts.get('group', None)
+        self._optional = opts.get('optional', False)
+        if self._allowOptional:
+            self.sigTerminalOptional.emit(self)
 
     def connected(self, term):
         """
@@ -74,6 +86,15 @@ class Terminal(object):
         assert self._unit is None  # TODO handle conversions
         self._unit = unit
 
+    def optional(self):
+        return self._optional
+
+    def setOptional(self, optional, emit=True):
+        if self._allowOptional:
+            self._optional = optional
+            if emit:
+                self.sigTerminalOptional.emit(self)
+
     def connections(self):
         return self._connections
 
@@ -85,9 +106,6 @@ class Terminal(object):
 
     def isOutput(self):
         return self._io == 'out'
-
-    def isCondition(self):
-        return self._io == "condition"
 
     def isRemovable(self):
         return self._removable
@@ -131,17 +149,10 @@ class Terminal(object):
                 raise Exception("Can't connect input to input.")
             elif self.isOutput() and term.isOutput():
                 raise Exception("Can't connect output to output.")
-            elif self.isCondition() and term.isCondition():
-                raise Exception("Can't connect condition to condition.")
-            elif (not self.isCondition() and not self.node().filter() and
-                  term.isCondition() and not term.node().filter()) or \
-                 (self.isCondition() and not self.node().filter() and
-                  not term.isCondition() and not term.node().filter()):
-                raise Exception("Condition must be connected to filter.")
 
             types = {}
             for t in [self, term]:
-                if t.isInput() or t.isCondition():
+                if t.isInput():
                     types["Input"] = t
 
                     if len(t.connections()) > 0:
@@ -232,6 +243,7 @@ class Terminal(object):
             'io': self._io,
             'removable': self._removable,
             'ttype': ttype,
+            'optional': self._optional,
             'group': self._group
         }
 
@@ -271,7 +283,7 @@ class TerminalGraphicsItem(GraphicsObject):
         br = self.box.mapRectToParent(self.box.boundingRect())
         lr = self.label.mapRectToParent(self.label.boundingRect())
 
-        if self.term.isInput() or self.term.isCondition():
+        if self.term.isInput():
             self.box.setPos(pos.x(), pos.y()-br.height()/2.)
             self.label.setPos(pos.x() + br.width(), pos.y() - lr.height()/2.)
         else:
@@ -334,10 +346,19 @@ class TerminalGraphicsItem(GraphicsObject):
                 self.menu.addAction(remAct)
                 self.menu.remAct = remAct
 
+            if self.term._allowOptional:
+                optionalAct = QtGui.QAction("Optional", self.menu, checkable=True, checked=self.term.optional())
+                optionalAct.triggered.connect(self.optional)
+                self.menu.addAction(optionalAct)
+                self.menu.optionalAct = optionalAct
+
         return self.menu
 
     def removeSelf(self):
         self.term.node().removeTerminal(self.term)
+
+    def optional(self, checked):
+        self.term.setOptional(checked)
 
     def mouseDragEvent(self, ev):
         if ev.button() != QtCore.Qt.LeftButton:

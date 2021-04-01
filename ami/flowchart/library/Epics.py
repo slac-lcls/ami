@@ -29,21 +29,20 @@ try:
         def __init__(self, name):
             super().__init__(name, terminals={"In": {'io': 'in', 'ttype': Union[str, int, float, Array1d]}})
 
-        def to_operation(self, inputs, conditions={}):
+        def to_operation(self, inputs, outputs, **kwargs):
             outputs = [self.name()+"_unused"]
             picked_outputs = [self.name()+"_pickedoutput"]
 
             if self.values['global']:
                 nodes = [gn.PickN(name=self.name()+"_picked",
-                                  condition_needs=conditions, inputs=inputs, outputs=picked_outputs,
-                                  N=1, parent=self.name()),
+                                  inputs=inputs, outputs=picked_outputs, N=1, **kwargs),
                          gn.Map(name=self.name()+"_operation",
-                                condition_needs=conditions, inputs=picked_outputs, outputs=outputs,
-                                func=CaputProc(self.values['pvname']), parent=self.name())]
+                                inputs=picked_outputs, outputs=outputs,
+                                func=CaputProc(self.values['pvname']), **kwargs)]
             else:
                 nodes = [gn.Map(name=self.name()+"_operation",
-                         condition_needs=conditions, inputs=inputs, outputs=outputs,
-                         func=CaputProc(self.values['pvname']), parent=self.name())]
+                                inputs=inputs, outputs=outputs,
+                                func=CaputProc(self.values['pvname']), **kwargs)]
 
             return nodes
 
@@ -74,23 +73,24 @@ try:
                       ('global', 'check', {'checked': True})]
 
         def __init__(self, name):
-            super().__init__(name, terminals={"In": {'io': 'in', 'ttype': Union[str, int, float, Array1d, Array2d]}})
+            super().__init__(name, terminals={"In":
+                                              {'io': 'in', 'ttype': Union[str, int, float, Array1d, Array2d]}})
 
-        def to_operation(self, inputs, conditions={}):
+        def to_operation(self, inputs, outputs, **kwargs):
             outputs = [self.name()+"_unused"]
             picked_outputs = [self.name()+"_pickedoutput"]
 
             if self.values['global']:
                 nodes = [gn.PickN(name=self.name()+"_picked",
-                                  condition_needs=conditions, inputs=inputs, outputs=picked_outputs,
-                                  N=1, parent=self.name()),
+                                  inputs=inputs, outputs=picked_outputs,
+                                  N=1, **kwargs),
                          gn.Map(name=self.name()+"_operation",
-                                condition_needs=conditions, inputs=picked_outputs, outputs=outputs,
-                                func=PvputProc(self.values['pvname']), parent=self.name())]
+                                inputs=picked_outputs, outputs=outputs,
+                                func=PvputProc(self.values['pvname']), **kwargs)]
             else:
                 nodes = [gn.Map(name=self.name()+"_operation",
-                                condition_needs=conditions, inputs=inputs, outputs=outputs,
-                                func=PvputProc(self.values['pvname']), parent=self.name())]
+                                inputs=inputs, outputs=outputs,
+                                func=PvputProc(self.values['pvname']), **kwargs)]
 
             return nodes
 

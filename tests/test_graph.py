@@ -11,7 +11,6 @@ def test_filter_on(complex_graph):
     complex_graph(worker, color='localCollector')
     localCollector = complex_graph(worker, color='localCollector')
     globalCollector = complex_graph(localCollector, color='globalCollector')
-
     assert worker == {'BinningOn_reduce_count_worker': {8: (10000.0, 1), 3: (10000.0, 1)}}
     assert localCollector == {'BinningOn_reduce_count_localCollector': {8: (20000.0, 2), 3: (20000.0, 2)}}
     np.testing.assert_equal(globalCollector['BinningOn.Bins'], np.array([3, 8]))

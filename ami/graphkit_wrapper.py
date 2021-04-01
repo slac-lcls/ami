@@ -1,8 +1,11 @@
 import networkx as nx
-import itertools as it
 import collections
 import ami.graph_nodes as gn
 from networkfox import compose, modifiers
+
+
+def skip(n):
+    return type(n) is str or type(n) is modifiers.optional
 
 
 class Graph():
@@ -106,7 +109,7 @@ class Graph():
         assert op.name not in self.children_of_global_operations, "Operation may only be added once %s" % op.name
         if op.is_global_operation:
             for n in self.graph.nodes:
-                if type(n) is str:
+                if skip(n):
                     continue
                 if n.is_global_operation and n.parent == op.parent and n.outputs == op.outputs:
                     assert False, "Operation may only be added once %s" % op.name
@@ -116,9 +119,6 @@ class Graph():
 
         for o in op.outputs:
             self.graph.add_edge(op, o)
-
-        for i in op.condition_needs:
-            self.graph.add_edge(i, op)
 
         self.graphkit = None
 
@@ -131,7 +131,7 @@ class Graph():
         """
 
         for n in self.graph.nodes:
-            if type(n) is str:
+            if skip(n):
                 continue
             if n.name == name or n.parent == name:
                 desc = nx.dag.descendants(self.graph, n)
@@ -177,11 +177,12 @@ class Graph():
             for node in nodes_to_remove:
                 if node in self.expanded_global_operations:
                     self.expanded_global_operations.remove(node)
-            del self.children_of_global_operations[new_node.parent]
+
+            self.children_of_global_operations[new_node.parent].difference_update(nodes_to_remove)
         else:
             old_node = None
             for n in self.graph.nodes:
-                if type(n) is str:
+                if skip(n):
                     continue
                 if n.name == new_node.name:
                     old_node = n
@@ -198,7 +199,6 @@ class Graph():
                     self.graph.remove_nodes_from(desc)
 
         self.insert(new_node)
-
         self.graphkit = None
 
     def reset(self):
@@ -236,21 +236,21 @@ class Graph():
                 self.global_operations.add(node)
 
                 for ancestor in nx.algorithms.dag.ancestors(self.graph, node):
-                    if type(ancestor) is str:
+                    if skip(ancestor):
                         continue
 
                     if ancestor.color == '':
                         ancestor.color = 'worker'
 
             for descendant in nx.algorithms.dag.descendants(self.graph, node):
-                if type(descendant) is str:
+                if skip(descendant):
                     continue
 
                 if descendant.color == '':
                     descendant.color = 'globalCollector'
 
         for node in nx.algorithms.topological_sort(self.graph):
-            if type(node) is str:
+            if skip(node):
                 continue
             if node.color == '':
                 node.color = 'worker'
@@ -272,8 +272,8 @@ class Graph():
         for node in self.global_operations:
             inputs = node.inputs
             outputs = node.outputs
-            condition_needs = node.condition_needs
-            self.children_of_global_operations[node.parent] = set()
+            if node.parent not in self.children_of_global_operations:
+                self.children_of_global_operations[node.parent] = set()
 
             self.graph.remove_node(node)
             NewNode = getattr(gn, node.__class__.__name__)
@@ -292,8 +292,9 @@ class Graph():
                     if hasattr(node, 'N'):
                         worker_N = max(node.N // num_workers, 1)
 
-                    worker_node = NewNode(name=node.name+'_worker', inputs=inputs, outputs=worker_outputs,
-                                          condition_needs=condition_needs, reduction=node.reduction, N=worker_N,
+                    worker_node = NewNode(name=node.name+'_worker',
+                                          inputs=inputs, outputs=worker_outputs,
+                                          reduction=node.reduction, N=worker_N,
                                           **extras)
                     worker_node.color = color
                     worker_node.is_global_operation = False
@@ -303,8 +304,6 @@ class Graph():
                         self.graph.add_edge(i, worker_node)
                     for o in worker_outputs:
                         self.graph.add_edge(worker_node, o)
-                    for n in condition_needs:
-                        self.graph.add_edge(n, worker_node)
 
                 elif color == 'localCollector':
                     self.inputs[color].update(worker_outputs)
@@ -348,41 +347,6 @@ class Graph():
                     for o in outputs:
                         self.graph.add_edge(global_collector_node, o)
 
-    def _generate_filter_node(self, seen, filter_node, nodes):
-        """
-        Convert a Filter node to appropriate networkfox if/else node.
-
-        Args:
-            seen (set): Set of nodes that have already been converted.
-            filter_node (Filter): Node to convert to networkfox if/else node.
-            nodes (list): Nodes which will make up subgraph contained in networkfox if/else node.
-
-        Returns:
-            node: networkfox if/else node.
-        """
-        seen.update(nodes)
-        nodes.pop(0)
-        nodes.pop(0)
-        subgraph = self.graph.subgraph(nodes)
-        inputs = [n for n, d in subgraph.in_degree() if d == 0]
-        inputs = list(it.chain.from_iterable([i.inputs for i in inputs]))
-        if '' in inputs:
-            inputs.remove('')
-        outputs = [n for n, d in subgraph.out_degree() if d == 0]
-        nodes = list(filter(lambda node: not isinstance(node, str), nodes))
-        nodes = list(map(lambda node: node.to_operation(), nodes))
-        node = filter_node.to_operation()
-        if hasattr(filter_node, 'condition'):
-            node = node(name=filter_node.name,
-                        condition_needs=filter_node.condition_needs, condition=filter_node.condition,
-                        needs=inputs, provides=outputs)(*nodes)
-        else:
-            node = node(name=filter_node.name,
-                        condition_needs=filter_node.condition_needs,
-                        needs=inputs, provides=outputs)(*nodes)
-
-        return node
-
     def _collect_global_inputs(self):
         """
         Insert Pick1 for nodes which run global collector but depend on inputs which are only available on worker.
@@ -411,18 +375,6 @@ class Graph():
                 node.inputs = new_inputs
             self.add(node)
 
-    def _find_intersecting_path(self, filters_targets, path):
-        diffs = set()
-
-        for f, t in filters_targets:
-            paths = list(nx.algorithms.all_simple_paths(self.graph, f, t))
-            for parent in paths:
-                parent = set(parent)
-                if parent.intersection(path) and path != parent:
-                    diffs.update(parent.difference(path))
-
-        return diffs
-
     def compile(self, num_workers=1, num_local_collectors=1):
         """
         Convert an AMI graph to a networkfox graph. This function must be called after any function which modifies the
@@ -442,64 +394,10 @@ class Graph():
 
         seen = set()
         outputs = [n for n, d in self.graph.out_degree() if d == 0]
-        graph_filters = list(filter(lambda node: isinstance(node, gn.Filter), self.graph.nodes))
         body = []
-        branch_merge_candidates = set()
-
-        if len(graph_filters) > 1:
-            all_descendants = list(map(lambda f: nx.dag.descendants(self.graph, f), graph_filters))
-            all_merge_candidates = all_descendants[0].intersection(*all_descendants[1:])
-            for node in nx.algorithms.topological_sort(self.graph):
-                if node in all_merge_candidates:
-                    branch_merge_candidates.add(node)
-                    all_merge_candidates.remove(node)
-                    all_merge_candidates = all_merge_candidates.difference(nx.dag.descendants(self.graph, node))
-                    if not all_merge_candidates:
-                        break
-
-            # There are two cases that need to be handled when converting filter nodes.
-            # Filters which merge two branches of the graph and filters which don't merge branches.
-            filters_targets = list(it.product(graph_filters, branch_merge_candidates))
-
-            for f, t in filters_targets:
-                paths = list(nx.algorithms.all_simple_paths(self.graph, f, t))
-                assert(len(paths) == 1)
-                nodes = paths[0]
-                filter_output = nodes.pop()
-                inputs = []
-                for node_input in filter_output.inputs:
-                    inputs.append(modifiers.optional(node_input))
-                filter_output.inputs = inputs
-
-                for o in outputs:
-                    paths = list(nx.algorithms.all_simple_paths(self.graph, f, o))
-                    for path in paths:
-                        for node in path:
-                            if node not in nodes:
-                                nodes.append(node)
-                filter_node = self._generate_filter_node(seen, f, nodes)
-                body.append(filter_node)
-
-        filters_targets = list(it.product(graph_filters, outputs))
-        for f, t in filters_targets:
-            paths = list(nx.algorithms.all_simple_paths(self.graph, f, t))
-
-            for nodes in paths:
-                if any(map(lambda node: node in branch_merge_candidates, nodes)):
-                    continue
-                if seen.issuperset(nodes):
-                    continue
-
-                diffs = self._find_intersecting_path(filters_targets, nodes)
-                nodes.extend(diffs)
-
-                filter_node = self._generate_filter_node(seen, f, nodes)
-                body.append(filter_node)
 
         for node in self.graph.nodes:
-            if node in seen:
-                continue
-            if type(node) is str:
+            if node in seen or skip(node):
                 continue
             body.append(node.to_operation())
 
