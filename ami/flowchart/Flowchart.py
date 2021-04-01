@@ -674,7 +674,7 @@ class FlowchartCtrlWidget(QtGui.QWidget):
                 changed_nodes.add(gnode)
 
                 if not hasattr(gnode, 'to_operation'):
-                    if gnode.isSource() and gnode.viewable() and gnode.viewed:
+                    if gnode.viewable() and gnode.viewed:
                         displays.add(gnode)
                     elif gnode.exportable():
                         displays.add(gnode)

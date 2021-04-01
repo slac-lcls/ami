@@ -17,7 +17,7 @@ from ami.flowchart.library.Editors import TraceEditor, HistEditor, \
 
 
 logger = logging.getLogger(LogConfig.get_package_name(__name__))
-colors = [(255, 255, 255), (0, 0, 255), (0, 255, 0), (255, 0, 0)]
+colors = [(255, 0, 0), (0, 255, 0), (0, 0, 255), (255, 255, 255)]
 symbols = ['o', 's', 't', 'd', '+']
 symbols_colors = list(it.product(symbols, colors))
 
@@ -863,7 +863,6 @@ class LineWidget(PlotWidget):
 
             x = data[x]
             y = data[y]
-
             # sort the data using the x-axis, otherwise the drawn line is messed up
             x, y = zip(*sorted(zip(x, y)))
 
