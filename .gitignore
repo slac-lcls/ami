@@ -17,6 +17,7 @@ htmlcov/
 *.fc
 *.last
 *.swp
+.dmypy.json
 .agignore
 .gdb_history
 examples/*

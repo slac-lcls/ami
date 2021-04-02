@@ -5,18 +5,19 @@ import datetime as dt
 import itertools as it
 import numpy as np
 import pyqtgraph as pg
+from pyqtgraph.GraphicsScene.exportDialog import ExportDialog
 from qtpy import QtGui, QtWidgets, QtCore
+from networkfox import modifiers
 from ami import LogConfig
 from ami.data import Deserializer
 from ami.comm import ZMQ_TOPIC_DELIM
 from ami.flowchart.library.WidgetGroup import generateUi
 from ami.flowchart.library.Editors import TraceEditor, HistEditor, \
-    LineEditor, CircleEditor, RectEditor
+    LineEditor, CircleEditor, RectEditor, camera, pixmapFromBase64
 
 
 logger = logging.getLogger(LogConfig.get_package_name(__name__))
-
-colors = [(255, 255, 255), (0, 0, 255), (0, 255, 0), (255, 0, 0)]
+colors = [(255, 0, 0), (0, 255, 0), (0, 0, 255), (255, 255, 255)]
 symbols = ['o', 's', 't', 'd', '+']
 symbols_colors = list(it.product(symbols, colors))
 
@@ -66,7 +67,8 @@ class AsyncFetcher(QtCore.QThread):
         self.topics = topics
         self.terms = terms
         self.names = list(topics.keys())
-        self.subs = list(topics.values())
+        self.subs = set(topics.values())
+        self.optional = set([value for key, value in topics.items() if type(key) is modifiers.optional])
 
         for name, sock_count in self.sockets.items():
             sock, count = sock_count
@@ -105,18 +107,25 @@ class AsyncFetcher(QtCore.QThread):
                 self.timestamps[self.view_subs[topic]] = heartbeat
                 # check if the data is ready
                 heartbeats = set(self.timestamps.values())
-                if self.data.keys() == set(self.subs) and len(heartbeats) == 1:
+                num_heartbeats = len(heartbeats)
+                res = {}
+
+                if self.data.keys() == self.subs and num_heartbeats == 1:
+                    for name, topic in self.topics.items():
+                        res[name] = self.data[topic]
+
+                elif self.optional.issuperset(self.data.keys()):
+                    for name, topic in self.topics.items():
+                        if topic in self.data:
+                            res[name] = self.data[topic]
+
+                if res:
                     now = dt.datetime.now()
                     now = now.strftime("%F %T")
                     heartbeat = heartbeats.pop()
                     hbts = dt.datetime.fromtimestamp(heartbeat.timestamp).strftime("%F %T.%f")
                     latency = dt.datetime.now() - dt.datetime.fromtimestamp(heartbeat.timestamp)
                     self.last_updated = f"Last Updated: {now} HB: {hbts} Latency: {latency}"
-
-                    res = {}
-                    for name, topic in self.topics.items():
-                        res[name] = self.data[topic]
-
                     # put results on the reply queue
                     self.reply_queue.put(res)
                     # send a signal that data is ready
@@ -168,9 +177,12 @@ class PlotWidget(pg.GraphicsLayoutWidget):
 
         self.plot_view.setMenuEnabled(False)
 
-        self.configure_btn = pg.ButtonItem(pg.pixmaps.getPixmap('ctrl'), 14, parentItem=self.plot_view)
+        self.configure_btn = pg.ButtonItem(pg.icons.getPixmap('ctrl'), 14, parentItem=self.plot_view)
         self.configure_btn.clicked.connect(self.configure_plot)
-        self.configure_btn.show()
+
+        self.export_btn = pg.ButtonItem(pixmapFromBase64(camera), 24, parentItem=self.plot_view)
+        self.exporter = ExportDialog(self.plot_view.vb.scene())
+        self.export_btn.clicked.connect(self.export_plot)
 
         self.plot = {}  # { name : PlotDataItem }
         self.trace_ids = {}  # { trace_idx : name }
@@ -419,12 +431,15 @@ class PlotWidget(pg.GraphicsLayoutWidget):
         self.win.resize(800, 1000)
         self.win.show()
 
+    def export_plot(self):
+        self.exporter.updateItemList()
+        self.exporter.show()
+
     def cursor_hover_evt(self, evt):
         view = self.plot_view.getViewBox()
         pos = evt[0]
         pos = view.mapSceneToView(pos)
         self.pixel_value.setText(f"x={pos.x():.5g}, y={pos.y():.5g}")
-        self.pixel_value.item.moveBy(0, 10)
 
     def data_updated(self, data):
         pass
@@ -433,12 +448,37 @@ class PlotWidget(pg.GraphicsLayoutWidget):
     def update(self):
         while self.fetcher.ready:
             self.last_updated.setText(self.fetcher.last_updated)
-            self.last_updated.item.moveBy(13, -5)
             self.data_updated(self.fetcher.reply)
 
     def close(self):
         if self.fetcher:
             self.fetcher.close()
+
+    def itemPos(self, attr):
+        if hasattr(self, attr):
+            item = getattr(self, attr)
+            rect = self.plot_view.mapRectFromItem(item, item.boundingRect())
+            return rect
+
+    def resizeEvent(self, ev):
+        super().resizeEvent(ev)
+
+        if hasattr(self, 'plot_view'):
+            self.configure_btn.setPos(0, 0)
+
+            rect = self.itemPos('configure_btn')
+            x = rect.topRight().x()
+            self.export_btn.setPos(x, -5.5)
+
+            rect = self.itemPos('export_btn')
+            x = rect.topRight().x()
+            y = rect.topRight().y()
+            self.last_updated.setPos(x - 3, y + 2)
+
+            rect = self.itemPos('last_updated')
+            x = rect.bottomLeft().x()
+            y = rect.bottomLeft().y()
+            self.pixel_value.setPos(x - 1, y - 9)
 
 
 class TextWidget(pg.LayoutWidget):
@@ -571,7 +611,6 @@ class ImageWidget(PlotWidget):
                 y = int(pos.y())
                 z = self.imageItem.image[x, y]
                 self.pixel_value.setText(f"x={x}, y={y}, z={z:.5g}")
-                self.pixel_value.item.moveBy(0, 10)
 
     def apply_clicked(self):
         super().apply_clicked()
@@ -720,7 +759,6 @@ class Histogram2DWidget(ImageWidget):
                 y = self.ybins[idxy]
                 z = self.imageItem.image[idxx, idxy]
                 self.pixel_value.setText(f"x={x:.5g}, y={y:.5g}, z={z:.5g}")
-                self.pixel_value.item.moveBy(0, 12)
 
     def data_updated(self, data):
         xbins = self.terms['XBins']
@@ -780,9 +818,11 @@ class WaveformWidget(PlotWidget):
         super().__init__(topics, terms, addr, parent=parent, **kwargs)
 
     def data_updated(self, data):
-        i = 0
+        i = len(self.plot)
 
         for term, name in self.terms.items():
+            if name not in data:
+                continue
             if name not in self.plot:
                 _, color = symbols_colors[i]
                 idx = f"trace.{i}"
@@ -818,9 +858,11 @@ class LineWidget(PlotWidget):
             y = self.terms[y]
             name = " vs ".join((y, x))
 
+            if x not in data or y not in data:
+                continue
+
             x = data[x]
             y = data[y]
-
             # sort the data using the x-axis, otherwise the drawn line is messed up
             x, y = zip(*sorted(zip(x, y)))
 

@@ -30,16 +30,8 @@ class FFT(Node):
         super().__init__(name, terminals={'In': {'io': 'in', 'ttype': Array1d},
                                           'Out': {'io': 'out', 'ttype': Array1d}})
 
-    def to_operation(self, inputs, conditions={}):
-        outputs = self.output_vars()
-
-        node = gn.Map(name=self.name()+"_operation",
-                      condition_needs=conditions,
-                      inputs=inputs, outputs=outputs,
-                      func=FFTProc(pyfftw.builders.fft),
-                      parent=self.name())
-
-        return node
+    def to_operation(self, **kwargs):
+        return gn.Map(name=self.name()+"_operation", **kwargs, func=FFTProc(pyfftw.builders.fft))
 
 
 class IFFT(Node):
@@ -52,16 +44,8 @@ class IFFT(Node):
         super().__init__(name, terminals={'In': {'io': 'in', 'ttype': Array1d},
                                           'Out': {'io': 'out', 'ttype': Array1d}})
 
-    def to_operation(self, inputs, conditions={}):
-        outputs = self.output_vars()
-
-        node = gn.Map(name=self.name()+"_operation",
-                      condition_needs=conditions,
-                      inputs=inputs, outputs=outputs,
-                      func=FFTProc(pyfftw.builders.ifft),
-                      parent=self.name())
-
-        return node
+    def to_operation(self, **kwargs):
+        return gn.Map(name=self.name()+"_operation", **kwargs, func=FFTProc(pyfftw.builders.ifft))
 
 
 class FFT2(Node):
@@ -74,16 +58,8 @@ class FFT2(Node):
         super().__init__(name, terminals={'In': {'io': 'in', 'ttype': Array2d},
                                           'Out': {'io': 'out', 'ttype': Array2d}})
 
-    def to_operation(self, inputs, conditions={}):
-        outputs = self.output_vars()
-
-        node = gn.Map(name=self.name()+"_operation",
-                      condition_needs=conditions,
-                      inputs=inputs, outputs=outputs,
-                      func=FFTProc(pyfftw.builders.fft2),
-                      parent=self.name())
-
-        return node
+    def to_operation(self, **kwargs):
+        return gn.Map(name=self.name()+"_operation", **kwargs, func=FFTProc(pyfftw.builders.fft2))
 
 
 class IFFT2(Node):
@@ -96,16 +72,8 @@ class IFFT2(Node):
         super().__init__(name, terminals={'In': {'io': 'in', 'ttype': Array2d},
                                           'Out': {'io': 'out', 'ttype': Array2d}})
 
-    def to_operation(self, inputs, conditions={}):
-        outputs = self.output_vars()
-
-        node = gn.Map(name=self.name()+"_operation",
-                      condition_needs=conditions,
-                      inputs=inputs, outputs=outputs,
-                      func=FFTProc(pyfftw.builders.ifft2),
-                      parent=self.name())
-
-        return node
+    def to_operation(self, **kwargs):
+        return gn.Map(name=self.name()+"_operation", **kwargs, func=FFTProc(pyfftw.builders.ifft2))
 
 
 class RFFT(Node):
@@ -118,16 +86,8 @@ class RFFT(Node):
         super().__init__(name, terminals={'In': {'io': 'in', 'ttype': Array1d},
                                           'Out': {'io': 'out', 'ttype': Array1d}})
 
-    def to_operation(self, inputs, conditions={}):
-        outputs = self.output_vars()
-
-        node = gn.Map(name=self.name()+"_operation",
-                      condition_needs=conditions,
-                      inputs=inputs, outputs=outputs,
-                      func=FFTProc(pyfftw.builders.rfft),
-                      parent=self.name())
-
-        return node
+    def to_operation(self, **kwargs):
+        return gn.Map(name=self.name()+"_operation", **kwargs, func=FFTProc(pyfftw.builders.rfft))
 
 
 class IRFFT(Node):
@@ -140,16 +100,8 @@ class IRFFT(Node):
         super().__init__(name, terminals={'In': {'io': 'in', 'ttype': Array1d},
                                           'Out': {'io': 'out', 'ttype': Array1d}})
 
-    def to_operation(self, inputs, conditions={}):
-        outputs = self.output_vars()
-
-        node = gn.Map(name=self.name()+"_operation",
-                      condition_needs=conditions,
-                      inputs=inputs, outputs=outputs,
-                      func=FFTProc(pyfftw.builders.irfft),
-                      parent=self.name())
-
-        return node
+    def to_operation(self, **kwargs):
+        return gn.Map(name=self.name()+"_operation", **kwargs, func=FFTProc(pyfftw.builders.irfft))
 
 
 class RFFT2(Node):
@@ -162,16 +114,8 @@ class RFFT2(Node):
         super().__init__(name, terminals={'In': {'io': 'in', 'ttype': Array2d},
                                           'Out': {'io': 'out', 'ttype': Array2d}})
 
-    def to_operation(self, inputs, conditions={}):
-        outputs = self.output_vars()
-
-        node = gn.Map(name=self.name()+"_operation",
-                      condition_needs=conditions,
-                      inputs=inputs, outputs=outputs,
-                      func=FFTProc(pyfftw.builders.rfft2),
-                      parent=self.name())
-
-        return node
+    def to_operation(self, **kwargs):
+        return gn.Map(name=self.name()+"_operation", **kwargs, func=FFTProc(pyfftw.builders.rfft2))
 
 
 class IRFFT2(Node):
@@ -184,13 +128,5 @@ class IRFFT2(Node):
         super().__init__(name, terminals={'In': {'io': 'in', 'ttype': Array2d},
                                           'Out': {'io': 'out', 'ttype': Array2d}})
 
-    def to_operation(self, inputs, conditions={}):
-        outputs = self.output_vars()
-
-        node = gn.Map(name=self.name()+"_operation",
-                      condition_needs=conditions,
-                      inputs=inputs, outputs=outputs,
-                      func=FFTProc(pyfftw.builders.irfft2),
-                      parent=self.name())
-
-        return node
+    def to_operation(self, **kwargs):
+        return gn.Map(name=self.name()+"_operation", **kwargs, func=FFTProc(pyfftw.builders.irfft2))

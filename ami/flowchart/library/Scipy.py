@@ -29,17 +29,12 @@ try:
                 'Sum': {'io': 'out', 'ttype': Array1d}
             })
 
-        def to_operation(self, inputs, conditions={}):
-            outputs = self.output_vars()
-
+        def to_operation(self, **kwargs):
             threshold = self.values['threshold']
             min_sum = self.values['min sum']
 
-            node = gn.Map(name=self.name()+"_operation",
-                          condition_needs=conditions, inputs=inputs, outputs=outputs,
-                          func=lambda arr: blobfinder.find_blobs_1d(arr, threshold, min_sum),
-                          parent=self.name())
-            return node
+            return gn.Map(name=self.name()+"_operation", **kwargs,
+                          func=lambda arr: blobfinder.find_blobs_1d(arr, threshold, min_sum))
 
     class BlobFinder2D(CtrlNode):
 
@@ -60,17 +55,12 @@ try:
                 'Sum': {'io': 'out', 'ttype': Array1d}
             })
 
-        def to_operation(self, inputs, conditions={}):
-            outputs = self.output_vars()
-
+        def to_operation(self, **kwargs):
             threshold = self.values['threshold']
             min_sum = self.values['min sum']
 
-            node = gn.Map(name=self.name()+"_operation",
-                          condition_needs=conditions, inputs=inputs, outputs=outputs,
-                          func=lambda arr: blobfinder.find_blobs_2d(arr, threshold, min_sum),
-                          parent=self.name())
-            return node
+            return gn.Map(name=self.name()+"_operation", **kwargs,
+                          func=lambda arr: blobfinder.find_blobs_2d(arr, threshold, min_sum))
 
 except ImportError as e:
     print(e)
@@ -93,9 +83,7 @@ class Linregress0d(CtrlNode):
                                           'Fit': {'io': 'out', 'ttype': Array1d},
                                           'rvalue': {'io': 'out', 'ttype': float}})
 
-    def to_operation(self, inputs, conditions={}):
-        outputs = self.output_vars()
-
+    def to_operation(self, inputs, outputs, **kwargs):
         def fit(arr):
             arr = np.array(arr)
             slope, intercept, r_value, p_value, stderr = stats.linregress(arr[:, 0], arr[:, 1])
@@ -103,11 +91,11 @@ class Linregress0d(CtrlNode):
 
         picked_outputs = [self.name()+"_accumulated"]
         nodes = [gn.PickN(name=self.name()+"_picked",
-                          condition_needs=conditions, inputs=inputs, outputs=picked_outputs,
-                          N=self.values['N'], parent=self.name()),
+                          inputs=inputs, outputs=picked_outputs,
+                          N=self.values['N'], **kwargs),
                  gn.Map(name=self.name()+"_operation",
                         inputs=picked_outputs, outputs=outputs,
-                        func=fit, parent=self.name())]
+                        func=fit, **kwargs)]
 
         return nodes
 
@@ -130,18 +118,12 @@ class Linregress1d(Node):
                                           'stderr': {'io': 'out', 'ttype': float},
                                           'fit': {'io': 'out', 'ttype': Array1d}})
 
-    def to_operation(self, inputs, conditions={}):
-        outputs = self.output_vars()
-
+    def to_operation(self, **kwargs):
         def fit(x, y):
             slope, intercept, r_value, p_value, stderr = stats.linregress(x, y)
             return slope, intercept, r_value, p_value, stderr, slope*x + intercept
 
-        nodes = [gn.Map(name=self.name()+"_operation",
-                        condition_needs=conditions, inputs=inputs, outputs=outputs,
-                        func=fit, parent=self.name())]
-
-        return nodes
+        return gn.Map(name=self.name()+"_operation", **kwargs, func=fit)
 
 
 try:
@@ -194,15 +176,8 @@ try:
             super().__init__(name, terminals={'In': {'io': 'in', 'ttype': Array1d},
                                               'Out': {'io': 'out', 'ttype': Array1d}})
 
-        def to_operation(self, inputs, conditions={}):
-            outputs = self.output_vars()
-
-            node = gn.Map(name=self.name()+"_operation",
-                          condition_needs=conditions,
-                          inputs=inputs, outputs=outputs,
-                          func=FitProc(**self.values), parent=self.name())
-
-            return node
+        def to_operation(self, **kwargs):
+            return gn.Map(name=self.name()+"_operation", **kwargs, func=FitProc(**self.values))
 
 except ImportError as e:
     print(e)
@@ -228,17 +203,11 @@ class GaussianFilter1D(CtrlNode):
         super().__init__(name, terminals={'In': {'io': 'in', 'ttype': Array1d},
                                           'Out': {'io': 'out', 'ttype': Array1d}})
 
-    def to_operation(self, inputs, conditions={}):
-        outputs = self.output_vars()
+    def to_operation(self, **kwargs):
         args = dict(self.values)
 
-        node = gn.Map(name=self.name()+"_operation",
-                      condition_needs=conditions,
-                      inputs=inputs, outputs=outputs,
-                      func=lambda arr: ndimage.gaussian_filter1d(arr, **args),
-                      parent=self.name())
-
-        return node
+        return gn.Map(name=self.name()+"_operation", **kwargs,
+                      func=lambda arr: ndimage.gaussian_filter1d(arr, **args))
 
 
 class Rotate(CtrlNode):
@@ -255,14 +224,8 @@ class Rotate(CtrlNode):
         super().__init__(name, terminals={'In': {'io': 'in', 'ttype': Array2d},
                                           'Out': {'io': 'out', 'ttype': Array2d}})
 
-    def to_operation(self, inputs, conditions={}):
-        outputs = self.output_vars()
+    def to_operation(self, **kwargs):
         args = dict(self.values)
 
-        node = gn.Map(name=self.name()+"_operation",
-                      condition_needs=conditions,
-                      inputs=inputs, outputs=outputs,
-                      func=lambda arr: ndimage.rotate(arr, **args),
-                      parent=self.name())
-
-        return node
+        return gn.Map(name=self.name()+"_operation", **kwargs,
+                      func=lambda arr: ndimage.rotate(arr, **args))

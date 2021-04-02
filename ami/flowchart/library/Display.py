@@ -182,16 +182,16 @@ class ScatterPlot(CtrlNode):
         self.addTerminal(name="X", io='in', ttype=float, **args)
         self.addTerminal(name="Y", io='in', ttype=float, **args)
 
-    def to_operation(self, inputs, conditions={}):
+    def to_operation(self, inputs, outputs, **kwargs):
         outputs = [self.name()+'.'+i for i in inputs.keys()]
         buffer_output = [self.name()]
         nodes = [gn.RollingBuffer(name=self.name()+"_buffer",
                                   N=self.values['Num Points'], unique=self.values['Unique'],
-                                  condition_needs=conditions, inputs=inputs,
-                                  outputs=buffer_output, parent=self.name()),
-                 gn.Map(name=self.name()+"_operation", inputs=buffer_output, outputs=outputs,
+                                  inputs=inputs, outputs=buffer_output, **kwargs),
+                 gn.Map(name=self.name()+"_operation",
+                        inputs=buffer_output, outputs=outputs,
                         func=lambda a: zip(*a),
-                        parent=self.name())]
+                        **kwargs)]
         return nodes
 
 
@@ -218,20 +218,17 @@ class ScalarPlot(CtrlNode):
     def display(self, topics, terms, addr, win, **kwargs):
         return super().display(topics, terms, addr, win, WaveformWidget, **kwargs)
 
-    def to_operation(self, inputs, conditions={}):
+    def to_operation(self, inputs, outputs, **kwargs):
         outputs = [self.name()+'.'+i for i in inputs.keys()]
         buffer_output = [self.name()]
-
         if len(inputs.values()) > 1:
             node = [gn.RollingBuffer(name=self.name()+"_buffer", N=self.values['Num Points'],
-                                     condition_needs=conditions, inputs=inputs,
-                                     outputs=buffer_output, parent=self.name()),
+                                     inputs=inputs, outputs=buffer_output, **kwargs),
                     gn.Map(name=self.name()+"_operation", inputs=buffer_output, outputs=outputs,
-                           func=lambda a: zip(*a), parent=self.name())]
+                           func=lambda a: zip(*a), **kwargs)]
         else:
             node = gn.RollingBuffer(name=self.name(), N=self.values['Num Points'],
-                                    condition_needs=conditions, inputs=inputs,
-                                    outputs=outputs, parent=self.name())
+                                    inputs=inputs, outputs=outputs, **kwargs)
 
         return node
 
@@ -288,15 +285,13 @@ class TimePlot(CtrlNode):
         self.addTerminal(name="X", io='in', ttype=float, **args)
         self.addTerminal(name="Y", io='in', ttype=float, **args)
 
-    def to_operation(self, inputs, conditions={}):
+    def to_operation(self, inputs, outputs, **kwargs):
         outputs = [self.name()+'.'+i for i in inputs.keys()]
         buffer_output = [self.name()]
         nodes = [gn.RollingBuffer(name=self.name()+"_buffer", N=self.values['Num Points'],
-                                  condition_needs=conditions, inputs=inputs,
-                                  outputs=buffer_output, parent=self.name()),
+                                  inputs=inputs, outputs=buffer_output, **kwargs),
                  gn.Map(name=self.name()+"_operation", inputs=buffer_output, outputs=outputs,
-                        func=lambda a: zip(*a),
-                        parent=self.name())]
+                        func=lambda a: zip(*a), **kwargs)]
         return nodes
 
 

@@ -27,6 +27,16 @@ logger = logging.getLogger(LogConfig.get_package_name(__name__))
 
 def run_editor_window(broker_addr, graphmgr_addr, checkpoint_addr, load=None, prometheus_dir=None, hutch=None):
     subprocess.call(["dmypy", "start"])
+    check_file = None
+    with tempfile.NamedTemporaryFile(mode='w', delete=False) as f:
+        f.write("from typing import *\n")
+        f.write("from mypy_extensions import TypedDict\n")
+        f.write("import numbers\n")
+        f.write("import amitypes\n")
+        f.write("T = TypeVar('T')\n")
+        f.flush()
+        check_file = f.name
+        proc = subprocess.Popen(["dmypy", "check", f.name])
 
     app = QtGui.QApplication([])
 
@@ -69,7 +79,15 @@ def run_editor_window(broker_addr, graphmgr_addr, checkpoint_addr, load=None, pr
             task.cancel()
         loop.close()
 
-    subprocess.call(["dmypy", "stop"])
+    try:
+        proc.communicate(timeout=1)
+        subprocess.call(["dmypy", "stop"])
+    except subprocess.TimeoutExpired:
+        proc.terminate()
+        subprocess.call(["dmypy", "kill"])
+    finally:
+        if check_file:
+            os.remove(check_file)
 
 
 class NodeWindow(QtGui.QMainWindow):
@@ -176,21 +194,25 @@ class NodeProcess(QtCore.QObject):
                                             units=msg.units)
 
             if self.ctrlWidget and self.widget:
-                cw = QtGui.QWidget()
+                cw = QtGui.QWidget(parent=self.win)
                 self.win.setCentralWidget(cw)
                 layout = QtGui.QGridLayout()
                 cw.setLayout(layout)
+                self.ctrlWidget.setParent(cw)
+                self.widget.setParent(cw)
                 layout.addWidget(self.ctrlWidget, 0, 0, -1, 1)
                 layout.addWidget(self.widget, 0, 1, -1, -1)
                 layout.setColumnStretch(1, 10)
             elif self.ctrlWidget:
-                scrollarea = QtWidgets.QScrollArea()
+                scrollarea = QtWidgets.QScrollArea(parent=self.win)
                 scrollarea.setWidget(self.ctrlWidget)
+                self.ctrlWidget.setParent(scrollarea)
                 self.win.setCentralWidget(scrollarea)
             elif self.widget:
-                scrollarea = QtWidgets.QScrollArea()
+                scrollarea = QtWidgets.QScrollArea(parent=self.win)
                 scrollarea.setWidgetResizable(True)
                 scrollarea.setWidget(self.widget)
+                self.widget.setParent(scrollarea)
                 self.win.setCentralWidget(scrollarea)
 
             if msg.state and hasattr(self.widget, 'restoreState'):

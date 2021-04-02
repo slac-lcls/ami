@@ -5,6 +5,7 @@ from pyqtgraph import functions as fn
 from pyqtgraph.pgcollections import OrderedDict
 from pyqtgraph.debug import printExc
 from ami.flowchart.Terminal import Terminal
+from networkfox import modifiers
 import weakref
 import amitypes  # noqa
 import typing  # noqa
@@ -41,6 +42,8 @@ class Node(QtCore.QObject):
     sigTerminalRemoved = QtCore.Signal(object, object)  # self, term
     sigTerminalConnected = QtCore.Signal(object, object)  # localTerm, remoteTerm
     sigTerminalDisconnected = QtCore.Signal(object, object)  # localTerm, remoteTerm
+    sigTerminalEdited = QtCore.Signal(object, object)
+    sigTerminalOptional = QtCore.Signal(object, object)  # self, term
     sigNodeEnabled = QtCore.Signal(object)  # self
 
     def __init__(self, name, **kwargs):
@@ -64,10 +67,9 @@ class Node(QtCore.QObject):
                         context menu.
         allowAddOutput  bool; whether the user is allowed to add outputs by the
                         context menu.
-        allowAddCondition bool; whether the user is allowed to add a condition
-                        by the context menu.
         allowRemove     bool; whether the user is allowed to remove this node by the
                         context menu.
+        allowOptional   bool; whether terminals are allowed to be optional
         viewable        bool; whether a pick one should be inserted into the graph to
                         view node inputs
         buffered        bool; whether a node has a to_operation which returns a rolling
@@ -83,12 +85,11 @@ class Node(QtCore.QObject):
         self.terminals = OrderedDict()
         self._inputs = OrderedDict()
         self._outputs = OrderedDict()
-        self._conditions = OrderedDict()
         self._groups = OrderedDict()  # terminal group {"name": set(terminals)}
         self._allowAddInput = kwargs.get("allowAddInput", False)
         self._allowAddOutput = kwargs.get("allowAddOutput", False)
-        self._allowAddCondition = kwargs.get("allowAddCondition", True)
         self._allowRemove = kwargs.get("allowRemove", True)
+        self._allowOptional = kwargs.get("allowOptional", True)
         self._viewable = kwargs.get("viewable", False)
         self._buffered = kwargs.get("buffered", False)
         self._exportable = kwargs.get("exportable", False)
@@ -103,7 +104,6 @@ class Node(QtCore.QObject):
         self.isSubgraph = False
 
         self._input_vars = {}  # term:var
-        self._condition_vars = {}  # term:var
 
         terminals = kwargs.get("terminals", {})
         self.brush = self.determineColor(terminals)
@@ -136,10 +136,6 @@ class Node(QtCore.QObject):
                 isInput = False
             elif term['io'] == 'out':
                 isOutput = False
-            elif term['io'] == 'condition':
-                isInput = False
-                isOutput = False
-                break
 
         brush = None
         if isInput and not isOutput:
@@ -180,13 +176,6 @@ class Node(QtCore.QObject):
         This is a convenience function that just calls addTerminal(io='out', ...)"""
         return self.addTerminal(name, io='out', ttype=self.terminals["Out"].type(), **kwargs)
 
-    def addCondition(self, name="Condition", **kwargs):
-        """Add a new condition terminal to this Node with the given name. Extra
-        keyword arguments are passed to Terminal.__init__.
-
-        This is a convenience function that just calls addTerminal(io='condition', ...)"""
-        return self.addTerminal(name, io='condition', ttype=bool, **kwargs)
-
     def removeTerminal(self, term):
         """Remove the specified terminal from this Node. May specify either the
         terminal's name or the terminal itself.
@@ -206,8 +195,6 @@ class Node(QtCore.QObject):
             del self._inputs[name]
         if name in self._outputs:
             del self._outputs[name]
-        if name in self._conditions:
-            del self._conditions[name]
         self.graphicsItem().updateTerminals()
         self.sigTerminalRemoved.emit(self, term)
         self.graphicsItem().buildMenu(reset=True)
@@ -237,10 +224,9 @@ class Node(QtCore.QObject):
         self.terminals[name] = term
         if term.isInput():
             self._inputs[name] = weakref.ref(self.terminals[name])
+            term.sigTerminalOptional.connect(self.optionalTerm)
         elif term.isOutput():
             self._outputs[name] = weakref.ref(self.terminals[name])
-        elif term.isCondition():
-            self._conditions[name] = weakref.ref(self.terminals[name])
 
         if group:
             if group not in self._groups:
@@ -262,9 +248,6 @@ class Node(QtCore.QObject):
         """Return dict of all output terminals.
         Warning: do not modify."""
         return self._outputs
-
-    def conditions(self):
-        return self._conditions
 
     def viewable(self):
         return self._viewable
@@ -296,10 +279,12 @@ class Node(QtCore.QObject):
     def input_vars(self):
         # we need to sort input_vars
         input_vars = {}
-        for key in self.terminals.keys():
-            if key in self._input_vars:
-                input_vars[key] = self._input_vars[key]
-
+        for name, term in self.terminals.items():
+            if name in self._input_vars:
+                if term.optional():
+                    input_vars[name] = modifiers.optional(self._input_vars[name])
+                else:
+                    input_vars[name] = self._input_vars[name]
         return input_vars
 
     def input_units(self):
@@ -318,9 +303,6 @@ class Node(QtCore.QObject):
             output_vars.append('.'.join([self.name(), name]))
 
         return output_vars
-
-    def condition_vars(self):
-        return self._condition_vars
 
     def graphicsItem(self, brush=None):
         """Return the GraphicsItem for this node. Subclasses may re-implement
@@ -363,8 +345,6 @@ class Node(QtCore.QObject):
                 self._input_vars[localTerm.name()] = node.name()
             else:
                 self._input_vars[localTerm.name()] = '.'.join([node.name(), remoteTerm.name()])
-        elif localTerm.isCondition():
-            self._condition_vars[localTerm.name()] = node.name()
 
         self.changed = localTerm.isInput()
         self.sigTerminalConnected.emit(localTerm, remoteTerm)
@@ -372,10 +352,7 @@ class Node(QtCore.QObject):
     def disconnected(self, localTerm, remoteTerm):
         """Called whenever one of this node's terminals is disconnected from another."""
         if localTerm.isInput() and remoteTerm.isOutput():
-            self._input_vars.pop(localTerm.name(), None)
-        elif localTerm.isCondition():
-            self._condition_vars.pop(localTerm.name(), None)
-
+            del self._input_vars[localTerm.name()]
         self.changed = localTerm.isInput()
         self.sigTerminalDisconnected.emit(localTerm, remoteTerm)
 
@@ -387,10 +364,6 @@ class Node(QtCore.QObject):
 
     def hasInput(self):
         for name, term in self.inputs().items():
-            if not term().isConnected():
-                return False
-
-        for name, term in self.conditions().items():
             if not term().isConnected():
                 return False
 
@@ -462,7 +435,6 @@ class Node(QtCore.QObject):
             t.close()
         self.terminals = OrderedDict()
         self._inputs = OrderedDict()
-        self._conditions = OrderedDict()
         self._outputs = OrderedDict()
 
     def close(self, emit=True):
@@ -492,6 +464,12 @@ class Node(QtCore.QObject):
 
     def setGraph(self, graph):
         self._graph = graph
+
+    def optionalTerm(self, term):
+        if self._allowOptional:
+            checked = all([term.isInput() and term.optional() for name, term in self.terminals.items()])
+            self.graphicsItem().optional.setChecked(checked)
+            self.sigTerminalOptional.emit(self, term)
 
 
 class NodeGraphicsItem(GraphicsObject):
@@ -525,8 +503,8 @@ class NodeGraphicsItem(GraphicsObject):
 
         self.menu = None
         self.connectedTo = None
-        self.add_condition = None
         self.enabled = QtGui.QAction("Enabled", self.menu, checkable=True, checked=True)
+        self.optional = QtGui.QAction("Optional Inputs", self.menu, checkable=True, checked=False)
         self.buildMenu()
 
     def setPen(self, *args, **kwargs):
@@ -544,10 +522,9 @@ class NodeGraphicsItem(GraphicsObject):
 
     def updateTerminals(self):
         inp = self.node.inputs()
-        conds = self.node.conditions()
         out = self.node.outputs()
 
-        t = max(len(inp)+len(conds), len(out))
+        t = max(len(inp), len(out))
         bounds = QtCore.QRectF(0, 0, 100, 100*((t // 4) + 1))
 
         if bounds != self.bounds:
@@ -556,17 +533,9 @@ class NodeGraphicsItem(GraphicsObject):
 
         self.terminals = {}
 
-        dy = bounds.height() / (len(inp)+len(conds)+1)
+        dy = bounds.height() / (len(inp)+1)
         y = dy
         for i, t in inp.items():
-            t = t()
-            item = t.graphicsItem()
-            item.setParentItem(self)
-            item.setAnchor(0, y)
-            self.terminals[i] = (t, item)
-            y += dy
-
-        for i, t in conds.items():
             t = t()
             item = t.graphicsItem()
             item.setParentItem(self)
@@ -726,7 +695,7 @@ class NodeGraphicsItem(GraphicsObject):
                     node_menu = QtGui.QMenu(node_name)
 
                     for term_name, to_term in node.terminals.items():
-                        if (to_term.isInput() or to_term.isCondition()) and not to_term.isConnected():
+                        if to_term.isInput() and not to_term.isConnected():
                             added = True
                             add_term_menu = True
                             action = node_menu.addAction(term_name)
@@ -766,12 +735,13 @@ class NodeGraphicsItem(GraphicsObject):
             self.menu.setTitle("Node")
             self.enabled.toggled.connect(self.enabledFromMenu)
             self.menu.addAction(self.enabled)
+            if self.node._allowOptional:
+                self.optional.toggled.connect(self.optionalFromMenu)
+                self.menu.addAction(self.optional)
             if self.node._allowAddInput:
                 self.menu.addAction("Add input", self.addInputFromMenu)
             if self.node._allowAddOutput:
                 self.menu.addAction("Add output", self.addOutputFromMenu)
-            if self.node._allowAddCondition:
-                self.add_condition = self.menu.addAction("Add condition", self.addConditionFromMenu)
             if self.node._allowRemove:
                 self.menu.addAction("Remove node", self.node.close)
 
@@ -781,6 +751,14 @@ class NodeGraphicsItem(GraphicsObject):
         self.node.nodeEnabled(checked)
         self.node.sigNodeEnabled.emit(self.node)
 
+    def optionalFromMenu(self, checked):
+        for name, term in self.terminals.items():
+            term, graphicsItem = term
+            if term._allowOptional and graphicsItem.menu:
+                graphicsItem.menu.optionalAct.setChecked(checked)
+            term.setOptional(checked, emit=False)
+            self.node.sigTerminalOptional.emit(self.node, term)
+
     def addInputFromMenu(self):
         # called when add input is clicked in context menu
         self.node.addInput(removable=True)
@@ -788,11 +766,6 @@ class NodeGraphicsItem(GraphicsObject):
     def addOutputFromMenu(self):
         # called when add output is clicked in context menu
         self.node.addOutput(removable=True)
-
-    def addConditionFromMenu(self):
-        self.node.addCondition(removable=True)
-        self.menu.removeAction(self.add_condition)
-        self.add_condition = None
 
 
 class SubgraphNode(Node):

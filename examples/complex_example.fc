@@ -21,14 +21,14 @@
     [
       "laser",
       "Out",
-      "FilterOff.0",
-      "Condition"
+      "Filter.0",
+      "In"
     ],
     [
       "laser",
       "Out",
-      "FilterOn.0",
-      "Condition"
+      "Filter.1",
+      "In"
     ],
     [
       "Roi2D.0",
@@ -51,14 +51,14 @@
     [
       "Sum.0",
       "Out",
-      "MeanVsScan.0",
-      "Value"
+      "Filter.0",
+      "In.1"
     ],
     [
       "Sum.0",
       "Out",
-      "MeanVsScan.1",
-      "Value"
+      "Filter.1",
+      "In.1"
     ],
     [
       "delta_t",
@@ -79,16 +79,16 @@
       "Bin"
     ],
     [
-      "FilterOff.0",
+      "Filter.0",
       "Out",
       "MeanVsScan.0",
-      "Condition"
+      "Value"
     ],
     [
-      "FilterOn.0",
+      "Filter.1",
       "Out",
       "MeanVsScan.1",
-      "Condition"
+      "Value"
     ],
     [
       "MeanVsScan.0",
@@ -115,6 +115,9 @@
       "Y.1"
     ]
   ],
+  "library": {
+    "paths": []
+  },
   "nodes": [
     {
       "class": "SourceNode",
@@ -129,14 +132,33 @@
           "Out": {
             "group": null,
             "io": "out",
+            "optional": false,
             "removable": false,
-            "ttype": "amitypes.Array2d"
+            "ttype": "amitypes.array.Array2d"
           }
         },
+        "viewed": false,
         "widget": {
           "ctrl": {
-            "Auto Levels_Histogram": true,
-            "Auto Range_Histogram": true
+            "Display": {
+              "Flip": false,
+              "Rotate Counter Clockwise": "0"
+            },
+            "Histogram": {
+              "Auto Levels": true,
+              "Auto Range": true,
+              "Log Scale": false
+            },
+            "Show Grid": true,
+            "Title": "",
+            "X Axis": {
+              "Label": "",
+              "Log Scale": false
+            },
+            "Y Axis": {
+              "Label": "",
+              "Log Scale": false
+            }
           },
           "histogramLUT": {
             "gradient": {
@@ -160,7 +182,8 @@
                     255
                   ]
                 ]
-              ]
+              ],
+              "ticksVisible": true
             },
             "levels": [
               0,
@@ -244,17 +267,19 @@
       "state": {
         "enabled": true,
         "pos": [
-          0.0,
+          100.0,
           600.0
         ],
         "terminals": {
           "Out": {
             "group": null,
             "io": "out",
+            "optional": false,
             "removable": false,
             "ttype": "int"
           }
-        }
+        },
+        "viewed": false
       }
     },
     {
@@ -276,63 +301,83 @@
           "In": {
             "group": null,
             "io": "in",
+            "optional": false,
             "removable": false,
-            "ttype": "amitypes.Array2d"
+            "ttype": "amitypes.array.Array2d"
           },
           "Out": {
             "group": null,
             "io": "out",
+            "optional": false,
             "removable": false,
-            "ttype": "amitypes.Array2d"
-          }
-        }
-      }
-    },
-    {
-      "class": "ImageViewer",
-      "name": "ImageViewer.0",
-      "state": {
-        "enabled": true,
-        "pos": [
-          200.0,
-          0.0
-        ],
-        "terminals": {
-          "In": {
-            "group": null,
-            "io": "in",
-            "removable": false,
-            "ttype": "amitypes.Array2d"
+            "ttype": "amitypes.array.Array2d"
           }
         },
+        "viewed": false,
         "widget": {
           "ctrl": {
-            "Auto Levels_Histogram": true,
-            "Auto Range_Histogram": true
+            "Display": {
+              "Flip": false,
+              "Rotate Counter Clockwise": "0"
+            },
+            "Histogram": {
+              "Auto Levels": true,
+              "Auto Range": true,
+              "Log Scale": false
+            },
+            "Show Grid": true,
+            "Title": "",
+            "X Axis": {
+              "Label": "",
+              "Log Scale": false
+            },
+            "Y Axis": {
+              "Label": "",
+              "Log Scale": false
+            }
           },
           "histogramLUT": {
             "gradient": {
               "mode": "rgb",
               "ticks": [
                 [
-                  0.0,
+                  0.3333,
                   [
-                    0,
+                    185,
                     0,
                     0,
                     255
                   ]
                 ],
                 [
-                  1.0,
+                  0.6666,
+                  [
+                    255,
+                    220,
+                    0,
+                    255
+                  ]
+                ],
+                [
+                  1,
                   [
                     255,
                     255,
                     255,
                     255
                   ]
+                ],
+                [
+                  0,
+                  [
+                    0,
+                    0,
+                    0,
+                    255
+                  ]
                 ]
-              ]
+              ],
+              "ticksVisible": true
             },
             "levels": [
               0,
@@ -385,22 +430,22 @@
             "mouseMode": 3,
             "targetRange": [
               [
-                -0.5,
-                0.5
+                -33.07871367966564,
+                744.0787136796656
               ],
               [
-                -0.5,
-                0.5
+                -37.28038723950266,
+                819.2803872395027
               ]
             ],
             "viewRange": [
               [
-                -0.5,
-                0.5
+                -33.07871367966564,
+                744.0787136796656
               ],
               [
-                -0.5,
-                0.5
+                -37.28038723950266,
+                819.2803872395027
               ]
             ],
             "wheelScaleFactor": -0.125,
@@ -411,34 +456,95 @@
       }
     },
     {
-      "class": "ScalarPlot",
-      "name": "ScalarPlot.0",
+      "class": "ImageViewer",
+      "name": "ImageViewer.0",
       "state": {
-        "ctrl": {
-          "Num Points": 50
-        },
         "enabled": true,
+        "geometry": "01d9d0cb000300000000000000000018000003c0000001780000000100000019000003bf00000177000000000000000007800000000100000019000003bf00000177",
         "pos": [
           200.0,
-          600.0
+          0.0
         ],
         "terminals": {
-          "Y": {
+          "In": {
             "group": null,
             "io": "in",
+            "optional": false,
             "removable": false,
-            "ttype": "float"
+            "ttype": "amitypes.array.Array2d"
           }
         },
+        "viewed": true,
         "widget": {
           "ctrl": {
-            "Auto Range": true,
-            "Label_X_Axis": "",
-            "Label_Y_Axis": "",
-            "Log Scale_X_Axis": false,
-            "Log Scale_Y_Axis": false,
-            "Show Grid": false,
-            "Title": ""
+            "Display": {
+              "Flip": false,
+              "Rotate Counter Clockwise": "0"
+            },
+            "Histogram": {
+              "Auto Levels": true,
+              "Auto Range": true,
+              "Log Scale": false
+            },
+            "Show Grid": true,
+            "Title": "",
+            "X Axis": {
+              "Label": "",
+              "Log Scale": false
+            },
+            "Y Axis": {
+              "Label": "",
+              "Log Scale": false
+            }
+          },
+          "histogramLUT": {
+            "gradient": {
+              "mode": "rgb",
+              "ticks": [
+                [
+                  0.3333,
+                  [
+                    185,
+                    0,
+                    0,
+                    255
+                  ]
+                ],
+                [
+                  0.6666,
+                  [
+                    255,
+                    220,
+                    0,
+                    255
+                  ]
+                ],
+                [
+                  1,
+                  [
+                    255,
+                    255,
+                    255,
+                    255
+                  ]
+                ],
+                [
+                  0,
+                  [
+                    0,
+                    0,
+                    0,
+                    255
+                  ]
+                ]
+              ],
+              "ticksVisible": true
+            },
+            "levels": [
+              0.3385666700477419,
+              9.561398395442868
+            ],
+            "mode": "mono"
           },
           "viewbox": {
             "aspectLocked": false,
@@ -448,7 +554,7 @@
             ],
             "autoRange": [
               true,
-              true
+              false
             ],
             "autoVisibleOnly": [
               false,
@@ -485,22 +591,157 @@
             "mouseMode": 3,
             "targetRange": [
               [
-                0,
-                1
+                -36.378720533540175,
+                1060.3787205335402
               ],
               [
-                0,
-                1
+                -129.91978578216276,
+                1148.133052899465
               ]
             ],
             "viewRange": [
               [
-                0,
-                1
+                -36.378720533540175,
+                1060.3787205335402
               ],
               [
-                0,
-                1
+                -129.91978578216276,
+                1148.133052899465
+              ]
+            ],
+            "wheelScaleFactor": -0.125,
+            "xInverted": false,
+            "yInverted": false
+          }
+        }
+      }
+    },
+    {
+      "class": "ScalarPlot",
+      "name": "ScalarPlot.0",
+      "state": {
+        "ctrl": {
+          "Num Points": 50
+        },
+        "enabled": true,
+        "geometry": "01d9d0cb000300000000000000000178000003c0000002d80000000100000179000003bf000002d7000000000000000007800000000100000179000003bf000002d7",
+        "pos": [
+          300.0,
+          600.0
+        ],
+        "terminals": {
+          "Y": {
+            "group": null,
+            "io": "in",
+            "optional": false,
+            "removable": false,
+            "ttype": "float"
+          }
+        },
+        "viewed": true,
+        "widget": {
+          "ctrl": {
+            "Show Grid": true,
+            "Title": "",
+            "X Axis": {
+              "Label": "",
+              "Log Scale": false
+            },
+            "Y Axis": {
+              "Label": "",
+              "Log Scale": false
+            },
+            "trace.0": "laser"
+          },
+          "legend": {
+            "trace.0": [
+              "laser",
+              "laser",
+              {
+                "Line": {
+                  "color": [
+                    0,
+                    0,
+                    255,
+                    255
+                  ],
+                  "style": "Solid",
+                  "width": 1
+                },
+                "Point": {
+                  "Brush": [
+                    0,
+                    0,
+                    255,
+                    255
+                  ],
+                  "Size": 14,
+                  "symbol": "None"
+                }
+              }
+            ]
+          },
+          "viewbox": {
+            "aspectLocked": false,
+            "autoPan": [
+              false,
+              false
+            ],
+            "autoRange": [
+              false,
+              false
+            ],
+            "autoVisibleOnly": [
+              false,
+              false
+            ],
+            "background": null,
+            "enableMenu": false,
+            "limits": {
+              "xLimits": [
+                null,
+                null
+              ],
+              "xRange": [
+                null,
+                null
+              ],
+              "yLimits": [
+                null,
+                null
+              ],
+              "yRange": [
+                null,
+                null
+              ]
+            },
+            "linkedViews": [
+              null,
+              null
+            ],
+            "mouseEnabled": [
+              true,
+              true
+            ],
+            "mouseMode": 3,
+            "targetRange": [
+              [
+                -1.980972364239463,
+                61.40151563896054
+              ],
+              [
+                -0.04968076902989538,
+                1.537351942357299
+              ]
+            ],
+            "viewRange": [
+              [
+                -1.980972364239463,
+                61.40151563896054
+              ],
+              [
+                -0.04968076902989538,
+                1.537351942357299
               ]
             ],
             "wheelScaleFactor": -0.125,
@@ -523,16 +764,19 @@
           "In": {
             "group": null,
             "io": "in",
+            "optional": false,
             "removable": false,
-            "ttype": "typing.Union[amitypes.Array3d, amitypes.Array2d, amitypes.Array1d, typing.List[float]]"
+            "ttype": "typing.Union[amitypes.array.Array3d, amitypes.array.Array2d, amitypes.array.Array1d, typing.List[float]]"
           },
           "Out": {
             "group": null,
             "io": "out",
+            "optional": false,
             "removable": false,
             "ttype": "float"
           }
-        }
+        },
+        "viewed": false
       }
     },
     {
@@ -541,17 +785,19 @@
       "state": {
         "enabled": true,
         "pos": [
-          400.0,
+          500.0,
           600.0
         ],
         "terminals": {
           "Out": {
             "group": null,
             "io": "out",
+            "optional": false,
             "removable": false,
             "ttype": "int"
           }
-        }
+        },
+        "viewed": false
       }
     },
     {
@@ -559,6 +805,7 @@
       "name": "ScalarViewer.0",
       "state": {
         "enabled": true,
+        "geometry": "01d9d0cb000300000000000000000018000003c0000001780000000100000019000003bf00000177000000000000000007800000000100000019000003bf00000177",
         "pos": [
           600.0,
           200.0
@@ -567,9 +814,111 @@
           "In": {
             "group": null,
             "io": "in",
+            "optional": false,
             "removable": false,
             "ttype": "float"
           }
+        },
+        "viewed": false
+      }
+    },
+    {
+      "class": "Filter",
+      "name": "Filter.0",
+      "state": {
+        "enabled": true,
+        "geometry": "01d9d0cb000300000000000000000018000003c0000004380000000100000019000003bf00000437000000000000000007800000000100000019000003bf00000437",
+        "pos": [
+          600.0,
+          400.0
+        ],
+        "terminals": {
+          "In": {
+            "group": null,
+            "io": "in",
+            "optional": false,
+            "removable": false,
+            "ttype": "typing.Any"
+          },
+          "In.1": {
+            "group": null,
+            "io": "in",
+            "optional": false,
+            "removable": true,
+            "ttype": "typing.Any"
+          },
+          "Out": {
+            "group": null,
+            "io": "out",
+            "optional": false,
+            "removable": false,
+            "ttype": "typing.Any"
+          }
+        },
+        "viewed": false,
+        "widget": {
+          "Condition 0": {
+            "Filter.0.Out": "Sum.0.Out",
+            "condition": "laser"
+          },
+          "conditions": 1,
+          "inputs": {
+            "In": "laser",
+            "In.1": "Sum.0.Out"
+          },
+          "outputs": [
+            "Filter.0.Out"
+          ]
+        }
+      }
+    },
+    {
+      "class": "Filter",
+      "name": "Filter.1",
+      "state": {
+        "enabled": true,
+        "geometry": "01d9d0cb000300000000000000000018000003c0000002280000000100000019000003bf00000227000000000000000007800000000100000019000003bf00000227",
+        "pos": [
+          600.0,
+          800.0
+        ],
+        "terminals": {
+          "In": {
+            "group": null,
+            "io": "in",
+            "optional": false,
+            "removable": false,
+            "ttype": "typing.Any"
+          },
+          "In.1": {
+            "group": null,
+            "io": "in",
+            "optional": false,
+            "removable": true,
+            "ttype": "typing.Any"
+          },
+          "Out": {
+            "group": null,
+            "io": "out",
+            "optional": false,
+            "removable": false,
+            "ttype": "typing.Any"
+          }
+        },
+        "viewed": false,
+        "widget": {
+          "Condition 0": {
+            "Filter.1.Out": "Sum.0.Out",
+            "condition": "not laser"
+          },
+          "conditions": 1,
+          "inputs": {
+            "In": "laser",
+            "In.1": "Sum.0.Out"
+          },
+          "outputs": [
+            "Filter.1.Out"
+          ]
         }
       }
     },
@@ -578,36 +927,73 @@
       "name": "ScatterPlot.0",
       "state": {
         "ctrl": {
-          "Num Points": 100
+          "Num Points": 100,
+          "Unique": false
         },
         "enabled": true,
+        "geometry": "01d9d0cb000300000000000000000178000003c0000002d80000000100000179000003bf000002d7000000000000000007800000000100000179000003bf000002d7",
         "pos": [
-          600.0,
+          700.0,
           600.0
         ],
         "terminals": {
           "X": {
             "group": null,
             "io": "in",
+            "optional": false,
             "removable": false,
             "ttype": "float"
           },
           "Y": {
             "group": null,
             "io": "in",
+            "optional": false,
             "removable": false,
             "ttype": "float"
           }
         },
+        "viewed": true,
         "widget": {
           "ctrl": {
-            "Auto Range": true,
-            "Label_X_Axis": "",
-            "Label_Y_Axis": "",
-            "Log Scale_X_Axis": false,
-            "Log Scale_Y_Axis": false,
-            "Show Grid": false,
-            "Title": ""
+            "Show Grid": true,
+            "Title": "",
+            "X Axis": {
+              "Label": "",
+              "Log Scale": false
+            },
+            "Y Axis": {
+              "Label": "",
+              "Log Scale": false
+            },
+            "trace.0": "Sum.0.Out vs delta_t"
+          },
+          "legend": {
+            "trace.0": [
+              "Sum.0.Out vs delta_t",
+              "Sum.0.Out vs delta_t",
+              {
+                "Line": {
+                  "color": [
+                    255,
+                    255,
+                    255,
+                    255
+                  ],
+                  "style": "None",
+                  "width": 1
+                },
+                "Point": {
+                  "Brush": [
+                    255,
+                    255,
+                    255,
+                    255
+                  ],
+                  "Size": 14,
+                  "symbol": "o"
+                }
+              }
+            ]
           },
           "viewbox": {
             "aspectLocked": false,
@@ -654,192 +1040,27 @@
             "mouseMode": 3,
             "targetRange": [
               [
-                0,
-                1
+                -0.3589578520068594,
+                9.35895785200686
               ],
               [
-                0,
-                1
+                1679954.958349567,
+                1683172.759396309
               ]
             ],
             "viewRange": [
               [
-                0,
-                1
+                -0.3589578520068594,
+                9.35895785200686
               ],
               [
-                0,
-                1
+                1679954.958349567,
+                1683172.759396309
               ]
             ],
             "wheelScaleFactor": -0.125,
             "xInverted": false,
             "yInverted": false
-          }
-        }
-      }
-    },
-    {
-      "class": "LinePlot",
-      "name": "LinePlot.0",
-      "state": {
-        "enabled": true,
-        "pos": [
-          800.0,
-          600.0
-        ],
-        "terminals": {
-          "X": {
-            "group": null,
-            "io": "in",
-            "removable": false,
-            "ttype": "amitypes.Array1d"
-          },
-          "X.1": {
-            "group": "group.1",
-            "io": "in",
-            "removable": true,
-            "ttype": "amitypes.Array1d"
-          },
-          "Y": {
-            "group": null,
-            "io": "in",
-            "removable": false,
-            "ttype": "amitypes.Array1d"
-          },
-          "Y.1": {
-            "group": "group.1",
-            "io": "in",
-            "removable": true,
-            "ttype": "amitypes.Array1d"
-          }
-        },
-        "widget": {
-          "ctrl": {
-            "Auto Range": true,
-            "Label_X_Axis": "",
-            "Label_Y_Axis": "",
-            "Log Scale_X_Axis": false,
-            "Log Scale_Y_Axis": false,
-            "Show Grid": false,
-            "Title": ""
-          },
-          "viewbox": {
-            "aspectLocked": false,
-            "autoPan": [
-              false,
-              false
-            ],
-            "autoRange": [
-              true,
-              true
-            ],
-            "autoVisibleOnly": [
-              false,
-              false
-            ],
-            "background": null,
-            "enableMenu": false,
-            "limits": {
-              "xLimits": [
-                null,
-                null
-              ],
-              "xRange": [
-                null,
-                null
-              ],
-              "yLimits": [
-                null,
-                null
-              ],
-              "yRange": [
-                null,
-                null
-              ]
-            },
-            "linkedViews": [
-              null,
-              null
-            ],
-            "mouseEnabled": [
-              true,
-              true
-            ],
-            "mouseMode": 3,
-            "targetRange": [
-              [
-                0,
-                1
-              ],
-              [
-                0,
-                1
-              ]
-            ],
-            "viewRange": [
-              [
-                0,
-                1
-              ],
-              [
-                0,
-                1
-              ]
-            ],
-            "wheelScaleFactor": -0.125,
-            "xInverted": false,
-            "yInverted": false
-          }
-        }
-      }
-    },
-    {
-      "class": "FilterOff",
-      "name": "FilterOff.0",
-      "state": {
-        "enabled": true,
-        "pos": [
-          200.0,
-          400.0
-        ],
-        "terminals": {
-          "Condition": {
-            "group": null,
-            "io": "condition",
-            "removable": false,
-            "ttype": "typing.Any"
-          },
-          "Out": {
-            "group": null,
-            "io": "out",
-            "removable": false,
-            "ttype": "bool"
-          }
-        }
-      }
-    },
-    {
-      "class": "FilterOn",
-      "name": "FilterOn.0",
-      "state": {
-        "enabled": true,
-        "pos": [
-          200.0,
-          800.0
-        ],
-        "terminals": {
-          "Condition": {
-            "group": null,
-            "io": "condition",
-            "removable": false,
-            "ttype": "typing.Any"
-          },
-          "Out": {
-            "group": null,
-            "io": "out",
-            "removable": false,
-            "ttype": "bool"
           }
         }
       }
@@ -848,84 +1069,274 @@
       "class": "MeanVsScan",
       "name": "MeanVsScan.0",
       "state": {
+        "ctrl": {
+          "binned": false,
+          "bins": 10,
+          "max": 10,
+          "min": 0
+        },
         "enabled": true,
         "pos": [
-          600.0,
+          800.0,
           400.0
         ],
         "terminals": {
           "Bin": {
             "group": null,
             "io": "in",
+            "optional": false,
             "removable": false,
             "ttype": "float"
           },
           "Bins": {
             "group": null,
             "io": "out",
+            "optional": false,
             "removable": false,
-            "ttype": "amitypes.Array1d"
-          },
-          "Condition": {
-            "group": null,
-            "io": "condition",
-            "removable": true,
-            "ttype": "bool"
+            "ttype": "amitypes.array.Array1d"
           },
           "Counts": {
             "group": null,
             "io": "out",
+            "optional": false,
             "removable": false,
-            "ttype": "amitypes.Array1d"
+            "ttype": "amitypes.array.Array1d"
           },
           "Value": {
             "group": null,
             "io": "in",
+            "optional": false,
             "removable": false,
             "ttype": "float"
           }
-        }
+        },
+        "viewed": false
       }
     },
     {
       "class": "MeanVsScan",
       "name": "MeanVsScan.1",
       "state": {
+        "ctrl": {
+          "binned": false,
+          "bins": 10,
+          "max": 10,
+          "min": 0
+        },
         "enabled": true,
         "pos": [
-          600.0,
+          800.0,
           800.0
         ],
         "terminals": {
           "Bin": {
             "group": null,
             "io": "in",
+            "optional": false,
             "removable": false,
             "ttype": "float"
           },
           "Bins": {
             "group": null,
             "io": "out",
+            "optional": false,
             "removable": false,
-            "ttype": "amitypes.Array1d"
-          },
-          "Condition": {
-            "group": null,
-            "io": "condition",
-            "removable": true,
-            "ttype": "bool"
+            "ttype": "amitypes.array.Array1d"
           },
           "Counts": {
             "group": null,
             "io": "out",
+            "optional": false,
             "removable": false,
-            "ttype": "amitypes.Array1d"
+            "ttype": "amitypes.array.Array1d"
           },
           "Value": {
             "group": null,
             "io": "in",
+            "optional": false,
             "removable": false,
             "ttype": "float"
+          }
+        },
+        "viewed": false
+      }
+    },
+    {
+      "class": "LinePlot",
+      "name": "LinePlot.0",
+      "state": {
+        "enabled": true,
+        "geometry": "01d9d0cb0003000000000000000002d8000003c00000043800000001000002d9000003bf000004370000000000000000078000000001000002d9000003bf00000437",
+        "pos": [
+          1000.0,
+          600.0
+        ],
+        "terminals": {
+          "X": {
+            "group": null,
+            "io": "in",
+            "optional": false,
+            "removable": false,
+            "ttype": "amitypes.array.Array1d"
+          },
+          "X.1": {
+            "group": "group.1",
+            "io": "in",
+            "optional": false,
+            "removable": true,
+            "ttype": "amitypes.array.Array1d"
+          },
+          "Y": {
+            "group": null,
+            "io": "in",
+            "optional": false,
+            "removable": false,
+            "ttype": "amitypes.array.Array1d"
+          },
+          "Y.1": {
+            "group": "group.1",
+            "io": "in",
+            "optional": false,
+            "removable": true,
+            "ttype": "amitypes.array.Array1d"
+          }
+        },
+        "viewed": true,
+        "widget": {
+          "ctrl": {
+            "Show Grid": true,
+            "Title": "",
+            "X Axis": {
+              "Label": "",
+              "Log Scale": false
+            },
+            "Y Axis": {
+              "Label": "",
+              "Log Scale": false
+            },
+            "trace.0": "MeanVsScan.0.Counts vs MeanVsScan.0.Bins",
+            "trace.1": "MeanVsScan.1.Counts vs MeanVsScan.1.Bins"
+          },
+          "legend": {
+            "trace.0": [
+              "MeanVsScan.0.Counts vs MeanVsScan.0.Bins",
+              "MeanVsScan.0.Counts vs MeanVsScan.0.Bins",
+              {
+                "Line": {
+                  "color": [
+                    255,
+                    0,
+                    0,
+                    255
+                  ],
+                  "style": "Solid",
+                  "width": 1
+                },
+                "Point": {
+                  "Brush": [
+                    255,
+                    255,
+                    255,
+                    255
+                  ],
+                  "Size": 14,
+                  "symbol": "None"
+                }
+              }
+            ],
+            "trace.1": [
+              "MeanVsScan.1.Counts vs MeanVsScan.1.Bins",
+              "MeanVsScan.1.Counts vs MeanVsScan.1.Bins",
+              {
+                "Line": {
+                  "color": [
+                    0,
+                    0,
+                    255,
+                    255
+                  ],
+                  "style": "Solid",
+                  "width": 1
+                },
+                "Point": {
+                  "Brush": [
+                    0,
+                    0,
+                    255,
+                    255
+                  ],
+                  "Size": 14,
+                  "symbol": "None"
+                }
+              }
+            ]
+          },
+          "viewbox": {
+            "aspectLocked": false,
+            "autoPan": [
+              false,
+              false
+            ],
+            "autoRange": [
+              true,
+              true
+            ],
+            "autoVisibleOnly": [
+              false,
+              false
+            ],
+            "background": null,
+            "enableMenu": false,
+            "limits": {
+              "xLimits": [
+                null,
+                null
+              ],
+              "xRange": [
+                null,
+                null
+              ],
+              "yLimits": [
+                null,
+                null
+              ],
+              "yRange": [
+                null,
+                null
+              ]
+            },
+            "linkedViews": [
+              null,
+              null
+            ],
+            "mouseEnabled": [
+              true,
+              true
+            ],
+            "mouseMode": 3,
+            "targetRange": [
+              [
+                -0.31449820062387324,
+                9.314498200623873
+              ],
+              [
+                1681491.586787722,
+                1681750.020033939
+              ]
+            ],
+            "viewRange": [
+              [
+                -0.31449820062387324,
+                9.314498200623873
+              ],
+              [
+                1681491.586787722,
+                1681750.020033939
+              ]
+            ],
+            "wheelScaleFactor": -0.125,
+            "xInverted": false,
+            "yInverted": false
           }
         }
       }

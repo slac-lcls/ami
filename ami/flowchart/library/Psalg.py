@@ -32,9 +32,7 @@ try:
             super().__init__(name, terminals={'In': {'io': 'in', 'ttype': Array1d},
                                               'Out': {'io': 'out', 'ttype': float}})
 
-        def to_operation(self, inputs, conditions={}):
-            outputs = self.output_vars()
-
+        def to_operation(self, **kwargs):
             sampleInterval = self.values['Sample Interval']
             horpos = self.values['horpos']
             gain = self.values['gain']
@@ -47,11 +45,7 @@ try:
             def cfd_func(waveform):
                 return cfd.cfd(sampleInterval, horpos, gain, offset, waveform, delay, walk, threshold, fraction)
 
-            node = gn.Map(name=self.name()+"_operation",
-                          condition_needs=conditions,
-                          inputs=inputs, outputs=outputs,
-                          func=cfd_func, parent=self.name())
-            return node
+            return gn.Map(name=self.name()+"_operation", **kwargs, func=cfd_func)
 
 except ImportError as e:
     print(e)
@@ -84,8 +78,7 @@ try:
 
             return self.widget
 
-        def to_operation(self, inputs, conditions={}):
-            outputs = self.output_vars()
+        def to_operation(self, **kwargs):
             numchs = len(self.widget.channel_groups)
             cfdpars = {'numchs': numchs,
                        'numhits': self.values['num hits'],
@@ -105,11 +98,7 @@ try:
                 peaks = wfpeaks(wfs, wts)
                 return peaks
 
-            node = gn.Map(name=self.name()+"_operation",
-                          condition_needs=conditions,
-                          inputs=inputs, outputs=outputs,
-                          func=peakFinder, parent=self.name())
-            return node
+            return gn.Map(name=self.name()+"_operation", **kwargs, func=peakFinder)
 
     import psana.hexanode.DLDProcessor as psfDLD
 
@@ -152,20 +141,13 @@ try:
                                               'R': {'io': 'out', 'ttype': Array1d},
                                               'T': {'io': 'out', 'ttype': Array1d}})
 
-        def to_operation(self, inputs, conditions={}):
-            outputs = self.output_vars()
-
+        def to_operation(self, **kwargs):
             dldpars = {'numchs': int(self.values['num chans']),
                        'numhits': self.values['num hits'],
                        'verbose': self.values['verbose'],
                        'consts': None}
 
-            node = gn.Map(name=self.name()+"_operation",
-                          condition_needs=conditions,
-                          inputs=inputs, outputs=outputs,
-                          func=DLDProc(**dldpars), parent=self.name())
-
-            return node
+            return gn.Map(name=self.name()+"_operation", **kwargs, func=DLDProc(**dldpars))
 
     import psana.hexanode.HitFinder as psfHitFinder
 
@@ -193,9 +175,7 @@ try:
                                               'Y': {'io': 'out', 'ttype': Array1d},
                                               'T': {'io': 'out', 'ttype': Array1d}})
 
-        def to_operation(self, inputs, conditions={}):
-            outputs = self.output_vars()
-
+        def to_operation(self, **kwargs):
             HF = psfHitFinder.HitFinder(self.values)
 
             def func(nhits, pktsec):
@@ -206,13 +186,7 @@ try:
                             pktsec[3, :nhits[3]])
                 return HF.GetXYT()
 
-            node = gn.Map(name=self.name()+"_operation",
-                          condition_needs=conditions,
-                          inputs=inputs, outputs=outputs,
-                          func=func,
-                          parent=self.name())
-
-            return node
+            return gn.Map(name=self.name()+"_operation", **kwargs, func=func)
 
 except ImportError as e:
     print(e)
@@ -271,9 +245,7 @@ try:
                                               'agreement': {'io': 'out', 'ttype': float},
                                               'pulse': {'io': 'out', 'ttype': Array1d}})
 
-        def to_operation(self, inputs, conditions={}):
-            outputs = self.output_vars()
-
+        def to_operation(self, **kwargs):
             locpars = {'num_bunches': self.values['num bunches'],
                        'snr_filter': self.values['snr filter'],
                        'roi_expand': self.values['roi expand'],
@@ -282,12 +254,7 @@ try:
                        'island_split_par1': self.values['island split par1'],
                        'island_split_par2': self.values['island split par2']}
 
-            node = gn.Map(name=self.name()+"_operation",
-                          condition_needs=conditions,
-                          inputs=inputs, outputs=outputs,
-                          func=LOCProc(**locpars), parent=self.name())
-
-            return node
+            return gn.Map(name=self.name()+"_operation", **kwargs, func=LOCProc(**locpars))
 
 except ImportError as e:
     print(e)
@@ -310,9 +277,7 @@ try:
                                               "Centroid": {'io': 'out', 'ttype': Array1d},
                                               "Width": {'io': 'out', 'ttype': Array1d}})
 
-        def to_operation(self, inputs, conditions={}):
-            outputs = self.output_vars()
-
+        def to_operation(self, **kwargs):
             threshold_lo = self.values['threshold lo']
             threshold_hi = self.values['threshold hi']
 
@@ -359,11 +324,7 @@ try:
 
                 return np.array(centroids), np.array(widths)
 
-            node = gn.Map(name=self.name()+"_operation",
-                          condition_needs=conditions,
-                          inputs=inputs, outputs=outputs,
-                          func=peakfinder1d, parent=self.name())
-            return node
+            return gn.Map(name=self.name()+"_operation", **kwargs, func=peakfinder1d)
 
 except ImportError as e:
     print(e)
@@ -453,9 +414,7 @@ try:
                 self._graphicsItem = PeakFinderGraphicsItem(self, brush)
             return self._graphicsItem
 
-        def to_operation(self, inputs, conditions={}):
-            outputs = self.output_vars()
-
+        def to_operation(self, **kwargs):
             constructor_params = {'npix_min': self.values['npix min'],
                                   'npix_max': self.values['npix max'],
                                   'amax_thr': self.values['amax thr'],
@@ -468,11 +427,8 @@ try:
                            'r0': self.values['r0'],
                            'dr': self.values['dr']}
 
-            node = gn.Map(name=self.name()+"_operation",
-                          condition_needs=conditions,
-                          inputs=inputs, outputs=outputs,
-                          func=PeakfinderAlgos(constructor_params, call_params, list(self.outputs().keys())),
-                          parent=self.name())
+            node = gn.Map(name=self.name()+"_operation", **kwargs,
+                          func=PeakfinderAlgos(constructor_params, call_params, list(self.outputs().keys())))
 
             return node
 
@@ -521,15 +477,8 @@ try:
                                               'amplitude_next': {'io': 'out', 'ttype': float},
                                               'ref_amplitude': {'io': 'out', 'ttype': float}})
 
-        def to_operation(self, inputs, conditions={}):
-            outputs = self.output_vars()
-
-            node = gn.Map(name=self.name()+"_operation",
-                          condition_needs=conditions,
-                          inputs=inputs, outputs=outputs,
-                          func=EdgeFinderProc({}), parent=self.name())
-
-            return node
+        def to_operation(self, **kwargs):
+            return gn.Map(name=self.name()+"_operation", **kwargs, func=EdgeFinderProc({}))
 
 except ImportError as e:
     print(e)

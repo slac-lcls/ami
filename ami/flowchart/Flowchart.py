@@ -161,6 +161,9 @@ class Flowchart(QtCore.QObject):
         node.sigTerminalConnected.connect(self.nodeConnected)
         node.sigTerminalDisconnected.connect(self.nodeDisconnected)
         node.sigNodeEnabled.connect(self.nodeEnabled)
+        node.sigTerminalOptional.connect(self.nodeTermOptional)
+        node.sigTerminalAdded.connect(self.nodeTermChanged)
+        node.sigTerminalRemoved.connect(self.nodeTermChanged)
         node.setGraph(self._graph)
         self.sigNodeCreated.emit(node)
         if node.isChanged(True, True):
@@ -190,7 +193,7 @@ class Flowchart(QtCore.QObject):
                 await ctrl.graphCommHandler.unview(views)
 
     def nodeConnected(self, localTerm, remoteTerm):
-        if remoteTerm.isOutput() or localTerm.isCondition():
+        if remoteTerm.isOutput():
             t = remoteTerm
             remoteTerm = localTerm
             localTerm = t
@@ -204,7 +207,7 @@ class Flowchart(QtCore.QObject):
         self.sigNodeChanged.emit(localTerm.node())
 
     def nodeDisconnected(self, localTerm, remoteTerm):
-        if remoteTerm.isOutput() or localTerm.isCondition():
+        if remoteTerm.isOutput():
             t = remoteTerm
             remoteTerm = localTerm
             localTerm = t
@@ -215,6 +218,14 @@ class Flowchart(QtCore.QObject):
         if self._graph.has_edge(localNode, remoteNode, key=key):
             self._graph.remove_edge(localNode, remoteNode, key=key)
         self.sigNodeChanged.emit(localTerm.node())
+
+    def nodeTermOptional(self, node, term):
+        node.changed = True
+        self.sigNodeChanged.emit(node)
+
+    def nodeTermChanged(self, node, term):
+        # print(node, term)
+        pass
 
     @asyncSlot(object)
     async def nodeEnabled(self, root):
@@ -243,12 +254,6 @@ class Flowchart(QtCore.QObject):
                                     views.append(in_var)
                     else:
                         node.changed = True
-                    if node.conditions():
-                        preds = self._graph.predecessors(node.name())
-                        preds = filter(lambda n: n.startswith("Filter"), preds)
-                        for filt in preds:
-                            node = self._graph.nodes[filt]['node']
-                            node.nodeEnabled(enabled)
 
         if views:
             await ctrl.graphCommHandler.unview(views)
@@ -362,7 +367,7 @@ class Flowchart(QtCore.QObject):
                         term2 = node2[t2]
 
                         term1.connectTo(term2, type_file=type_file)
-                        if term1.isInput() or term1.isCondition:
+                        if term1.isInput():
                             in_name = node1.name() + '_' + term1.name()
                             in_name = in_name.replace('.', '_')
                             out_name = node2.name() + '_' + term2.name()
@@ -494,7 +499,9 @@ class Flowchart(QtCore.QObject):
                 node.geometry = QtCore.QByteArray.fromHex(bytes(new_node_state['geometry'], 'ascii'))
 
             if restore_ctrl or restore_widget:
+                self.blockSignals(True)
                 node.restoreState(current_node_state)
+                self.blockSignals(False)
                 node.changed = node.isChanged(restore_ctrl, restore_widget)
                 if node.changed:
                     self.sigNodeChanged.emit(node)
@@ -667,7 +674,7 @@ class FlowchartCtrlWidget(QtGui.QWidget):
                 changed_nodes.add(gnode)
 
                 if not hasattr(gnode, 'to_operation'):
-                    if gnode.isSource() and gnode.viewable() and gnode.viewed:
+                    if gnode.viewable() and gnode.viewed:
                         displays.add(gnode)
                     elif gnode.exportable():
                         displays.add(gnode)
@@ -683,7 +690,8 @@ class FlowchartCtrlWidget(QtGui.QWidget):
                     if hasattr(node, 'to_operation') and node not in seen:
                         try:
                             nodes = node.to_operation(inputs=node.input_vars(),
-                                                      conditions=node.condition_vars())
+                                                      outputs=node.output_vars(),
+                                                      parent=node.name())
                         except Exception:
                             self.chartWidget.updateStatus(f"{node.name()} error!", color='red')
                             printExc(f"{node.name()} raised exception! See console for stacktrace.")
@@ -1149,7 +1157,7 @@ class FlowchartWidget(dockarea.DockArea):
 
             terms = None
 
-            if (term.isOutput or term.isCondition) and term.dependentTerms():
+            if term.isOutput and term.dependentTerms():
                 terms = term.dependentTerms()
             elif term.isInput and term.inputTerminals():
                 terms = term.inputTerminals()

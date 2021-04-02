@@ -31,7 +31,7 @@ except ImportError:
 from ami.multiproc import check_mp_start_method
 from ami.asyncqt import QEventLoop
 from ami.graphkit_wrapper import Graph
-from ami.graph_nodes import Map, FilterOn, FilterOff, PickN
+from ami.graph_nodes import Map, PickN
 from ami.flowchart.library.Operators import MeanVsScan
 from ami.local import build_parser, run_ami
 from ami.comm import Ports, GraphCommHandler
@@ -78,20 +78,32 @@ def complex_graph_file(tmpdir, qtbot):
                   outputs=['sum'],
                   func=np.sum))
 
-    graph.add(FilterOn(name='FilterOn',
-                       condition_needs=['laser'],
-                       outputs=['laseron']))
+    def filter_on(laser, sum0):
+        if laser:
+            return sum0
+
+    graph.add(Map(name='FilterOn',
+                  inputs=['laser', 'sum'],
+                  outputs=['laseron'],
+                  func=filter_on))
 
     binningOn = MeanVsScan('BinningOn')
-    nodes = binningOn.to_operation({"Bin": "delta_t", "Value": "sum"}, conditions={"Condition": 'laseron'})
+    nodes = binningOn.to_operation(inputs={"Bin": "delta_t", "Value": "laseron"},
+                                   outputs=['laseron_bin', 'laseron_value'])
     graph.add(nodes)
 
-    graph.add(FilterOff(name='FilterOff',
-                        condition_needs=['laser'],
-                        outputs=['laseroff']))
+    def filter_off(laser, sum0):
+        if not laser:
+            return sum0
+
+    graph.add(Map(name='FilterOff',
+                  inputs=['laser', 'sum'],
+                  outputs=['laseroff'],
+                  func=filter_off))
 
     binningOff = MeanVsScan('BinningOff')
-    nodes = binningOff.to_operation({"Bin": "delta_t", "Value": "sum"}, conditions={"Condition": 'laseroff'})
+    nodes = binningOff.to_operation({"Bin": "delta_t", "Value": "laseroff"},
+                                    outputs=['laseroff_bin', 'laseroff_value'])
     graph.add(nodes)
 
     fname = tmpdir.mkdir("complex_graph").join("complex_graph.dill")

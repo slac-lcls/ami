@@ -1,7 +1,7 @@
 import abc
 import operator
 import numpy as np
-from networkfox import operation, If
+from networkfox import operation
 
 
 class Transformation(abc.ABC):
@@ -13,7 +13,6 @@ class Transformation(abc.ABC):
             inputs (list): List of inputs
             outputs (list): List of outputs
             func (function): Function node will call
-            condition_needs (list): List of condition needs
         """
 
         self.name = kwargs['name']
@@ -29,12 +28,6 @@ class Transformation(abc.ABC):
             self.outputs = list(outputs.values())
         else:
             self.outputs = outputs
-
-        condition_needs = kwargs.get('condition_needs', [])
-        if type(condition_needs) is dict:
-            self.condition_needs = list(condition_needs.values())
-        else:
-            self.condition_needs = condition_needs
 
         self.func = kwargs['func']
         self.parent = kwargs.get('parent', None)
@@ -55,8 +48,8 @@ class Transformation(abc.ABC):
                     self.name == getattr(other, 'name', None))
 
     def __repr__(self):
-        return u"%s(name='%s', color='%s', inputs=%s, outputs=%s, condition_needs=%s)" % \
-            (self.__class__.__name__, self.name, self.color, self.inputs, self.outputs, self.condition_needs)
+        return u"%s(name='%s', color='%s', inputs=%s, outputs=%s)" % \
+            (self.__class__.__name__, self.name, self.color, self.inputs, self.outputs)
 
     def to_operation(self):
         """
@@ -75,99 +68,8 @@ class Map(Transformation):
             inputs (list): List of inputs
             outputs (list): List of outputs
             func (function): Function node will call
-            condition_needs (list): List of condition needs
         """
         super().__init__(**kwargs)
-
-
-class Filter(abc.ABC):
-
-    def __init__(self, **kwargs):
-        """
-        Keyword Arguments:
-            name (str): Name of node
-            condition_needs (list): List of condition needs
-            outputs (list): List of outputs
-            condition (function): Condition to evaluate
-        """
-        self.name = kwargs['name']
-
-        self.inputs = []
-
-        outputs = kwargs['outputs']
-        if type(outputs) is dict:
-            self.outputs = list(outputs.values())
-        else:
-            self.outputs = outputs
-
-        condition_needs = kwargs['condition_needs']
-        if type(condition_needs) is dict:
-            self.condition_needs = list(condition_needs.values())
-        else:
-            self.condition_needs = condition_needs
-
-        self.parent = kwargs.get('parent', None)
-        self.color = ""
-        self.is_global_operation = False
-
-    @abc.abstractmethod
-    def to_operation(self):
-        return
-
-    def __hash__(self):
-        return hash(self.name)
-
-    def __eq__(self, other):
-        """
-        Two nodes are considered equal if their name is equal.
-
-        Args:
-            other (Transformation): Node to compare against.
-        """
-        return bool(self.name is not None and
-                    self.name == getattr(other, 'name', None))
-
-    def __repr__(self):
-        return u"%s(name='%s', color='%s')" % (self.__class__.__name__, self.name, self.color)
-
-
-class FilterOn(Filter):
-
-    def __init__(self, **kwargs):
-        """
-        Keyword Arguments:
-            name (str): Name of node
-            condition_needs (list): List of condition needs
-            outputs (list): List of outputs
-            condition (function): Condition to evaluate
-        """
-        self.condition = kwargs.get('condition', lambda cond: cond)
-        super().__init__(**kwargs)
-
-    def to_operation(self):
-        """
-        Return NetworkFoX If node.
-        """
-        return If
-
-
-class FilterOff(Filter):
-
-    def __init__(self, **kwargs):
-        """
-        Keyword Arguments:
-            name (str): Name of node
-            condition_needs (list): List of condition needs
-            outputs (list): List of outputs
-        """
-        self.condition = kwargs.get('condition', lambda cond: not cond)
-        super().__init__(**kwargs)
-
-    def to_operation(self):
-        """
-        Return NetworkFoX Else node.
-        """
-        return If
 
 
 class StatefulTransformation(Transformation):
@@ -178,7 +80,6 @@ class StatefulTransformation(Transformation):
             name (str): Name of node
             inputs (list): List of inputs
             outputs (list): List of outputs
-            condition_needs (list): List of condition needs
             reduction (function): Reduction function
         """
 
@@ -221,7 +122,6 @@ class GlobalTransformation(StatefulTransformation):
             name (str): Name of node
             inputs (list): List of inputs
             outputs (list): List of outputs
-            condition_needs (list): List of condition needs
             reduction (function): Reduction function
             is_expanded (bool): Indicates this node's input comes another part
                 of the expanded operation
@@ -315,11 +215,13 @@ class PickN(GlobalTransformation):
         self.res = [None]*self.N
         self.clear = False
 
-    def __call__(self, *args):
+    def __call__(self, *args, **kwargs):
         if self.clear:
             self.res = [None]*self.N
             self.clear = False
 
+        if not args and kwargs:
+            args = list(kwargs.values())
         if len(args) > 1:
             args = [args]
         elif self.is_expanded and len(args) == 1 and type(args[0]) is list and self.N > 1:

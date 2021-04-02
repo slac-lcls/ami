@@ -1759,42 +1759,6 @@ class CommHandler(abc.ABC):
                                condition_needs=condition_needs)
         return self.add(node)
 
-    def addFilterOn(self, name, condition_needs, outputs, condition=None):
-        """
-        Adds a FilterOn graph node to the graph.
-
-        Args:
-            name (str): the name of the node
-            condition_needs (list or str): the inputs needed for the evaluating
-                the filter condition.
-            outputs (list or str): the output(s) made by the node.
-            condition (function): the condition evaluation function to use.
-
-        Returns:
-            True if the graph change was successful, False otherwise.
-        """
-        node = self._make_node(gn.FilterOn, name=name, condition_needs=condition_needs, outputs=outputs,
-                               condition=condition)
-        return self.add(node)
-
-    def addFilterOff(self, name, condition_needs, outputs, condition=None):
-        """
-        Adds a FilterOff graph node to the graph.
-
-        Args:
-            name (str): the name of the node
-            condition_needs (list or str): the inputs needed for the evaluating
-                the filter condition.
-            outputs (list or str): the output(s) made by the node.
-            condition (function): the condition evaluation function to use.
-
-        Returns:
-            True if the graph change was successful, False otherwise.
-        """
-        node = self._make_node(gn.FilterOff, name=name, condition_needs=condition_needs, outputs=outputs,
-                               condition=condition)
-        return self.add(node)
-
     def remove(self, names):
         """
         Removes the node (if it exists) with the requested name from the graph.

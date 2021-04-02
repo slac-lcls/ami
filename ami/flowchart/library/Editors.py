@@ -387,3 +387,14 @@ class CircleEditor(AnnotationEditor):
         x = center.x() + radius * np.sin(t)
         y = center.y() + radius * np.cos(t)
         return x, y
+
+
+def pixmapFromBase64(base64):
+    pixmap = QtGui.QPixmap()
+    pixmap.loadFromData(QtCore.QByteArray.fromBase64(base64))
+    # icon = QtGui.QIcon(pixmap)
+    # return icon
+    return pixmap
+
+
+camera = b'iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAYAAABzenr0AAAACXBIWXMAAA9hAAAPYQGoP6dpAAAAJXRFWHRkYXRlOmNyZWF0ZQAyMDEzLTEyLTI2VDIwOjA3OjM5KzAwOjAwzdqr/wAAACV0RVh0ZGF0ZTptb2RpZnkAMjAxMy0xMi0yNlQyMDowNzozOSswMDowMLyHE0MAAANwSURBVFiFxZdPS6pbFMZ/mfqmealBlEFNzrBBVEevgQg1ug6CE3SgCJo0KPwCUR8gaN5nkP6gXScHmoWBERcKHAhNFCP648GwQ6Um2rqDV1+8ve978V5IH9iT/ey1n8Xea629Vxd6uIHvwO/AIFAExGBdN9DTIv8LuAAiwEOddwDDzQZWYBt4q2/4GeOtrvEb8KXuhCb+4xOFP46TuhMattso3hjbDXH3Jx/7v12H24IacHbaDzvw3YIa7Z3CVwtqqnUKfVbUPG0Jm5ubzM/PA/D29kY+n2dgYABFUbQ1sViMnZ2dVrd0WjEuIiiKQiAQwOVyaXMzMzP4fD5KpRL39/d4vV4cDsc/7J6enkilUpTLZXp6eqhUKsTjccrlspFMGSDKhwi1Wq1ydnYmRigWi5JOpyWfz0symZRkMimvr686vlgsanMXFxdis9mMMiFq6IDX6zUVPz09lcXFRVEURVuvKIosLy/L1dWVTrwBn8/XugOBQMBQPBqNSn9/vwBit9vF4/GIx+MRu90ugPT19Uk8Hjd03u/3/38HisWiXF5eytDQkACytLQkuVxO46+vr2Vubk4Acbvd8vj4qLP3er2GDlhQXy1TNAIuGo2Sy+UIBoOEw2EGBwc1vlqtsr+/TzAY5OHhgd3dXZ293W5e647NTqA5oKampgSQRCJhGnCJREIAmZyc1PGBQMDoBI4smNSBhufDw8M4HA6y2SwAExMThnwzl81mDXkDOC0Y1IH393edcW9vLwCFQsF080KhoK1tQRygbDGarVQqOuPp6WkAwuGw6eYHBwcAjI+PtyIOUAODLPD7/bo0Ojk5EUCcTqdhqp2fn4vL5RJAjo+PdbxJDPy3OrCysqLVgFAoJJFIRCKRiIRCIa0WrK+vf04dSKfT8vz8LFtbW2K1WnWbdXd3y8bGhlSrVUPnzepAFxADvjVfzMjICJlMBpvNZhhwmUyGvb09UqkUtVqN0dFRVldXGRsb011yqVTi5uaG2dlZ7u7uPtJHXah14I+PzMLCAmtra7y8vOie3AbMnuRm/vb2lsPDQ2KxmI4H/gQ4Mjiado1jC2rT0Cn8tKB2LJ3CX9Dhb3nDk442JqC2SSdtFP+B2g4CaoP4pe5Eu5pTTbyrLn4PlOpzjfb8K9AHOFF/rzX06GqR/4kacM3tOQB/A606Lk9DGknwAAAAAElFTkSuQmCC'  # noqa: E501
