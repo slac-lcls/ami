@@ -6,6 +6,7 @@ from pyqtgraph.pgcollections import OrderedDict
 from pyqtgraph.debug import printExc
 from ami.flowchart.Terminal import Terminal
 from networkfox import modifiers
+import inspect
 import weakref
 import amitypes  # noqa
 import typing  # noqa
@@ -732,6 +733,7 @@ class NodeGraphicsItem(GraphicsObject):
                 self.menu.addAction("Add output", self.addOutputFromMenu)
             if self.node._allowRemove:
                 self.menu.addAction("Remove node", self.node.close)
+            self.menu.addAction("View Source Code", self.viewSource)
 
         return self.menu
 
@@ -754,3 +756,10 @@ class NodeGraphicsItem(GraphicsObject):
     def addOutputFromMenu(self):
         # called when add output is clicked in context menu
         self.node.addOutput(removable=True)
+
+    def viewSource(self):
+        self.sourceEditor = QtWidgets.QTextEdit()
+        self.sourceEditor.setText(inspect.getsource(self.node.__class__))
+        self.sourceEditor.setReadOnly(True)
+        self.sourceEditor.setWindowTitle(self.node.__class__.__name__ + ' Source')
+        self.sourceEditor.show()
