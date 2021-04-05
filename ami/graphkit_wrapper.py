@@ -106,7 +106,7 @@ class Graph():
             AssertionError: if an operation already exists in the graph
         """
         assert op not in self.graph.nodes(), "Operation may only be added once %s" % op.name
-        assert op.name not in self.children_of_global_operations, "Operation may only be added once %s" % op.name
+
         if op.is_global_operation:
             for n in self.graph.nodes:
                 if skip(n):
