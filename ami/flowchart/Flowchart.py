@@ -16,6 +16,8 @@ from ami.flowchart.NodeLibrary import SourceLibrary
 from ami.flowchart.SourceConfiguration import SourceConfiguration
 from ami.comm import AsyncGraphCommHandler, Ports
 from ami.client import flowchart_messages as fcMsgs
+from qtconsole.rich_jupyter_widget import RichJupyterWidget
+from qtconsole.inprocess import QtInProcessKernelManager
 
 import ami.flowchart.Editor as EditorTemplate
 import amitypes
@@ -137,7 +139,6 @@ class Flowchart(QtCore.QObject):
 
         # create an instance of the node
         node = self.library.getNodeType(nodeType)(name)
-
         self.addNode(node, pos)
         return node
 
@@ -156,7 +157,13 @@ class Flowchart(QtCore.QObject):
         self.viewBox().addItem(item)
         pos = (find_nearest(pos[0]), find_nearest(pos[1]))
         item.moveBy(*pos)
-        self._graph.add_node(node.name(), node=node)
+        subset = 1
+        mod = node.__module__.split('.')[-1]
+        if mod == 'common' and isinstance(node, SourceNode):
+            subset = 0
+        elif mod == 'Display':
+            subset = 2
+        self._graph.add_node(node.name(), node=node, subset=subset)
         node.sigClosed.connect(self.nodeClosed)
         node.sigTerminalConnected.connect(self.nodeConnected)
         node.sigTerminalDisconnected.connect(self.nodeDisconnected)
@@ -414,6 +421,12 @@ class Flowchart(QtCore.QObject):
         """
         Load a flowchart (*.fc) file.
         """
+        if not os.path.exists(fileName):
+            msg = QtWidgets.QMessageBox()
+            msg.setText(f"File {fileName} does not exist!")
+            msg.exec()
+            return
+
         with open(fileName, 'r') as f:
             state = json.load(f)
 
@@ -614,9 +627,11 @@ class FlowchartCtrlWidget(QtGui.QWidget):
         self.ui.actionConfigure.triggered.connect(self.configureClicked)
         self.ui.actionApply.triggered.connect(self.applyClicked)
         self.ui.actionReset.triggered.connect(self.resetClicked)
+        self.ui.actionConsole.triggered.connect(self.consoleClicked)
         # self.ui.actionProfiler.triggered.connect(self.profilerClicked)
 
         self.ui.actionHome.triggered.connect(self.homeClicked)
+        self.ui.actionArrange.triggered.connect(self.arrangeClicked)
         self.ui.navGroup.triggered.connect(self.navClicked)
 
         self.chart.sigFileLoaded.connect(self.setCurrentFile)
@@ -630,6 +645,7 @@ class FlowchartCtrlWidget(QtGui.QWidget):
         self.libraryEditor.sigReloadClicked.connect(self.libraryReloaded)
         self.ui.libraryConfigure.clicked.connect(self.libraryEditor.show)
 
+        self.ipython_widget = None
         self.graph_info = pc.Info('ami_graph', 'AMI Client graph', ['hutch', 'name'])
 
     @asyncSlot()
@@ -775,6 +791,28 @@ class FlowchartCtrlWidget(QtGui.QWidget):
         children = self.viewBox().allChildren()
         self.viewBox().autoRange(items=children)
 
+    def arrangeClicked(self):
+        sources = []
+        displays = []
+        for name, gnode in self.chart._graph.nodes().items():
+            if gnode['subset'] == 0:
+                sources.append(name)
+            elif gnode['subset'] == 2:
+                displays.append(name)
+        fixed = sources + displays
+        pos = nx.drawing.layout.multipartite_layout(self.chart._graph, scale=len(self.chart._graph.nodes())*75)
+        pos = nx.drawing.layout.spring_layout(nx.Graph(self.chart._graph), pos=pos, fixed=fixed, k=200)
+        for name, gnode in self.chart._graph.nodes().items():
+            if name not in pos:
+                continue
+            px = pos[name][0]
+            py = pos[name][1]
+            p = (find_nearest(px), find_nearest(py))
+            gnode['node'].graphicsItem().setPos(*p)
+
+        children = self.viewBox().allChildren()
+        self.viewBox().autoRange(items=children)
+
     def navClicked(self, action):
         if action == self.ui.actionPan:
             self.viewBox().setMouseMode("Pan")
@@ -814,6 +852,27 @@ class FlowchartCtrlWidget(QtGui.QWidget):
 
     def configureClicked(self):
         self.sourceConfigure.show()
+
+    def consoleClicked(self):
+        if self.ipython_widget is None:
+            kernel_manager = QtInProcessKernelManager()
+            kernel_manager.start_kernel(show_banner=False)
+            kernel = kernel_manager.kernel
+            kernel.gui = 'qt'
+
+            kernel_client = kernel_manager.client()
+            kernel_client.start_channels()
+
+            self.ipython_widget = RichJupyterWidget()
+            self.ipython_widget.kernel_manager = kernel_manager
+            self.ipython_widget.kernel_client = kernel_client
+
+        self.ipython_widget.kernel_manager.kernel.shell.push({'ctrl': self,
+                                                              'chartWidget': self.chartWidget,
+                                                              'chart': self.chart,
+                                                              'graph': self.chart._graph,
+                                                              'graphCommHandler': self.graphCommHandler})
+        self.ipython_widget.show()
 
     @asyncSlot(object)
     async def configureApply(self, src_cfg):

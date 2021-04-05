@@ -216,6 +216,16 @@ class Ui_Toolbar(object):
         self.actionReset.setIconText("Reset")
         self.actionReset.setObjectName("actionReset")
 
+        # console
+        self.actionConsole = QtWidgets.QAction(parent)
+        self.actionConsole.setIconText("Console")
+        self.actionConsole.setObjectName("actionConsole")
+
+        # Arrange
+        self.actionArrange = QtWidgets.QAction(parent)
+        self.actionArrange.setIconText("Arrange")
+        self.actionArrange.setObjectName("actionArrange")
+
         # home
         self.actionHome = QtWidgets.QAction(parent)
         self.actionHome.setIconText("Home")
@@ -253,13 +263,16 @@ class Ui_Toolbar(object):
         self.toolBar.addAction(self.actionConfigure)
         self.toolBar.addAction(self.actionApply)
         self.toolBar.addAction(self.actionReset)
+        self.toolBar.addAction(self.actionConsole)
         # self.toolBar.addAction(self.actionProfiler)
         self.toolBar.insertSeparator(self.actionConfigure)
 
+        # self.toolBar.addAction(self.actionArrange)
         self.toolBar.addAction(self.actionHome)
         self.toolBar.addAction(self.actionPan)
         self.toolBar.addAction(self.actionSelect)
         self.toolBar.addAction(self.actionComment)
+        # self.toolBar.insertSeparator(self.actionArrange)
         self.toolBar.insertSeparator(self.actionHome)
 
         widget = self.toolBar.widgetForAction(self.actionApply)
