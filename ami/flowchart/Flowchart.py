@@ -11,7 +11,7 @@ from ami.flowchart.FlowchartGraphicsView import ViewManager
 from ami.flowchart.Terminal import Terminal, TerminalGraphicsItem, ConnectionItem
 from ami.flowchart.library import LIBRARY
 from ami.flowchart.library.common import SourceNode, CtrlNode
-from ami.flowchart.Node import Node, NodeGraphicsItem, find_nearest
+from ami.flowchart.Node import Node, NodeGraphicsItem, find_nearest, SubgraphNode
 from ami.flowchart.NodeLibrary import SourceLibrary
 from ami.flowchart.SourceConfiguration import SourceConfiguration
 from ami.comm import AsyncGraphCommHandler, Ports
@@ -951,6 +951,8 @@ class FlowchartWidget(dockarea.DockArea):
         self.scene().sigMouseHover.connect(self.hoverOver)
 
     def viewAdded(self):
+        children = self.viewBox().allChildren()
+        self.viewBox().autoRange(items=children)
         self.scene().selectionChanged.connect(self.selectionChanged)
         self.scene().sigMouseHover.connect(self.hoverOver)
 
@@ -1032,6 +1034,12 @@ class FlowchartWidget(dockarea.DockArea):
 
         node = item.node
         if not node.enabled():
+            return
+
+        if isinstance(node, SubgraphNode):
+            action = self.view.actions[node.name()]
+            action.setChecked(True)
+            action.triggered.emit()
             return
 
         if not hasattr(node, 'display'):

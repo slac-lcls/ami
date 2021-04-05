@@ -245,7 +245,8 @@ class ViewManager(QtWidgets.QWidget):
         self.graphGroup.addAction(actionSubgraph)
         self.actions[name] = actionSubgraph
 
-        subgraphNode = SubgraphNode(name, allowAddInput=True, allowAddCondition=True)
+        subgraphNode = SubgraphNode(name, allowAddInput=True, children=nodes)
+        subgraphNode.setGraph(graph)
         names = list(map(lambda node: node.name(), nodes))
         connections = []
 
@@ -484,6 +485,7 @@ class FlowchartViewBox(ViewBox):
             node.close()
 
     def makeSubgraph(self):
+
         self.manager.addView(self.selected_nodes)
 
     def getContextMenus(self, ev):
