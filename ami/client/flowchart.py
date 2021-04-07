@@ -71,12 +71,10 @@ def run_editor_window(broker_addr, graphmgr_addr, checkpoint_addr, load=None, pr
     win.show()
 
     try:
-        task = asyncio.create_task(fc.run(load))
+        asyncio.create_task(fc.run(load))
         loop.run_forever()
     finally:
-        if not task.done():
-            loop.run_until_complete(fc.widget().clear())
-            task.cancel()
+        loop.run_until_complete(fc.widget().clear())
         loop.close()
 
     try:
