@@ -777,7 +777,7 @@ class SubgraphNode(Node):
     def __init__(self, name, **kwargs):
         super().__init__(name, **kwargs)
         self.isSubgraph = True
-        self._subgraphInputs = Node('Inputs', allowAddCondition=False)
+        self._subgraphInputs = Node('Inputs')
         self._subgraphOutputs = SubgraphNodeOutput('Outputs', allowAddInput=True)
         self.children = kwargs.get('children', [])
 
@@ -809,6 +809,9 @@ class SubgraphNode(Node):
 
         for node in self.children:
             node.close(emit)
+
+        self._subgraphInputs.close(emit)
+        self._subgraphOutputs.close(emit)
 
 
 class SubgraphNodeOutput(Node):

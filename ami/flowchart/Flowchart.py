@@ -176,8 +176,146 @@ class Flowchart(QtCore.QObject):
         if node.isChanged(True, True):
             self.sigNodeChanged.emit(node)
 
+    def makeSubgraphFromSelection(self, nodes=None, name=None, pos=None):
+        graph = self._graph
+
+        if name is None:
+            n = 0
+            while True:
+                name = f"combined.{n}"
+                if name not in self._graph.nodes():
+                    break
+                n += 1
+
+        view = self.viewManager().addView(name)
+        subgraphNode = SubgraphNode(name, allowAddInput=True, children=nodes)
+        subgraphNode.sigClosed.connect(self.nodeClosed)
+        subgraphNode.setGraph(graph)
+        names = list(map(lambda node: node.name(), nodes))
+        connections = []
+
+        input_pos = None
+        inputs = set()
+        for fnode_name, tnode_name, data in graph.in_edges(names, data=True):
+            if fnode_name in names and tnode_name in names:
+                continue
+
+            input_name = '.'.join([fnode_name, data['from_term']])
+
+            fnode = graph.nodes[fnode_name]['node']
+            tnode = graph.nodes[tnode_name]['node']
+
+            if input_name not in inputs:
+                subgraphNode.addInput(name=input_name, ttype=fnode.terminals[data['from_term']].type())
+                inputs.add(input_name)
+
+            # root
+            target = subgraphNode.terminals[input_name]
+            source = fnode.terminals[data['from_term']]
+            connections.append({'source': source, 'old_target': tnode.terminals[data['to_term']],
+                                'new_target': target, 'type': 'root'})
+
+            # internal
+            old_source = source
+            source = subgraphNode.subgraphInputs.terminals[input_name]
+            target = tnode.terminals[data['to_term']]
+            connections.append({'new_source': source, 'old_source': old_source,
+                                'target': target, 'type': 'in'})
+
+            if input_pos is None:
+                input_pos = fnode.graphicsItem().pos()
+
+        output_pos = None
+        outputs = set()
+        for fnode_name, tnode_name, data in graph.out_edges(names, data=True):
+            if fnode_name in names and tnode_name in names:
+                continue
+
+            output_name = '.'.join([fnode_name, data['from_term']])
+
+            fnode = graph.nodes[fnode_name]['node']
+            tnode = graph.nodes[tnode_name]['node']
+
+            if output_name not in outputs:
+                subgraphNode.addOutput(name=output_name, ttype=fnode.terminals[data['from_term']].type())
+                outputs.add(output_name)
+
+            # root
+            source = subgraphNode.terminals[output_name]
+            target = tnode.terminals[data['to_term']]
+            connections.append({'new_source': source, 'old_source': fnode.terminals[data['from_term']],
+                                'target': target, 'type': 'root'})
+
+            # internal
+            old_target = target
+            target = subgraphNode.subgraphOutputs.terminals[output_name]
+            source = fnode.terminals[data['from_term']]
+            connections.append({'new_target': target, 'old_target': old_target,
+                                'source': source, 'type': 'out'})
+
+            if output_pos is None:
+                output_pos = tnode.graphicsItem().pos()
+
+        if inputs:
+            view.viewBox().addItem(subgraphNode.subgraphInputs.graphicsItem())
+            subgraphNode.subgraphInputs.graphicsItem().moveBy(*input_pos)
+        if outputs:
+            view.viewBox().addItem(subgraphNode.subgraphOutputs.graphicsItem())
+            subgraphNode.subgraphOutputs.graphicsItem().moveBy(*output_pos)
+
+        item = subgraphNode.graphicsItem()
+        self.viewBox().addItem(item)
+        item.moveBy(*nodes[0].graphicsItem().pos())
+
+        for node in nodes:
+            view.viewBox().addItem(node.graphicsItem())
+            for name, term in node.terminals.items():
+                for _, connection in term.connections().items():
+                    view.viewBox().addItem(connection)
+            node.recolor()
+
+        for connection in connections:
+            if connection['type'] == 'root':
+                if 'new_source' in connection:
+                    new_source = connection['new_source']
+                    old_source = connection['old_source']
+                    target = connection['target']
+
+                    old_source.disconnectFrom(target, signal=False)
+                    target.connectTo(new_source, signal=False)
+                elif 'new_target' in connection:
+                    source = connection['source']
+                    old_target = connection['old_target']
+                    new_target = connection['new_target']
+
+                    old_target.disconnectFrom(source, signal=False)
+                    source.connectTo(new_target, signal=False)
+
+            elif connection['type'] == 'in':
+                new_source = connection['new_source']
+                old_source = connection['old_source']
+                target = connection['target']
+
+                old_source.disconnectFrom(target, signal=False)
+                new_source.connectTo(target, signal=False)
+
+            elif connection['type'] == 'out':
+                new_target = connection['new_target']
+                old_target = connection['old_target']
+                source = connection['source']
+
+                old_target.disconnectFrom(source, signal=False)
+                if not new_target.connectedTo(source):
+                    new_target.connectTo(source, signal=False)
+
+        self.viewManager().displayView(name=subgraphNode.name(), autoRange=True)
+
     @asyncSlot(object, object)
     async def nodeClosed(self, node, input_vars):
+        if isinstance(node, SubgraphNode):
+            self.viewManager().removeView(node.name())
+            return
+
         self._graph.remove_node(node.name())
         await self.broker.send_string(node.name(), zmq.SNDMORE)
         await self.broker.send_pyobj(fcMsgs.CloseNode())
@@ -266,15 +404,6 @@ class Flowchart(QtCore.QObject):
             await ctrl.graphCommHandler.unview(views)
         await ctrl.applyClicked()
 
-    def chartGraphicsItem(self):
-        """
-        Return the graphicsItem that displays the internal nodes and
-        connections of this flowchart.
-
-        Note that the similar method `graphicsItem()` is inherited from Node
-        and returns the *external* graphical representation of this flowchart."""
-        return self.viewBox
-
     def widget(self, parent=None):
         """
         Return the control widget for this flowchart.
@@ -288,6 +417,9 @@ class Flowchart(QtCore.QObject):
 
     def viewBox(self):
         return self.widget().viewBox()
+
+    def viewManager(self):
+        return self.widget().viewManager()
 
     def saveState(self):
         """
@@ -838,6 +970,9 @@ class FlowchartCtrlWidget(QtGui.QWidget):
     def viewBox(self):
         return self.chartWidget.viewBox()
 
+    def viewManager(self):
+        return self.chartWidget.viewManager
+
     def chartWidget(self):
         return self.chartWidget
 
@@ -927,11 +1062,12 @@ class FlowchartWidget(dockarea.DockArea):
         self.hoverItem = None
 
         #  build user interface (it was easier to do it here than via developer)
-        self.view = ViewManager(self, ctrl)
-        self.view.sigViewAdded.connect(self.viewAdded)
+        self.viewManager = ViewManager(self, ctrl)
+        self.viewManager.sigViewAdded.connect(self.viewAdded)
+        self.viewManager.sigMakeSubgraphFromSelection.connect(self.makeSubgraphFromSelection)
         self.viewDock = dockarea.Dock('view', size=(1000, 600))
         self.viewDock.nStyle = ""
-        self.viewDock.addWidget(self.view)
+        self.viewDock.addWidget(self.viewManager)
         self.viewDock.hideTitleBar()
         self.addDock(self.viewDock)
 
@@ -951,10 +1087,11 @@ class FlowchartWidget(dockarea.DockArea):
         self.scene().sigMouseHover.connect(self.hoverOver)
 
     def viewAdded(self):
-        children = self.viewBox().allChildren()
-        self.viewBox().autoRange(items=children)
         self.scene().selectionChanged.connect(self.selectionChanged)
         self.scene().sigMouseHover.connect(self.hoverOver)
+
+    def makeSubgraphFromSelection(self, nodes):
+        self.chart.makeSubgraphFromSelection(nodes)
 
     def reloadLibrary(self):
         self.operationMenu.triggered.disconnect(self.operationMenuTriggered)
@@ -1000,10 +1137,10 @@ class FlowchartWidget(dockarea.DockArea):
         return self.sourceMenu
 
     def scene(self):
-        return self.view.scene()  # the GraphicsScene item
+        return self.viewManager.scene()  # the GraphicsScene item
 
     def viewBox(self):
-        return self.view.viewBox()  # the viewBox that items should be added to
+        return self.viewManager.viewBox()  # the viewBox that items should be added to
 
     def operationMenuTriggered(self, action):
         nodeType = action.nodeType
@@ -1037,7 +1174,7 @@ class FlowchartWidget(dockarea.DockArea):
             return
 
         if isinstance(node, SubgraphNode):
-            action = self.view.actions[node.name()]
+            action = self.viewManager.actions[node.name()]
             action.setChecked(True)
             action.triggered.emit()
             return
