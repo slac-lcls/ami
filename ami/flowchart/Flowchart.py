@@ -1267,7 +1267,7 @@ class Features(object):
 
     async def get(self, name, in_var):
         async with self.lock:
-            if name in self.features:
+            if in_var in self.features:
                 topic = self.features[in_var]
                 new = False
             else:
