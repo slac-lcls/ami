@@ -102,6 +102,8 @@ class Node(QtCore.QObject):
         self.viewed = False
         self.exception = None
         self.isSubgraph = False
+        self.isSubgraphInput = False
+        self.isSubgraphOutput = False
 
         self._input_vars = {}  # term:var
 
@@ -167,14 +169,16 @@ class Node(QtCore.QObject):
 
         This is a convenience function that just calls addTerminal(io='in', ...)"""
         # print "Node.addInput called."
-        return self.addTerminal(name, io='in', ttype=self.terminals["In"].type(), **kwargs)
+        ttype = kwargs.pop('ttype', self.terminals["In"].type())
+        return self.addTerminal(name, io='in', ttype=ttype, **kwargs)
 
     def addOutput(self, name="Out", **kwargs):
         """Add a new output terminal to this Node with the given name. Extra
         keyword arguments are passed to Terminal.__init__.
 
         This is a convenience function that just calls addTerminal(io='out', ...)"""
-        return self.addTerminal(name, io='out', ttype=self.terminals["Out"].type(), **kwargs)
+        ttype = kwargs.pop('ttype', self.terminals["Out"].type())
+        return self.addTerminal(name, io='out', ttype=ttype, **kwargs)
 
     def removeTerminal(self, term):
         """Remove the specified terminal from this Node. May specify either the
@@ -340,7 +344,12 @@ class Node(QtCore.QObject):
 
         if localTerm.isInput() and remoteTerm.isOutput():
             # if node.exportable():
-            #     self._input_vars[localTerm.name()] = AutoExport.mangle('.'.join([node.name(), remoteTerm.name()]))
+            #     self._input_vars[localTerm.name()] = AutoExport.mangle('.'.join([node.name(),
+            #                                                                      remoteTerm.name()]))
+            if node.isSubgraphInput:
+                remoteTerm = node.getInputTerm(remoteTerm)
+                node = remoteTerm.node()
+
             if node.isSource():
                 self._input_vars[localTerm.name()] = node.name()
             else:
@@ -766,60 +775,3 @@ class NodeGraphicsItem(GraphicsObject):
     def addOutputFromMenu(self):
         # called when add output is clicked in context menu
         self.node.addOutput(removable=True)
-
-
-class SubgraphNode(Node):
-
-    """
-    Subgraph
-    """
-
-    def __init__(self, name, **kwargs):
-        super().__init__(name, **kwargs)
-        self.isSubgraph = True
-        self._subgraphInputs = Node('Inputs')
-        self._subgraphOutputs = SubgraphNodeOutput('Outputs', allowAddInput=True)
-        self.children = kwargs.get('children', [])
-
-    def addInput(self, name=None, **kwargs):
-        if name:
-            self._subgraphInputs.addTerminal(name, io='out', ttype=kwargs['ttype'])
-            return self.addTerminal(name, io='in', ttype=kwargs['ttype'])
-
-    def addOutput(self, name=None, **kwargs):
-        if name:
-            self._subgraphOutputs.addOutput(name, **kwargs)
-            return self.addTerminal(name, io='out', ttype=kwargs['ttype'])
-
-    @property
-    def subgraphInputs(self):
-        return self._subgraphInputs
-
-    @property
-    def subgraphOutputs(self):
-        return self._subgraphOutputs
-
-    def setGraph(self, graph):
-        super().setGraph(graph)
-        self._subgraphInputs.setGraph(graph)
-        self._subgraphOutputs.setGraph(graph)
-
-    def close(self, emit=True):
-        super().close(emit)
-
-        for node in self.children:
-            node.close(emit)
-
-        self._subgraphInputs.close(emit)
-        self._subgraphOutputs.close(emit)
-
-
-class SubgraphNodeOutput(Node):
-
-    """
-    Output
-    """
-
-    def addOutput(self, name=None, **kwargs):
-        if name:
-            return self.addTerminal(name, io='in', ttype=kwargs['ttype'])

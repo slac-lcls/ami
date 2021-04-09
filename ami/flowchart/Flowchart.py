@@ -11,7 +11,8 @@ from ami.flowchart.FlowchartGraphicsView import ViewManager
 from ami.flowchart.Terminal import Terminal, TerminalGraphicsItem, ConnectionItem
 from ami.flowchart.library import LIBRARY
 from ami.flowchart.library.common import SourceNode, CtrlNode
-from ami.flowchart.Node import Node, NodeGraphicsItem, find_nearest, SubgraphNode
+from ami.flowchart.Node import Node, NodeGraphicsItem, find_nearest
+from ami.flowchart.SubgraphNode import SubgraphNode
 from ami.flowchart.NodeLibrary import SourceLibrary
 from ami.flowchart.SourceConfiguration import SourceConfiguration
 from ami.comm import AsyncGraphCommHandler, Ports
@@ -188,7 +189,7 @@ class Flowchart(QtCore.QObject):
                 n += 1
 
         view = self.viewManager().addView(name)
-        subgraphNode = SubgraphNode(name, allowAddInput=True, children=nodes)
+        subgraphNode = SubgraphNode(name, children=nodes)
         subgraphNode.sigClosed.connect(self.nodeClosed)
         subgraphNode.setGraph(graph)
         names = list(map(lambda node: node.name(), nodes))
@@ -346,6 +347,7 @@ class Flowchart(QtCore.QObject):
         localNode = localTerm.node().name()
         remoteNode = remoteTerm.node().name()
         key = localNode + '.' + localTerm.name() + '->' + remoteNode + '.' + remoteTerm.name()
+
         if not self._graph.has_edge(localNode, remoteNode, key=key):
             self._graph.add_edge(localNode, remoteNode, key=key,
                                  from_term=localTerm.name(), to_term=remoteTerm.name())
@@ -556,7 +558,7 @@ class Flowchart(QtCore.QObject):
         if not os.path.exists(fileName):
             msg = QtWidgets.QMessageBox()
             msg.setText(f"File {fileName} does not exist!")
-            msg.exec()
+            msg.show()
             return
 
         with open(fileName, 'r') as f:
@@ -861,12 +863,12 @@ class FlowchartCtrlWidget(QtGui.QWidget):
             for node in disconnectedNodes:
                 self.chartWidget.updateStatus(f"{node.name()} disconnected!", color='red')
                 node.setException(True)
-            msg.exec()
+            msg.show()
             return
 
         if failed_nodes:
             self.chartWidget.updateStatus("failed to submit graph", color='red')
-            msg.exec()
+            msg.show()
             return
 
         if graph_nodes:
@@ -1086,9 +1088,9 @@ class FlowchartWidget(dockarea.DockArea):
         self.scene().selectionChanged.connect(self.selectionChanged)
         self.scene().sigMouseHover.connect(self.hoverOver)
 
-    def viewAdded(self):
-        self.scene().selectionChanged.connect(self.selectionChanged)
-        self.scene().sigMouseHover.connect(self.hoverOver)
+    def viewAdded(self, view):
+        view.scene().selectionChanged.connect(self.selectionChanged)
+        view.scene().sigMouseHover.connect(self.hoverOver)
 
     def makeSubgraphFromSelection(self, nodes):
         self.chart.makeSubgraphFromSelection(nodes)
@@ -1166,6 +1168,7 @@ class FlowchartWidget(dockarea.DockArea):
             return
 
         item = items[0]
+
         if not hasattr(item, 'node'):
             return
 
@@ -1192,6 +1195,8 @@ class FlowchartWidget(dockarea.DockArea):
                 for path in paths:
                     for gnode in path:
                         gnode = self.chart._graph.nodes[gnode]
+                        if 'node' not in gnode:
+                            continue
                         node = gnode['node']
                         if node in seen:
                             continue
@@ -1205,7 +1210,7 @@ class FlowchartWidget(dockarea.DockArea):
                 pending = ', '.join(pending)
                 msg = QtWidgets.QMessageBox(parent=self)
                 msg.setText(f"Pending changes for {pending}. Please apply before trying to view.")
-                msg.exec()
+                msg.show()
                 return
 
         await self.build_views([node], ctrl=True)
@@ -1415,7 +1420,7 @@ class Features(object):
 
     async def get(self, name, in_var):
         async with self.lock:
-            if name in self.features:
+            if in_var in self.features:
                 topic = self.features[in_var]
                 new = False
             else:

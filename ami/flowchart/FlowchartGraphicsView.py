@@ -192,7 +192,7 @@ class SelectionRect(GraphicsWidget):
 
 class ViewManager(QtWidgets.QWidget):
 
-    sigViewAdded = QtCore.Signal()
+    sigViewAdded = QtCore.Signal(object)
     sigMakeSubgraphFromSelection = QtCore.Signal(object)
 
     def __init__(self, widget, parent=None):
@@ -236,6 +236,9 @@ class ViewManager(QtWidgets.QWidget):
         self.toolBar.addAction(actionSubgraph)
         self.graphGroup.addAction(actionSubgraph)
         self.actions[name] = actionSubgraph
+
+        self.sigViewAdded.emit(view)
+
         return view
 
     def displayView(self, checked=False, name=None, autoRange=False):
