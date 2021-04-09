@@ -19,7 +19,7 @@ class HSDPeakTest(CtrlNode):
                                           'Pass'     : {'io': 'out', 'ttype': int},
                                           'Fail'     : {'io': 'out', 'ttype': int}})
 
-    def to_operation(self, inputs, conditions={}):
+    def to_operation(self, **kwargs):
         outputs = self.output_vars()
 
         def func(waveform,peaks):
@@ -34,7 +34,4 @@ class HSDPeakTest(CtrlNode):
                     return 0,1
             return 1,0
 
-        return gn.Map(name=self.name()+"_operation", 
-                      condition_needs=conditions,
-                      inputs=inputs, outputs=outputs, 
-                      func=func, parent=self.name())
+        return gn.Map(name=self.name()+"_operation", **kwargs, func=func)
