@@ -32,7 +32,7 @@ install:
   - conda info -a
   - conda create -q -n myrel python=${PYVER}
   - conda install -q -n myrel --only-deps ami
-  - conda install -q -n myrel flake8 prometheus-cpp
+  - conda install -q -n myrel flake8 prometheus_client
   - conda activate myrel
   - python setup.py install --single-version-externally-managed --record=record.txt
 
