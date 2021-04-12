@@ -27,8 +27,8 @@ install:
   - bash miniconda.sh -b -p $HOME/miniconda
   - source "$HOME/miniconda/etc/profile.d/conda.sh"
   - conda config --set always_yes yes --set changeps1 no
-  - conda config --add channels lcls-ii
-  - conda config --append channels conda-forge
+  - conda config --prepend channels conda-forge
+  - conda config --prepend channels lcls-ii
   - conda info -a
   - conda create -q -n myrel python=${PYVER}
   - conda install -q -n myrel --only-deps ami
