@@ -21,11 +21,10 @@ class HSDPeakTest(CtrlNode):
 
     def to_operation(self, **kwargs):
 
-        def func(waveform,peaks):
- 
+        def func(waveform, peaks):
             for i in range(len(peaks[0])):
                 swf = peaks[1][i]
-                s0  = peaks[0][i]
+                s0 = peaks[0][i]
                 ns  = len(swf)
                 if s0+ns >= len(waveform):
                     break
