@@ -25,7 +25,7 @@ class HSDPeakTest(CtrlNode):
             for i in range(len(peaks[0])):
                 swf = peaks[1][i]
                 s0 = peaks[0][i]
-                ns  = len(swf)
+                ns = len(swf)
                 if s0+ns >= len(waveform):
                     break
                 if not np.array_equal(swf, waveform[s0:s0+ns]):
