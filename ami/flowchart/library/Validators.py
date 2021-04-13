@@ -1,8 +1,7 @@
 import ami.graph_nodes as gn
 from ami.flowchart.library.common import CtrlNode
-from amitypes import Array1d
+from amitypes import Array1d, Peaks
 import numpy as np
-from typing import List, Tuple
 
 
 class HSDPeakTest(CtrlNode):
@@ -15,7 +14,7 @@ class HSDPeakTest(CtrlNode):
 
     def __init__(self, name):
         super().__init__(name, terminals={'Waveform': {'io': 'in', 'ttype': Array1d},
-                                          'Peaks': {'io': 'in', 'ttype': Tuple[List[int], List[Array1d]]},
+                                          'Peaks': {'io': 'in', 'ttype': Peaks},
                                           'Pass': {'io': 'out', 'ttype': int},
                                           'Fail': {'io': 'out', 'ttype': int}})
 

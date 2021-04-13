@@ -192,15 +192,13 @@ class NodeProcess(QtCore.QObject):
                                             units=msg.units)
 
             if self.ctrlWidget and self.widget:
-                cw = QtGui.QWidget(parent=self.win)
-                self.win.setCentralWidget(cw)
-                layout = QtGui.QGridLayout()
-                cw.setLayout(layout)
-                self.ctrlWidget.setParent(cw)
-                self.widget.setParent(cw)
-                layout.addWidget(self.ctrlWidget, 0, 0, -1, 1)
-                layout.addWidget(self.widget, 0, 1, -1, -1)
-                layout.setColumnStretch(1, 10)
+                splitter = QtWidgets.QSplitter(parent=self.win)
+                splitter.addWidget(self.ctrlWidget)
+                splitter.addWidget(self.widget)
+                splitter.setStretchFactor(1, 10)
+                self.win.setCentralWidget(splitter)
+                self.ctrlWidget.setParent(splitter)
+                self.widget.setParent(splitter)
             elif self.ctrlWidget:
                 scrollarea = QtWidgets.QScrollArea(parent=self.win)
                 scrollarea.setWidget(self.ctrlWidget)
