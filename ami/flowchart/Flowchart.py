@@ -647,6 +647,7 @@ class FlowchartCtrlWidget(QtGui.QWidget):
 
         self.ipython_widget = None
         self.graph_info = pc.Info('ami_graph', 'AMI Client graph', ['hutch', 'name'])
+        self.graph_version = pc.Gauge('ami_graph_version', 'AMI Client graph version', ['hutch', 'name'])
 
     @asyncSlot()
     async def applyClicked(self, build_views=True):
@@ -752,11 +753,11 @@ class FlowchartCtrlWidget(QtGui.QWidget):
 
         self.metadata = await self.graphCommHandler.metadata
         self.ui.setPendingClear()
-
         version = str(await self.graphCommHandler.graphVersion)
         state = self.chart.saveState()
         state = json.dumps(state, indent=2, separators=(',', ': '), sort_keys=True, cls=amitypes.TypeEncoder)
         self.graph_info.labels(self.chart.hutch, self.graph_name).info({'graph': state, 'version': version})
+        self.graph_version.labels(self.chart.hutch, self.graph_name).set(version)
 
     def openClicked(self):
         startDir = self.chart.filePath
