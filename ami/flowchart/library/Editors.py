@@ -79,7 +79,7 @@ class TraceEditor(QtWidgets.QWidget):
 
         line = self.trace_attrs['Line']
         line = {'color': line['color'],
-                'width': line['width'],
+                # 'width': line['width'],
                 'style': line_styles[line['style']]}
 
         pen = pg.mkPen(**line)
