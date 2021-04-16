@@ -160,6 +160,12 @@ def build_parser():
         default=None
     )
 
+    parser.add_argument(
+        '--use-opengl',
+        help='Use opengl for plots.',
+        action='store_true'
+    )
+
     return parser
 
 
@@ -319,7 +325,7 @@ def run_ami(args, queue=None):
                 name='client',
                 target=run_client,
                 args=(args.graph_name, comm_addr, info_addr, view_addr, profile_addr, args.load, args.gui_mode,
-                      args.prometheus_dir, args.hutch)
+                      args.prometheus_dir, args.hutch, args.use_opengl)
             )
             client_proc.daemon = False
             client_proc.start()

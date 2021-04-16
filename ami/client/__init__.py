@@ -17,12 +17,12 @@ GraphMgrAddress = collections.namedtuple('GraphMgrAddress', ['name', 'comm', 'vi
 
 
 def run_client(graph_name, comm_addr, info_addr, view_addr, profile_addr, load,
-               use_legacy=True, prometheus_dir=None, hutch=None):
+               use_legacy=True, prometheus_dir=None, hutch=None, use_opengl=False):
     graphmgr_addr = GraphMgrAddress(graph_name, comm_addr, view_addr, info_addr, profile_addr)
     if use_legacy:
         return legacy.run_client(graphmgr_addr, load)
     else:
-        return flowchart.run_client(graphmgr_addr, load, prometheus_dir, hutch)
+        return flowchart.run_client(graphmgr_addr, load, prometheus_dir, hutch, use_opengl)
 
 
 def main():
@@ -109,6 +109,12 @@ def main():
     parser.add_argument(
         '--log-file',
         help='an optional file to write the log output to'
+    ),
+
+    parser.add_argument(
+        '--use-opengl',
+        help='Use opengl for plots.',
+        action='store_true'
     )
 
     args = parser.parse_args()
@@ -163,7 +169,7 @@ def main():
 
     try:
         return run_client(args.graph_name, comm_addr, info_addr, view_addr, profile_addr, args.load,
-                          args.gui_mode, args.prometheus_dir, args.hutch)
+                          args.gui_mode, args.prometheus_dir, args.hutch, args.use_opengl)
     except KeyboardInterrupt:
         logger.info("Client killed by user...")
         return 0

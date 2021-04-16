@@ -48,6 +48,7 @@ class TraceEditor(QtWidgets.QWidget):
         self.layout.setColumnStretch(0, 1)
 
         self.plot_widget = pg.GraphicsLayoutWidget()
+        self.plot_widget.useOpenGL(False)
         self.plot_widget.setFixedSize(200, 100)
 
         self.plot_view = self.plot_widget.addPlot()
@@ -78,9 +79,12 @@ class TraceEditor(QtWidgets.QWidget):
                  'symbolBrush': tuple(point['Brush'])}
 
         line = self.trace_attrs['Line']
+        width = line['width']
         line = {'color': line['color'],
-                # 'width': line['width'],
                 'style': line_styles[line['style']]}
+
+        if pg.getConfigOption('useOpenGL'):
+            line['width'] = width
 
         pen = pg.mkPen(**line)
 

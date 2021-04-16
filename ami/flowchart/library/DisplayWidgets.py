@@ -581,7 +581,7 @@ class ImageWidget(PlotWidget):
                                 'values': ['0', '90', '180', '270']}))
 
         super().__init__(topics, terms, addr, uiTemplate=uiTemplate, parent=parent, legend=False, **kwargs)
-
+        super().useOpenGL(False)
         self.flip = False
         self.rotate = 0
         self.log_scale_histogram = False
@@ -698,6 +698,7 @@ class HistogramWidget(PlotWidget):
 
     def __init__(self, topics=None, terms=None, addr=None, parent=None, **kwargs):
         super().__init__(topics, terms, addr, parent=parent, **kwargs)
+        super().useOpenGL(False)
 
     def editor(self, node, parent, **kwargs):
         return HistEditor(node=node, parent=parent, **kwargs)
@@ -884,6 +885,7 @@ class TimeWidget(LineWidget):
 
     def __init__(self, topics=None, terms=None, addr=None, parent=None, **kwargs):
         super().__init__(topics, terms, addr, parent=parent, **kwargs)
+        super().useOpenGL(False)
         ax = pg.DateAxisItem(orientation='bottom')
         self.plot_view.setAxisItems({'bottom': ax})
 
