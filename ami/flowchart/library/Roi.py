@@ -162,7 +162,7 @@ class ScatterRoi(CtrlNode):
 
         if self.widget:
             self.roi = pg.LinearRegionItem((self.values['origin'], self.values['extent']), swapMode='sort',
-                                           brush=fn.mkBrush(255, 0, 0, 100))
+                                           brush=fn.mkBrush(0, 255, 0, 100))
             self.widget.plot_view.addItem(self.roi)
             self.roi.sigRegionChangeFinished.connect(self.set_values)
 
