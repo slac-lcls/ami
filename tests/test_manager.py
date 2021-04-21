@@ -170,7 +170,6 @@ def manager_proc(ipc_dir):
         'graph': 'ipc://%s/manager_graph' % ipc_dir,
         'msg': 'ipc://%s/manager_msg' % ipc_dir,
         'info': 'ipc://%s/manager_info' % ipc_dir,
-        'profile': 'ipc://%s/manager_profile' % ipc_dir,
         'export': 'ipc://%s/manager_export' % ipc_dir,
         'view': 'ipc://%s/manager_view' % ipc_dir,
     }
@@ -180,7 +179,7 @@ def manager_proc(ipc_dir):
         name='manager',
         target=run_manager,
         args=(1, 1, addrs['results'], addrs['graph'], addrs['comm'],
-              addrs['msg'], addrs['info'], addrs['export'], addrs['view'], addrs['profile'],
+              addrs['msg'], addrs['info'], addrs['export'], addrs['view'],
               None, None)
     )
     proc.daemon = False

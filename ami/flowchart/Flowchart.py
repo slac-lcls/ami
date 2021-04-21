@@ -493,6 +493,9 @@ class Flowchart(Node):
             node_name = msg.name
             new_node_state = msg.state
 
+            if node_name not in self._graph.nodes:
+                continue
+
             node = self._graph.nodes[node_name]['node']
             current_node_state = node.saveState()
             restore_ctrl = False

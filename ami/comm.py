@@ -40,7 +40,6 @@ class Ports(IntEnum):
     Message = 5561
     Info = 5562
     View = 5563
-    Profile = 5564
     Sync = 5600
     Prometheus = 9200
 

@@ -223,7 +223,6 @@ def run_ami(args, queue=None):
         msg_addr = "tcp://%s:%d" % (host, args.port+6)
         info_addr = "tcp://%s:%d" % (host, args.port+7)
         view_addr = "tcp://%s:%d" % (host, args.port+8)
-        profile_addr = "tcp://%s:%d" % (host, args.port+9)
     else:
         collector_addr = "ipc://%s/node_collector" % ipcdir
         globalcol_addr = "ipc://%s/collector" % ipcdir
@@ -234,7 +233,6 @@ def run_ami(args, queue=None):
         msg_addr = "ipc://%s/message" % ipcdir
         info_addr = "ipc://%s/info" % ipcdir
         view_addr = "ipc://%s/view" % ipcdir
-        profile_addr = "ipc://%s/profile" % ipcdir
 
     procs = []
     client_proc = None
@@ -301,7 +299,7 @@ def run_ami(args, queue=None):
             name='manager',
             target=functools.partial(_sys_exit, run_manager),
             args=(args.num_workers, 1, results_addr, graph_addr, comm_addr, msg_addr, info_addr, export_addr,
-                  view_addr, profile_addr, args.prometheus_dir, args.hutch)
+                  view_addr, args.prometheus_dir, args.hutch)
         )
         manager_proc.daemon = True
         manager_proc.start()
@@ -324,7 +322,7 @@ def run_ami(args, queue=None):
             client_proc = mp.Process(
                 name='client',
                 target=run_client,
-                args=(args.graph_name, comm_addr, info_addr, view_addr, profile_addr, args.load, args.gui_mode,
+                args=(args.graph_name, comm_addr, info_addr, view_addr, args.load, args.gui_mode,
                       args.prometheus_dir, args.hutch, args.use_opengl)
             )
             client_proc.daemon = False

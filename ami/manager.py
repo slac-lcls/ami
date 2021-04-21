@@ -40,7 +40,6 @@ class Manager(Collector):
                  info_addr,
                  export_addr,
                  view_addr,
-                 profile_addr,
                  prometheus_dir,
                  hutch):
         """
@@ -70,29 +69,25 @@ class Manager(Collector):
 
         self.serializer = Serializer()
         self.deserializer = Deserializer()
-        self.comm = self.ctx.socket(zmq.REP)
+        self.comm = self.ctx.socket(zmq.REP)  # receives commands from client
         self.comm.bind(comm_addr)
         self.register(self.comm, self.client_request)
 
-        self.graph_comm = self.ctx.socket(zmq.XPUB)
+        self.graph_comm = self.ctx.socket(zmq.XPUB)  # pushes graph to workers/collectors
         self.graph_comm.setsockopt(zmq.XPUB_VERBOSE, True)
         self.graph_comm.bind(graph_addr)
         self.register(self.graph_comm, self.graph_request)
 
-        self.info_comm = self.ctx.socket(zmq.XPUB)
+        self.info_comm = self.ctx.socket(zmq.XPUB)  # status messages from manager to client
         self.info_comm.setsockopt(zmq.XPUB_VERBOSE, True)
         self.info_comm.bind(info_addr)
         self.register(self.info_comm, self.info_request)
 
-        self.node_msg_comm = self.ctx.socket(zmq.PULL)
+        self.node_msg_comm = self.ctx.socket(zmq.PULL)  # receives status from workers/collectors to push to info
         self.node_msg_comm.bind(msg_addr)
         self.register(self.node_msg_comm, self.node_request)
 
-        self.profile_comm = self.ctx.socket(zmq.XPUB)
-        self.profile_comm.setsockopt(zmq.XPUB_VERBOSE, True)
-        self.profile_comm.bind(profile_addr)
-
-        self.view_comm = self.ctx.socket(zmq.XPUB)
+        self.view_comm = self.ctx.socket(zmq.XPUB)  # exports plot data to clients
         self.view_comm.setsockopt(zmq.XPUB_VERBOSE, True)
         self.view_comm.bind(view_addr)
         self.register(self.view_comm, self.view_request)
@@ -646,7 +641,6 @@ def run_manager(num_workers,
                 info_addr,
                 export_addr,
                 view_addr,
-                profile_addr,
                 prometheus_dir,
                 hutch):
     logger.info('Starting manager, controlling %d workers on %d nodes PID: %d',
@@ -661,7 +655,6 @@ def run_manager(num_workers,
             info_addr,
             export_addr,
             view_addr,
-            profile_addr,
             prometheus_dir,
             hutch) as manager:
         manager.start_prometheus()
@@ -761,12 +754,6 @@ def main():
         help='an optional file to write the log output to'
     )
 
-    parser.add_argument('-P',
-                        '--profile',
-                        type=int,
-                        default=Ports.Profile,
-                        help='port for profiling inforation communication (default: %d)' % Ports.Profile)
-
     parser.add_argument(
         '--prometheus-dir',
         help='directory for prometheus configuration',
@@ -788,7 +775,6 @@ def main():
     info_addr = "tcp://%s:%d" % (args.host, args.info)
     export_addr = "tcp://%s:%d" % (args.host, args.export)
     view_addr = "tcp://%s:%d" % (args.host, args.view)
-    profile_addr = "tcp://%s:%d" % (args.host, args.profile)
 
     log_handlers = [logging.StreamHandler()]
     if args.log_file is not None:
@@ -806,7 +792,6 @@ def main():
                            info_addr,
                            export_addr,
                            view_addr,
-                           profile_addr,
                            args.prometheus_dir,
                            args.hutch)
     except KeyboardInterrupt:

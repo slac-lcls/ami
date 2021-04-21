@@ -81,9 +81,8 @@ def graphmgr_addr(ipc_dir):
     comm_addr = "ipc://%s/comm" % ipc_dir
     view_addr = "ipc://%s/view" % ipc_dir
     graphinfo_addr = "ipc://%s/info" % ipc_dir
-    graphprof_addr = "ipc://%s/profile" % ipc_dir
 
-    graphmgr = GraphMgrAddress("graph", comm_addr, view_addr, graphinfo_addr, graphprof_addr)
+    graphmgr = GraphMgrAddress("graph", comm_addr, view_addr, graphinfo_addr)
 
     yield graphmgr
 
