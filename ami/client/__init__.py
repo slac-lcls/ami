@@ -41,7 +41,7 @@ def main():
         '-p',
         '--port',
         type=int,
-        nargs=4,
+        nargs=3,
         default=(Ports.Comm, Ports.Info, Ports.View),
         help='port for manager/client (GUI) communication, status, view (default: %d, %d, %d)' %
              (Ports.Comm, Ports.Info, Ports.View)
