@@ -2,8 +2,10 @@ import sys
 import glob
 import logging
 import IPython
+import pathlib
 import tempfile
 import argparse
+import datetime
 
 from traitlets.config.loader import Config
 from ami import LogConfig, Defaults
@@ -106,7 +108,9 @@ def main():
             else:
                 prompt = "Found %d ipc file descriptors:\n" % len(ipc_list)
                 for i, ipc_name in enumerate(ipc_list):
-                    prompt += " %d - %s\n" % (i, ipc_name)
+                    path = pathlib.Path(ipc_name)
+                    cdate = datetime.datetime.fromtimestamp(path.stat().st_ctime).strftime('%Y-%m-%d %H:%M:%S')
+                    prompt += " %d - addr: %s, user: %s, date: %s\n" % (i, ipc_name, path.owner(), cdate)
                 prompt += " %d - Quit\n\nPlease choose one: " % len(ipc_list)
                 choice = input(prompt)
                 try:
