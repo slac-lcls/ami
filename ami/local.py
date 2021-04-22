@@ -3,10 +3,12 @@ import re
 import sys
 import shutil
 import signal
+import socket
 import logging
 import tempfile
 import argparse
 import functools
+import contextlib
 import ami.multiproc as mp
 
 from ami import LogConfig, Defaults
@@ -62,8 +64,7 @@ def build_parser():
         '-p',
         '--port',
         type=int,
-        default=Ports.Comm,
-        help='starting port when using tcp for communication (default: %d)' % Ports.Comm
+        help='use tcp for communication using the specified starting port'
     )
 
     comm_group.add_argument(
@@ -75,8 +76,7 @@ def build_parser():
     comm_group.add_argument(
         '--tcp',
         action='store_true',
-        default=False,
-        help='use ipc for communication and create the file descriptors in a temporary directory'
+        help='use tcp for communication using a randomly chosen port'
     )
 
     parser.add_argument(
@@ -201,30 +201,38 @@ def cleanup(procs):
 
 
 def run_ami(args, queue=None):
+    port = None
     xtcdir = None
     ipcdir = None
     flags = {}
     if queue is None:
         queue = mp.Queue()
 
-    if args.ipc_dir is not None:
+    if args.port:
+        port = args.port
+    elif args.tcp:
+        with contextlib.closing(socket.socket(socket.AF_INET, socket.SOCK_STREAM)) as sock:
+            sock.bind(("127.0.0.1", 0))
+            sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            port = sock.getsockname()[1]
+    elif args.ipc_dir is not None:
         ipcdir = args.ipc_dir
         owns_ipcdir = False
     else:
         ipcdir = tempfile.mkdtemp()
         owns_ipcdir = True
 
-    if args.tcp:
+    if ipcdir is None:
         host = "127.0.0.1"
-        comm_addr = "tcp://%s:%d" % (host, args.port)
-        graph_addr = "tcp://%s:%d" % (host, args.port+1)
-        collector_addr = "tcp://%s:%d" % (host, args.port+2)
-        globalcol_addr = "tcp://%s:%d" % (host, args.port+3)
-        results_addr = "tcp://%s:%d" % (host, args.port+4)
-        export_addr = "tcp://%s:%d" % (host, args.port+5)
-        msg_addr = "tcp://%s:%d" % (host, args.port+6)
-        info_addr = "tcp://%s:%d" % (host, args.port+7)
-        view_addr = "tcp://%s:%d" % (host, args.port+8)
+        comm_addr = "tcp://%s:%d" % (host, port)
+        graph_addr = "tcp://%s:%d" % (host, port+1)
+        collector_addr = "tcp://%s:%d" % (host, port+2)
+        globalcol_addr = "tcp://%s:%d" % (host, port+3)
+        results_addr = "tcp://%s:%d" % (host, port+4)
+        export_addr = "tcp://%s:%d" % (host, port+5)
+        msg_addr = "tcp://%s:%d" % (host, port+6)
+        info_addr = "tcp://%s:%d" % (host, port+7)
+        view_addr = "tcp://%s:%d" % (host, port+8)
     else:
         collector_addr = "ipc://%s/node_collector" % ipcdir
         globalcol_addr = "ipc://%s/collector" % ipcdir
@@ -265,6 +273,8 @@ def run_ami(args, queue=None):
                 return 1
         else:
             src_cfg = None
+
+        logger.info("Starting ami-local using comm address: %s", comm_addr)
 
         for i in range(args.num_workers):
             proc = mp.Process(
