@@ -73,8 +73,9 @@ def build_parser():
     )
 
     comm_group.add_argument(
-        '--ipc',
+        '--tcp',
         action='store_true',
+        default=False,
         help='use ipc for communication and create the file descriptors in a temporary directory'
     )
 
@@ -202,17 +203,18 @@ def cleanup(procs):
 def run_ami(args, queue=None):
     xtcdir = None
     ipcdir = None
-    owns_ipcdir = True
     flags = {}
     if queue is None:
         queue = mp.Queue()
-    if args.ipc:
-        ipcdir = tempfile.mkdtemp()
-        owns_ipcdir = True
-    elif args.ipc_dir is not None:
+
+    if args.ipc_dir is not None:
         ipcdir = args.ipc_dir
         owns_ipcdir = False
-    if ipcdir is None:
+    else:
+        ipcdir = tempfile.mkdtemp()
+        owns_ipcdir = True
+
+    if args.tcp:
         host = "127.0.0.1"
         comm_addr = "tcp://%s:%d" % (host, args.port)
         graph_addr = "tcp://%s:%d" % (host, args.port+1)

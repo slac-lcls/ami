@@ -868,6 +868,7 @@ class FlowchartCtrlWidget(QtGui.QWidget):
             kernel_client.start_channels()
 
             self.ipython_widget = RichJupyterWidget()
+            self.ipython_widget.setWindowTitle('AMI Console')
             self.ipython_widget.kernel_manager = kernel_manager
             self.ipython_widget.kernel_client = kernel_client
 
