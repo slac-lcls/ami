@@ -30,6 +30,28 @@ from dataclasses import dataclass, asdict, field
 logger = logging.getLogger(__name__)
 
 
+def _map_numpy_types():
+    nptypemap = {}
+    for name, dtype in inspect.getmembers(np, lambda x: inspect.isclass(x) and issubclass(x, np.generic)):
+        try:
+            ptype = None
+            if 'time' in name:
+                ptype = type(dtype(0, 'D').item())
+            elif 'object' not in name:
+                ptype = type(dtype(0).item())
+
+            # if it is still a numpy dtype don't make a mapping
+            if not issubclass(ptype, np.generic):
+                nptypemap[dtype] = ptype
+        except TypeError:
+            pass
+
+    return nptypemap
+
+
+NumPyTypeDict = _map_numpy_types()
+
+
 class MsgTypes(Enum):
     Transition = 0
     Heartbeat = 1
@@ -1047,7 +1069,7 @@ class Hdf5Source(HierarchicalDataSource):
                     if isinstance(h5_native_type, h5py.h5t.TypeBitfieldID):
                         self.data_types[self.encode(name)] = bool
                     else:
-                        self.data_types[self.encode(name)] = at.NumPyTypeDict.get(obj.dtype.type, typing.Any)
+                        self.data_types[self.encode(name)] = NumPyTypeDict.get(obj.dtype.type, typing.Any)
                 else:
                     self.data_types[self.encode(name)] = typing.Any
 
