@@ -12,7 +12,7 @@ except ImportError:
     h5py = None
 
 from conftest import psanatest, hdf5test
-from ami.data import MsgTypes, Source, Transition, Transitions
+from ami.data import MsgTypes, Source, Transition, Transitions, NumPyTypeDict
 
 
 @pytest.fixture(scope='function')
@@ -91,8 +91,8 @@ def test_hdf5_source(hdf5writer):
         elif evt.mtype == MsgTypes.Datagram:
             assert set(evt.payload) == set(expected_cfg)
             for name, data in evt.payload.items():
-                if type(data) in at.NumPyTypeDict:
-                    assert at.NumPyTypeDict[type(data)] == expected_cfg[name]
+                if type(data) in NumPyTypeDict:
+                    assert NumPyTypeDict[type(data)] == expected_cfg[name]
                 else:
                     assert isinstance(data, expected_cfg[name])
 

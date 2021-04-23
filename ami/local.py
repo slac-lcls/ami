@@ -64,6 +64,7 @@ def build_parser():
         '-p',
         '--port',
         type=int,
+        default=Ports.Comm,
         help='use tcp for communication using the specified starting port'
     )
 
@@ -204,20 +205,23 @@ def run_ami(args, queue=None):
     port = None
     xtcdir = None
     ipcdir = None
+    owns_ipcdir = False
     flags = {}
     if queue is None:
         queue = mp.Queue()
 
-    if args.port:
-        port = args.port
-    elif args.tcp:
-        with contextlib.closing(socket.socket(socket.AF_INET, socket.SOCK_STREAM)) as sock:
-            sock.bind(("127.0.0.1", 0))
-            sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-            port = sock.getsockname()[1]
+    if args.tcp:
+        try:
+            port = args.port
+            with contextlib.closing(socket.socket(socket.AF_INET, socket.SOCK_STREAM)) as sock:
+                sock.bind(("127.0.0.1", Ports.Comm))
+        except OSError:
+            with contextlib.closing(socket.socket(socket.AF_INET, socket.SOCK_STREAM)) as sock:
+                sock.bind(("127.0.0.1", 0))
+                sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+                port = sock.getsockname()[1]
     elif args.ipc_dir is not None:
         ipcdir = args.ipc_dir
-        owns_ipcdir = False
     else:
         ipcdir = tempfile.mkdtemp()
         owns_ipcdir = True
