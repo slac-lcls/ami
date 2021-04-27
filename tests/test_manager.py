@@ -39,7 +39,7 @@ class ExportHelper:
     def store(version=0, features=None):
         if features is None:
             features = {}
-        return {'version': version, 'features': features}
+        return {'version': version, 'features': features, 'plots': {}}
 
     @staticmethod
     def graph(version=0, names=None, sources=None, graph=None):
@@ -315,6 +315,7 @@ def test_manager_export_data(manager_export, inputs, exports):
     expected_features = {
         'version': injector.version,
         'features': {k: Store.get_type(v) for k, v in input_data.items()},
+        'plots': {}
     }
     expected_data = {k: v for k, v in inputs.items() if k in exports}
 
