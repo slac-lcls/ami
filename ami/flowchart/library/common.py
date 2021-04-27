@@ -122,6 +122,9 @@ class SourceNode(CtrlNode):
     def isSource(self):
         return True
 
+    def input_vars(self):
+        return self._input_vars
+
     def setWidgetType(self):
         if 'Out' in self.terminals:
             ttype = self.terminals['Out']._type
@@ -135,6 +138,9 @@ class SourceNode(CtrlNode):
                 self.widgetType = TextWidget
             else:
                 self.widgetType = ObjectWidget
+
+    def plotMetadata(self, topics, terms, **kwargs):
+        return {'type': self.widgetType.__name__, 'terms': terms, 'topics': topics}
 
     def restoreState(self, state):
         super().restoreState(state)

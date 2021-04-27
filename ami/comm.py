@@ -146,6 +146,7 @@ class Store:
     def __init__(self, version=0):
         self.version = version
         self._store = {}
+        self._plots = {}
 
     def __bool__(self):
         """
@@ -317,6 +318,13 @@ class Store:
                                     " (%s)" % (datatype, self._store[name].dtype))
             else:
                 self._store[name] = Datagram(name, datatype, data)
+
+    @property
+    def plots(self):
+        return self._plots
+
+    def update_plots(self, plots):
+        self._plots = plots
 
     def clear(self):
         """
@@ -1462,6 +1470,12 @@ class CommHandler(abc.ABC):
         return self._request('get_features')
 
     @property
+    def plots(self):
+        """
+        """
+        return self._request('get_plots')
+
+    @property
     def names(self):
         """
         A set of all the user-defined output names in the in the graph that can
@@ -1563,6 +1577,9 @@ class CommHandler(abc.ABC):
     def updatePath(self, paths):
         return self._post_dill("update_path", paths)
 
+    def updatePlots(self, plots):
+        return self._post_dill('update_plots', plots)
+
     def fetch(self, names):
         """
         Attempts to fetch a feature with the requested name from the global
@@ -1633,6 +1650,9 @@ class CommHandler(abc.ABC):
             names = [names]
 
         return self.remove(["%s_view" % self.auto(name) for name in names])
+
+    def plot(self, item):
+        pass
 
     def export(self, names, aliases=None):
         """

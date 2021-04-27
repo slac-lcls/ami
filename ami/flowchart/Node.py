@@ -472,6 +472,9 @@ class Node(QtCore.QObject):
             self.graphicsItem().optional.setChecked(checked)
             self.sigTerminalOptional.emit(self, term)
 
+    def plotMetadata(self, **kwargs):
+        return {}
+
 
 class NodeGraphicsItem(GraphicsObject):
 

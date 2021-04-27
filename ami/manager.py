@@ -203,6 +203,9 @@ class Manager(Collector):
     def features(self, name):
         return self.feature_stores[name].types
 
+    def plots(self, name):
+        return self.feature_stores[name].plots
+
     def feature_request(self, name, request):
         matched = self.feature_req.match(request)
         if matched:
@@ -261,6 +264,9 @@ class Manager(Collector):
 
     def cmd_get_features(self, name):
         self.comm.send_pyobj(self.features(name))
+
+    def cmd_get_plots(self, name):
+        self.comm.send_pyobj(self.feature_stores[name].plots)
 
     def cmd_get_compiler_args(self, name):
         self.comm.send_pyobj(self.compiler_args)
@@ -401,6 +407,11 @@ class Manager(Collector):
         self.graph_comm.send_string("update_path", zmq.SNDMORE)
         self.graph_comm.send_pyobj(self.publish_info(name), zmq.SNDMORE)
         self.graph_comm.send(dill.dumps(paths))
+        self.comm.send_string('ok')
+
+    def cmd_update_plots(self, name):
+        plots = self.comm.recv_pyobj()
+        self.feature_stores[name].update_plots(plots)
         self.comm.send_string('ok')
 
     def publish_info(self, name):
@@ -560,6 +571,7 @@ class Manager(Collector):
         data = {
             'version': self.feature_stores[name].version,
             'features': self.features(name),
+            'plots': self.feature_stores[name].plots
         }
         self.export.send_string('store', zmq.SNDMORE)
         self.export.send_string(name, zmq.SNDMORE)

@@ -188,9 +188,12 @@ class Flowchart(Node):
         if hasattr(node, 'to_operation'):
             self.deleted_nodes.append(name)
             self.sigNodeChanged.emit(node)
+            if ctrl.features.remove_plot(name):
+                await self.ctrl.graphCommHandler.updatePlots(ctrl.features.plots)
         elif isinstance(node, SourceNode):
             await ctrl.features.discard(name, name)
             await ctrl.graphCommHandler.unview(name)
+            await ctrl.graphCommHandler.updatePlots(ctrl.features.plots)
         elif node.viewable():
             views = []
             for term, in_var in input_vars.items():
@@ -199,6 +202,7 @@ class Flowchart(Node):
                     views.append(in_var)
             if views:
                 await ctrl.graphCommHandler.unview(views)
+                await ctrl.graphCommHandler.updatePlots(ctrl.features.plots)
 
     def nodeConnected(self, localTerm, remoteTerm):
         if remoteTerm.isOutput():
@@ -1091,14 +1095,17 @@ class FlowchartWidget(dockarea.DockArea):
                 # this is done because they may want to view intermediate values
                 args['topics'] = node.buffered_topics()
                 args['terms'] = node.buffered_terms()
+                self.ctrl.features.add_plot(node, **args)
 
             elif isinstance(node, SourceNode) and node.viewable():
                 new, topic = await self.ctrl.features.get(name, name)
+
+                args['terms'] = node.input_vars()
+                args['topics'] = {name: topic}
+
                 if new:
                     views[name] = name
-
-                args['terms'] = {'In': name}
-                args['topics'] = {name: topic}
+                    self.ctrl.features.add_plot(node, **args)
 
             elif isinstance(node, Node) and node.viewable():
                 topics = {}
@@ -1109,14 +1116,19 @@ class FlowchartWidget(dockarea.DockArea):
                 if node.changed:
                     await self.ctrl.features.discard(name)
 
+                new_plot = False
                 for term, in_var in node.input_vars().items():
                     new, topic = await self.ctrl.features.get(node.name(), in_var)
                     topics[in_var] = topic
                     if new:
                         views[in_var] = node.name()
+                        new_plot = True
 
                 args['terms'] = node.input_vars()
                 args['topics'] = topics
+
+                if new_plot:
+                    self.ctrl.features.add_plot(node, **args)
 
             elif isinstance(node, CtrlNode) and ctrl:
                 args['terms'] = node.input_vars()
@@ -1143,6 +1155,8 @@ class FlowchartWidget(dockarea.DockArea):
             name = args['name']
             await self.chart.broker.send_string(name, zmq.SNDMORE)
             await self.chart.broker.send_pyobj(fcMsgs.DisplayNode(**args))
+
+        await self.ctrl.graphCommHandler.updatePlots(self.ctrl.features.plots)
 
     def hoverOver(self, items):
         obj = None
@@ -1267,6 +1281,7 @@ class Features(object):
     def __init__(self, graphCommHandler):
         self.features_count = collections.defaultdict(set)
         self.features = {}
+        self.plots = {}
         self.graphCommHandler = graphCommHandler
         self.lock = asyncio.Lock()
 
@@ -1290,17 +1305,26 @@ class Features(object):
                 if not self.features_count[in_var]:
                     del self.features[in_var]
                     del self.features_count[in_var]
+                    del self.plots[name]
                 return True
             else:
                 for in_var, viewers in self.features_count.items():
                     viewers.discard(name)
                     if not viewers and name in self.features:
                         del self.features[name]
+                        del self.plots[name]
                 return True
 
         return False
+
+    def add_plot(self, node, **kwargs):
+        self.plots[node.name()] = node.plotMetadata(**kwargs)
+
+    def remove_plot(self, name):
+        return self.plots.pop(name, None)
 
     async def reset(self):
         async with self.lock:
             self.features = {}
             self.features_count = collections.defaultdict(set)
+            self.plots = {}

@@ -27,6 +27,9 @@ class ScalarViewer(CtrlNode):
     def display(self, topics, terms, addr, win, **kwargs):
         return super().display(topics, terms, addr, win, ScalarWidget, **kwargs)
 
+    def plotMetadata(self, topics, terms, **kwargs):
+        return {'type': 'ScalarWidget', 'terms': terms, 'topics': topics}
+
 
 class WaveformViewer(CtrlNode):
 
@@ -48,6 +51,9 @@ class WaveformViewer(CtrlNode):
     def display(self, topics, terms, addr, win, **kwargs):
         return super().display(topics, terms, addr, win, WaveformWidget, **kwargs)
 
+    def plotMetadata(self, topics, terms, **kwargs):
+        return {'type': 'WaveformWidget', 'terms': terms, 'topics': topics}
+
 
 class ImageViewer(CtrlNode):
 
@@ -66,6 +72,9 @@ class ImageViewer(CtrlNode):
 
     def display(self, topics, terms, addr, win, **kwargs):
         return super().display(topics, terms, addr, win, ImageWidget, **kwargs)
+
+    def plotMetadata(self, topics, terms, **kwargs):
+        return {'type': 'ImageWidget', 'terms': terms, 'topics': topics}
 
 
 class TextViewer(CtrlNode):
@@ -86,6 +95,9 @@ class TextViewer(CtrlNode):
     def display(self, topics, terms, addr, win, **kwargs):
         return super().display(topics, terms, addr, win, TextWidget, **kwargs)
 
+    def plotMetadata(self, topics, terms, **kwargs):
+        return {'type': 'TextWidget', 'terms': terms, 'topics': topics}
+
 
 class ObjectViewer(CtrlNode):
 
@@ -104,6 +116,9 @@ class ObjectViewer(CtrlNode):
 
     def display(self, topics, terms, addr, win, **kwargs):
         return super().display(topics, terms, addr, win, ObjectWidget, **kwargs)
+
+    def plotMetadata(self, topics, terms, **kwargs):
+        return {'type': 'ObjectWidget', 'terms': terms, 'topics': topics}
 
 
 class Histogram(CtrlNode):
@@ -132,6 +147,9 @@ class Histogram(CtrlNode):
         self.addTerminal(name="Bins", io='in', ttype=Array1d, **args)
         self.addTerminal(name="Counts", io='in', ttype=Array1d, **args)
 
+    def plotMetadata(self, topics, terms, **kwargs):
+        return {'type': 'HistogramWidget', 'terms': terms, 'topics': topics}
+
 
 class Histogram2D(CtrlNode):
 
@@ -154,6 +172,9 @@ class Histogram2D(CtrlNode):
 
     def display(self, topics, terms, addr, win, **kwargs):
         return super().display(topics, terms, addr, win, Histogram2DWidget, **kwargs)
+
+    def plotMetadata(self, topics, terms, **kwargs):
+        return {'type': 'Histogram2DWidget', 'terms': terms, 'topics': topics}
 
 
 class ScatterPlot(CtrlNode):
@@ -194,6 +215,9 @@ class ScatterPlot(CtrlNode):
                         **kwargs)]
         return nodes
 
+    def plotMetadata(self, topics, terms, **kwargs):
+        return {'type': 'ScatterWidget', 'terms': terms, 'topics': topics}
+
 
 class ScalarPlot(CtrlNode):
 
@@ -232,6 +256,9 @@ class ScalarPlot(CtrlNode):
 
         return node
 
+    def plotMetadata(self, topics, terms, **kwargs):
+        return {'type': 'WaveformWidget', 'terms': terms, 'topics': topics}
+
 
 class LinePlot(CtrlNode):
 
@@ -258,6 +285,9 @@ class LinePlot(CtrlNode):
         group = self.nextGroupName()
         self.addTerminal(name="X", io='in', ttype=Array1d, group=group, **args)
         self.addTerminal(name="Y", io='in', ttype=Array1d, group=group, **args)
+
+    def plotMetadata(self, topics, terms, **kwargs):
+        return {'type': 'LineWidget', 'terms': terms, 'topics': topics}
 
 
 class TimePlot(CtrlNode):
@@ -294,6 +324,9 @@ class TimePlot(CtrlNode):
                         func=lambda a: zip(*a), **kwargs)]
         return nodes
 
+    def plotMetadata(self, topics, terms, **kwargs):
+        return {'type': 'TimeWidget', 'terms': terms, 'topics': topics}
+
 
 class TableViewer(CtrlNode):
 
@@ -319,3 +352,6 @@ class TableViewer(CtrlNode):
         super().update(*args, **kwargs)
         if self.widget:
             self.widget.set_update_rate(int(self.values['Update Rate']))
+
+    def plotMetadata(self, topics, terms, **kwargs):
+        return {'type': 'ArrayWidget', 'terms': terms, 'topics': topics}
