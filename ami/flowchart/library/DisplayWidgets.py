@@ -699,23 +699,15 @@ class HistogramWidget(PlotWidget):
     def __init__(self, topics=None, terms=None, addr=None, parent=None, **kwargs):
         super().__init__(topics, terms, addr, parent=parent, **kwargs)
         super().useOpenGL(False)
+        self.num_terms = int(len(terms)/2) if terms else 0
 
     def editor(self, node, parent, **kwargs):
         return HistEditor(node=node, parent=parent, **kwargs)
 
     def data_updated(self, data):
-
-        num_terms = int(len(self.terms)/2)
-        for i in range(0, num_terms):
-            x = "Bins"
-            y = "Counts"
-
-            if i > 0:
-                x += f".{i}"
-                y += f".{i}"
-
-            x = self.terms[x]
-            y = self.terms[y]
+        for i in range(0, self.num_terms):
+            x = self.terms[f"Bins.{i}" if i > 0 else "Bins"]
+            y = self.terms[f"Counts.{i}" if i > 0 else "Counts"]
             name = y
 
             x = data[x]
@@ -783,19 +775,12 @@ class ScatterWidget(PlotWidget):
 
     def __init__(self, topics=None, terms=None, addr=None, parent=None, **kwargs):
         super().__init__(topics, terms, addr, parent=parent, **kwargs)
+        self.num_terms = int(len(terms)/2) if terms else 0
 
     def data_updated(self, data):
-        num_terms = int(len(self.terms)/2)
-
-        for i in range(0, num_terms):
-            x = "X"
-            y = "Y"
-            if i > 0:
-                x += ".%d" % i
-                y += ".%d" % i
-
-            x = self.terms[x]
-            y = self.terms[y]
+        for i in range(0, self.num_terms):
+            x = self.terms[f"X.{i}" if i > 0 else "X"]
+            y = self.terms[f"Y.{i}" if i > 0 else "Y"]
             name = " vs ".join((y, x))
 
             x = data[x]
@@ -843,20 +828,12 @@ class LineWidget(PlotWidget):
 
     def __init__(self, topics=None, terms=None, addr=None, parent=None, **kwargs):
         super().__init__(topics, terms, addr, parent=parent, **kwargs)
+        self.num_terms = int(len(terms)/2) if terms else 0
 
     def data_updated(self, data):
-        num_terms = int(len(self.terms)/2)
-
-        for i in range(0, num_terms):
-            x = "X"
-            y = "Y"
-
-            if i > 0:
-                x += ".%d" % i
-                y += ".%d" % i
-
-            x = self.terms[x]
-            y = self.terms[y]
+        for i in range(0, self.num_terms):
+            x = self.terms[f"X.{i}" if i > 0 else "X"]
+            y = self.terms[f"Y.{i}" if i > 0 else "Y"]
             name = " vs ".join((y, x))
 
             if x not in data or y not in data:
