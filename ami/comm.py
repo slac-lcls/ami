@@ -331,6 +331,7 @@ class Store:
         Clears all the entries currently in the store.
         """
         self._store = {}
+        self._plots = {}
 
 
 class ZmqHandler:

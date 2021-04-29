@@ -2,9 +2,10 @@
 import sys
 import argparse
 import asyncio
-import tornado.ioloop
 import logging
+import pickle
 import zmq
+import tornado.ioloop
 import numpy as np
 import panel as pn
 import holoviews as hv
@@ -18,6 +19,12 @@ from ami.data import Deserializer
 logger = logging.getLogger(__name__)
 pn.extension()
 hv.extension('bokeh')
+
+options = {'axiswise': True, 'framewise': True, 'shared_axes': False, 'show_grid': True, 'tools': ['hover']}
+hv.opts.defaults(hv.opts.Curve(**options),
+                 hv.opts.Scatter(**options),
+                 hv.opts.Image(**options),
+                 hv.opts.Histogram(**options))
 
 
 class AsyncFetcher(object):
@@ -105,6 +112,7 @@ class PlotWidget():
         self.fetcher = AsyncFetcher(topics, terms, addr)
         self.terms = terms
 
+        self.idx = kwargs.get('idx', (0, 0))
         self.pipes = {}
         self._plot = None
 
@@ -131,7 +139,7 @@ class ScalarWidget(PlotWidget):
     def __init__(self, topics=None, terms=None, addr=None, **kwargs):
         super().__init__(topics, terms, addr, **kwargs)
         label = kwargs.get('name', '')
-        self._plot = pn.Row(pn.widgets.StaticText(value=label), pn.widgets.StaticText())
+        self._plot = pn.Row(pn.widgets.StaticText(value=f"<b>{label}:</b>"), pn.widgets.StaticText())
 
     def data_updated(self, data):
         for term, name in self.terms.items():
@@ -153,12 +161,20 @@ class ImageWidget(PlotWidget):
     def __init__(self, topics=None, terms=None, addr=None, **kwargs):
         super().__init__(topics, terms, addr, **kwargs)
         label = kwargs.get('name', '')
-        self._plot = hv.DynamicMap(lambda data: hv.Image(data, label=label),
-                                   streams=list(self.pipes.values()))
+        self._plot = hv.DynamicMap(self.trace(label),
+                                   streams=list(self.pipes.values())).hist().opts(toolbar='right')
 
     def data_updated(self, data):
         for term, name in self.terms.items():
             self.pipes[name].send(data[name])
+
+    def trace(self, label):
+        def func(data):
+            x1, y1 = getattr(data, 'shape', (0, 0))
+            img = hv.Image(data, label=label, bounds=(0, 0, x1, y1)).opts(colorbar=True)
+            return img
+
+        return func
 
 
 class HistogramWidget(PlotWidget):
@@ -176,10 +192,7 @@ class HistogramWidget(PlotWidget):
             plots.append(hv.DynamicMap(lambda data: hv.Histogram(data, label=label),
                                        streams=[self.pipes[y]]))
 
-        if len(plots) > 1:
-            self._plot = hv.Overlay(plots).collate()
-        else:
-            self._plot = plots[0]
+        self._plot = hv.Overlay(plots).collate() if len(plots) > 1 else plots[0]
 
     def data_updated(self, data):
         for i in range(0, self.num_terms):
@@ -193,21 +206,26 @@ class HistogramWidget(PlotWidget):
             self.pipes[name].send((x, y))
 
 
-class Histogram2DWidget(ImageWidget):
+class Histogram2DWidget(PlotWidget):
 
     def __init__(self, topics=None, terms=None, addr=None, **kwargs):
-        super().__init__(topics, terms, addr, **kwargs)
-        self._plot = hv.DynamicMap(hv.Curve, streams=list(self.pipes.values()))
+        super().__init__(topics, terms, addr, pipes=False, **kwargs)
+        label = kwargs.get('name', '')
+        self.pipes['Counts'] = hv.streams.Pipe(data=[])
+        self._plot = hv.DynamicMap(lambda data: hv.Image(data, label=label).opts(colorbar=True),
+                                   streams=list(self.pipes.values())).hist().opts(toolbar='right')
 
     def data_updated(self, data):
-        for term, name in self.terms.items():
-            self.pipes[name].send((np.arange(0, len(data[name])), data[name]))
+        xbins = data[self.terms['XBins']]
+        ybins = data[self.terms['YBins']]
+        counts = data[self.terms['Counts']]
+        self.pipes['Counts'].send((xbins, ybins, counts.transpose()))
 
 
 class ScatterWidget(PlotWidget):
 
     def __init__(self, topics=None, terms=None, addr=None, **kwargs):
-        super().__init__(topics, terms, addr, **kwargs)
+        super().__init__(topics, terms, addr, pipes=False, **kwargs)
         self.num_terms = int(len(terms)/2) if terms else 0
 
         title = kwargs.get('name', '')
@@ -221,10 +239,7 @@ class ScatterWidget(PlotWidget):
             plots.append(hv.DynamicMap(lambda data: hv.Scatter(data, label=name).opts(title=title),
                                        streams=[self.pipes[name]]))
 
-        if len(plots) > 1:
-            self._plot = hv.Overlay(plots).collate()
-        else:
-            self._plot = plots[0]
+        self._plot = hv.Overlay(plots).collate() if len(plots) > 1 else plots[0]
 
     def data_updated(self, data):
         for i in range(0, self.num_terms):
@@ -249,10 +264,8 @@ class WaveformWidget(PlotWidget):
         for term, name in terms.items():
             plots.append(hv.DynamicMap(lambda data: hv.Curve(data, label=name).opts(title=title),
                                        streams=[self.pipes[name]]))
-        if len(plots) > 1:
-            self._plot = hv.Overlay(plots).collate()
-        else:
-            self._plot = plots[0]
+
+        self._plot = hv.Overlay(plots).collate() if len(plots) > 1 else plots[0]
 
     def data_updated(self, data):
         for term, name in self.terms.items():
@@ -276,10 +289,7 @@ class LineWidget(PlotWidget):
             plots.append(hv.DynamicMap(lambda data: hv.Curve(data, label=name).opts(title=title),
                                        streams=[self.pipes[name]]))
 
-        if len(plots) > 1:
-            self._plot = hv.Overlay(plots).collate()
-        else:
-            self._plot = hv.DynamicMap(hv.Curve, streams=list(self.pipes.values()))
+        self._plot = hv.Overlay(plots).collate() if len(plots) > 1 else plots[0]
 
     def data_updated(self, data):
         for i in range(0, self.num_terms):
@@ -313,18 +323,22 @@ class Monitor():
         self.export.setsockopt_string(zmq.SUBSCRIBE, "")
         self.export.connect(self.graphmgr_addr.comm)
 
-        self.plot_metadata = None
+        self.lock = asyncio.Lock()
+        self.plot_metadata = {}
         self.plots = {}
         self.tasks = {}
 
-        self.enabled_plots = pn.widgets.CheckBoxGroup(name='Plots', options=[], width=100)
+        self.layout_row = pn.Row()
+
+        self.enabled_plots = pn.widgets.CheckBoxGroup(name='Plots', options=[])
         self.enabled_plots.param.watch(self.plot_checked, 'value')
+        self.layout_row.append(self.enabled_plots)
 
         self.layout = pn.GridSpec(sizing_mode='stretch_both')
-        self.layout[:, 0] = self.enabled_plots
+        self.layout_row.append(self.layout)
 
-        self.row = 1
-        self.col = 1
+        self.row = 0
+        self.col = 0
 
     def __enter__(self):
         return self
@@ -345,42 +359,57 @@ class Monitor():
         asyncio.create_task(self.monitor_tasks())
 
     async def start_server(self, loop):
-        self.server = pn.serve(self.layout, loop=loop)
+        self.server = pn.serve(self.layout_row, loop=loop)
 
     async def monitor_tasks(self):
         while True:
-            for name, task in self.tasks.items():
-                await task
+            async with self.lock:
+                cancelled_tasks = set()
+                for name, task in self.tasks.items():
+                    try:
+                        raise task.exception()
+                    except asyncio.CancelledError:
+                        cancelled_tasks.add(name)
+                    except pickle.UnpicklingError:
+                        continue
+                    except asyncio.InvalidStateError:
+                        continue
+
+                for name in cancelled_tasks:
+                    self.tasks.pop(name, None)
+
             await asyncio.sleep(1)
 
-    def plot_checked(self, event):
-        names = event.new
+    async def plot_checked(self, event):
+        async with self.lock:
+            names = event.new
 
-        for name in names:
-            metadata = self.plot_metadata[name]
+            for name in names:
+                metadata = self.plot_metadata[name]
 
-            if name in self.plots:
-                widget = self.plots[name]
+                if name in self.plots:
+                    widget = self.plots[name]
+                    self.tasks[name] = asyncio.create_task(widget.update())
+                    continue
+
+                if metadata['type'] not in globals():
+                    print("UNSUPPORTED PLOT TYPE:", metadata['type'])
+                    continue
+
+                widget = globals()[metadata['type']]
+                widget = widget(topics=metadata['topics'], terms=metadata['terms'],
+                                addr=self.graphmgr_addr, name=name, idx=(self.row, self.col))
+                self.plots[name] = widget
+                self.layout[self.row, self.col] = widget.plot
+                self.col = (self.col + 1) % 3
+                self.row = self.row + 1 if self.col == 0 else self.row
                 self.tasks[name] = asyncio.create_task(widget.update())
-                continue
 
-            if metadata['type'] not in globals():
-                print("UNSUPPORTED PLOT TYPE:", metadata['type'])
-                continue
+            names = event.old
 
-            widget = globals()[metadata['type']]
-            widget = widget(topics=metadata['topics'], terms=metadata['terms'],
-                            addr=self.graphmgr_addr, name=name)
-            self.plots[name] = widget
-            self.layout[self.row, self.col] = widget.plot
-            self.col = (self.col + 1) % 4
-            self.row = self.row + 1 if self.col == 0 else self.row
-            self.tasks[name] = asyncio.create_task(widget.update())
-
-        names = event.old
-
-        for name in names:
-            self.tasks[name].cancel()
+            for name in names:
+                if name in self.tasks:
+                    self.tasks[name].cancel()
 
     async def process_msg(self):
         while True:
@@ -392,12 +421,25 @@ class Monitor():
                 continue
 
             if topic == 'store':
-                self.plot_metadata = exports['plots']
+                async with self.lock:
+                    plots = exports['plots']
+                    new_plots = set(plots.keys()).difference(self.plot_metadata.keys())
+                    for name in new_plots:
+                        self.plot_metadata[name] = plots[name]
 
-                if not self.plot_metadata:
-                    continue
+                    removed_plots = set(self.plot_metadata.keys()).difference(plots.keys())
+                    for name in removed_plots:
+                        self.plot_metadata.pop(name, None)
+                        task = self.tasks.get(name, None)
+                        if task and not task.cancelled():
+                            task.cancel()
+                        widget = self.plots.pop(name, None)
+                        if widget:
+                            row, col = widget.idx
+                            del self.layout[row, col]
+                            widget.close()
 
-                self.enabled_plots.options = list(self.plot_metadata.keys())
+                    self.enabled_plots.options = list(self.plot_metadata.keys())
 
 
 def run_monitor(graph_name, export_addr, view_addr):
