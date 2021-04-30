@@ -333,7 +333,8 @@ class Monitor():
         self.tasks = {}
 
         logo = 'https://www6.slac.stanford.edu/sites/www6.slac.stanford.edu/files/SLAC_LogoSD_W.png'
-        self.template = pn.template.ReactTemplate(title='AMI', header_background='#8c1515', logo=logo)
+        self.template = pn.template.ReactTemplate(title='AMI', header_background='#8c1515',
+                                                  logo=logo)
 
         self.enabled_plots = pn.widgets.CheckBoxGroup(name='Plots', options=[])
         self.enabled_plots.param.watch(self.plot_checked, 'value')
@@ -351,9 +352,6 @@ class Monitor():
                 col = pn.Column()
                 self.layout_widgets[(r, c)] = col
                 self.layout[r:r+row_step, c:c+col_step] = col
-
-        self.row = 0
-        self.col = 0
 
     def __enter__(self):
         return self
@@ -409,16 +407,20 @@ class Monitor():
                     print("UNSUPPORTED PLOT TYPE:", metadata['type'])
                     continue
 
-                widget = globals()[metadata['type']]
-                widget = widget(topics=metadata['topics'], terms=metadata['terms'],
-                                addr=self.graphmgr_addr, name=name, idx=(self.row, self.col), ctx=self.ctx)
-                self.plots[name] = widget
-                col = self.layout_widgets[(self.row, self.col)]
-                col.append(pn.Card(widget.plot, title=name, min_height=300, min_width=300))
-                self.latency_lbls.append(widget.latency)
-                self.col = (self.col + col_step) % 12
-                self.row = (self.row + row_step) if self.col == 0 else self.row
-                self.tasks[name] = asyncio.create_task(widget.update())
+                row, col = (0, 0)
+                for key, column in self.layout_widgets.items():
+                    if len(column) != 0:
+                        continue
+
+                    row, col = key
+                    widget = globals()[metadata['type']]
+                    widget = widget(topics=metadata['topics'], terms=metadata['terms'],
+                                    addr=self.graphmgr_addr, name=name, idx=(row, col), ctx=self.ctx)
+                    self.plots[name] = widget
+                    column.append(pn.Card(widget.plot, title=name, min_height=300, min_width=300))
+                    self.latency_lbls.append(widget.latency)
+                    self.tasks[name] = asyncio.create_task(widget.update())
+                    break
 
             removed_plots = set(self.plots.keys()).difference(names)
             for name in removed_plots:
@@ -431,9 +433,8 @@ class Monitor():
         widget = self.plots.pop(name, None)
         if widget:
             row, col = widget.idx
-            del self.layout[row, col]
-            self.layout_widgets[(row, col)].clear()
             self.latency_lbls.remove(widget.latency)
+            self.layout_widgets[(row, col)].clear()
             widget.close()
 
     async def process_msg(self):
