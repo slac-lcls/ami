@@ -6,6 +6,7 @@ import logging
 import pickle
 import zmq
 import tornado.ioloop
+import datetime as dt
 import numpy as np
 import panel as pn
 import holoviews as hv
@@ -19,12 +20,16 @@ from ami.data import Deserializer
 logger = logging.getLogger(__name__)
 pn.extension()
 hv.extension('bokeh')
+pn.config.sizing_mode = 'scale_both'
 
-options = {'axiswise': True, 'framewise': True, 'shared_axes': False, 'show_grid': True, 'tools': ['hover']}
+options = {'axiswise': True, 'framewise': True, 'shared_axes': False, 'show_grid': True, 'tools': ['hover'],
+           'responsive': True, 'min_height': 200, 'min_width': 200}
 hv.opts.defaults(hv.opts.Curve(**options),
                  hv.opts.Scatter(**options),
                  hv.opts.Image(**options),
                  hv.opts.Histogram(**options))
+row_step = 3
+col_step = 4
 
 
 class AsyncFetcher(object):
@@ -36,17 +41,17 @@ class AsyncFetcher(object):
         self.sockets = {}
         self.data = {}
         self.timestamps = {}
+        self.heartbeats = set()
+        self.last_updated = ""
         self.deserializer = Deserializer()
         self.update_topics(topics, terms)
 
     @property
     def reply(self):
-        heartbeats = set(self.timestamps.values())
+        self.heartbeats = set(self.timestamps.values())
         res = {}
 
-        if self.data.keys() == self.subs and len(heartbeats) == 1:
-            heartbeats.pop()
-
+        if self.data.keys() == self.subs and len(self.heartbeats) == 1:
             for name, topic in self.topics.items():
                 res[name] = self.data[topic]
 
@@ -125,6 +130,11 @@ class PlotWidget():
             await self.fetcher.fetch()
             if self.fetcher.reply:
                 self.data_updated(self.fetcher.reply)
+                heartbeat = self.fetcher.heartbeats.pop()
+                now = dt.datetime.now()
+                hbts = dt.datetime.fromtimestamp(heartbeat.timestamp).strftime("%F %T.%f")
+                latency = dt.datetime.now() - dt.datetime.fromtimestamp(heartbeat.timestamp)
+                self.last_updated = f"Last Updated: {now} HB: {hbts} Latency: {latency}"
 
     def close(self):
         self.fetcher.close()
@@ -227,8 +237,6 @@ class ScatterWidget(PlotWidget):
     def __init__(self, topics=None, terms=None, addr=None, **kwargs):
         super().__init__(topics, terms, addr, pipes=False, **kwargs)
         self.num_terms = int(len(terms)/2) if terms else 0
-
-        title = kwargs.get('name', '')
         plots = []
 
         for i in range(0, self.num_terms):
@@ -236,7 +244,7 @@ class ScatterWidget(PlotWidget):
             y = self.terms[f"Y.{i}" if i > 0 else "Y"]
             name = " vs ".join((y, x))
             self.pipes[name] = hv.streams.Pipe(data=[])
-            plots.append(hv.DynamicMap(lambda data: hv.Scatter(data, label=name).opts(title=title),
+            plots.append(hv.DynamicMap(lambda data: hv.Scatter(data, label=name),
                                        streams=[self.pipes[name]]))
 
         self._plot = hv.Overlay(plots).collate() if len(plots) > 1 else plots[0]
@@ -257,12 +265,10 @@ class WaveformWidget(PlotWidget):
 
     def __init__(self, topics=None, terms=None, addr=None, **kwargs):
         super().__init__(topics, terms, addr, **kwargs)
-
-        title = kwargs.get('name', '')
         plots = []
 
         for term, name in terms.items():
-            plots.append(hv.DynamicMap(lambda data: hv.Curve(data, label=name).opts(title=title),
+            plots.append(hv.DynamicMap(lambda data: hv.Curve(data, label=name),
                                        streams=[self.pipes[name]]))
 
         self._plot = hv.Overlay(plots).collate() if len(plots) > 1 else plots[0]
@@ -277,8 +283,6 @@ class LineWidget(PlotWidget):
     def __init__(self, topics=None, terms=None, addr=None, **kwargs):
         super().__init__(topics, terms, addr, pipes=False, **kwargs)
         self.num_terms = int(len(terms)/2) if terms else 0
-
-        title = kwargs.get('name', '')
         plots = []
 
         for i in range(0, self.num_terms):
@@ -286,7 +290,7 @@ class LineWidget(PlotWidget):
             y = self.terms[f"Y.{i}" if i > 0 else "Y"]
             name = " vs ".join((y, x))
             self.pipes[name] = hv.streams.Pipe(data=[])
-            plots.append(hv.DynamicMap(lambda data: hv.Curve(data, label=name).opts(title=title),
+            plots.append(hv.DynamicMap(lambda data: hv.Curve(data, label=name),
                                        streams=[self.pipes[name]]))
 
         self._plot = hv.Overlay(plots).collate() if len(plots) > 1 else plots[0]
@@ -328,14 +332,21 @@ class Monitor():
         self.plots = {}
         self.tasks = {}
 
-        self.layout_row = pn.Row()
+        logo = 'https://www6.slac.stanford.edu/sites/www6.slac.stanford.edu/files/SLAC_LogoSD_W.png'
+        self.template = pn.template.ReactTemplate(title='AMI', header_background='#8c1515', logo=logo)
 
         self.enabled_plots = pn.widgets.CheckBoxGroup(name='Plots', options=[])
         self.enabled_plots.param.watch(self.plot_checked, 'value')
-        self.layout_row.append(self.enabled_plots)
+        self.box = pn.Card(self.enabled_plots, title='Plots')
+        self.template.sidebar.append(self.box)
 
-        self.layout = pn.GridSpec(sizing_mode='stretch_both')
-        self.layout_row.append(self.layout)
+        self.layout_widgets = {}
+        self.layout = self.template.main
+        for r in range(0, 12, row_step):
+            for c in range(0, 12, col_step):
+                col = pn.Column()
+                self.layout_widgets[(r, c)] = col
+                self.layout[r:r+row_step, c:c+col_step] = col
 
         self.row = 0
         self.col = 0
@@ -359,7 +370,7 @@ class Monitor():
         asyncio.create_task(self.monitor_tasks())
 
     async def start_server(self, loop):
-        self.server = pn.serve(self.layout_row, loop=loop)
+        self.server = pn.serve(self.template, loop=loop)
 
     async def monitor_tasks(self):
         while True:
@@ -382,14 +393,12 @@ class Monitor():
 
     async def plot_checked(self, event):
         async with self.lock:
-            names = event.new
+            names = self.enabled_plots.value
 
             for name in names:
                 metadata = self.plot_metadata[name]
 
                 if name in self.plots:
-                    widget = self.plots[name]
-                    self.tasks[name] = asyncio.create_task(widget.update())
                     continue
 
                 if metadata['type'] not in globals():
@@ -400,16 +409,26 @@ class Monitor():
                 widget = widget(topics=metadata['topics'], terms=metadata['terms'],
                                 addr=self.graphmgr_addr, name=name, idx=(self.row, self.col))
                 self.plots[name] = widget
-                self.layout[self.row, self.col] = widget.plot
-                self.col = (self.col + 1) % 3
-                self.row = self.row + 1 if self.col == 0 else self.row
+                col = self.layout_widgets[(self.row, self.col)]
+                col.append(pn.Card(widget.plot, title=name))
+                self.col = (self.col + col_step) % 12
+                self.row = (self.row + row_step) if self.col == 0 else self.row
                 self.tasks[name] = asyncio.create_task(widget.update())
 
-            names = event.old
+            removed_plots = set(self.plots.keys()).difference(names)
+            for name in removed_plots:
+                self.remove_plot(name)
 
-            for name in names:
-                if name in self.tasks:
-                    self.tasks[name].cancel()
+    def remove_plot(self, name):
+        task = self.tasks.get(name, None)
+        if task and not task.cancelled():
+            task.cancel()
+        widget = self.plots.pop(name, None)
+        if widget:
+            row, col = widget.idx
+            del self.layout[row, col]
+            self.layout_widgets[(row, col)].clear()
+            widget.close()
 
     async def process_msg(self):
         while True:
@@ -430,16 +449,9 @@ class Monitor():
                     removed_plots = set(self.plot_metadata.keys()).difference(plots.keys())
                     for name in removed_plots:
                         self.plot_metadata.pop(name, None)
-                        task = self.tasks.get(name, None)
-                        if task and not task.cancelled():
-                            task.cancel()
-                        widget = self.plots.pop(name, None)
-                        if widget:
-                            row, col = widget.idx
-                            del self.layout[row, col]
-                            widget.close()
+                        self.remove_plot(name)
 
-                    self.enabled_plots.options = list(self.plot_metadata.keys())
+                    self.enabled_plots.options = sorted(list(self.plot_metadata.keys()))
 
 
 def run_monitor(graph_name, export_addr, view_addr):
