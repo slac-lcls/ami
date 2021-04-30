@@ -117,9 +117,11 @@ class PlotWidget():
         self.fetcher = AsyncFetcher(topics, terms, addr)
         self.terms = terms
 
+        self.name = kwargs.get('name', '')
         self.idx = kwargs.get('idx', (0, 0))
         self.pipes = {}
         self._plot = None
+        self._latency_lbl = pn.widgets.StaticText()
 
         if kwargs.get('pipes', True):
             for term, name in terms.items():
@@ -134,7 +136,8 @@ class PlotWidget():
                 now = dt.datetime.now()
                 hbts = dt.datetime.fromtimestamp(heartbeat.timestamp).strftime("%F %T.%f")
                 latency = dt.datetime.now() - dt.datetime.fromtimestamp(heartbeat.timestamp)
-                self.last_updated = f"Last Updated: {now} HB: {hbts} Latency: {latency}"
+                last_updated = f"<br/><b>{self.name} Last Updated: {now}<br/>HB: {hbts}<br/>Latency: {latency}</b>"
+                self._latency_lbl.value = last_updated
 
     def close(self):
         self.fetcher.close()
@@ -143,13 +146,16 @@ class PlotWidget():
     def plot(self):
         return self._plot
 
+    @property
+    def latency(self):
+        return self._latency_lbl
+
 
 class ScalarWidget(PlotWidget):
 
     def __init__(self, topics=None, terms=None, addr=None, **kwargs):
         super().__init__(topics, terms, addr, **kwargs)
-        label = kwargs.get('name', '')
-        self._plot = pn.Row(pn.widgets.StaticText(value=f"<b>{label}:</b>"), pn.widgets.StaticText())
+        self._plot = pn.Row(pn.widgets.StaticText(value=f"<b>{self.name}:</b>"), pn.widgets.StaticText())
 
     def data_updated(self, data):
         for term, name in self.terms.items():
@@ -170,18 +176,17 @@ class ImageWidget(PlotWidget):
 
     def __init__(self, topics=None, terms=None, addr=None, **kwargs):
         super().__init__(topics, terms, addr, **kwargs)
-        label = kwargs.get('name', '')
-        self._plot = hv.DynamicMap(self.trace(label),
+        self._plot = hv.DynamicMap(self.trace(),
                                    streams=list(self.pipes.values())).hist().opts(toolbar='right')
 
     def data_updated(self, data):
         for term, name in self.terms.items():
             self.pipes[name].send(data[name])
 
-    def trace(self, label):
+    def trace(self):
         def func(data):
             x1, y1 = getattr(data, 'shape', (0, 0))
-            img = hv.Image(data, label=label, bounds=(0, 0, x1, y1)).opts(colorbar=True)
+            img = hv.Image(data, bounds=(0, 0, x1, y1)).opts(colorbar=True)
             return img
 
         return func
@@ -192,14 +197,12 @@ class HistogramWidget(PlotWidget):
     def __init__(self, topics=None, terms=None, addr=None, **kwargs):
         super().__init__(topics, terms, addr, pipes=False, **kwargs)
         self.num_terms = int(len(terms)/2) if terms else 0
-
-        label = kwargs.get('name', '')
         plots = []
 
         for i in range(0, self.num_terms):
             y = self.terms[f"Counts.{i}" if i > 0 else "Counts"]
             self.pipes[y] = hv.streams.Pipe(data=[])
-            plots.append(hv.DynamicMap(lambda data: hv.Histogram(data, label=label),
+            plots.append(hv.DynamicMap(lambda data: hv.Histogram(data),
                                        streams=[self.pipes[y]]))
 
         self._plot = hv.Overlay(plots).collate() if len(plots) > 1 else plots[0]
@@ -220,9 +223,8 @@ class Histogram2DWidget(PlotWidget):
 
     def __init__(self, topics=None, terms=None, addr=None, **kwargs):
         super().__init__(topics, terms, addr, pipes=False, **kwargs)
-        label = kwargs.get('name', '')
         self.pipes['Counts'] = hv.streams.Pipe(data=[])
-        self._plot = hv.DynamicMap(lambda data: hv.Image(data, label=label).opts(colorbar=True),
+        self._plot = hv.DynamicMap(lambda data: hv.Image(data).opts(colorbar=True),
                                    streams=list(self.pipes.values())).hist().opts(toolbar='right')
 
     def data_updated(self, data):
@@ -338,7 +340,9 @@ class Monitor():
         self.enabled_plots = pn.widgets.CheckBoxGroup(name='Plots', options=[])
         self.enabled_plots.param.watch(self.plot_checked, 'value')
         self.box = pn.Card(self.enabled_plots, title='Plots')
+        self.latency_lbls = pn.Column()
         self.template.sidebar.append(self.box)
+        self.template.sidebar.append(self.latency_lbls)
 
         self.layout_widgets = {}
         self.layout = self.template.main
@@ -411,6 +415,7 @@ class Monitor():
                 self.plots[name] = widget
                 col = self.layout_widgets[(self.row, self.col)]
                 col.append(pn.Card(widget.plot, title=name))
+                self.latency_lbls.append(widget.latency)
                 self.col = (self.col + col_step) % 12
                 self.row = (self.row + row_step) if self.col == 0 else self.row
                 self.tasks[name] = asyncio.create_task(widget.update())
@@ -428,6 +433,7 @@ class Monitor():
             row, col = widget.idx
             del self.layout[row, col]
             self.layout_widgets[(row, col)].clear()
+            self.latency_lbls.remove(widget.latency)
             widget.close()
 
     async def process_msg(self):
