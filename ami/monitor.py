@@ -34,9 +34,9 @@ col_step = 4
 
 class AsyncFetcher(object):
 
-    def __init__(self, topics, terms, addr):
+    def __init__(self, topics, terms, addr, ctx):
         self.addr = addr
-        self.ctx = zmq.asyncio.Context()
+        self.ctx = ctx
         self.poller = zmq.asyncio.Poller()
         self.sockets = {}
         self.data = {}
@@ -108,13 +108,11 @@ class AsyncFetcher(object):
             self.poller.unregister(sock)
             sock.close()
 
-        self.ctx.destroy()
-
 
 class PlotWidget():
 
-    def __init__(self, topics=None, terms=None, addr=None, **kwargs):
-        self.fetcher = AsyncFetcher(topics, terms, addr)
+    def __init__(self, topics=None, terms=None, addr=None, ctx=None, **kwargs):
+        self.fetcher = AsyncFetcher(topics, terms, addr, ctx)
         self.terms = terms
 
         self.name = kwargs.get('name', '')
@@ -136,7 +134,7 @@ class PlotWidget():
                 now = dt.datetime.now()
                 hbts = dt.datetime.fromtimestamp(heartbeat.timestamp).strftime("%F %T.%f")
                 latency = dt.datetime.now() - dt.datetime.fromtimestamp(heartbeat.timestamp)
-                last_updated = f"<br/><b>{self.name} Last Updated: {now}<br/>HB: {hbts}<br/>Latency: {latency}</b>"
+                last_updated = f"<b>{self.name} Last Updated:<br/>{now}<br/>HB: {hbts}<br/>Latency: {latency}</b>"
                 self._latency_lbl.value = last_updated
 
     def close(self):
@@ -246,7 +244,7 @@ class ScatterWidget(PlotWidget):
             y = self.terms[f"Y.{i}" if i > 0 else "Y"]
             name = " vs ".join((y, x))
             self.pipes[name] = hv.streams.Pipe(data=[])
-            plots.append(hv.DynamicMap(lambda data: hv.Scatter(data, label=name),
+            plots.append(hv.DynamicMap(lambda data: hv.Scatter(data, label=name).opts(framewise=True),
                                        streams=[self.pipes[name]]))
 
         self._plot = hv.Overlay(plots).collate() if len(plots) > 1 else plots[0]
@@ -270,7 +268,7 @@ class WaveformWidget(PlotWidget):
         plots = []
 
         for term, name in terms.items():
-            plots.append(hv.DynamicMap(lambda data: hv.Curve(data, label=name),
+            plots.append(hv.DynamicMap(lambda data: hv.Curve(data, label=name).opts(framewise=True),
                                        streams=[self.pipes[name]]))
 
         self._plot = hv.Overlay(plots).collate() if len(plots) > 1 else plots[0]
@@ -292,7 +290,7 @@ class LineWidget(PlotWidget):
             y = self.terms[f"Y.{i}" if i > 0 else "Y"]
             name = " vs ".join((y, x))
             self.pipes[name] = hv.streams.Pipe(data=[])
-            plots.append(hv.DynamicMap(lambda data: hv.Curve(data, label=name),
+            plots.append(hv.DynamicMap(lambda data: hv.Curve(data, label=name).opts(framewise=True),
                                        streams=[self.pipes[name]]))
 
         self._plot = hv.Overlay(plots).collate() if len(plots) > 1 else plots[0]
@@ -339,10 +337,12 @@ class Monitor():
 
         self.enabled_plots = pn.widgets.CheckBoxGroup(name='Plots', options=[])
         self.enabled_plots.param.watch(self.plot_checked, 'value')
-        self.box = pn.Card(self.enabled_plots, title='Plots')
         self.latency_lbls = pn.Column()
-        self.template.sidebar.append(self.box)
-        self.template.sidebar.append(self.latency_lbls)
+        self.tab = pn.Tabs(('Plots', self.enabled_plots),
+                           ('Latency', self.latency_lbls),
+                           dynamic=True)
+        self.sidebar_col = pn.Column(self.tab)
+        self.template.sidebar.append(self.sidebar_col)
 
         self.layout_widgets = {}
         self.layout = self.template.main
@@ -374,7 +374,7 @@ class Monitor():
         asyncio.create_task(self.monitor_tasks())
 
     async def start_server(self, loop):
-        self.server = pn.serve(self.template, loop=loop)
+        self.server = pn.serve(self.template, loop=loop, title="AMI")
 
     async def monitor_tasks(self):
         while True:
@@ -411,10 +411,10 @@ class Monitor():
 
                 widget = globals()[metadata['type']]
                 widget = widget(topics=metadata['topics'], terms=metadata['terms'],
-                                addr=self.graphmgr_addr, name=name, idx=(self.row, self.col))
+                                addr=self.graphmgr_addr, name=name, idx=(self.row, self.col), ctx=self.ctx)
                 self.plots[name] = widget
                 col = self.layout_widgets[(self.row, self.col)]
-                col.append(pn.Card(widget.plot, title=name))
+                col.append(pn.Card(widget.plot, title=name, min_height=300, min_width=300))
                 self.latency_lbls.append(widget.latency)
                 self.col = (self.col + col_step) % 12
                 self.row = (self.row + row_step) if self.col == 0 else self.row
@@ -457,7 +457,7 @@ class Monitor():
                         self.plot_metadata.pop(name, None)
                         self.remove_plot(name)
 
-                    self.enabled_plots.options = sorted(list(self.plot_metadata.keys()))
+                    self.enabled_plots.options = list(self.plot_metadata.keys())
 
 
 def run_monitor(graph_name, export_addr, view_addr):
