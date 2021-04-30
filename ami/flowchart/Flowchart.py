@@ -857,6 +857,7 @@ class FlowchartCtrlWidget(QtGui.QWidget):
         self.setCurrentFile(None)
         self.chart.sigFileLoaded.emit('')
         self.features = Features(self.graphCommHandler)
+        await self.graphCommHandler.updatePlots(self.features.plots)
 
     def configureClicked(self):
         self.sourceConfigure.show()
