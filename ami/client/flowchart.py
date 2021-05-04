@@ -45,7 +45,10 @@ def run_editor_window(broker_addr, graphmgr_addr, checkpoint_addr, load=None, pr
 
     # Create main window with grid layout
     win = QtGui.QMainWindow()
-    win.setWindowTitle('AMI Client')
+    title = 'AMI Client'
+    if hutch:
+        title += f' hutch: {hutch}'
+    win.setWindowTitle(title)
 
     # Create flowchart, define input/output terminals
     fc = Flowchart(broker_addr=broker_addr,
@@ -56,10 +59,13 @@ def run_editor_window(broker_addr, graphmgr_addr, checkpoint_addr, load=None, pr
     fc.start_prometheus()
 
     def update_title(filename):
+        title = 'AMI Client'
+        if hutch:
+            title += f' hutch: {hutch}'
         if filename:
-            win.setWindowTitle('AMI Client - ' + filename.split('/')[-1])
-        else:
-            win.setWindowTitle('AMI Client')
+            title += ' - ' + filename.split('/')[-1]
+
+        win.setWindowTitle(title)
 
     fc.sigFileLoaded.connect(update_title)
     fc.sigFileSaved.connect(update_title)
@@ -117,7 +123,7 @@ class NodeWindow(QtGui.QMainWindow):
 class NodeProcess(QtCore.QObject):
 
     def __init__(self, msg, broker_addr="", graphmgr_addr="", checkpoint_addr="", loop=None,
-                 library_paths=None):
+                 library_paths=None, hutch=''):
         super().__init__()
 
         if loop is None:
@@ -162,7 +168,10 @@ class NodeProcess(QtCore.QObject):
         self.ctrlWidget = self.node.ctrlWidget(self.win)
         self.widget = None
 
-        self.win.setWindowTitle(msg.name)
+        title = msg.name
+        if hutch:
+            title += f' hutch: {hutch}'
+        self.win.setWindowTitle(title)
 
         with loop:
             loop.run_until_complete(self.process())
@@ -238,7 +247,7 @@ class NodeProcess(QtCore.QObject):
 
 class MessageBroker(object):
 
-    def __init__(self, graphmgr_addr, load, ipcdir=None, prometheus_dir=None, hutch=None):
+    def __init__(self, graphmgr_addr, load, ipcdir=None, prometheus_dir=None, hutch=""):
 
         if ipcdir is None:
             ipcdir = tempfile.mkdtemp()
@@ -277,8 +286,6 @@ class MessageBroker(object):
 
         self.prometheus_dir = prometheus_dir
         self.hutch = hutch
-
-        # self.profiler = None
 
     def __enter__(self):
         return self
@@ -402,7 +409,7 @@ class MessageBroker(object):
                     target=NodeProcess,
                     name=msg.name,
                     args=(msg, self.broker_pub_addr, self.graphmgr_addr, self.checkpoint_sub_addr),
-                    kwargs={'library_paths': self.library_paths},
+                    kwargs={'library_paths': self.library_paths, 'hutch': self.hutch},
                     daemon=True
                 )
                 proc.start()

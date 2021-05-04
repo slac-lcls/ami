@@ -17,7 +17,7 @@ GraphMgrAddress = collections.namedtuple('GraphMgrAddress', ['name', 'comm', 'vi
 
 
 def run_client(graph_name, comm_addr, info_addr, view_addr, load,
-               use_legacy=True, prometheus_dir=None, hutch=None, use_opengl=False):
+               use_legacy=True, prometheus_dir=None, hutch='', use_opengl=False):
     graphmgr_addr = GraphMgrAddress(graph_name, comm_addr, view_addr, info_addr)
     if use_legacy:
         return legacy.run_client(graphmgr_addr, load)
@@ -75,7 +75,7 @@ def main():
     parser.add_argument(
         '--hutch',
         help='hutch for prometheus label',
-        default=None
+        default=''
     )
 
     parser.add_argument(

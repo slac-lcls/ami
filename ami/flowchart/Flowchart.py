@@ -50,7 +50,7 @@ class Flowchart(Node):
 
     def __init__(self, name=None, filePath=None, library=None,
                  broker_addr="", graphmgr_addr="", checkpoint_addr="",
-                 prometheus_dir=None, hutch=None):
+                 prometheus_dir=None, hutch=""):
         super().__init__(name)
         self.socks = []
         self.library = library or LIBRARY
