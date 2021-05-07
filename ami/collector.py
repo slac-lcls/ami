@@ -55,6 +55,13 @@ class GraphCollector(Node, Collector):
             logger.exception("%s: Failure encountered while flushing store", self.name)
             self.report("error", e)
 
+    def complete_step(self, step):
+        try:
+            self.store.complete_step(step)
+        except Exception as e:
+            logger.exception("%s: Failure encountered while completeing step %d", self.name, step)
+            self.report("error", e)
+
     def eb_id(self, identity):
         return identity - (self.node * self.num_workers)
 
@@ -94,6 +101,8 @@ class GraphCollector(Node, Collector):
                     self.flush(True)
                 elif msg.payload.ttype == Transitions.Unconfigure:
                     self.flush(False)
+                elif msg.payload.ttype == Transitions.EndStep:
+                    self.complete_step(msg.payload.payload)
 
             self.event_counter.labels(self.hutch, 'Transition', self.name).inc()
         elif msg.mtype == MsgTypes.Datagram:

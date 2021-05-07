@@ -318,14 +318,17 @@ try:
             self.file = None
             self.mod = None
 
+        def load(self):
+            self.file = tempfile.NamedTemporaryFile(mode='w', suffix='.py')
+            self.file.write(self.text)
+            self.file.flush()
+            spec = importlib.util.spec_from_file_location("module.name", self.file.name)
+            self.mod = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(self.mod)
+
         def __call__(self, *args, **kwargs):
             if self.file is None:
-                self.file = tempfile.NamedTemporaryFile(mode='w', suffix='.py')
-                self.file.write(self.text)
-                self.file.flush()
-                spec = importlib.util.spec_from_file_location("module.name", self.file.name)
-                self.mod = importlib.util.module_from_spec(spec)
-                spec.loader.exec_module(self.mod)
+                self.load()
 
             return self.mod.func(*args, **kwargs)
 
@@ -333,6 +336,13 @@ try:
             if self.file:
                 del self.mod
                 self.file.close()
+
+        def step_finished(self, step):
+            if self.file is None:
+                self.load()
+
+            if hasattr(self.mod, "step_finished"):
+                return self.mod.step_finished(step)
 
     class PythonEditor(CtrlNode):
         """
@@ -360,7 +370,8 @@ try:
             return self.widget
 
         def to_operation(self, **kwargs):
-            return gn.Map(name=self.name()+"_operation", **kwargs, func=PythonEditorProc(self.values['text']))
+            proc = PythonEditorProc(self.values['text'])
+            return gn.Map(name=self.name()+"_operation", **kwargs, func=proc, step_finished=proc.step_finished)
 
     class Filter(CtrlNode):
         """

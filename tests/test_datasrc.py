@@ -192,6 +192,14 @@ def test_psana_source(xtcwriter):
     sources = {k: at.loads(v) for k, v in config.payload.payload.items()}
     assert sources == expected_cfg
 
+    # check the returned step message
+    step = next(evtgen)
+    assert step.mtype == MsgTypes.Transition
+    assert step.identity == idnum
+    assert isinstance(step.payload, Transition)
+    assert step.payload.ttype == Transitions.BeginStep
+    assert step.payload.payload == 0
+
     # request all the sources
     psana_source.request(set(expected_cfg))
 

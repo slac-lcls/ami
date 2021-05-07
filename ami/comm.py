@@ -508,6 +508,10 @@ class GraphBuilder(ContributionBuilder):
         self.latest = Heartbeat(0, 0)
         return size
 
+    def complete_step(self, step):
+        if self.graph:
+            self.graph.step_finished(step, color=self.color)
+
     def set_graph(self, name, ver_key, args, graph):
         self.pending_graphs[ver_key] = (False, "set", name, args, graph)
 
@@ -617,6 +621,10 @@ class EventBuilder(ZmqHandler):
         for name, builder in self.builders.items():
             pruned_heartbeats.append(builder.flush(identity, drop))
         return any(pruned_heartbeats)
+
+    def complete_step(self, step):
+        for name, builder in self.builders.items():
+            builder.complete_step(step)
 
     def set_graph(self, name, ver_key, args, graph):
         if name not in self.builders:

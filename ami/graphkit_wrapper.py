@@ -210,11 +210,18 @@ class Graph():
 
     def heartbeat_finished(self):
         """
-        Execute post heartbeat hook on StatefulTransmation nodes in the graph.
+        Execute post heartbeat hook on StatefulTransformation nodes in the graph.
         """
         nodes = list(filter(lambda node: isinstance(node, gn.StatefulTransformation),
                             self.graph.nodes))
         list(map(lambda node: node.heartbeat_finished(), nodes))
+
+    def step_finished(self, step, color):
+        """
+        Execute post step hook on StatefulTransfomation nodes in the graph.
+        """
+        nodes = list(filter(lambda node: hasattr(node, "step_finished"), self.graph.nodes))
+        list(map(lambda node: node.step_finished(step, color), nodes))
 
     def _color_nodes(self):
         """

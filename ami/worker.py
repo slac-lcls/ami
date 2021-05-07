@@ -265,6 +265,10 @@ class Worker(Node):
                     elif msg.payload.ttype == Transitions.Unconfigure:
                         if self.src.heartbeat is not None:
                             self.collect(self.src.heartbeat)
+                    elif msg.payload.ttype == Transitions.EndStep:
+                        for name, graph in self.graphs.items():
+                            if graph:
+                                graph.step_finished(msg.payload.payload, color=Colors.Worker)
 
                     # forward the transition
                     self.store.send(msg)

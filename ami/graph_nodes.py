@@ -32,6 +32,7 @@ class Transformation(abc.ABC):
         self.func = kwargs['func']
         self.parent = kwargs.get('parent', None)
         self.color = kwargs.get('color', "")
+        self.step_func = kwargs.get('step_finished', lambda step: None)
         self.is_global_operation = False
 
     def __hash__(self):
@@ -57,6 +58,10 @@ class Transformation(abc.ABC):
         """
         return operation(name=self.name, needs=self.inputs, provides=self.outputs, color=self.color,
                          metadata={'parent': self.parent})(self.func)
+
+    def step_finished(self, step, color=""):
+        if color == self.color:
+            return self.step_func(step)
 
 
 class Map(Transformation):

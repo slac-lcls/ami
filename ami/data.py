@@ -586,7 +586,6 @@ class Source(abc.ABC):
 
         Returns:
             An object of type `Message` which includes info on the step.
- 
         """
         return Message(MsgTypes.Transition,
                        self.idnum,
