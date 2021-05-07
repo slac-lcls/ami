@@ -458,6 +458,7 @@ class Monitor():
                         self.plot_metadata.pop(name, None)
                         self.remove_plot(name)
 
+                    logger.info('Received plots: %s', self.plot_metadata.keys())
                     self.enabled_plots.options = list(self.plot_metadata.keys())
 
 
