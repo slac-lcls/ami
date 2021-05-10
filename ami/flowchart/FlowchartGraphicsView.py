@@ -404,7 +404,7 @@ class FlowchartViewBox(ViewBox):
     def restoreState(self, state):
         self.commentId = 0
         for commentState in state['comments']:
-            comment = CommentRect()
+            comment = CommentRect(view=self)
             comment.restoreState(commentState)
             self.addItem(comment)
             self.commentRects[commentState['id']] = comment
