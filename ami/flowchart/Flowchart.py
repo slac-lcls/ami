@@ -14,6 +14,7 @@ from ami.flowchart.library.common import SourceNode, CtrlNode
 from ami.flowchart.Node import Node, NodeGraphicsItem, find_nearest
 from ami.flowchart.NodeLibrary import SourceLibrary
 from ami.flowchart.SourceConfiguration import SourceConfiguration
+from ami.flowchart.TypeEncoder import TypeEncoder
 from ami.comm import AsyncGraphCommHandler, Ports
 from ami.client import flowchart_messages as fcMsgs
 from qtconsole.rich_jupyter_widget import RichJupyterWidget
@@ -467,7 +468,9 @@ class Flowchart(Node):
             fileName += ".fc"
 
         state = self.saveState()
-        state = json.dumps(state, indent=2, separators=(',', ': '), sort_keys=True, cls=amitypes.TypeEncoder)
+        # from ami.forkedpdb import ForkedPdb
+        # ForkedPdb().set_trace()
+        state = json.dumps(state, indent=2, separators=(',', ': '), sort_keys=True, cls=TypeEncoder)
 
         with open(fileName, 'w') as f:
             f.write(state)
@@ -762,7 +765,7 @@ class FlowchartCtrlWidget(QtGui.QWidget):
         self.ui.setPendingClear()
         version = str(await self.graphCommHandler.graphVersion)
         state = self.chart.saveState()
-        state = json.dumps(state, indent=2, separators=(',', ': '), sort_keys=True, cls=amitypes.TypeEncoder)
+        state = json.dumps(state, indent=2, separators=(',', ': '), sort_keys=True, cls=TypeEncoder)
         self.graph_info.labels(self.chart.hutch, self.graph_name).info({'graph': state, 'version': version})
         self.graph_version.labels(self.chart.hutch, self.graph_name).set(version)
 
