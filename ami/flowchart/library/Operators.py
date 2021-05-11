@@ -8,6 +8,23 @@ import itertools
 import collections
 
 
+class Constant(CtrlNode):
+
+    """
+    Constant
+    """
+
+    nodeName = "Constant"
+    uiTemplate = [('constant', 'doubleSpin')]
+
+    def __init__(self, name):
+        super().__init__(name, terminals={"Out": {'io': 'out', 'ttype': float}})
+
+    def to_operation(self, **kwargs):
+        constant = self.values['constant']
+        return gn.Map(name=self.name()+"_operation", **kwargs, func=lambda: constant)
+
+
 class Identity(GroupedNode):
 
     """
