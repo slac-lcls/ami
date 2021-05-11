@@ -38,3 +38,22 @@ class PickN(CtrlNode):
 
     def to_operation(self, **kwargs):
         return gn.PickN(name=self.name()+"_operation", N=self.values['N'], **kwargs)
+
+
+class RollingBuffer(CtrlNode):
+
+    """
+    RollingBuffer collects N of its input.
+    """
+
+    nodeName = "RollingBuffer"
+    uiTemplate = [('N', 'intSpin', {'value': 2, 'min': 2})]
+
+    def __init__(self, name):
+        super().__init__(name,
+                         terminals={'In': {'io': 'in', 'ttype': T},
+                                    'Out': {'io': 'out', 'ttype': Array1d}},
+                         allowAddInput=True)
+
+    def to_operation(self, **kwargs):
+        return gn.RollingBuffer(name=self.name()+"_operation", N=self.values['N'], **kwargs)

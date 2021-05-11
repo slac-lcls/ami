@@ -1,6 +1,7 @@
 import inspect
 import numpy
 import json
+import typing
 
 
 def _map_numpy_types():
