@@ -1309,14 +1309,14 @@ class Features(object):
                 if not self.features_count[in_var]:
                     del self.features[in_var]
                     del self.features_count[in_var]
-                    del self.plots[name]
+                    self.plots.pop(name, None)
                 return True
             else:
                 for in_var, viewers in self.features_count.items():
                     viewers.discard(name)
                     if not viewers and name in self.features:
                         del self.features[name]
-                        del self.plots[name]
+                        self.plots.pop(name, None)
                 return True
 
         return False
