@@ -1,9 +1,9 @@
 from ami.flowchart.library.DisplayWidgets import ScalarWidget, ScatterWidget, WaveformWidget, \
-    ImageWidget, TextWidget, ObjectWidget, LineWidget, TimeWidget, ArrayWidget, HistogramWidget, \
+    ImageWidget, ObjectWidget, LineWidget, TimeWidget, HistogramWidget, \
     Histogram2DWidget
 from ami.flowchart.library.common import CtrlNode
-from amitypes import Array, Array1d, Array2d
-from typing import Any, Text
+from amitypes import Array1d, Array2d
+from typing import Any
 import ami.graph_nodes as gn
 
 
@@ -75,28 +75,6 @@ class ImageViewer(CtrlNode):
 
     def plotMetadata(self, topics, terms, **kwargs):
         return {'type': 'ImageWidget', 'terms': terms, 'topics': topics}
-
-
-class TextViewer(CtrlNode):
-
-    """
-    TextViewer displays text.
-    """
-
-    nodeName = "TextViewer"
-    uiTemplate = []
-
-    def __init__(self, name):
-        super().__init__(name, terminals={"In": {"io": "in", "ttype": Text}}, viewable=True)
-
-    def isChanged(self, restore_ctrl, restore_widget):
-        return False
-
-    def display(self, topics, terms, addr, win, **kwargs):
-        return super().display(topics, terms, addr, win, TextWidget, **kwargs)
-
-    def plotMetadata(self, topics, terms, **kwargs):
-        return {'type': 'TextWidget', 'terms': terms, 'topics': topics}
 
 
 class ObjectViewer(CtrlNode):
@@ -326,32 +304,3 @@ class TimePlot(CtrlNode):
 
     def plotMetadata(self, topics, terms, **kwargs):
         return {'type': 'TimeWidget', 'terms': terms, 'topics': topics}
-
-
-class TableViewer(CtrlNode):
-
-    """
-    Display array values in a table.
-    """
-
-    nodeName = "TableViewer"
-    uiTemplate = [("Update Rate", 'combo', {'values': list(map(str, range(60, 0, -10))), 'value': 60})]
-
-    def __init__(self, name):
-        super().__init__(name, terminals={"In": {"io": "in", "ttype": Array}},
-                         viewable=True)
-
-    def display(self, topics, terms, addr, win, **kwargs):
-        if self.widget is None:
-            kwargs['update_rate'] = int(self.values['Update Rate'])
-            self.widget = ArrayWidget(topics, terms, addr, win, **kwargs)
-
-        return self.widget
-
-    def update(self, *args, **kwargs):
-        super().update(*args, **kwargs)
-        if self.widget:
-            self.widget.set_update_rate(int(self.values['Update Rate']))
-
-    def plotMetadata(self, topics, terms, **kwargs):
-        return {'type': 'ArrayWidget', 'terms': terms, 'topics': topics}

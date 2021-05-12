@@ -480,29 +480,6 @@ class PlotWidget(QtWidgets.QWidget):
             self.export_btn.setPos(x, -5.5)
 
 
-class TextWidget(pg.LayoutWidget):
-    def __init__(self, topics=None, terms=None, addr=None, parent=None, **kwargs):
-        super().__init__(parent)
-
-        self.fetcher = None
-        if addr:
-            self.fetcher = AsyncFetcher(topics, terms, addr, parent=self)
-            self.fetcher.start()
-
-        self.label = self.addLabel()
-        self.label.setMinimumSize(150, 50)
-
-    @QtCore.Slot()
-    def update(self):
-        while self.fetcher.ready:
-            for k, v in self.fetcher.reply.items():
-                self.label.setText(v)
-
-    def close(self):
-        if self.fetcher:
-            self.fetcher.close()
-
-
 class ObjectWidget(pg.LayoutWidget):
     def __init__(self, topics=None, terms=None, addr=None, parent=None, **kwargs):
         super().__init__(parent)
@@ -865,45 +842,3 @@ class TimeWidget(LineWidget):
         self.graphics_layout.useOpenGL(False)
         ax = pg.DateAxisItem(orientation='bottom')
         self.plot_view.setAxisItems({'bottom': ax})
-
-
-class ArrayWidget(QtWidgets.QWidget):
-
-    def __init__(self, topics=None, terms=None, addr=None, parent=None, **kwargs):
-        super().__init__(parent)
-
-        self.terms = terms
-        self.update_rate = kwargs.get('update_rate', 60)
-        self.grid = QtGui.QGridLayout(self)
-        self.table = pg.TableWidget()
-        self.last_updated = QtWidgets.QLabel(parent=self)
-        self.grid.addWidget(self.table, 0, 0)
-        self.grid.setRowStretch(0, 10)
-        self.grid.addWidget(self.last_updated, 1, 0)
-
-        self.fetcher = None
-        if addr:
-            self.fetcher = AsyncFetcher(topics, terms, addr,
-                                        parent=self, ratelimit=1.0/self.update_rate)
-            self.fetcher.start()
-
-    @QtCore.Slot()
-    def update(self):
-        while self.fetcher.ready:
-            if self.fetcher.reply:
-                self.last_updated.setText(self.fetcher.last_updated)
-                self.array_updated(self.fetcher.reply)
-
-    def array_updated(self, data):
-        for term, name in self.terms.items():
-            if name in data:
-                self.table.setData(data[name])
-
-    def close(self):
-        if self.fetcher:
-            self.fetcher.close()
-
-    def set_update_rate(self, update_rate):
-        self.update_rate = update_rate
-        if self.fetcher:
-            self.fetcher.sig_proxy.rateLimit = 1.0/self.update_rate
