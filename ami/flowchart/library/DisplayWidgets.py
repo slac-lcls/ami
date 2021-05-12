@@ -121,9 +121,9 @@ class AsyncFetcher(QtCore.QThread):
 
                 if res:
                     now = dt.datetime.now()
-                    now = now.strftime("%F %T")
+                    now = now.strftime("%T")
                     heartbeat = heartbeats.pop()
-                    hbts = dt.datetime.fromtimestamp(heartbeat.timestamp).strftime("%F %T.%f")
+                    hbts = dt.datetime.fromtimestamp(heartbeat.timestamp).strftime("%T.%f")
                     latency = dt.datetime.now() - dt.datetime.fromtimestamp(heartbeat.timestamp)
                     self.last_updated = f"Last Updated: {now} HB: {hbts} Latency: {latency}"
                     # put results on the reply queue
@@ -145,7 +145,7 @@ class AsyncFetcher(QtCore.QThread):
         self.ctx.destroy()
 
 
-class PlotWidget(pg.GraphicsLayoutWidget):
+class PlotWidget(QtWidgets.QWidget):
 
     def __init__(self, topics=None, terms=None, addr=None, uiTemplate=None, parent=None, **kwargs):
         super().__init__(parent)
@@ -157,7 +157,11 @@ class PlotWidget(pg.GraphicsLayoutWidget):
             self.fetcher = AsyncFetcher(topics, terms, addr, parent=self)
             self.fetcher.start()
 
-        self.plot_view = self.addPlot()
+        self.layout = QtWidgets.QGridLayout()
+        self.setLayout(self.layout)
+
+        self.graphics_layout = pg.GraphicsLayoutWidget(parent=self)
+        self.plot_view = self.graphics_layout.addPlot()
         if self.node:
             # node is passed in on subprocess
             self.viewbox_proxy = pg.SignalProxy(self.plot_view.vb.sigRangeChangedManually,
@@ -193,9 +197,14 @@ class PlotWidget(pg.GraphicsLayoutWidget):
 
         self.terms = terms
 
-        self.last_updated = pg.LabelItem(parent=self.plot_view)
-        self.pixel_value = pg.LabelItem(parent=self.plot_view)
-        self.hover_proxy = pg.SignalProxy(self.sceneObj.sigMouseMoved,
+        self.last_updated = QtWidgets.QLabel(parent=self)
+        self.pixel_value = QtWidgets.QLabel(parent=self)
+
+        self.layout.addWidget(self.graphics_layout, 0, 0, 1, -1)
+        self.layout.addWidget(self.last_updated, 1, 0)
+        self.layout.addWidget(self.pixel_value, 1, 1)
+
+        self.hover_proxy = pg.SignalProxy(self.graphics_layout.sceneObj.sigMouseMoved,
                                           rateLimit=30,
                                           slot=self.cursor_hover_evt)
 
@@ -470,16 +479,6 @@ class PlotWidget(pg.GraphicsLayoutWidget):
             x = rect.topRight().x()
             self.export_btn.setPos(x, -5.5)
 
-            rect = self.itemPos('export_btn')
-            x = rect.topRight().x()
-            y = rect.topRight().y()
-            self.last_updated.setPos(x - 3, y + 2)
-
-            rect = self.itemPos('last_updated')
-            x = rect.bottomLeft().x()
-            y = rect.bottomLeft().y()
-            self.pixel_value.setPos(x - 1, y - 9)
-
 
 class TextWidget(pg.LayoutWidget):
     def __init__(self, topics=None, terms=None, addr=None, parent=None, **kwargs):
@@ -582,7 +581,7 @@ class ImageWidget(PlotWidget):
                                 'values': ['0', '90', '180', '270']}))
 
         super().__init__(topics, terms, addr, uiTemplate=uiTemplate, parent=parent, legend=False, **kwargs)
-        super().useOpenGL(False)
+        self.graphics_layout.useOpenGL(False)
         self.flip = False
         self.rotate = 0
         self.log_scale_histogram = False
@@ -597,7 +596,7 @@ class ImageWidget(PlotWidget):
         self.histogramLUT = pg.HistogramLUTItem(self.imageItem)
         self.histogramLUT.gradient.loadPreset('thermal')
         self.histogram_connected = False
-        self.addItem(self.histogramLUT)
+        self.graphics_layout.addItem(self.histogramLUT)
         if self.node:
             self.histogramLUT.sigLookupTableChanged.connect(
                 lambda args: self.node.sigStateChanged.emit(self.node))
@@ -699,7 +698,7 @@ class HistogramWidget(PlotWidget):
 
     def __init__(self, topics=None, terms=None, addr=None, parent=None, **kwargs):
         super().__init__(topics, terms, addr, parent=parent, **kwargs)
-        super().useOpenGL(False)
+        self.graphics_layout.useOpenGL(False)
         self.num_terms = int(len(terms)/2) if terms else 0
 
     def editor(self, node, parent, **kwargs):
@@ -863,7 +862,7 @@ class TimeWidget(LineWidget):
 
     def __init__(self, topics=None, terms=None, addr=None, parent=None, **kwargs):
         super().__init__(topics, terms, addr, parent=parent, **kwargs)
-        super().useOpenGL(False)
+        self.graphics_layout.useOpenGL(False)
         ax = pg.DateAxisItem(orientation='bottom')
         self.plot_view.setAxisItems({'bottom': ax})
 

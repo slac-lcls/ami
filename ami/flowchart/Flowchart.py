@@ -1070,7 +1070,7 @@ class FlowchartWidget(dockarea.DockArea):
                 pending = ', '.join(pending)
                 msg = QtWidgets.QMessageBox(parent=self)
                 msg.setText(f"Pending changes for {pending}. Please apply before trying to view.")
-                msg.exec()
+                msg.show()
                 return
 
         await self.build_views([node], ctrl=True)
