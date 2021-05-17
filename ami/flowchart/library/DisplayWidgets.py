@@ -270,6 +270,9 @@ class PlotWidget(QtWidgets.QWidget):
     def update_legend_layout(self, idx, data_name, name=None, **kwargs):
         restore = kwargs.get('restore', False)
 
+        if idx in self.trace_ids:
+            self.trace_ids[idx] = data_name
+
         if idx not in self.trace_ids:
             if name is None:
                 name = data_name
@@ -422,6 +425,7 @@ class PlotWidget(QtWidgets.QWidget):
             self.stateGroup.setState(ctrlstate)
 
             legendstate = state.get('legend', {})
+
             for k, v in legendstate.items():
                 if len(v) == 3:
                     data_name, name, editor_state = v
