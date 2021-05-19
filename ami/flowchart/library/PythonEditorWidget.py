@@ -57,7 +57,7 @@ class PythonEditorWidget(QtWidgets.QWidget):
 
     sigStateChanged = QtCore.Signal(object, object, object)
 
-    def __init__(self, inputs, outputs, parent=None, text=""):
+    def __init__(self, inputs, outputs, parent=None, text="", old=False):
         super().__init__(parent)
         self.layout = QtWidgets.QGridLayout(self)
 
@@ -72,13 +72,13 @@ class PythonEditorWidget(QtWidgets.QWidget):
         if text:
             self.editor.setPlainText(text)
         elif self.inputs:
-            text = self.generate_template()
+            text = self.generate_template(old)
             self.editor.setPlainText(text)
 
         self.editor.textChanged.connect(self.stateChanged)
         self.layout.addWidget(self.editor, 0, 0, -1, -1)
 
-    def generate_template(self):
+    def generate_template(self, old):
         args = []
 
         for arg in self.inputs.values():
@@ -88,13 +88,38 @@ class PythonEditorWidget(QtWidgets.QWidget):
             args.append(rarg)
 
         args = ', '.join(args)
-        template = f"""
+        if old:
+            template = f"""
 
 # entry point must be called func
 def func({args}, *args, **kwargs):
 
     # return {len(self.outputs)} output(s)
     return"""
+
+        else:
+            template = f"""
+class EventProcessor():
+
+    def __init__(self):
+        pass
+
+    def begin_run(self):
+        pass
+
+    def end_run(self):
+        pass
+
+    def begin_step(self, step):
+        pass
+
+    def end_step(self, step):
+        pass
+
+    def on_event(self, {args}, *args, **kwargs):
+
+        # return {len(self.outputs)} output(s)
+        return"""
 
         return template
 

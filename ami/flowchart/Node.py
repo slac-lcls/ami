@@ -166,15 +166,24 @@ class Node(QtCore.QObject):
         keyword arguments are passed to Terminal.__init__.
 
         This is a convenience function that just calls addTerminal(io='in', ...)"""
-        # print "Node.addInput called."
-        return self.addTerminal(name, io='in', ttype=self.terminals["In"].type(), **kwargs)
+        ttype = typing.Any
+        if 'ttype' in kwargs:
+            ttype = kwargs.pop('ttype')
+        elif 'In' in self.terminals:
+            ttype = self.terminals['In'].type()
+        return self.addTerminal(name, io='in', ttype=ttype, **kwargs)
 
     def addOutput(self, name="Out", **kwargs):
         """Add a new output terminal to this Node with the given name. Extra
         keyword arguments are passed to Terminal.__init__.
 
         This is a convenience function that just calls addTerminal(io='out', ...)"""
-        return self.addTerminal(name, io='out', ttype=self.terminals["Out"].type(), **kwargs)
+        ttype = typing.Any
+        if 'ttype' in kwargs:
+            ttype = kwargs.pop('ttype')
+        elif 'Out' in self.terminals:
+            ttype = self.terminals['Out'].type()
+        return self.addTerminal(name, io='out', ttype=ttype, **kwargs)
 
     def removeTerminal(self, term):
         """Remove the specified terminal from this Node. May specify either the
@@ -474,6 +483,9 @@ class Node(QtCore.QObject):
 
     def plotMetadata(self, **kwargs):
         return {}
+
+    def onCreate(self):
+        pass
 
 
 class NodeGraphicsItem(GraphicsObject):

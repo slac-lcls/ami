@@ -273,7 +273,7 @@ class FlowchartViewBox(ViewBox):
         pos = self.mapToView(self.paste_pos)
 
         for node in self.selected_nodes:
-            self.widget.chart.createNode(type(node).__name__, pos=pos)
+            self.widget.chart.createNode(type(node).__name__, pos=pos, prompt=False)
             pos += QtCore.QPointF(200, 0)
 
     def deleteSelectedNodes(self):
@@ -374,7 +374,7 @@ class FlowchartViewBox(ViewBox):
             node = self.decode_data(arr)[0][0].value()
 
             try:
-                self.widget.chart.createNode(node, pos=self.mapToView(ev.pos()))
+                self.widget.chart.createNode(node, pos=self.mapToView(ev.pos()), prompt=True)
                 ev.accept()
                 return
             except KeyError:

@@ -128,7 +128,7 @@ class Flowchart(Node):
     def nodes(self, **kwargs):
         return self._graph.nodes(**kwargs)
 
-    def createNode(self, nodeType=None, name=None, pos=None):
+    def createNode(self, nodeType=None, name=None, pos=None, prompt=False):
         """Create a new Node and add it to this flowchart.
         """
         if name is None:
@@ -142,6 +142,8 @@ class Flowchart(Node):
         # create an instance of the node
         node = self.library.getNodeType(nodeType)(name)
         self.addNode(node, pos)
+        if prompt:
+            node.onCreate()
         return node
 
     def addNode(self, node, pos=None):
@@ -351,7 +353,7 @@ class Flowchart(Node):
                         printExc("Error creating node %s: (continuing anyway)" % n['name'])
                 else:
                     try:
-                        node = self.createNode(n['class'], name=n['name'])
+                        node = self.createNode(n['class'], name=n['name'], prompt=False)
                     except Exception:
                         printExc("Error creating node %s: (continuing anyway)" % n['name'])
 
@@ -468,8 +470,6 @@ class Flowchart(Node):
             fileName += ".fc"
 
         state = self.saveState()
-        # from ami.forkedpdb import ForkedPdb
-        # ForkedPdb().set_trace()
         state = json.dumps(state, indent=2, separators=(',', ': '), sort_keys=True, cls=TypeEncoder)
 
         with open(fileName, 'w') as f:
@@ -1017,7 +1017,7 @@ class FlowchartWidget(dockarea.DockArea):
         nodeType = action.nodeType
         pos = self.viewBox().mouse_pos
         pos = (50 * round(pos.x() / 50), 50 * round(pos.y() / 50))
-        self.chart.createNode(nodeType, pos=pos)
+        self.chart.createNode(nodeType, pos=pos, prompt=True)
 
     def sourceMenuTriggered(self, action):
         node = action.nodeType
