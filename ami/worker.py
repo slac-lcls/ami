@@ -262,13 +262,21 @@ class Worker(Node):
                         for name, graph in self.graphs.items():
                             if graph:
                                 graph.reset()
+                                graph.begin_run(color=Colors.Worker)
                     elif msg.payload.ttype == Transitions.Unconfigure:
                         if self.src.heartbeat is not None:
                             self.collect(self.src.heartbeat)
+                        for name, graph in self.graphs.items():
+                            if graph:
+                                graph.end_run(color=Colors.Worker)
+                    elif msg.payload.ttype == Transitions.BeginStep:
+                        for name, graph in self.graphs.items():
+                            if graph:
+                                graph.begin_step(msg.payload.payload, color=Colors.Worker)
                     elif msg.payload.ttype == Transitions.EndStep:
                         for name, graph in self.graphs.items():
                             if graph:
-                                graph.step_finished(msg.payload.payload, color=Colors.Worker)
+                                graph.end_step(msg.payload.payload, color=Colors.Worker)
 
                     # forward the transition
                     self.store.send(msg)

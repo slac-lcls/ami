@@ -216,12 +216,33 @@ class Graph():
                             self.graph.nodes))
         list(map(lambda node: node.heartbeat_finished(), nodes))
 
-    def step_finished(self, step, color):
+    def begin_run(self, color):
         """
-        Execute post step hook on StatefulTransfomation nodes in the graph.
+        Execute pre run hook on nodes in the graph.
         """
-        nodes = list(filter(lambda node: hasattr(node, "step_finished"), self.graph.nodes))
-        list(map(lambda node: node.step_finished(step, color), nodes))
+        nodes = list(filter(lambda node: hasattr(node, "begin_run"), self.graph.nodes))
+        list(map(lambda node: node.begin_run(color), nodes))
+
+    def end_run(self, color):
+        """
+        Execute post run hook on nodes in the graph.
+        """
+        nodes = list(filter(lambda node: hasattr(node, "end_run"), self.graph.nodes))
+        list(map(lambda node: node.end_run(color), nodes))
+
+    def begin_step(self, step, color):
+        """
+        Execute pre step hook on nodes in the graph.
+        """
+        nodes = list(filter(lambda node: hasattr(node, "begin_step"), self.graph.nodes))
+        list(map(lambda node: node.begin_step(step, color), nodes))
+
+    def end_step(self, step, color):
+        """
+        Execute post step hook on nodes in the graph.
+        """
+        nodes = list(filter(lambda node: hasattr(node, "end_step"), self.graph.nodes))
+        list(map(lambda node: node.end_step(step, color), nodes))
 
     def _color_nodes(self):
         """

@@ -32,7 +32,10 @@ class Transformation(abc.ABC):
         self.func = kwargs['func']
         self.parent = kwargs.get('parent', None)
         self.color = kwargs.get('color', "")
-        self.step_func = kwargs.get('step_finished', lambda step: None)
+        self.begin_run_func = kwargs.get('begin_run', None)
+        self.end_run_func = kwargs.get('end_run', None)
+        self.begin_step_func = kwargs.get('begin_step', None)
+        self.end_step_func = kwargs.get('end_step', None)
         self.is_global_operation = False
 
     def __hash__(self):
@@ -59,9 +62,21 @@ class Transformation(abc.ABC):
         return operation(name=self.name, needs=self.inputs, provides=self.outputs, color=self.color,
                          metadata={'parent': self.parent})(self.func)
 
-    def step_finished(self, step, color=""):
-        if color == self.color:
-            return self.step_func(step)
+    def begin_run(self, color=""):
+        if color == self.color and callable(self.begin_run_func):
+            return self.begin_run_func()
+
+    def end_run(self, color=""):
+        if color == self.color and callable(self.end_run_func):
+            return self.end_run_func()
+
+    def begin_step(self, step, color=""):
+        if color == self.color and callable(self.begin_step_func):
+            return self.begin_step_func(step)
+
+    def end_step(self, step, color=""):
+        if color == self.color and callable(self.end_step_func):
+            return self.end_step_func(step)
 
 
 class Map(Transformation):

@@ -362,7 +362,28 @@ try:
                 del self.mod
                 self.file.close()
 
-        def step_finished(self, step):
+        def begin_run(self):
+            if self.file is None:
+                self.load()
+
+            if self.proc:
+                return self.proc.begin_run()
+
+        def end_run(self):
+            if self.file is None:
+                self.load()
+
+            if self.proc:
+                return self.proc.end_run()
+
+        def begin_step(self, step):
+            if self.file is None:
+                self.load()
+
+            if self.proc:
+                return self.proc.begin_step(step)
+
+        def end_step(self, step):
             if self.file is None:
                 self.load()
 
@@ -468,7 +489,13 @@ try:
 
         def to_operation(self, **kwargs):
             proc = PythonEditorProc(self.values['text'])
-            return gn.Map(name=self.name()+"_operation", **kwargs, func=proc, step_finished=proc.step_finished)
+            return gn.Map(name=self.name()+"_operation",
+                          **kwargs,
+                          func=proc,
+                          begin_run=proc.begin_run,
+                          end_run=proc.end_run,
+                          begin_step=proc.begin_step,
+                          end_step=proc.end_step)
 
     class Filter(CtrlNode):
         """
