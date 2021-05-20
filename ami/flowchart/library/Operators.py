@@ -455,6 +455,17 @@ try:
 
             return self.widget
 
+        def saveState(self):
+            state = super().saveState()
+            term_order = []
+            for term in self.inputs():
+                term_order.append(term)
+
+            for term in self.outputs():
+                term_order.append(term)
+
+            return state
+
         def to_operation(self, **kwargs):
             proc = PythonEditorProc(self.values['text'])
             return gn.Map(name=self.name()+"_operation", **kwargs, func=proc, step_finished=proc.step_finished)

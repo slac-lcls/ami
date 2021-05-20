@@ -421,6 +421,7 @@ class Node(QtCore.QObject):
         terms = OrderedDict()
         for n, t in self.terminals.items():
             terms[n] = (t.saveState())
+
         return terms
 
     def restoreTerminals(self, state):

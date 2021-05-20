@@ -231,7 +231,7 @@ class Graph():
         """
         self.global_operations = set()
 
-        global_operations = filter(lambda node: getattr(node, 'is_global_operation', False), self.graph.nodes)
+        global_operations = list(filter(lambda node: getattr(node, 'is_global_operation', False), self.graph.nodes))
         for node in global_operations:
             if node in self.expanded_global_operations:
                 continue
@@ -257,9 +257,17 @@ class Graph():
                     descendant.color = 'globalCollector'
 
         for node in nx.algorithms.topological_sort(self.graph):
-            if skip(node):
+            if skip(node) or node.color:
                 continue
-            if node.color == '':
+
+            colors = set()
+
+            for predecessor in map(self.graph.predecessors, node.inputs):
+                colors.update(map(lambda node: getattr(node, 'color', ''), predecessor))
+
+            if 'globalCollector' in colors:
+                node.color = 'globalCollector'
+            else:
                 node.color = 'worker'
 
     def _expand_global_operations(self, num_workers, num_local_collectors):
