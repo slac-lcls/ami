@@ -30,16 +30,19 @@ class Colors:
     GlobalCollector = "globalCollector"
 
 
+BasePort = 5555
+
+
 class Ports(IntEnum):
-    Comm = 5555
-    Graph = 5556
-    NodeCollector = 5557
-    FinalCollector = 5558
-    Results = 5559
-    Export = 5560
-    Message = 5561
-    Info = 5562
-    View = 5563
+    Comm = 0
+    Graph = 1
+    NodeCollector = 2
+    FinalCollector = 3
+    Results = 4
+    Export = 5
+    Message = 6
+    Info = 7
+    View = 8
     Sync = 5600
     Prometheus = 9200
 
@@ -724,7 +727,8 @@ class Node(abc.ABC):
             passed it creates one.
     """
 
-    def __init__(self, node, graph_addr, msg_addr, export_addr=None, ctx=None, prometheus_dir=None, hutch=None):
+    def __init__(self, node, graph_addr, msg_addr, export_addr=None, ctx=None, prometheus_dir=None,
+                 prometheus_port=None, hutch=None):
         self.node = node
         if ctx is None:
             self.ctx = zmq.Context()
@@ -754,6 +758,7 @@ class Node(abc.ABC):
         self.serializer = Serializer()
 
         self.prometheus_dir = prometheus_dir
+        self.prometheus_port = prometheus_port
         self.hutch = hutch
 
     @property
@@ -884,7 +889,7 @@ class Node(abc.ABC):
             sys.path.extend(paths)
 
     def start_prometheus(self):
-        port = Ports.Prometheus
+        port = self.prometheus_port
         while True:
             try:
                 pc.start_http_server(port)

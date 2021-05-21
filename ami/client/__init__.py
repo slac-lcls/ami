@@ -6,7 +6,7 @@ import argparse
 import tempfile
 import collections
 from ami import LogConfig, Defaults
-from ami.comm import Ports
+from ami.comm import BasePort, Ports
 from ami.client import flowchart, legacy
 
 
@@ -17,12 +17,12 @@ GraphMgrAddress = collections.namedtuple('GraphMgrAddress', ['name', 'comm', 'vi
 
 
 def run_client(graph_name, comm_addr, info_addr, view_addr, load,
-               use_legacy=True, prometheus_dir=None, hutch='', use_opengl=False):
+               use_legacy=True, prometheus_dir=None, prometheus_port=None, hutch='', use_opengl=False):
     graphmgr_addr = GraphMgrAddress(graph_name, comm_addr, view_addr, info_addr)
     if use_legacy:
         return legacy.run_client(graphmgr_addr, load)
     else:
-        return flowchart.run_client(graphmgr_addr, load, prometheus_dir, hutch, use_opengl)
+        return flowchart.run_client(graphmgr_addr, load, prometheus_dir, prometheus_port, hutch, use_opengl)
 
 
 def main():
@@ -41,10 +41,8 @@ def main():
         '-p',
         '--port',
         type=int,
-        nargs=3,
-        default=(Ports.Comm, Ports.Info, Ports.View),
-        help='port for manager/client (GUI) communication, status, view (default: %d, %d, %d)' %
-             (Ports.Comm, Ports.Info, Ports.View)
+        default=BasePort,
+        help='base port for ami (default: %d) reserves next 10 consecutive ports' % BasePort
     )
 
     addr_group.add_argument(
@@ -64,6 +62,13 @@ def main():
         '--graph-name',
         default=Defaults.GraphName,
         help='the name of the graph used (default: %s)' % Defaults.GraphName
+    )
+
+    parser.add_argument(
+        '--prometheus-port',
+        type=int,
+        default=Ports.Prometheus,
+        help='port for prometheus'
     )
 
     parser.add_argument(
@@ -158,14 +163,13 @@ def main():
         info_addr = "ipc://%s/info" % args.ipc_dir
         view_addr = "ipc://%s/view" % args.ipc_dir
     else:
-        comm, info, view = args.port
-        comm_addr = "tcp://%s:%d" % (args.host, comm)
-        info_addr = "tcp://%s:%d" % (args.host, info)
-        view_addr = "tcp://%s:%d" % (args.host, view)
+        comm_addr = "tcp://%s:%d" % (args.host, args.port + Ports.Comm)
+        info_addr = "tcp://%s:%d" % (args.host, args.port + Ports.Info)
+        view_addr = "tcp://%s:%d" % (args.host, args.port + Ports.View)
 
     try:
         return run_client(args.graph_name, comm_addr, info_addr, view_addr, args.load,
-                          args.gui_mode, args.prometheus_dir, args.hutch, args.use_opengl)
+                          args.gui_mode, args.prometheus_dir, args.prometheus_port, args.hutch, args.use_opengl)
     except KeyboardInterrupt:
         logger.info("Client killed by user...")
         return 0

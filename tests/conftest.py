@@ -34,7 +34,7 @@ from ami.graphkit_wrapper import Graph
 from ami.graph_nodes import Map, PickN
 from ami.flowchart.library.Operators import MeanVsScan
 from ami.local import build_parser, run_ami
-from ami.comm import Ports, GraphCommHandler
+from ami.comm import BasePort, Ports, GraphCommHandler
 
 
 psanatest = pytest.mark.skipif(psana is None, reason="psana not avaliable")
@@ -194,7 +194,7 @@ def start_ami(request, workerjson):
 
     try:
         host = "127.0.0.1"
-        comm_addr = "tcp://%s:%d" % (host, Ports.Comm)
+        comm_addr = "tcp://%s:%d" % (host, BasePort + Ports.Comm)
         with GraphCommHandler(args.graph_name, comm_addr) as comm_handler:
             yield comm_handler
     except Exception as e:

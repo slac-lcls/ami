@@ -15,7 +15,7 @@ from ami.flowchart.Node import Node, NodeGraphicsItem, find_nearest
 from ami.flowchart.NodeLibrary import SourceLibrary
 from ami.flowchart.SourceConfiguration import SourceConfiguration
 from ami.flowchart.TypeEncoder import TypeEncoder
-from ami.comm import AsyncGraphCommHandler, Ports
+from ami.comm import AsyncGraphCommHandler
 from ami.client import flowchart_messages as fcMsgs
 from qtconsole.rich_jupyter_widget import RichJupyterWidget
 from qtconsole.inprocess import QtInProcessKernelManager
@@ -99,8 +99,7 @@ class Flowchart(Node):
             self._widget.graphCommHandler.close()
         self.ctx.term()
 
-    def start_prometheus(self):
-        port = Ports.Prometheus
+    def start_prometheus(self, port):
         while True:
             try:
                 pc.start_http_server(port)

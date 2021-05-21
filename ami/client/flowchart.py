@@ -25,7 +25,8 @@ from pyqtgraph.Qt import QtGui, QtCore, QtWidgets
 logger = logging.getLogger(LogConfig.get_package_name(__name__))
 
 
-def run_editor_window(broker_addr, graphmgr_addr, checkpoint_addr, load=None, prometheus_dir=None, hutch=None):
+def run_editor_window(broker_addr, graphmgr_addr, checkpoint_addr, load=None, prometheus_dir=None,
+                      prometheus_port=None, hutch=None):
     subprocess.call(["dmypy", "start"])
     check_file = None
     with tempfile.NamedTemporaryFile(mode='w', delete=False) as f:
@@ -56,7 +57,7 @@ def run_editor_window(broker_addr, graphmgr_addr, checkpoint_addr, load=None, pr
                    checkpoint_addr=checkpoint_addr,
                    prometheus_dir=prometheus_dir, hutch=hutch)
 
-    fc.start_prometheus()
+    fc.start_prometheus(prometheus_port)
 
     def update_title(filename):
         title = 'AMI Client'
@@ -249,7 +250,7 @@ class NodeProcess(QtCore.QObject):
 
 class MessageBroker(object):
 
-    def __init__(self, graphmgr_addr, load, ipcdir=None, prometheus_dir=None, hutch=""):
+    def __init__(self, graphmgr_addr, load, ipcdir=None, prometheus_dir=None, prometheus_port=None, hutch=""):
 
         if ipcdir is None:
             ipcdir = tempfile.mkdtemp()
@@ -287,6 +288,7 @@ class MessageBroker(object):
         self.checkpoint_pub_sock.bind(self.checkpoint_pub_addr)
 
         self.prometheus_dir = prometheus_dir
+        self.prometheus_port = prometheus_port
         self.hutch = hutch
 
     def __enter__(self):
@@ -315,6 +317,7 @@ class MessageBroker(object):
                   self.checkpoint_pub_addr,
                   self.load,
                   self.prometheus_dir,
+                  self.prometheus_port,
                   self.hutch),
             daemon=True)
         editor_proc.start()
@@ -449,12 +452,13 @@ class MessageBroker(object):
         asyncio.create_task(self.monitor_processes())
 
 
-def run_client(graphmgr_addr, load, prometheus_dir, hutch, use_opengl):
+def run_client(graphmgr_addr, load, prometheus_dir, prometheus_port, hutch, use_opengl):
     use_opengl = use_opengl and "SSH_CONNECTION" not in os.environ
     pg.setConfigOptions(useOpenGL=use_opengl, enableExperimental=use_opengl)
 
     with tempfile.TemporaryDirectory() as ipcdir:
-        mb = MessageBroker(graphmgr_addr, load, ipcdir=ipcdir, prometheus_dir=prometheus_dir, hutch=hutch)
+        mb = MessageBroker(graphmgr_addr, load, ipcdir=ipcdir, prometheus_dir=prometheus_dir,
+                           prometheus_port=prometheus_port, hutch=hutch)
         mb.launch_editor_window()
         loop = asyncio.get_event_loop()
         task = asyncio.ensure_future(mb.run())

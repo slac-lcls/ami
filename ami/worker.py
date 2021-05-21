@@ -9,7 +9,7 @@ import argparse
 import time
 import prometheus_client as pc
 from ami import LogConfig, Defaults
-from ami.comm import Ports, Colors, ResultStore, Node, AutoExport
+from ami.comm import BasePort, Ports, Colors, ResultStore, Node, AutoExport
 from ami.data import MsgTypes, Source, Message, Transition, Transitions
 from ami.graphkit_wrapper import Graph
 
@@ -18,14 +18,16 @@ logger = logging.getLogger(__name__)
 
 
 class Worker(Node):
-    def __init__(self, node, src, collector_addr, graph_addr, msg_addr, export_addr, prometheus_dir, hutch):
+    def __init__(self, node, src, collector_addr, graph_addr, msg_addr, export_addr, prometheus_dir,
+                 prometheus_port, hutch):
         """
         node : int
             a unique integer identifying this worker
         src : object
             object with an events() method that is an iterable (like psana.DataSource)
         """
-        super().__init__(node, graph_addr, msg_addr, export_addr, prometheus_dir=prometheus_dir, hutch=hutch)
+        super().__init__(node, graph_addr, msg_addr, export_addr, prometheus_dir=prometheus_dir,
+                         prometheus_port=prometheus_port, hutch=hutch)
 
         self.src = src
         self.pending_src = False
@@ -295,7 +297,7 @@ class Worker(Node):
 
 
 def run_worker(num, num_workers, hb_period, source, collector_addr, graph_addr, msg_addr, export_addr,
-               flags=None, prometheus_dir=None, hutch=None):
+               flags=None, prometheus_dir=None, prometheus_port=None, hutch=None):
 
     logger.info('Starting worker # %d, sending to collector at %s PID: %d', num, collector_addr, os.getpid())
 
@@ -332,7 +334,8 @@ def run_worker(num, num_workers, hb_period, source, collector_addr, graph_addr, 
             logger.critical("worker%03d: unknown data source type: %s", num, source[0])
             return 1
 
-    with Worker(num, src, collector_addr, graph_addr, msg_addr, export_addr, prometheus_dir, hutch) as worker:
+    with Worker(num, src, collector_addr, graph_addr, msg_addr, export_addr, prometheus_dir, prometheus_port,
+                hutch) as worker:
         return worker.run()
 
 
@@ -369,35 +372,11 @@ def main():
     )
 
     parser.add_argument(
-        '-g',
-        '--graph',
+        '-p',
+        '--port',
         type=int,
-        default=Ports.Graph,
-        help='port for graph communication (default: %d)' % Ports.Graph
-    )
-
-    parser.add_argument(
-        '-c',
-        '--collector',
-        type=int,
-        default=Ports.NodeCollector,
-        help='port for node collector (default: %d)' % Ports.NodeCollector
-    )
-
-    parser.add_argument(
-        '-e',
-        '--export',
-        type=int,
-        default=Ports.Export,
-        help='port for receiving exported graph results (default: %d)' % Ports.Export
-    )
-
-    parser.add_argument(
-        '-m',
-        '--message',
-        type=int,
-        default=Ports.Message,
-        help='port for sending out-of-band messages from nodes (default: %d)' % Ports.Message
+        default=BasePort,
+        help='base port for ami (default: %d) reserves next 10 consecutive ports' % BasePort
     )
 
     parser.add_argument(
@@ -444,6 +423,13 @@ def main():
     )
 
     parser.add_argument(
+        '--prometheus-port',
+        type=int,
+        default=Ports.Prometheus,
+        help='port for prometheus'
+    )
+
+    parser.add_argument(
         '--prometheus-dir',
         help='directory for prometheus configuration',
         default=None
@@ -463,10 +449,10 @@ def main():
     )
 
     args = parser.parse_args()
-    collector_addr = "tcp://localhost:%d" % args.collector
-    graph_addr = "tcp://%s:%d" % (args.host, args.graph)
-    msg_addr = "tcp://%s:%d" % (args.host, args.message)
-    export_addr = "tcp://%s:%d" % (args.host, args.export)
+    collector_addr = "tcp://localhost:%d" % args.port + Ports.NodeCollector
+    graph_addr = "tcp://%s:%d" % (args.host, args.port + Ports.Graph)
+    msg_addr = "tcp://%s:%d" % (args.host, args.port + Ports.Message)
+    export_addr = "tcp://%s:%d" % (args.host, args.port + Ports.Export)
 
     log_handlers = [logging.StreamHandler()]
     if args.log_file is not None:
@@ -487,6 +473,7 @@ def main():
                           export_addr,
                           flags,
                           args.prometheus_dir,
+                          args.prometheus_port,
                           args.hutch)
     except KeyboardInterrupt:
         logger.info("Worker killed by user...")
