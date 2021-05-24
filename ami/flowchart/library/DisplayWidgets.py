@@ -322,6 +322,8 @@ class PlotWidget(QtWidgets.QWidget):
         self.annotation_layout.removeWidget(editor.ui)
         editor.deleteLater()
         del self.annotation_editors[name]
+        if self.node:
+            self.node.sigStateChanged.emit(self.node)
 
     def editor(self, node, parent, **kwargs):
         return TraceEditor(node=node, parent=parent, **kwargs)
@@ -432,8 +434,12 @@ class PlotWidget(QtWidgets.QWidget):
                     self.update_legend_layout(k, data_name, name, editor_state=editor_state, restore=True)
 
             annotation_state = state.get('annotations', {})
-            for name, state in annotation_state.items():
-                self.add_annotation(name, state)
+            if annotation_state:
+                for name, state in annotation_state.items():
+                    self.add_annotation(name, state)
+            else:
+                for name in list(self.annotation_traces.keys()):
+                    self.remove_annotation(name)
 
             self.apply_clicked()
 
