@@ -532,10 +532,17 @@ class NodeGraphicsItem(GraphicsObject):
         self.update()
 
     def updateTerminals(self):
-        bounds = self.bounds
-        self.terminals = {}
-
         inp = self.node.inputs()
+        out = self.node.outputs()
+
+        t = max(len(inp), len(out))
+        bounds = QtCore.QRectF(0, 0, 100, 100*((t // 4) + 1))
+
+        if bounds != self.bounds:
+            self.bounds = bounds
+            self.update()
+
+        self.terminals = {}
 
         dy = bounds.height() / (len(inp)+1)
         y = dy
@@ -547,7 +554,6 @@ class NodeGraphicsItem(GraphicsObject):
             self.terminals[i] = (t, item)
             y += dy
 
-        out = self.node.outputs()
         dy = bounds.height() / (len(out)+1)
         y = dy
         for i, t in out.items():
