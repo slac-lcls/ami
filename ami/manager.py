@@ -630,7 +630,7 @@ class Manager(Collector):
         if self.prometheus_dir:
             if not os.path.exists(self.prometheus_dir):
                 os.makedirs(self.prometheus_dir)
-            pth = f"drpami_{socket.gethostname()}_{self.name}.json"
+            pth = f"drpami_{socket.gethostname()}_{self.hutch}_{self.name}.json"
             pth = os.path.join(self.prometheus_dir, pth)
             conf = [{"targets": [f"{socket.gethostname()}:{port}"]}]
             try:

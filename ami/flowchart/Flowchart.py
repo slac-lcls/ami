@@ -110,7 +110,7 @@ class Flowchart(Node):
         if self.prometheus_dir:
             if not os.path.exists(self.prometheus_dir):
                 os.makedirs(self.prometheus_dir)
-            pth = f"drpami_{socket.gethostname()}_client.json"
+            pth = f"drpami_{socket.gethostname()}_{self.hutch}_client.json"
             pth = os.path.join(self.prometheus_dir, pth)
             conf = [{"targets": [f"{socket.gethostname()}:{port}"]}]
             try:
