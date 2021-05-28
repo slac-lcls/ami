@@ -325,70 +325,7 @@ except ImportError as e:
 
 
 try:
-    from ami.flowchart.library.PythonEditorWidget import PythonEditorWidget
-    import tempfile
-    import importlib
-
-    class PythonEditorProc(object):
-
-        def __init__(self, text):
-            self.text = text
-            self.file = None
-            self.mod = None
-
-        def load(self):
-            self.file = tempfile.NamedTemporaryFile(mode='w', suffix='.py')
-            self.file.write(self.text)
-            self.file.flush()
-            spec = importlib.util.spec_from_file_location("module.name", self.file.name)
-            self.mod = importlib.util.module_from_spec(spec)
-            spec.loader.exec_module(self.mod)
-
-            if hasattr(self.mod, 'EventProcessor'):
-                self.proc = self.mod.EventProcessor()
-                self.func = self.proc.on_event
-            else:
-                self.proc = None
-                self.func = self.mod.func
-
-        def __call__(self, *args, **kwargs):
-            if self.file is None:
-                self.load()
-
-            return self.func(*args, **kwargs)
-
-        def __del__(self):
-            if self.file:
-                del self.mod
-                self.file.close()
-
-        def begin_run(self):
-            if self.file is None:
-                self.load()
-
-            if self.proc:
-                return self.proc.begin_run()
-
-        def end_run(self):
-            if self.file is None:
-                self.load()
-
-            if self.proc:
-                return self.proc.end_run()
-
-        def begin_step(self, step):
-            if self.file is None:
-                self.load()
-
-            if self.proc:
-                return self.proc.begin_step(step)
-
-        def end_step(self, step):
-            if self.file is None:
-                self.load()
-
-            if self.proc:
-                return self.proc.end_step(step)
+    from ami.flowchart.library.PythonEditorWidget import PythonEditorWidget, PythonEditorProc
 
     class PythonEditor(CtrlNode):
         """
@@ -461,31 +398,46 @@ try:
 
         def display(self, topics, terms, addr, win, **kwargs):
             if self.widget is None:
-                old = False
+                if not self.values['text']:
+                    self.values['text'] = self.generate_template(self.inputs().keys(), self.outputs().keys())
 
-                if "def func(" in self.values['text']:
-                    inputs = self.input_vars()
-                    outputs = self.output_vars()
-                    old = True
-                else:
-                    inputs = {k: k for k in self.inputs().keys()}
-                    outputs = {k: k for k in self.outputs().keys()}
-
-                self.widget = PythonEditorWidget(inputs, outputs, win, self.values['text'], old)
+                self.widget = PythonEditorWidget(win, self.values['text'], export=True)
                 self.widget.sigStateChanged.connect(self.state_changed)
 
             return self.widget
 
-        def saveState(self):
-            state = super().saveState()
-            term_order = []
-            for term in self.inputs():
-                term_order.append(term)
+        def generate_template(self, inputs, outputs):
+            args = []
 
-            for term in self.outputs():
-                term_order.append(term)
+            for arg in inputs:
+                rarg = sanitize_name(arg)
+                args.append(rarg)
 
-            return state
+            args = ', '.join(args)
+            template = f"""
+class EventProcessor():
+
+    def __init__(self):
+        pass
+
+    def begin_run(self):
+        pass
+
+    def end_run(self):
+        pass
+
+    def begin_step(self, step):
+        pass
+
+    def end_step(self, step):
+        pass
+
+    def on_event(self, {args}, *args, **kwargs):
+
+        # return {len(self.outputs())} output(s)
+        return"""
+
+            return template
 
         def to_operation(self, **kwargs):
             proc = PythonEditorProc(self.values['text'])

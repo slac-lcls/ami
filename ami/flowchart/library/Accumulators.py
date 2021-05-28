@@ -1,3 +1,4 @@
+from typing import Any
 from amitypes import Array1d, T
 from ami.flowchart.Node import Node
 from ami.flowchart.library.common import CtrlNode
@@ -57,3 +58,152 @@ class RollingBuffer(CtrlNode):
 
     def to_operation(self, **kwargs):
         return gn.RollingBuffer(name=self.name()+"_operation", N=self.values['N'], **kwargs)
+
+
+try:
+    from ami.flowchart.library.PythonEditorWidget import PythonEditorWidget
+    import tempfile
+    import importlib
+
+    class AccumulatorProc(object):
+
+        def __init__(self, text):
+            self.text = text
+            self.file = None
+            self.mod = None
+
+        def load(self):
+            self.file = tempfile.NamedTemporaryFile(mode='w', suffix='.py')
+            self.file.write(self.text)
+            self.file.flush()
+            spec = importlib.util.spec_from_file_location("module.name", self.file.name)
+            self.mod = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(self.mod)
+            self.accumulator = self.mod.Accumulator()
+
+        def __call__(self, res, *rest):
+            if self.file is None:
+                self.load()
+
+            return self.accumulator.reduction(res, *rest)
+
+        def res_factory(self):
+            if self.file is None:
+                self.load()
+
+            return self.accumulator.reset()
+
+    class Accumulator(CtrlNode):
+        """
+        Accumulator
+        """
+
+        nodeName = "Accumulator"
+
+        def __init__(self, name):
+            super().__init__(name,
+                             terminals={'In': {'io': 'in', 'ttype': Any},
+                                        'Out': {'io': 'out', 'ttype': Any}},
+                             allowAddInput=True)
+
+            self.values = {'text': ''}
+
+        def display(self, topics, terms, addr, win, **kwargs):
+            if self.widget is None:
+                if not self.values['text']:
+                    self.values['text'] = self.generate_template()
+
+                self.widget = PythonEditorWidget(win, self.values['text'], False)
+                self.widget.sigStateChanged.connect(self.state_changed)
+
+            return self.widget
+
+        def generate_template(self):
+            template = f"""
+class Accumulator():
+
+    def __init__(self):
+        pass
+
+    def reduction(self, res, *rest):
+        pass
+
+    def reset(self):
+        return 0
+            """
+
+            return template
+
+        def to_operation(self, **kwargs):
+            proc = AccumulatorProc(self.values['text'])
+            node = gn.Accumulator(name=self.name()+"_accumulated", **kwargs,
+                                  res_factor=proc.res_factory, reduction=proc)
+            return node
+
+    class ReduceByKeyProc(object):
+
+        def __init__(self, text):
+            self.text = text
+            self.file = None
+            self.mod = None
+
+        def load(self):
+            self.file = tempfile.NamedTemporaryFile(mode='w', suffix='.py')
+            self.file.write(self.text)
+            self.file.flush()
+            spec = importlib.util.spec_from_file_location("module.name", self.file.name)
+            self.mod = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(self.mod)
+            self.reducebykey = self.mod.ReduceByKey()
+
+        def __call__(self, res, *rest):
+            if self.file is None:
+                self.load()
+
+            return self.reducebykey.reduction(res, *rest)
+
+    class ReduceByKey(CtrlNode):
+        """
+        ReduceByKey
+        """
+
+        nodeName = "ReduceByKey"
+
+        def __init__(self, name):
+            super().__init__(name,
+                             terminals={'Key': {'io': 'in', 'ttype': Any},
+                                        'Value': {'io': 'in', 'ttype': Any},
+                                        'Out': {'io': 'out', 'ttype': dict}})
+
+            self.values = {'text': ''}
+
+        def display(self, topics, terms, addr, win, **kwargs):
+            if self.widget is None:
+                if not self.values['text']:
+                    self.values['text'] = self.generate_template()
+
+                self.widget = PythonEditorWidget(win, self.values['text'], False)
+                self.widget.sigStateChanged.connect(self.state_changed)
+
+            return self.widget
+
+        def generate_template(self):
+            template = f"""
+class ReduceByKey():
+
+    def __init__(self):
+        pass
+
+    def reduction(self, res, *rest):
+        pass
+            """
+
+            return template
+
+        def to_operation(self, **kwargs):
+            proc = ReduceByKeyProc(self.values['text'])
+            node = gn.ReduceByKey(name=self.name()+"_reduced", **kwargs, reduction=proc)
+            return node
+
+except ImportError:
+    pass
