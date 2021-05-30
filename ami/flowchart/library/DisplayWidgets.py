@@ -123,9 +123,8 @@ class AsyncFetcher(QtCore.QThread):
                     now = dt.datetime.now()
                     now = now.strftime("%T")
                     heartbeat = heartbeats.pop()
-                    hbts = dt.datetime.fromtimestamp(heartbeat.timestamp).strftime("%T.%f")
                     latency = dt.datetime.now() - dt.datetime.fromtimestamp(heartbeat.timestamp)
-                    self.last_updated = f"Last Updated: {now} HB: {hbts} Latency: {latency}"
+                    self.last_updated = f"Last Updated: {now} Latency: {latency}"
                     # put results on the reply queue
                     self.reply_queue.put(res)
                     # send a signal that data is ready

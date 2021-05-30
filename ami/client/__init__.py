@@ -17,12 +17,14 @@ GraphMgrAddress = collections.namedtuple('GraphMgrAddress', ['name', 'comm', 'vi
 
 
 def run_client(graph_name, comm_addr, info_addr, view_addr, load,
-               use_legacy=True, prometheus_dir=None, prometheus_port=None, hutch='', use_opengl=False):
+               use_legacy=True, prometheus_dir=None, prometheus_port=None, hutch='', use_opengl=False,
+               configure=False):
     graphmgr_addr = GraphMgrAddress(graph_name, comm_addr, view_addr, info_addr)
     if use_legacy:
         return legacy.run_client(graphmgr_addr, load)
     else:
-        return flowchart.run_client(graphmgr_addr, load, prometheus_dir, prometheus_port, hutch, use_opengl)
+        return flowchart.run_client(graphmgr_addr, load, prometheus_dir, prometheus_port, hutch, use_opengl,
+                                    configure)
 
 
 def main():
@@ -169,7 +171,8 @@ def main():
 
     try:
         return run_client(args.graph_name, comm_addr, info_addr, view_addr, args.load,
-                          args.gui_mode, args.prometheus_dir, args.prometheus_port, args.hutch, args.use_opengl)
+                          args.gui_mode, args.prometheus_dir, args.prometheus_port, args.hutch, args.use_opengl,
+                          False)
     except KeyboardInterrupt:
         logger.info("Client killed by user...")
         return 0

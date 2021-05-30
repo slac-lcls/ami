@@ -13,7 +13,7 @@ import holoviews as hv
 from networkfox import modifiers
 from ami import LogConfig, Defaults
 from ami.client import GraphMgrAddress
-from ami.comm import Ports, ZMQ_TOPIC_DELIM
+from ami.comm import BasePort, Ports, ZMQ_TOPIC_DELIM
 from ami.data import Deserializer
 
 
@@ -132,9 +132,9 @@ class PlotWidget():
                 self.data_updated(self.fetcher.reply)
                 heartbeat = self.fetcher.heartbeats.pop()
                 now = dt.datetime.now()
-                hbts = dt.datetime.fromtimestamp(heartbeat.timestamp).strftime("%F %T.%f")
-                latency = dt.datetime.now() - dt.datetime.fromtimestamp(heartbeat.timestamp)
-                last_updated = f"<b>{self.name} Last Updated:<br/>{now}<br/>HB: {hbts}<br/>Latency: {latency}</b>"
+                now = now.strftime("%T")
+                latency = (dt.datetime.now() - dt.datetime.fromtimestamp(heartbeat.timestamp))
+                last_updated = f"<b>{self.name}<br/>Last Updated: {now}<br/>Latency: {latency}</b>"
                 self._latency_lbl.value = last_updated
 
     def close(self):
@@ -458,7 +458,7 @@ class Monitor():
                         self.plot_metadata.pop(name, None)
                         self.remove_plot(name)
 
-                    logger.info('Received plots: %s', self.plot_metadata.keys())
+                    logger.debug('Received plots: %s', self.plot_metadata.keys())
                     self.enabled_plots.options = list(self.plot_metadata.keys())
 
 
@@ -487,10 +487,8 @@ def main():
         '-p',
         '--port',
         type=int,
-        nargs=2,
-        default=(Ports.Export, Ports.View),
-        help='port for manager (GUI) export and view (default: %d, %d)' %
-             (Ports.Export, Ports.View)
+        default=BasePort,
+        help='base port for AMI'
     )
 
     parser.add_argument(
@@ -513,9 +511,8 @@ def main():
 
     args = parser.parse_args()
     graph = args.graph_name
-    export, view = args.port
-    export_addr = "tcp://%s:%d" % (args.host, export)
-    view_addr = "tcp://%s:%d" % (args.host, view)
+    export_addr = "tcp://%s:%d" % (args.host, args.port + Ports.Export)
+    view_addr = "tcp://%s:%d" % (args.host, args.port + Ports.View)
 
     log_handlers = [logging.StreamHandler()]
     if args.log_file is not None:

@@ -169,7 +169,7 @@ def build_tree(model=None, parent=None):
 
 
 class Ui_Toolbar(object):
-    def setupUi(self, parent=None, chart=None):
+    def setupUi(self, parent=None, chart=None, configure=False):
         self.gridLayout = QtWidgets.QGridLayout(parent)
 
         self.toolBar = QtWidgets.QToolBar(parent)
@@ -201,9 +201,10 @@ class Ui_Toolbar(object):
         self.actionApply.setObjectName("actionApply")
 
         # configure
-        self.actionConfigure = QtWidgets.QAction(parent)
-        self.actionConfigure.setIconText("Configure")
-        self.actionConfigure.setObjectName("actionConfigure")
+        if configure:
+            self.actionConfigure = QtWidgets.QAction(parent)
+            self.actionConfigure.setIconText("Configure")
+            self.actionConfigure.setObjectName("actionConfigure")
 
         # profile
         # self.actionProfiler = QtWidgets.QAction(parent)
@@ -259,13 +260,16 @@ class Ui_Toolbar(object):
         self.toolBar.addAction(self.actionSave)
         self.toolBar.addAction(self.actionSaveAs)
 
-        self.toolBar.addAction(self.actionConfigure)
+        if configure:
+            self.toolBar.addAction(self.actionConfigure)
         self.toolBar.addAction(self.actionApply)
         self.toolBar.addAction(self.actionReset)
         self.toolBar.addAction(self.actionConsole)
         # self.toolBar.addAction(self.actionProfiler)
-        self.toolBar.insertSeparator(self.actionConfigure)
-
+        if configure:
+            self.toolBar.insertSeparator(self.actionConfigure)
+        else:
+            self.toolBar.insertSeparator(self.actionApply)
         # self.toolBar.addAction(self.actionArrange)
         self.toolBar.addAction(self.actionHome)
         self.toolBar.addAction(self.actionPan)

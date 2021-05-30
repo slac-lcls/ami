@@ -347,7 +347,7 @@ def run_ami(args, queue=None):
                 name='client',
                 target=run_client,
                 args=(args.graph_name, comm_addr, info_addr, view_addr, args.load, args.gui_mode,
-                      args.prometheus_dir, args.prometheus_port, args.hutch, args.use_opengl)
+                      args.prometheus_dir, args.prometheus_port, args.hutch, args.use_opengl, src_cfg is None)
             )
             client_proc.daemon = False
             client_proc.start()

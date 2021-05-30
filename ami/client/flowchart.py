@@ -26,7 +26,7 @@ logger = logging.getLogger(LogConfig.get_package_name(__name__))
 
 
 def run_editor_window(broker_addr, graphmgr_addr, checkpoint_addr, load=None, prometheus_dir=None,
-                      prometheus_port=None, hutch=None):
+                      prometheus_port=None, hutch=None, configure=False):
     subprocess.call(["dmypy", "start"])
     check_file = None
     with tempfile.NamedTemporaryFile(mode='w', delete=False) as f:
@@ -55,7 +55,8 @@ def run_editor_window(broker_addr, graphmgr_addr, checkpoint_addr, load=None, pr
     fc = Flowchart(broker_addr=broker_addr,
                    graphmgr_addr=graphmgr_addr,
                    checkpoint_addr=checkpoint_addr,
-                   prometheus_dir=prometheus_dir, hutch=hutch)
+                   prometheus_dir=prometheus_dir, hutch=hutch,
+                   configure=configure)
 
     fc.start_prometheus(prometheus_port)
 
@@ -308,7 +309,7 @@ class MessageBroker(object):
             self.editor.join()
         self.ctx.destroy()
 
-    def launch_editor_window(self):
+    def launch_editor_window(self, configure):
         editor_proc = mp.Process(
             name='editor',
             target=run_editor_window,
@@ -318,7 +319,8 @@ class MessageBroker(object):
                   self.load,
                   self.prometheus_dir,
                   self.prometheus_port,
-                  self.hutch),
+                  self.hutch,
+                  configure),
             daemon=True)
         editor_proc.start()
 
@@ -452,14 +454,14 @@ class MessageBroker(object):
         asyncio.create_task(self.monitor_processes())
 
 
-def run_client(graphmgr_addr, load, prometheus_dir, prometheus_port, hutch, use_opengl):
+def run_client(graphmgr_addr, load, prometheus_dir, prometheus_port, hutch, use_opengl, configure):
     use_opengl = use_opengl and "SSH_CONNECTION" not in os.environ
     pg.setConfigOptions(useOpenGL=use_opengl, enableExperimental=use_opengl)
 
     with tempfile.TemporaryDirectory() as ipcdir:
         mb = MessageBroker(graphmgr_addr, load, ipcdir=ipcdir, prometheus_dir=prometheus_dir,
                            prometheus_port=prometheus_port, hutch=hutch)
-        mb.launch_editor_window()
+        mb.launch_editor_window(configure)
         loop = asyncio.get_event_loop()
         task = asyncio.ensure_future(mb.run())
 

@@ -51,7 +51,7 @@ class Flowchart(Node):
 
     def __init__(self, name=None, filePath=None, library=None,
                  broker_addr="", graphmgr_addr="", checkpoint_addr="",
-                 prometheus_dir=None, hutch=""):
+                 prometheus_dir=None, hutch="", configure=False):
         super().__init__(name)
         self.socks = []
         self.library = library or LIBRARY
@@ -85,6 +85,8 @@ class Flowchart(Node):
 
         self.prometheus_dir = prometheus_dir
         self.hutch = hutch
+
+        self.configure = configure
 
     def __enter__(self):
         return self
@@ -290,7 +292,7 @@ class Flowchart(Node):
         graphical representation of the flowchart.
         """
         if self._widget is None:
-            self._widget = FlowchartCtrlWidget(self, self.graphmgr_addr)
+            self._widget = FlowchartCtrlWidget(self, self.graphmgr_addr, self.configure)
             self.scene = self._widget.scene()
             self.viewBox = self._widget.viewBox()
         return self._widget
@@ -608,7 +610,7 @@ class FlowchartCtrlWidget(QtGui.QWidget):
     as well as buttons for loading/saving flowcharts.
     """
 
-    def __init__(self, chart, graphmgr_addr):
+    def __init__(self, chart, graphmgr_addr, configure):
         super().__init__()
 
         self.graphCommHandler = AsyncGraphCommHandler(graphmgr_addr.name, graphmgr_addr.comm, ctx=chart.ctx)
@@ -620,7 +622,7 @@ class FlowchartCtrlWidget(QtGui.QWidget):
         self.chartWidget = FlowchartWidget(chart, self)
 
         self.ui = EditorTemplate.Ui_Toolbar()
-        self.ui.setupUi(parent=self, chart=self.chartWidget)
+        self.ui.setupUi(parent=self, chart=self.chartWidget, configure=configure)
         self.ui.create_model(self.ui.node_tree, self.chart.library.getLabelTree())
         self.ui.create_model(self.ui.source_tree, self.chart.source_library.getLabelTree())
 
@@ -633,7 +635,8 @@ class FlowchartCtrlWidget(QtGui.QWidget):
         self.ui.actionSave.triggered.connect(self.saveClicked)
         self.ui.actionSaveAs.triggered.connect(self.saveAsClicked)
 
-        self.ui.actionConfigure.triggered.connect(self.configureClicked)
+        if configure:
+            self.ui.actionConfigure.triggered.connect(self.configureClicked)
         self.ui.actionApply.triggered.connect(self.applyClicked)
         self.ui.actionReset.triggered.connect(self.resetClicked)
         self.ui.actionConsole.triggered.connect(self.consoleClicked)
