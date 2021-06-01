@@ -434,8 +434,8 @@ class PlotWidget(QtWidgets.QWidget):
 
             annotation_state = state.get('annotations', {})
             if annotation_state:
-                for name, state in annotation_state.items():
-                    self.add_annotation(name, state)
+                for name, annotation in annotation_state.items():
+                    self.add_annotation(name,  annotation)
             else:
                 for name in list(self.annotation_traces.keys()):
                     self.remove_annotation(name)
