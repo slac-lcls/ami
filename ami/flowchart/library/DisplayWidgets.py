@@ -172,11 +172,11 @@ class PlotWidget(QtWidgets.QWidget):
 
         ax = self.plot_view.getAxis('bottom')
         ax.enableAutoSIPrefix(enable=bool(self.units))
-        ax.setZValue(100)
+        # ax.setZValue(100)
 
         ay = self.plot_view.getAxis('left')
         ay.enableAutoSIPrefix(enable=bool(self.units))
-        ay.setZValue(100)
+        # ay.setZValue(100)
 
         self.plot_view.setMenuEnabled(False)
 
