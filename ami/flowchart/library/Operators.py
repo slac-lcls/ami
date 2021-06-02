@@ -1,4 +1,5 @@
 from typing import Union, Any
+from pyqtgraph.Qt import QtWidgets, QtGui
 from amitypes import Array1d, Array2d, Array3d
 from ami.flowchart.library.common import CtrlNode, GroupedNode
 from ami.flowchart.library.CalculatorWidget import CalculatorWidget, FilterWidget, gen_filter_func, sanitize_name
@@ -6,6 +7,23 @@ import ami.graph_nodes as gn
 import numpy as np
 import itertools
 import collections
+
+
+class Constant(CtrlNode):
+
+    """
+    Constant
+    """
+
+    nodeName = "Constant"
+    uiTemplate = [('constant', 'doubleSpin')]
+
+    def __init__(self, name):
+        super().__init__(name, terminals={"Out": {'io': 'out', 'ttype': float}})
+
+    def to_operation(self, **kwargs):
+        constant = self.values['constant']
+        return gn.Map(name=self.name()+"_operation", **kwargs, func=lambda: constant)
 
 
 class Identity(GroupedNode):
@@ -307,32 +325,7 @@ except ImportError as e:
 
 
 try:
-    from ami.flowchart.library.PythonEditorWidget import PythonEditorWidget
-    import tempfile
-    import importlib
-
-    class PythonEditorProc(object):
-
-        def __init__(self, text):
-            self.text = text
-            self.file = None
-            self.mod = None
-
-        def __call__(self, *args, **kwargs):
-            if self.file is None:
-                self.file = tempfile.NamedTemporaryFile(mode='w', suffix='.py')
-                self.file.write(self.text)
-                self.file.flush()
-                spec = importlib.util.spec_from_file_location("module.name", self.file.name)
-                self.mod = importlib.util.module_from_spec(spec)
-                spec.loader.exec_module(self.mod)
-
-            return self.mod.func(*args, **kwargs)
-
-        def __del__(self):
-            if self.file:
-                del self.mod
-                self.file.close()
+    from ami.flowchart.library.PythonEditorWidget import PythonEditorWidget, PythonEditorProc
 
     class PythonEditor(CtrlNode):
         """
@@ -343,24 +336,118 @@ try:
 
         def __init__(self, name):
             super().__init__(name,
-                             terminals={'In': {'io': 'in', 'ttype': Any},
-                                        'Out': {'io': 'out', 'ttype': Any}},
                              allowAddInput=True,
                              allowAddOutput=True)
             self.values = {'text': ''}
+            self.input_prompt = None
+            self.output_prompt = None
+
+        def terminal_prompt(self, name='', title='', **kwargs):
+            prompt = QtWidgets.QWidget()
+            prompt.layout = QtWidgets.QFormLayout(parent=prompt)
+            prompt.name = QtGui.QLineEdit(name, parent=prompt)
+            prompt.type_selector = QtGui.QComboBox(prompt)
+            prompt.ok = QtGui.QPushButton('Ok', parent=prompt)
+            for typ in [Any, bool, float, Array1d, Array2d, Array3d]:
+                prompt.type_selector.addItem(str(typ), typ)
+            prompt.layout.addRow("Name:", prompt.name)
+            prompt.layout.addRow("Type:", prompt.type_selector)
+            prompt.layout.addRow("", prompt.ok)
+            prompt.setLayout(prompt.layout)
+            prompt.setWindowTitle("Add " + name)
+            return prompt
+
+        def onCreate(self):
+            self.addInput()
+            self.addOutput()
+
+        def addInput(self, **kwargs):
+            if 'name' not in kwargs:
+                kwargs['name'] = self.nextTerminalName('In')
+            self.input_prompt = self.terminal_prompt(**kwargs)
+            self.input_prompt.ok.clicked.connect(self._addInput)
+            self.input_prompt.show()
+
+        def _addInput(self, **kwargs):
+            name = self.input_prompt.name.text()
+            ttype = self.input_prompt.type_selector.currentData()
+            kwargs['name'] = name
+            kwargs['ttype'] = ttype
+            kwargs['removable'] = True
+            self.input_prompt.close()
+            return super().addInput(**kwargs)
+
+        def addOutput(self, **kwargs):
+            if 'name' not in kwargs:
+                kwargs['name'] = self.nextTerminalName('Out')
+            self.output_prompt = self.terminal_prompt(**kwargs)
+            self.output_prompt.ok.clicked.connect(self._addOutput)
+            self.output_prompt.show()
+
+        def _addOutput(self, **kwargs):
+            name = self.output_prompt.name.text()
+            ttype = self.output_prompt.type_selector.currentData()
+            kwargs['name'] = name
+            kwargs['ttype'] = ttype
+            kwargs['removable'] = True
+            self.output_prompt.close()
+            return super().addOutput(**kwargs)
 
         def isChanged(self, restore_ctrl, restore_widget):
             return restore_widget
 
         def display(self, topics, terms, addr, win, **kwargs):
             if self.widget is None:
-                self.widget = PythonEditorWidget(self.input_vars(), self.output_vars(), win, self.values['text'])
+                if not self.values['text']:
+                    self.values['text'] = self.generate_template(self.inputs().keys(), self.outputs().keys())
+
+                self.widget = PythonEditorWidget(win, self.values['text'], export=True)
                 self.widget.sigStateChanged.connect(self.state_changed)
 
             return self.widget
 
+        def generate_template(self, inputs, outputs):
+            args = []
+
+            for arg in inputs:
+                rarg = sanitize_name(arg)
+                args.append(rarg)
+
+            args = ', '.join(args)
+            template = f"""
+class EventProcessor():
+
+    def __init__(self):
+        pass
+
+    def begin_run(self):
+        pass
+
+    def end_run(self):
+        pass
+
+    def begin_step(self, step):
+        pass
+
+    def end_step(self, step):
+        pass
+
+    def on_event(self, {args}, *args, **kwargs):
+
+        # return {len(self.outputs())} output(s)
+        return"""
+
+            return template
+
         def to_operation(self, **kwargs):
-            return gn.Map(name=self.name()+"_operation", **kwargs, func=PythonEditorProc(self.values['text']))
+            proc = PythonEditorProc(self.values['text'])
+            return gn.Map(name=self.name()+"_operation",
+                          **kwargs,
+                          func=proc,
+                          begin_run=proc.begin_run,
+                          end_run=proc.end_run,
+                          begin_step=proc.begin_step,
+                          end_step=proc.end_step)
 
     class Filter(CtrlNode):
         """

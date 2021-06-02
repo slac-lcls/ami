@@ -6,6 +6,7 @@ from pyqtgraph.pgcollections import OrderedDict
 from pyqtgraph.debug import printExc
 from ami.flowchart.Terminal import Terminal
 from networkfox import modifiers
+import inspect
 import weakref
 import amitypes  # noqa
 import typing  # noqa
@@ -168,8 +169,11 @@ class Node(QtCore.QObject):
         keyword arguments are passed to Terminal.__init__.
 
         This is a convenience function that just calls addTerminal(io='in', ...)"""
-        # print "Node.addInput called."
-        ttype = kwargs.pop('ttype', self.terminals["In"].type())
+        ttype = typing.Any
+        if 'ttype' in kwargs:
+            ttype = kwargs.pop('ttype')
+        elif 'In' in self.terminals:
+            ttype = self.terminals['In'].type()
         return self.addTerminal(name, io='in', ttype=ttype, **kwargs)
 
     def addOutput(self, name="Out", **kwargs):
@@ -177,7 +181,11 @@ class Node(QtCore.QObject):
         keyword arguments are passed to Terminal.__init__.
 
         This is a convenience function that just calls addTerminal(io='out', ...)"""
-        ttype = kwargs.pop('ttype', self.terminals["Out"].type())
+        ttype = typing.Any
+        if 'ttype' in kwargs:
+            ttype = kwargs.pop('ttype')
+        elif 'Out' in self.terminals:
+            ttype = self.terminals['Out'].type()
         return self.addTerminal(name, io='out', ttype=ttype, **kwargs)
 
     def removeTerminal(self, term):
@@ -420,6 +428,7 @@ class Node(QtCore.QObject):
         terms = OrderedDict()
         for n, t in self.terminals.items():
             terms[n] = (t.saveState())
+
         return terms
 
     def restoreTerminals(self, state):
@@ -480,6 +489,12 @@ class Node(QtCore.QObject):
             self.graphicsItem().optional.setChecked(checked)
             self.sigTerminalOptional.emit(self, term)
 
+    def plotMetadata(self, **kwargs):
+        return {}
+
+    def onCreate(self):
+        pass
+
 
 class NodeGraphicsItem(GraphicsObject):
 
@@ -523,11 +538,6 @@ class NodeGraphicsItem(GraphicsObject):
     def setBrush(self, brush):
         self.brush = brush
         self.update()
-
-    def shouldResize(self):
-        inputs = len(self.node.inputs()) + len(self.node.conditions())
-        outputs = len(self.node.outputs())
-        return (inputs > 4 and inputs % 4 > 0) or (outputs > 4 and outputs % 4 > 0)
 
     def updateTerminals(self):
         inp = self.node.inputs()
@@ -753,6 +763,7 @@ class NodeGraphicsItem(GraphicsObject):
                 self.menu.addAction("Add output", self.addOutputFromMenu)
             if self.node._allowRemove:
                 self.menu.addAction("Remove node", self.node.close)
+            self.menu.addAction("View Source Code", self.viewSource)
 
         return self.menu
 
@@ -775,3 +786,10 @@ class NodeGraphicsItem(GraphicsObject):
     def addOutputFromMenu(self):
         # called when add output is clicked in context menu
         self.node.addOutput(removable=True)
+
+    def viewSource(self):
+        self.sourceEditor = QtWidgets.QTextEdit()
+        self.sourceEditor.setText(inspect.getsource(self.node.__class__))
+        self.sourceEditor.setReadOnly(True)
+        self.sourceEditor.setWindowTitle(self.node.__class__.__name__ + ' Source')
+        self.sourceEditor.show()

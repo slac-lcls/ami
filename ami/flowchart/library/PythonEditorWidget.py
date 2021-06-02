@@ -3,6 +3,70 @@ from pyqode.python.backend import server
 # from pyqode.python.widgets import PyCodeEdit
 from pyqode.core import api, modes, panels
 from pyqode.python import modes as pymodes, panels as pypanels, widgets
+import tempfile
+import importlib
+
+
+class PythonEditorProc(object):
+
+    def __init__(self, text):
+        self.text = text
+        self.file = None
+        self.mod = None
+
+    def load(self):
+        self.file = tempfile.NamedTemporaryFile(mode='w', suffix='.py')
+        self.file.write(self.text)
+        self.file.flush()
+        spec = importlib.util.spec_from_file_location("module.name", self.file.name)
+        self.mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(self.mod)
+
+        if hasattr(self.mod, 'EventProcessor'):
+            self.proc = self.mod.EventProcessor()
+            self.func = self.proc.on_event
+        else:
+            self.proc = None
+            self.func = self.mod.func
+
+    def __call__(self, *args, **kwargs):
+        if self.file is None:
+            self.load()
+
+        return self.func(*args, **kwargs)
+
+    def __del__(self):
+        if self.file:
+            del self.mod
+            self.file.close()
+
+    def begin_run(self):
+        if self.file is None:
+            self.load()
+
+        if self.proc:
+            return self.proc.begin_run()
+
+    def end_run(self):
+        if self.file is None:
+            self.load()
+
+        if self.proc:
+            return self.proc.end_run()
+
+    def begin_step(self, step):
+        if self.file is None:
+            self.load()
+
+        if self.proc:
+            return self.proc.begin_step(step)
+
+    def end_step(self, step):
+        if self.file is None:
+            self.load()
+
+        if self.proc:
+            return self.proc.end_step(step)
 
 
 class MyPythonCodeEdit(widgets.PyCodeEditBase):
@@ -57,46 +121,25 @@ class PythonEditorWidget(QtWidgets.QWidget):
 
     sigStateChanged = QtCore.Signal(object, object, object)
 
-    def __init__(self, inputs, outputs, parent=None, text=""):
+    def __init__(self, parent=None, text="", export=False):
         super().__init__(parent)
         self.layout = QtWidgets.QGridLayout(self)
 
-        self.inputs = inputs
-        self.outputs = outputs
         # try:
         #     self.editor = PyCodeEdit(server_script=server.__file__, parent=self)
         # except Exception as e:
         #     self.editor = QtWidgets.QPlainTextEdit(parent=self)
         self.editor = MyPythonCodeEdit(parent=self)
-
-        if text:
-            self.editor.setPlainText(text)
-        elif self.inputs:
-            text = self.generate_template()
-            self.editor.setPlainText(text)
-
+        self.editor.setPlainText(text)
         self.editor.textChanged.connect(self.stateChanged)
-        self.layout.addWidget(self.editor, 0, 0, -1, -1)
 
-    def generate_template(self):
-        args = []
+        if export:
+            self.exportBtn = QtWidgets.QPushButton("Export", parent=self)
+            self.exportBtn.clicked.connect(self.export)
 
-        for arg in self.inputs.values():
-            rarg = arg.replace('.', '_')
-            rarg = rarg.replace(':', '_')
-            rarg = rarg.replace(' ', '_')
-            args.append(rarg)
+            self.layout.addWidget(self.exportBtn, 0, 0)
 
-        args = ', '.join(args)
-        template = f"""
-
-# entry point must be called func
-def func({args}, *args, **kwargs):
-
-    # return {len(self.outputs)} output(s)
-    return"""
-
-        return template
+        self.layout.addWidget(self.editor, 1, 0, -1, -1)
 
     def stateChanged(self, *args):
         self.sigStateChanged.emit("text", None, self.editor.toPlainText())
@@ -110,3 +153,6 @@ def func({args}, *args, **kwargs):
     def close(self):
         self.editor.close()
         super().close()
+
+    def export(self):
+        pass

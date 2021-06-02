@@ -39,7 +39,7 @@ class ExportHelper:
     def store(version=0, features=None):
         if features is None:
             features = {}
-        return {'version': version, 'features': features}
+        return {'version': version, 'features': features, 'plots': {}}
 
     @staticmethod
     def graph(version=0, names=None, sources=None, graph=None):
@@ -170,7 +170,6 @@ def manager_proc(ipc_dir):
         'graph': 'ipc://%s/manager_graph' % ipc_dir,
         'msg': 'ipc://%s/manager_msg' % ipc_dir,
         'info': 'ipc://%s/manager_info' % ipc_dir,
-        'profile': 'ipc://%s/manager_profile' % ipc_dir,
         'export': 'ipc://%s/manager_export' % ipc_dir,
         'view': 'ipc://%s/manager_view' % ipc_dir,
     }
@@ -180,8 +179,8 @@ def manager_proc(ipc_dir):
         name='manager',
         target=run_manager,
         args=(1, 1, addrs['results'], addrs['graph'], addrs['comm'],
-              addrs['msg'], addrs['info'], addrs['export'], addrs['view'], addrs['profile'],
-              None, None)
+              addrs['msg'], addrs['info'], addrs['export'], addrs['view'],
+              None, None, None)
     )
     proc.daemon = False
     proc.start()
@@ -316,6 +315,7 @@ def test_manager_export_data(manager_export, inputs, exports):
     expected_features = {
         'version': injector.version,
         'features': {k: Store.get_type(v) for k, v in input_data.items()},
+        'plots': {}
     }
     expected_data = {k: v for k, v in inputs.items() if k in exports}
 

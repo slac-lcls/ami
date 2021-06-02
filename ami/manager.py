@@ -13,7 +13,7 @@ import time
 import datetime as dt
 import prometheus_client as pc
 from ami import LogConfig
-from ami.comm import Ports, AutoExport, Collector, Store, ZMQ_TOPIC_DELIM
+from ami.comm import BasePort, Ports, AutoExport, Collector, Store, ZMQ_TOPIC_DELIM
 from ami.data import MsgTypes, Transitions, Serializer, Deserializer
 from ami.graphkit_wrapper import Graph
 
@@ -40,7 +40,6 @@ class Manager(Collector):
                  info_addr,
                  export_addr,
                  view_addr,
-                 profile_addr,
                  prometheus_dir,
                  hutch):
         """
@@ -70,29 +69,25 @@ class Manager(Collector):
 
         self.serializer = Serializer()
         self.deserializer = Deserializer()
-        self.comm = self.ctx.socket(zmq.REP)
+        self.comm = self.ctx.socket(zmq.REP)  # receives commands from client
         self.comm.bind(comm_addr)
         self.register(self.comm, self.client_request)
 
-        self.graph_comm = self.ctx.socket(zmq.XPUB)
+        self.graph_comm = self.ctx.socket(zmq.XPUB)  # pushes graph to workers/collectors
         self.graph_comm.setsockopt(zmq.XPUB_VERBOSE, True)
         self.graph_comm.bind(graph_addr)
         self.register(self.graph_comm, self.graph_request)
 
-        self.info_comm = self.ctx.socket(zmq.XPUB)
+        self.info_comm = self.ctx.socket(zmq.XPUB)  # status messages from manager to client
         self.info_comm.setsockopt(zmq.XPUB_VERBOSE, True)
         self.info_comm.bind(info_addr)
         self.register(self.info_comm, self.info_request)
 
-        self.node_msg_comm = self.ctx.socket(zmq.PULL)
+        self.node_msg_comm = self.ctx.socket(zmq.PULL)  # receives status from workers/collectors to push to info
         self.node_msg_comm.bind(msg_addr)
         self.register(self.node_msg_comm, self.node_request)
 
-        self.profile_comm = self.ctx.socket(zmq.XPUB)
-        self.profile_comm.setsockopt(zmq.XPUB_VERBOSE, True)
-        self.profile_comm.bind(profile_addr)
-
-        self.view_comm = self.ctx.socket(zmq.XPUB)
+        self.view_comm = self.ctx.socket(zmq.XPUB)  # exports plot data to clients
         self.view_comm.setsockopt(zmq.XPUB_VERBOSE, True)
         self.view_comm.bind(view_addr)
         self.register(self.view_comm, self.view_request)
@@ -208,6 +203,9 @@ class Manager(Collector):
     def features(self, name):
         return self.feature_stores[name].types
 
+    def plots(self, name):
+        return self.feature_stores[name].plots
+
     def feature_request(self, name, request):
         matched = self.feature_req.match(request)
         if matched:
@@ -266,6 +264,9 @@ class Manager(Collector):
 
     def cmd_get_features(self, name):
         self.comm.send_pyobj(self.features(name))
+
+    def cmd_get_plots(self, name):
+        self.comm.send_pyobj(self.feature_stores[name].plots)
 
     def cmd_get_compiler_args(self, name):
         self.comm.send_pyobj(self.compiler_args)
@@ -406,6 +407,11 @@ class Manager(Collector):
         self.graph_comm.send_string("update_path", zmq.SNDMORE)
         self.graph_comm.send_pyobj(self.publish_info(name), zmq.SNDMORE)
         self.graph_comm.send(dill.dumps(paths))
+        self.comm.send_string('ok')
+
+    def cmd_update_plots(self, name):
+        plots = self.comm.recv_pyobj()
+        self.feature_stores[name].update_plots(plots)
         self.comm.send_string('ok')
 
     def publish_info(self, name):
@@ -565,6 +571,7 @@ class Manager(Collector):
         data = {
             'version': self.feature_stores[name].version,
             'features': self.features(name),
+            'plots': self.feature_stores[name].plots
         }
         self.export.send_string('store', zmq.SNDMORE)
         self.export.send_string(name, zmq.SNDMORE)
@@ -612,8 +619,7 @@ class Manager(Collector):
         self.export.send_string(name, zmq.SNDMORE)
         self.export.send_pyobj(self.heartbeats[name])
 
-    def start_prometheus(self):
-        port = Ports.Prometheus
+    def start_prometheus(self, port):
         while True:
             try:
                 pc.start_http_server(port)
@@ -624,7 +630,7 @@ class Manager(Collector):
         if self.prometheus_dir:
             if not os.path.exists(self.prometheus_dir):
                 os.makedirs(self.prometheus_dir)
-            pth = f"drpami_{socket.gethostname()}_{self.name}.json"
+            pth = f"drpami_{socket.gethostname()}_{self.hutch}_{self.name}.json"
             pth = os.path.join(self.prometheus_dir, pth)
             conf = [{"targets": [f"{socket.gethostname()}:{port}"]}]
             try:
@@ -646,8 +652,8 @@ def run_manager(num_workers,
                 info_addr,
                 export_addr,
                 view_addr,
-                profile_addr,
                 prometheus_dir,
+                prometheus_port,
                 hutch):
     logger.info('Starting manager, controlling %d workers on %d nodes PID: %d',
                 num_workers, num_nodes, os.getpid())
@@ -661,10 +667,10 @@ def run_manager(num_workers,
             info_addr,
             export_addr,
             view_addr,
-            profile_addr,
             prometheus_dir,
             hutch) as manager:
-        manager.start_prometheus()
+        if prometheus_port:
+            manager.start_prometheus(prometheus_port)
         return manager.run()
 
 
@@ -682,8 +688,8 @@ def main():
         '-p',
         '--port',
         type=int,
-        default=Ports.Comm,
-        help='port for GUI-Manager communication (default: %d)' % Ports.Comm
+        default=BasePort,
+        help='base port for ami (default: %d) reserves next 10 consecutive ports' % BasePort
     )
 
     parser.add_argument(
@@ -703,54 +709,6 @@ def main():
     )
 
     parser.add_argument(
-        '-g',
-        '--graph',
-        type=int,
-        default=Ports.Graph,
-        help='port for graph communication (default: %d)' % Ports.Graph
-    )
-
-    parser.add_argument(
-        '-e',
-        '--export',
-        type=int,
-        default=Ports.Export,
-        help='port for sending data to the export service (default: %d)' % Ports.Export
-    )
-
-    parser.add_argument(
-        '-V',
-        '--view',
-        type=int,
-        default=Ports.View,
-        help='port for sending data to the AMI GUI for viewing (default: %d)' % Ports.View
-    )
-
-    parser.add_argument(
-        '-r',
-        '--results',
-        type=int,
-        default=Ports.Results,
-        help='port for receiving results (default: %d)' % Ports.Results
-    )
-
-    parser.add_argument(
-        '-m',
-        '--message',
-        type=int,
-        default=Ports.Message,
-        help='port for receiving out-of-band messages from nodes (default: %d)' % Ports.Message
-    )
-
-    parser.add_argument(
-        '-I',
-        '--info',
-        type=int,
-        default=Ports.Info,
-        help='port for status information communication (default: %d)' % Ports.Info
-    )
-
-    parser.add_argument(
         '--log-level',
         default=LogConfig.Level,
         help='the logging level of the application (default %s)' % LogConfig.Level
@@ -761,11 +719,12 @@ def main():
         help='an optional file to write the log output to'
     )
 
-    parser.add_argument('-P',
-                        '--profile',
-                        type=int,
-                        default=Ports.Profile,
-                        help='port for profiling inforation communication (default: %d)' % Ports.Profile)
+    parser.add_argument(
+        '--prometheus-port',
+        type=int,
+        default=Ports.Prometheus,
+        help='port for prometheus'
+    )
 
     parser.add_argument(
         '--prometheus-dir',
@@ -781,14 +740,13 @@ def main():
 
     args = parser.parse_args()
 
-    results_addr = "tcp://%s:%d" % (args.host, args.results)
-    graph_addr = "tcp://%s:%d" % (args.host, args.graph)
-    comm_addr = "tcp://%s:%d" % (args.host, args.port)
-    msg_addr = "tcp://%s:%d" % (args.host, args.message)
-    info_addr = "tcp://%s:%d" % (args.host, args.info)
-    export_addr = "tcp://%s:%d" % (args.host, args.export)
-    view_addr = "tcp://%s:%d" % (args.host, args.view)
-    profile_addr = "tcp://%s:%d" % (args.host, args.profile)
+    results_addr = "tcp://%s:%d" % (args.host, args.port + Ports.Results)
+    graph_addr = "tcp://%s:%d" % (args.host, args.port + Ports.Graph)
+    comm_addr = "tcp://%s:%d" % (args.host, args.port + Ports.Comm)
+    msg_addr = "tcp://%s:%d" % (args.host, args.port + Ports.Message)
+    info_addr = "tcp://%s:%d" % (args.host, args.port + Ports.Info)
+    export_addr = "tcp://%s:%d" % (args.host, args.port + Ports.Export)
+    view_addr = "tcp://%s:%d" % (args.host, args.port + Ports.View)
 
     log_handlers = [logging.StreamHandler()]
     if args.log_file is not None:
@@ -797,6 +755,8 @@ def main():
     logging.basicConfig(format=LogConfig.Format, level=log_level, handlers=log_handlers)
 
     try:
+        if args.port != BasePort:
+            logger.info('Manager comm port: %d view port: %d', args.port + Ports.Comm, args.port + Ports.View)
         return run_manager(args.num_workers,
                            args.num_nodes,
                            results_addr,
@@ -806,8 +766,8 @@ def main():
                            info_addr,
                            export_addr,
                            view_addr,
-                           profile_addr,
                            args.prometheus_dir,
+                           args.prometheus_port,
                            args.hutch)
     except KeyboardInterrupt:
         logger.info("Manager killed by user...")

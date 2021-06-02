@@ -210,11 +210,39 @@ class Graph():
 
     def heartbeat_finished(self):
         """
-        Execute post heartbeat hook on StatefulTransmation nodes in the graph.
+        Execute post heartbeat hook on StatefulTransformation nodes in the graph.
         """
         nodes = list(filter(lambda node: isinstance(node, gn.StatefulTransformation),
                             self.graph.nodes))
         list(map(lambda node: node.heartbeat_finished(), nodes))
+
+    def begin_run(self, color):
+        """
+        Execute pre run hook on nodes in the graph.
+        """
+        nodes = list(filter(lambda node: hasattr(node, "begin_run"), self.graph.nodes))
+        list(map(lambda node: node.begin_run(color), nodes))
+
+    def end_run(self, color):
+        """
+        Execute post run hook on nodes in the graph.
+        """
+        nodes = list(filter(lambda node: hasattr(node, "end_run"), self.graph.nodes))
+        list(map(lambda node: node.end_run(color), nodes))
+
+    def begin_step(self, step, color):
+        """
+        Execute pre step hook on nodes in the graph.
+        """
+        nodes = list(filter(lambda node: hasattr(node, "begin_step"), self.graph.nodes))
+        list(map(lambda node: node.begin_step(step, color), nodes))
+
+    def end_step(self, step, color):
+        """
+        Execute post step hook on nodes in the graph.
+        """
+        nodes = list(filter(lambda node: hasattr(node, "end_step"), self.graph.nodes))
+        list(map(lambda node: node.end_step(step, color), nodes))
 
     def _color_nodes(self):
         """
@@ -224,7 +252,7 @@ class Graph():
         """
         self.global_operations = set()
 
-        global_operations = filter(lambda node: getattr(node, 'is_global_operation', False), self.graph.nodes)
+        global_operations = list(filter(lambda node: getattr(node, 'is_global_operation', False), self.graph.nodes))
         for node in global_operations:
             if node in self.expanded_global_operations:
                 continue
@@ -250,9 +278,17 @@ class Graph():
                     descendant.color = 'globalCollector'
 
         for node in nx.algorithms.topological_sort(self.graph):
-            if skip(node):
+            if skip(node) or node.color:
                 continue
-            if node.color == '':
+
+            colors = set()
+
+            for predecessor in map(self.graph.predecessors, node.inputs):
+                colors.update(map(lambda node: getattr(node, 'color', ''), predecessor))
+
+            if 'globalCollector' in colors:
+                node.color = 'globalCollector'
+            else:
                 node.color = 'worker'
 
     def _expand_global_operations(self, num_workers, num_local_collectors):

@@ -9,7 +9,7 @@ import datetime as dt
 import ami.multiproc as mp
 from ami.worker import run_worker, parse_args
 from ami import LogConfig, Defaults
-from ami.comm import Ports, Colors, Node, Collector, TransitionBuilder, EventBuilder
+from ami.comm import BasePort, Ports, Colors, Node, Collector, TransitionBuilder, EventBuilder
 from ami.data import MsgTypes, Transitions
 
 
@@ -18,8 +18,9 @@ logger = logging.getLogger(__name__)
 
 class GraphCollector(Node, Collector):
     def __init__(self, node, base_name, num_workers, color, collector_addr, downstream_addr, graph_addr,
-                 msg_addr, prometheus_dir, hutch):
-        Node.__init__(self, node, graph_addr, msg_addr, prometheus_dir=prometheus_dir, hutch=hutch)
+                 msg_addr, prometheus_dir, prometheus_port, hutch):
+        Node.__init__(self, node, graph_addr, msg_addr, prometheus_dir=prometheus_dir,
+                      prometheus_port=prometheus_port, hutch=hutch)
         Collector.__init__(self, collector_addr, ctx=self.ctx, hutch=hutch)
         self.base_name = base_name
         self.num_workers = num_workers
@@ -53,6 +54,34 @@ class GraphCollector(Node, Collector):
                 self.store.flush(self.node, drop=True)
         except Exception as e:
             logger.exception("%s: Failure encountered while flushing store", self.name)
+            self.report("error", e)
+
+    def begin_run(self):
+        try:
+            self.store.begin_run()
+        except Exception as e:
+            logger.exception("%s: Failure encountered while beginning run", self.name)
+            self.report("error", e)
+
+    def end_run(self):
+        try:
+            self.store.end_run()
+        except Exception as e:
+            logger.exception("%s: Failure encountered while ending run %d", self.name)
+            self.report("error", e)
+
+    def begin_step(self, step):
+        try:
+            self.store.begin_step(step)
+        except Exception as e:
+            logger.exception("%s: Failure encountered while beginning step %d", self.name, step)
+            self.report("error", e)
+
+    def end_step(self, step):
+        try:
+            self.store.end_step(step)
+        except Exception as e:
+            logger.exception("%s: Failure encountered while ending step %d", self.name, step)
             self.report("error", e)
 
     def eb_id(self, identity):
@@ -92,8 +121,14 @@ class GraphCollector(Node, Collector):
                 self.transitions.complete(msg.payload.ttype, self.node)
                 if msg.payload.ttype == Transitions.Configure:
                     self.flush(True)
+                    self.begin_run()
                 elif msg.payload.ttype == Transitions.Unconfigure:
                     self.flush(False)
+                    self.end_run()
+                elif msg.payload.ttype == Transitions.BeginStep:
+                    self.begin_step(msg.payload.payload)
+                elif msg.payload.ttype == Transitions.EndStep:
+                    self.end_step(msg.payload.payload)
 
             self.event_counter.labels(self.hutch, 'Transition', self.name).inc()
         elif msg.mtype == MsgTypes.Datagram:
@@ -140,7 +175,7 @@ class GraphCollector(Node, Collector):
 
 def run_collector(node_num, base_name, num_contribs, color,
                   collector_addr, upstream_addr, graph_addr, msg_addr,
-                  prometheus_dir, hutch):
+                  prometheus_dir, prometheus_port, hutch):
     logger.info('Starting collector on node # %d PID: %d', node_num, os.getpid())
     with GraphCollector(
             node_num,
@@ -151,14 +186,15 @@ def run_collector(node_num, base_name, num_contribs, color,
             upstream_addr,
             graph_addr,
             msg_addr,
-            prometheus_dir, hutch) as collector:
+            prometheus_dir,
+            prometheus_port, hutch) as collector:
         collector.start_prometheus()
         return collector.run()
 
 
 def run_node_collector(node_num, num_contribs,
                        collector_addr, upstream_addr, graph_addr, msg_addr,
-                       prometheus_dir, hutch):
+                       prometheus_dir, prometheus_port, hutch):
     return run_collector(node_num,
                          "localCollector%03d",
                          num_contribs,
@@ -168,12 +204,13 @@ def run_node_collector(node_num, num_contribs,
                          graph_addr,
                          msg_addr,
                          prometheus_dir,
+                         prometheus_port,
                          hutch)
 
 
 def run_global_collector(node_num, num_contribs,
                          collector_addr, upstream_addr, graph_addr, msg_addr,
-                         prometheus_dir, hutch):
+                         prometheus_dir, prometheus_port, hutch):
     return run_collector(node_num,
                          "globalCollector%03d",
                          num_contribs,
@@ -183,6 +220,7 @@ def run_global_collector(node_num, num_contribs,
                          graph_addr,
                          msg_addr,
                          prometheus_dir,
+                         prometheus_port,
                          hutch)
 
 
@@ -197,35 +235,11 @@ def main(color, upstream_port, downstream_port):
     )
 
     parser.add_argument(
-        '-c',
-        '--collector',
+        '-p',
+        '--port',
         type=int,
-        default=upstream_port,
-        help='port of the collector (default: %d)' % upstream_port
-    )
-
-    parser.add_argument(
-        '-d',
-        '--downstream',
-        type=int,
-        default=downstream_port,
-        help='port for global collector (default: %d)' % downstream_port
-    )
-
-    parser.add_argument(
-        '-g',
-        '--graph',
-        type=int,
-        default=Ports.Graph,
-        help='port for graph communication (default: %d)' % Ports.Graph
-    )
-
-    parser.add_argument(
-        '-m',
-        '--message',
-        type=int,
-        default=Ports.Message,
-        help='port for sending out-of-band messages from nodes (default: %d)' % Ports.Message
+        default=BasePort,
+        help='base port for ami (default: %d) reserves next 10 consecutive ports' % BasePort
     )
 
     parser.add_argument(
@@ -256,6 +270,13 @@ def main(color, upstream_port, downstream_port):
     )
 
     parser.add_argument(
+        '--prometheus-port',
+        type=int,
+        default=Ports.Prometheus,
+        help='port for prometheus'
+    )
+
+    parser.add_argument(
         '--prometheus-dir',
         help='directory for prometheus configuration',
         default=None
@@ -278,14 +299,6 @@ def main(color, upstream_port, downstream_port):
     )
 
     worker_subparser.add_argument(
-        '-e',
-        '--export',
-        type=int,
-        default=Ports.Export,
-        help='port for receiving exported graph results (default: %d)' % Ports.Export
-    )
-
-    worker_subparser.add_argument(
         '-b',
         '--heartbeat',
         type=int,
@@ -303,10 +316,10 @@ def main(color, upstream_port, downstream_port):
 
     args = parser.parse_args()
 
-    collector_addr = "tcp://*:%d" % (args.collector)
-    downstream_addr = "tcp://%s:%d" % (args.host, args.downstream)
-    graph_addr = "tcp://%s:%d" % (args.host, args.graph)
-    msg_addr = "tcp://%s:%d" % (args.host, args.message)
+    collector_addr = "tcp://*:%d" % (args.port + upstream_port)
+    downstream_addr = "tcp://%s:%d" % (args.host, args.port + downstream_port)
+    graph_addr = "tcp://%s:%d" % (args.host, args.port + Ports.Graph)
+    msg_addr = "tcp://%s:%d" % (args.host, args.port + Ports.Message)
 
     log_handlers = [logging.StreamHandler()]
     if args.log_file is not None:
@@ -320,8 +333,8 @@ def main(color, upstream_port, downstream_port):
     try:
         if color == Colors.LocalCollector:
             if args.worker:
-                local_collector_addr = "tcp://localhost:%d" % args.collector
-                export_addr = "tcp://%s:%d" % (args.host, args.export)
+                local_collector_addr = "tcp://localhost:%d" % (args.port + upstream_port)
+                export_addr = "tcp://%s:%d" % (args.host, args.port + Ports.Export)
                 flags, src_cfg = parse_args(args)
                 for n in range(0, args.num_contribs):
                     worker = mp.Process(name='worker', target=run_worker,
@@ -335,6 +348,7 @@ def main(color, upstream_port, downstream_port):
                                               export_addr,
                                               flags,
                                               args.prometheus_dir,
+                                              args.prometheus_port,
                                               args.hutch),
                                         daemon=True)
                     worker.start()
@@ -346,6 +360,7 @@ def main(color, upstream_port, downstream_port):
                                       graph_addr,
                                       msg_addr,
                                       args.prometheus_dir,
+                                      args.prometheus_port,
                                       args.hutch)
         elif color == Colors.GlobalCollector:
             return run_global_collector(args.node_num,
@@ -355,6 +370,7 @@ def main(color, upstream_port, downstream_port):
                                         graph_addr,
                                         msg_addr,
                                         args.prometheus_dir,
+                                        args.prometheus_port,
                                         args.hutch)
         else:
             logger.critical("Invalid option collector color '%s' chosen!", color)

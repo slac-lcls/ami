@@ -15,7 +15,8 @@ from ami.flowchart.Node import Node, NodeGraphicsItem, find_nearest
 from ami.flowchart.SubgraphNode import SubgraphNode
 from ami.flowchart.NodeLibrary import SourceLibrary
 from ami.flowchart.SourceConfiguration import SourceConfiguration
-from ami.comm import AsyncGraphCommHandler, Ports
+from ami.flowchart.TypeEncoder import TypeEncoder
+from ami.comm import AsyncGraphCommHandler
 from ami.client import flowchart_messages as fcMsgs
 from qtconsole.rich_jupyter_widget import RichJupyterWidget
 from qtconsole.inprocess import QtInProcessKernelManager
@@ -51,7 +52,7 @@ class Flowchart(QtCore.QObject):
 
     def __init__(self, name=None, filePath=None, library=None,
                  broker_addr="", graphmgr_addr="", checkpoint_addr="",
-                 prometheus_dir=None, hutch=None):
+                 prometheus_dir=None, hutch="", configure=False):
         super().__init__(name)
         self.socks = []
         self.library = library or LIBRARY
@@ -85,6 +86,8 @@ class Flowchart(QtCore.QObject):
         self.prometheus_dir = prometheus_dir
         self.hutch = hutch
 
+        self.configure = configure
+
     def __enter__(self):
         return self
 
@@ -98,8 +101,7 @@ class Flowchart(QtCore.QObject):
             self._widget.graphCommHandler.close()
         self.ctx.term()
 
-    def start_prometheus(self):
-        port = Ports.Prometheus
+    def start_prometheus(self, port):
         while True:
             try:
                 pc.start_http_server(port)
@@ -110,7 +112,7 @@ class Flowchart(QtCore.QObject):
         if self.prometheus_dir:
             if not os.path.exists(self.prometheus_dir):
                 os.makedirs(self.prometheus_dir)
-            pth = f"drpami_{socket.gethostname()}_client.json"
+            pth = f"drpami_{socket.gethostname()}_{self.hutch}_client.json"
             pth = os.path.join(self.prometheus_dir, pth)
             conf = [{"targets": [f"{socket.gethostname()}:{port}"]}]
             try:
@@ -127,7 +129,7 @@ class Flowchart(QtCore.QObject):
     def nodes(self, **kwargs):
         return self._graph.nodes(**kwargs)
 
-    def createNode(self, nodeType=None, name=None, pos=None):
+    def createNode(self, nodeType=None, name=None, pos=None, prompt=False):
         """Create a new Node and add it to this flowchart.
         """
         if name is None:
@@ -141,6 +143,8 @@ class Flowchart(QtCore.QObject):
         # create an instance of the node
         node = self.library.getNodeType(nodeType)(name)
         self.addNode(node, pos)
+        if prompt:
+            node.onCreate()
         return node
 
     def addNode(self, node, pos=None):
@@ -326,9 +330,12 @@ class Flowchart(QtCore.QObject):
         if hasattr(node, 'to_operation'):
             self.deleted_nodes.append(name)
             self.sigNodeChanged.emit(node)
+            if ctrl.features.remove_plot(name):
+                await self.ctrl.graphCommHandler.updatePlots(ctrl.features.plots)
         elif isinstance(node, SourceNode):
             await ctrl.features.discard(name, name)
             await ctrl.graphCommHandler.unview(name)
+            await ctrl.graphCommHandler.updatePlots(ctrl.features.plots)
         elif node.viewable():
             views = []
             for term, in_var in input_vars.items():
@@ -337,6 +344,7 @@ class Flowchart(QtCore.QObject):
                     views.append(in_var)
             if views:
                 await ctrl.graphCommHandler.unview(views)
+                await ctrl.graphCommHandler.updatePlots(ctrl.features.plots)
 
     def nodeConnected(self, localTerm, remoteTerm):
         if remoteTerm.isOutput():
@@ -414,7 +422,7 @@ class Flowchart(QtCore.QObject):
         graphical representation of the flowchart.
         """
         if self._widget is None:
-            self._widget = FlowchartCtrlWidget(self, self.graphmgr_addr, parent)
+            self._widget = FlowchartCtrlWidget(self, self.graphmgr_addr, self.configure, parent)
         return self._widget
 
     def viewBox(self):
@@ -480,7 +488,7 @@ class Flowchart(QtCore.QObject):
                         printExc("Error creating node %s: (continuing anyway)" % n['name'])
                 else:
                     try:
-                        node = self.createNode(n['class'], name=n['name'])
+                        node = self.createNode(n['class'], name=n['name'], prompt=False)
                     except Exception:
                         printExc("Error creating node %s: (continuing anyway)" % n['name'])
 
@@ -597,7 +605,7 @@ class Flowchart(QtCore.QObject):
             fileName += ".fc"
 
         state = self.saveState()
-        state = json.dumps(state, indent=2, separators=(',', ': '), sort_keys=True, cls=amitypes.TypeEncoder)
+        state = json.dumps(state, indent=2, separators=(',', ': '), sort_keys=False, cls=TypeEncoder)
 
         with open(fileName, 'w') as f:
             f.write(state)
@@ -626,6 +634,9 @@ class Flowchart(QtCore.QObject):
             msg = await self.checkpoint.recv_pyobj()
             node_name = msg.name
             new_node_state = msg.state
+
+            if node_name not in self._graph.nodes:
+                continue
 
             node = self._graph.nodes[node_name]['node']
             current_node_state = node.saveState()
@@ -733,7 +744,7 @@ class FlowchartCtrlWidget(QtGui.QWidget):
     as well as buttons for loading/saving flowcharts.
     """
 
-    def __init__(self, chart, graphmgr_addr, parent=None):
+    def __init__(self, chart, graphmgr_addr, configure, parent=None):
         super().__init__(parent)
 
         self.graphCommHandler = AsyncGraphCommHandler(graphmgr_addr.name, graphmgr_addr.comm, ctx=chart.ctx)
@@ -745,7 +756,7 @@ class FlowchartCtrlWidget(QtGui.QWidget):
         self.chartWidget = FlowchartWidget(chart, self)
 
         self.ui = EditorTemplate.Ui_Toolbar()
-        self.ui.setupUi(parent=self, chart=self.chartWidget)
+        self.ui.setupUi(parent=self, chart=self.chartWidget, configure=configure)
         self.ui.create_model(self.ui.node_tree, self.chart.library.getLabelTree())
         self.ui.create_model(self.ui.source_tree, self.chart.source_library.getLabelTree())
 
@@ -758,7 +769,8 @@ class FlowchartCtrlWidget(QtGui.QWidget):
         self.ui.actionSave.triggered.connect(self.saveClicked)
         self.ui.actionSaveAs.triggered.connect(self.saveAsClicked)
 
-        self.ui.actionConfigure.triggered.connect(self.configureClicked)
+        if configure:
+            self.ui.actionConfigure.triggered.connect(self.configureClicked)
         self.ui.actionApply.triggered.connect(self.applyClicked)
         self.ui.actionReset.triggered.connect(self.resetClicked)
         self.ui.actionConsole.triggered.connect(self.consoleClicked)
@@ -781,6 +793,7 @@ class FlowchartCtrlWidget(QtGui.QWidget):
 
         self.ipython_widget = None
         self.graph_info = pc.Info('ami_graph', 'AMI Client graph', ['hutch', 'name'])
+        self.graph_version = pc.Gauge('ami_graph_version', 'AMI Client graph version', ['hutch', 'name'])
 
     @asyncSlot()
     async def applyClicked(self, build_views=True):
@@ -886,11 +899,11 @@ class FlowchartCtrlWidget(QtGui.QWidget):
 
         self.metadata = await self.graphCommHandler.metadata
         self.ui.setPendingClear()
-
         version = str(await self.graphCommHandler.graphVersion)
         state = self.chart.saveState()
-        state = json.dumps(state, indent=2, separators=(',', ': '), sort_keys=True, cls=amitypes.TypeEncoder)
+        state = json.dumps(state, indent=2, separators=(',', ': '), sort_keys=False, cls=TypeEncoder)
         self.graph_info.labels(self.chart.hutch, self.graph_name).info({'graph': state, 'version': version})
+        self.graph_version.labels(self.chart.hutch, self.graph_name).set(version)
 
     def openClicked(self):
         startDir = self.chart.filePath
@@ -986,6 +999,7 @@ class FlowchartCtrlWidget(QtGui.QWidget):
         self.setCurrentFile(None)
         self.chart.sigFileLoaded.emit('')
         self.features = Features(self.graphCommHandler)
+        await self.graphCommHandler.updatePlots(self.features.plots)
 
     def configureClicked(self):
         self.sourceConfigure.show()
@@ -1001,6 +1015,7 @@ class FlowchartCtrlWidget(QtGui.QWidget):
             kernel_client.start_channels()
 
             self.ipython_widget = RichJupyterWidget()
+            self.ipython_widget.setWindowTitle('AMI Console')
             self.ipython_widget.kernel_manager = kernel_manager
             self.ipython_widget.kernel_client = kernel_client
 
@@ -1148,7 +1163,7 @@ class FlowchartWidget(dockarea.DockArea):
         nodeType = action.nodeType
         pos = self.viewBox().mouse_pos
         pos = (50 * round(pos.x() / 50), 50 * round(pos.y() / 50))
-        self.chart.createNode(nodeType, pos=pos)
+        self.chart.createNode(nodeType, pos=pos, prompt=True)
 
     def sourceMenuTriggered(self, action):
         node = action.nodeType
@@ -1239,14 +1254,17 @@ class FlowchartWidget(dockarea.DockArea):
                 # this is done because they may want to view intermediate values
                 args['topics'] = node.buffered_topics()
                 args['terms'] = node.buffered_terms()
+                self.ctrl.features.add_plot(node, **args)
 
             elif isinstance(node, SourceNode) and node.viewable():
                 new, topic = await self.ctrl.features.get(name, name)
+
+                args['terms'] = node.input_vars()
+                args['topics'] = {name: topic}
+
                 if new:
                     views[name] = name
-
-                args['terms'] = {'In': name}
-                args['topics'] = {name: topic}
+                    self.ctrl.features.add_plot(node, **args)
 
             elif isinstance(node, Node) and node.viewable():
                 topics = {}
@@ -1257,14 +1275,19 @@ class FlowchartWidget(dockarea.DockArea):
                 if node.changed:
                     await self.ctrl.features.discard(name)
 
+                new_plot = False
                 for term, in_var in node.input_vars().items():
                     new, topic = await self.ctrl.features.get(node.name(), in_var)
                     topics[in_var] = topic
                     if new:
                         views[in_var] = node.name()
+                        new_plot = True
 
                 args['terms'] = node.input_vars()
                 args['topics'] = topics
+
+                if new_plot:
+                    self.ctrl.features.add_plot(node, **args)
 
             elif isinstance(node, CtrlNode) and ctrl:
                 args['terms'] = node.input_vars()
@@ -1291,6 +1314,8 @@ class FlowchartWidget(dockarea.DockArea):
             name = args['name']
             await self.chart.broker.send_string(name, zmq.SNDMORE)
             await self.chart.broker.send_pyobj(fcMsgs.DisplayNode(**args))
+
+        await self.ctrl.graphCommHandler.updatePlots(self.ctrl.features.plots)
 
     def hoverOver(self, items):
         obj = None
@@ -1415,6 +1440,7 @@ class Features(object):
     def __init__(self, graphCommHandler):
         self.features_count = collections.defaultdict(set)
         self.features = {}
+        self.plots = {}
         self.graphCommHandler = graphCommHandler
         self.lock = asyncio.Lock()
 
@@ -1438,17 +1464,26 @@ class Features(object):
                 if not self.features_count[in_var]:
                     del self.features[in_var]
                     del self.features_count[in_var]
+                    self.plots.pop(name, None)
                 return True
             else:
                 for in_var, viewers in self.features_count.items():
                     viewers.discard(name)
                     if not viewers and name in self.features:
                         del self.features[name]
+                        self.plots.pop(name, None)
                 return True
 
         return False
+
+    def add_plot(self, node, **kwargs):
+        self.plots[node.name()] = node.plotMetadata(**kwargs)
+
+    def remove_plot(self, name):
+        return self.plots.pop(name, None)
 
     async def reset(self):
         async with self.lock:
             self.features = {}
             self.features_count = collections.defaultdict(set)
+            self.plots = {}

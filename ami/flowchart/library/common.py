@@ -4,7 +4,7 @@ from pyqtgraph.Qt import QtCore
 from ami.flowchart.Node import Node
 from ami.flowchart.library.WidgetGroup import generateUi
 from ami.flowchart.library.DisplayWidgets import ScalarWidget, WaveformWidget, ImageWidget, \
-        TextWidget, ObjectWidget
+        ObjectWidget
 from amitypes import Array1d, Array2d
 
 
@@ -122,6 +122,9 @@ class SourceNode(CtrlNode):
     def isSource(self):
         return True
 
+    def input_vars(self):
+        return self._input_vars
+
     def setWidgetType(self):
         if 'Out' in self.terminals:
             ttype = self.terminals['Out']._type
@@ -131,10 +134,11 @@ class SourceNode(CtrlNode):
                 self.widgetType = WaveformWidget
             elif ttype is Array2d:
                 self.widgetType = ImageWidget
-            elif ttype is str:
-                self.widgetType = TextWidget
             else:
                 self.widgetType = ObjectWidget
+
+    def plotMetadata(self, topics, terms, **kwargs):
+        return {'type': self.widgetType.__name__, 'terms': terms, 'topics': topics}
 
     def restoreState(self, state):
         super().restoreState(state)

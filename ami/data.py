@@ -30,6 +30,28 @@ from dataclasses import dataclass, asdict, field
 logger = logging.getLogger(__name__)
 
 
+def _map_numpy_types():
+    nptypemap = {}
+    for name, dtype in inspect.getmembers(np, lambda x: inspect.isclass(x) and issubclass(x, np.generic)):
+        try:
+            ptype = None
+            if 'time' in name:
+                ptype = type(dtype(0, 'D').item())
+            elif 'object' not in name:
+                ptype = type(dtype(0).item())
+
+            # if it is still a numpy dtype don't make a mapping
+            if not issubclass(ptype, np.generic):
+                nptypemap[dtype] = ptype
+        except TypeError:
+            pass
+
+    return nptypemap
+
+
+NumPyTypeDict = _map_numpy_types()
+
+
 class MsgTypes(Enum):
     Transition = 0
     Heartbeat = 1
@@ -47,8 +69,10 @@ class Transitions(Enum):
     Allocate = 0
     Configure = 1
     Unconfigure = 2
-    Enable = 3
-    Disable = 4
+    BeginStep = 3
+    EndStep = 4
+    Enable = 5
+    Disable = 6
 
     def _serialize(transitionType):
         return {'type': transitionType.value}
@@ -541,6 +565,32 @@ class Source(abc.ABC):
                        self.idnum,
                        Transition(Transitions.Unconfigure, {}))
 
+    def begin_step(self):
+        """
+        Constructs a properly formatted beginstep message
+
+        Returns:
+            An object of type `Message` which includes info on the step.
+        """
+        if self.stepid is None:
+            self.stepid = 0
+        else:
+            self.stepid += 1
+        return Message(MsgTypes.Transition,
+                       self.idnum,
+                       Transition(Transitions.BeginStep, self.stepid))
+
+    def end_step(self):
+        """
+        Constructs a properly formatted endstep message
+
+        Returns:
+            An object of type `Message` which includes info on the step.
+        """
+        return Message(MsgTypes.Transition,
+                       self.idnum,
+                       Transition(Transitions.EndStep, self.stepid))
+
     def heartbeat_msg(self):
         """
         Constructs a properly formatted heartbeat message
@@ -611,6 +661,7 @@ class HierarchicalDataSource(Source):
         super().__init__(idnum, num_workers, heartbeat_period, src_cfg, flags, evtid_type)
         self._counter = None
         self.loop_count = 0
+        self.step_count = 0
         self.delimiter = ":"
         self.data_types = {}
         self.special_types = {}
@@ -679,6 +730,28 @@ class HierarchicalDataSource(Source):
         else:
             return timestamp, heartbeat, unix_timestamp
 
+    def begin_step(self):
+        """
+        Constructs a properly formatted beginstep message
+
+        Returns:
+            An object of type `Message` which includes the step number.
+        """
+        return Message(MsgTypes.Transition,
+                       self.idnum,
+                       Transition(Transitions.BeginStep, self.step_count))
+
+    def end_step(self):
+        """
+        Constructs a properly formatted endstep message
+
+        Returns:
+            An object of type `Message` which includes the step number.
+        """
+        return Message(MsgTypes.Transition,
+                       self.idnum,
+                       Transition(Transitions.EndStep, self.step_count))
+
     @property
     def repeat_mode(self):
         return self.config.get('repeat', False)
@@ -712,6 +785,8 @@ class HierarchicalDataSource(Source):
             for run in self._runs():
                 self.source.run = run
                 self.source.key += 1
+                # reset the step count to zero
+                self.step_count = 0
                 # clear type info from previous runs
                 self.data_types = {}
                 self.special_types = {}
@@ -724,6 +799,11 @@ class HierarchicalDataSource(Source):
                 for step in self._steps(run):
                     # add the step to the source
                     self.source.step = step
+                    # if the run has more than one step increase the source key
+                    if self.step_count > 0:
+                        self.source.key += 1
+                    # emit the beginstep message
+                    yield self.begin_step()
 
                     # loop over the events in the step
                     for evt in self._events(step):
@@ -740,8 +820,12 @@ class HierarchicalDataSource(Source):
                         # remove reference to evt object
                         self.source.evt = None
 
+                    # emit the endstep message
+                    yield self.end_step()
                     # remove reference to step object
                     self.source.step = None
+                    # increase the step count
+                    self.step_count += 1
 
                 # signal that the run has ended
                 yield self.unconfigure()
@@ -1047,7 +1131,7 @@ class Hdf5Source(HierarchicalDataSource):
                     if isinstance(h5_native_type, h5py.h5t.TypeBitfieldID):
                         self.data_types[self.encode(name)] = bool
                     else:
-                        self.data_types[self.encode(name)] = at.NumPyTypeDict.get(obj.dtype.type, typing.Any)
+                        self.data_types[self.encode(name)] = NumPyTypeDict.get(obj.dtype.type, typing.Any)
                 else:
                     self.data_types[self.encode(name)] = typing.Any
 

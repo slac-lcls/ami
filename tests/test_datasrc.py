@@ -12,7 +12,7 @@ except ImportError:
     h5py = None
 
 from conftest import psanatest, hdf5test
-from ami.data import MsgTypes, Source, Transition, Transitions
+from ami.data import MsgTypes, Source, Transition, Transitions, NumPyTypeDict
 
 
 @pytest.fixture(scope='function')
@@ -91,8 +91,8 @@ def test_hdf5_source(hdf5writer):
         elif evt.mtype == MsgTypes.Datagram:
             assert set(evt.payload) == set(expected_cfg)
             for name, data in evt.payload.items():
-                if type(data) in at.NumPyTypeDict:
-                    assert at.NumPyTypeDict[type(data)] == expected_cfg[name]
+                if type(data) in NumPyTypeDict:
+                    assert NumPyTypeDict[type(data)] == expected_cfg[name]
                 else:
                     assert isinstance(data, expected_cfg[name])
 
@@ -191,6 +191,14 @@ def test_psana_source(xtcwriter):
     assert config.payload.ttype == Transitions.Configure
     sources = {k: at.loads(v) for k, v in config.payload.payload.items()}
     assert sources == expected_cfg
+
+    # check the returned step message
+    step = next(evtgen)
+    assert step.mtype == MsgTypes.Transition
+    assert step.identity == idnum
+    assert isinstance(step.payload, Transition)
+    assert step.payload.ttype == Transitions.BeginStep
+    assert step.payload.payload == 0
 
     # request all the sources
     psana_source.request(set(expected_cfg))

@@ -30,17 +30,19 @@ class Colors:
     GlobalCollector = "globalCollector"
 
 
+BasePort = 5555
+
+
 class Ports(IntEnum):
-    Comm = 5555
-    Graph = 5556
-    NodeCollector = 5557
-    FinalCollector = 5558
-    Results = 5559
-    Export = 5560
-    Message = 5561
-    Info = 5562
-    View = 5563
-    Profile = 5564
+    Comm = 0
+    Graph = 1
+    NodeCollector = 2
+    FinalCollector = 3
+    Results = 4
+    Export = 5
+    Message = 6
+    Info = 7
+    View = 8
     Sync = 5600
     Prometheus = 9200
 
@@ -147,6 +149,7 @@ class Store:
     def __init__(self, version=0):
         self.version = version
         self._store = {}
+        self._plots = {}
 
     def __bool__(self):
         """
@@ -319,11 +322,19 @@ class Store:
             else:
                 self._store[name] = Datagram(name, datatype, data)
 
+    @property
+    def plots(self):
+        return self._plots
+
+    def update_plots(self, plots):
+        self._plots = plots
+
     def clear(self):
         """
         Clears all the entries currently in the store.
         """
         self._store = {}
+        self._plots = {}
 
 
 class ZmqHandler:
@@ -500,6 +511,22 @@ class GraphBuilder(ContributionBuilder):
         self.latest = Heartbeat(0, 0)
         return size
 
+    def begin_run(self):
+        if self.graph:
+            self.graph.begin_run(color=self.color)
+
+    def end_run(self):
+        if self.graph:
+            self.graph.end_run(color=self.color)
+
+    def begin_step(self, step):
+        if self.graph:
+            self.graph.begin_step(step, color=self.color)
+
+    def end_step(self, step):
+        if self.graph:
+            self.graph.end_step(step, color=self.color)
+
     def set_graph(self, name, ver_key, args, graph):
         self.pending_graphs[ver_key] = (False, "set", name, args, graph)
 
@@ -610,6 +637,22 @@ class EventBuilder(ZmqHandler):
             pruned_heartbeats.append(builder.flush(identity, drop))
         return any(pruned_heartbeats)
 
+    def begin_run(self):
+        for name, builder in self.builders.items():
+            builder.begin_run()
+
+    def end_run(self):
+        for name, builder in self.builders.items():
+            builder.end_run()
+
+    def begin_step(self, step):
+        for name, builder in self.builders.items():
+            builder.begin_step(step)
+
+    def end_step(self, step):
+        for name, builder in self.builders.items():
+            builder.end_step(step)
+
     def set_graph(self, name, ver_key, args, graph):
         if name not in self.builders:
             self.create(name)
@@ -684,7 +727,8 @@ class Node(abc.ABC):
             passed it creates one.
     """
 
-    def __init__(self, node, graph_addr, msg_addr, export_addr=None, ctx=None, prometheus_dir=None, hutch=None):
+    def __init__(self, node, graph_addr, msg_addr, export_addr=None, ctx=None, prometheus_dir=None,
+                 prometheus_port=None, hutch=None):
         self.node = node
         if ctx is None:
             self.ctx = zmq.Context()
@@ -714,6 +758,7 @@ class Node(abc.ABC):
         self.serializer = Serializer()
 
         self.prometheus_dir = prometheus_dir
+        self.prometheus_port = prometheus_port
         self.hutch = hutch
 
     @property
@@ -844,7 +889,7 @@ class Node(abc.ABC):
             sys.path.extend(paths)
 
     def start_prometheus(self):
-        port = Ports.Prometheus
+        port = self.prometheus_port
         while True:
             try:
                 pc.start_http_server(port)
@@ -855,7 +900,7 @@ class Node(abc.ABC):
         if self.prometheus_dir:
             if not os.path.exists(self.prometheus_dir):
                 os.makedirs(self.prometheus_dir)
-            pth = f"drpami_{socket.gethostname()}_{self.name}.json"
+            pth = f"drpami_{socket.gethostname()}_{self.hutch}_{self.name}.json"
             pth = os.path.join(self.prometheus_dir, pth)
             conf = [{"targets": [f"{socket.gethostname()}:{port}"]}]
             try:
@@ -1463,6 +1508,12 @@ class CommHandler(abc.ABC):
         return self._request('get_features')
 
     @property
+    def plots(self):
+        """
+        """
+        return self._request('get_plots')
+
+    @property
     def names(self):
         """
         A set of all the user-defined output names in the in the graph that can
@@ -1564,6 +1615,9 @@ class CommHandler(abc.ABC):
     def updatePath(self, paths):
         return self._post_dill("update_path", paths)
 
+    def updatePlots(self, plots):
+        return self._post_dill('update_plots', plots)
+
     def fetch(self, names):
         """
         Attempts to fetch a feature with the requested name from the global
@@ -1634,6 +1688,9 @@ class CommHandler(abc.ABC):
             names = [names]
 
         return self.remove(["%s_view" % self.auto(name) for name in names])
+
+    def plot(self, item):
+        pass
 
     def export(self, names, aliases=None):
         """

@@ -3,15 +3,17 @@ import re
 import sys
 import shutil
 import signal
+import socket
 import logging
 import tempfile
 import argparse
 import functools
+import contextlib
 import ami.multiproc as mp
 
 from ami import LogConfig, Defaults
 from ami.multiproc import check_mp_start_method
-from ami.comm import Ports, GraphCommHandler
+from ami.comm import BasePort, Ports, GraphCommHandler
 from ami.manager import run_manager
 from ami.worker import run_worker
 from ami.collector import run_node_collector, run_global_collector
@@ -62,8 +64,8 @@ def build_parser():
         '-p',
         '--port',
         type=int,
-        default=Ports.Comm,
-        help='starting port when using tcp for communication (default: %d)' % Ports.Comm
+        default=BasePort,
+        help='use tcp for communication using the specified starting port'
     )
 
     comm_group.add_argument(
@@ -73,9 +75,9 @@ def build_parser():
     )
 
     comm_group.add_argument(
-        '--ipc',
+        '--tcp',
         action='store_true',
-        help='use ipc for communication and create the file descriptors in a temporary directory'
+        help='use tcp for communication using a randomly chosen port'
     )
 
     parser.add_argument(
@@ -149,6 +151,13 @@ def build_parser():
     )
 
     parser.add_argument(
+        '--prometheus-port',
+        type=int,
+        default=Ports.Prometheus,
+        help='port for prometheus'
+    )
+
+    parser.add_argument(
         '--prometheus-dir',
         help='directory for prometheus configuration',
         default=None
@@ -158,6 +167,12 @@ def build_parser():
         '--hutch',
         help='hutch for prometheus label',
         default=None
+    )
+
+    parser.add_argument(
+        '--use-opengl',
+        help='Use opengl for plots.',
+        action='store_true'
     )
 
     return parser
@@ -194,30 +209,41 @@ def cleanup(procs):
 
 
 def run_ami(args, queue=None):
+    port = None
     xtcdir = None
     ipcdir = None
-    owns_ipcdir = True
+    owns_ipcdir = False
     flags = {}
     if queue is None:
         queue = mp.Queue()
-    if args.ipc:
-        ipcdir = tempfile.mkdtemp()
-        owns_ipcdir = True
+
+    if args.tcp:
+        try:
+            port = args.port
+            with contextlib.closing(socket.socket(socket.AF_INET, socket.SOCK_STREAM)) as sock:
+                sock.bind(("127.0.0.1", port + Ports.Comm))
+        except OSError:
+            with contextlib.closing(socket.socket(socket.AF_INET, socket.SOCK_STREAM)) as sock:
+                sock.bind(("127.0.0.1", 0))
+                sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+                port = sock.getsockname()[1]
     elif args.ipc_dir is not None:
         ipcdir = args.ipc_dir
-        owns_ipcdir = False
+    else:
+        ipcdir = tempfile.mkdtemp()
+        owns_ipcdir = True
+
     if ipcdir is None:
         host = "127.0.0.1"
-        comm_addr = "tcp://%s:%d" % (host, args.port)
-        graph_addr = "tcp://%s:%d" % (host, args.port+1)
-        collector_addr = "tcp://%s:%d" % (host, args.port+2)
-        globalcol_addr = "tcp://%s:%d" % (host, args.port+3)
-        results_addr = "tcp://%s:%d" % (host, args.port+4)
-        export_addr = "tcp://%s:%d" % (host, args.port+5)
-        msg_addr = "tcp://%s:%d" % (host, args.port+6)
-        info_addr = "tcp://%s:%d" % (host, args.port+7)
-        view_addr = "tcp://%s:%d" % (host, args.port+8)
-        profile_addr = "tcp://%s:%d" % (host, args.port+9)
+        comm_addr = "tcp://%s:%d" % (host, port + Ports.Comm)
+        graph_addr = "tcp://%s:%d" % (host, port + Ports.Graph)
+        collector_addr = "tcp://%s:%d" % (host, port + Ports.NodeCollector)
+        globalcol_addr = "tcp://%s:%d" % (host, port + Ports.FinalCollector)
+        results_addr = "tcp://%s:%d" % (host, port + Ports.Results)
+        export_addr = "tcp://%s:%d" % (host, port + Ports.Export)
+        msg_addr = "tcp://%s:%d" % (host, port + Ports.Message)
+        info_addr = "tcp://%s:%d" % (host, port + Ports.Info)
+        view_addr = "tcp://%s:%d" % (host, port + Ports.View)
     else:
         collector_addr = "ipc://%s/node_collector" % ipcdir
         globalcol_addr = "ipc://%s/collector" % ipcdir
@@ -228,7 +254,6 @@ def run_ami(args, queue=None):
         msg_addr = "ipc://%s/message" % ipcdir
         info_addr = "ipc://%s/info" % ipcdir
         view_addr = "ipc://%s/view" % ipcdir
-        profile_addr = "ipc://%s/profile" % ipcdir
 
     procs = []
     client_proc = None
@@ -260,12 +285,15 @@ def run_ami(args, queue=None):
         else:
             src_cfg = None
 
+        logger.info("Starting ami-local using comm address: %s", comm_addr)
+
         for i in range(args.num_workers):
             proc = mp.Process(
                 name='worker%03d-n0' % i,
                 target=functools.partial(_sys_exit, run_worker),
                 args=(i, args.num_workers, args.heartbeat, src_cfg,
-                      collector_addr, graph_addr, msg_addr, export_addr, flags, args.prometheus_dir, args.hutch)
+                      collector_addr, graph_addr, msg_addr, export_addr, flags, args.prometheus_dir,
+                      args.prometheus_port, args.hutch)
             )
             proc.daemon = True
             proc.start()
@@ -275,7 +303,7 @@ def run_ami(args, queue=None):
             name='nodecol-n0',
             target=functools.partial(_sys_exit, run_node_collector),
             args=(0, args.num_workers, collector_addr, globalcol_addr, graph_addr, msg_addr,
-                  args.prometheus_dir, args.hutch)
+                  args.prometheus_dir, args.prometheus_port, args.hutch)
         )
         collector_proc.daemon = True
         collector_proc.start()
@@ -285,7 +313,7 @@ def run_ami(args, queue=None):
             name='globalcol',
             target=functools.partial(_sys_exit, run_global_collector),
             args=(0, 1, globalcol_addr, results_addr, graph_addr, msg_addr,
-                  args.prometheus_dir, args.hutch)
+                  args.prometheus_dir, args.prometheus_port, args.hutch)
         )
         globalcol_proc.daemon = True
         globalcol_proc.start()
@@ -295,7 +323,7 @@ def run_ami(args, queue=None):
             name='manager',
             target=functools.partial(_sys_exit, run_manager),
             args=(args.num_workers, 1, results_addr, graph_addr, comm_addr, msg_addr, info_addr, export_addr,
-                  view_addr, profile_addr, args.prometheus_dir, args.hutch)
+                  view_addr, args.prometheus_dir, args.prometheus_port, args.hutch)
         )
         manager_proc.daemon = True
         manager_proc.start()
@@ -318,8 +346,8 @@ def run_ami(args, queue=None):
             client_proc = mp.Process(
                 name='client',
                 target=run_client,
-                args=(args.graph_name, comm_addr, info_addr, view_addr, profile_addr, args.load, args.gui_mode,
-                      args.prometheus_dir, args.hutch)
+                args=(args.graph_name, comm_addr, info_addr, view_addr, args.load, args.gui_mode,
+                      args.prometheus_dir, args.prometheus_port, args.hutch, args.use_opengl, src_cfg is None)
             )
             client_proc.daemon = False
             client_proc.start()
