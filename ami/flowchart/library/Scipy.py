@@ -66,7 +66,7 @@ except ImportError as e:
     print(e)
 
 
-class Linregress0d(CtrlNode):
+class Linregress0D(CtrlNode):
 
     """
     Collect N scalars and apply Scipy.stats.linregress
@@ -100,7 +100,7 @@ class Linregress0d(CtrlNode):
         return nodes
 
 
-class Linregress1d(Node):
+class Linregress1D(Node):
 
     """
     Scipy.stats.linregress

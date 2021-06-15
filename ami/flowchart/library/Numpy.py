@@ -40,7 +40,7 @@ class Binning(CtrlNode):
 
     def __init__(self, name):
         super().__init__(name, terminals={
-            'In': {'io': 'in', 'ttype': Union[float, Array1d]},
+            'In': {'io': 'in', 'ttype': Union[float, Array1d, Array2d]},
             'Bins': {'io': 'out', 'ttype': Array1d},
             'Counts': {'io': 'out', 'ttype': Array1d}
         })
@@ -384,13 +384,13 @@ class RMS(GroupedNode):
         return gn.Map(name=self.name()+"_operation", **kwargs, func=func)
 
 
-class TimeMeanRMS(CtrlNode):
+class TimeMeanRMS0D(CtrlNode):
 
     """
-    TimeMeanRMS
+    TimeMeanRMS0D
     """
 
-    nodeName = "TimeMeanRMS"
+    nodeName = "TimeMeanRMS0D"
     uiTemplate = [('N', 'intSpin', {'value': 2, 'min': 2})]
 
     def __init__(self, name):
@@ -402,6 +402,68 @@ class TimeMeanRMS(CtrlNode):
         def func(arr):
             mean = np.mean(arr)
             rms = np.sqrt(np.mean(np.square(arr)))
+            return mean, rms
+
+        accumulated_outputs = [self.name()+'_accumulated_events']
+
+        nodes = [gn.PickN(name=self.name()+'_picked', N=self.values['N'],
+                          inputs=inputs, outputs=accumulated_outputs, **kwargs),
+                 gn.Map(name=self.name()+'_operation', inputs=accumulated_outputs, outputs=outputs,
+                        func=func, **kwargs)]
+
+        return nodes
+
+
+class TimeMeanRMS1D(CtrlNode):
+
+    """
+    TimeMeanRMS1D
+    """
+
+    nodeName = "TimeMeanRMS1D"
+    uiTemplate = [('N', 'intSpin', {'value': 2, 'min': 2})]
+
+    def __init__(self, name):
+        super().__init__(name, terminals={'In': {'io': 'in', 'ttype': Array1d},
+                                          'Mean': {'io': 'out', 'ttype': Array1d},
+                                          'RMS': {'io': 'out', 'ttype': Array1d}})
+
+    def to_operation(self, inputs, outputs, **kwargs):
+        def func(arr):
+            mean = np.mean(arr, axis=0)
+            sq = list(map(np.square, arr))
+            rms = np.sqrt(np.mean(sq, axis=0))
+            return mean, rms
+
+        accumulated_outputs = [self.name()+'_accumulated_events']
+
+        nodes = [gn.PickN(name=self.name()+'_picked', N=self.values['N'],
+                          inputs=inputs, outputs=accumulated_outputs, **kwargs),
+                 gn.Map(name=self.name()+'_operation', inputs=accumulated_outputs, outputs=outputs,
+                        func=func, **kwargs)]
+
+        return nodes
+
+
+class TimeMeanRMS2D(CtrlNode):
+
+    """
+    TimeMeanRMS2D
+    """
+
+    nodeName = "TimeMeanRMS2D"
+    uiTemplate = [('N', 'intSpin', {'value': 2, 'min': 2})]
+
+    def __init__(self, name):
+        super().__init__(name, terminals={'In': {'io': 'in', 'ttype': Array2d},
+                                          'Mean': {'io': 'out', 'ttype': Array2d},
+                                          'RMS': {'io': 'out', 'ttype': Array2d}})
+
+    def to_operation(self, inputs, outputs, **kwargs):
+        def func(arr):
+            mean = np.mean(arr, axis=0)
+            sq = list(map(np.square, arr))
+            rms = np.sqrt(np.mean(sq, axis=0))
             return mean, rms
 
         accumulated_outputs = [self.name()+'_accumulated_events']

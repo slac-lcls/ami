@@ -401,7 +401,7 @@ try:
                 if not self.values['text']:
                     self.values['text'] = self.generate_template(self.inputs().keys(), self.outputs().keys())
 
-                self.widget = PythonEditorWidget(win, self.values['text'], export=True)
+                self.widget = PythonEditorWidget(win, self.values['text'], export=True, node=self)
                 self.widget.sigStateChanged.connect(self.state_changed)
 
             return self.widget

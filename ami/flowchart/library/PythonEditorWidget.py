@@ -1,4 +1,5 @@
-from pyqtgraph.Qt import QtWidgets, QtCore
+from pyqtgraph import FileDialog
+from pyqtgraph.Qt import QtWidgets, QtCore, QtGui
 from pyqode.python.backend import server
 # from pyqode.python.widgets import PyCodeEdit
 from pyqode.core import api, modes, panels
@@ -121,7 +122,7 @@ class PythonEditorWidget(QtWidgets.QWidget):
 
     sigStateChanged = QtCore.Signal(object, object, object)
 
-    def __init__(self, parent=None, text="", export=False):
+    def __init__(self, parent=None, text="", export=False, node=None):
         super().__init__(parent)
         self.layout = QtWidgets.QGridLayout(self)
 
@@ -134,6 +135,7 @@ class PythonEditorWidget(QtWidgets.QWidget):
         self.editor.textChanged.connect(self.stateChanged)
 
         if export:
+            self.node = node
             self.exportBtn = QtWidgets.QPushButton("Export", parent=self)
             self.exportBtn.clicked.connect(self.export)
 
@@ -155,4 +157,82 @@ class PythonEditorWidget(QtWidgets.QWidget):
         super().close()
 
     def export(self):
-        pass
+        self.exportWidget = ExportWidget(self.node, self.editor.toPlainText())
+        self.exportWidget.show()
+
+
+class ExportWidget(QtWidgets.QWidget):
+
+    def __init__(self, node, text):
+        super().__init__()
+
+        self.node = node
+        self.text = text
+
+        self.setWindowTitle("Export")
+        self.layout = QtWidgets.QFormLayout(self)
+        self.setLayout(self.layout)
+
+        self.name = QtWidgets.QLineEdit(parent=self)
+        self.docstring = QtWidgets.QTextEdit(parent=self)
+        self.ok = QtWidgets.QPushButton("Ok", parent=self)
+        self.ok.clicked.connect(self.ok_clicked)
+
+        self.layout.addRow("Name:", self.name)
+        self.layout.addRow("Docstring:", self.docstring)
+        self.layout.addWidget(self.ok)
+
+    def ok_clicked(self):
+        self.fileDialog = FileDialog(None, "Save File..", '.', "Python (*.py)")
+        self.fileDialog.setAcceptMode(QtGui.QFileDialog.AcceptSave)
+        self.fileDialog.show()
+        self.fileDialog.fileSelected.connect(self.saveFile)
+
+    def saveFile(self, fileName):
+        node_name = self.name.text()
+        docstring = self.docstring.toPlainText()
+
+        terminals = {}
+        for name, term in self.node.terminals.items():
+            state = term.saveState()
+            state['ttype'] = term._type.__name__
+            terminals[name] = state
+
+        template = self.export(node_name, docstring, terminals, self.text)
+        with open(fileName, 'w') as f:
+            f.write(template)
+
+    def export(self, name, docstring, terminals, text):
+        template = f"""
+from typing import Any
+from amitypes import Array1d, Array2d, Array3d
+from ami.flowchart.Node import Node
+import ami.graph_nodes as gn
+
+
+{text}
+
+
+class {name}(Node):
+
+    \"""
+    {docstring}
+    \"""
+
+    nodeName = "{name}"
+
+    def __init__(self, name):
+        super().__init__(name, terminals={terminals})
+
+    def to_operation(self, **kwargs):
+        proc = EventProcessor()
+
+        return gn.Map(name=self.name()+"_operation", **kwargs,
+                      func=proc.on_event,
+                      begin_run=proc.begin_run,
+                      end_run=proc.end_run,
+                      begin_step=proc.begin_step,
+                      end_step=proc.end_step)
+        """
+
+        return template
