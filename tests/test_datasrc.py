@@ -154,7 +154,7 @@ def test_psana_source(xtcwriter):
         'epicsinfo': at.Detector,
         'epicsinfo:epicsinfo': typing.Dict,
         'epicsinfo:calibconst': typing.Dict,
-        'eventid': float,
+        'eventid': int,
         'timestamp': float,
         'heartbeat': int,
         'source': at.DataSource,
