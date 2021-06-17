@@ -3,6 +3,7 @@ import sys
 import importlib
 import logging
 import pyqtgraph as pg
+from pyqtgraph.debug import printExc
 from pyqtgraph import dockarea, FileDialog
 from pyqtgraph.Qt import QtGui, QtWidgets, QtCore
 from ami.flowchart.NodeLibrary import isNodeClass
@@ -103,8 +104,8 @@ class LibraryEditor(QtWidgets.QWidget):
                 try:
                     self.library.addNodeType(node, [(mod.__name__, )])
                     loaded = True
-                except Exception:
-                    pass
+                except Exception as e:
+                    printExc(e)
 
         if not loaded:
             return
