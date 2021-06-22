@@ -330,7 +330,7 @@ class TimestampConverter:
     def __call__(self, raw_ts, epics_epoch=True):
         timestamp = self.decode(raw_ts, as_float=True)
         unix_ts = self.unix_timestamp(timestamp) if epics_epoch else timestamp
-        return timestamp, int(timestamp * self.heartbeat), unix_ts
+        return raw_ts, int(timestamp * self.heartbeat), unix_ts
 
 
 class Source(abc.ABC):
@@ -840,7 +840,7 @@ class HierarchicalDataSource(Source):
 
 class PsanaSource(HierarchicalDataSource):
     def __init__(self, idnum, num_workers, heartbeat_period, src_cfg, flags=None):
-        super().__init__(idnum, num_workers, heartbeat_period, src_cfg, flags, float)
+        super().__init__(idnum, num_workers, heartbeat_period, src_cfg, flags)
         self.ts_converter = TimestampConverter()
         self.ds_keys = {
             'exp', 'dir', 'files', 'shmem', 'filter', 'batch_size', 'max_events', 'sel_det_ids', 'det_name', 'run'
