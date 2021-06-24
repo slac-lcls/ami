@@ -4,6 +4,7 @@ from ami.flowchart.library.common import CtrlNode, GroupedNode
 from ami.flowchart.Node import Node
 import ami.graph_nodes as gn
 import numpy as np
+import os
 
 
 class Sum(Node):
@@ -653,3 +654,24 @@ class Average2D(CtrlNode):
                             **kwargs)]
 
         return nodes
+
+
+class LoadReference1D(CtrlNode):
+
+    """
+    Load 1d reference array from csv.
+    """
+
+    nodeName = "LoadReference1D"
+    uiTemplate = [('path', 'text')]
+
+    def __init__(self, name):
+        super().__init__(name, terminals={"X": {'io': 'out', 'ttype': Array1d},
+                                          "Y": {'io': 'out', 'ttype': Array1d}})
+
+    def to_operation(self, **kwargs):
+        path = self.values['path']
+        assert(os.path.exists(self.values['path']))
+        assert(path.endswith('.csv'))
+        arr = np.genfromtxt(path, delimiter=',', usecols=(0, 1), skip_header=1)
+        return gn.Map(name=self.name()+"_operation", **kwargs, func=lambda: (arr[:, 0], arr[:, 1]))
