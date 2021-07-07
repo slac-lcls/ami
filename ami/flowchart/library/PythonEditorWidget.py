@@ -1,3 +1,4 @@
+import amitypes
 from pyqtgraph import FileDialog
 from pyqtgraph.Qt import QtWidgets, QtCore, QtGui
 from pyqode.python.backend import server
@@ -6,6 +7,17 @@ from pyqode.core import api, modes, panels
 from pyqode.python import modes as pymodes, panels as pypanels, widgets
 import tempfile
 import importlib
+
+
+def fullname(o):
+    if o is amitypes.array.Array1d:
+        return "amitypes.array.Array1d"
+    elif o is amitypes.array.Array2d:
+        return "amitypes.array.Array2d"
+    elif o is amitypes.array.Array3d:
+        return "amitypes.array.Array3d"
+    else:
+        return o.__name__
 
 
 class PythonEditorProc(object):
@@ -195,10 +207,12 @@ class ExportWidget(QtWidgets.QWidget):
         terminals = {}
         for name, term in self.node.terminals.items():
             state = term.saveState()
-            state['ttype'] = term._type.__name__
+            state['ttype'] = fullname(term._type)
             terminals[name] = state
 
         template = self.export(node_name, docstring, terminals, self.text)
+        if not fileName.endswith('.py'):
+            fileName += '.py'
         with open(fileName, 'w') as f:
             f.write(template)
 
