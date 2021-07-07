@@ -164,7 +164,7 @@ class Terminal(QtCore.QObject):
                     types["Output"] = t
 
             if not checkType(types, type_file):
-                raise Exception(f"Invalid types. Expected: {self.type()} Got: {term.type()}")
+                raise Exception(f"Invalid types. Expected: {term.type()} Got: {self.type()}")
         except Exception:
             if connectionItem is not None:
                 connectionItem.close()
