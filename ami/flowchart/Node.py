@@ -124,7 +124,7 @@ class Node(QtCore.QObject):
         name2 = name
         i = 1
         while name2 in self.terminals:
-            name2 = "%s.%d" % (name, i)
+            name2 = "%s%d" % (name, i)
             i += 1
         return name2
 
