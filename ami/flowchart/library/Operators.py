@@ -207,6 +207,96 @@ class MeanWaveformVsScan(CtrlNode):
         return nodes
 
 
+class StatsVsScan(CtrlNode):
+
+    """
+    StatsVsScan creates a histogram using a variable number of bins.
+
+    Returns a dict with keys Bins and values mean, std, error of bins.
+    """
+
+    nodeName = "StatsVsScan"
+    uiTemplate = [('binned', 'check', {'checked': False}),
+                  ('bins', 'intSpin', {'value': 10, 'min': 1}),
+                  ('min', 'intSpin', {'value': 0}),
+                  ('max', 'intSpin', {'value': 10})]
+
+    def __init__(self, name):
+        super().__init__(name, terminals={
+            'Bin': {'io': 'in', 'ttype': float},
+            'Value': {'io': 'in', 'ttype': float},
+            'Bins': {'io': 'out', 'ttype': Array1d},
+            'Mean': {'io': 'out', 'ttype': Array1d},
+            'Stdev': {'io': 'out', 'ttype': Array1d},
+            'Error': {'io': 'out', 'ttype': Array1d},
+        })
+
+    def to_operation(self, inputs, outputs, **kwargs):
+        outputs = self.output_vars()
+
+        def reduction(cv, v):
+            cv.extend(v)
+            return cv
+
+        if self.values['binned']:
+            bins = np.histogram_bin_edges(np.arange(self.values['min'], self.values['max']),
+                                          bins=self.values['bins'],
+                                          range=(self.values['min'], self.values['max']))
+            map_outputs = [self.name()+'_bin', self.name()+'_map_count']
+            reduce_outputs = [self.name()+'_reduce_count']
+
+            def func(k, v):
+                return np.digitize(k, bins), [v]
+
+            def stats(d):
+                res = {bins[i]: (0, 0, 0) for i in range(0, bins.size)}
+                for k, v in d.items():
+                    try:
+                        stddev = np.std(v)
+                        res[bins[k]] = (np.mean(v), stddev, stddev/np.sqrt(len(v)))
+                    except IndexError:
+                        pass
+
+                keys, values = zip(*sorted(res.items()))
+                mean, stddev, error = zip(*values)
+                return np.array(keys), np.array(mean), np.array(stddev), np.array(error)
+
+            nodes = [
+                gn.Map(name=self.name()+'_map', inputs=inputs, outputs=map_outputs,
+                       func=func, **kwargs),
+                gn.ReduceByKey(name=self.name()+'_reduce',
+                               inputs=map_outputs, outputs=reduce_outputs,
+                               reduction=reduction, **kwargs),
+                gn.Map(name=self.name()+'_stats', inputs=reduce_outputs, outputs=outputs, func=stats,
+                       **kwargs)
+            ]
+        else:
+            map_outputs = [self.name()+'_map_count']
+            reduce_outputs = [self.name()+'_reduce_count']
+
+            def stats(d):
+                res = {}
+                for k, v in d.items():
+                    stddev = np.std(v)
+                    res[k] = (np.mean(v), stddev, stddev/np.sqrt(len(v)))
+                keys, values = zip(*sorted(res.items()))
+                mean, stddev, error = zip(*values)
+                return np.array(keys), np.array(mean), np.array(stddev), np.array(error)
+
+            nodes = [
+                gn.Map(name=self.name()+'_map', inputs=[inputs['Value']], outputs=map_outputs,
+                       func=lambda a: [a], **kwargs),
+                gn.ReduceByKey(name=self.name()+'_reduce',
+                               inputs=[inputs['Bin']]+map_outputs, outputs=reduce_outputs,
+                               reduction=reduction,
+                               **kwargs),
+                gn.Map(name=self.name()+'_stats', inputs=reduce_outputs, outputs=outputs, func=stats,
+                       **kwargs)
+            ]
+
+        return nodes
+
+
 class Combinations(CtrlNode):
 
     """
