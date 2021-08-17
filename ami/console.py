@@ -9,7 +9,7 @@ import datetime
 
 from traitlets.config.loader import Config
 from ami import LogConfig, Defaults
-from ami.comm import Ports
+from ami.comm import Ports, BasePort
 
 
 logger = logging.getLogger(__name__)
@@ -49,8 +49,8 @@ def main():
         '-p',
         '--port',
         type=int,
-        default=Ports.Comm,
-        help='port for manager/client (SHELL) communication (default: %d)' % Ports.Comm
+        default=(BasePort + Ports.Comm),
+        help='port for manager/client (SHELL) communication (default: %d)' % (BasePort + Ports.Comm)
     )
 
     addr_group.add_argument(
