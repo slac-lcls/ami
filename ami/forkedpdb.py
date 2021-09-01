@@ -1,7 +1,7 @@
 # ref: http://stackoverflow.com/questions/4716533/how-to-attach-debugger-to-a-python-subproccess
 import sys
 import pdb
-from qtpy import QtCore
+from pyqtgraph.Qt import QtCore
 
 
 class ForkedPdb(pdb.Pdb):

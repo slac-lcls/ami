@@ -6,7 +6,7 @@ import itertools as it
 import numpy as np
 import pyqtgraph as pg
 from pyqtgraph.GraphicsScene.exportDialog import ExportDialog
-from qtpy import QtGui, QtWidgets, QtCore
+from pyqtgraph.Qt import QtGui, QtWidgets, QtCore
 from networkfox import modifiers
 from ami import LogConfig
 from ami.data import Deserializer
@@ -462,7 +462,6 @@ class PlotWidget(QtWidgets.QWidget):
     def data_updated(self, data):
         pass
 
-    @QtCore.Slot()
     def update(self):
         while self.fetcher.ready:
             self.last_updated.setText(self.fetcher.last_updated)
@@ -502,7 +501,6 @@ class ObjectWidget(pg.LayoutWidget):
         self.label.setMinimumSize(360, 180)
         self.label.setWordWrap(True)
 
-    @QtCore.Slot()
     def update(self):
         while self.fetcher.ready:
             for k, v in self.fetcher.reply.items():
@@ -531,7 +529,6 @@ class ScalarWidget(QtWidgets.QLCDNumber):
         self.setMinimumSize(300, 100)
         self.setDigitCount(10)
 
-    @QtCore.Slot()
     def update(self):
         while self.fetcher.ready:
             for k, v in self.fetcher.reply.items():
