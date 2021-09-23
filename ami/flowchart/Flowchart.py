@@ -706,7 +706,13 @@ class FlowchartCtrlWidget(QtGui.QWidget):
                     if gnode.viewable() and gnode.viewed:
                         displays.add(gnode)
                     elif gnode.exportable():
+                        try:
+                            assert(gnode.values['alias'])
+                        except AssertionError:
+                            gnode.setException(True)
+                            self.chartWidget.updateStatus(f"{gnode.name()} set alias!", color='red')
                         displays.add(gnode)
+
                     continue
 
                 outputs = [name]

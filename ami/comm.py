@@ -1409,7 +1409,7 @@ class CommHandler(abc.ABC):
         """
         node_name = '%s_export' % export_name
 
-        return self._make_node(gn.PickN, name=node_name, inputs=name, outputs=export_name, N=1)
+        return self._make_node(gn.PickN, name=node_name, inputs=name, outputs=export_name, N=1, exportable=True)
 
     def alias(self, name, alias=None):
         """

@@ -36,6 +36,7 @@ class Transformation(abc.ABC):
         self.end_run_func = kwargs.get('end_run', None)
         self.begin_step_func = kwargs.get('begin_step', None)
         self.end_step_func = kwargs.get('end_step', None)
+        self.exportable = False
         self.is_global_operation = False
 
     def __hash__(self):
@@ -229,8 +230,10 @@ class PickN(GlobalTransformation):
 
     def __init__(self, **kwargs):
         N = kwargs.pop('N', 1)
+        exportable = kwargs.pop('exportable', False)
         super().__init__(**kwargs)
         self.N = N
+        self.exportable = exportable
         self.idx = 0
         self.res = [None]*self.N
         self.clear = False

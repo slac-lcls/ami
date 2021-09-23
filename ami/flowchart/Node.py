@@ -348,9 +348,9 @@ class Node(QtCore.QObject):
         node = remoteTerm.node()
 
         if localTerm.isInput() and remoteTerm.isOutput():
-            # if node.exportable():
-            #     self._input_vars[localTerm.name()] = AutoExport.mangle('.'.join([node.name(), remoteTerm.name()]))
-            if node.isSource():
+            if node.exportable() and node.values['alias']:
+                self._input_vars[localTerm.name()] = node.values['alias']
+            elif node.isSource():
                 self._input_vars[localTerm.name()] = node.name()
             else:
                 self._input_vars[localTerm.name()] = '.'.join([node.name(), remoteTerm.name()])
