@@ -16,7 +16,8 @@ class Pick1(Node):
     def __init__(self, name):
         super().__init__(name,
                          terminals={'In': {'io': 'in', 'ttype': T},
-                                    'Out': {'io': 'out', 'ttype': T}})
+                                    'Out': {'io': 'out', 'ttype': T}},
+                         global_op=True)
 
     def to_operation(self, **kwargs):
         return gn.PickN(name=self.name()+"_operation", N=1, **kwargs)
@@ -35,7 +36,8 @@ class PickN(CtrlNode):
         super().__init__(name,
                          terminals={'In': {'io': 'in', 'ttype': T},
                                     'Out': {'io': 'out', 'ttype': Array1d}},
-                         allowAddInput=True)
+                         allowAddInput=True,
+                         global_op=True)
 
     def to_operation(self, **kwargs):
         return gn.PickN(name=self.name()+"_operation", N=self.values['N'], **kwargs)
@@ -54,7 +56,8 @@ class RollingBuffer(CtrlNode):
         super().__init__(name,
                          terminals={'In': {'io': 'in', 'ttype': T},
                                     'Out': {'io': 'out', 'ttype': Array1d}},
-                         allowAddInput=True)
+                         allowAddInput=True,
+                         global_op=True)
 
     def to_operation(self, **kwargs):
         return gn.RollingBuffer(name=self.name()+"_operation", N=self.values['N'], **kwargs)
@@ -104,7 +107,8 @@ try:
             super().__init__(name,
                              terminals={'In': {'io': 'in', 'ttype': Any},
                                         'Out': {'io': 'out', 'ttype': Any}},
-                             allowAddInput=True)
+                             allowAddInput=True,
+                             global_op=True)
 
             self.values = {'text': ''}
 
@@ -119,7 +123,7 @@ try:
             return self.widget
 
         def generate_template(self):
-            template = f"""
+            template = """
 class Accumulator():
 
     def __init__(self):
@@ -173,7 +177,8 @@ class Accumulator():
             super().__init__(name,
                              terminals={'Key': {'io': 'in', 'ttype': Any},
                                         'Value': {'io': 'in', 'ttype': Any},
-                                        'Out': {'io': 'out', 'ttype': dict}})
+                                        'Out': {'io': 'out', 'ttype': dict}},
+                             global_op=True)
 
             self.values = {'text': ''}
 
@@ -188,7 +193,7 @@ class Accumulator():
             return self.widget
 
         def generate_template(self):
-            template = f"""
+            template = """
 class ReduceByKey():
 
     def __init__(self):

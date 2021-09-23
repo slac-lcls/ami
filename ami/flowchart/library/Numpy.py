@@ -40,11 +40,12 @@ class Binning(CtrlNode):
                   ('density', 'check', {'checked': False})]
 
     def __init__(self, name):
-        super().__init__(name, terminals={
-            'In': {'io': 'in', 'ttype': Union[float, Array1d, Array2d]},
-            'Bins': {'io': 'out', 'ttype': Array1d},
-            'Counts': {'io': 'out', 'ttype': Array1d}
-        })
+        super().__init__(name, global_op=True,
+                         terminals={
+                             'In': {'io': 'in', 'ttype': Union[float, Array1d, Array2d]},
+                             'Bins': {'io': 'out', 'ttype': Array1d},
+                             'Counts': {'io': 'out', 'ttype': Array1d}
+                         })
         self.weighted = None
 
     def state_changed(self, *args, **kwargs):
@@ -99,13 +100,14 @@ class Binning2D(CtrlNode):
                   ('density', 'check', {'checked': False})]
 
     def __init__(self, name):
-        super().__init__(name, terminals={
-            'X': {'io': 'in', 'ttype': Union[float, Array1d]},
-            'Y': {'io': 'in', 'ttype': Union[float, Array1d]},
-            'XBins': {'io': 'out', 'ttype': Array1d},
-            'YBins': {'io': 'out', 'ttype': Array1d},
-            'Counts': {'io': 'out', 'ttype': Array2d}
-        })
+        super().__init__(name, global_op=True,
+                         terminals={
+                             'X': {'io': 'in', 'ttype': Union[float, Array1d]},
+                             'Y': {'io': 'in', 'ttype': Union[float, Array1d]},
+                             'XBins': {'io': 'out', 'ttype': Array1d},
+                             'YBins': {'io': 'out', 'ttype': Array1d},
+                             'Counts': {'io': 'out', 'ttype': Array2d}
+                         })
         self.x_type = None
         self.y_type = None
         self.sigTerminalConnected.connect(self.setType)
@@ -397,7 +399,8 @@ class TimeMeanRMS0D(CtrlNode):
     def __init__(self, name):
         super().__init__(name, terminals={'In': {'io': 'in', 'ttype': float},
                                           'Mean': {'io': 'out', 'ttype': float},
-                                          'RMS': {'io': 'out', 'ttype': float}})
+                                          'RMS': {'io': 'out', 'ttype': float}},
+                         global_op=True)
 
     def to_operation(self, inputs, outputs, **kwargs):
         def func(arr):
@@ -427,7 +430,8 @@ class TimeMeanRMS1D(CtrlNode):
     def __init__(self, name):
         super().__init__(name, terminals={'In': {'io': 'in', 'ttype': Array1d},
                                           'Mean': {'io': 'out', 'ttype': Array1d},
-                                          'RMS': {'io': 'out', 'ttype': Array1d}})
+                                          'RMS': {'io': 'out', 'ttype': Array1d}},
+                         global_op=True)
 
     def to_operation(self, inputs, outputs, **kwargs):
         def func(arr):
@@ -458,7 +462,8 @@ class TimeMeanRMS2D(CtrlNode):
     def __init__(self, name):
         super().__init__(name, terminals={'In': {'io': 'in', 'ttype': Array2d},
                                           'Mean': {'io': 'out', 'ttype': Array2d},
-                                          'RMS': {'io': 'out', 'ttype': Array2d}})
+                                          'RMS': {'io': 'out', 'ttype': Array2d}},
+                         global_op=True)
 
     def to_operation(self, inputs, outputs, **kwargs):
         def func(arr):
@@ -513,7 +518,8 @@ class Average0D(CtrlNode):
 
     def __init__(self, name):
         super().__init__(name, terminals={'In': {'io': 'in', 'ttype': float},
-                                          'Out': {'io': 'out', 'ttype': float}})
+                                          'Out': {'io': 'out', 'ttype': float}},
+                         global_op=True)
 
     def to_operation(self, inputs, outputs, **kwargs):
         accumulated_outputs = [self.name()+'_accumulated_events']
@@ -564,7 +570,8 @@ class Average1D(CtrlNode):
 
     def __init__(self, name):
         super().__init__(name, terminals={'In': {'io': 'in', 'ttype': Array1d},
-                                          'Out': {'io': 'out', 'ttype': Array1d}})
+                                          'Out': {'io': 'out', 'ttype': Array1d}},
+                         global_op=True)
 
     def to_operation(self, inputs, outputs, **kwargs):
         axis = self.values['axis']
@@ -617,7 +624,8 @@ class Average2D(CtrlNode):
 
     def __init__(self, name):
         super().__init__(name, terminals={'In': {'io': 'in', 'ttype': Array2d},
-                                          'Out': {'io': 'out', 'ttype': Array2d}})
+                                          'Out': {'io': 'out', 'ttype': Array2d}},
+                         global_op=True)
 
     def to_operation(self, inputs, outputs, **kwargs):
         axis = self.values['axis']

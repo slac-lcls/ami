@@ -152,7 +152,8 @@ class ScatterRoi(CtrlNode):
                                           "Y": {"io": "in", "ttype": float},
                                           "Out.X": {"io": "out", "ttype": Array1d},
                                           "Out.Y": {"io": "out", "ttype": Array1d}},
-                         buffered=True)
+                         buffered=True,
+                         global_op=True)
 
     def isChanged(self, restore_ctrl, restore_widget):
         return restore_ctrl

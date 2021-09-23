@@ -58,12 +58,13 @@ class MeanVsScan(CtrlNode):
                   ('max', 'intSpin', {'value': 10})]
 
     def __init__(self, name):
-        super().__init__(name, terminals={
-            'Bin': {'io': 'in', 'ttype': float},
-            'Value': {'io': 'in', 'ttype': float},
-            'Bins': {'io': 'out', 'ttype': Array1d},
-            'Counts': {'io': 'out', 'ttype': Array1d}
-        })
+        super().__init__(name, global_op=True,
+                         terminals={
+                             'Bin': {'io': 'in', 'ttype': float},
+                             'Value': {'io': 'in', 'ttype': float},
+                             'Bins': {'io': 'out', 'ttype': Array1d},
+                             'Counts': {'io': 'out', 'ttype': Array1d}
+                         })
 
     def to_operation(self, inputs, outputs, **kwargs):
         outputs = self.output_vars()
@@ -137,13 +138,14 @@ class MeanWaveformVsScan(CtrlNode):
                   ('max', 'intSpin', {'value': 10})]
 
     def __init__(self, name):
-        super().__init__(name, terminals={
-            'Bin': {'io': 'in', 'ttype': float},
-            'Value': {'io': 'in', 'ttype': Array1d},
-            'X Bins': {'io': 'out', 'ttype': Array1d},
-            'Y Bins': {'io': 'out', 'ttype': Array1d},
-            'Counts': {'io': 'out', 'ttype': Array2d}
-        })
+        super().__init__(name, global_op=True,
+                         terminals={
+                             'Bin': {'io': 'in', 'ttype': float},
+                             'Value': {'io': 'in', 'ttype': Array1d},
+                             'X Bins': {'io': 'out', 'ttype': Array1d},
+                             'Y Bins': {'io': 'out', 'ttype': Array1d},
+                             'Counts': {'io': 'out', 'ttype': Array2d}
+                         })
 
     def to_operation(self, inputs, outputs, **kwargs):
         if self.values['binned']:
@@ -222,14 +224,15 @@ class StatsVsScan(CtrlNode):
                   ('max', 'intSpin', {'value': 10})]
 
     def __init__(self, name):
-        super().__init__(name, terminals={
-            'Bin': {'io': 'in', 'ttype': float},
-            'Value': {'io': 'in', 'ttype': float},
-            'Bins': {'io': 'out', 'ttype': Array1d},
-            'Mean': {'io': 'out', 'ttype': Array1d},
-            'Stdev': {'io': 'out', 'ttype': Array1d},
-            'Error': {'io': 'out', 'ttype': Array1d},
-        })
+        super().__init__(name, global_op=True,
+                         terminals={
+                             'Bin': {'io': 'in', 'ttype': float},
+                             'Value': {'io': 'in', 'ttype': float},
+                             'Bins': {'io': 'out', 'ttype': Array1d},
+                             'Mean': {'io': 'out', 'ttype': Array1d},
+                             'Stdev': {'io': 'out', 'ttype': Array1d},
+                             'Error': {'io': 'out', 'ttype': Array1d},
+                         })
 
     def to_operation(self, inputs, outputs, **kwargs):
         outputs = self.output_vars()

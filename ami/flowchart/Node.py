@@ -102,11 +102,12 @@ class Node(QtCore.QObject):
         self.changed = True
         self.viewed = False
         self.exception = None
+        self.global_op = kwargs.get("global_op", False)
 
         self._input_vars = {}  # term:var
 
         terminals = kwargs.get("terminals", {})
-        self.brush = self.determineColor(terminals)
+        self.brush = self.determineColor(terminals, self.global_op)
         self.graphicsItem(self.brush)
 
         for name, opts in terminals.items():
@@ -128,7 +129,7 @@ class Node(QtCore.QObject):
             i += 1
         return name2
 
-    def determineColor(self, terminals):
+    def determineColor(self, terminals, global_op=False):
         isInput = True
         isOutput = True
         for name, term in terminals.items():
@@ -138,6 +139,8 @@ class Node(QtCore.QObject):
                 isOutput = False
 
         brush = None
+        if global_op:
+            brush = fn.mkBrush(100, 150, 255, 255)
         if isInput and not isOutput:
             brush = fn.mkBrush(255, 0, 0, 255)
         elif isOutput and not isInput:

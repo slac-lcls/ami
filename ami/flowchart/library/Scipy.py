@@ -81,7 +81,8 @@ class Linregress0D(CtrlNode):
                                           'X': {'io': 'out', 'ttype': Array1d},
                                           'Y': {'io': 'out', 'ttype': Array1d},
                                           'Fit': {'io': 'out', 'ttype': Array1d},
-                                          'rvalue': {'io': 'out', 'ttype': float}})
+                                          'rvalue': {'io': 'out', 'ttype': float}},
+                         global_op=True)
 
     def to_operation(self, inputs, outputs, **kwargs):
         def fit(arr):
