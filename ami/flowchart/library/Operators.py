@@ -346,7 +346,8 @@ class Export(CtrlNode):
     uiTemplate = [('alias', 'text')]
 
     def __init__(self, name):
-        super().__init__(name, terminals={"In": {'io': 'in', 'ttype': Any}},
+        super().__init__(name, terminals={"In": {'io': 'in', 'ttype': Any},
+                                          "Out": {'io': 'out', 'ttype': Any}},
                          exportable=True)
 
 
