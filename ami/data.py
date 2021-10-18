@@ -18,6 +18,8 @@ try:
 except ImportError:
     psana = None
 try:
+    import warnings
+    warnings.simplefilter(action='ignore', category=FutureWarning)
     import pyarrow as pa
 except ImportError:
     pa = None
