@@ -72,7 +72,7 @@ class Linregress0D(CtrlNode):
     Collect N scalars and apply Scipy.stats.linregress
     """
 
-    nodeName = "Linregress0d"
+    nodeName = "Linregress0D"
     uiTemplate = [('N', 'intSpin', {'value': 2, 'min': 2})]
 
     def __init__(self, name):
@@ -107,7 +107,7 @@ class Linregress1D(Node):
     Scipy.stats.linregress
     """
 
-    nodeName = "Linregress1d"
+    nodeName = "Linregress1D"
 
     def __init__(self, name):
         super().__init__(name, terminals={'X': {'io': 'in', 'ttype': Array1d},
