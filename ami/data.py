@@ -222,12 +222,30 @@ class ModuleSerializer:
     def __init__(self, module):
         self.module = module
 
+        if module == pickle and pickle.HIGHEST_PROTOCOL >= 5:
+            def dumps(msg):
+                buffers = []
+                m = pickle.dumps(msg, protocol=5, buffer_callback=buffers.append)
+                buffers.append(m)
+                return buffers
+        else:
+            def dumps(msg):
+                return [self.module.dumps(msg)]
+
+        self.dumps = dumps
+
     def __call__(self, msg):
-        return [self.module.dumps(msg)]
+        return self.dumps(msg)
 
     def sizeof(self, msg):
-        assert type(msg) is list and type(msg[0]) is bytes, "Excepts serialized message!"
-        return sys.getsizeof(msg[0])
+        assert type(msg) is list, "Excepts serialized message!"
+        size = sys.getsizeof(msg[-1])
+        for c in msg[:-1]:
+            if hasattr(pickle, 'PickleBuffer') and type(c) is pickle.PickleBuffer:
+                size += c.raw().nbytes
+            elif type(c) is bytes:
+                size += sys.getsizeof(c)
+        return size
 
 
 class ModuleDeserializer:
@@ -235,14 +253,23 @@ class ModuleDeserializer:
     def __init__(self, module):
         self.module = module
 
-    def __call__(self, data):
-        msg = [self.module.loads(d) for d in data]
-        if len(msg) == 0:
-            return None
-        elif len(msg) == 1:
-            return msg[0]
+        if module == pickle and pickle.HIGHEST_PROTOCOL >= 5:
+            def loads(data):
+                return pickle.loads(data[-1], buffers=data[:-1])
         else:
-            return msg
+            def loads(data):
+                msg = [self.module.loads(d) for d in data]
+                if len(msg) == 0:
+                    return None
+                elif len(msg) == 1:
+                    return msg[0]
+                else:
+                    return msg
+
+        self.loads = loads
+
+    def __call__(self, data):
+        return self.loads(data)
 
 
 class ArrowSerializer:
@@ -286,8 +313,8 @@ SerializationProtocols = {
     'arrow': (ArrowSerializer, ArrowDeserializer, {}),
     None:
         (ArrowSerializer, ArrowDeserializer, {})
-        if pa is not None else
-        (ModuleSerializer, ModuleDeserializer, {'module': dill}),
+        if pa is not None and pickle.HIGHEST_PROTOCOL < 5 else
+        (ModuleSerializer, ModuleDeserializer, {'module': pickle}),
 }
 
 
