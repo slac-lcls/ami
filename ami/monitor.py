@@ -366,13 +366,14 @@ class Monitor():
         self.export.close()
         self.ctx.destroy()
 
-    async def run(self, loop):
+    async def run(self, loop, address, http_port):
         asyncio.create_task(self.process_msg())
-        asyncio.create_task(self.start_server(loop))
+        asyncio.create_task(self.start_server(loop, address, http_port))
         asyncio.create_task(self.monitor_tasks())
 
-    async def start_server(self, loop):
-        self.server = pn.serve(self.template, loop=loop, title="AMI")
+    async def start_server(self, loop, address, http_port):
+        self.server = pn.serve(self.template, address=address, port=http_port,
+                               loop=loop, title="AMI", show=False)
 
     async def monitor_tasks(self):
         while True:
@@ -462,14 +463,14 @@ class Monitor():
                     self.enabled_plots.options = list(self.plot_metadata.keys())
 
 
-def run_monitor(graph_name, export_addr, view_addr):
+def run_monitor(graph_name, export_addr, view_addr, address, http_port):
     logger.info('Starting monitor')
 
     graphmgr_addr = GraphMgrAddress(graph_name, export_addr, view_addr, None)
 
     loop = tornado.ioloop.IOLoop.current()
     with Monitor(graphmgr_addr) as mon:
-        asyncio.ensure_future(mon.run(loop))
+        asyncio.ensure_future(mon.run(loop, address, http_port))
         loop.start()
 
 
@@ -489,6 +490,22 @@ def main():
         type=int,
         default=BasePort,
         help='base port for AMI'
+    )
+
+    parser.add_argument(
+        '-l',
+        '--listen-port',
+        type=int,
+        default=0,
+        help='http port for panel'
+    )
+
+    parser.add_argument(
+        '-a',
+        '--address',
+        type=str,
+        default=None,
+        help='address name for panel'
     )
 
     parser.add_argument(
@@ -513,6 +530,8 @@ def main():
     graph = args.graph_name
     export_addr = "tcp://%s:%d" % (args.host, args.port + Ports.Export)
     view_addr = "tcp://%s:%d" % (args.host, args.port + Ports.View)
+    http_port = args.listen_port
+    address = args.address
 
     log_handlers = [logging.StreamHandler()]
     if args.log_file is not None:
@@ -521,7 +540,7 @@ def main():
     logging.basicConfig(format=LogConfig.Format, level=log_level, handlers=log_handlers)
 
     try:
-        return run_monitor(graph, export_addr, view_addr)
+        return run_monitor(graph, export_addr, view_addr, address, http_port)
     except KeyboardInterrupt:
         logger.info("Monitor killed by user...")
         return 0
