@@ -23,7 +23,8 @@ class Roi2D(CtrlNode):
     def __init__(self, name):
         super().__init__(name,
                          terminals={'In': {'io': 'in', 'ttype': Array2d},
-                                    'Out': {'io': 'out', 'ttype': Array2d}},
+                                    'Out': {'io': 'out', 'ttype': Array2d},
+                                    'Roi_Coordinates': {'io': 'out', 'ttype': Array1d}},
                          viewable=True)
 
     def isChanged(self, restore_ctrl, restore_widget):
@@ -71,7 +72,7 @@ class Roi2D(CtrlNode):
         ey = self.values['extent y']
 
         def func(img):
-            return img[slice(ox, ox+ex), slice(oy, oy+ey)]
+            return img[slice(ox, ox+ex), slice(oy, oy+ey)], (ox, ex, oy, ey)
 
         return gn.Map(name=self.name()+"_operation", **kwargs, func=func)
 
