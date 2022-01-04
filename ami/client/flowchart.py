@@ -27,7 +27,7 @@ logger = logging.getLogger(LogConfig.get_package_name(__name__))
 
 def run_editor_window(broker_addr, graphmgr_addr, checkpoint_addr, load=None, prometheus_dir=None,
                       prometheus_port=None, hutch=None, configure=False):
-    subprocess.call(["dmypy", "start"])
+    subprocess.run(["dmypy", "start"])
     check_file = None
     with tempfile.NamedTemporaryFile(mode='w', delete=False) as f:
         f.write("from typing import *\n")
@@ -37,7 +37,7 @@ def run_editor_window(broker_addr, graphmgr_addr, checkpoint_addr, load=None, pr
         f.write("T = TypeVar('T')\n")
         f.flush()
         check_file = f.name
-        proc = subprocess.Popen(["dmypy", "check", f.name])
+        subprocess.run(["dmypy", "check", f.name])
 
     app = QtGui.QApplication([])
 
@@ -88,11 +88,10 @@ def run_editor_window(broker_addr, graphmgr_addr, checkpoint_addr, load=None, pr
         loop.close()
 
     try:
-        proc.communicate(timeout=1)
-        subprocess.call(["dmypy", "stop"])
-    except subprocess.TimeoutExpired:
-        proc.terminate()
-        subprocess.call(["dmypy", "kill"])
+        proc = subprocess.run(["dmypy", "stop"])
+        proc.check_returncode()
+    except subprocess.CalledProcessError:
+        subprocess.run(["dmypy", "kill"])
     finally:
         if check_file:
             os.remove(check_file)
