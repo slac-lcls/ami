@@ -15,15 +15,21 @@ from ami import LogConfig, Defaults
 from ami.client import GraphMgrAddress
 from ami.comm import BasePort, Ports, ZMQ_TOPIC_DELIM
 from ami.data import Deserializer
-
+from bokeh.models.ranges import DataRange1d
 
 logger = logging.getLogger(__name__)
 pn.extension()
 hv.extension('bokeh')
 pn.config.sizing_mode = 'scale_both'
 
+
+def hook(plot, element):
+    plot.state.x_range = DataRange1d(follow='end', follow_interval=60000, range_padding=0)
+    plot.state.y_range = DataRange1d(follow='end', follow_interval=60000, range_padding=0)
+
+
 options = {'axiswise': True, 'framewise': True, 'shared_axes': False, 'show_grid': True, 'tools': ['hover'],
-           'responsive': True, 'min_height': 200, 'min_width': 200}
+           'responsive': True, 'min_height': 200, 'min_width': 200, 'hooks': [hook]}
 hv.opts.defaults(hv.opts.Curve(**options),
                  hv.opts.Scatter(**options),
                  hv.opts.Image(**options),
