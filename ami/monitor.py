@@ -24,6 +24,7 @@ pn.config.sizing_mode = 'scale_both'
 
 
 def hook(plot, element):
+    # work around for this issue: https://github.com/holoviz/holoviews/issues/2441
     plot.state.x_range = DataRange1d(follow='end', follow_interval=60000, range_padding=0)
     plot.state.y_range = DataRange1d(follow='end', follow_interval=60000, range_padding=0)
 
