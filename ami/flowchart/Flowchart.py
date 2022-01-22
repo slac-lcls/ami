@@ -193,7 +193,7 @@ class Flowchart(Node):
             self.deleted_nodes.append(name)
             self.sigNodeChanged.emit(node)
             if ctrl.features.remove_plot(name):
-                await self.ctrl.graphCommHandler.updatePlots(ctrl.features.plots)
+                await ctrl.graphCommHandler.updatePlots(ctrl.features.plots)
         elif isinstance(node, SourceNode):
             await ctrl.features.discard(name, name)
             await ctrl.graphCommHandler.unview(name)

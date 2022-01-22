@@ -358,7 +358,9 @@ class Node(QtCore.QObject):
             else:
                 self._input_vars[localTerm.name()] = '.'.join([node.name(), remoteTerm.name()])
 
-        self.changed = localTerm.isInput()
+        if not self.changed:
+            self.changed = localTerm.isInput()
+
         self.sigTerminalConnected.emit(localTerm, remoteTerm)
 
     def disconnected(self, localTerm, remoteTerm):

@@ -58,15 +58,15 @@ def build_parser():
         help='aggregates graph and store related variables into structured data when exporting'
     )
 
-    comm_group = parser.add_mutually_exclusive_group()
-
-    comm_group.add_argument(
+    parser.add_argument(
         '-p',
         '--port',
         type=int,
         default=BasePort,
         help='use tcp for communication using the specified starting port'
     )
+
+    comm_group = parser.add_mutually_exclusive_group()
 
     comm_group.add_argument(
         '-i',
