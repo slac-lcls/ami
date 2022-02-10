@@ -400,7 +400,7 @@ class Flowchart(Node):
                         printExc("Error connecting terminals %s.%s - %s.%s:" % (n1, t1, n2, t2))
 
                 type_file.flush()
-                status = subprocess.run(["mypy", "--follow-imports", "silent", type_file.name],
+                status = subprocess.run(["dmypy", "--follow-imports", "silent", "check", type_file.name],
                                         capture_output=True, text=True)
                 if status.returncode != 0:
                     lines = status.stdout.split('\n')[:-1]
