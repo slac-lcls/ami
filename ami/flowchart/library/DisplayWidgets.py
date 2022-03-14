@@ -532,8 +532,7 @@ class ScalarWidget(QtWidgets.QLCDNumber):
     def update(self):
         while self.fetcher.ready:
             for k, v in self.fetcher.reply.items():
-                s = "{:.4e}".format(v).lower()
-                self.display(s)
+                self.display(v)
 
     def close(self):
         if self.fetcher:
