@@ -6,6 +6,84 @@ import ami.graph_nodes as gn
 import numpy as np
 import pyqtgraph as pg
 from pyqtgraph import functions as fn
+#import logging
+#logger = logging.getLogger(__name__)
+
+import ami.flowchart.library.UtilsROI as ur
+
+class RoiArc(CtrlNode):
+
+    """
+    Region of Interest of image.
+    """
+
+    nodeName = "RoiArc"
+    uiTemplate = [('origin x', 'intSpin', {'value': 0, 'min': 0}),
+                  ('origin y', 'intSpin', {'value': 0, 'min': 0}),
+                  ('extent x', 'intSpin', {'value': 10, 'min': 1}),
+                  ('extent y', 'intSpin', {'value': 10, 'min': 1})]
+
+    def __init__(self, name):
+        super().__init__(name,
+                         terminals={'In': {'io': 'in', 'ttype': Array2d},
+                                    'Out': {'io': 'out', 'ttype': Array2d},
+                                    'Roi_Coordinates': {'io': 'out', 'ttype': Array1d}},
+                         viewable=True)
+
+    def isChanged(self, restore_ctrl, restore_widget):
+        return restore_ctrl
+
+    def display(self, topics, terms, addr, win, **kwargs):
+        super().display(topics, terms, addr, win, ImageWidget, **kwargs)
+
+        if self.widget:
+            #self.roi = pg.PolyLineROI([(10,20), (50,200), (300,400), (200,100)], closed=True)
+            #self.roi = ur.ArcROI([(10,20), (50,200), (300,400), (200,100)], closed=True)
+            self.roi = ur.ArcROI((10,10), radius=300)
+            self.roi.sigRegionChangeFinished.connect(self.set_values)
+            self.widget.view.addItem(self.roi)
+
+        return self.widget
+
+    def set_values(self, *args, **kwargs):
+        # need to block signals to the stateGroup otherwise stateGroup.sigChanged
+        # will be emmitted by setValue causing update to be called
+        self.stateGroup.blockSignals(True)
+        roi = args[0]
+        extent, _, origin = roi.getAffineSliceParams(self.widget.imageItem.image, self.widget.imageItem)
+        self.values['origin x'] = int(origin[0])
+        self.values['origin y'] = int(origin[1])
+        self.values['extent x'] = int(extent[0])
+        self.values['extent y'] = int(extent[1])
+        self.ctrls['origin x'].setValue(self.values['origin x'])
+        self.ctrls['extent x'].setValue(self.values['extent x'])
+        self.ctrls['origin y'].setValue(self.values['origin y'])
+        self.ctrls['extent y'].setValue(self.values['extent y'])
+        self.stateGroup.blockSignals(False)
+        self.sigStateChanged.emit(self)
+
+
+    def update(self, *args, **kwargs):
+        super().update(*args, **kwargs)
+
+        if self.widget:
+            self.roi.setPos(self.values['origin x'], y=self.values['origin y'], finish=False)
+            self.roi.setSize((self.values['extent x'], self.values['extent y']), finish=False)
+
+            #p = self.roi.pos()
+            ##self.roi.translate(p.x(), p.y(), False)
+            #self.roi.rotate(10, center=None, snap=False, update=True, finish=True)
+
+    def to_operation(self, **kwargs):
+        ox = self.values['origin x']
+        ex = self.values['extent x']
+        oy = self.values['origin y']
+        ey = self.values['extent y']
+
+        def func(img):
+            return img[slice(ox, ox+ex), slice(oy, oy+ey)], (ox, ex, oy, ey)
+
+        return gn.Map(name=self.name()+"_operation", **kwargs, func=func)
 
 
 class Roi2D(CtrlNode):
