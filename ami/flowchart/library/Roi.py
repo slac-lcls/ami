@@ -1,3 +1,5 @@
+
+import sys
 from ami.flowchart.library.DisplayWidgets import ImageWidget, WaveformWidget, PixelDetWidget, \
     ScatterWidget
 from ami.flowchart.library.common import CtrlNode
@@ -11,17 +13,21 @@ from pyqtgraph import functions as fn
 
 import ami.flowchart.library.UtilsROI as ur
 
-class RoiArc(CtrlNode):
+def rotate_sincos(x, y, s, c): return x*c-y*s, x*s+y*c
+def rotate(x, y, a): return rotate_sincos(x, y, math.sin(a), math.cos(a))
+def rotate_degree(x, y, a): return rotate(x, y, math.radians(a))
 
+class RoiArc(CtrlNode):
     """
     Region of Interest of image.
     """
-
     nodeName = "RoiArc"
-    uiTemplate = [('origin x', 'intSpin', {'value': 0, 'min': 0}),
-                  ('origin y', 'intSpin', {'value': 0, 'min': 0}),
-                  ('extent x', 'intSpin', {'value': 10, 'min': 1}),
-                  ('extent y', 'intSpin', {'value': 10, 'min': 1})]
+    uiTemplate = [('center x', 'intSpin', {'value':200, 'min': -1000}),
+                  ('center y', 'intSpin', {'value':200, 'min': -1000}),
+                  ('radius o', 'intSpin', {'value':200, 'min': 1}),
+                  ('radius i', 'intSpin', {'value':100, 'min': 1}),
+                  ('angdeg o', 'intSpin', {'value':  0, 'min': 0}),
+                  ('angdeg i', 'intSpin', {'value': 60, 'min': 0})]
 
     def __init__(self, name):
         super().__init__(name,
@@ -29,56 +35,77 @@ class RoiArc(CtrlNode):
                                     'Out': {'io': 'out', 'ttype': Array2d},
                                     'Roi_Coordinates': {'io': 'out', 'ttype': Array1d}},
                          viewable=True)
+        #self.set_values()
+
 
     def isChanged(self, restore_ctrl, restore_widget):
         return restore_ctrl
+
 
     def display(self, topics, terms, addr, win, **kwargs):
         super().display(topics, terms, addr, win, ImageWidget, **kwargs)
 
         if self.widget:
-            #self.roi = pg.PolyLineROI([(10,20), (50,200), (300,400), (200,100)], closed=True)
-            #self.roi = ur.ArcROI([(10,20), (50,200), (300,400), (200,100)], closed=True)
-            self.roi = ur.ArcROI((10,10), radius=300)
+            cx, cy, ro, ri, ao, ai = self.shape_values()
+            self.roi = ur.ArcROI(center=(cx, cy), radius_out=ro, radius_int=ri, angle_deg_out=ao, angle_deg_int=ai)
+            #self.set_values()
             self.roi.sigRegionChangeFinished.connect(self.set_values)
             self.widget.view.addItem(self.roi)
-
+            nw = self.widget.parent()
+            if nw: nw.setGeometry(500, 10, 900, 600)
+            #print('YYYY', dir(nw))
         return self.widget
 
+
+    def shape_values(self):
+        return [self.values[s] for s in\
+               ('center x', 'center y', 'radius o', 'radius i', 'angdeg o', 'angdeg i')]
+
+
     def set_values(self, *args, **kwargs):
+        """set self.values/ctrls parameters from roi shape.
+        """
         # need to block signals to the stateGroup otherwise stateGroup.sigChanged
         # will be emmitted by setValue causing update to be called
         self.stateGroup.blockSignals(True)
-        roi = args[0]
-        extent, _, origin = roi.getAffineSliceParams(self.widget.imageItem.image, self.widget.imageItem)
-        self.values['origin x'] = int(origin[0])
-        self.values['origin y'] = int(origin[1])
-        self.values['extent x'] = int(extent[0])
-        self.values['extent y'] = int(extent[1])
-        self.ctrls['origin x'].setValue(self.values['origin x'])
-        self.ctrls['extent x'].setValue(self.values['extent x'])
-        self.ctrls['origin y'].setValue(self.values['origin y'])
-        self.ctrls['extent y'].setValue(self.values['extent y'])
+        #roi = args[0] # the same as self.roi
+        #extent, _, origin = self.roi.getAffineSliceParams(self.widget.imageItem.image, self.widget.imageItem)
+        pos, size, center, rad1, rad2, ang1_deg, ang2_deg, ang1, ang2, p0, p1, p2, p3 = self.roi.shape_parameters()
+        #center = self.roi.mapToView(self.roi.boundingRect().center())
+        #print('XXX angle:%.1f boundingRect():' % ang1_deg, self.roi.boundingRect())
+
+        self.values['center x'] = int(center.x()) # int(origin[0] + center.x())#0.5*extent[0]))
+        self.values['center y'] = int(center.y())
+        self.values['radius o'] = int(rad1)
+        self.values['radius i'] = int(rad2)
+        self.values['angdeg o'] = int(ang1_deg)
+        self.values['angdeg i'] = int(ang2_deg)
+        self.ctrls['center x'].setValue(self.values['center x'])
+        self.ctrls['center y'].setValue(self.values['center y'])
+        self.ctrls['radius o'].setValue(self.values['radius o'])
+        self.ctrls['radius i'].setValue(self.values['radius i'])
+        self.ctrls['angdeg o'].setValue(self.values['angdeg o'])
+        self.ctrls['angdeg i'].setValue(self.values['angdeg i'])
+
         self.stateGroup.blockSignals(False)
         self.sigStateChanged.emit(self)
 
 
     def update(self, *args, **kwargs):
+        """set roi shape from self.values.
+        """
         super().update(*args, **kwargs)
 
         if self.widget:
-            self.roi.setPos(self.values['origin x'], y=self.values['origin y'], finish=False)
-            self.roi.setSize((self.values['extent x'], self.values['extent y']), finish=False)
+            cx, cy, ro, ri, ao, ai = self.shape_values()
+            self.roi.set_shape_parameters(cx, cy, ro, ri, ao, ai)
 
-            #p = self.roi.pos()
-            ##self.roi.translate(p.x(), p.y(), False)
-            #self.roi.rotate(10, center=None, snap=False, update=True, finish=True)
 
     def to_operation(self, **kwargs):
-        ox = self.values['origin x']
-        ex = self.values['extent x']
-        oy = self.values['origin y']
-        ey = self.values['extent y']
+        ox = self.values['center x']
+        oy = self.values['center y']
+        ex = self.values['radius o']
+        ey = self.values['radius i']
 
         def func(img):
             return img[slice(ox, ox+ex), slice(oy, oy+ey)], (ox, ex, oy, ey)
