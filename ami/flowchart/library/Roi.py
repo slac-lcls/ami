@@ -1,5 +1,4 @@
 
-import sys
 from ami.flowchart.library.DisplayWidgets import ImageWidget, WaveformWidget, PixelDetWidget, \
     ScatterWidget
 from ami.flowchart.library.common import CtrlNode
@@ -12,10 +11,6 @@ from pyqtgraph import functions as fn
 #logger = logging.getLogger(__name__)
 
 import ami.flowchart.library.UtilsROI as ur
-
-def rotate_sincos(x, y, s, c): return x*c-y*s, x*s+y*c
-def rotate(x, y, a): return rotate_sincos(x, y, math.sin(a), math.cos(a))
-def rotate_degree(x, y, a): return rotate(x, y, math.radians(a))
 
 class RoiArch(CtrlNode):
     """

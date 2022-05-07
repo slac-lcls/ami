@@ -11,6 +11,9 @@ logger = logging.getLogger(__name__)
 QPointF, QRectF = pg.QtCore.QPointF, pg.QtCore.QRectF
 QPen, QBrush, QColor = pg.QtGui.QPen, pg.QtGui.QBrush, pg.QtGui.QColor
 
+#def rotate_sincos(x, y, s, c): return x*c-y*s, x*s+y*c
+#def rotate(x, y, a): return rotate_sincos(x, y, math.sin(a), math.cos(a))
+#def rotate_degree(x, y, a): return rotate(x, y, math.radians(a))
 
 def str_point(p, fmt='(%.1f, %.1f)'):
     return fmt % (p.x(), p.y())
