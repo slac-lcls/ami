@@ -15,6 +15,14 @@ def psana_available():
         return False
 
 
+def psana_uses_epics_epoch():
+    try:
+        import psana  # noqa: F401
+        return not hasattr(psana, '_psana')
+    except ImportError:
+        return False
+
+
 class LogConfig:
     BasicFormat = '%(message)s'
     Format = '[ %(asctime)s | %(levelname)-8s] %(message)s'

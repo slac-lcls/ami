@@ -532,7 +532,7 @@ class ScalarWidget(QtWidgets.QLCDNumber):
     def update(self):
         while self.fetcher.ready:
             for k, v in self.fetcher.reply.items():
-                self.display(v)
+                self.display(float(v))
 
     def close(self):
         if self.fetcher:
@@ -804,6 +804,30 @@ class WaveformWidget(PlotWidget):
             else:
                 attrs = self.trace_attrs[name]
                 self.plot[name].setData(y=data[name], **attrs['point'])
+
+
+class MultiWaveformWidget(PlotWidget):
+
+    def __init__(self, topics=None, terms=None, addr=None, parent=None, **kwargs):
+        super().__init__(topics, terms, addr, parent=parent, **kwargs)
+
+    def data_updated(self, data):
+        name = self.terms['In']
+        waveforms = data[name]
+        for chan in range(waveforms.shape[0] if isinstance(data, np.ndarray) else len(waveforms)):
+            cname = f'{name}:{chan}'
+            if cname not in self.plot:
+                _, color = symbols_colors[chan]
+                idx = f"trace.{chan}"
+                legend_name = self.update_legend_layout(idx, cname, symbol='None', line_color=color)
+                attrs = self.legend_editors[idx].attrs
+                self.trace_attrs[cname] = attrs
+                self.plot[cname] = self.plot_view.plot(y=waveforms[chan], name=legend_name,
+                                                      pen=attrs['pen'],
+                                                      **attrs['point'])
+            else:
+                attrs = self.trace_attrs[cname]
+                self.plot[cname].setData(y=waveforms[chan], **attrs['point'])
 
 
 class LineWidget(PlotWidget):

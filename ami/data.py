@@ -14,10 +14,6 @@ try:
 except ImportError:
     h5py = None
 try:
-    import psana
-except ImportError:
-    psana = None
-try:
     import warnings
     warnings.simplefilter(action='ignore', category=FutureWarning)
     import pyarrow as pa
@@ -27,6 +23,7 @@ import numpy as np
 import amitypes as at
 from enum import Enum
 from dataclasses import dataclass, asdict, field
+from ami import psana, psana_uses_epics_epoch
 
 
 logger = logging.getLogger(__name__)
@@ -871,11 +868,24 @@ class PsanaSource(HierarchicalDataSource):
     def __init__(self, idnum, num_workers, heartbeat_period, src_cfg, flags=None):
         super().__init__(idnum, num_workers, heartbeat_period, src_cfg, flags)
         self.ts_converter = TimestampConverter()
+        self.epics_epoch = psana_uses_epics_epoch()
         self.ds_keys = {
-            'exp', 'dir', 'files', 'shmem', 'filter', 'batch_size', 'max_events', 'sel_det_ids', 'det_name', 'run'
+            'exp',
+            'dir',
+            'files',
+            'shmem',
+            'filter',
+            'batch_size',
+            'max_events',
+            'sel_det_ids',
+            'det_name',
+            'run',
+            'live',
+            'smd',
         }
         # special attributes that are per run instead of per event from a detectors interface, e.g. calib constants
         self.special_attrs = {
+            'descriptions': typing.List[str],
             'calibconst': typing.Dict,
             'epicsinfo': typing.Dict,
         }
@@ -883,14 +893,20 @@ class PsanaSource(HierarchicalDataSource):
             raise NotImplementedError("psana is not available!")
 
     def _timestamp(self, evt):
-        return self.ts_converter(evt.timestamp)
+        return self.ts_converter(evt.timestamp, epics_epoch=self.epics_epoch)
 
     @property
     def ds(self):
         ps_kwargs = {k: self.config[k] for k in self.ds_keys if k in self.config}
 
-        if 'run' in ps_kwargs:
-            ps_kwargs['run'] = int(ps_kwargs['run'])
+        convert_kwargs = {
+            'run': lambda s: s if isinstance(s, int) else int(s),
+            'live': lambda s: s if isinstance(s, bool) else s.lower() == 'true',
+            'smd': lambda s: s if isinstance(s, bool) else s.lower() == 'true',
+        }
+        for key, func in convert_kwargs.items():
+            if key in ps_kwargs:
+                ps_kwargs[key] = func(ps_kwargs[key])
 
         return psana.DataSource(**ps_kwargs)
 
@@ -951,6 +967,14 @@ class PsanaSource(HierarchicalDataSource):
             self.data_types[group_name] = at.Group
             self.grouped_types[group_name] = det_attr_list
 
+    def _update_waveform(self, wf_name, chan_type, num_chans):
+        for chan_key in range(num_chans):
+            chan_key_name = str(chan_key)
+            chan_name = self.delimiter.join((wf_name, chan_key_name))
+            self.data_types[chan_name] = chan_type
+            accessor = (lambda o, c: o[c], (chan_key,), {})
+            self.special_names[chan_name] = (wf_name, accessor)
+
     def _update_hsd_segment(self, hsd_name, hsd_type, seg_chans):
         for seg_key, chanlist in seg_chans.items():
             # add the segment itself
@@ -1007,6 +1031,16 @@ class PsanaSource(HierarchicalDataSource):
                     else:
                         logger.debug("DataSrc: unsupported HSDType: %s", attr_type)
                     # add the overall hsdtype too
+                    self.data_types[attr_name] = attr_type
+                elif attr_type in at.AcqirisTypes:
+                    # update the individual channels
+                    self._update_waveform(attr_name, at.AcqirisChannel, det_interface.nchannels)
+                    # add the overall acqiris type too
+                    self.data_types[attr_name] = attr_type
+                elif attr_type in at.GenericWfTypes:
+                    # update the individual channels
+                    self._update_waveform(attr_name, at.GenericWfChannel, det_interface.nchannels)
+                    # add the overall genericwf type too
                     self.data_types[attr_name] = attr_type
                 else:
                     self.data_types[attr_name] = attr_type
