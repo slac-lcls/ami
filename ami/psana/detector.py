@@ -24,7 +24,9 @@ class DdlHelperMeta(type):
                 break
         if func is not None:
             for name in methods:
-                attrs[name] = partialmethod(getattr(base, 'get'), name)
+                def new_method(self, evt):
+                    return func(self, name, evt)
+                attrs[name] = new_method
         attrs['_config'] = config
         return super().__new__(cls, clsname, bases, attrs)
 
