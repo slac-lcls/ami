@@ -552,10 +552,7 @@ def checkType(terminals, type_file=None):
         pass
 
     f_in_name = t_in.node().name() + '_' + t_in.name()
-    f_in_name = f_in_name.replace(' ', '_')
-    f_in_name = f_in_name.replace('.', '_')
-    f_in_name = f_in_name.replace(':', '_')
-    f_in_name = f_in_name.replace('|', '_')
+    f_in_name = f_in_name.translate(checkType.replacements)
     f_in.__annotations__ = {'t': t_in.type()}
     f_in = str(inspect.signature(f_in))
     f_in = f_in.replace('~', '')
@@ -565,10 +562,7 @@ def checkType(terminals, type_file=None):
         pass
 
     f_out_name = t_out.node().name() + '_' + t_out.name()
-    f_out_name = f_out_name.replace(' ', '_')
-    f_out_name = f_out_name.replace('.', '_')
-    f_out_name = f_out_name.replace(':', '_')
-    f_out_name = f_out_name.replace('|', '_')
+    f_out_name = f_out_name.translate(checkType.replacements)
     f_out.__annotations__ = {'return': t_out.type()}
     f_out = str(inspect.signature(f_out))
     f_out = f_out.replace('~', '')
@@ -603,3 +597,6 @@ def checkType(terminals, type_file=None):
                 subprocess.call(["dmypy", "start"])
                 status = subprocess.call(["dmypy", "check", f.name])
             return status == 0
+
+# only create the translation table once
+checkType.replacements = str.maketrans(" .:|-", "_____")
