@@ -492,8 +492,30 @@ class Manager(Collector):
                 self.graph_comm.send_pyobj(self.publish_info(name), zmq.SNDMORE)
                 self.graph_comm.send(dill.dumps(graph))
             # re-ask for config information on connect
-            self.graph_comm.send_string("cmd", zmq.SNDMORE)
-            self.graph_comm.send_string("config")
+
+            # we believe, but are not certain, that these lines
+            # requesting an updated "config" from the workers (list of
+            # variables that ami can use for data inputs) are no
+            # longer necessary.  we think these lines created a
+            # problem where the graph manager sends out several of
+            # these (zmq pub-sub broadcasts) at the beginning of time
+            # but the workers only look for those broadcasts when they
+            # see a new heartbeat.  What happened is that these
+            # messages get sent to the same zmq sockets as the daq
+            # configure transitions.  Indeed, they are sent with the
+            # same Transition.Configure message type as daq configure
+            # transitions.  Depending on the timing, different workers
+            # would see different numbers of these and then the ami
+            # event-builder would intermittently have stale incomplete
+            # transitions, so that when the next daq configure
+            # transition was sent one could get intermittent
+            # "transition mismatch" errors from comm.py, if the
+            # configure transition payload (list of ami data sources)
+            # changed (e.g. if starting a scan, which would add scan
+            # variables).  ddamiani and cpo, may 10, 2022
+
+            # self.graph_comm.send_string("cmd", zmq.SNDMORE)
+            # self.graph_comm.send_string("config")
 
     def node_request(self):
         topic = self.node_msg_comm.recv_string()
