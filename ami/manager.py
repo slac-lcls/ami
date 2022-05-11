@@ -514,8 +514,8 @@ class Manager(Collector):
             # changed (e.g. if starting a scan, which would add scan
             # variables).  ddamiani and cpo, may 10, 2022
 
-            # self.graph_comm.send_string("cmd", zmq.SNDMORE)
-            # self.graph_comm.send_string("config")
+            self.graph_comm.send_string("cmd", zmq.SNDMORE)
+            self.graph_comm.send_string("config")
 
     def node_request(self):
         topic = self.node_msg_comm.recv_string()
