@@ -13,7 +13,32 @@ __all__ = []
 class AreaDetector(Detector,
                    metaclass=DetectorMeta,
                    detcls=DetectorTypes.AreaDetector,
-                   annotations={'raw': amitypes.Array3d, 'calib': amitypes.Array3d, 'image': amitypes.Array2d}):
+                   annotations={'raw': amitypes.Array3d, 'calib': amitypes.Array3d, 'image': amitypes.Array2d},
+                   configs={'config': [psana.Opal1k.Config,
+                                       psana.Archon.Config,
+                                       psana.Andor.Config,
+                                       psana.CsPad.Config,
+                                       psana.CsPad2x2.Config,
+                                       psana.Epix.Config100a,
+                                       psana.Epix.Config10ka,
+                                       psana.Epix.Config10ka2M,
+                                       psana.Epix.Config10kaQuad,
+                                       psana.FCCD.FccdConfig,
+                                       psana.Fli.Config,
+                                       psana.Jungfrau.Config,
+                                       psana.PNCCD.Config,
+                                       psana.Orca.Config,
+                                       psana.Pimax.Config,
+                                       psana.Pixis.Config,
+                                       psana.Princeton.Config,
+                                       psana.Pulnix.TM6740Config,
+                                       psana.Quartz.Config,
+                                       psana.Rayonix.Config,
+                                       psana.Timepix.Config,
+                                       psana.Uxi.Config,
+                                       psana.Vimba.AlviumConfig,
+                                       psana.iStar.Config,
+                                       psana.Zyla.Config]}):
     pass
 
 
@@ -21,7 +46,8 @@ class AreaDetector(Detector,
 class EvrDetector(Detector,
                   metaclass=DetectorMeta,
                   detcls=DetectorTypes.EvrDetector,
-                  annotations={'eventCodes': typing.List[int]}):
+                  annotations={'eventCodes': typing.List[int]},
+                  configs={'config': [psana.EvrData.Config]}):
     pass
 
 
@@ -74,7 +100,8 @@ class UsdUsbDetector(Detector,
 class OceanDetector(Detector,
                     metaclass=DetectorMeta,
                     detcls=DetectorTypes.OceanDetector,
-                    annotations={'intensity': amitypes.Array1d, 'wavelength': amitypes.Array1d}):
+                    annotations={'intensity': amitypes.Array1d, 'wavelength': amitypes.Array1d},
+                    configs={'config': [psana.OceanOptics.Config]}):
     pass
 
 
