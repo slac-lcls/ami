@@ -1032,6 +1032,15 @@ class PsanaSource(HierarchicalDataSource):
                         logger.debug("DataSrc: unsupported HSDType: %s", attr_type)
                     # add the overall hsdtype too
                     self.data_types[attr_name] = attr_type
+                elif attr_type in at.MultiChannelScalarTypes:
+                    if attr_type is at.MultiChannelInt:
+                        chan_type = int
+                    else:
+                        chan_type = float
+                    # update the individual channels
+                    self._update_waveform(attr_name, chan_type, det_interface.nchannels)
+                    # add the overall acqiris type too
+                    self.data_types[attr_name] = attr_type
                 elif attr_type in at.AcqirisTypes:
                     # update the individual channels
                     self._update_waveform(attr_name, at.AcqirisChannel, det_interface.nchannels)

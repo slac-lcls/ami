@@ -37,7 +37,7 @@ class IpimbDetector(Detector,
 
 class RawUsdUsbDetector(DdlHelper,
                         metaclass=DdlHelperMeta,
-                        methods=['encoder_count']):
+                        methods=psana.UsdUsb.Data):
     pass
 
 
@@ -45,12 +45,17 @@ class RawUsdUsbDetector(DdlHelper,
 class UsdUsbDetector(Detector,
                      metaclass=DetectorMeta,
                      detcls=RawUsdUsbDetector,
-                     annotations={'encoder_count': amitypes.Array1d},
+                     annotations=psana.UsdUsb.Data,
                      fexcls=DetectorTypes.UsdUsbDetector,
-                     fexannotations={'values': amitypes.Array1d}):
+                     fexannotations={'values': amitypes.MultiChannelFloat},
+                     configs={'config': [psana.UsdUsb.Config], 'fexconfig': [psana.UsdUsb.FexConfig]}):
     def __init__(self, src, env):
         super().__init__(src, env)
         self.descriptions = self.fex.descriptions
+
+    @property
+    def nchannels(self):
+        return self.config.NCHANNELS
 
 
 @export
@@ -65,8 +70,18 @@ class OceanDetector(Detector,
 class TDCDetector(Detector,
                   metaclass=DetectorMeta,
                   detcls=DetectorTypes.TDCDetector,
-                  annotations={'times': typing.List[amitypes.Array1d], 'overflows': typing.List[amitypes.Array1d]}):
-    pass
+                  annotations={'times': typing.List[amitypes.Array1d], 'overflows': typing.List[amitypes.Array1d]},
+                  configs={'config': [psana.Acqiris.TdcConfig]}):
+    def __init__(self, src, env):
+        super().__init__(src, env)
+
+    @property
+    def nchannels(self):
+        nchan = 0
+        for chan in self.config.channels():
+            if chan.channel() > 0:
+                nchan += 1
+        return nchan
 
 
 @export
@@ -74,7 +89,7 @@ class WFDetector(Detector,
                  metaclass=DetectorMeta,
                  detcls=DetectorTypes.WFDetector,
                  annotations={'wftime': amitypes.AcqirisTimes, 'waveform': amitypes.AcqirisWaveforms},
-                 config=[psana.Acqiris, psana.Imp]):
+                 configs={'config': [psana.Acqiris.Config, psana.Imp.Config]}):
     def __init__(self, src, env):
         super().__init__(src, env)
 
@@ -88,7 +103,7 @@ class GenericWFDetector(Detector,
                         metaclass=DetectorMeta,
                         detcls=DetectorTypes.GenericWFDetector,
                         annotations={'wftime': amitypes.GenericWfTimes, 'raw': amitypes.GenericWfWaveforms},
-                        config=[psana.Generic1D]):
+                        configs={'config': [psana.Generic1D.Config]}):
     def __init__(self, src, env):
         super().__init__(src, env)
 

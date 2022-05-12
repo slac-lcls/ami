@@ -7,6 +7,7 @@ if hasattr(psana, '_psana'):
     from .datasource import *
     from .detector import *
     from .interfaces import *
+    from .bld import *
 else:
     import sys
     sys.modules[__name__] = psana
