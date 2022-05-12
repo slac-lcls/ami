@@ -885,7 +885,6 @@ class PsanaSource(HierarchicalDataSource):
         }
         # special attributes that are per run instead of per event from a detectors interface, e.g. calib constants
         self.special_attrs = {
-            'descriptions': typing.List[str],
             'calibconst': typing.Dict,
             'epicsinfo': typing.Dict,
         }

@@ -31,8 +31,14 @@ class IpimbDetector(Detector,
                     detcls=None,
                     annotations=None,
                     fexcls=DetectorTypes.IpimbDetector,
-                    fexannotations={'channel': amitypes.Array1d, 'xpos': float, 'ypos': float, 'sum': float}):
-    pass
+                    fexannotations={'channel': amitypes.MultiChannelFloat, 'xpos': float, 'ypos': float, 'sum': float},
+                    configs={'config': [psana.Ipimb.Config], 'fexconfig': [psana.Lusi.IpmFexConfig]}):
+    def __init__(self, src, env):
+        super().__init__(src, env)
+
+    @property
+    def nchannels(self):
+        return self.fexconfig.NCHANNELS
 
 
 class RawUsdUsbDetector(DdlHelper,
@@ -46,12 +52,18 @@ class UsdUsbDetector(Detector,
                      metaclass=DetectorMeta,
                      detcls=RawUsdUsbDetector,
                      annotations=psana.UsdUsb.Data,
+                     overrides={'encoder_count': amitypes.MultiChannelInt,
+                                'analog_in': amitypes.MultiChannelInt,
+                                'status': amitypes.MultiChannelInt},
                      fexcls=DetectorTypes.UsdUsbDetector,
                      fexannotations={'values': amitypes.MultiChannelFloat},
                      configs={'config': [psana.UsdUsb.Config], 'fexconfig': [psana.UsdUsb.FexConfig]}):
     def __init__(self, src, env):
         super().__init__(src, env)
-        self.descriptions = self.fex.descriptions
+
+    @property
+    def calibconst(self):
+        return {'descriptions': self.fex.descriptions()}
 
     @property
     def nchannels(self):
