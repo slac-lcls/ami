@@ -9,14 +9,34 @@ import pyqtgraph as pg
 import logging
 logger = logging.getLogger(__name__)
 
-import psana.detector.NDArrUtils as ndau
-
 QPointF, QRectF = pg.QtCore.QPointF, pg.QtCore.QRectF
 QPen, QBrush, QColor = pg.QtGui.QPen, pg.QtGui.QBrush, pg.QtGui.QColor
 
 #def rotate_sincos(x, y, s, c): return x*c-y*s, x*s+y*c
 #def rotate(x, y, a): return rotate_sincos(x, y, math.sin(a), math.cos(a))
 #def rotate_degree(x, y, a): return rotate(x, y, math.radians(a))
+
+#class Storage:
+#    def __init__(self):
+#        self.hpolar = None
+#STORE = Storage()
+
+
+def polar_histogram(shape, mask, cx, cy, ro, ri, ao, ai, nr, na):
+    """Returns hp.HPolar object.
+    """
+    from psana.pyalgos.generic.HPolar import HPolar, info_ndarr
+
+    rows, cols = shape
+    xarr1 = np.arange(cols) - cx
+    yarr1 = np.arange(rows) - cy
+    xarr, yarr = np.meshgrid(xarr1, yarr1)
+    hpolar = HPolar(xarr, yarr, mask=mask, radedges=(ri,ro), nradbins=nr, phiedges=(ao,ai), nphibins=na)
+    logger.debug('%s %s\n%s' %(info_ndarr(xarr,'pixel coordinate arrays: xarr'),\
+                              info_ndarr(yarr,' yarr'),\
+                              hpolar.info_attrs()))
+    return hpolar
+
 
 def str_point(p, fmt='(%.1f, %.1f)'):
     return fmt % (p.x(), p.y())

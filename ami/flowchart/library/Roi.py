@@ -10,30 +10,8 @@ from pyqtgraph import functions as fn
 import logging
 logger = logging.getLogger(__name__)
 
-from psana.pyalgos.generic.HPolar import HPolar, info_ndarr
 import ami.flowchart.library.UtilsROI as ur
 QPen, QBrush, QColor = ur.QPen, ur.QBrush, ur.QColor
-
-
-class Storage:
-    def __init__(self):
-        self.hpolar = None
-STORE = Storage()
-
-
-def polar_histogram(shape, mask, cx, cy, ro, ri, ao, ai, nr, na):
-    """Returns hp.HPolar object.
-    """
-    rows, cols = shape
-    xarr1 = np.arange(cols) - cx
-    yarr1 = np.arange(rows) - cy
-    xarr, yarr = np.meshgrid(xarr1, yarr1)
-    hpolar = HPolar(xarr, yarr, mask=mask, radedges=(ri,ro), nradbins=nr, phiedges=(ao,ai), nphibins=na)
-    logger.debug('%s %s\n%s' %(info_ndarr(xarr,'pixel coordinate arrays: xarr'),\
-                              info_ndarr(yarr,' yarr'),\
-                              hpolar.info_attrs()))
-    return hpolar
-
 
 class RoiArch(CtrlNode):
     """
@@ -139,7 +117,7 @@ class RoiArch(CtrlNode):
             logger.debug('img.shape: %s' % str(img.shape))
             #if STORE.hpolar is None: IT DOES NOT WORK bcause of func is caching????
             #   STORE.hpolar = hpolar
-            hpolar = polar_histogram(img.shape, mask, cx, cy, ro, ri, ao, ai, nr, na)
+            hpolar = ur.polar_histogram(img.shape, mask, cx, cy, ro, ri, ao, ai, nr, na)
             logger.info(hpolar.info_attrs())
             return hpolar.bin_avrg_rad_phi(img, do_transp=True), (ri, ro-ri, ao, ai-ao)
 
