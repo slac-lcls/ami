@@ -1,12 +1,15 @@
 
 """
-import ami.flowchart.library.UtilsROI as ur
+Usage::
+    import ami.flowchart.library.UtilsROI as ur
 """
 import math
 import numpy as np
 import pyqtgraph as pg
 import logging
 logger = logging.getLogger(__name__)
+
+import psana.detector.NDArrUtils as ndau
 
 QPointF, QRectF = pg.QtCore.QPointF, pg.QtCore.QRectF
 QPen, QBrush, QColor = pg.QtGui.QPen, pg.QtGui.QBrush, pg.QtGui.QColor
@@ -25,10 +28,10 @@ def distance(p):
 
 
 def angle(p):
-    """returs the point angle in radians [-pi,pi] -> [0,2*pi] - clockwise"""
+    """returns the point angle in radians [-pi,pi] -> [0,2*pi] - clockwise"""
     x, y = p.x(), p.y()
     a = math.atan2(y,x)
-    return a if a>=0 and a<np.pi else 2*np.pi+a
+    return a if a>=0 and a<=np.pi+1e-6 else 2*np.pi+a
 
 
 def unit_vector(p):
@@ -78,22 +81,29 @@ def handle_positions_normalized(radius_out, radius_int, angle_deg_out, angle_deg
 
 
 class ArchROI(pg.ROI):
-    def __init__(self, center=(100,100), radius_out=100, radius_int=50, angle_deg_out=0, angle_deg_int=60, **kwargs):
+    def __init__(self, center=(100,100), radius_out=100, radius_int=50, angle_deg_out=0, angle_deg_int=60,\
+                 hlwidth=None, handleSize=5, **kwargs):
         cx, cy = center
         ro, ri, ao, ai = radius_out, radius_int, angle_deg_out, angle_deg_int
         pos = (cx-ro, cy-ro) # for angle_deg_out=0 ONLY!
         size = (2*ro, 2*ro)
         pg.ROI.__init__(self, pos, size, aspectLocked=True, **kwargs)
-        self._addHandles(radius_out, radius_int, angle_deg_out, angle_deg_int, width=kwargs.get('hlwidth', None))
+        self.handleSize = handleSize
+        self._addHandles(radius_out, radius_int, angle_deg_out, angle_deg_int, width=hlwidth)
         self.sigRegionChanged.connect(self._clearPath)
 
 
-    def _addHandles(self, radius_out=100, radius_int=50, angle_deg_out=0, angle_deg_int=60, width=4):
+    def _addHandles(self, radius_out=100, radius_int=50, angle_deg_out=0, angle_deg_int=60, width=None):
         pos0, pos1, pos2 = handle_positions_normalized(radius_out, radius_int, angle_deg_out, angle_deg_int)
         center = pos0
         h0 = self.addTranslateHandle(pos0,           name='TranslateHandle  ')
         h1 = self.addScaleRotateHandle(pos1, center, name='ScaleRotateHandle')
         h2 = self.addFreeHandle(pos2, center,        name='FreeHandle       ')
+
+        radius=5
+        h0.radius = radius
+        h1.radius = radius
+        h2.radius = radius
         if width is None: return
         h0.pen = h0.currentPen = QPen(QBrush(QColor('blue')),  width)
         h1.pen = h1.currentPen = QPen(QBrush(QColor('green')), width)
@@ -166,7 +176,7 @@ class ArchROI(pg.ROI):
         size = self.size()
         br1 = self.boundingRect()
         center  = self.mapToView(br1.center())
-        logger.debug('XXX ArchROI.pos: (%.1f, %.1f) size(%.1f, %.1f) rad1:%.1f rad2:%.1f angle1:%.1f angle1:%.2f center view:%s' %\
+        logger.debug('ArchROI.pos: (%.1f, %.1f) size(%.1f, %.1f) rad1:%.1f rad2:%.1f angle1:%.1f angle1:%.2f center view:%s' %\
                       (pos.x(), pos.y(), size.x(), size.y(), rad1, rad2, ang1_deg, ang2_deg, str(center)))
         return pos, size, center, rad1, rad2, ang1_deg, ang2_deg, ang1, ang2, p0, p1, p2, p3
 
