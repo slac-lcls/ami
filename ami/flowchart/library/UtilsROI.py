@@ -5,6 +5,9 @@ Usage::
 """
 import math
 import numpy as np
+#from psana.pyalgos.generic.HPolar import HPolar, info_ndarr
+from ami.flowchart.library.HPolar import HPolar #, info_ndarr
+
 import pyqtgraph as pg
 import logging
 logger = logging.getLogger(__name__)
@@ -25,16 +28,15 @@ QPen, QBrush, QColor = pg.QtGui.QPen, pg.QtGui.QBrush, pg.QtGui.QColor
 def polar_histogram(shape, mask, cx, cy, ro, ri, ao, ai, nr, na):
     """Returns hp.HPolar object.
     """
-    from psana.pyalgos.generic.HPolar import HPolar, info_ndarr
-
     rows, cols = shape
     xarr1 = np.arange(cols) - cx
     yarr1 = np.arange(rows) - cy
     xarr, yarr = np.meshgrid(xarr1, yarr1)
     hpolar = HPolar(xarr, yarr, mask=mask, radedges=(ri,ro), nradbins=nr, phiedges=(ao,ai), nphibins=na)
-    logger.debug('%s %s\n%s' %(info_ndarr(xarr,'pixel coordinate arrays: xarr'),\
-                              info_ndarr(yarr,' yarr'),\
-                              hpolar.info_attrs()))
+#    logger.debug(hpolar.info_attrs()))
+#    logger.debug('%s %s\n%s' %(info_ndarr(xarr,'pixel coordinate arrays: xarr'),\
+#                              info_ndarr(yarr,' yarr'),\
+#                              hpolar.info_attrs()))
     return hpolar
 
 
