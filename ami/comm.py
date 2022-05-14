@@ -608,8 +608,6 @@ class TransitionBuilder(ContributionBuilder, ZmqHandler):
         elif payload != self.pending[eb_key]:
             logger.error("Transition mismatch: %s payload from id %s does not match the other contributers",
                          eb_key, eb_id)
-            print('payload:',payload)
-            print('pending:',self.pending[eb_key])
 
 
 class EventBuilder(ZmqHandler):
