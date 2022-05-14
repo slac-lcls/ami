@@ -1,10 +1,10 @@
 # -*- coding: utf-8 -*-
 from datetime import datetime
 from pyqtgraph.Qt import QtCore, QtGui, QtWidgets
-from pyqtgraph.pgcollections import OrderedDict
 from pyqtgraph import FileDialog
 from pyqtgraph.debug import printExc
 from pyqtgraph import dockarea as dockarea
+from collections import OrderedDict
 from ami import LogConfig
 from ami.asyncqt import asyncSlot
 from ami.flowchart.FlowchartGraphicsView import FlowchartGraphicsView

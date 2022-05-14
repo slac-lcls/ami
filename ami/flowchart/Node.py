@@ -2,8 +2,8 @@
 from pyqtgraph.Qt import QtCore, QtGui, QtWidgets
 from pyqtgraph.graphicsItems.GraphicsObject import GraphicsObject
 from pyqtgraph import functions as fn
-from pyqtgraph.pgcollections import OrderedDict
 from pyqtgraph.debug import printExc
+from collections import OrderedDict
 from ami.flowchart.Terminal import Terminal
 from networkfox import modifiers
 import inspect
@@ -516,7 +516,7 @@ class NodeGraphicsItem(GraphicsObject):
 
         self.setFlags(flags)
         self.bounds = QtCore.QRectF(0, 0, 100, 100)
-        self.nameItem = QtGui.QGraphicsTextItem(self.node.name(), self)
+        self.nameItem = QtWidgets.QGraphicsTextItem(self.node.name(), self)
         self.nameItem.setDefaultTextColor(QtGui.QColor(50, 50, 50))
         self.nameItem.moveBy(self.bounds.width()/2. - self.nameItem.boundingRect().width()/2., 0)
 
