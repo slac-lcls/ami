@@ -33,7 +33,6 @@ class Worker(Node):
         self.pending_src = False
         self.store = ResultStore(collector_addr, self.ctx)
 
-        self.graph_comm.add_command("config", self.send_configure)
         self.graph_comm.add_handler("update_sources", self.update_sources)
 
         self.exports = {}
@@ -50,13 +49,6 @@ class Worker(Node):
 
     def close(self):
         self.ctx.destroy()
-
-    def send_configure(self):
-        if self.src:
-            self.store.send(self.src.configure())
-        else:
-            self.store.send(Message(MsgTypes.Transition, self.node,
-                                    Transition(Transitions.Configure, {})))
 
     def init_graph(self, name):
         if name not in self.graphs or self.graphs[name] is None:
