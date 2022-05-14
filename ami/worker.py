@@ -10,7 +10,7 @@ import time
 import prometheus_client as pc
 from ami import LogConfig, Defaults
 from ami.comm import BasePort, Ports, Colors, ResultStore, Node, AutoExport
-from ami.data import MsgTypes, Source, Message, Transition, Transitions
+from ami.data import MsgTypes, Source, Transitions
 from ami.graphkit_wrapper import Graph
 
 
