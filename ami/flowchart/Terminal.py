@@ -256,7 +256,7 @@ class TerminalGraphicsItem(GraphicsObject):
         self.brush = fn.mkBrush(0, 0, 0)
         self.box = QtWidgets.QGraphicsRectItem(0, 0, 10, 10, self)
         self.label = QtWidgets.QGraphicsTextItem(self.term.name(), self)
-        self.setTransform(self.transform().scale(0.7, 0.7))
+        self.label.setTransform(self.label.transform().scale(0.7, 0.7))
         self.newConnection = None
         self.setFiltersChildEvents(True)  # to pick up mouse events on the rectitem
         self.setZValue(1)
