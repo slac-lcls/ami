@@ -1,6 +1,7 @@
 setup_env_local.sh
 build
 install
+install-lcls1
 htmlcov/
 .eggs/
 .pytest_cache/
