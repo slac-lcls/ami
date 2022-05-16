@@ -3,15 +3,12 @@ import typing
 import numpy as np
 import amitypes as at
 try:
-    import psana
-except ImportError:
-    psana = None
-try:
     import h5py
 except ImportError:
     h5py = None
 
-from conftest import psanatest, hdf5test
+from ami import psana
+from conftest import psanatest, psana1test, hdf5test
 from ami.data import MsgTypes, Source, Transition, Transitions, NumPyTypeDict
 
 
@@ -117,6 +114,199 @@ def test_hdf5_source(hdf5writer):
 
     # check that the last evt was an unconfigure
     assert evt.mtype == MsgTypes.Transition and evt.payload.ttype == Transitions.Unconfigure
+
+
+@psana1test
+@pytest.mark.parametrize('psana1_xtc',
+                         [('test_031_xpptut15', 'e665-r0540-s01-c00.xtc')],
+                         indirect=['psana1_xtc'])
+def test_psana1_source(psana1_xtc):
+    psana_src_cls = Source.find_source('psana')
+    assert psana_src_cls is not None
+    idnum = 0
+    num_workers = 1
+    heartbeat_period = 2
+    src_cfg = {
+        'type': 'psana',
+        'interval':  0,
+        'init_time':  0,
+        'files': [str(psana1_xtc)],
+    }
+    # these are broken
+    if psana1_xtc.name == 'e665-r0540-s01-c00.xtc':
+        excludes = {'evr1:raw', 'evr1:raw:eventCodes'}
+        expected_cfg = {
+            'XCS-IPM-gon': at.Detector,
+            'XCS-IPM-gon:fex': at.Group,
+            'XCS-IPM-gon:fex:channel': at.MultiChannelFloat,
+            'XCS-IPM-gon:fex:channel:0': float,
+            'XCS-IPM-gon:fex:channel:1': float,
+            'XCS-IPM-gon:fex:channel:2': float,
+            'XCS-IPM-gon:fex:channel:3': float,
+            'XCS-IPM-gon:fex:sum': float,
+            'XCS-IPM-gon:fex:xpos': float,
+            'XCS-IPM-gon:fex:ypos': float,
+            'XCS-USB-ENCODER-01': at.Detector,
+            'XCS-USB-ENCODER-01:calibconst': typing.Dict,
+            'XCS-USB-ENCODER-01:fex': at.Group,
+            'XCS-USB-ENCODER-01:fex:values': at.MultiChannelFloat,
+            'XCS-USB-ENCODER-01:fex:values:0': float,
+            'XCS-USB-ENCODER-01:fex:values:1': float,
+            'XCS-USB-ENCODER-01:fex:values:2': float,
+            'XCS-USB-ENCODER-01:fex:values:3': float,
+            'XCS-USB-ENCODER-01:raw': at.Group,
+            'XCS-USB-ENCODER-01:raw:analog_in': at.MultiChannelInt,
+            'XCS-USB-ENCODER-01:raw:analog_in:0': int,
+            'XCS-USB-ENCODER-01:raw:analog_in:1': int,
+            'XCS-USB-ENCODER-01:raw:analog_in:2': int,
+            'XCS-USB-ENCODER-01:raw:analog_in:3': int,
+            'XCS-USB-ENCODER-01:raw:digital_in': int,
+            'XCS-USB-ENCODER-01:raw:encoder_count': at.MultiChannelInt,
+            'XCS-USB-ENCODER-01:raw:encoder_count:0': int,
+            'XCS-USB-ENCODER-01:raw:encoder_count:1': int,
+            'XCS-USB-ENCODER-01:raw:encoder_count:2': int,
+            'XCS-USB-ENCODER-01:raw:encoder_count:3': int,
+            'XCS-USB-ENCODER-01:raw:status': at.MultiChannelInt,
+            'XCS-USB-ENCODER-01:raw:status:0': int,
+            'XCS-USB-ENCODER-01:raw:status:1': int,
+            'XCS-USB-ENCODER-01:raw:status:2': int,
+            'XCS-USB-ENCODER-01:raw:status:3': int,
+            'XCS-USB-ENCODER-01:raw:timestamp': int,
+            'epix10ka2m': at.Detector,
+            'epix10ka2m:raw': at.Group,
+            'epix10ka2m:raw:calib': at.Array3d,
+            'epix10ka2m:raw:image': at.Array2d,
+            'epix10ka2m:raw:raw': at.Array3d,
+            'eventid': int,
+            'evr0': at.Detector,
+            'evr0:raw': at.Group,
+            'evr0:raw:eventCodes': typing.List[int],
+            'evr1': at.Detector,
+            'evr1:raw': at.Group,
+            'evr1:raw:eventCodes': typing.List[int],
+            'heartbeat': int,
+            'opal_1': at.Detector,
+            'opal_1:raw': at.Group,
+            'opal_1:raw:calib': at.Array3d,
+            'opal_1:raw:image': at.Array2d,
+            'opal_1:raw:raw': at.Array3d,
+            'source': at.DataSource,
+            'timestamp': float,
+        }
+        expected_grps = {
+            'XCS-IPM-gon:fex': {
+                'channel': at.MultiChannelFloat,
+                'sum': float,
+                'xpos': float,
+                'ypos': float,
+            },
+            'XCS-USB-ENCODER-01:fex': {
+                'values': at.MultiChannelFloat,
+            },
+            'XCS-USB-ENCODER-01:raw': {
+                'analog_in': at.MultiChannelInt,
+                'digital_in': int,
+                'encoder_count': at.MultiChannelInt,
+                'status': at.MultiChannelInt,
+                'timestamp': int,
+            },
+            'epix10ka2m:raw': {
+                'raw': at.Array3d,
+                'calib': at.Array3d,
+                'image': at.Array2d,
+            },
+            'opal_1:raw': {
+                'raw': at.Array3d,
+                'calib': at.Array3d,
+                'image': at.Array2d,
+            },
+            'evr0:raw': {
+                'eventCodes': list,
+            },
+            'evr1:raw': {
+                'eventCodes': list,
+            },
+        }
+        expected_grp_types = {
+            'XCS-IPM-gon:fex': 'IpimbDetector',
+            'XCS-USB-ENCODER-01:fex': 'UsdUsbDetector',
+            'XCS-USB-ENCODER-01:raw': 'RawUsdUsbDetector',
+            'epix10ka2m:raw': 'AreaDetector',
+            'opal_1:raw': 'AreaDetector',
+            'evr0:raw': 'EvrDetector',
+            'evr1:raw': 'EvrDetector',
+        }
+    else:
+        excludes = set()
+        expected_cfg = {}
+        expected_grps = {}
+        expected_grp_types = {}
+    psana_source = psana_src_cls(idnum, num_workers, heartbeat_period, src_cfg)
+
+    assert psana_source.src_type == 'psana'
+
+    evtgen = psana_source.events()
+
+    # check the returned configuration message
+    config = next(evtgen)  # first event is the config
+    assert config.mtype == MsgTypes.Transition
+    assert config.identity == idnum
+    assert isinstance(config.payload, Transition)
+    assert config.payload.ttype == Transitions.Configure
+    sources = {k: at.loads(v) for k, v in config.payload.payload.items()}
+    assert sources == expected_cfg
+
+    # check the returned step message
+    step = next(evtgen)
+    assert step.mtype == MsgTypes.Transition
+    assert step.identity == idnum
+    assert isinstance(step.payload, Transition)
+    assert step.payload.ttype == Transitions.BeginStep
+    assert step.payload.payload == 0
+
+    # request all the sources
+    psana_source.request(set(expected_cfg))
+
+    # patch expected_cfg to remove typing._GenericAlias and convert to real type
+    expected_types = {}
+    for name, cls in expected_cfg.items():
+        if isinstance(cls, typing._GenericAlias):
+            cls = at.loads('typing.'+cls._name)
+        expected_types[name] = cls
+
+    # loop over all the events
+    for count, msg in enumerate(evtgen):
+        if msg.mtype == MsgTypes.Datagram:
+            assert set(msg.payload) == set(expected_cfg)
+            for name, data in msg.payload.items():
+                if name in excludes:
+                    continue
+
+                if isinstance(data, np.integer):
+                    data = int(data)
+                elif isinstance(data, np.floating):
+                    data = float(data)
+                assert isinstance(data, expected_types[name])
+
+                if isinstance(data, at.DataSource):
+                    assert data.cfg == src_cfg
+                    assert data.key == 1
+                    assert isinstance(data.run, psana.datasource.Run)
+                    assert isinstance(data.evt, psana.datasource.Event)
+                elif isinstance(data, at.Group):
+                    assert name in expected_grps and name in expected_grp_types
+                    assert data.src == psana_source.src_type
+                    assert data.type == expected_grp_types[name]
+                    assert data.name == name
+                    assert set(data) == set(expected_grps[name])
+                    # check the types of the group
+                    for k, v in expected_grps[name].items():
+                        assert isinstance(data[k], v)
+        elif msg.mtype == MsgTypes.Heartbeat:
+            break
+
+    # check the number of events we processed
+    assert count == heartbeat_period
 
 
 @psanatest
