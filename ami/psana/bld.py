@@ -10,26 +10,7 @@ __all__ = []
 
 class DdlEBeam(DdlHelper,
                metaclass=DdlHelperMeta,
-               methods=['ebeamCharge',
-                        'ebeamL3Energy',
-                        'ebeamLTUPosX',
-                        'ebeamLTUPosY',
-                        'ebeamLTUAngX',
-                        'ebeamLTUAngY',
-                        'ebeamPkCurrBC2',
-                        'ebeamEnergyBC2',
-                        'ebeamPkCurrBC1',
-                        'ebeamEnergyBC1',
-                        'ebeamUndPosX',
-                        'ebeamUndPosY',
-                        'ebeamUndAngX',
-                        'ebeamUndAngY',
-                        'ebeamXTCAVAmpl',
-                        'ebeamXTCAVPhase',
-                        'ebeamDumpCharge',
-                        'ebeamPhotonEnergy',
-                        'ebeamLTU250',
-                        'ebeamLTU450']):
+               methods=psana.Bld.BldDataEBeam):
     pass
 
 
@@ -37,25 +18,21 @@ class DdlEBeam(DdlHelper,
 class EBeam(Detector,
             metaclass=BldMeta,
             detcls=DdlEBeam,
-            sources=['EBeam']):
-    '''annotations={'ebeamCharge': float,
-                         'ebeamL3Energy': float,
-                         'ebeamLTUPosX': float,
-                         'ebeamLTUPosY': float,
-                         'ebeamLTUAngX': float,
-                         'ebeamLTUAngY': float,
-                         'ebeamPkCurrBC2': float,
-                         'ebeamEnergyBC2': float,
-                         'ebeamPkCurrBC1': float,
-                         'ebeamEnergyBC1': float,
-                         'ebeamUndPosX': float,
-                         'ebeamUndPosY': float,
-                         'ebeamUndAngX': float,
-                         'ebeamUndAngY': float,
-                         'ebeamXTCAVAmpl': float,
-                         'ebeamXTCAVPhase': float,
-                         'ebeamDumpCharge': float,
-                         'ebeamPhotonEnergy': float,
-                         'ebeamLTU250': float,
-                         'ebeamLTU450': float},'''
+            sources=['EBeam'],
+            annotations=psana.Bld.BldDataEBeam):
+    pass
+
+
+class DdlFEEGasDet(DdlHelper,
+                   metaclass=DdlHelperMeta,
+                   methods=[psana.Bld.BldDataFEEGasDetEnergyV1]):
+    pass
+
+
+@export
+class FEEGasDet(Detector,
+                metaclass=BldMeta,
+                detcls=DdlFEEGasDet,
+                sources=['FEEGasDetEnergy'],
+                annotations=[psana.Bld.BldDataFEEGasDetEnergyV1]):
     pass

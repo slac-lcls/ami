@@ -49,19 +49,43 @@ class DdlHelper:
 
 @export
 class BldMeta(type):
-    def __new__(cls, clsname, bases, attrs, detcls, sources, config=None):
+    def __new__(cls,
+                clsname,
+                bases,
+                attrs,
+                detcls,
+                sources,
+                annotations=None,
+                overrides=None,
+                configs=None):
         attrs['detcls'] = parse_cls(detcls)
         attrs['fexcls'] = None
-        attrs['_configs'] = config
         attrs['_dettype'] = clsname
         attrs['_detinfo'] = {}
-        newcls = super().__new__(cls, clsname, bases, attrs)
-        for src in sources:
-            BLD_INTERFACES[src] = newcls
-        return newcls
+        if configs is not None:
+            for name, cfgmods in configs.items():
+                attrs[name] = make_config(cfgmods)
 
-    def __init__(cls, clsname, bases, attrs, detcls, sources, config=None):
+        return super().__new__(cls, clsname, bases, attrs)
+
+    def __init__(cls,
+                 clsname,
+                 bases,
+                 attrs,
+                 detcls,
+                 sources,
+                 annotations=None,
+                 overrides=None,
+                 configs=None):
         super().__init__(clsname, bases, attrs)
+        cls._detinfo['raw'] = []
+        for name, rtype in parse_annotations(annotations,
+                                             overrides).items():
+            cls._detinfo['raw'].append(name)
+            func = getattr(cls.detcls, name)
+            func.__annotations__ = {'return': rtype}
+        for src in sources:
+            BLD_INTERFACES[src] = cls
 
 
 @export
