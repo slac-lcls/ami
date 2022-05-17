@@ -2,7 +2,7 @@ import typing
 import psana
 import amitypes
 from Detector import DetectorTypes
-from .detector import *
+from .detector import Detector, DdlHelper, DetectorMeta, DdlHelperMeta
 from .utils import export
 
 
@@ -149,4 +149,3 @@ class GenericWFDetector(Detector,
     @property
     def nchannels(self):
         return self.config.NChannels()
-

@@ -43,7 +43,7 @@ def get_boost_annotations(obj):
     annotations = {}
 
     for name, meth in get_boost_methods(obj):
-        match = re.search(f'{name}\(.*\)\s+->\s+(?P<rtype>\S+)\s?', meth.__doc__)
+        match = re.search(fr'{name}\(.*\)\s+->\s+(?P<rtype>\S+)\s?', meth.__doc__)
         if match:
             rtype = eval(match.group('rtype'))
             if issubclass(rtype, numpy.ndarray):

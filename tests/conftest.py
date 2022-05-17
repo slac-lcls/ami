@@ -159,7 +159,7 @@ def psana1_xtc(request, psana1_testdata):
     directory, filename = request.param
     calibDir = psana1_testdata / 'multifile' / directory / 'calib'
     psana.setOption('psana.calib-dir', calibDir)
-    return psana1_testdata / 'multifile' / directory / 'xtc' /  filename
+    return psana1_testdata / 'multifile' / directory / 'xtc' / filename
 
 
 @pytest.fixture(scope='session')

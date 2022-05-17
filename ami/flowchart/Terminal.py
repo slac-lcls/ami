@@ -598,5 +598,6 @@ def checkType(terminals, type_file=None):
                 status = subprocess.call(["dmypy", "check", f.name])
             return status == 0
 
+
 # only create the translation table once
 checkType.replacements = str.maketrans(" .:|-", "_____")

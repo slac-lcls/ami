@@ -823,8 +823,8 @@ class MultiWaveformWidget(PlotWidget):
                 attrs = self.legend_editors[idx].attrs
                 self.trace_attrs[cname] = attrs
                 self.plot[cname] = self.plot_view.plot(y=waveforms[chan], name=legend_name,
-                                                      pen=attrs['pen'],
-                                                      **attrs['point'])
+                                                       pen=attrs['pen'],
+                                                       **attrs['point'])
             else:
                 attrs = self.trace_attrs[cname]
                 self.plot[cname].setData(y=waveforms[chan], **attrs['point'])

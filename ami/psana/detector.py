@@ -1,9 +1,8 @@
 import psana
-import typing
-import amitypes
-from functools import partialmethod
 from Detector import DetectorTypes, PyDetector
-from .utils import *
+from .utils import export, parse_cls, parse_methods, parse_annotations, \
+        make_method, make_config
+
 
 __all__ = []
 
@@ -42,7 +41,7 @@ class DdlHelper:
         data = self.det.get(evt)
         if data is not None:
             try:
-                return  getattr(data, attr)()
+                return getattr(data, attr)()
             except AttributeError:
                 pass
 

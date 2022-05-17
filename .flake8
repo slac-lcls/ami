@@ -5,6 +5,7 @@ exclude=
     src,
     doc,
     install,
+    install-lcls1,
     examples,
     build,
     .eggs/,
