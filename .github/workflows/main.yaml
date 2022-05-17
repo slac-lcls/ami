@@ -20,9 +20,9 @@ jobs:
           conda config --set always_yes yes --set changeps1 no
           conda config --prepend channels conda-forge
           conda config --prepend channels lcls-ii
+          conda config --set channel_priority strict
           conda info -a
-          conda create -q -n myrel python=3.7
-          conda install -q -n myrel --only-deps ami
+          conda env create -f ./ci-environment.yaml
           conda install -q -n myrel flake8 prometheus_client qtconsole
           conda activate myrel
           python setup.py install --single-version-externally-managed --record=record.txt
@@ -52,9 +52,9 @@ jobs:
           conda config --set always_yes yes --set changeps1 no
           conda config --prepend channels conda-forge
           conda config --prepend channels lcls-ii
+          conda config --set channel_priority strict
           conda info -a
-          conda create -q -n myrel python=3.7
-          conda install -q -n myrel --only-deps ami
+          conda env create -f ./ci-environment.yaml
           conda install -q -n myrel flake8 prometheus_client qtconsole
           conda activate myrel
           python setup.py install --single-version-externally-managed --record=record.txt
