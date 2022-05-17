@@ -54,7 +54,7 @@ jobs:
           conda config --prepend channels lcls-ii
           conda config --set channel_priority strict
           conda info -a
-          conda env create -f ./ci-environment.yaml
+          conda env create -f ./.ci-environment.yaml
           conda install -q -n myrel flake8 prometheus_client qtconsole
           conda activate myrel
           python setup.py install --single-version-externally-managed --record=record.txt
