@@ -38,6 +38,11 @@ class DataSource(Extender):
             del kwargs['exp']
             del kwargs['run']
 
+        # check for special calibdir kwarg
+        if 'calibdir' in kwargs:
+            psana.setOption('psana.calib-dir', kwargs['calibdir'])
+            del kwargs['calibdir']
+
         # create the underlying datasource
         ds = psana.DataSource(*args, **kwargs)
 
