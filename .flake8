@@ -6,6 +6,7 @@ exclude=
     doc,
     install,
     examples,
+    build,
     .eggs/,
     ami/flowchart/library/UtilsROI.py,
     ami/flowchart/library/Roi.py,
