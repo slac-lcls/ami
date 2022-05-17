@@ -963,11 +963,17 @@ class PsanaSource(HierarchicalDataSource):
             self.grouped_types[group_name] = det_attr_list
 
     def _update_waveform(self, wf_name, chan_type, num_chans):
+        def safe_access(o, c):
+            try:
+                return o[c]
+            except IndexError:
+                return None
+
         for chan_key in range(num_chans):
             chan_key_name = str(chan_key)
             chan_name = self.delimiter.join((wf_name, chan_key_name))
             self.data_types[chan_name] = chan_type
-            accessor = (lambda o, c: o[c], (chan_key,), {})
+            accessor = (safe_access, (chan_key,), {})
             self.special_names[chan_name] = (wf_name, accessor)
 
     def _update_hsd_segment(self, hsd_name, hsd_type, seg_chans):
