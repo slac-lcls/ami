@@ -5,9 +5,6 @@ Usage::
 """
 import math
 import numpy as np
-#from psana.pyalgos.generic.HPolar import HPolar, info_ndarr
-from ami.flowchart.library.HPolar import HPolar #, info_ndarr
-
 import pyqtgraph as pg
 import logging
 logger = logging.getLogger(__name__)
@@ -15,29 +12,28 @@ logger = logging.getLogger(__name__)
 QPointF, QRectF = pg.QtCore.QPointF, pg.QtCore.QRectF
 QPen, QBrush, QColor = pg.QtGui.QPen, pg.QtGui.QBrush, pg.QtGui.QColor
 
-#def rotate_sincos(x, y, s, c): return x*c-y*s, x*s+y*c
-#def rotate(x, y, a): return rotate_sincos(x, y, math.sin(a), math.cos(a))
-#def rotate_degree(x, y, a): return rotate(x, y, math.radians(a))
+# def rotate_sincos(x, y, s, c): return x*c-y*s, x*s+y*c
+# def rotate(x, y, a): return rotate_sincos(x, y, math.sin(a), math.cos(a))
+# def rotate_degree(x, y, a): return rotate(x, y, math.radians(a))
 
-#class Storage:
-#    def __init__(self):
-#        self.hpolar = None
-#STORE = Storage()
+try:
+    import psana.pyalgos.generic.HPolar as hp
 
+    def polar_histogram(shape, mask, cx, cy, ro, ri, ao, ai, nr, na):
+        """Returns hp.HPolar object.
+        """
+        rows, cols = shape
+        xarr1 = np.arange(cols) - cx
+        yarr1 = np.arange(rows) - cy
+        xarr, yarr = np.meshgrid(xarr1, yarr1)
+        hpolar = hp.HPolar(xarr, yarr, mask=mask, radedges=(ri, ro), nradbins=nr, phiedges=(ao, ai), nphibins=na)
+        # logger.info('%s %s\n%s' %(hp.info_ndarr(xarr,'pixel coordinate arrays: xarr'),
+        #              hp.info_ndarr(yarr,' yarr'),
+        #              hpolar.info_attrs()))
+        return hpolar
 
-def polar_histogram(shape, mask, cx, cy, ro, ri, ao, ai, nr, na):
-    """Returns hp.HPolar object.
-    """
-    rows, cols = shape
-    xarr1 = np.arange(cols) - cx
-    yarr1 = np.arange(rows) - cy
-    xarr, yarr = np.meshgrid(xarr1, yarr1)
-    hpolar = HPolar(xarr, yarr, mask=mask, radedges=(ri,ro), nradbins=nr, phiedges=(ao,ai), nphibins=na)
-#    logger.debug(hpolar.info_attrs()))
-#    logger.debug('%s %s\n%s' %(info_ndarr(xarr,'pixel coordinate arrays: xarr'),\
-#                              info_ndarr(yarr,' yarr'),\
-#                              hpolar.info_attrs()))
-    return hpolar
+except ImportError as e:
+    print(e)
 
 
 def str_point(p, fmt='(%.1f, %.1f)'):
@@ -52,8 +48,8 @@ def distance(p):
 def angle(p):
     """returns the point angle in radians [-pi,pi] -> [0,2*pi] - clockwise"""
     x, y = p.x(), p.y()
-    a = math.atan2(y,x)
-    return a if a>=0 and a<=np.pi+1e-6 else 2*np.pi+a
+    a = math.atan2(y, x)
+    return a if a >= 0 and a <= np.pi+1e-6 else 2*np.pi+a
 
 
 def unit_vector(p):
@@ -70,7 +66,7 @@ def path_add_ellipse(p, br, a1=0, a2=2*np.pi, npoints=36):
     y = center.y() + r2 * np.sin(theta)
     p.moveTo(x[0], y[0])
     for i in range(1, len(x)):
-      p.lineTo(x[i], y[i])
+        p.lineTo(x[i], y[i])
     return p
 
 
@@ -96,96 +92,95 @@ def handle_positions_normalized(radius_out, radius_int, angle_deg_out, angle_deg
     """
     fr = radius_int / radius_out
     a = math.radians(angle_deg_int)
-    pos0 = [0.5, 0.5] # center position handle
-    pos1 = [1.0, 0.5] # outer circle angle and radius control handle
-    pos2 = [0.5*(1+fr*math.cos(a)), 0.5*(1+fr*math.sin(a))] # internale circle radius and cut angle
+    pos0 = [0.5, 0.5]  # center position handle
+    pos1 = [1.0, 0.5]  # outer circle angle and radius control handle
+    pos2 = [0.5*(1+fr*math.cos(a)), 0.5*(1+fr*math.sin(a))]  # internale circle radius and cut angle
     return pos0, pos1, pos2
 
 
 class ArchROI(pg.ROI):
-    def __init__(self, center=(100,100), radius_out=100, radius_int=50, angle_deg_out=0, angle_deg_int=60,\
+    def __init__(self, center=(100, 100), radius_out=100, radius_int=50, angle_deg_out=0, angle_deg_int=60,
                  hlwidth=None, handleSize=5, **kwargs):
         cx, cy = center
         ro, ri, ao, ai = radius_out, radius_int, angle_deg_out, angle_deg_int
-        pos = (cx-ro, cy-ro) # for angle_deg_out=0 ONLY!
+        ro = radius_out
+        pos = (cx-ro, cy-ro)
         size = (2*ro, 2*ro)
         pg.ROI.__init__(self, pos, size, aspectLocked=True, **kwargs)
         self.handleSize = handleSize
         self._addHandles(radius_out, radius_int, angle_deg_out, angle_deg_int, width=hlwidth)
         self.sigRegionChanged.connect(self._clearPath)
-
+        self.set_shape_parameters(cx, cy, ro, ri, ao, ai)
 
     def _addHandles(self, radius_out=100, radius_int=50, angle_deg_out=0, angle_deg_int=60, width=None):
-        pos0, pos1, pos2 = handle_positions_normalized(radius_out, radius_int, angle_deg_out, angle_deg_int)
+        pos0, pos1, pos2 = handle_positions_normalized(radius_out, radius_int,
+                                                       angle_deg_out, angle_deg_int)
         center = pos0
         h0 = self.addTranslateHandle(pos0,           name='TranslateHandle  ')
         h1 = self.addScaleRotateHandle(pos1, center, name='ScaleRotateHandle')
         h2 = self.addFreeHandle(pos2, center,        name='FreeHandle       ')
 
-        radius=5
+        radius = 5
         h0.radius = radius
         h1.radius = radius
         h2.radius = radius
-        if width is None: return
+        if width is None:
+            return
         h0.pen = h0.currentPen = QPen(QBrush(QColor('blue')),  width)
         h1.pen = h1.currentPen = QPen(QBrush(QColor('green')), width)
         h2.pen = h2.currentPen = QPen(QBrush(QColor('red')),   width)
 
-
     def _clearPath(self):
         self.path = None
-
 
     def _fix_free_handle_norm_position(self):
         """fix free-handle normalized position using presumably correct local position"""
         h = self.handles[2]
         br1 = self.boundingRect()
-        br1size = br1.size() #br1.center()
-        p = QPointF(h['item'].pos()) # relative to boundingRect origin
-        xrel, yrel = p.x()/br1size.width(), p.y()/br1size.height() # free handle normalized coordinates
-        h['pos'] = (xrel, yrel) # pg.Point(xrel, yrel)
-
+        br1size = br1.size()  # br1.center()
+        p = QPointF(h['item'].pos())  # relative to boundingRect origin
+        xrel, yrel = p.x()/br1size.width(), p.y()/br1size.height()  # free handle normalized coordinates
+        h['pos'] = (xrel, yrel)
 
     def _fix_free_handle_local_position(self, x, y):
         h2 = self.handles[2]
-        h2['item'].setPos(x, y) #QPointF(x, y))
-
+        h2['item'].setPos(x, y)
 
     def set_shape_parameters(self, *args):
         """center_x, center_y, radius_out, radius_int, angle_deg_out, angle_deg_int = *args
         """
         cx, cy, ro, ri, ao, ai = args
-        e = 2*ro # extension - width and heights of the bounding rect
+        e = 2*ro
 
-        # set handles' positions in normalized position
-        h0,h1,h2 = self.handles # center / external / internal circle
-        p0,p1,p2 = handle_positions_normalized(ro, ri, ao, ai)
-        h0['pos'], h1['pos'], h2['pos'] = p0,p1,p2
+        # set handles' positions in normalized position for center / external / internal circle
+        h0, h1, h2 = self.handles  # center / external / internal circle
+        p0, p1, p2 = handle_positions_normalized(ro, ri, ao, ai)
+        h0['pos'], h1['pos'], h2['pos'] = p0, p1, p2
 
         self._fix_free_handle_local_position(p2[0]*e, p2[1]*e)
 
         self.setSize((e, e), finish=False)
-        self.setAngle(ao, center=(0.5,0.5), update=False, finish=False) #centerLocal=(cx,cy)
-        cview = self.mapToView(self.boundingRect().center()) # QPointF
-        p = self.pos() # Point
-        self.setPos(p.x() + cx - cview.x(), y=p.y() + cy - cview.y(), finish=True) # origin of the bounding box
-
+        self.setAngle(ao, center=(0.5, 0.5), update=False, finish=False)
+        cview = self.mapToView(self.boundingRect().center())  # QPointF
+        p = self.pos()  # Point
+        if cview is not None:
+            self.setPos(p.x() + cx - cview.x(), y=p.y() + cy - cview.y(), finish=True)
 
     def handle_positions_local(self):
-        """Returns 3 handle positios in the ROI bounding rect local coordinates.
+        """Returns 3 handle positios in the ROI bounding rect local coordinates
+           for center / external / internal circle
         """
-        h0,h1,h2 = self.handles # center / external / internal circle
-        p0,p1,p2 = h0['item'].pos(), h1['item'].pos(), h2['item'].pos()
-        logger.debug('handle positions p0:%s p1:%s p2:%s' % (p0,p1,p2))
-        return p0,p1,p2
-
+        h0, h1, h2 = self.handles  # center / external / internal circle
+        p0, p1, p2 = h0['item'].pos(), h1['item'].pos(), h2['item'].pos()
+        logger.debug('handle positions p0:%s p1:%s p2:%s' % (p0, p1, p2))
+        return p0, p1, p2
 
     def shape_parameters(self):
         """retreives shape parameters from current handles' positions and roi.pos/size
         """
-        p0,p1,p2 = self.handle_positions_local()
-        vh1 = p1 - p0 # br1.center() # point defining vector from center to h2
-        vh2 = p2 - p0 # br1.center() # point defining vector from center to h2
+        p0, p1, p2 = self.handle_positions_local()
+        vh1 = p1 - p0  # br1.center() # point defining vector from center to h2
+        vh2 = p2 - p0  # br1.center() # point defining vector from center to h2
         rad1 = distance(vh1)
         rad2 = distance(vh2)
         p3 = p0 + rad1*unit_vector(vh2)
@@ -197,17 +192,16 @@ class ArchROI(pg.ROI):
         pos = self.pos()
         size = self.size()
         br1 = self.boundingRect()
-        center  = self.mapToView(br1.center())
-        logger.debug('ArchROI.pos: (%.1f, %.1f) size(%.1f, %.1f) rad1:%.1f rad2:%.1f angle1:%.1f angle1:%.2f center view:%s' %\
-                      (pos.x(), pos.y(), size.x(), size.y(), rad1, rad2, ang1_deg, ang2_deg, str(center)))
+        center = self.mapToView(br1.center())
+        fmt = 'ArchROI.pos: (%.1f, %.1f) size(%.1f, %.1f) rad1:%.1f rad2:%.1f angle1:%.1f angle1:%.2f center view:%s'
+        logger.debug(fmt % (pos.x(), pos.y(), size.x(), size.y(), rad1, rad2, ang1_deg, ang2_deg, str(center)))
         return pos, size, center, rad1, rad2, ang1_deg, ang2_deg, ang1, ang2, p0, p1, p2, p3
-
 
     def shape(self):
         """returns QtGui.QPainterPath for shape defined by bounding rect and handles' positions.
         """
-        for i,h in enumerate(self.handles): logger.debug(' %d %s norm position %s' % (i, h['name'], str(h['pos'])))
-        #for i,h in enumerate(self.handles): logger.debug(' %d %s item position %s' % (i, h['name'], str(h['item'].pos())))
+        for i, h in enumerate(self.handles):
+            logger.debug(' %d %s norm position %s' % (i, h['name'], str(h['pos'])))
 
         self._fix_free_handle_norm_position()
 
@@ -216,7 +210,7 @@ class ArchROI(pg.ROI):
         width1 = br1.width()
         width2 = 2*rad2
         br2 = QRectF(0, 0, width2, width2)
-        br2.moveCenter(br1.center()) #pg.QtCore.QPointF(100,100)
+        br2.moveCenter(br1.center())
 
         p = pg.QtGui.QPainterPath()
         p = path_add_ellipse(p, br1, a2=ang2)
@@ -227,7 +221,6 @@ class ArchROI(pg.ROI):
         p.lineTo(p3)
         p = path_add_ellipse(p, br2, a2=ang2)
         return p
-
 
     def paint(self, p, opt, widget):
         p.setRenderHints(p.RenderHint.Antialiasing, True)
