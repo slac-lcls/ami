@@ -1,46 +1,102 @@
 
-from ami.flowchart.library.DisplayWidgets import ImageWidget, WaveformWidget, PixelDetWidget,\
-    ScatterWidget
+from ami.flowchart.library.DisplayWidgets import ImageWidget,\
+        WaveformWidget, PixelDetWidget, ScatterWidget
 from ami.flowchart.library.common import CtrlNode
 from amitypes import Array2d, Array1d
 import ami.graph_nodes as gn
+import ami.flowchart.library.UtilsROI as ur
 import numpy as np
 import pyqtgraph as pg
 from pyqtgraph import functions as fn
 import logging
 logger = logging.getLogger(__name__)
 
-import ami.flowchart.library.UtilsROI as ur
 QPen, QBrush, QColor = ur.QPen, ur.QBrush, ur.QColor
+info_ndarr = ur.hp.info_ndarr
+
+try:
+
+    class PolarHistogram():
+
+        def __init__(self, *args):
+            logger.info('in PolarHistogram.__init__')
+            self.args = args
+            self.hpolar = None
+
+        def __call__(self, img, mask=None):
+            # logger.info('__call__ img.shape: %s mask: %s' % (str(img.shape), mask))
+            cx, cy, ro, ri, ao, ai, nr, na = self.args
+            if self.hpolar is None:
+                logger.info('update hpolar with cx:%.1f, cy:%.1f, ro:%d, ri:%d, ao:%.1f, ai:%.1f, nr:%d, na:%d' %
+                            (cx, cy, ro, ri, ao, ai, nr, na))
+                hp = self.hpolar = ur.polar_histogram(img.shape, mask, cx, cy, ro, ri, ao, ao+ai, nr, na)
+                logger.info(hp.info_attrs()
+                            + info_ndarr(hp.obj_radbins().bincenters(), '\n  rad bin centers')
+                            + info_ndarr(hp.obj_phibins().bincenters(), '\n  ang bin centers')
+                            )
+
+            hp = self.hpolar
+            orbins = hp.obj_radbins()
+            oabins = hp.obj_phibins()
+            ra2d = hp.bin_avrg_rad_phi(img, do_transp=True)
+            rproj = np.sum(ra2d, axis=1)/oabins.nbins()  # normalized per pixel
+            aproj = np.sum(ra2d, axis=0)/orbins.nbins()
+
+            ranpix = hp.bin_number_of_pixels()[:-1]  # remove the last out of ROI bin
+            ranpix.shape = (oabins.nbins(), orbins.nbins())
+            ranpix = np.transpose(ranpix)
+
+            logger.debug(info_ndarr(ra2d, '\n  ra2d')
+                         + info_ndarr(ranpix, '\n  ranpix')
+                         + info_ndarr(orbins.bincenters(), '\n  orbins')
+                         + info_ndarr(oabins.bincenters(), '\n  oabins')
+                         + info_ndarr(rproj, '\n  radial  projection')
+                         + info_ndarr(aproj, '\n  angular projection'))
+
+            return orbins.bincenters(),\
+                oabins.bincenters(),\
+                ra2d,\
+                ranpix,\
+                rproj,\
+                aproj,\
+                (cx, cy, ro, ri, ao, ai, nr, na),\
+                (ri, ro-ri, ao, ai-ao)
+
+except ImportError as e:
+    print(e)
+
 
 class RoiArch(CtrlNode):
     """
     Region of Interest of image shaped as arch (a.k.a. cut-donat).
     """
     nodeName = "RoiArch"
-    uiTemplate = [('center x', 'intSpin', {'value':200, 'min': -1000}),
-                  ('center y', 'intSpin', {'value':200, 'min': -1000}),
-                  ('radius o', 'intSpin', {'value':200, 'min': 1}),
-                  ('radius i', 'intSpin', {'value':100, 'min': 1}),
-                  ('angdeg o', 'intSpin', {'value':  0, 'min': 0, 'max': 360}),
-                  ('angdeg i', 'intSpin', {'value': 60, 'min': 0, 'max': 360}),
-                  ('nbins rad','intSpin', {'value':100, 'min': 1}),
-                  ('nbins ang','intSpin', {'value':  5, 'min': 1})]
+    uiTemplate = [('center x',  'intSpin', {'value': 200, 'min': -1000}),
+                  ('center y',  'intSpin', {'value': 200, 'min': -1000}),
+                  ('radius o',  'intSpin', {'value': 200, 'min': 1}),
+                  ('radius i',  'intSpin', {'value': 100, 'min': 1}),
+                  ('angdeg o',  'intSpin', {'value':   0, 'min': 0, 'max': 360}),
+                  ('angdeg i',  'intSpin', {'value':  60, 'min': 0, 'max': 360}),
+                  ('nbins rad', 'intSpin', {'value': 100, 'min': 1}),
+                  ('nbins ang', 'intSpin', {'value':   5, 'min': 1})]
 
     def __init__(self, name):
         super().__init__(name,
-                         terminals={'In': {'io': 'in', 'ttype': Array2d},
-                                    #'Out.Angular': {'io': 'out', 'ttype': Array1d},
-                                    #'Out.Radial': {'io': 'out', 'ttype': Array1d},
-                                    'Out.RadAng': {'io': 'out', 'ttype': Array2d},
-                                    'Roi_Coordinates': {'io': 'out', 'ttype': Array1d}},
+                         terminals={'image': {'io': 'in', 'ttype': Array2d},
+                                    # 'mask': {'io': 'in', 'ttype': Array2d},
+                                    'RBins': {'io': 'out', 'ttype': Array1d},
+                                    'ABins': {'io': 'out', 'ttype': Array1d},
+                                    'RadAngNormIntens': {'io': 'out', 'ttype': Array2d},
+                                    'RadAngBinStatist': {'io': 'out', 'ttype': Array2d},
+                                    'RProj': {'io': 'out', 'ttype': Array1d},
+                                    'AProj': {'io': 'out', 'ttype': Array1d},
+                                    'ROIPars': {'io': 'out', 'ttype': Array1d},
+                                    'BBox': {'io': 'out', 'ttype': Array1d}},
                          global_op=True,
                          viewable=True)
 
-
     def isChanged(self, restore_ctrl, restore_widget):
         return restore_ctrl
-
 
     def display(self, topics, terms, addr, win, **kwargs):
         super().display(topics, terms, addr, win, ImageWidget, **kwargs)
@@ -48,38 +104,36 @@ class RoiArch(CtrlNode):
         if self.widget:
             cx, cy, ro, ri, ao, ai = self.shape_values()
             width = 4
-            kwargs = {'handlePen':QPen(QBrush(QColor('yellow')), width),\
-                 'handleHoverPen':QPen(QBrush(QColor('blue')),  width)}
-            self.roi = ur.ArchROI(center=(cx, cy), radius_out=ro, radius_int=ri,\
+            kwargs = {'handlePen': QPen(QBrush(QColor('yellow')), width),
+                      'handleHoverPen': QPen(QBrush(QColor('blue')), width)}
+            self.roi = ur.ArchROI(center=(cx, cy), radius_out=ro, radius_int=ri,
                                   angle_deg_out=ao, angle_deg_int=ai, hlwidth=None, **kwargs)
             self.roi.sigRegionChangeFinished.connect(self.set_values)
             self.widget.view.addItem(self.roi)
             nw = self.widget.parent()
-            if nw: nw.setGeometry(500, 10, 900, 600)
+            if nw:
+                nw.setGeometry(500, 10, 900, 600)
         return self.widget
 
-
     def shape_values(self):
-        return [self.values[s] for s in\
-               ('center x', 'center y', 'radius o', 'radius i', 'angdeg o', 'angdeg i')]
-
+        return [self.values[s] for s in
+                ('center x', 'center y', 'radius o', 'radius i', 'angdeg o', 'angdeg i')]
 
     def ctrls_values(self):
-        return [self.ctrls[s].value() for s in\
-               ('center x', 'center y', 'radius o', 'radius i', 'angdeg o', 'angdeg i', 'nbins rad', 'nbins ang')]
-
+        return [self.ctrls[s].value() for s in
+                ('center x', 'center y', 'radius o', 'radius i', 'angdeg o', 'angdeg i', 'nbins rad', 'nbins ang')]
 
     def set_values(self, *args, **kwargs):
         """set self.values/ctrls parameters from roi shape.
         """
         self.stateGroup.blockSignals(True)
         pos, size, center, rad1, rad2, ang1_deg, ang2_deg, ang1, ang2, p0, p1, p2, p3 = self.roi.shape_parameters()
-        self.values['center x'] = round(center.x(),1)
-        self.values['center y'] = round(center.y(),1)
-        self.values['radius o'] = round(rad1,1)
-        self.values['radius i'] = round(rad2,1)
-        self.values['angdeg o'] = round(ang1_deg,1)
-        self.values['angdeg i'] = round(ang2_deg,1)
+        self.values['center x'] = round(center.x(), 1)
+        self.values['center y'] = round(center.y(), 1)
+        self.values['radius o'] = round(rad1, 1)
+        self.values['radius i'] = round(rad2, 1)
+        self.values['angdeg o'] = round(ang1_deg, 1)
+        self.values['angdeg i'] = round(ang2_deg, 1)
         self.ctrls['center x'].setValue(self.values['center x'])
         self.ctrls['center y'].setValue(self.values['center y'])
         self.ctrls['radius o'].setValue(self.values['radius o'])
@@ -90,7 +144,6 @@ class RoiArch(CtrlNode):
         self.stateGroup.blockSignals(False)
         self.sigStateChanged.emit(self)
 
-
     def update(self, *args, **kwargs):
         """set roi shape from self.values.
         """
@@ -100,23 +153,32 @@ class RoiArch(CtrlNode):
             cx, cy, ro, ri, ao, ai, nr, na = self.ctrls_values()
             self.roi.set_shape_parameters(cx, cy, ro, ri, ao, ai)
 
+    def to_operation(self, **kwargs):
 
-    def to_operation(self, **kwargs): #inputs, outputs
+        cx, cy, ro, ri, ao, ai, nr, na = args = self.ctrls_values()
+        logger.info('to_operation cx:%.1f, cy:%.1f, ro:%d, ri:%d, ao:%.1f, ai:%.1f, nr:%d, na:%d' %
+                    (cx, cy, ro, ri, ao, ai, nr, na))
+
+        # phkwa = {'cx': cx, 'cy': cy, 'ro': ro, 'ri': ri, 'ao': ao, 'ai': ai, 'nr': nr, 'na': na}
+
+        return gn.Map(name=self.name()+"_operation", **kwargs, func=PolarHistogram(*args))  # **phkwa
+
+    def to_operation_v1(self, **kwargs):
 
         # self.input_vars() #  {'In': 'tmo_opal1:raw:image'}
         # self.name() # RoiArch.0
         # kwargs # {'parent': 'RoiArch.0'}
         # inputs # {'In': 'tmo_opal1:raw:image'}
-        # outputs # ['RoiArch.0.Out.Angular', 'RoiArch.0.Out.Radial', 'RoiArch.0.Out.RadAng', 'RoiArch.0.Roi_Coordinates']
+        # outputs # ['RoiArch.0.Out.Angular','RoiArch.0.Out.Radial','RoiArch.0.Out.RadAng','RoiArch.0.Roi_Coordinates']
 
         cx, cy, ro, ri, ao, ai, nr, na = self.ctrls_values()
-        logger.info('XXX cx:%.1f, cy:%.1f, ro:%d, ri:%d, ao:%.1f, ai:%.1f, nr:%d, na:%d'%\
+        logger.info('XXX cx:%.1f, cy:%.1f, ro:%d, ri:%d, ao:%.1f, ai:%.1f, nr:%d, na:%d' %
                     (cx, cy, ro, ri, ao, ai, nr, na))
 
         def func(img, mask=None):
             logger.debug('img.shape: %s' % str(img.shape))
-            #if STORE.hpolar is None: IT DOES NOT WORK bcause of func is caching????
-            #   STORE.hpolar = hpolar
+            # if STORE.hpolar is None: IT DOES NOT WORK bcause of func is caching????
+            #    STORE.hpolar = hpolar
             hpolar = ur.polar_histogram(img.shape, mask, cx, cy, ro, ri, ao, ai, nr, na)
             logger.info(hpolar.info_attrs())
             return hpolar.bin_avrg_rad_phi(img, do_transp=True), (ri, ro-ri, ao, ai-ao)
