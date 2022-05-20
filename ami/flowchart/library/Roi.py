@@ -12,7 +12,8 @@ try:
     import logging
     logger = logging.getLogger(__name__)
     import ami.flowchart.library.UtilsROI as ur
-    info_ndarr = ur.hp.info_ndarr
+    #info_ndarr = ur.hp.info_ndarr
+    from psana.pyalgos.generic.NDArrUtils import info_ndarr
     QPen, QBrush, QColor = ur.QPen, ur.QBrush, ur.QColor
 
 
