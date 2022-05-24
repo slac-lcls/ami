@@ -1,7 +1,7 @@
 import psana
 from Detector import DetectorTypes, PyDetector
 from .utils import export, parse_cls, parse_methods, parse_annotations, \
-        make_method, make_config
+        make_method, make_config, Extender
 
 
 __all__ = []
@@ -10,7 +10,25 @@ __all__ = []
 RAW_INTERFACES = {}
 FEX_INTERFACES = {}
 BLD_INTERFACES = {}
+MULTI_PANEL_DETS = {'CsPad2x2', 'CsPad', 'Jungfrau', 'Epix10ka2M', 'Epix10kaQuad', 'Uxi'}
 PSANA_DETS = (DetectorTypes.DdlDetector, DetectorTypes.WFDetector, DetectorTypes.AreaDetector)
+
+
+@export
+class MultiPanelHelper(Extender):
+    def __init__(self, src, env):
+        super().__init__(psana.Detector(src))
+        self.src = src
+        self.env = env
+
+    def raw(self, evt):
+        return self._base.raw(evt)
+
+    def calib(self, evt, **kwargs):
+        return self._base.calib(evt, **kwargs)
+
+    def image(self, evt, **kwargs):
+        return self._base.image(evt, **kwargs)
 
 
 @export
@@ -168,9 +186,16 @@ class Detector:
         return self._named_detinfo(self.src)
 
 
+def is_multi_panel(src):
+    return PyDetector.DetInfo(src).dev in MULTI_PANEL_DETS
+
+
 def lookup_dettype(src, env, *args, **kwargs):
     src = PyDetector.map_alias_to_source(src, env)
-    return PyDetector.dettype(src, env, *args, **kwargs)
+    dettype = PyDetector.dettype(src, env, *args, **kwargs)
+    if dettype is DetectorTypes.AreaDetector and is_multi_panel(src):
+        dettype = MultiPanelHelper
+    return dettype
 
 
 def encode(src):

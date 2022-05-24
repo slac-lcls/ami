@@ -2,7 +2,8 @@ import typing
 import psana
 import amitypes
 from Detector import DetectorTypes
-from .detector import Detector, DdlHelper, DetectorMeta, DdlHelperMeta
+from .detector import Detector, DdlHelper, DetectorMeta, DdlHelperMeta, \
+        MultiPanelHelper
 from .utils import export
 
 
@@ -10,22 +11,31 @@ __all__ = []
 
 
 @export
+class MultiPanelDetector(Detector,
+                         metaclass=DetectorMeta,
+                         detcls=MultiPanelHelper,
+                         annotations={'raw': amitypes.Array3d, 'calib': amitypes.Array3d, 'image': amitypes.Array2d},
+                         configs={'config': [psana.CsPad.Config,
+                                             psana.CsPad2x2.Config,
+                                             psana.Epix.Config10ka2M,
+                                             psana.Epix.Config10kaQuad,
+                                             psana.Jungfrau.Config,
+                                             psana.Uxi.Config]}):
+    pass
+
+                             
+@export
 class AreaDetector(Detector,
                    metaclass=DetectorMeta,
                    detcls=DetectorTypes.AreaDetector,
-                   annotations={'raw': amitypes.Array3d, 'calib': amitypes.Array3d, 'image': amitypes.Array2d},
+                   annotations={'raw': amitypes.Array2d, 'calib': amitypes.Array2d, 'image': amitypes.Array2d},
                    configs={'config': [psana.Opal1k.Config,
                                        psana.Archon.Config,
                                        psana.Andor.Config,
-                                       psana.CsPad.Config,
-                                       psana.CsPad2x2.Config,
                                        psana.Epix.Config100a,
                                        psana.Epix.Config10ka,
-                                       psana.Epix.Config10ka2M,
-                                       psana.Epix.Config10kaQuad,
                                        psana.FCCD.FccdConfig,
                                        psana.Fli.Config,
-                                       psana.Jungfrau.Config,
                                        psana.PNCCD.Config,
                                        psana.Orca.Config,
                                        psana.Pimax.Config,
@@ -35,7 +45,6 @@ class AreaDetector(Detector,
                                        psana.Quartz.Config,
                                        psana.Rayonix.Config,
                                        psana.Timepix.Config,
-                                       psana.Uxi.Config,
                                        psana.Vimba.AlviumConfig,
                                        psana.iStar.Config,
                                        psana.Zyla.Config]}):

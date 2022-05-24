@@ -9,7 +9,7 @@ except ImportError:
 
 from ami import psana
 from conftest import psanatest, psana1test, hdf5test
-from ami.data import MsgTypes, Source, Transition, Transitions, NumPyTypeDict
+from ami.data import MsgTypes, Source, Transition, Transitions
 
 
 @pytest.fixture(scope='function')
@@ -88,8 +88,8 @@ def test_hdf5_source(hdf5writer):
         elif evt.mtype == MsgTypes.Datagram:
             assert set(evt.payload) == set(expected_cfg)
             for name, data in evt.payload.items():
-                if type(data) in NumPyTypeDict:
-                    assert NumPyTypeDict[type(data)] == expected_cfg[name]
+                if type(data) in at.NumPyTypeDict:
+                    assert at.NumPyTypeDict[type(data)] == expected_cfg[name]
                 else:
                     assert isinstance(data, expected_cfg[name])
 
@@ -244,9 +244,9 @@ def test_psana1_source(psana1_xtc):
             'heartbeat': int,
             'opal_1': at.Detector,
             'opal_1:raw': at.Group,
-            'opal_1:raw:calib': at.Array3d,
+            'opal_1:raw:calib': at.Array2d,
             'opal_1:raw:image': at.Array2d,
-            'opal_1:raw:raw': at.Array3d,
+            'opal_1:raw:raw': at.Array2d,
             'source': at.DataSource,
             'timestamp': float,
         }
@@ -314,8 +314,8 @@ def test_psana1_source(psana1_xtc):
                 'image': at.Array2d,
             },
             'opal_1:raw': {
-                'raw': at.Array3d,
-                'calib': at.Array3d,
+                'raw': at.Array2d,
+                'calib': at.Array2d,
                 'image': at.Array2d,
             },
             'evr0:raw': {
@@ -333,7 +333,7 @@ def test_psana1_source(psana1_xtc):
             'XCS-IPM-gon:fex': 'IpimbDetector',
             'XCS-USB-ENCODER-01:fex': 'UsdUsbDetector',
             'XCS-USB-ENCODER-01:raw': 'RawUsdUsbDetector',
-            'epix10ka2m:raw': 'AreaDetector',
+            'epix10ka2m:raw': 'MultiPanelHelper',
             'opal_1:raw': 'AreaDetector',
             'evr0:raw': 'EvrDetector',
             'evr1:raw': 'EvrDetector',
@@ -384,11 +384,10 @@ def test_psana1_source(psana1_xtc):
                 if name in excludes:
                     continue
 
-                if isinstance(data, np.integer):
-                    data = int(data)
-                elif isinstance(data, np.floating):
-                    data = float(data)
-                assert isinstance(data, expected_types[name])
+                if type(data) in at.NumPyTypeDict:
+                    assert at.NumPyTypeDict[type(data)] == expected_types[name]
+                else:
+                    assert isinstance(data, expected_types[name])
 
                 if isinstance(data, at.DataSource):
                     assert data.cfg == src_cfg
