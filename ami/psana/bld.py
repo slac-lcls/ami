@@ -20,6 +20,8 @@ def _get_bld_names():
 
 BLD_NAMES = _get_bld_names()
 AIN_BLD_NAMES = [name for name in BLD_NAMES if "-AIN-" in name]
+BEAMMON_BLD_NAMES = [name for name in BLD_NAMES if "BMMON" in name or "BEAMMON" in name or name.endswith("-DIO")]
+SPEC_BLD_NAMES = [name for name in BLD_NAMES if "SPEC" in name]
 
 
 class DdlEBeam(DdlHelper,
@@ -67,6 +69,37 @@ class PhaseCavityDetector(Detector,
     pass
 
 
+
+class DdlGmd(DdlHelper,
+             metaclass=DdlHelperMeta,
+             methods=psana.Bld.BldDataGMD):
+    pass
+
+
+@export
+class GmdDetector(Detector,
+                  metaclass=BldMeta,
+                  detcls=DdlGmd,
+                  sources=['GMD'],
+                  annotations=psana.Bld.BldDataGMD):
+    pass
+
+
+class DdlEOrbits(DdlHelper,
+                 metaclass=DdlHelperMeta,
+                 methods=psana.Bld.BldDataEOrbits):
+    pass
+
+
+@export
+class EOrbitsDetector(Detector,
+                      metaclass=BldMeta,
+                      detcls=DdlEOrbits,
+                      sources=[''],
+                      annotations=psana.Bld.BldDataEOrbits):
+    pass
+
+
 class DdlAnalogInput(DdlHelper,
                      metaclass=DdlHelperMeta,
                      methods=psana.Bld.BldDataAnalogInput):
@@ -86,3 +119,40 @@ class AnalogInputDetector(Detector,
     @property
     def nchannels(self):
         return 16
+
+
+class DdlBeamMonitor(DdlHelper,
+                     metaclass=DdlHelperMeta,
+                     methods=psana.Bld.BldDataBeamMonitor):
+    pass
+
+
+@export
+class BeamMonitorDetector(Detector,
+                          metaclass=BldMeta,
+                          detcls=DdlBeamMonitor,
+                          sources=BEAMMON_BLD_NAMES,
+                          annotations=psana.Bld.BldDataBeamMonitor,
+                          overrides={'peakA': amitypes.MultiChannelFloat,
+                                     'peakT': amitypes.MultiChannelInt}):
+    def __init__(self, src, env):
+        super().__init__(src, env)
+
+    @property
+    def nchannels(self):
+        return 16
+
+
+class DdlSpectrometer(DdlHelper,
+                      metaclass=DdlHelperMeta,
+                      methods=psana.Bld.BldDataSpectrometer):
+    pass
+
+
+@export
+class SpectrometerDetector(Detector,
+                           metaclass=BldMeta,
+                           detcls=DdlSpectrometer,
+                           sources=SPEC_BLD_NAMES,
+                           annotations=psana.Bld.BldDataSpectrometer):
+    pass
