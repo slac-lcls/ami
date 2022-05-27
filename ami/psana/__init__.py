@@ -8,6 +8,7 @@ if hasattr(psana, '_psana'):
     from .detector import *     # noqa ignore=F405
     from .interfaces import *   # noqa ignore=F405
     from .bld import *          # noqa ignore=F405
+    from .epics import *        # noqa ignore=F405
 else:
     import sys
     sys.modules[__name__] = psana

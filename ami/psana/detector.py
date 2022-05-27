@@ -10,6 +10,7 @@ __all__ = []
 RAW_INTERFACES = {}
 FEX_INTERFACES = {}
 BLD_INTERFACES = {}
+ENV_INTERFACES = {}
 MULTI_PANEL_DETS = {'CsPad2x2', 'CsPad', 'Jungfrau', 'Epix10ka2M', 'Epix10kaQuad', 'Uxi'}
 PSANA_DETS = (DetectorTypes.DdlDetector, DetectorTypes.WFDetector, DetectorTypes.AreaDetector)
 
@@ -207,10 +208,17 @@ def decode(name):
 
 
 @export
+def register_env_interface(dettype, interface):
+    ENV_INTERFACES[dettype] = interface
+
+
+@export
 def detector_factory(name, env, *args, **kwargs):
     src = decode(name)
     dettype = lookup_dettype(src, env, *args, **kwargs)
-    if dettype is DetectorTypes.DdlDetector and src in BLD_INTERFACES:
+    if dettype in ENV_INTERFACES:
+        return ENV_INTERFACES[dettype](src, env)
+    elif dettype is DetectorTypes.DdlDetector and src in BLD_INTERFACES:
         return BLD_INTERFACES[src](src, env)
     elif dettype in RAW_INTERFACES:
         return RAW_INTERFACES[dettype](src, env)
@@ -233,3 +241,15 @@ def detnames_to_detinfo(detnames, env):
             detinfo.update(FEX_INTERFACES[dettype]._named_detinfo(name))
 
     return detinfo
+
+
+@export
+def detnames_to_epicsinfo(detnames, env):
+    epicsinfo = {}
+    for pvname, alias, _ in detnames:
+        if alias:
+            epicsinfo[(alias, pvname)] = pvname
+        else:
+            epicsinfo[(pvname, '')] = ''
+
+    return epicsinfo

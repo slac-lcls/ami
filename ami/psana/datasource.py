@@ -1,5 +1,5 @@
 import psana
-from .detector import detector_factory, detnames_to_detinfo
+from .detector import detector_factory, detnames_to_detinfo, detnames_to_epicsinfo
 from .utils import export, Extender
 
 
@@ -81,7 +81,7 @@ class Run(Extender):
     @property
     def epicsinfo(self):
         if self.__epicsinfo is None:
-            self.__epicsinfo = {}
+            self.__epicsinfo = detnames_to_epicsinfo(psana.DetNames('epics'), self.env())
         return self.__epicsinfo
 
     @property
