@@ -23,7 +23,7 @@ class MultiPanelDetector(Detector,
                                              psana.Uxi.Config]}):
     pass
 
-                             
+
 @export
 class AreaDetector(Detector,
                    metaclass=DetectorMeta,

@@ -69,7 +69,6 @@ class PhaseCavityDetector(Detector,
     pass
 
 
-
 class DdlGmd(DdlHelper,
              metaclass=DdlHelperMeta,
              methods=psana.Bld.BldDataGMD):
