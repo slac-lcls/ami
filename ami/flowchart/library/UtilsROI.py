@@ -16,6 +16,8 @@ QPen, QBrush, QColor = pg.QtGui.QPen, pg.QtGui.QBrush, pg.QtGui.QColor
 # def rotate(x, y, a): return rotate_sincos(x, y, math.sin(a), math.cos(a))
 # def rotate_degree(x, y, a): return rotate(x, y, math.radians(a))
 
+# scene.setClickRadius(r)
+
 try:
     import psana.pyalgos.generic.HPolar as hp
 
@@ -50,6 +52,11 @@ def angle(p):
     x, y = p.x(), p.y()
     a = math.atan2(y, x)
     return a if a >= 0 and a <= np.pi+1e-6 else 2*np.pi+a
+
+
+def angle_deg_in_range(a, ang_range=(0,360)):
+    """returns angle in range contracting periodicity"""
+    return (a-ang_range[0]) % 360
 
 
 def unit_vector(p):
@@ -90,7 +97,9 @@ def handle_positions_normalized(radius_out, radius_int, angle_deg_out, angle_deg
        but all normalised position of handles are preserved.
        radius_int and angle_deg_int changes pos2 only.
     """
-    fr = radius_int / radius_out
+    #fr = float(radius_int if radius_int<radius_out else (radius_out-1))/radius_out
+    fr = radius_int/radius_out
+
     a = math.radians(angle_deg_int)
     pos0 = [0.5, 0.5]  # center position handle
     pos1 = [1.0, 0.5]  # outer circle angle and radius control handle
@@ -119,6 +128,9 @@ class ArchROI(pg.ROI):
         h0 = self.addTranslateHandle(pos0,           name='TranslateHandle  ')
         h1 = self.addScaleRotateHandle(pos1, center, name='ScaleRotateHandle')
         h2 = self.addFreeHandle(pos2, center,        name='FreeHandle       ')
+
+        for h in (h0,h1,h2):
+            h.setZValue(1000)
 
         radius = 5
         h0.radius = radius
@@ -160,7 +172,7 @@ class ArchROI(pg.ROI):
         self._fix_free_handle_local_position(p2[0]*e, p2[1]*e)
 
         self.setSize((e, e), finish=False)
-        self.setAngle(ao, center=(0.5, 0.5), update=False, finish=False)
+        self.setAngle(ao, center=(0.5, 0.5), update=True, finish=False)
         cview = self.mapToView(self.boundingRect().center())  # QPointF
         p = self.pos()  # Point
         if cview is not None:
@@ -179,16 +191,21 @@ class ArchROI(pg.ROI):
         """retreives shape parameters from current handles' positions and roi.pos/size
         """
         p0, p1, p2 = self.handle_positions_local()
-        vh1 = p1 - p0  # br1.center() # point defining vector from center to h2
+        vh1 = p1 - p0  # br1.center() # point defining vector from center to h1
         vh2 = p2 - p0  # br1.center() # point defining vector from center to h2
         rad1 = distance(vh1)
         rad2 = distance(vh2)
+
+        if rad2>rad1: # constrain h2 motion in radial direction
+           rad2 = rad1 - 1
+           p2 = p0 + rad2*unit_vector(vh2)
+           self._fix_free_handle_local_position(p2[0], p2[1])
+
         p3 = p0 + rad1*unit_vector(vh2)
-        ang1_deg = self.angle()
+        ang1_deg = angle_deg_in_range(self.angle())  #  self.angle() is not constrained by period, e.g. [0,360]
         ang1 = math.radians(ang1_deg)
         ang2 = angle(vh2)
         ang2_deg = math.degrees(ang2)
-
         pos = self.pos()
         size = self.size()
         br1 = self.boundingRect()
