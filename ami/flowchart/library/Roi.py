@@ -3,6 +3,7 @@ from ami.flowchart.library.DisplayWidgets import ImageWidget,\
         WaveformWidget, PixelDetWidget, ScatterWidget
 from ami.flowchart.library.common import CtrlNode
 from amitypes import Array2d, Array1d
+from typing import Any
 import ami.graph_nodes as gn
 import numpy as np
 import pyqtgraph as pg
@@ -25,7 +26,7 @@ try:
             self.hpolar = None
 
         def __call__(self, img, mask=None):
-            # logger.info('__call__ img.shape: %s mask: %s' % (str(img.shape), mask))
+            logger.debug('in PolarHistogram.__call__ %s' % info_ndarr(img,'image'))
             cx, cy, ro, ri, ao, ai, nr, na = self.args
             if self.hpolar is None:
                 logger.info('update hpolar with cx:%.1f, cy:%.1f, ro:%d, ri:%d, ao:%.1f, ai:%.1f, nr:%d, na:%d' %
@@ -55,6 +56,8 @@ try:
 
             return orbins.bincenters(),\
                 oabins.bincenters(),\
+                orbins.binedges(),\
+                oabins.binedges(),\
                 ra2d,\
                 ranpix,\
                 rproj,\
@@ -81,8 +84,10 @@ try:
             super().__init__(name,
                              terminals={'image': {'io': 'in', 'ttype': Array2d},
                                         # 'mask': {'io': 'in', 'ttype': Array2d},
-                                        'RBins': {'io': 'out', 'ttype': Array1d},
-                                        'ABins': {'io': 'out', 'ttype': Array1d},
+                                        'RBinCent': {'io': 'out', 'ttype': Array1d},
+                                        'ABinCent': {'io': 'out', 'ttype': Array1d},
+                                        'RBinEdges': {'io': 'out', 'ttype': Array1d},
+                                        'ABinEdges': {'io': 'out', 'ttype': Array1d},
                                         'RadAngNormIntens': {'io': 'out', 'ttype': Array2d},
                                         'RadAngBinStatist': {'io': 'out', 'ttype': Array2d},
                                         'RProj': {'io': 'out', 'ttype': Array1d},
@@ -95,10 +100,35 @@ try:
         def isChanged(self, restore_ctrl, restore_widget):
             return restore_ctrl
 
-        def display(self, topics, terms, addr, win, **kwargs):
-            super().display(topics, terms, addr, win, ImageWidget, **kwargs)
+        def set_scene_click_radius(self, r=10):
+            scene = self.widget.view.scene()
+            logger.info('change scene._clickRadius from %d to %d:' % (scene._clickRadius,r))
+            scene.setClickRadius(r)
 
+        def do_something_to_activate_handles(self):
+            """NOTHNG WORKS SO FAR - image object is selected along with handle on mouseClick event.
+            """
+            view = self.widget.view  # pyqtgraph.graphicsItems.ViewBox.ViewBox.ViewBox object
+            #w = view.getViewWidget()  # pyqtgraph.widgets.GraphicsLayoutWidget.GraphicsLayoutWidget
+            #vb = view.graphicsItem()  # pyqtgraph.graphicsItems.ViewBox.ViewBox.ViewBox object
+            #w.update()
+            #print('in set_zoom view:', view)
+            #view.setScale(factor)
+            #view.update()
+            #view.moveBy(100,100)
+            #view.setMouseEnabled(False)
+            #print(w, 'dir(w):', dir(w))
+            #print(vb, 'dir(vb):', dir(vb))
+            #i.setZValue(100)
+
+        def display(self, topics, terms, addr, win, **kwargs):
+            """call-back at click on RoiArch CtrlNode box. Why does it called twise on a single click?
+            """
+            super().display(topics, terms, addr, win, ImageWidget, **kwargs)
+            logger.info('in display - %s' % self.display.__doc__.rstrip())
             if self.widget:
+                self.set_scene_click_radius(r=10)
+                logger.info('create new ArchROI')
                 cx, cy, ro, ri, ao, ai = self.shape_values()
                 width = 4
                 kwargs = {'handlePen': QPen(QBrush(QColor('yellow')), width),
@@ -110,6 +140,8 @@ try:
                 nw = self.widget.parent()
                 if nw:
                     nw.setGeometry(500, 10, 900, 600)
+                    self.do_something_to_activate_handles()
+
             return self.widget
 
         def shape_values(self):
@@ -121,10 +153,12 @@ try:
                     ('center x', 'center y', 'radius o', 'radius i', 'angdeg o', 'angdeg i', 'nbins rad', 'nbins ang')]
 
         def set_values(self, *args, **kwargs):
-            """set self.values/ctrls parameters from roi shape.
+            """call-back-1 on mouse release - set self.values/ctrls from roi shape parameters
             """
+            logger.debug('in set_values - %s' % self.set_values.__doc__.rstrip())
             self.stateGroup.blockSignals(True)
             pos, size, center, rad1, rad2, ang1_deg, ang2_deg, ang1, ang2, p0, p1, p2, p3 = self.roi.shape_parameters()
+
             self.values['center x'] = round(center.x(), 1)
             self.values['center y'] = round(center.y(), 1)
             self.values['radius o'] = round(rad1, 1)
@@ -142,45 +176,23 @@ try:
             self.sigStateChanged.emit(self)
 
         def update(self, *args, **kwargs):
-            """set roi shape from self.values.
+            """call-back-2 on mouse release - set roi shape from self.ctrls[s].values.
             """
             super().update(*args, **kwargs)
+            logger.debug('in update - %s' % self.update.__doc__.rstrip())
 
             if self.widget:
                 cx, cy, ro, ri, ao, ai, nr, na = self.ctrls_values()
                 self.roi.set_shape_parameters(cx, cy, ro, ri, ao, ai)
 
         def to_operation(self, **kwargs):
-
+            """call-back on Apply button.
+            """
+            logger.info('in to_operation - %s' % self.to_operation.__doc__.rstrip())
             cx, cy, ro, ri, ao, ai, nr, na = args = self.ctrls_values()
             logger.info('to_operation cx:%.1f, cy:%.1f, ro:%d, ri:%d, ao:%.1f, ai:%.1f, nr:%d, na:%d' %
                         (cx, cy, ro, ri, ao, ai, nr, na))
-
-            # phkwa = {'cx': cx, 'cy': cy, 'ro': ro, 'ri': ri, 'ao': ao, 'ai': ai, 'nr': nr, 'na': na}
-
-            return gn.Map(name=self.name()+"_operation", **kwargs, func=PolarHistogram(*args))  # **phkwa
-
-        def to_operation_v1(self, **kwargs):
-
-            # self.input_vars() #  {'In': 'tmo_opal1:raw:image'}
-            # self.name() # RoiArch.0
-            # kwargs # {'parent': 'RoiArch.0'}
-            # inputs # {'In': 'tmo_opal1:raw:image'}
-            # outputs # ['RoiArch.0.Out.Angular','RoiArch.0.Out.Radial','RoiArch.0.Out.RadAng','RoiArch.0.Roi_Coordinates']
-
-            cx, cy, ro, ri, ao, ai, nr, na = self.ctrls_values()
-            logger.info('XXX cx:%.1f, cy:%.1f, ro:%d, ri:%d, ao:%.1f, ai:%.1f, nr:%d, na:%d' %
-                        (cx, cy, ro, ri, ao, ai, nr, na))
-
-            def func(img, mask=None):
-                logger.debug('img.shape: %s' % str(img.shape))
-                # if STORE.hpolar is None: IT DOES NOT WORK bcause of func is caching????
-                #    STORE.hpolar = hpolar
-                hpolar = ur.polar_histogram(img.shape, mask, cx, cy, ro, ri, ao, ai, nr, na)
-                logger.info(hpolar.info_attrs())
-                return hpolar.bin_avrg_rad_phi(img, do_transp=True), (ri, ro-ri, ao, ai-ao)
-
-            return gn.Map(name=self.name()+"_operation", **kwargs, func=func)
+            return gn.Map(name=self.name()+"_operation", **kwargs, func=PolarHistogram(*args))
 
 
 except ImportError as e:
