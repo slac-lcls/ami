@@ -941,6 +941,21 @@ class PsanaSource(HierarchicalDataSource):
             self.data_types[group_name] = at.Group
             self.grouped_types[group_name] = det_attr_list
 
+    def _update_scanvars(self, scan_name, var_type, var_names):
+        def safe_access(o, c):
+            for v in o:
+                if v.name() == c:
+                    if var_type == at.ScanMonitorType:
+                        return v.loValue(), v.hiValue()
+                    else:
+                        return v.value()
+
+        for var_key_name in var_names:
+            var_name = self.delimiter.join((scan_name, var_key_name))
+            self.data_types[var_name] = var_type
+            accessor = (safe_access, (var_key_name,), {})
+            self.special_names[var_name] = (scan_name, accessor)
+
     def _update_waveform(self, wf_name, chan_type, num_chans):
         def safe_access(o, c):
             try:
@@ -1032,6 +1047,27 @@ class PsanaSource(HierarchicalDataSource):
                     self._update_waveform(attr_name, at.GenericWfChannel, det_interface.nchannels)
                     # add the overall genericwf type too
                     self.data_types[attr_name] = attr_type
+                elif attr_type in at.ScanTypes:
+                    var_type = None
+                    var_names = None
+                    # set the var_type and var_names based on the type
+                    if attr_type is at.ScanControls:
+                        var_type = at.ScanControlType
+                        var_names = getattr(det_interface, det_xface_name).control_names
+                    elif attr_type is at.ScanMonitors:
+                        var_type = at.ScanMonitorType
+                        var_names = getattr(det_interface, det_xface_name).monitor_names
+                    elif attr_type is at.ScanLabels:
+                        var_type = at.ScanLabelType
+                        var_names = getattr(det_interface, det_xface_name).label_names
+                    else:
+                        logger.debug("DataSrc: unsupported ScanType: %s", attr_type)
+                    # if var_type is not None then update the scan vars
+                    if var_type is not None:
+                        # update the individual scan variables
+                        self._update_scanvars(attr_name, var_type, var_names)
+                        # add the overall scan variable type too
+                        self.data_types[attr_name] = attr_type
                 else:
                     self.data_types[attr_name] = attr_type
 

@@ -213,6 +213,11 @@ def register_env_interface(dettype, interface):
 
 
 @export
+def register_raw_interface(dettype, interface):
+    RAW_INTERFACES[dettype] = interface
+
+
+@export
 def detector_factory(name, env, *args, **kwargs):
     src = decode(name)
     dettype = lookup_dettype(src, env, *args, **kwargs)

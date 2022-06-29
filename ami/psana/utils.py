@@ -31,8 +31,16 @@ def is_boost_function(obj):
     return is_boost(obj, 'function')
 
 
+def is_hidden(obj):
+    return obj.__name__.startswith('_')
+
+
 def is_valid(obj):
-    return not obj.__name__.startswith('_') and obj.__doc__ is not None
+    return not is_hidden(obj) and obj.__doc__ is not None
+
+
+def get_methods(obj):
+    return inspect.getmembers(obj, lambda x: inspect.ismethod(x) and not is_hidden(x))
 
 
 def get_boost_methods(obj):

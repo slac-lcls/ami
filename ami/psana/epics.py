@@ -1,5 +1,5 @@
 import psana
-import amitypes
+import typing
 from Detector import PyDetector
 from .detector import register_env_interface
 from .utils import export, Extender
