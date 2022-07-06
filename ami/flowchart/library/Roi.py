@@ -83,7 +83,7 @@ try:
         def __init__(self, name):
             super().__init__(name,
                              terminals={'image': {'io': 'in', 'ttype': Array2d},
-                                        # 'mask': {'io': 'in', 'ttype': Array2d},
+                                        #'mask': {'io': 'in', 'ttype': Array2d, 'optional': True},
                                         'RBinCent': {'io': 'out', 'ttype': Array1d},
                                         'ABinCent': {'io': 'out', 'ttype': Array1d},
                                         'RBinEdges': {'io': 'out', 'ttype': Array1d},
@@ -185,14 +185,14 @@ try:
                 cx, cy, ro, ri, ao, ai, nr, na = self.ctrls_values()
                 self.roi.set_shape_parameters(cx, cy, ro, ri, ao, ai)
 
-        def to_operation(self, **kwargs):
+        def to_operation(self, inputs, outputs, **kwargs):
             """call-back on Apply button.
             """
             logger.info('in to_operation - %s' % self.to_operation.__doc__.rstrip())
             cx, cy, ro, ri, ao, ai, nr, na = args = self.ctrls_values()
             logger.info('to_operation cx:%.1f, cy:%.1f, ro:%d, ri:%d, ao:%.1f, ai:%.1f, nr:%d, na:%d' %
                         (cx, cy, ro, ri, ao, ai, nr, na))
-            return gn.Map(name=self.name()+"_operation", **kwargs, func=PolarHistogram(*args))
+            return gn.Map(name=self.name()+"_operation", inputs=inputs, outputs=outputs, func=PolarHistogram(*args), **kwargs)
 
 
 except ImportError as e:
