@@ -807,62 +807,57 @@ class HierarchicalDataSource(Source):
         self._counter = None
         time.sleep(self.init_time)
 
-        while self.repeat:
-            for run in self._runs():
-                self.source.run = run
-                self.source.key += 1
-                # reset the step count to zero
-                self.step_count = 0
-                # clear type info from previous runs
-                self.data_types = {}
-                self.special_types = {}
-                self.grouped_types = {}
-                # call the subclasses update function then emit the configure message
-                self._update(run)
-                yield self.configure()
+        for run in self._runs():
+            self.source.run = run
+            self.source.key += 1
+            # reset the step count to zero
+            self.step_count = 0
+            # clear type info from previous runs
+            self.data_types = {}
+            self.special_types = {}
+            self.grouped_types = {}
+            # call the subclasses update function then emit the configure message
+            self._update(run)
+            yield self.configure()
 
-                # loop over the steps in the run (if any)
-                for step in self._steps(run):
-                    # add the step to the source
-                    self.source.step = step
-                    # if the run has more than one step increase the source key
-                    if self.step_count > 0:
-                        self.source.key += 1
-                    # emit the beginstep message
-                    yield self.begin_step()
+            # loop over the steps in the run (if any)
+            for step in self._steps(run):
+                # add the step to the source
+                self.source.step = step
+                # if the run has more than one step increase the source key
+                if self.step_count > 0:
+                    self.source.key += 1
+                # emit the beginstep message
+                yield self.begin_step()
 
-                    # loop over the events in the step
-                    for evt in self._events(step):
-                        self.source.evt = evt
-                        # get the subclasses timestamp implementation
-                        eventid, heartbeat, unix_ts = self.timestamp(evt)
-                        # check the heartbeat
-                        if self.check_heartbeat_boundary(heartbeat, timestamp=unix_ts):
-                            yield self.heartbeat_msg()
+                # loop over the events in the step
+                for evt in self._events(step):
+                    self.source.evt = evt
+                    # get the subclasses timestamp implementation
+                    eventid, heartbeat, unix_ts = self.timestamp(evt)
+                    # check the heartbeat
+                    if self.check_heartbeat_boundary(heartbeat, timestamp=unix_ts):
+                        yield self.heartbeat_msg()
 
-                        # emit the processed event data
-                        yield from self.event(eventid, unix_ts, self._process(evt))
-                        time.sleep(self.interval)
-                        # remove reference to evt object
-                        self.source.evt = None
+                    # emit the processed event data
+                    yield from self.event(eventid, unix_ts, self._process(evt))
+                    time.sleep(self.interval)
+                    # remove reference to evt object
+                    self.source.evt = None
 
-                    # emit the endstep message
-                    yield self.end_step()
-                    # remove reference to step object
-                    self.source.step = None
-                    # increase the step count
-                    self.step_count += 1
+                # emit the endstep message
+                yield self.end_step()
+                # remove reference to step object
+                self.source.step = None
+                # increase the step count
+                self.step_count += 1
 
-                # signal that the run has ended
-                yield self.unconfigure()
-                # remove reference to run object
-                self.source.run = None
-                # call the subclass cleanup method
-                self._cleanup()
-            # To avoid reconnecting to the previous shmem server (which is
-            # being destroyed), hold off attempting to connect again
-            time.sleep(1)
-
+            # signal that the run has ended
+            yield self.unconfigure()
+            # remove reference to run object
+            self.source.run = None
+            # call the subclass cleanup method
+            self._cleanup()
 
 class PsanaSource(HierarchicalDataSource):
     def __init__(self, idnum, num_workers, heartbeat_period, src_cfg, flags=None):
@@ -997,6 +992,7 @@ class PsanaSource(HierarchicalDataSource):
                     self.special_names[chan_name] = (hsd_name, accessor)
 
     def _update(self, run):
+        print("DEBUG: Running update")
         self.detectors = {}
         self.env_detectors = set()
         self.special_names = {}
