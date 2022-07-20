@@ -13,7 +13,6 @@ try:
     import logging
     logger = logging.getLogger(__name__)
     import ami.flowchart.library.UtilsROI as ur
-    #info_ndarr = ur.hp.info_ndarr
     from psana.pyalgos.generic.NDArrUtils import info_ndarr
     QPen, QBrush, QColor = ur.QPen, ur.QBrush, ur.QColor
 
@@ -83,6 +82,7 @@ try:
         def __init__(self, name):
             super().__init__(name,
                              terminals={'image': {'io': 'in', 'ttype': Array2d},
+                                        'mask': {'io': 'in', 'ttype': Array2d, 'removable': True},
                                         #'mask': {'io': 'in', 'ttype': Array2d, 'optional': True},
                                         'RBinCent': {'io': 'out', 'ttype': Array1d},
                                         'ABinCent': {'io': 'out', 'ttype': Array1d},
