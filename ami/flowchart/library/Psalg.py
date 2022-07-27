@@ -1,5 +1,5 @@
 from pyqtgraph.Qt import QtGui, QtWidgets
-from amitypes import DataSource, Detector, Array1d, Array2d
+from amitypes import DataSource, Detector, Array1d, Array2d, Array3d
 from ami.flowchart.Node import Node, NodeGraphicsItem
 from ami.flowchart.Units import ureg
 from ami.flowchart.library.common import CtrlNode
@@ -479,6 +479,152 @@ try:
 
         def to_operation(self, **kwargs):
             return gn.Map(name=self.name()+"_operation", **kwargs, func=EdgeFinderProc({}))
+
+except ImportError as e:
+    print(e)
+
+
+try:
+    import logging
+    logger = logging.getLogger(__name__)
+    from psana.detector.mask_algos import MaskAlgos
+    from psana.detector.NDArrUtils import info_ndarr
+    from psana.pscalib.calib.NDArrIO import load_txt
+    from ami.flowchart.library.DisplayWidgets import ImageWidget
+
+    class MaskProd():
+
+        def __init__(self, **kwa):
+            logger.info('MaskProd.__init__ kwa: %s' % str(kwa))
+            self.calibconsts = kwa.pop('calibconsts', {})
+            self.kwa = kwa
+            self.mask = None  # np.nan
+
+        def __call__(self, calib):
+            """ is called freq ~1Hz
+            """
+            logger.debug('MaskProd.__call__ : %s' % self.__call__.__doc__.rstrip())
+
+            if self.calibconsts.keys() != calib.keys():
+                self.calibconsts = calib
+
+                logger.info('MaskProd.__call__: calibconsts.keys(): %s' % str(self.calibconsts.keys()))
+                data_and_meta = self.calibconsts.get('pixel_status', None)
+                self.data, self.meta = (np.nan, None) if data_and_meta is None else data_and_meta
+                logger.debug('pixel_status meta: %s' % str(self.meta))
+                logger.debug('pixel_status data: %s' % str(self.data))
+
+                o = MaskAlgos(self.calibconsts)
+                logger.info('MaskProd.__call__: create mask_comb with pars: %s' % str(self.kwa))
+                self.mask = o.mask_comb(**self.kwa)
+                logger.debug(info_ndarr(self.mask, 'mask_comb:'))
+
+            return (None, None) if self.mask is None else\
+                   (self.mask, None) if self.mask.ndim == 2 else\
+                   (None, self.mask) if self.mask.ndim == 3 else\
+                   (None, None)
+
+    class Mask(CtrlNode):
+        """ psana Mask """
+        nodeName = "Mask"
+
+        uiTemplate = [
+            ('status', 'check', {'checked': True, 'group': 'Mask from status'}),
+            ('status_bits', 'intSpin', {'value': 511, 'group': 'Mask from status'}),
+            ('gain_range_inds', 'text', {'value': '0,1,2,3,4', 'group': 'Mask from status'}),
+            ('neighbors', 'check', {'checked': False, 'group': 'Mask of neighbors'}),
+            ('rad', 'intSpin', {'value': 5, 'min': 1, 'group': 'Mask of neighbors'}),
+            ('ptrn', 'combo', {'values': ['r', 'c', 's'], 'group': 'Mask of neighbors'}),
+            ('edges', 'check', {'checked': False, 'group': 'Mask of segment edges'}),
+            ('width', 'intSpin', {'value': 0, 'min': 0, 'group': 'Mask of segment edges'}),
+            ('edge_rows', 'intSpin', {'value': 1, 'min': 0, 'group': 'Mask of segment edges'}),
+            ('edge_cols', 'intSpin', {'value': 1, 'min': 0, 'group': 'Mask of segment edges'}),
+            ('center', 'check', {'checked': False, 'group': 'Mask of segment central rows/columns'}),
+            ('wcenter', 'intSpin', {'value': 0, 'min': 0, 'group': 'Mask of segment central rows/columns'}),
+            ('center_rows', 'intSpin', {'value': 1, 'min': 0, 'group': 'Mask of segment central rows/columns'}),
+            ('center_cols', 'intSpin', {'value': 1, 'min': 0, 'group': 'Mask of segment central rows/columns'}),
+            ('calib', 'check', {'checked': False, 'group': 'Mask from pixel_mask'}),
+            ('umask', 'text', {'value': '', 'group': 'Users mask from file'}),
+        ]
+
+        def __init__(self, name):
+            """class constructor - called at droppong CtrlNode on flowchart'.
+            """
+            super().__init__(name, terminals={'calibconst': {'io': 'in', 'ttype': typing.Dict},
+                                              'Mask': {'io': 'out', 'ttype': Array2d},
+                                              'Mask3D': {'io': 'out', 'ttype': Array3d}})
+            logger.info('__init__: %s' % self.__init__.__doc__.rstrip()
+                        + '\ndict_mask_pars_from_values: %s' % str(self.dict_mask_pars_from_values()))
+
+        def display_v0(self, topics, terms, addr, win, **kwargs):
+            """call-back at click on Mask CtrlNode box.
+            """
+            logger.info('in display')
+            super().display(topics, terms, addr, win, ImageWidget, **kwargs)
+            logger.debug('in display - %s' % self.display.__doc__.rstrip())
+            if self.widget:
+                logger.debug('TBD - create new Mask')
+            return self.widget
+
+        def dict_mask_pars_from_values(self):
+            """self.values {
+            'Mask from status': {'status': True, 'status_bits': 511, 'gain_range_inds': '0,1,2,3,4'},
+            'Mask of neighbors': {'neighbors': False, 'rad': 5, 'ptrn': None},
+            'Mask of segment edges': {'edges': False, 'width': 0, 'edge_rows': 1, 'edge_cols': 1},
+            'Mask of segment central rows/columns': {'center': False, 'wcenter': 0, 'center_rows': 1, 'center_cols': 1},
+            'Mask from pixel_mask': {'calib': False},
+            'Users mask from file': {'umask': ''}}
+            """
+            d = {}
+            for v in self.values.values():
+                if not isinstance(v, dict):
+                    continue
+                d.update(v)
+
+            k = 'gain_range_inds'
+            if k in d.keys():
+                d[k] = [int(v) for v in d[k].split(',')]
+
+            k = 'umask'
+            logger.debug('umask:', d[k])
+            if k in d.keys():
+                fname = str(d[k])
+                ext = fname.split('.')[-1]
+                d[k] = np.loadtxt(fname) if fname and ext == 'npy' else\
+                    load_txt(fname) if fname and ext in ('data', 'dat', 'text', 'txt') else\
+                    None
+            return d
+
+        def to_operation(self, **kwargs):
+            logger.debug('to_operation - at click on Apply')
+            pars = {'calibconsts': {}}
+            pars.update(self.dict_mask_pars_from_values())
+            return gn.Map(name=self.name()+"_operation", **kwargs, func=MaskProd(**pars))
+
+            """self.ctrls: {
+            'Mask from status': {'groupbox': <PyQt5.QtWidgets.QGroupBox object at 0x7fbf594137d0>,
+                                 'status': <PyQt5.QtWidgets.QCheckBox object at 0x7fbf59413910>,
+                                 'status_bits': <PyQt5.QtWidgets.QSpinBox object at 0x7fbf594139b0>,
+                                 'gain_range_inds': <PyQt5.QtWidgets.QLineEdit object at 0x7fbf59413a50>},
+            'Mask of neighbors': {'groupbox': <PyQt5.QtWidgets.QGroupBox object at 0x7fbf59413af0>,
+                                 'neighbors': <PyQt5.QtWidgets.QCheckBox object at 0x7fbf59413c30>,
+                                 'rad': <PyQt5.QtWidgets.QSpinBox object at 0x7fbf59413cd0>,
+                                 'ptrn': <PyQt5.QtWidgets.QComboBox object at 0x7fbf59413d70>},
+            'Mask of segment edges': {'groupbox': <PyQt5.QtWidgets.QGroupBox object at 0x7fbf59413e10>,
+                                 'edges': <PyQt5.QtWidgets.QCheckBox object at 0x7fbf59413f50>,
+                                 'width': <PyQt5.QtWidgets.QSpinBox object at 0x7fbf59419050>,
+                                 'edge_rows': <PyQt5.QtWidgets.QSpinBox object at 0x7fbf594190f0>,
+                                 'edge_cols': <PyQt5.QtWidgets.QSpinBox object at 0x7fbf59419190>},
+            'Mask of segment central rows/columns': {'groupbox': <PyQt5.QtWidgets.QGroupBox object at 0x7fbf59419230>,
+                                 'center': <PyQt5.QtWidgets.QCheckBox object at 0x7fbf59419370>,
+                                 'wcenter': <PyQt5.QtWidgets.QSpinBox object at 0x7fbf59419410>,
+                                 'center_rows': <PyQt5.QtWidgets.QSpinBox object at 0x7fbf594194b0>,
+                                 'center_cols': <PyQt5.QtWidgets.QSpinBox object at 0x7fbf59419550>},
+            'Mask from pixel_mask': {'groupbox': <PyQt5.QtWidgets.QGroupBox object at 0x7fbf594195f0>,
+                                 'calib': <PyQt5.QtWidgets.QCheckBox object at 0x7fbf59419730>},
+            'Users mask from file': {'groupbox': <PyQt5.QtWidgets.QGroupBox object at 0x7fbf594197d0>,
+                                                 'umask': <PyQt5.QtWidgets.QLineEdit object at 0x7fbf59419910>}}
+            """
 
 except ImportError as e:
     print(e)
