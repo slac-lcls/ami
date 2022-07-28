@@ -859,6 +859,7 @@ class HierarchicalDataSource(Source):
             # call the subclass cleanup method
             self._cleanup()
 
+
 class PsanaSource(HierarchicalDataSource):
     def __init__(self, idnum, num_workers, heartbeat_period, src_cfg, flags=None):
         super().__init__(idnum, num_workers, heartbeat_period, src_cfg, flags)
