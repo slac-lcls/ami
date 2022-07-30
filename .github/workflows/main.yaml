@@ -36,7 +36,7 @@ jobs:
         run: |
           source "$HOME/miniconda/etc/profile.d/conda.sh"
           conda activate myrel
-	  # cpo commented out macos tests until we have time to fix. july 29, 2022.
+          # cpo commented out macos tests until we have time to fix. july 29, 2022.
           #pytest
 
   run-tests-linux:
