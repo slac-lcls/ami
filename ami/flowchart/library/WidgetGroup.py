@@ -7,7 +7,6 @@ Distributed under MIT/X11 license. See license.txt for more information.
 This class addresses the problem of having to save and restore the state
 of a large group of widgets.
 """
-
 from pyqtgraph.Qt import QtCore, QtGui, QtWidgets
 from pyqtgraph.widgets.ColorButton import ColorButton
 from pyqtgraph.widgets.SpinBox import SpinBox
@@ -16,6 +15,9 @@ import inspect
 import re
 import numpy as np
 
+import os
+import logging
+logger = logging.getLogger(__name__)
 
 __all__ = ['WidgetGroup']
 
@@ -107,6 +109,9 @@ class WidgetGroup(QtCore.QObject):
         QtGui.QSlider: (lambda w: w.valueChanged,
                         QtGui.QSlider.value,
                         QtGui.QSlider.setValue),
+        # PushButtonSelectFile: (lambda w: w.path_is_changed,
+        #                       PushButtonSelectFile.fname,
+        #                       PushButtonSelectFile.set_fname),
     }
 
     sigChanged = QtCore.Signal(object, object, object)
@@ -156,6 +161,7 @@ class WidgetGroup(QtCore.QObject):
         self.scales[w] = scale
         self.readWidget(w)
 
+        logger.debug('WidgetGroup.addWidget for type=%s' % (str(type(w))))
         if type(w) in WidgetGroup.classes:
             signal = WidgetGroup.classes[type(w)][0]
         else:
@@ -180,6 +186,7 @@ class WidgetGroup(QtCore.QObject):
 
     def interface(self, obj):
         t = type(obj)
+        logger.debug('WidgetGroup.interface for type %s' % str(t))
         if t in WidgetGroup.classes:
             return WidgetGroup.classes[t]
         else:
@@ -224,6 +231,7 @@ class WidgetGroup(QtCore.QObject):
             n, g = n
 
         val = self.readWidget(w)
+        logger.debug('WidgetGroup.widgetChanged for type %s  args=%s  val=%s' % (str(type(w)), str(args), str(val)))
         self.sigChanged.emit(n, g, val)
 
     def state(self):
@@ -250,6 +258,7 @@ class WidgetGroup(QtCore.QObject):
                 self.setWidget(w, v)
 
     def readWidget(self, w):
+        logger.debug('WidgetGroup.readWidget for type %s' % str(type(w)))
         if type(w) in WidgetGroup.classes:
             getFunc = WidgetGroup.classes[type(w)][1]
         else:
@@ -276,12 +285,16 @@ class WidgetGroup(QtCore.QObject):
             self.cache[g][n] = val
         else:
             self.cache[n] = val
+
+        logger.debug('WidgetGroup.readWidget name: %s  val: %s' % (str(n), str(val)))
+
         return val
 
     def setWidget(self, w, v):
         if self.scales[w] is not None:
             v *= self.scales[w]
 
+        logger.debug('WidgetGroup.setWidget for type=%s value=%s' % (str(type(w)), str(v)))
         if type(w) in WidgetGroup.classes:
             setFunc = WidgetGroup.classes[type(w)][2]
         else:
@@ -291,8 +304,10 @@ class WidgetGroup(QtCore.QObject):
         # then just call the method directly. Otherwise, pass in the widget as the first arg
         # to the function.
         if inspect.ismethod(setFunc) and setFunc.__self__ is not None:
+            logger.debug('WidgetGroup.setWidget setFunc(v) v: "%s"' % str(v))
             setFunc(v)
         else:
+            logger.debug('WidgetGroup.setWidget setFunc(w, v)')
             setFunc(w, v)
 
 
@@ -360,6 +375,69 @@ class ScientificDoubleSpinBox(QtGui.QDoubleSpinBox):
         return (lambda w: w.valueChanged,
                 QtGui.QDoubleSpinBox.value,
                 QtGui.QDoubleSpinBox.setValue)
+
+
+class PushButtonSelectFile(QtGui.QPushButton):
+    path_is_changed = QtCore.pyqtSignal()  # ('QString')
+
+    def __init__(self, *args,
+                 parent=None,
+                 path='select',
+                 mode='r',
+                 fltr='*.text *.txt *.data *.dat\n *', **kwargs):
+        super().__init__(path, parent=parent)
+        self.mode = mode
+        self.fltr = fltr
+        self.setToolTip('Click on button and select file')
+        self.setMinimumWidth(500)
+        # self.setTextInteractionFlags(Qt.TextSelectableByMouse)
+        self.clicked.connect(self.on_but)
+        logging.debug('PushButtonSelectFile.__init__ for path %s' % path)
+
+    def on_but(self):
+        logger.info('PushButtonSelectFileemit.on_but %s' % self.text())
+        path_old = self.fname()
+
+        resp = QtWidgets.QFileDialog.getSaveFileName(None, 'Output file', path_old, filter=self.fltr)\
+            if self.mode == 'w' else\
+            QtWidgets.QFileDialog.getOpenFileName(None, 'Input file', path_old, filter=self.fltr)
+
+        logger.debug('response: %s len=%d' % (resp, len(resp)))
+
+        path, filt = resp
+        dname, fname = os.path.split(path)
+
+        if self.mode == 'r' and not os.path.exists(path):
+            logger.info('pass does not exist: %s' % path)
+            return
+
+        elif dname == '' or fname == '':
+            logger.info('input directiry name "%s" or file name "%s" is empty... use default values' % (dname, fname))
+            return
+
+        elif path == path_old:
+            logger.info('path has not been changed: %s' % str(path))
+            return
+
+        else:
+            self.set_fname(path)
+            logger.info('PushButtonSelectFileemit.on_but signal for selected file: %s' % path)
+            self.path_is_changed.emit()
+
+    def fname(self):
+        return str(self.text())
+
+    def set_fname(self, s=None):
+        logging.info('PushButtonSelectFile.set_fname: %s' % str(s))
+        if s is None:
+            return
+        self.setText(str(s))
+
+    def widgetGroupInterface(self):
+        logging.info('PushButtonSelectFile.widgetGroupInterface fname: %s' % self.fname())
+        return (lambda w: w.path_is_changed,
+                self.fname,
+                self.set_fname)
 
 
 def generateUi(opts):
@@ -459,6 +537,16 @@ def generateUi(opts):
                 w.setPlaceholderText(o['placeholder'])
             if 'value' in o:
                 w.setText(o['value'])
+        elif t == 'file_in':
+            w = PushButtonSelectFile(parent=parent, mode='r')
+            logger.info('file_in widget: %s' % str(w))
+            if 'value' in o:
+                w.set_fname(o['value'])
+        elif t == 'file_out':
+            w = PushButtonSelectFile(parent=parent, mode='w')
+            logger.info('file_out widget: %s' % str(w))
+            if 'value' in o:
+                w.set_fname(o['value'])
         else:
             raise Exception("Unknown widget type '%s'" % str(t))
 
