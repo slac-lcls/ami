@@ -490,7 +490,7 @@ try:
     from psana.detector.mask_algos import MaskAlgos
     from psana.detector.NDArrUtils import info_ndarr
     from psana.pscalib.calib.NDArrIO import load_txt
-    from ami.flowchart.library.DisplayWidgets import ImageWidget
+    # from ami.flowchart.library.DisplayWidgets import ImageWidget
 
     class MaskProd():
 
@@ -501,7 +501,7 @@ try:
             self.mask = None  # np.nan
 
         def __call__(self, calib):
-            """ is called freq ~1Hz
+            """ call frequency ~1Hz
             """
             logger.debug('MaskProd.__call__ : %s' % self.__call__.__doc__.rstrip())
 
@@ -556,16 +556,6 @@ try:
             logger.info('__init__: %s' % self.__init__.__doc__.rstrip()
                         + '\ndict_mask_pars_from_values: %s' % str(self.dict_mask_pars_from_values()))
 
-        def display_v0(self, topics, terms, addr, win, **kwargs):
-            """call-back at click on Mask CtrlNode box.
-            """
-            logger.info('in display')
-            super().display(topics, terms, addr, win, ImageWidget, **kwargs)
-            logger.debug('in display - %s' % self.display.__doc__.rstrip())
-            if self.widget:
-                logger.debug('TBD - create new Mask')
-            return self.widget
-
         def dict_mask_pars_from_values(self):
             """self.values {
             'Mask from status': {'status': True, 'status_bits': 511, 'gain_range_inds': '0,1,2,3,4'},
@@ -586,7 +576,7 @@ try:
                 d[k] = [int(v) for v in d[k].split(',')]
 
             k = 'umask'
-            logger.debug('umask:', d[k])
+            logger.debug('umask: %s' % d[k])
             if k in d.keys():
                 fname = str(d[k])
                 ext = fname.split('.')[-1]
@@ -601,30 +591,119 @@ try:
             pars.update(self.dict_mask_pars_from_values())
             return gn.Map(name=self.name()+"_operation", **kwargs, func=MaskProd(**pars))
 
-            """self.ctrls: {
-            'Mask from status': {'groupbox': <PyQt5.QtWidgets.QGroupBox object at 0x7fbf594137d0>,
-                                 'status': <PyQt5.QtWidgets.QCheckBox object at 0x7fbf59413910>,
-                                 'status_bits': <PyQt5.QtWidgets.QSpinBox object at 0x7fbf594139b0>,
-                                 'gain_range_inds': <PyQt5.QtWidgets.QLineEdit object at 0x7fbf59413a50>},
-            'Mask of neighbors': {'groupbox': <PyQt5.QtWidgets.QGroupBox object at 0x7fbf59413af0>,
-                                 'neighbors': <PyQt5.QtWidgets.QCheckBox object at 0x7fbf59413c30>,
-                                 'rad': <PyQt5.QtWidgets.QSpinBox object at 0x7fbf59413cd0>,
-                                 'ptrn': <PyQt5.QtWidgets.QComboBox object at 0x7fbf59413d70>},
-            'Mask of segment edges': {'groupbox': <PyQt5.QtWidgets.QGroupBox object at 0x7fbf59413e10>,
-                                 'edges': <PyQt5.QtWidgets.QCheckBox object at 0x7fbf59413f50>,
-                                 'width': <PyQt5.QtWidgets.QSpinBox object at 0x7fbf59419050>,
-                                 'edge_rows': <PyQt5.QtWidgets.QSpinBox object at 0x7fbf594190f0>,
-                                 'edge_cols': <PyQt5.QtWidgets.QSpinBox object at 0x7fbf59419190>},
-            'Mask of segment central rows/columns': {'groupbox': <PyQt5.QtWidgets.QGroupBox object at 0x7fbf59419230>,
-                                 'center': <PyQt5.QtWidgets.QCheckBox object at 0x7fbf59419370>,
-                                 'wcenter': <PyQt5.QtWidgets.QSpinBox object at 0x7fbf59419410>,
-                                 'center_rows': <PyQt5.QtWidgets.QSpinBox object at 0x7fbf594194b0>,
-                                 'center_cols': <PyQt5.QtWidgets.QSpinBox object at 0x7fbf59419550>},
-            'Mask from pixel_mask': {'groupbox': <PyQt5.QtWidgets.QGroupBox object at 0x7fbf594195f0>,
-                                 'calib': <PyQt5.QtWidgets.QCheckBox object at 0x7fbf59419730>},
-            'Users mask from file': {'groupbox': <PyQt5.QtWidgets.QGroupBox object at 0x7fbf594197d0>,
-                                                 'umask': <PyQt5.QtWidgets.QLineEdit object at 0x7fbf59419910>}}
+except ImportError as e:
+    print(e)
+
+
+try:
+    import logging
+    logger = logging.getLogger(__name__)
+    from psana.pscalib.geometry.GeometryAccess import GeometryAccess, img_from_pixel_arrays
+    import os
+
+    class GeometryProd():
+
+        def __init__(self, **kwa):
+            logger.info('GeometryProd.__init__ kwa: %s' % str(kwa))
+            self.calibconsts = kwa.pop('calibconsts', {})
+            self.kwa = kwa
+            self.geofname = None
+            self.resp = (None, None, None, None, None, None)
+
+        def __call__(self, calib, arr=None):
+            """ called frequency ~1 Hz
             """
+            # logger.debug('GeometryProd.__call__ : %s' % self.__call__.__doc__.rstrip())
+            logger.debug('GeometryProd.kwa: %s' % str(self.kwa))
+
+            self.do_load_geo = 0
+
+            geofname = self.kwa.get('geofname', '')
+            if geofname and (geofname != self.geofname):
+                self.geofname = geofname
+                if os.path.exists(geofname):
+                    self.do_load_geo = 1
+                    logger.info('GeometryProd.__call__ load geometry from file "%s"' % geofname)
+
+            elif self.calibconsts.keys() != calib.keys():
+                self.calibconsts = calib
+                self.do_load_geo = 2
+
+                logger.info('GeometryProd.__call__: calibconsts.keys(): %s' % str(self.calibconsts.keys()))
+                data_and_meta = self.calibconsts.get('geometry', None)
+                self.data, self.meta = (None, None) if data_and_meta is None else data_and_meta
+                logger.info('geometry meta: %s' % str(self.meta))
+                logger.info('geometry data: %s' % str(self.data))
+                logger.info('GeometryProd.kwa: %s' % str(self.kwa))
+
+            if self.do_load_geo > 0:  # =0 - do not load, =1 - from file, =2 - from DB
+                o = GeometryAccess()
+                if self.do_load_geo == 1:
+                    o.load_pars_from_file(self.geofname)
+                if self.do_load_geo == 2:
+                    o.load_pars_from_str(self.data)
+                x, y, z = o.get_pixel_coords()
+                ix, iy = o.get_pixel_coord_indexes()
+                logger.info('\n  %s\n  %s\n  %s\n  %s' %
+                            (info_ndarr(ix, 'ix:'),
+                             info_ndarr(iy, 'iy:'),
+                             info_ndarr(x, 'x:'),
+                             info_ndarr(y, 'y:')))
+
+                img = None if arr is None else\
+                    img_from_pixel_arrays(ix.ravel(), iy.ravel(), W=arr.ravel())  # dtype=np.float32, vbase=0
+                self.resp = (ix, iy, x, y, z, img)
+                self.do_load_geo = 0
+
+            return self.resp
+
+    class Geometry(CtrlNode):
+        """ psana Geometry """
+        nodeName = "Geometry"
+
+        uiTemplate = [
+            ('geofname', 'file_in', {'value': 'select'}),
+            # ('fname', 'text', {'value': '', 'group': 'Geometry file'}),
+            # ('brush', 'color', {'value': (255, 0, 0, 100)})
+        ]
+
+        def __init__(self, name):
+            """class constructor - called at droppong CtrlNode on flowchart'.
+            """
+            super().__init__(name, terminals={'calibcons': {'io': 'in', 'ttype': typing.Dict},
+                                              'arr3d':    {'io': 'in', 'ttype': Array3d, 'removable': True},
+                                              'inds_ix':  {'io': 'out', 'ttype': Array1d},
+                                              'inds_iy':  {'io': 'out', 'ttype': Array1d},
+                                              'coords_x': {'io': 'out', 'ttype': Array1d},
+                                              'coords_y': {'io': 'out', 'ttype': Array1d},
+                                              'coords_z': {'io': 'out', 'ttype': Array1d},
+                                              'image':    {'io': 'out', 'ttype': Array2d}})
+
+            logger.info('Geometry.__init__: %s' % self.__init__.__doc__.rstrip())
+            _ = self.dict_geometry_pars_from_values()  # just to print content of issue
+
+        def dict_geometry_pars_from_values(self):
+            """ due to some iunidentified bug in WidgetGroups self.values are not updated.
+                As a way around grub status of the PushButtonSelectFile directly from
+                self.ctrls['geofname'] = PushButtonSelectFile
+            """
+            logger.info('Geometry.dict_geometry_pars_from_values self.values: %s' % str(self.values))
+
+            w = self.ctrls.get('geofname', None)  # PushButtonSelectFile
+            fname = w.fname() if w is not None else ''
+            if fname == 'select':
+                fname = ''
+            d = {'geofname': fname}
+            # 'fname': self.values['fname'],
+            # 'geofname': self.values['geofname'],
+            logger.info('Geometry.dict_geometry_pars_from_values returns dict: %s' % str(d))
+            return d
+
+        def to_operation(self, **kwargs):
+            logger.info('Geometry.to_operation - at click on Apply')
+            pars = {'calibconsts': {}}
+            pars.update(self.dict_geometry_pars_from_values())
+            return gn.Map(name=self.name()+"_operation", **kwargs, func=GeometryProd(**pars))
 
 except ImportError as e:
     print(e)
