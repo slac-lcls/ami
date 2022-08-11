@@ -544,7 +544,8 @@ try:
             ('center_rows', 'intSpin', {'value': 1, 'min': 0, 'group': 'Mask of segment central rows/columns'}),
             ('center_cols', 'intSpin', {'value': 1, 'min': 0, 'group': 'Mask of segment central rows/columns'}),
             ('calib', 'check', {'checked': False, 'group': 'Mask from pixel_mask'}),
-            ('umask', 'text', {'value': '', 'group': 'Users mask from file'}),
+            ('umask', 'file_in', {'value': 'select', 'group': 'Users mask from file'}),
+            # ('umask', 'text', {'value': '', 'group': 'Users mask from file'}),
         ]
 
         def __init__(self, name):
@@ -555,6 +556,14 @@ try:
                                               'Mask3D': {'io': 'out', 'ttype': Array3d}})
             logger.info('__init__: %s' % self.__init__.__doc__.rstrip()
                         + '\ndict_mask_pars_from_values: %s' % str(self.dict_mask_pars_from_values()))
+
+        def umask_from_ctrls(self):
+            logger.debug('self.ctrls: %s' % str(self.ctrls))
+            w = self.ctrls['Users mask from file'].get('umask', None)  # expected PushButtonSelectFile
+            fname = w.fname() if w is not None else ''
+            if fname == 'select':
+                fname = ''
+            return fname
 
         def dict_mask_pars_from_values(self):
             """self.values {
@@ -575,14 +584,31 @@ try:
             if k in d.keys():
                 d[k] = [int(v) for v in d[k].split(',')]
 
+#            k = 'umask'
+#            if k in d.keys():
+#                fname = str(d[k])
+#                ext = fname.split('.')[-1]
+#                d[k] = np.loadtxt(fname) if fname and ext == 'npy' else\
+#                    load_txt(fname) if fname and ext in ('data', 'dat', 'text', 'txt') else\
+#                    None
+
             k = 'umask'
-            logger.debug('umask: %s' % d[k])
-            if k in d.keys():
-                fname = str(d[k])
-                ext = fname.split('.')[-1]
-                d[k] = np.loadtxt(fname) if fname and ext == 'npy' else\
-                    load_txt(fname) if fname and ext in ('data', 'dat', 'text', 'txt') else\
-                    None
+            fname = self.umask_from_ctrls()
+            logger.info('umask file name: %s' % str(fname))
+            ext = fname.split('.')[-1]
+
+            try:
+                d[k] = np.load(fname) if fname and ext == 'npy' else\
+                   load_txt(fname) if fname and ext in ('data', 'dat', 'text', 'txt') else\
+                   None
+
+            except Exception as e:
+                logger.debug('Exception: %s' % str(e))
+                logger.warning('can not load umask file: %s' % str(fname))
+                d[k] = None
+
+            logger.info(info_ndarr(d[k], k))
+
             return d
 
         def to_operation(self, **kwargs):
