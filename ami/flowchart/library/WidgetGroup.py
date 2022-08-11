@@ -538,12 +538,12 @@ def generateUi(opts):
             if 'value' in o:
                 w.setText(o['value'])
         elif t == 'file_in':
-            w = PushButtonSelectFile(parent=parent, mode='r')
+            w = PushButtonSelectFile(parent=parent, mode='r', fltr='*.text *.txt *.data *.dat *.npy\n *')
             logger.info('file_in widget: %s' % str(w))
             if 'value' in o:
                 w.set_fname(o['value'])
         elif t == 'file_out':
-            w = PushButtonSelectFile(parent=parent, mode='w')
+            w = PushButtonSelectFile(parent=parent, mode='w', fltr='*.text *.txt *.data *.dat *.npy\n *')
             logger.info('file_out widget: %s' % str(w))
             if 'value' in o:
                 w.set_fname(o['value'])
