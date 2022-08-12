@@ -342,7 +342,7 @@ class FilterWidget(QtWidgets.QWidget):
 
 
 def gen_filter_func(values, inputs, outputs):
-    assert(len(values) >= 1)
+    assert (len(values) >= 1)
 
     cond = sanitize_name(values['Condition 0']['condition'], space=False)
 

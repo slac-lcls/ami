@@ -679,7 +679,7 @@ class LoadReference1D(CtrlNode):
 
     def to_operation(self, **kwargs):
         path = self.values['path']
-        assert(os.path.exists(self.values['path']))
-        assert(path.endswith('.csv'))
+        assert (os.path.exists(self.values['path']))
+        assert (path.endswith('.csv'))
         arr = np.genfromtxt(path, delimiter=',', usecols=(0, 1), skip_header=1)
         return gn.Map(name=self.name()+"_operation", **kwargs, func=lambda: (arr[:, 0], arr[:, 1]))

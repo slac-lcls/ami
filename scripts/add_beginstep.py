@@ -31,7 +31,7 @@ infile = open(infname, 'r')
 outfile = open(outfname, 'w')
 try:
     ndg = 0
-    while(1):
+    while (1):
         dg = Dgram(infile)
         # print('----',dg.transitionId(),dg.extent())
         dg.write(outfile)
