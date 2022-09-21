@@ -993,7 +993,6 @@ class PsanaSource(HierarchicalDataSource):
                     self.special_names[chan_name] = (hsd_name, accessor)
 
     def _update(self, run):
-        print("DEBUG: Running update")
         self.detectors = {}
         self.env_detectors = set()
         self.special_names = {}
