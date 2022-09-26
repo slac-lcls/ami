@@ -725,7 +725,7 @@ def test_psana1_source(psana1_xtc):
             'XCS-USB-ENCODER-01:fex': 'UsdUsbDetector',
             'XCS-USB-ENCODER-01:raw': 'RawUsdUsbDetector',
             'epix10ka2m:raw': 'MultiPanelHelper',
-            'opal_1:raw': 'AreaDetector',
+            'opal_1:raw': 'AreaDetectorHelper',
             'evr0:raw': 'EvrDetector',
             'evr1:raw': 'EvrDetector',
         }

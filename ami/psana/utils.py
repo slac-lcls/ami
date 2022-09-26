@@ -114,6 +114,14 @@ def make_config(cfgmods):
 
 
 @export
+def sanitize_ext(obj):
+    if isinstance(obj, Extender):
+        return obj._base
+    else:
+        return obj
+
+
+@export
 class Extender:
     def __init__(self, base):
         self._base = base

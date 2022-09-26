@@ -1,7 +1,7 @@
 import psana
 from Detector import DetectorTypes, PyDetector
 from .utils import export, parse_cls, parse_methods, parse_annotations, \
-        make_method, make_config, Extender
+        make_method, make_config, sanitize_ext, Extender
 
 
 __all__ = []
@@ -23,13 +23,30 @@ class MultiPanelHelper(Extender):
         self.env = env
 
     def raw(self, evt):
-        return self._base.raw(evt)
+        return self._base.raw(sanitize_ext(evt))
 
     def calib(self, evt, **kwargs):
-        return self._base.calib(evt, **kwargs)
+        return self._base.calib(sanitize_ext(evt), **kwargs)
 
     def image(self, evt, **kwargs):
-        return self._base.image(evt, **kwargs)
+        return self._base.image(sanitize_ext(evt), **kwargs)
+
+
+@export
+class AreaDetectorHelper(Extender):
+    def __init__(self, src, env):
+        super().__init__(psana.Detector(src))
+        self.src = src
+        self.env = env
+
+    def raw(self, evt):
+        return self._base.raw(sanitize_ext(evt))
+
+    def calib(self, evt, **kwargs):
+        return self._base.calib(sanitize_ext(evt), **kwargs)
+
+    def image(self, evt, **kwargs):
+        return self._base.image(sanitize_ext(evt), **kwargs)
 
 
 @export
@@ -194,8 +211,11 @@ def is_multi_panel(src):
 def lookup_dettype(src, env, *args, **kwargs):
     src = PyDetector.map_alias_to_source(src, env)
     dettype = PyDetector.dettype(src, env, *args, **kwargs)
-    if dettype is DetectorTypes.AreaDetector and is_multi_panel(src):
-        dettype = MultiPanelHelper
+    if dettype is DetectorTypes.AreaDetector:
+        if is_multi_panel(src):
+            dettype = MultiPanelHelper
+        else:
+            dettype = AreaDetectorHelper
     return dettype
 
 

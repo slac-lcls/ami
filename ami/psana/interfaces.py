@@ -3,7 +3,7 @@ import psana
 import amitypes
 from Detector import DetectorTypes
 from .detector import Detector, DdlHelper, DetectorMeta, DdlHelperMeta, \
-        MultiPanelHelper
+        AreaDetectorHelper, MultiPanelHelper
 from .utils import export
 
 
@@ -27,7 +27,7 @@ class MultiPanelDetector(Detector,
 @export
 class AreaDetector(Detector,
                    metaclass=DetectorMeta,
-                   detcls=DetectorTypes.AreaDetector,
+                   detcls=AreaDetectorHelper,
                    annotations={'raw': amitypes.Array2d, 'calib': amitypes.Array2d, 'image': amitypes.Array2d},
                    configs={'config': [psana.Opal1k.Config,
                                        psana.Archon.Config,
