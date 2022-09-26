@@ -13,7 +13,7 @@ import holoviews as hv
 from networkfox import modifiers
 from ami import LogConfig, Defaults
 from ami.client import GraphMgrAddress
-from ami.comm import BasePort, Ports, ZMQ_TOPIC_DELIM
+from ami.comm import Ports, PlatformAction, ZMQ_TOPIC_DELIM
 from ami.data import Deserializer
 from bokeh.models.ranges import DataRange1d
 
@@ -495,7 +495,8 @@ def main():
         '-p',
         '--port',
         type=int,
-        default=BasePort,
+        default=Ports.BasePort,
+        action=PlatformAction,
         help='base port for AMI'
     )
 

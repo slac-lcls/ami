@@ -8,6 +8,7 @@ import dill
 import json
 import asyncio
 import logging
+import argparse
 import functools
 import numpy as np
 import zmq.asyncio
@@ -30,9 +31,6 @@ class Colors:
     GlobalCollector = "globalCollector"
 
 
-BasePort = 5555
-
-
 class Ports(IntEnum):
     Comm = 0
     Graph = 1
@@ -43,8 +41,46 @@ class Ports(IntEnum):
     Message = 6
     Info = 7
     View = 8
-    Sync = 5600
+    Sync = 9
+    NumPorts = 10
+    PortsPerPlatform = 50
+    PlatformMax = 1023
+    BasePort = 5555
     Prometheus = 9300
+
+    @classmethod
+    def resolve_platform(cls, port):
+        """
+        Class method for determining if a specified port is a platform, a.k.a
+        a generic numbered port set or a real tcp port. If the port is less
+        than 1023 consider it a port set. The port sets are groups of 50 ports
+        starting at the base port of 5555.
+
+        Args:
+            port (int): The platform or tcp resolve
+
+        Returns:
+            The actual tcp port number to use
+        """
+        if port <= cls.PlatformMax:
+            return cls.BasePort+cls.PortsPerPlatform*port
+        else:
+            return port
+
+
+class PlatformAction(argparse.Action):
+    """Class that defines an argparse action or ports/platforms.
+
+    When a platform number is passed instead of tcp port. The platform number
+    is resolved to a port and then returned.
+    """
+    def __init__(self, option_strings, dest, nargs=None, **kwargs):
+        if nargs is not None:
+            raise ValueError("nargs not allowed")
+        super().__init__(option_strings, dest, **kwargs)
+
+    def __call__(self, parser, namespace, values, option_string=None):
+        setattr(namespace, self.dest, Ports.resolve_platform(values))
 
 
 class AutoName:

@@ -6,7 +6,7 @@ import argparse
 import tempfile
 import collections
 from ami import LogConfig, Defaults
-from ami.comm import BasePort, Ports
+from ami.comm import Ports, PlatformAction
 from ami.client import flowchart, legacy
 
 
@@ -43,8 +43,9 @@ def main():
         '-p',
         '--port',
         type=int,
-        default=BasePort,
-        help='base port for ami (default: %d) reserves next 10 consecutive ports' % BasePort
+        default=Ports.BasePort,
+        action=PlatformAction,
+        help='base port for ami (default: %d) reserves next %d consecutive ports' % (Ports.BasePort, Ports.NumPorts)
     )
 
     addr_group.add_argument(

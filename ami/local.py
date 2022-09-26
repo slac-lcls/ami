@@ -13,7 +13,7 @@ import ami.multiproc as mp
 
 from ami import LogConfig, Defaults
 from ami.multiproc import check_mp_start_method
-from ami.comm import BasePort, Ports, GraphCommHandler
+from ami.comm import Ports, PlatformAction, GraphCommHandler
 from ami.manager import run_manager
 from ami.worker import run_worker
 from ami.collector import run_node_collector, run_global_collector
@@ -62,8 +62,10 @@ def build_parser():
         '-p',
         '--port',
         type=int,
-        default=BasePort,
-        help='use tcp for communication using the specified starting port'
+        default=Ports.BasePort,
+        action=PlatformAction,
+        help='use tcp for communication using the specified base port (default: %d)'
+             ' reserves next %d consecutive ports' % (Ports.BasePort, Ports.NumPorts)
     )
 
     comm_group = parser.add_mutually_exclusive_group()

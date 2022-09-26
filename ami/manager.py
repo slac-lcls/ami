@@ -13,7 +13,7 @@ import time
 import datetime as dt
 import prometheus_client as pc
 from ami import LogConfig
-from ami.comm import BasePort, Ports, AutoExport, Collector, Store, ZMQ_TOPIC_DELIM
+from ami.comm import Ports, PlatformAction, AutoExport, Collector, Store, ZMQ_TOPIC_DELIM
 from ami.data import MsgTypes, Transitions, Serializer, Deserializer
 from ami.graphkit_wrapper import Graph
 
@@ -692,8 +692,9 @@ def main():
         '-p',
         '--port',
         type=int,
-        default=BasePort,
-        help='base port for ami (default: %d) reserves next 10 consecutive ports' % BasePort
+        default=Ports.BasePort,
+        action=PlatformAction,
+        help='base port for ami (default: %d) reserves next %d consecutive ports' % (Ports.BasePort, Ports.NumPorts)
     )
 
     parser.add_argument(
@@ -759,7 +760,7 @@ def main():
     logging.basicConfig(format=LogConfig.Format, level=log_level, handlers=log_handlers)
 
     try:
-        if args.port != BasePort:
+        if args.port != Ports.BasePort:
             logger.info('Manager comm port: %d view port: %d', args.port + Ports.Comm, args.port + Ports.View)
         return run_manager(args.num_workers,
                            args.num_nodes,

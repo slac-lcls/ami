@@ -9,7 +9,7 @@ import datetime as dt
 import ami.multiproc as mp
 from ami.worker import run_worker, parse_args
 from ami import LogConfig, Defaults
-from ami.comm import BasePort, Ports, Colors, Node, Collector, TransitionBuilder, EventBuilder
+from ami.comm import Ports, PlatformAction, Colors, Node, Collector, TransitionBuilder, EventBuilder
 from ami.data import MsgTypes, Transitions
 
 
@@ -238,8 +238,9 @@ def main(color, upstream_port, downstream_port):
         '-p',
         '--port',
         type=int,
-        default=BasePort,
-        help='base port for ami (default: %d) reserves next 10 consecutive ports' % BasePort
+        default=Ports.BasePort,
+        action=PlatformAction,
+        help='base port for ami (default: %d) reserves next %d consecutive ports' % (Ports.BasePort, Ports.NumPorts)
     )
 
     parser.add_argument(

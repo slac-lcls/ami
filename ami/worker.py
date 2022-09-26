@@ -9,7 +9,7 @@ import argparse
 import time
 import prometheus_client as pc
 from ami import LogConfig, Defaults
-from ami.comm import BasePort, Ports, Colors, ResultStore, Node, AutoExport
+from ami.comm import Ports, PlatformAction, Colors, ResultStore, Node, AutoExport
 from ami.data import MsgTypes, Source, Transitions
 from ami.graphkit_wrapper import Graph
 
@@ -367,8 +367,9 @@ def main():
         '-p',
         '--port',
         type=int,
-        default=BasePort,
-        help='base port for ami (default: %d) reserves next 10 consecutive ports' % BasePort
+        default=Ports.BasePort,
+        action=PlatformAction,
+        help='base port for ami (default: %d) reserves next %d consecutive ports' % (Ports.BasePort, Ports.NumPorts)
     )
 
     parser.add_argument(
