@@ -535,7 +535,7 @@ class GraphBuilder(ContributionBuilder):
 
         if len(self.pending) > depth:
             for eb_key in reversed(sorted(self.pending.keys(), reverse=True)[depth:]):
-                logger.debug("Pruned uncompleted key %d", eb_key)
+                logger.debug("Pruned uncompleted key %s", eb_key)
                 times, size = self.complete(eb_key, identity, drop)
 
         return times, size
