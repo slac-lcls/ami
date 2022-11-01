@@ -83,6 +83,14 @@ def build_parser():
     )
 
     parser.add_argument(
+        '-d',
+        '--eb-depth',
+        type=int,
+        default=10,
+        help='the depth of contribution builder buffer in units of heartbeats (default: 10)'
+    )
+
+    parser.add_argument(
         '-b',
         '--heartbeat',
         type=int,
@@ -304,8 +312,8 @@ def run_ami(args, queue=None):
         collector_proc = mp.Process(
             name='nodecol-n0',
             target=functools.partial(_sys_exit, run_node_collector),
-            args=(0, args.num_workers, collector_addr, globalcol_addr, graph_addr, msg_addr,
-                  args.prometheus_dir, args.prometheus_port, args.hutch)
+            args=(0, args.num_workers, args.eb_depth, collector_addr, globalcol_addr, graph_addr,
+                  msg_addr, args.prometheus_dir, args.prometheus_port, args.hutch)
         )
         collector_proc.daemon = True
         collector_proc.start()
@@ -314,7 +322,7 @@ def run_ami(args, queue=None):
         globalcol_proc = mp.Process(
             name='globalcol',
             target=functools.partial(_sys_exit, run_global_collector),
-            args=(0, 1, globalcol_addr, results_addr, graph_addr, msg_addr,
+            args=(0, 1, args.eb_depth, globalcol_addr, results_addr, graph_addr, msg_addr,
                   args.prometheus_dir, args.prometheus_port, args.hutch)
         )
         globalcol_proc.daemon = True
