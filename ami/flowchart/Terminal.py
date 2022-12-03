@@ -554,7 +554,14 @@ def checkType(terminals, type_file=None):
     f_in_name = t_in.node().name() + '_' + t_in.name()
     f_in_name = f_in_name.translate(checkType.replacements)
     f_in.__annotations__ = {'t': t_in.type()}
-    f_in = str(inspect.signature(f_in))
+    f_in_sig = inspect.signature(f_in)
+    f_in_annotation = f_in_sig.return_annotation
+    if f_in_annotation is inspect.Signature.empty:
+        f_in_return_string = 'pass'
+    else:
+        f_in_annotation_str = f_in_annotation.__module__ + '.' + f_in_annotation.__name__
+        f_in_return_string = 'return '+f_in_annotation_str+'()'
+    f_in = str(f_in_sig)
     f_in = f_in.replace('~', '')
     f_in = f_in_name + f_in
 
@@ -564,7 +571,14 @@ def checkType(terminals, type_file=None):
     f_out_name = t_out.node().name() + '_' + t_out.name()
     f_out_name = f_out_name.translate(checkType.replacements)
     f_out.__annotations__ = {'return': t_out.type()}
-    f_out = str(inspect.signature(f_out))
+    f_out_sig = inspect.signature(f_out)
+    f_out_annotation = f_out_sig.return_annotation
+    if f_out_annotation is inspect.Signature.empty:
+        f_out_return_string = 'pass'
+    else:
+        f_out_annotation_str = f_out_annotation.__module__ + '.' + f_out_annotation.__name__
+        f_out_return_string = 'return '+f_out_annotation_str+'()'
+    f_out = str(f_out_sig)
     f_out = f_out.replace('~', '')
     f_out = f_out_name + f_out
 
@@ -572,11 +586,11 @@ def checkType(terminals, type_file=None):
         # this case is for reloading a saved file, we want to just run mypy on a single file
         # we return true always and then deal with disconnecting invalid connections later
         if f_in_name not in checked:
-            type_file.write(f"def {f_in}:\n\tpass\n\n")
+            type_file.write(f"def {f_in}:\n\t{f_in_return_string}\n\n")
             checked.append(f_in_name)
 
         if f_out_name not in checked:
-            type_file.write(f"def {f_out}:\n\tpass\n")
+            type_file.write(f"def {f_out}:\n\t{f_out_return_string}\n")
             checked.append(f_out_name)
 
         type_file.write(f"\n{f_in_name}({f_out_name}())\n\n")
@@ -588,8 +602,8 @@ def checkType(terminals, type_file=None):
             f.write("import numbers\n")
             f.write("import amitypes\n")
             f.write("T = TypeVar('T')\n")
-            f.write(f"def {f_in}:\n\tpass\n")
-            f.write(f"def {f_out}:\n\tpass")
+            f.write(f"def {f_in}:\n\t{f_in_return_string}\n")
+            f.write(f"def {f_out}:\n\t{f_out_return_string}")
             f.write(f"\n{f_in_name}({f_out_name}())")
             f.flush()
             status = subprocess.call(["dmypy", "check", f.name])
