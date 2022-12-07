@@ -559,8 +559,11 @@ def checkType(terminals, type_file=None):
     if f_in_annotation is inspect.Signature.empty:
         f_in_return_string = 'pass'
     else:
-        f_in_annotation_str = f_in_annotation.__module__ + '.' + f_in_annotation.__name__
-        f_in_return_string = 'return '+f_in_annotation_str+'()'
+        if str(f_in_annotation)=='typing.Dict':
+            f_in_return_string = 'return {}' # unfortunate unusual case
+        else:
+            f_in_annotation_str = f_in_annotation.__module__ + '.' + f_in_annotation.__name__
+            f_in_return_string = 'return '+f_in_annotation_str+'()'
     f_in = str(f_in_sig)
     f_in = f_in.replace('~', '')
     f_in = f_in_name + f_in
@@ -576,8 +579,11 @@ def checkType(terminals, type_file=None):
     if f_out_annotation is inspect.Signature.empty:
         f_out_return_string = 'pass'
     else:
-        f_out_annotation_str = f_out_annotation.__module__ + '.' + f_out_annotation.__name__
-        f_out_return_string = 'return '+f_out_annotation_str+'()'
+        if str(f_out_annotation)=='typing.Dict':
+            f_out_return_string = 'return {}' # unfortunate unusual case
+        else:
+            f_out_annotation_str = f_out_annotation.__module__ + '.' + f_out_annotation.__name__
+            f_out_return_string = 'return '+f_out_annotation_str+'()'
     f_out = str(f_out_sig)
     f_out = f_out.replace('~', '')
     f_out = f_out_name + f_out
