@@ -9,7 +9,7 @@ import datetime
 
 from traitlets.config.loader import Config
 from ami import LogConfig, Defaults
-from ami.comm import Ports, PlatformAction
+from ami.comm import Ports
 
 
 logger = logging.getLogger(__name__)

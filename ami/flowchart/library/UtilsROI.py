@@ -54,7 +54,7 @@ def angle(p):
     return a if a >= 0 and a <= np.pi+1e-6 else 2*np.pi+a
 
 
-def angle_deg_in_range(a, ang_range=(0,360)):
+def angle_deg_in_range(a, ang_range=(0, 360)):
     """returns angle in range contracting periodicity"""
     return (a-ang_range[0]) % 360
 
@@ -97,7 +97,7 @@ def handle_positions_normalized(radius_out, radius_int, angle_deg_out, angle_deg
        but all normalised position of handles are preserved.
        radius_int and angle_deg_int changes pos2 only.
     """
-    #fr = float(radius_int if radius_int<radius_out else (radius_out-1))/radius_out
+    # fr = float(radius_int if radius_int<radius_out else (radius_out-1))/radius_out
     fr = radius_int/radius_out
 
     a = math.radians(angle_deg_int)
@@ -129,7 +129,7 @@ class ArchROI(pg.ROI):
         h1 = self.addScaleRotateHandle(pos1, center, name='ScaleRotateHandle')
         h2 = self.addFreeHandle(pos2, center,        name='FreeHandle       ')
 
-        for h in (h0,h1,h2):
+        for h in (h0, h1, h2):
             h.setZValue(1000)
 
         radius = 5
@@ -196,13 +196,13 @@ class ArchROI(pg.ROI):
         rad1 = distance(vh1)
         rad2 = distance(vh2)
 
-        if rad2>rad1: # constrain h2 motion in radial direction
-           rad2 = rad1 - 1
-           p2 = p0 + rad2*unit_vector(vh2)
-           self._fix_free_handle_local_position(p2[0], p2[1])
+        if rad2 > rad1:  # constrain h2 motion in radial direction
+            rad2 = rad1 - 1
+            p2 = p0 + rad2*unit_vector(vh2)
+            self._fix_free_handle_local_position(p2[0], p2[1])
 
         p3 = p0 + rad1*unit_vector(vh2)
-        ang1_deg = angle_deg_in_range(self.angle())  #  self.angle() is not constrained by period, e.g. [0,360]
+        ang1_deg = angle_deg_in_range(self.angle())  # self.angle() is not constrained by period, e.g. [0,360]
         ang1 = math.radians(ang1_deg)
         ang2 = angle(vh2)
         ang2_deg = math.degrees(ang2)
