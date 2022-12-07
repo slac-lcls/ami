@@ -6,7 +6,7 @@ dependencies:
   - python=3.9
   - dill
   - pyzmq
-  - pyqtgraph
+  - pyqtgraph=0.12.4
   - networkfox
   - psana
   - ipython
