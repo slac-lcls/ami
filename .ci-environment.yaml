@@ -3,7 +3,7 @@ channels:
   - lcls-ii
   - conda-forge
 dependencies:
-  - python=3.7
+  - python=3.9
   - dill
   - pyzmq
   - pyqtgraph
