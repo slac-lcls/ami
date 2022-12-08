@@ -7,6 +7,7 @@ import subprocess
 import inspect
 import weakref
 import tempfile
+import typing
 
 
 class Terminal(QtCore.QObject):
@@ -556,11 +557,13 @@ def checkType(terminals, type_file=None):
     f_in.__annotations__ = {'t': t_in.type()}
     f_in_sig = inspect.signature(f_in)
     f_in_annotation = f_in_sig.return_annotation
-    if f_in_annotation is inspect.Signature.empty:
+    if f_in_annotation is inspect.Signature.empty or f_in_annotation is typing.Any:
         f_in_return_string = 'pass'
     else:
-        if str(f_in_annotation) == 'typing.Dict':
-            f_in_return_string = 'return {}'  # unfortunate unusual case
+        if f_in_annotation is typing.Dict:
+            f_in_return_string = 'return {}'
+        elif f_in_annotation is typing.List:
+            f_in_return_string = 'return []'
         else:
             f_in_annotation_str = f_in_annotation.__module__ + '.' + f_in_annotation.__name__
             f_in_return_string = 'return '+f_in_annotation_str+'()'
@@ -576,11 +579,13 @@ def checkType(terminals, type_file=None):
     f_out.__annotations__ = {'return': t_out.type()}
     f_out_sig = inspect.signature(f_out)
     f_out_annotation = f_out_sig.return_annotation
-    if f_out_annotation is inspect.Signature.empty:
+    if f_out_annotation is inspect.Signature.empty or f_out_annotation is typing.Any:
         f_out_return_string = 'pass'
     else:
-        if str(f_out_annotation) == 'typing.Dict':
-            f_out_return_string = 'return {}'  # unfortunate unusual case
+        if f_out_annotation is typing.Dict:
+            f_out_return_string = 'return {}'
+        elif f_out_annotation is typing.List:
+            f_out_return_string = 'return []'
         else:
             f_out_annotation_str = f_out_annotation.__module__ + '.' + f_out_annotation.__name__
             f_out_return_string = 'return '+f_out_annotation_str+'()'
