@@ -803,7 +803,6 @@ def test_psana1_source(psana1_xtc):
 
 
 @psanatest
-@pytest.mark.skip(reason="need Dan D to look at this to fix new types?")
 def test_psana_source(xtcwriter):
     psana_src_cls = Source.find_source('psana')
     assert psana_src_cls is not None
@@ -826,17 +825,21 @@ def test_psana_source(xtcwriter):
         'xpphsd': at.Detector,
         'xpphsd:calibconst': typing.Dict,
         'xpphsd:raw:calib': at.Array1d,
+        'xpphsd:raw:config': typing.Dict,
         'xpphsd:raw': at.Group,
         'xpphsd:fex:calib': at.Array1d,
+        'xpphsd:fex:config': typing.Dict,
         'xpphsd:fex': at.Group,
         'xppcspad': at.Detector,
         'xppcspad:calibconst': typing.Dict,
         'xppcspad:raw:calib': at.Array3d,
         'xppcspad:raw:image': at.Array2d,
         'xppcspad:raw:raw': at.Array3d,
+        'xppcspad:raw:config': typing.Dict,
         'xppcspad:raw': at.Group,
         'epicsinfo': at.Detector,
-        'epicsinfo:epicsinfo': typing.Dict,
+        'epicsinfo:epicsinfo': at.Group,
+        'epicsinfo:epicsinfo:config': typing.Dict,
         'epicsinfo:calibconst': typing.Dict,
         'eventid': int,
         'timestamp': float,
@@ -846,20 +849,27 @@ def test_psana_source(xtcwriter):
     expected_grps = {
         'xpphsd:raw': {
             'calib': at.Array1d,
+            'config': typing.Dict,
         },
         'xpphsd:fex': {
             'calib': at.Array1d,
+            'config': typing.Dict,
         },
         'xppcspad:raw': {
             'calib': at.Array3d,
             'image': at.Array2d,
             'raw': at.Array3d,
+            'config': typing.Dict,
+        },
+        'epicsinfo:epicsinfo': {
+            'config': typing.Dict,
         },
     }
     expected_grp_types = {
         'xpphsd:raw': 'hsd_raw_0_0_0',
         'xpphsd:fex': 'hsd_fex_4_5_6',
         'xppcspad:raw': 'cspad_raw_2_3_42',
+        'epicsinfo:epicsinfo': 'epicsinfo_epicsinfo_1_0_0',
     }
     psana_source = psana_src_cls(idnum, num_workers, heartbeat_period, src_cfg)
 
