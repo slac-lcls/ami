@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-from pyqtgraph.Qt import QtCore
+from qtpy import QtCore
 
 from ami.flowchart.Node import Node
 from ami.flowchart.library.WidgetGroup import generateUi

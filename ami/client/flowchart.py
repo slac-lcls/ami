@@ -19,7 +19,7 @@ from ami.flowchart.library import LIBRARY
 from ami.flowchart.NodeLibrary import isNodeClass
 from ami.flowchart.library.common import SourceNode
 from ami.asyncqt import QEventLoop, asyncSlot
-from pyqtgraph.Qt import QtGui, QtCore, QtWidgets
+from qtpy import QtCore, QtWidgets
 
 
 logger = logging.getLogger(LogConfig.get_package_name(__name__))
@@ -39,13 +39,13 @@ def run_editor_window(broker_addr, graphmgr_addr, checkpoint_addr, load=None, pr
         check_file = f.name
         subprocess.run(["dmypy", "check", f.name])
 
-    app = QtGui.QApplication([])
+    app = QtWidgets.QApplication([])
 
     loop = QEventLoop(app)
     asyncio.set_event_loop(loop)
 
     # Create main window with grid layout
-    win = QtGui.QMainWindow()
+    win = QtWidgets.QMainWindow()
     title = 'AMI Client'
     if hutch:
         title += f' hutch: {hutch}'
@@ -97,7 +97,7 @@ def run_editor_window(broker_addr, graphmgr_addr, checkpoint_addr, load=None, pr
             os.remove(check_file)
 
 
-class NodeWindow(QtGui.QMainWindow):
+class NodeWindow(QtWidgets.QMainWindow):
 
     def __init__(self, proc, parent=None):
         super().__init__(parent)
@@ -130,7 +130,7 @@ class NodeProcess(QtCore.QObject):
         super().__init__()
 
         if loop is None:
-            self.app = QtGui.QApplication([])
+            self.app = QtWidgets.QApplication([])
             loop = QEventLoop(self.app)
 
         asyncio.set_event_loop(loop)

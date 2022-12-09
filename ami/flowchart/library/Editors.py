@@ -1,6 +1,6 @@
 import numpy as np
 import pyqtgraph as pg
-from pyqtgraph.Qt import QtGui, QtWidgets, QtCore
+from qtpy import QtGui, QtWidgets, QtCore
 from ami.flowchart.library.WidgetGroup import generateUi
 
 
@@ -40,7 +40,7 @@ class TraceEditor(QtWidgets.QWidget):
 
         self.node = node
 
-        self.layout = QtGui.QGridLayout()
+        self.layout = QtWidgets.QGridLayout()
         self.setLayout(self.layout)
 
         self.layout.addWidget(self.ui, 0, 0, -1, 2)
@@ -154,7 +154,7 @@ class ChannelEditor(QtWidgets.QWidget):
         self.ui, self.stateGroup, self.ctrls, self.values = generateUi(self.uiTemplate)
         self.stateGroup.sigChanged.connect(self.state_changed)
 
-        self.layout = QtGui.QFormLayout()
+        self.layout = QtWidgets.QFormLayout()
         self.setLayout(self.layout)
 
         self.layout.addRow(self.ui)

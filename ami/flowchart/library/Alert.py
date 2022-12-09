@@ -1,4 +1,4 @@
-from pyqtgraph.Qt import QtWidgets, QtCore
+from qtpy import QtWidgets, QtCore
 from amitypes import Array1d
 from ami.flowchart.library.common import CtrlNode
 from ami.flowchart.library.DisplayWidgets import AsyncFetcher

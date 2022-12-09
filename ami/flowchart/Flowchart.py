@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 from datetime import datetime
-from pyqtgraph.Qt import QtCore, QtGui, QtWidgets
+from qtpy import QtCore, QtWidgets
 from pyqtgraph import FileDialog
 from pyqtgraph.debug import printExc
 from pyqtgraph import dockarea as dockarea
@@ -462,7 +462,7 @@ class Flowchart(Node):
             if startDir is None:
                 startDir = '.'
             self.fileDialog = FileDialog(None, "Save Flowchart..", startDir, "Flowchart (*.fc)")
-            self.fileDialog.setAcceptMode(QtGui.QFileDialog.AcceptSave)
+            self.fileDialog.setAcceptMode(QtWidgets.QFileDialog.AcceptSave)
             self.fileDialog.show()
             self.fileDialog.fileSelected.connect(self.saveFile)
             return
@@ -604,7 +604,7 @@ class Flowchart(Node):
             await self.loadFile(load)
 
 
-class FlowchartCtrlWidget(QtGui.QWidget):
+class FlowchartCtrlWidget(QtWidgets.QWidget):
     """
     The widget that contains the list of all the nodes in a flowchart and their controls,
     as well as buttons for loading/saving flowcharts.
@@ -954,13 +954,13 @@ class FlowchartWidget(dockarea.DockArea):
         self.viewDock.hideTitleBar()
         self.addDock(self.viewDock)
 
-        self.hoverText = QtGui.QTextEdit()
+        self.hoverText = QtWidgets.QTextEdit()
         self.hoverText.setReadOnly(True)
         self.hoverDock = dockarea.Dock('Hover Info', size=(1000, 20))
         self.hoverDock.addWidget(self.hoverText)
         self.addDock(self.hoverDock, 'bottom')
 
-        self.statusText = QtGui.QTextEdit()
+        self.statusText = QtWidgets.QTextEdit()
         self.statusText.setReadOnly(True)
         self.statusDock = dockarea.Dock('Status', size=(1000, 20))
         self.statusDock.addWidget(self.statusText)
@@ -982,7 +982,7 @@ class FlowchartWidget(dockarea.DockArea):
     def buildOperationMenu(self, pos=None):
         def buildSubMenu(node, rootMenu, subMenus, pos=None):
             for section, node in node.items():
-                menu = QtGui.QMenu(section)
+                menu = QtWidgets.QMenu(section)
                 rootMenu.addMenu(menu)
                 if isinstance(node, OrderedDict):
                     buildSubMenu(node, menu, subMenus, pos=pos)
@@ -991,7 +991,7 @@ class FlowchartWidget(dockarea.DockArea):
                     act = rootMenu.addAction(section)
                     act.nodeType = section
                     act.pos = pos
-        self.operationMenu = QtGui.QMenu()
+        self.operationMenu = QtWidgets.QMenu()
         self.operationSubMenus = []
         buildSubMenu(self.chart.library.getNodeTree(), self.operationMenu, self.operationSubMenus, pos=pos)
         self.operationMenu.triggered.connect(self.operationMenuTriggered)
@@ -1000,7 +1000,7 @@ class FlowchartWidget(dockarea.DockArea):
     def buildSourceMenu(self, pos=None):
         def buildSubMenu(node, rootMenu, subMenus, pos=None):
             for section, node in node.items():
-                menu = QtGui.QMenu(section)
+                menu = QtWidgets.QMenu(section)
                 rootMenu.addMenu(menu)
                 if isinstance(node, OrderedDict):
                     buildSubMenu(node, menu, subMenus, pos=pos)
@@ -1009,7 +1009,7 @@ class FlowchartWidget(dockarea.DockArea):
                     act = rootMenu.addAction(section)
                     act.nodeType = section
                     act.pos = pos
-        self.sourceMenu = QtGui.QMenu()
+        self.sourceMenu = QtWidgets.QMenu()
         self.sourceSubMenus = []
         buildSubMenu(self.chart.source_library.getSourceTree(), self.sourceMenu, self.sourceSubMenus, pos=pos)
         self.sourceMenu.triggered.connect(self.sourceMenuTriggered)

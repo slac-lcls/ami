@@ -1,4 +1,4 @@
-from pyqtgraph.Qt import QtGui, QtWidgets
+from qtpy import QtWidgets
 from amitypes import DataSource, Detector, Array1d, Array2d, Array3d
 from ami.flowchart.Node import Node, NodeGraphicsItem
 from ami.flowchart.Units import ureg
@@ -348,7 +348,7 @@ try:
 
             for attr in peak_attrs:
                 if attr not in self.node.terminals:
-                    add_attr = QtGui.QAction(f"Add {attr}", self.menu)
+                    add_attr = QtWidgets.QAction(f"Add {attr}", self.menu)
                     add_attr.attr = attr
                     self.output_group.addAction(add_attr)
                     self.menu.insertAction(addInput, add_attr)

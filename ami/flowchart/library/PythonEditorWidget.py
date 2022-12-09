@@ -1,6 +1,6 @@
 import amitypes
 from pyqtgraph import FileDialog
-from pyqtgraph.Qt import QtWidgets, QtCore, QtGui
+from qtpy import QtWidgets, QtCore
 from pyqode.python.backend import server
 # from pyqode.python.widgets import PyCodeEdit
 from pyqode.core import api, modes, panels
@@ -196,7 +196,7 @@ class ExportWidget(QtWidgets.QWidget):
 
     def ok_clicked(self):
         self.fileDialog = FileDialog(None, "Save File..", '.', "Python (*.py)")
-        self.fileDialog.setAcceptMode(QtGui.QFileDialog.AcceptSave)
+        self.fileDialog.setAcceptMode(QtWidgets.QFileDialog.AcceptSave)
         self.fileDialog.show()
         self.fileDialog.fileSelected.connect(self.saveFile)
 

@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-from pyqtgraph.Qt import QtCore, QtGui, QtWidgets
+from qtpy import QtCore, QtGui, QtWidgets
 from pyqtgraph.graphicsItems.GraphicsObject import GraphicsObject
 from pyqtgraph import functions as fn
 from pyqtgraph.Point import Point
@@ -321,7 +321,7 @@ class TerminalGraphicsItem(GraphicsObject):
             self.menu = None
 
         if self.menu is None:
-            self.menu = QtGui.QMenu()
+            self.menu = QtWidgets.QMenu()
             self.menu.setTitle("Terminal")
 
             if self.term.isConnected():
@@ -331,7 +331,7 @@ class TerminalGraphicsItem(GraphicsObject):
                         conn.graphicsItem().buildMenu(reset=True)
                     term.graphicsItem().buildMenu(reset=True)
 
-                disconAct = QtGui.QAction("Disconnect", self.menu)
+                disconAct = QtWidgets.QAction("Disconnect", self.menu)
                 if self.term.inputTerminals():
                     disconAct.triggered.connect(lambda: disconnect(self.term, self.term.inputTerminals()))
                 elif self.term.dependentTerms():
@@ -342,13 +342,13 @@ class TerminalGraphicsItem(GraphicsObject):
                 pass
 
             if self.term.isRemovable():
-                remAct = QtGui.QAction("Remove terminal", self.menu)
+                remAct = QtWidgets.QAction("Remove terminal", self.menu)
                 remAct.triggered.connect(self.removeSelf)
                 self.menu.addAction(remAct)
                 self.menu.remAct = remAct
 
             if self.term._allowOptional:
-                optionalAct = QtGui.QAction("Optional", self.menu, checkable=True, checked=self.term.optional())
+                optionalAct = QtWidgets.QAction("Optional", self.menu, checkable=True, checked=self.term.optional())
                 optionalAct.triggered.connect(self.optional)
                 self.menu.addAction(optionalAct)
                 self.menu.optionalAct = optionalAct

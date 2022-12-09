@@ -5,7 +5,7 @@ import logging
 import pyqtgraph as pg
 from pyqtgraph.debug import printExc
 from pyqtgraph import dockarea, FileDialog
-from pyqtgraph.Qt import QtGui, QtWidgets, QtCore
+from qtpy import QtGui, QtWidgets, QtCore
 from ami.flowchart.NodeLibrary import isNodeClass
 
 
@@ -155,10 +155,10 @@ def build_model():
 
 
 def build_tree(model=None, parent=None):
-    tree = QtGui.QTreeView(parent=parent)
+    tree = QtWidgets.QTreeView(parent=parent)
     tree.setSortingEnabled(True)
     tree.sortByColumn(0, QtCore.Qt.AscendingOrder)
-    tree.setEditTriggers(QtGui.QAbstractItemView.NoEditTriggers)
+    tree.setEditTriggers(QtWidgets.QAbstractItemView.NoEditTriggers)
     tree.setHeaderHidden(True)
     tree.setRootIsDecorated(True)
     tree.setUniformRowHeights(True)
@@ -283,12 +283,12 @@ class Ui_Toolbar(object):
         widget.setObjectName("actionApply")
 
         self.source_model = build_model()
-        self.source_search = QtGui.QLineEdit()
+        self.source_search = QtWidgets.QLineEdit()
         self.source_search.setPlaceholderText('Search Sources...')
         self.source_tree = build_tree(self.source_model, parent)
 
         self.node_model = build_model()
-        self.node_search = QtGui.QLineEdit()
+        self.node_search = QtWidgets.QLineEdit()
         self.node_search.setPlaceholderText('Search Operations...')
         self.node_tree = build_tree(self.node_model, parent)
 

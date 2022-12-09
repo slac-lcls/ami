@@ -6,7 +6,7 @@ import itertools as it
 import numpy as np
 import pyqtgraph as pg
 from pyqtgraph.GraphicsScene.exportDialog import ExportDialog
-from pyqtgraph.Qt import QtGui, QtWidgets, QtCore
+from qtpy import QtGui, QtWidgets, QtCore
 from networkfox import modifiers
 from ami import LogConfig
 from ami.data import Deserializer
@@ -229,7 +229,7 @@ class PlotWidget(QtWidgets.QWidget):
         self.legend = None
         if kwargs.get('legend', True):
             self.legend = self.plot_view.addLegend()
-            self.legend_layout = QtGui.QFormLayout()
+            self.legend_layout = QtWidgets.QFormLayout()
 
             self.legend_groupbox = QtWidgets.QGroupBox()
             self.legend_groupbox.setTitle("Legend")
@@ -237,14 +237,14 @@ class PlotWidget(QtWidgets.QWidget):
             ctrl_layout.addWidget(self.legend_groupbox)
             self.ctrls["Legend"] = self.legend_groupbox
 
-        self.annotation_layout = QtGui.QFormLayout()
+        self.annotation_layout = QtWidgets.QFormLayout()
         self.annotation_groupbox = QtWidgets.QGroupBox()
         self.annotation_groupbox.setTitle("Annotations")
         self.annotation_groupbox.setLayout(self.annotation_layout)
         ctrl_layout.addWidget(self.annotation_groupbox)
         self.ctrls["Annotations"] = self.annotation_groupbox
 
-        self.annotation_type = QtGui.QComboBox(parent=self.annotation_groupbox)
+        self.annotation_type = QtWidgets.QComboBox(parent=self.annotation_groupbox)
         self.annotation_type.addItem("Line", LineEditor)
         self.annotation_type.addItem("Circle", CircleEditor)
         self.annotation_type.addItem("Rect", RectEditor)
@@ -258,7 +258,7 @@ class PlotWidget(QtWidgets.QWidget):
         self.apply_btn.clicked.connect(self.apply_clicked)
         ctrl_layout.addWidget(self.apply_btn)
 
-        self.win = QtGui.QMainWindow()
+        self.win = QtWidgets.QMainWindow()
         scrollArea = QtWidgets.QScrollArea(parent=self.win)
         scrollArea.setWidgetResizable(True)
         scrollArea.setWidget(self.ui)
@@ -277,7 +277,7 @@ class PlotWidget(QtWidgets.QWidget):
                 name = data_name
 
             self.trace_ids[idx] = data_name
-            w = QtGui.QLineEdit(name)
+            w = QtWidgets.QLineEdit(name)
             self.ctrls[idx] = w
             self.stateGroup.addWidget(w, idx)
             self.legend_layout.addRow(idx, w)

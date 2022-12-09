@@ -40,7 +40,7 @@
 #
 #############################################################################
 
-from pyqtgraph.Qt import QtWidgets, QtCore
+from qtpy import QtWidgets, QtCore
 from ami.flowchart.library.common import generateUi
 
 

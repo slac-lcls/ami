@@ -1,5 +1,5 @@
 from typing import Union, Any
-from pyqtgraph.Qt import QtWidgets, QtGui
+from qtpy import QtWidgets
 from amitypes import Array1d, Array2d, Array3d
 from ami.flowchart.library.common import CtrlNode, GroupedNode
 from ami.flowchart.library.CalculatorWidget import CalculatorWidget, FilterWidget, gen_filter_func, sanitize_name
@@ -439,9 +439,9 @@ try:
         def terminal_prompt(self, name='', title='', **kwargs):
             prompt = QtWidgets.QWidget()
             prompt.layout = QtWidgets.QFormLayout(parent=prompt)
-            prompt.name = QtGui.QLineEdit(name, parent=prompt)
-            prompt.type_selector = QtGui.QComboBox(prompt)
-            prompt.ok = QtGui.QPushButton('Ok', parent=prompt)
+            prompt.name = QtWidgets.QLineEdit(name, parent=prompt)
+            prompt.type_selector = QtWidgets.QComboBox(prompt)
+            prompt.ok = QtWidgets.QPushButton('Ok', parent=prompt)
             for typ in [Any, bool, float, Array1d, Array2d, Array3d]:
                 prompt.type_selector.addItem(str(typ), typ)
             prompt.layout.addRow("Name:", prompt.name)

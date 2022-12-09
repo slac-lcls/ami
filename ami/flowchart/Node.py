@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-from pyqtgraph.Qt import QtCore, QtGui, QtWidgets
+from qtpy import QtCore, QtGui, QtWidgets
 from pyqtgraph.graphicsItems.GraphicsObject import GraphicsObject
 from pyqtgraph import functions as fn
 from pyqtgraph.debug import printExc
@@ -524,8 +524,8 @@ class NodeGraphicsItem(GraphicsObject):
 
         self.menu = None
         self.connectedTo = None
-        self.enabled = QtGui.QAction("Enabled", self.menu, checkable=True, checked=True)
-        self.optional = QtGui.QAction("Optional Inputs", self.menu, checkable=True, checked=False)
+        self.enabled = QtWidgets.QAction("Enabled", self.menu, checkable=True, checked=True)
+        self.optional = QtWidgets.QAction("Optional Inputs", self.menu, checkable=True, checked=False)
         self.buildMenu()
 
     def setPen(self, *args, **kwargs):
@@ -659,7 +659,7 @@ class NodeGraphicsItem(GraphicsObject):
             return self.menu
 
         graph = self.node._graph
-        self.connectTo = QtGui.QMenu("Connect To")
+        self.connectTo = QtWidgets.QMenu("Connect To")
         self.connectToSubMenus = []
 
         def connect(action):
@@ -672,7 +672,7 @@ class NodeGraphicsItem(GraphicsObject):
 
         for name, from_term in self.node.terminals.items():
             if from_term.isInput() and not from_term.isConnected():
-                term_menu = QtGui.QMenu(self.node.name() + '.' + name)
+                term_menu = QtWidgets.QMenu(self.node.name() + '.' + name)
                 add_term_menu = False
 
                 for node_name, node in graph.nodes(data='node'):
@@ -680,7 +680,7 @@ class NodeGraphicsItem(GraphicsObject):
                         continue
 
                     added = False
-                    node_menu = QtGui.QMenu(node_name)
+                    node_menu = QtWidgets.QMenu(node_name)
 
                     for term_name, to_term in node.terminals.items():
                         if to_term.isOutput():
@@ -700,7 +700,7 @@ class NodeGraphicsItem(GraphicsObject):
                     self.connectToSubMenus.append(term_menu)
 
             if from_term.isOutput():
-                term_menu = QtGui.QMenu(self.node.name() + '.' + name)
+                term_menu = QtWidgets.QMenu(self.node.name() + '.' + name)
                 add_term_menu = False
 
                 for node_name, node in graph.nodes(data='node'):
@@ -708,7 +708,7 @@ class NodeGraphicsItem(GraphicsObject):
                         continue
 
                     added = False
-                    node_menu = QtGui.QMenu(node_name)
+                    node_menu = QtWidgets.QMenu(node_name)
 
                     for term_name, to_term in node.terminals.items():
                         if to_term.isInput() and not to_term.isConnected():
@@ -747,7 +747,7 @@ class NodeGraphicsItem(GraphicsObject):
             self.menu = None
 
         if self.menu is None:
-            self.menu = QtGui.QMenu()
+            self.menu = QtWidgets.QMenu()
             self.menu.setTitle("Node")
             self.enabled.toggled.connect(self.enabledFromMenu)
             self.menu.addAction(self.enabled)

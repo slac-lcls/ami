@@ -7,7 +7,7 @@ Distributed under MIT/X11 license. See license.txt for more information.
 This class addresses the problem of having to save and restore the state
 of a large group of widgets.
 """
-from pyqtgraph.Qt import QtCore, QtGui, QtWidgets
+from qtpy import QtCore, QtGui, QtWidgets
 from pyqtgraph.widgets.ColorButton import ColorButton
 from pyqtgraph.widgets.SpinBox import SpinBox
 import weakref
@@ -80,35 +80,35 @@ class WidgetGroup(QtCore.QObject):
     # Custom widgets not in this list can be made to work with WidgetGroup by giving them a
     # 'widgetGroupInterface' method which returns the tuple.
     classes = {
-        QtGui.QSpinBox: (lambda w: w.valueChanged,
-                         QtGui.QSpinBox.value,
-                         QtGui.QSpinBox.setValue),
-        QtGui.QDoubleSpinBox: (lambda w: w.valueChanged,
-                               QtGui.QDoubleSpinBox.value,
-                               QtGui.QDoubleSpinBox.setValue),
-        QtGui.QSplitter: (None,
-                          splitterState,
-                          restoreSplitter,
-                          True),
-        QtGui.QCheckBox: (lambda w: w.stateChanged,
-                          QtGui.QCheckBox.isChecked,
-                          QtGui.QCheckBox.setChecked),
-        QtGui.QComboBox: (lambda w: w.currentIndexChanged,
-                          comboState,
-                          setComboState),
-        QtGui.QGroupBox: (lambda w: w.toggled,
-                          QtGui.QGroupBox.isChecked,
-                          QtGui.QGroupBox.setChecked,
-                          True),
-        QtGui.QLineEdit: (lambda w: w.textChanged,
-                          lambda w: str(w.text()),
-                          QtGui.QLineEdit.setText),
-        QtGui.QRadioButton: (lambda w: w.toggled,
-                             QtGui.QRadioButton.isChecked,
-                             QtGui.QRadioButton.setChecked),
-        QtGui.QSlider: (lambda w: w.valueChanged,
-                        QtGui.QSlider.value,
-                        QtGui.QSlider.setValue),
+        QtWidgets.QSpinBox: (lambda w: w.valueChanged,
+                             QtWidgets.QSpinBox.value,
+                             QtWidgets.QSpinBox.setValue),
+        QtWidgets.QDoubleSpinBox: (lambda w: w.valueChanged,
+                                   QtWidgets.QDoubleSpinBox.value,
+                                   QtWidgets.QDoubleSpinBox.setValue),
+        QtWidgets.QSplitter: (None,
+                              splitterState,
+                              restoreSplitter,
+                              True),
+        QtWidgets.QCheckBox: (lambda w: w.stateChanged,
+                              QtWidgets.QCheckBox.isChecked,
+                              QtWidgets.QCheckBox.setChecked),
+        QtWidgets.QComboBox: (lambda w: w.currentIndexChanged,
+                              comboState,
+                              setComboState),
+        QtWidgets.QGroupBox: (lambda w: w.toggled,
+                              QtWidgets.QGroupBox.isChecked,
+                              QtWidgets.QGroupBox.setChecked,
+                              True),
+        QtWidgets.QLineEdit: (lambda w: w.textChanged,
+                              lambda w: str(w.text()),
+                              QtWidgets.QLineEdit.setText),
+        QtWidgets.QRadioButton: (lambda w: w.toggled,
+                                 QtWidgets.QRadioButton.isChecked,
+                                 QtWidgets.QRadioButton.setChecked),
+        QtWidgets.QSlider: (lambda w: w.valueChanged,
+                            QtWidgets.QSlider.value,
+                            QtWidgets.QSlider.setValue),
         # PushButtonSelectFile: (lambda w: w.path_is_changed,
         #                       PushButtonSelectFile.fname,
         #                       PushButtonSelectFile.set_fname),
@@ -342,7 +342,7 @@ class FloatValidator(QtGui.QValidator):
         return match.groups()[0] if match else ""
 
 
-class ScientificDoubleSpinBox(QtGui.QDoubleSpinBox):
+class ScientificDoubleSpinBox(QtWidgets.QDoubleSpinBox):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -373,12 +373,12 @@ class ScientificDoubleSpinBox(QtGui.QDoubleSpinBox):
 
     def widgetGroupInterface(self):
         return (lambda w: w.valueChanged,
-                QtGui.QDoubleSpinBox.value,
-                QtGui.QDoubleSpinBox.setValue)
+                QtWidgets.QDoubleSpinBox.value,
+                QtWidgets.QDoubleSpinBox.setValue)
 
 
-class PushButtonSelectFile(QtGui.QPushButton):
-    path_is_changed = QtCore.pyqtSignal()  # ('QString')
+class PushButtonSelectFile(QtWidgets.QPushButton):
+    path_is_changed = QtCore.Signal()  # ('QString')
 
     def __init__(self, *args,
                  parent=None,
@@ -445,8 +445,8 @@ def generateUi(opts):
     if len(opts) == 0:
         return None, None, None, None
 
-    widget = QtGui.QWidget()
-    layout = QtGui.QFormLayout()
+    widget = QtWidgets.QWidget()
+    layout = QtWidgets.QFormLayout()
     # layout.setSpacing(0)
     widget.setLayout(layout)
     ctrls = {}
@@ -473,7 +473,7 @@ def generateUi(opts):
             name = o['group']
             if name not in groupboxes:
                 groupbox = QtWidgets.QGroupBox(parent=widget)
-                groupbox_layout = QtGui.QFormLayout()
+                groupbox_layout = QtWidgets.QFormLayout()
                 groupbox.setLayout(groupbox_layout)
                 groupboxes[name] = (groupbox, groupbox_layout)
                 groupbox.setTitle(name)
@@ -487,7 +487,7 @@ def generateUi(opts):
             parent = widget
 
         if t == 'intSpin':
-            w = QtGui.QSpinBox(parent=parent)
+            w = QtWidgets.QSpinBox(parent=parent)
             if 'max' in o:
                 w.setMaximum(o['max'])
             else:
@@ -514,7 +514,7 @@ def generateUi(opts):
             w = SpinBox(parent=widget)
             w.setOpts(**o)
         elif t == 'check':
-            w = QtGui.QCheckBox(parent=parent)
+            w = QtWidgets.QCheckBox(parent=parent)
             w.setFocus()
             if 'checked' in o:
                 val = o['checked']
@@ -522,7 +522,7 @@ def generateUi(opts):
             else:
                 val = False
         elif t == 'combo':
-            w = QtGui.QComboBox(parent=parent)
+            w = QtWidgets.QComboBox(parent=parent)
             for i in o['values']:
                 w.addItem(str(i), i)
             if 'value' in o:
@@ -532,7 +532,7 @@ def generateUi(opts):
             if 'value' in o:
                 w.setColor(o['value'])
         elif t == 'text':
-            w = QtGui.QLineEdit(parent=parent)
+            w = QtWidgets.QLineEdit(parent=parent)
             if 'placeholder' in o:
                 w.setPlaceholderText(o['placeholder'])
             if 'value' in o:
