@@ -861,7 +861,6 @@ class PsanaSource(HierarchicalDataSource):
         # special attributes that are per run instead of per event from a detectors interface, e.g. calib constants
         self.special_attrs = {
             'calibconst': typing.Dict,
-            'epicsinfo': typing.Dict,
         }
         if psana is None:
             raise NotImplementedError("psana is not available!")
