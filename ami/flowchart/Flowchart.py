@@ -462,7 +462,8 @@ class Flowchart(Node):
             if startDir is None:
                 startDir = '.'
             self.fileDialog = FileDialog(None, "Save Flowchart..", startDir, "Flowchart (*.fc)")
-            self.fileDialog.setAcceptMode(QtWidgets.QFileDialog.AcceptSave)
+            #self.fileDialog.setAcceptMode(QtWidgets.QFileDialog.AcceptSave)
+            #self.fileDialog.setOption(QtWidgets.QFileDialog.Option.DontUseNativeDialog)
             self.fileDialog.show()
             self.fileDialog.fileSelected.connect(self.saveFile)
             return

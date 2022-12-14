@@ -180,7 +180,7 @@ class PlotWidget(QtWidgets.QWidget):
 
         self.plot_view.setMenuEnabled(False)
 
-        self.configure_btn = pg.ButtonItem(pg.icons.getPixmap('ctrl'), 14, parentItem=self.plot_view)
+        self.configure_btn = pg.ButtonItem(pg.icons.getGraphPixmap('ctrl'), 14, parentItem=self.plot_view)
         self.configure_btn.clicked.connect(self.configure_plot)
 
         self.export_btn = pg.ButtonItem(pixmapFromBase64(camera), 24, parentItem=self.plot_view)
