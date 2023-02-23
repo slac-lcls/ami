@@ -1,7 +1,7 @@
 import pytest
 import numpy as np
 from ami.graphkit_wrapper import Graph
-from ami.graph_nodes import PickN, RollingBuffer
+from ami.graph_nodes import PickN, SumN, RollingBuffer
 
 
 @pytest.fixture(scope='function')
@@ -89,6 +89,91 @@ def test_pickList(pickList_graph):
 
     assert localCollector1 == {'ncspads_localCollector': [[1, 2], [3, 4], [-1, -2], [-3, -4]]}
     assert globalCollector == {'ncspads': [[1, 2], [3, 4], [-1, -2], [-3, -4], [1, 2], [3, 4], [-1, -2], [-3, -4]]}
+
+
+@pytest.fixture(scope='function')
+def sumN_graph(request):
+    N, nworkers, ncollectors, expected = request.param
+
+    graph = Graph(name='graph')
+    graph.add(SumN(name='cspad_sumN', N=N,
+                   inputs=['cspad'],
+                   outputs=['cspad_counts', 'cspad_sum']))
+    graph.compile(num_workers=nworkers, num_local_collectors=ncollectors)
+    return graph, expected
+
+
+@pytest.mark.parametrize('sumN_graph',
+                         [
+                            (9, 4, 2, (2, (2, 3), (2, 7))),
+                            (8, 4, 2, (2, (2, 3), (2, 7))),
+                            (4, 4, 2, (1, (1, 1), (1, 2))),
+                            (12, 4, 2, (2, (None, None), (None, None))),
+                            (12, 4, 2, (3, (3, 6), (3, 15))),
+                            (4, 4, 2, (2, (1, 2), (1, 4))),
+                            (1, 4, 2, (2, (1, 2), (1, 4), (1, 4), (1, 4))),
+                            (4, 1, 1, (4, (4, 10), (4, 26), (4, 26), (4, 26))),
+                            (4, 1, 1, (2, (None, None), (None, None))),
+                         ],
+                         indirect=True)
+def test_sumN(sumN_graph):
+    sumN_graph, expected = sumN_graph
+    try:
+        steps, (count1, sum1), (count2, sum2) = expected
+        if count1 is not None and count2 is not None:
+            count3 = count1 + count2
+        else:
+            count3 = None
+        if sum1 is not None and sum2 is not None:
+            sum3 = sum1 + sum2
+        else:
+            sum3 = None
+        if count3 is not None:
+            count4 = count3 * 2
+        else:
+            count4 = None
+        if sum3 is not None:
+            sum4 = sum3 * 2
+        else:
+            sum4 = None
+    except ValueError:
+        steps, (count1, sum1), (count2, sum2), (count3, sum3), (count4, sum4) = expected
+
+    start = 1
+    stop = start + steps
+    for i in range(start, stop):
+        worker1 = sumN_graph({'cspad': i}, color='worker')
+    sumN_graph.reset()
+    start = stop
+    stop = start + steps
+    for i in range(start, stop):
+        worker2 = sumN_graph({'cspad': i}, color='worker')
+
+    sumN_graph(worker1, color='localCollector')
+    localCollector = sumN_graph(worker2, color='localCollector')
+
+    sumN_graph(localCollector, color='globalCollector')
+    globalCollector = sumN_graph(localCollector, color='globalCollector')
+
+    if count1 is not None and sum1 is not None:
+        assert worker1 == {'cspad_counts_worker': count1, 'cspad_sum_worker': sum1}
+    else:
+        assert not worker1
+
+    if count2 is not None and sum2 is not None:
+        assert worker2 == {'cspad_counts_worker': count2, 'cspad_sum_worker': sum2}
+    else:
+        assert not worker2
+
+    if count3 is not None and sum3 is not None:
+        assert localCollector == {'cspad_counts_localCollector': count3, 'cspad_sum_localCollector': sum3}
+    else:
+        assert not localCollector
+
+    if count4 is not None and sum4 is not None:
+        assert globalCollector == {'cspad_counts': count4, 'cspad_sum': sum4}
+    else:
+        assert not globalCollector
 
 
 @pytest.fixture(scope='function')
