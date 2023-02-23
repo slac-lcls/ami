@@ -1,5 +1,6 @@
 from typing import Any
-from amitypes import Array1d, T
+from qtpy import QtWidgets
+from amitypes import Array1d, Array2d, Array3d, T
 from ami.flowchart.Node import Node
 from ami.flowchart.library.common import CtrlNode
 import ami.graph_nodes as gn
@@ -41,6 +42,53 @@ class PickN(CtrlNode):
 
     def to_operation(self, **kwargs):
         return gn.PickN(name=self.name()+"_operation", N=self.values['N'], **kwargs)
+
+
+class SumN(CtrlNode):
+
+    """
+    SumN sums N of its input.
+    """
+
+    nodeName = "SumN"
+    uiTemplate = [('N', 'intSpin', {'value': 2, 'min': 2})]
+
+    def __init__(self, name):
+        super().__init__(name,
+                         terminals={'Count': {'io': 'out', 'ttype': int}},
+                         global_op=True)
+        self.ttype_prompt = None
+
+    def terminal_prompt(self, name='', title='', **kwargs):
+        prompt = QtWidgets.QWidget()
+        prompt.layout = QtWidgets.QFormLayout(parent=prompt)
+        prompt.type_selector = QtWidgets.QComboBox(prompt)
+        prompt.ok = QtWidgets.QPushButton('Ok', parent=prompt)
+        for typ in [Any, bool, float, Array1d, Array2d, Array3d]:
+            prompt.type_selector.addItem(str(typ), typ)
+        prompt.layout.addRow("Type:", prompt.type_selector)
+        prompt.layout.addRow("", prompt.ok)
+        prompt.setLayout(prompt.layout)
+        prompt.setWindowTitle("Add " + name)
+        return prompt
+
+    def onCreate(self):
+        self.ttype_prompt = self.terminal_prompt()
+        self.ttype_prompt.ok.clicked.connect(self._addTerminals)
+        self.ttype_prompt.show()
+
+    def _addTerminals(self, **kwargs):
+        ttype = self.ttype_prompt.type_selector.currentData()
+        self.ttype_prompt.close()
+        kwargs['name'] = self.nextTerminalName('In')
+        kwargs['ttype'] = ttype
+        kwargs['removable'] = False
+        self.addInput(**kwargs)
+        kwargs['name'] = self.nextTerminalName('Out')
+        self.addOutput(**kwargs)
+
+    def to_operation(self, **kwargs):
+        return gn.SumN(name=self.name()+"_operation", N=self.values['N'], **kwargs)
 
 
 class RollingBuffer(CtrlNode):

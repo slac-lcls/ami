@@ -265,6 +265,46 @@ class PickN(GlobalTransformation):
         self.res = [None]*self.N
 
 
+class SumN(GlobalTransformation):
+
+    def __init__(self, **kwargs):
+        N = kwargs.pop('N', 1)
+        exportable = kwargs.pop('exportable', False)
+        super().__init__(**kwargs)
+        self.N = N
+        self.exportable = exportable
+        self.count = 0
+        self.res = None
+        self.clear = False
+
+    def __call__(self, *args, **kwargs):
+        if self.clear:
+            self.count = 0
+            self.res = None
+            self.clear = False
+
+        if self.is_expanded:
+            count, value = args
+        else:
+            count = 1
+            value = args[0]
+        self.count += count
+        if self.res is None:
+            self.res = value
+        else:
+            self.res = np.add(self.res, value)
+
+        if self.count >= self.N:
+            self.clear = True
+            return self.count, self.res
+        else:
+            return None, None
+
+    def reset(self):
+        self.count = 0
+        self.res = None
+
+
 class RollingBuffer(GlobalTransformation):
 
     def __init__(self, **kwargs):

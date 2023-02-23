@@ -522,20 +522,20 @@ class Average0D(CtrlNode):
                          global_op=True)
 
     def to_operation(self, inputs, outputs, **kwargs):
-        accumulated_outputs = [self.name()+'_accumulated_events']
+        accumulated_outputs = [self.name()+'_accumulated_counts', self.name()+'_accumulated_sum']
+
+        def avg(count, value):
+            return value/count
 
         if self.values['infinite']:
             def reduction(res, *rest):
-                if type(rest[0]) is list:
-                    res[0] += rest[0][0]
-                    res[1] += rest[0][1]
+                if len(rest) > 1:
+                    res[0] += rest[0]
+                    res[1] += rest[1]
                 else:
-                    res[0] = res[0] + rest[0]
-                    res[1] = res[1] + 1
+                    res[0] = res[0] + 1
+                    res[1] = res[1] + rest[1]
                 return res
-
-            def avg(*args, **kwargs):
-                return args[0][0]/args[0][1]
 
             nodes = [gn.Accumulator(name=self.name()+"_accumulated",
                                     inputs=inputs, outputs=accumulated_outputs,
@@ -544,15 +544,12 @@ class Average0D(CtrlNode):
                             inputs=accumulated_outputs, outputs=outputs,
                             func=avg, **kwargs)]
         else:
-            def func(arrs):
-                return np.average(arrs)
-
             nodes = [gn.PickN(name=self.name()+"_accumulated",
                               inputs=inputs, outputs=accumulated_outputs,
                               N=self.values['N'], **kwargs),
                      gn.Map(name=self.name()+"_map",
-                            inputs=accumulated_outputs, outputs=outputs, func=func,
-                            **kwargs)]
+                            inputs=accumulated_outputs, outputs=outputs,
+                            func=avg, **kwargs)]
 
         return nodes
 
@@ -565,7 +562,6 @@ class Average1D(CtrlNode):
 
     nodeName = "Average1D"
     uiTemplate = [('N', 'intSpin', {'value': 2, 'min': 2}),
-                  ('axis', 'intSpin', {'value': 0, 'min': 0, 'max': 1}),
                   ('infinite', 'check')]
 
     def __init__(self, name):
@@ -574,21 +570,20 @@ class Average1D(CtrlNode):
                          global_op=True)
 
     def to_operation(self, inputs, outputs, **kwargs):
-        axis = self.values['axis']
-        accumulated_outputs = [self.name()+'_accumulated_events']
+        accumulated_outputs = [self.name()+'_accumulated_counts', self.name()+'_accumulated_sum']
+
+        def avg(count, value):
+            return value/count
 
         if self.values['infinite']:
             def reduction(res, *rest):
-                if type(rest[0]) is list:
-                    res[0] = np.sum([res[0], rest[0][0]], axis=axis)
-                    res[1] += rest[0][1]
+                if len(rest) > 1:
+                    res[0] += rest[0]
+                    res[1] = np.add(res[1], rest[1])
                 else:
-                    res[0] = np.sum([res[0], rest[0]], axis=axis)
-                    res[1] = res[1] + 1
+                    res[0] = res[0] + 1
+                    res[1] = np.add(res[1], rest[0])
                 return res
-
-            def avg(*args, **kwargs):
-                return args[0][0]/args[0][1]
 
             nodes = [gn.Accumulator(name=self.name()+"_accumulated",
                                     inputs=inputs, outputs=accumulated_outputs,
@@ -598,15 +593,12 @@ class Average1D(CtrlNode):
                             func=avg, **kwargs)]
 
         else:
-            def func(arrs):
-                return np.sum(arrs, axis=axis)/len(arrs)
-
-            nodes = [gn.PickN(name=self.name()+"_accumulated",
-                              inputs=inputs, outputs=accumulated_outputs,
-                              N=self.values['N'], **kwargs),
+            nodes = [gn.SumN(name=self.name()+"_accumulated",
+                             inputs=inputs, outputs=accumulated_outputs,
+                             N=self.values['N'], **kwargs),
                      gn.Map(name=self.name()+"_map",
-                            inputs=accumulated_outputs, outputs=outputs, func=func,
-                            **kwargs)]
+                            inputs=accumulated_outputs, outputs=outputs,
+                            func=avg, **kwargs)]
 
         return nodes
 
@@ -619,7 +611,6 @@ class Average2D(CtrlNode):
 
     nodeName = "Average2D"
     uiTemplate = [('N', 'intSpin', {'value': 2, 'min': 2}),
-                  ('axis', 'intSpin', {'value': 0, 'min': 0, 'max': 2}),
                   ('infinite', 'check')]
 
     def __init__(self, name):
@@ -628,21 +619,20 @@ class Average2D(CtrlNode):
                          global_op=True)
 
     def to_operation(self, inputs, outputs, **kwargs):
-        axis = self.values['axis']
-        accumulated_outputs = [self.name()+'_accumulated_events']
+        accumulated_outputs = [self.name()+'_accumulated_counts', self.name()+'_accumulated_sum']
+
+        def avg(count, value):
+            return value/count
 
         if self.values['infinite']:
             def reduction(res, *rest):
-                if type(rest[0]) is list:
-                    res[0] = np.sum([res[0], rest[0][0]], axis=axis)
-                    res[1] += rest[0][1]
+                if len(rest) > 1:
+                    res[0] += rest[0]
+                    res[1] = np.add(res[1], rest[1])
                 else:
-                    res[0] = np.sum([res[0], rest[0]], axis=axis)
-                    res[1] = res[1] + 1
+                    res[0] = res[0] + 1
+                    res[1] = np.add(res[1], rest[0])
                 return res
-
-            def avg(*args, **kwargs):
-                return args[0][0]/args[0][1]
 
             nodes = [gn.Accumulator(name=self.name()+"_accumulated",
                                     inputs=inputs, outputs=accumulated_outputs,
@@ -651,15 +641,12 @@ class Average2D(CtrlNode):
                             inputs=accumulated_outputs, outputs=outputs,
                             func=avg, **kwargs)]
         else:
-            def func(arrs):
-                return np.sum(arrs, axis=axis)/len(arrs)
-
-            nodes = [gn.PickN(name=self.name()+"_accumulated",
-                              inputs=inputs, outputs=accumulated_outputs,
-                              N=self.values['N'], **kwargs),
+            nodes = [gn.SumN(name=self.name()+"_accumulated",
+                             inputs=inputs, outputs=accumulated_outputs,
+                             N=self.values['N'], **kwargs),
                      gn.Map(name=self.name()+"_map",
-                            inputs=accumulated_outputs, outputs=outputs, func=func,
-                            **kwargs)]
+                            inputs=accumulated_outputs, outputs=outputs,
+                            func=avg, **kwargs)]
 
         return nodes
 
