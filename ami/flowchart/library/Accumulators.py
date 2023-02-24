@@ -55,7 +55,6 @@ class SumN(CtrlNode):
 
     def __init__(self, name):
         super().__init__(name,
-                         terminals={'Count': {'io': 'out', 'ttype': int}},
                          global_op=True)
         self.ttype_prompt = None
 
@@ -84,7 +83,11 @@ class SumN(CtrlNode):
         kwargs['ttype'] = ttype
         kwargs['removable'] = False
         self.addInput(**kwargs)
+        kwargs['name'] = 'Count'
+        kwargs['ttype'] = int
+        self.addOutput(**kwargs)
         kwargs['name'] = self.nextTerminalName('Out')
+        kwargs['ttype'] = ttype
         self.addOutput(**kwargs)
 
     def to_operation(self, **kwargs):
