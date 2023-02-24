@@ -544,9 +544,9 @@ class Average0D(CtrlNode):
                             inputs=accumulated_outputs, outputs=outputs,
                             func=avg, **kwargs)]
         else:
-            nodes = [gn.PickN(name=self.name()+"_accumulated",
-                              inputs=inputs, outputs=accumulated_outputs,
-                              N=self.values['N'], **kwargs),
+            nodes = [gn.SumN(name=self.name()+"_accumulated",
+                             inputs=inputs, outputs=accumulated_outputs,
+                             N=self.values['N'], **kwargs),
                      gn.Map(name=self.name()+"_map",
                             inputs=accumulated_outputs, outputs=outputs,
                             func=avg, **kwargs)]
