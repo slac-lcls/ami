@@ -16,7 +16,6 @@ try:
     from psana.pyalgos.generic.NDArrUtils import info_ndarr
     QPen, QBrush, QColor = ur.QPen, ur.QBrush, ur.QColor
 
-
     class PolarHistogram():
 
         def __init__(self, *args):
@@ -25,7 +24,7 @@ try:
             self.hpolar = None
 
         def __call__(self, img, mask=None):
-            logger.debug('in PolarHistogram.__call__ %s' % info_ndarr(img,'image'))
+            logger.debug('in PolarHistogram.__call__ %s' % info_ndarr(img, 'image'))
             cx, cy, ro, ri, ao, ai, nr, na = self.args
             if self.hpolar is None:
                 logger.info('update hpolar with cx:%.1f, cy:%.1f, ro:%d, ri:%d, ao:%.1f, ai:%.1f, nr:%d, na:%d' %
@@ -53,6 +52,8 @@ try:
                          + info_ndarr(rproj, '\n  radial  projection')
                          + info_ndarr(aproj, '\n  angular projection'))
 
+            mask_arc = ur.um.mask_arc(img.shape, cx, cy, ro, ri, ao, ai, dtype=np.uint8)
+
             return orbins.bincenters(),\
                 oabins.bincenters(),\
                 orbins.binedges(),\
@@ -62,8 +63,8 @@ try:
                 rproj,\
                 aproj,\
                 (cx, cy, ro, ri, ao, ai, nr, na),\
-                (ri, ro-ri, ao, ai-ao)
-
+                (ri, ro-ri, ao, ai-ao),\
+                mask_arc
 
     class RoiArch(CtrlNode):
         """
@@ -83,7 +84,7 @@ try:
             super().__init__(name,
                              terminals={'image': {'io': 'in', 'ttype': Array2d},
                                         'mask': {'io': 'in', 'ttype': Array2d, 'removable': True},
-                                        #'mask': {'io': 'in', 'ttype': Array2d, 'optional': True},
+                                        # 'mask': {'io': 'in', 'ttype': Array2d, 'optional': True},
                                         'RBinCent': {'io': 'out', 'ttype': Array1d},
                                         'ABinCent': {'io': 'out', 'ttype': Array1d},
                                         'RBinEdges': {'io': 'out', 'ttype': Array1d},
@@ -93,7 +94,8 @@ try:
                                         'RProj': {'io': 'out', 'ttype': Array1d},
                                         'AProj': {'io': 'out', 'ttype': Array1d},
                                         'ROIPars': {'io': 'out', 'ttype': Array1d},
-                                        'BBox': {'io': 'out', 'ttype': Array1d}},
+                                        'BBox': {'io': 'out', 'ttype': Array1d},
+                                        'Mask': {'io': 'out', 'ttype': Array2d}},
                              global_op=True,
                              viewable=True)
 
@@ -102,24 +104,24 @@ try:
 
         def set_scene_click_radius(self, r=10):
             scene = self.widget.view.scene()
-            logger.info('change scene._clickRadius from %d to %d:' % (scene._clickRadius,r))
+            logger.info('change scene._clickRadius from %d to %d:' % (scene._clickRadius, r))
             scene.setClickRadius(r)
 
         def do_something_to_activate_handles(self):
             """NOTHNG WORKS SO FAR - image object is selected along with handle on mouseClick event.
             """
-            view = self.widget.view  # pyqtgraph.graphicsItems.ViewBox.ViewBox.ViewBox object
-            #w = view.getViewWidget()  # pyqtgraph.widgets.GraphicsLayoutWidget.GraphicsLayoutWidget
-            #vb = view.graphicsItem()  # pyqtgraph.graphicsItems.ViewBox.ViewBox.ViewBox object
-            #w.update()
-            #print('in set_zoom view:', view)
-            #view.setScale(factor)
-            #view.update()
-            #view.moveBy(100,100)
-            #view.setMouseEnabled(False)
-            #print(w, 'dir(w):', dir(w))
-            #print(vb, 'dir(vb):', dir(vb))
-            #i.setZValue(100)
+            _ = self.widget.view  # pyqtgraph.graphicsItems.ViewBox.ViewBox.ViewBox object
+            # w = view.getViewWidget()  # pyqtgraph.widgets.GraphicsLayoutWidget.GraphicsLayoutWidget
+            # vb = view.graphicsItem()  # pyqtgraph.graphicsItems.ViewBox.ViewBox.ViewBox object
+            # w.update()
+            # print('in set_zoom view:', view)
+            # view.setScale(factor)
+            # view.update()
+            # view.moveBy(100,100)
+            # view.setMouseEnabled(False)
+            # print(w, 'dir(w):', dir(w))
+            # print(vb, 'dir(vb):', dir(vb))
+            # i.setZValue(100)
 
         def display(self, topics, terms, addr, win, **kwargs):
             """call-back at click on RoiArch CtrlNode box. Why does it called twise on a single click?
