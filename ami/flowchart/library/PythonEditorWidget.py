@@ -7,6 +7,7 @@ from pyqode.core import api, modes, panels
 from pyqode.python import modes as pymodes, panels as pypanels, widgets
 import tempfile
 import importlib
+import typing
 
 
 def fullname(o):
@@ -16,8 +17,13 @@ def fullname(o):
         return "amitypes.array.Array2d"
     elif o is amitypes.array.Array3d:
         return "amitypes.array.Array3d"
-    else:
-        return o.__name__
+    elif o is bool:
+        return "bool"
+    elif o is float:
+        return "float"
+    elif o is typing.Any:
+        return "typing.Any"
+    raise NotImplementedError('Unsupported type for PythonEditor export: %s' % type(o))
 
 
 class PythonEditorProc(object):
@@ -210,7 +216,25 @@ class ExportWidget(QtWidgets.QWidget):
             state['ttype'] = fullname(term._type)
             terminals[name] = state
 
-        template = self.export(node_name, docstring, terminals, self.text)
+        # ugly: need to remove the quotes around the various amitypes
+        # to produce valid python code for the exported box - cpo
+        def fixup_ttype(mystr):
+            # eliminate the quotes in the "ttype" field
+            # to produce valid python code
+            first_search = "'ttype': '"
+            start_ind = mystr.find(first_search)
+            if start_ind == -1:
+                return mystr
+            end_ind = mystr.find("'", start_ind+len(first_search)+1)
+            part1 = mystr[:start_ind+len(first_search)-1]       # before first quote
+            part2 = mystr[start_ind+len(first_search):end_ind]  # between first/second quote
+            part3 = mystr[end_ind+1:]                           # after second quote
+            # recursively see if there is another "ttype" that
+            # needs quotes removed
+            return fixup_ttype(part1+part2+part3)
+        str_terminals = fixup_ttype(str(terminals))
+
+        template = self.export(node_name, docstring, str_terminals, self.text)
         if not fileName.endswith('.py'):
             fileName += '.py'
         with open(fileName, 'w') as f:
@@ -218,9 +242,9 @@ class ExportWidget(QtWidgets.QWidget):
 
     def export(self, name, docstring, terminals, text):
         template = f"""
-from typing import Any
-from amitypes import Array1d, Array2d, Array3d
 from ami.flowchart.Node import Node
+import typing
+import amitypes
 import ami.graph_nodes as gn
 
 
