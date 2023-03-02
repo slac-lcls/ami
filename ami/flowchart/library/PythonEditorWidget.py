@@ -7,23 +7,6 @@ from pyqode.core import api, modes, panels
 from pyqode.python import modes as pymodes, panels as pypanels, widgets
 import tempfile
 import importlib
-import typing
-
-
-def fullname(o):
-    if o is amitypes.array.Array1d:
-        return "amitypes.array.Array1d"
-    elif o is amitypes.array.Array2d:
-        return "amitypes.array.Array2d"
-    elif o is amitypes.array.Array3d:
-        return "amitypes.array.Array3d"
-    elif o is bool:
-        return "bool"
-    elif o is float:
-        return "float"
-    elif o is typing.Any:
-        return "typing.Any"
-    raise NotImplementedError('Unsupported type for PythonEditor export: %s' % type(o))
 
 
 class PythonEditorProc(object):
@@ -213,7 +196,7 @@ class ExportWidget(QtWidgets.QWidget):
         terminals = {}
         for name, term in self.node.terminals.items():
             state = term.saveState()
-            state['ttype'] = fullname(term._type)
+            state['ttype'] = amitypes.dumps(term._type)
             terminals[name] = state
 
         # ugly: need to remove the quotes around the various amitypes
