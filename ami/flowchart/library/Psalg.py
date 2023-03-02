@@ -637,7 +637,7 @@ try:
             self.geofname = None
             self.resp = (None, None, None)
 
-        def __call__(self, calib, arr3d=None):  #, mask2d=None):
+        def __call__(self, calib, arr3d=None):  # mask2d=None):
             """ called frequency ~1 Hz
             """
             logger.debug('GeometryProd.kwa: %s' % str(self.kwa))
@@ -671,7 +671,7 @@ try:
                 x, y, z = o.get_pixel_coords()
                 ix, iy = o.get_pixel_coord_indexes()
                 shape3d = o.shape3d()
-                #logger.info(info_ndarr(shape3d, 'shape3d:'))
+                # logger.info(info_ndarr(shape3d, 'shape3d:'))
                 x.shape = shape3d
                 y.shape = shape3d
                 z.shape = shape3d
@@ -687,17 +687,17 @@ try:
                 img = None if arr3d is None else\
                     img_from_pixel_arrays(ix.ravel(), iy.ravel(), W=arr3d.ravel())  # dtype=np.float32, vbase=0
 
-                #mask3d = None
-                #if mask2d is not None:
+                # mask3d = None
+                # if mask2d is not None:
                 #    mask3d = convert_mask2d_to_ndarray(mask2d, ix, iy)
                 #    if mask3d is not None:
                 #        mask3d.shape = shape3d
 
-                #logger.info(info_ndarr(arr3d, 'input arr3d:'))
-                #logger.info(info_ndarr(mask2d, 'input mask2d:'))
-                #logger.info(info_ndarr(mask3d, 'output mask3d:'))
+                # logger.info(info_ndarr(arr3d, 'input arr3d:'))
+                # logger.info(info_ndarr(mask2d, 'input mask2d:'))
+                # logger.info(info_ndarr(mask3d, 'output mask3d:'))
 
-                self.resp = ([ix, iy], [x, y, z], img)  #, mask3d)
+                self.resp = ([ix, iy], [x, y, z], img)  # mask3d)
                 self.do_load_geo = 0
 
             return self.resp
@@ -719,8 +719,8 @@ try:
                                               'coords_xyz': {'io': 'out', 'ttype': typing.List},
                                               'image':      {'io': 'out', 'ttype': Array2d},
                                               })
-                                              #'mask2d':   {'io': 'in', 'ttype': Array2d, 'removable': True},
-                                              #'mask3d':   {'io': 'out', 'ttype': Array3d}
+# 'mask2d':   {'io': 'in', 'ttype': Array2d, 'removable': True},
+# 'mask3d':   {'io': 'out', 'ttype': Array3d}
 
             logger.info('Geometry.__init__: %s' % self.__init__.__doc__.rstrip())
             _ = self.dict_geometry_pars_from_values()  # just to print content of issue
@@ -775,19 +775,18 @@ try:
             if mask2d is not None:
                 mask3d = convert_mask2d_to_ndarray(mask2d, ix, iy)
                 if mask3d is not None:
-                   mask3d.shape = ix.shape
+                    mask3d.shape = ix.shape
 
             logger.info(info_ndarr(mask3d, 'output mask3d:'))
 
             return mask3d
-
 
     class Mask3dFrom2d(CtrlNode):
         """ psana Mask3dFrom2d - converts mask2d (as image) to mask3d array shaped as data"""
         nodeName = "Mask3dFrom2d"
 
         uiTemplate = [
-            #('geofname', 'file_in', {'value': 'select'}),
+            # ('geofname', 'file_in', {'value': 'select'}),
         ]
 
         def __init__(self, name):
@@ -804,20 +803,12 @@ try:
             pars = {}
             return gn.Map(name=self.name()+"_operation", **kwargs, func=Mask3dFrom2dProd(**pars))
 
-
 except ImportError as e:
     print(e)
 
 
-
-
-
-
-
-
 try:
-    #from psana.detector.NDArrUtils import info_ndarr, reshape_to_2d, arr_rot_n90
-    from psana.pyalgos.generic.NDArrUtils import info_ndarr, reshape_to_2d, arr_rot_n90
+    from psana.pyalgos.generic.NDArrUtils import reshape_to_2d, arr_rot_n90  # info_ndarr
     from psana.pyalgos.generic.PSUtils import table_nxn_epix10ka_from_ndarr, table_nxm_jungfrau_from_ndarr
 
     class TableFromArr3dProd():
@@ -832,32 +823,32 @@ try:
             logger.info('TableFromArr3dProd.__call__ : %s' % self.__call__.__doc__.rstrip())
             logger.info(info_ndarr(arr3d, 'input arr3d:'))
             assert isinstance(arr3d, np.ndarray)
-            assert len(arr3d.shape)>=3
+            assert len(arr3d.shape) >= 3
             # jungfrau shape (N, 512, 1024)
             # epix10ka/epixhr shape (N, 352, 384)/(N, 288, 384)
             arr2d = table_nxm_jungfrau_from_ndarr(arr3d) if (len(arr3d) % 512*1024) == 0 else\
-                    table_nxn_epix10ka_from_ndarr(arr3d) if (len(arr3d) % 384) == 0 else\
-                    reshape_to_2d(np.array(arr3d))
+                table_nxn_epix10ka_from_ndarr(arr3d) if (len(arr3d) % 384) == 0 else\
+                reshape_to_2d(np.array(arr3d))
             logger.info(info_ndarr(arr2d, 'output 2-d table:'))
             logger.info('**kwa: %s' % str(self.kwa))
             transpose = self.kwa.get('transpose', False)
             ang_n90 = int(self.kwa.get('rot_n90', 90))
-            if transpose: arr2d = arr2d.T
+            if transpose:
+                arr2d = arr2d.T
             if ang_n90 != 0:
                 arr2d = arr_rot_n90(arr2d, rot_ang_n90=ang_n90)
             return arr2d
-
 
     class TableFromArr3d(CtrlNode):
         """ psana TableFromArr3d - converts n-d array (n>=3) for detector data to 2-d table of segments."""
         nodeName = "TableFromArr3d"
 
         uiTemplate = [
+        ]
+#        uiTemplate = [
 #            ('transpose', 'check', {'checked': True,}),
 #            ('rot_n90', 'combo', {'values': ['0', '90', '180', '270'],}),
-        ]
-#            ('transpose', 'check', {'checked': True, 'group': 'output array transformation parameters'}),
-#            ('rot_n90', 'combo', {'values': ['0', '90', '180', '270'], 'group': 'output array transformation parameters'}),
+#        ]
 
         def __init__(self, name):
             """constructor - called at droppong CtrlNode on flowchart'."""
@@ -867,8 +858,8 @@ try:
 
         def to_operation(self, **kwargs):
             logger.debug('to_operation - at click on Apply')
-            #w = self.ctrls.get('transpose', False)
-            #pars = {'transpose': self.ctrls.get('transpose', False),
+            # w = self.ctrls.get('transpose', False)
+            # pars = {'transpose': self.ctrls.get('transpose', False),
             #        'rot_n90': self.ctrls.get('rot_n90', '0'),
             #       }
             pars = {} if self.ctrls is None else self.ctrls  # isinstance(self.ctrls, dict)
@@ -876,3 +867,61 @@ try:
 
 except ImportError as e:
     print(e)
+
+# ===========  TEMPORARY FOR TEST ONLY
+
+try:
+    # from psana.pyalgos.generic.NDArrUtils import info_ndarr, reshape_to_2d, arr_rot_n90
+    # from psana.pyalgos.generic.PSUtils import table_nxn_epix10ka_from_ndarr, table_nxm_jungfrau_from_ndarr
+
+    class TestQtPickleProd():
+
+        def __init__(self, **kwa):
+            logger.info('TestQtPickleProdProd.__init__ kwa: %s' % str(kwa))
+            self.kwa = kwa
+
+        def __call__(self, arr3d):
+            """ call frequency ~1Hz
+            """
+            logger.info(info_ndarr(arr3d, 'TestQtPickleProd.__call__ input arr3d:'))
+            assert isinstance(arr3d, np.ndarray)
+            assert len(arr3d.shape) >= 3
+            # jungfrau shape (N, 512, 1024)
+            # epix10ka/epixhr shape (N, 352, 384)/(N, 288, 384)
+            arr2d = table_nxm_jungfrau_from_ndarr(arr3d) if (len(arr3d) % 512*1024) == 0 else\
+                table_nxn_epix10ka_from_ndarr(arr3d) if (len(arr3d) % 384) == 0 else\
+                reshape_to_2d(np.array(arr3d))
+            logger.info(info_ndarr(arr2d, 'output 2-d table:'))
+            logger.info('**kwa: %s' % str(self.kwa))
+            transpose = self.kwa.get('transpose', False)
+            ang_n90 = int(self.kwa.get('rot_n90', 90))
+            if transpose:
+                arr2d = arr2d.T
+            if ang_n90 != 0:
+                arr2d = arr_rot_n90(arr2d, rot_ang_n90=ang_n90)
+            return arr2d
+
+    class TestQtPickle(CtrlNode):
+        """ psana TestQtPickle - converts n-d array (n>=3) for detector data to 2-d table of segments."""
+        nodeName = "TestQtPickle"
+
+        uiTemplate = [
+            ('transpose', 'check', {'checked': True}),
+            ('rot_n90', 'combo', {'values': ['0', '90', '180', '270']})
+        ]
+
+        def __init__(self, name):
+            """constructor - called at droppong CtrlNode on flowchart'."""
+            super().__init__(name, terminals={'arr3d': {'io': 'in', 'ttype': Array3d},
+                                              'arr2d': {'io': 'out', 'ttype': Array2d}})
+            logger.info('__init__: %s' % self.__init__.__doc__.rstrip())
+
+        def to_operation(self, **kwargs):
+            logger.debug('to_operation - at click on Apply')
+            pars = {} if self.ctrls is None else self.ctrls  # isinstance(self.ctrls, dict)
+            return gn.Map(name=self.name()+"_operation", **kwargs, func=TestQtPickleProd(**pars))
+
+except ImportError as e:
+    print(e)
+
+# =========
