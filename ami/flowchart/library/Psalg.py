@@ -844,11 +844,9 @@ try:
         nodeName = "TableFromArr3d"
 
         uiTemplate = [
+            ('transpose', 'check', {'checked': True, }),
+            ('rot_n90', 'combo', {'value': '0', 'values': ['0', '90', '180', '270'], }),
         ]
-#        uiTemplate = [
-#            ('transpose', 'check', {'checked': True,}),
-#            ('rot_n90', 'combo', {'values': ['0', '90', '180', '270'],}),
-#        ]
 
         def __init__(self, name):
             """constructor - called at droppong CtrlNode on flowchart'."""
@@ -862,7 +860,7 @@ try:
             # pars = {'transpose': self.ctrls.get('transpose', False),
             #        'rot_n90': self.ctrls.get('rot_n90', '0'),
             #       }
-            pars = {} if self.ctrls is None else self.ctrls  # isinstance(self.ctrls, dict)
+            pars = {} if self.values is None else self.values  # isinstance(self.values, dict)
             return gn.Map(name=self.name()+"_operation", **kwargs, func=TableFromArr3dProd(**pars))
 
 except ImportError as e:
@@ -907,7 +905,7 @@ try:
 
         uiTemplate = [
             ('transpose', 'check', {'checked': True}),
-            ('rot_n90', 'combo', {'values': ['0', '90', '180', '270']})
+            ('rot_n90', 'combo', {'value': '0', 'values': ['0', '90', '180', '270']})
         ]
 
         def __init__(self, name):
@@ -918,7 +916,7 @@ try:
 
         def to_operation(self, **kwargs):
             logger.debug('to_operation - at click on Apply')
-            pars = {} if self.ctrls is None else self.ctrls  # isinstance(self.ctrls, dict)
+            pars = {} if self.values is None else self.values  # isinstance(self.ctrls, dict)
             return gn.Map(name=self.name()+"_operation", **kwargs, func=TestQtPickleProd(**pars))
 
 except ImportError as e:
