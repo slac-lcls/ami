@@ -4,6 +4,7 @@ import time
 import dill
 import logging
 import threading
+import functools
 import numpy as np
 import ami.comm
 from ami import LogConfig
@@ -16,6 +17,21 @@ from p4p.util import ThreadedWorkQueue
 
 
 logger = logging.getLogger(LogConfig.get_package_name(__name__))
+
+
+def tsrpc(rtype=None):
+    """patches the rpc to give a valid timestamp"""
+    if hasattr(rtype, "wrap"):
+        def wrapper(func):
+            @rpc(rtype)
+            @functools.wraps(func)
+            def tswrap(*args, **kwargs):
+                return rtype.wrap(func(*args, **kwargs), timestamp=time.time())
+            return tswrap
+        return wrapper
+    else:
+        return rpc(rtype)
+
 
 
 class PvaExportPutHandler:
@@ -44,35 +60,35 @@ class PvaExportRpcHandler:
             self.comms[graph] = ami.comm.GraphCommHandler(graph, self.addr, ctx=self.ctx)
         return self.comms[graph]
 
-    @rpc(NTScalar('?'))
+    @tsrpc(NTScalar('?'))
     def create(self, graph):
         return self._get_comm(graph).create()
 
-    @rpc(NTScalar('?'))
+    @tsrpc(NTScalar('?'))
     def destroy(self, graph):
         return self._get_comm(graph).destroy()
 
-    @rpc(NTScalar('?'))
+    @tsrpc(NTScalar('?'))
     def clear(self, graph):
         return self._get_comm(graph).clear()
 
-    @rpc(NTScalar('?'))
+    @tsrpc(NTScalar('?'))
     def reset(self, graph):
         return self._get_comm(graph).reset()
 
-    @rpc(NTScalar('?'))
+    @tsrpc(NTScalar('?'))
     def post(self, graph, topic, payload):
         return self._get_comm(graph)._post_dill(topic, dill.loads(payload.tobytes()))
 
-    @rpc(NTScalar('as'))
+    @tsrpc(NTScalar('as'))
     def names(self, graph):
         return self._get_comm(graph).names
 
-    @rpc(NTScalar('?'))
+    @tsrpc(NTScalar('?'))
     def view(self, graph, name):
         return self._get_comm(graph).view(name)
 
-    @rpc(NTScalar('?'))
+    @tsrpc(NTScalar('?'))
     def export(self, graph, name, alias):
         return self._get_comm(graph).export(name, alias)
 
@@ -132,16 +148,16 @@ class PvaExportServer:
     def find_graph_pvnames(self, graph, names):
         return [name for name in names if name.startswith(self.graph_pvname(graph))]
 
-    def create_pv(self, name, nt, initial, func=None):
+    def create_pv(self, name, nt, initial, timestamp, func=None):
         if func is not None:
-            pv = SharedPV(nt=nt, initial=initial, handler=PvaExportPutHandler(put=func))
+            pv = SharedPV(nt=nt, initial=initial, handler=PvaExportPutHandler(put=func), timestamp=timestamp)
         else:
-            pv = SharedPV(nt=nt, initial=initial)
+            pv = SharedPV(nt=nt, initial=initial, timestamp=timestamp)
         self.provider.add('%s:%s' % (self.base, name), pv)
         self.pvs[name] = pv
 
-    def create_bytes_pv(self, name, initial, func=None):
-        self.create_pv(name, NTBytes(), initial, func=func)
+    def create_bytes_pv(self, name, initial, timestamp, func=None):
+        self.create_pv(name, NTBytes(), initial, timestamp, func=func)
 
     def valid(self, name, group=None):
         return not name.startswith('_')
@@ -158,73 +174,81 @@ class PvaExportServer:
         else:
             return NTObject()
 
-    def update_graph(self, graph, data):
-        # add the unaggregated version of the pvs
+    @staticmethod
+    def converted_data(data):
         for key, value in data.items():
+            # convert any sets to tuples since p4p doesn't like sets...
+            if isinstance(value, set):
+                value = tuple(value)
+            yield key, value
+
+    def update_graph(self, graph, data, timestamp):
+        # add the unaggregated version of the pvs
+        for key, value in self.converted_data(data):
             if key in NTGraph.flat_schema:
                 name, nttype = NTGraph.flat_schema[key]
                 pvname = self.graph_pvname(graph, name)
                 if pvname not in self.pvs:
-                    self.create_pv(pvname, nttype, value)
+                    self.create_pv(pvname, nttype, value, timestamp)
                 else:
-                    self.pvs[pvname].post(value)
+                    self.pvs[pvname].post(value, timestamp=timestamp)
         # add the aggregated graph pv if requested
         if self.aggregate:
             pvname = self.graph_pvname(graph)
             if pvname not in self.pvs:
                 logger.debug("Creating pv for info on the graph")
-                self.create_pv(pvname, NTGraph(), data)
+                self.create_pv(pvname, NTGraph(), data, timestamp)
             else:
-                self.pvs[pvname].post(data)
+                self.pvs[pvname].post(data, timestamp=timestamp)
 
-    def update_store(self, graph, data):
+    def update_store(self, graph, data, timestamp):
         # add the unaggregated version of the pvs
         for key, value in data.items():
             if key in NTStore.flat_schema:
                 name, nttype = NTStore.flat_schema[key]
                 pvname = self.graph_pvname(graph, name)
                 if pvname not in self.pvs:
-                    self.create_pv(pvname, nttype, value)
+                    self.create_pv(pvname, nttype, value, timestamp)
                 else:
-                    self.pvs[pvname].post(value)
+                    self.pvs[pvname].post(value, timestamp=timestamp)
         # add the aggregated graph pv if requested
         if self.aggregate:
             pvname = self.graph_pvname(graph, 'store')
             if pvname not in self.pvs:
                 logger.debug("Creating pv for info on the store")
-                self.create_pv(pvname, NTStore(), data)
+                self.create_pv(pvname, NTStore(), data, timestamp)
             else:
-                self.pvs[pvname].post(data)
+                self.pvs[pvname].post(data, timestamp=timestamp)
 
-    def update_heartbeat(self, graph, heartbeat):
+    def update_heartbeat(self, graph, heartbeat, timestamp):
         pvname = self.graph_pvname(graph, 'heartbeat')
         if pvname not in self.pvs:
-            self.create_pv(pvname, NTScalar('d'), heartbeat.identity)
+            self.create_pv(pvname, NTScalar('d'), heartbeat.identity, timestamp)
         else:
-            self.pvs[pvname].post(heartbeat.identity)
+            self.pvs[pvname].post(heartbeat.identity, timestamp=timestamp)
 
-    def update_info(self, data):
+    def update_info(self, data, timestamp):
         # add the unaggregated version of the pvs
-        for key, value in data.items():
+        for key, value in self.converted_data(data):
             pvname = self.info_pvname(key)
             if pvname not in self.pvs:
-                self.create_pv(pvname, NTScalar('as'), value)
+                self.create_pv(pvname, NTScalar('as'), value, timestamp)
             else:
-                self.pvs[pvname].post(value)
+                self.pvs[pvname].post(value, timestamp=timestamp)
 
-    def update_data(self, graph, name, data):
+    def update_data(self, graph, name, data, timestamp):
         pvname = self.data_pvname(graph, name)
         if pvname not in self.ignored:
             if pvname not in self.pvs:
                 pv_type = self.get_pv_type(data)
                 if pv_type is not None:
                     logger.debug("Creating new pv named %s for graph %s", name, graph)
-                    self.create_pv(pvname, pv_type, data)
+                    self.create_pv(pvname, pv_type, data, timestamp)
                 else:
                     logger.warn("Cannot map type of '%s' from graph '%s' to PV: %s", name, graph, type(data))
                     self.ignored.add(pvname)
             else:
-                self.pvs[pvname].post(data)
+                self.pvs[pvname].post(data, timestamp=timestamp)
 
     def update_destroy(self, graph):
         # close all the pvs associated with the purged graph
@@ -253,19 +277,20 @@ class PvaExportServer:
             topic = self.export.recv_string()
             graph = self.export.recv_string()
             exports = self.export.recv_pyobj()
+            timestamp = time.time()
             if topic == 'data':
                 for name, data in exports.items():
                     # ignore names starting with '_' - these are private
                     if self.valid(name):
-                        self.update_data(graph, name, data)
+                        self.update_data(graph, name, data, timestamp)
             elif topic == 'graph':
-                self.update_graph(graph, exports)
+                self.update_graph(graph, exports, timestamp)
             elif topic == 'store':
-                self.update_store(graph, exports)
+                self.update_store(graph, exports, timestamp)
             elif topic == 'heartbeat':
-                self.update_heartbeat(graph, exports)
+                self.update_heartbeat(graph, exports, timestamp)
             elif topic == 'info':
-                self.update_info(exports)
+                self.update_info(exports, timestamp)
             elif topic == 'destroy':
                 self.update_destroy(graph)
             else:

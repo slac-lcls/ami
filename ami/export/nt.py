@@ -99,10 +99,10 @@ class NTBytes:
     def __init__(self, **kws):
         self.type = self.buildType(**kws)
 
-    def wrap(self, value):
+    def wrap(self, value, timestamp=None):
         """Wrap dictionary as Value
         """
-        S, NS = divmod(time.time(), 1.0)
+        S, NS = divmod(float(timestamp or time.time()), 1.0)
         return Value(self.type, {
             'value': np.frombuffer(value, dtype=np.ubyte),
             'timeStamp': {
@@ -137,10 +137,10 @@ class NTObject:
     def __init__(self, **kws):
         self.type = self.buildType(**kws)
 
-    def wrap(self, value):
+    def wrap(self, value, timestamp=None):
         """Wrap dictionary as Value
         """
-        S, NS = divmod(time.time(), 1.0)
+        S, NS = divmod(float(timestamp or time.time()), 1.0)
         return Value(self.type, {
             'value': np.frombuffer(dill.dumps(value), dtype=np.ubyte),
             'timeStamp': {
@@ -176,10 +176,10 @@ class NTGraph:
     def __init__(self, **kws):
         self.type = self.buildType(**kws)
 
-    def wrap(self, value):
+    def wrap(self, value, timestamp=None):
         """Wrap dictionary as Value
         """
-        S, NS = divmod(time.time(), 1.0)
+        S, NS = divmod(float(timestamp or time.time()), 1.0)
         for field in self.byte_fields:
             value[field] = np.frombuffer(value[field], np.ubyte)
         for field in self.object_fields:
@@ -227,10 +227,10 @@ class NTStore:
     def __init__(self, **kws):
         self.type = self.buildType(**kws)
 
-    def wrap(self, value):
+    def wrap(self, value, timestamp=None):
         """Wrap dictionary as Value
         """
-        S, NS = divmod(time.time(), 1.0)
+        S, NS = divmod(float(timestamp or time.time()), 1.0)
         for field in self.byte_fields:
             value[field] = np.frombuffer(value[field], np.ubyte)
         for field in self.object_fields:

@@ -678,7 +678,7 @@ async def test_comm_graph_view_async(exporter, pvacomm_async, views):
         assert payload[0].name == comm.auto(views) + '_view'
 
 
-@pytest.mark.parametrize('pvacomm_tmo', [0.5], indirect=True)
+@pytest.mark.parametrize('pvacomm_tmo', [2.0], indirect=True)
 @pytest.mark.parametrize('names',
                          [
                             'laser',
@@ -711,7 +711,7 @@ def test_comm_graph_fetch(exporter, pvacomm_tmo, names):
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize('pvacomm_tmo_async', [0.5], indirect=True)
+@pytest.mark.parametrize('pvacomm_tmo_async', [2.0], indirect=True)
 @pytest.mark.parametrize('names',
                          [
                             'laser',
@@ -743,8 +743,9 @@ async def test_comm_graph_fetch_async(exporter, pvacomm_tmo_async, names):
         assert fetched == injector.cache['data'][graph_name].get(names)
 
 
-def test_comm_graph_info(exporter, pvacomm):
-    comm = pvacomm
+@pytest.mark.parametrize('pvacomm_tmo', [2.0], indirect=True)
+def test_comm_graph_info(exporter, pvacomm_tmo):
+    comm = pvacomm_tmo
     injector = exporter[1]
 
     graph_name = comm.current
@@ -778,8 +779,9 @@ def test_comm_graph_info(exporter, pvacomm):
 
 
 @pytest.mark.asyncio
-async def test_comm_graph_info_async(exporter, pvacomm_async):
-    comm = pvacomm_async
+@pytest.mark.parametrize('pvacomm_tmo_async', [2.0], indirect=True)
+async def test_comm_graph_info_async(exporter, pvacomm_tmo_async):
+    comm = pvacomm_tmo_async
     injector = exporter[1]
 
     graph_name = await comm.current
