@@ -68,6 +68,8 @@ def event_loop(qevent_loop):
     us use the qevent_loop when using the @pytest.mark.asyncio decorator
     """
     yield qevent_loop
+    # clean up the event loop after test
+    qevent_loop.close()
 
 
 @pytest.fixture(scope='function')
