@@ -1,8 +1,13 @@
 def get_version():
-    import pkg_resources
     try:
-        return pkg_resources.get_distribution(__name__).version
-    except pkg_resources.DistributionNotFound:
+        # python > 3.7
+        import importlib.metadata as importlib_metadata
+    except ImportError:
+        # backport to python 3.7
+        import importlib_metadata
+    try:
+        return importlib_metadata.version(__name__)
+    except importlib_metadata.PackageNotFoundError:
         # package is not installed
         pass
 
