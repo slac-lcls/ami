@@ -7,7 +7,7 @@ import threading
 import functools
 import numpy as np
 import ami.comm
-from ami import LogConfig
+from ami import LogConfig, p4pConfig
 from ami.export.nt import NTBytes, NTObject, NTGraph, NTStore
 from p4p.nt import NTScalar, NTNDArray
 from p4p.server import Server, StaticProvider
@@ -31,7 +31,6 @@ def tsrpc(rtype=None):
         return wrapper
     else:
         return rpc(rtype)
-
 
 
 class PvaExportPutHandler:
@@ -149,15 +148,23 @@ class PvaExportServer:
         return [name for name in names if name.startswith(self.graph_pvname(graph))]
 
     def create_pv(self, name, nt, initial, timestamp, func=None):
+        extras = {}
         if func is not None:
-            pv = SharedPV(nt=nt, initial=initial, handler=PvaExportPutHandler(put=func), timestamp=timestamp)
-        else:
-            pv = SharedPV(nt=nt, initial=initial, timestamp=timestamp)
+            extras['handler'] = PvaExportPutHandler(put=func)
+        if p4pConfig.SupportsTimestamps:
+            extras['timestamp'] = timestamp
+        pv = SharedPV(nt=nt, initial=initial, **extras)
         self.provider.add('%s:%s' % (self.base, name), pv)
         self.pvs[name] = pv
 
     def create_bytes_pv(self, name, initial, timestamp, func=None):
         self.create_pv(name, NTBytes(), initial, timestamp, func=func)
+
+    def post_pv(self, pvname, value, timestamp):
+        extras = {}
+        if p4pConfig.SupportsTimestamps:
+            extras['timestamp'] = timestamp
+        self.pvs[pvname].post(value, **extras)
 
     def valid(self, name, group=None):
         return not name.startswith('_')
@@ -191,7 +198,7 @@ class PvaExportServer:
                 if pvname not in self.pvs:
                     self.create_pv(pvname, nttype, value, timestamp)
                 else:
-                    self.pvs[pvname].post(value, timestamp=timestamp)
+                    self.post_pv(pvname, value, timestamp)
         # add the aggregated graph pv if requested
         if self.aggregate:
             pvname = self.graph_pvname(graph)
@@ -199,7 +206,7 @@ class PvaExportServer:
                 logger.debug("Creating pv for info on the graph")
                 self.create_pv(pvname, NTGraph(), data, timestamp)
             else:
-                self.pvs[pvname].post(data, timestamp=timestamp)
+                self.post_pv(pvname, data, timestamp)
 
     def update_store(self, graph, data, timestamp):
         # add the unaggregated version of the pvs
@@ -210,7 +217,7 @@ class PvaExportServer:
                 if pvname not in self.pvs:
                     self.create_pv(pvname, nttype, value, timestamp)
                 else:
-                    self.pvs[pvname].post(value, timestamp=timestamp)
+                    self.post_pv(pvname, value, timestamp)
         # add the aggregated graph pv if requested
         if self.aggregate:
             pvname = self.graph_pvname(graph, 'store')
@@ -218,14 +225,14 @@ class PvaExportServer:
                 logger.debug("Creating pv for info on the store")
                 self.create_pv(pvname, NTStore(), data, timestamp)
             else:
-                self.pvs[pvname].post(data, timestamp=timestamp)
+                self.post_pv(pvname, data, timestamp)
 
     def update_heartbeat(self, graph, heartbeat, timestamp):
         pvname = self.graph_pvname(graph, 'heartbeat')
         if pvname not in self.pvs:
             self.create_pv(pvname, NTScalar('d'), heartbeat.identity, timestamp)
         else:
-            self.pvs[pvname].post(heartbeat.identity, timestamp=timestamp)
+            self.post_pv(pvname, heartbeat.identity, timestamp)
 
     def update_info(self, data, timestamp):
         # add the unaggregated version of the pvs
@@ -234,7 +241,7 @@ class PvaExportServer:
             if pvname not in self.pvs:
                 self.create_pv(pvname, NTScalar('as'), value, timestamp)
             else:
-                self.pvs[pvname].post(value, timestamp=timestamp)
+                self.post_pv(pvname, value, timestamp)
 
     def update_data(self, graph, name, data, timestamp):
         pvname = self.data_pvname(graph, name)
@@ -248,7 +255,7 @@ class PvaExportServer:
                     logger.warn("Cannot map type of '%s' from graph '%s' to PV: %s", name, graph, type(data))
                     self.ignored.add(pvname)
             else:
-                self.pvs[pvname].post(data, timestamp=timestamp)
+                self.post_pv(pvname, data, timestamp)
 
     def update_destroy(self, graph):
         # close all the pvs associated with the purged graph
