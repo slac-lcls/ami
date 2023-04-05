@@ -4,6 +4,7 @@ import abc
 import zmq
 import time
 import dill
+import json
 import typing
 import inspect
 import logging
@@ -374,6 +375,7 @@ class Source(abc.ABC):
             'repeat': lambda s: s if isinstance(s, bool) else s.lower() == 'true',
             'counting': lambda s: s if isinstance(s, bool) else s.lower() == 'true',
             'files': lambda n: n if isinstance(n, list) else [os.path.expanduser(f) for f in n.split(',')],
+            'config': lambda c: c if isinstance(c, dict) else os.path.expanduser(c),
         }
         # Correct the types of special keys in the dictionary that might have
         # been passed as strings (can happen when specifying config on the
@@ -1269,6 +1271,12 @@ class SimSource(Source):
         super().__init__(idnum, num_workers, heartbeat_period, src_cfg, flags)
         self.count = 0
         self.synced = False
+        # load the simulation configuration if not already done
+        sim_cfg = self.config.get('config', {})
+        if not isinstance(sim_cfg, dict):
+            with open(sim_cfg, 'r') as cnf:
+                self.config['config'] = json.load(cnf)
+        # set up sync connection if specified
         if 'sync' in self.config:
             self.ctx = zmq.Context()
             self.ts_src = self.ctx.socket(zmq.REQ)
@@ -1293,6 +1301,13 @@ class SimSource(Source):
 
     def _types(self):
         return {name: self._map_dtype(config) for name, config in self.simulated.items()}
+
+    def _load_sim_config(self):
+        sim_cfg = self.config.get('config', {})
+        if not isinstance(sim_cfg, dict):
+            with open(sim_cfg, 'r') as cnf:
+                sim_cfg = json.load(cnf)
+        self.config['config'] = sim_cfg
 
     @property
     def simulated(self):

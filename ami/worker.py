@@ -298,7 +298,7 @@ def run_worker(num, num_workers, hb_period, source, collector_addr, graph_addr, 
         src_type = source[0]
         if isinstance(source[1], dict):
             src_cfg = source[1]
-        elif source[1].endswith('.json'):
+        elif source[1].endswith('.json') and source[1].find('=') < 0:
             try:
                 with open(source[1], 'r') as cnf:
                     src_cfg = json.load(cnf)
