@@ -348,7 +348,7 @@ def gen_filter_func(values, inputs, outputs):
 
     filter_func = """
 def func(*args, **kwargs):
-\t%s = args
+\t(%s,) = args
 \tif %s:
 \t\treturn %s
 """ % (', '.join(inputs), cond,
