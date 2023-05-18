@@ -1,5 +1,5 @@
 setup_env_local.sh
-build_dev_env.sh
+build_*_env.sh
 build
 install
 install-lcls1
