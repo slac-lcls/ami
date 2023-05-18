@@ -222,10 +222,13 @@ class Store:
         Returns:
             the type of the object.
         """
+        dtype = type(data)
         if isinstance(data, np.ndarray):
-            return type(data), data.ndim
+            return dtype, data.ndim
+        elif dtype in at.NumPyTypeDict:
+            return at.NumPyTypeDict[dtype]
         else:
-            return type(data)
+            return dtype
 
     def create(self, name, datatype=None):
         """
