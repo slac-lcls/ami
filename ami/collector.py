@@ -137,7 +137,7 @@ class GraphCollector(Node, Collector):
                                       self.name).set(latency.total_seconds())
             datagram_start = time.time()
             self.store.update(msg.name, msg.heartbeat, self.eb_id(msg.identity), msg.version, msg.payload)
-            if self.store.ready(msg.name, msg.heartbeat):
+            if msg.heartbeat.prompt or self.store.ready(msg.name, msg.heartbeat):
                 try:
                     # prune entries older than the current heartbeat
                     pruned_times, pruned_size = self.store.prune(msg.name, self.node, msg.heartbeat)

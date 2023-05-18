@@ -83,9 +83,11 @@ class Heartbeat:
     Args:
         identity (int): Heartbeat integer id number
         timestamp (float): Unix timestamp associated with heartbeat
+        prompt (bool): Flag to indicate the heartbeat prompt (not to be built)
     """
     identity: int = 0
     timestamp: float = 0.0
+    prompt: bool = False
 
     def __hash__(self):
         return hash(self.identity)
@@ -433,6 +435,17 @@ class Source(abc.ABC):
         """
         return self.config.get('type', 'generic')
 
+    @property
+    def prompt_mode(self):
+        """
+        Getter for the prompt mode state. This is based on the heartbeat period.
+        A heartbeat period of 0 will yield True otherwise False.
+
+        Returns:
+            Boolean value of whether prompt mode is active
+        """
+        return self.heartbeat_period == 0
+
     def reset_heartbeat(self):
         """
         Resets the heartbeat to its initial state.
@@ -456,7 +469,10 @@ class Source(abc.ABC):
         """
         if timestamp is None:
             timestamp = time.time()
-        if self.heartbeat is None:
+        if self.prompt_mode:
+            self.old_heartbeat = Heartbeat(value, timestamp, True)
+            return True
+        elif self.heartbeat is None:
             self.heartbeat = Heartbeat(value // self.heartbeat_period, timestamp)
             return False
         elif (value // self.heartbeat_period) > self.heartbeat:
@@ -815,12 +831,15 @@ class HierarchicalDataSource(Source):
                     self.source.evt = evt
                     # get the subclasses timestamp implementation
                     eventid, heartbeat, unix_ts = self.timestamp(evt)
-                    # check the heartbeat
-                    if self.check_heartbeat_boundary(heartbeat, timestamp=unix_ts):
+                    # check the heartbeat if not in prompt mode
+                    if not self.prompt_mode and self.check_heartbeat_boundary(heartbeat, timestamp=unix_ts):
                         yield self.heartbeat_msg()
-
                     # emit the processed event data
                     yield from self.event(eventid, unix_ts, self._process(evt))
+                    # check the heartbeat if in prompt mode
+                    if self.prompt_mode and self.check_heartbeat_boundary(heartbeat, timestamp=unix_ts):
+                        yield self.heartbeat_msg()
+                    # sleep for the requested event interval
                     time.sleep(self.interval)
                     # remove reference to evt object
                     self.source.evt = None
@@ -1335,7 +1354,7 @@ class RandomSource(SimSource):
             event = {}
             # get the timestamp and check heartbeat
             eventid, timestamp = self.timestamp
-            if self.check_heartbeat_boundary(eventid):
+            if not self.prompt_mode and self.check_heartbeat_boundary(eventid):
                 yield self.heartbeat_msg()
             for name, config in self.simulated.items():
                 if name in self.requested_data:
@@ -1350,6 +1369,8 @@ class RandomSource(SimSource):
                     else:
                         logger.warn("DataSrc: %s has unknown type %s", name, config['dtype'])
             yield from self.event(eventid, timestamp, event)
+            if self.prompt_mode and self.check_heartbeat_boundary(eventid):
+                yield self.heartbeat_msg()
             time.sleep(self.interval)
         # signal source has finished
         yield self.unconfigure()
@@ -1368,7 +1389,7 @@ class StaticSource(SimSource):
             event = {}
             # get the timestamp and check heartbeat
             eventid, timestamp = self.timestamp
-            if self.check_heartbeat_boundary(eventid):
+            if not self.prompt_mode and self.check_heartbeat_boundary(eventid):
                 yield self.heartbeat_msg()
             for name, config in self.simulated.items():
                 if name in self.requested_data:
@@ -1380,6 +1401,8 @@ class StaticSource(SimSource):
                         logger.warn("DataSrc: %s has unknown type %s", name, config['dtype'])
             count += 1
             yield from self.event(eventid, timestamp, event)
+            if self.prompt_mode and self.check_heartbeat_boundary(eventid):
+                yield self.heartbeat_msg()
             if count >= self.bound:
                 break
             time.sleep(self.interval)
