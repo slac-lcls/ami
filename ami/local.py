@@ -17,7 +17,7 @@ from ami.comm import Ports, PlatformAction, GraphCommHandler
 from ami.manager import run_manager
 from ami.worker import run_worker
 from ami.collector import run_node_collector, run_global_collector
-from ami.client import run_client
+from ami.client import run_client, check_dir
 from ami.console import run_console
 try:
     from ami.export import run_export
@@ -43,6 +43,14 @@ def build_parser():
         '-l',
         '--load',
         help='saved AMII configuration to load'
+    )
+
+    parser.add_argument(
+        '-s',
+        '--save-dir',
+        type=check_dir,
+        default=None,
+        help='default directory for saving flowcharts'
     )
 
     parser.add_argument(
@@ -357,7 +365,8 @@ def run_ami(args, queue=None):
                 name='client',
                 target=run_client,
                 args=(args.graph_name, comm_addr, info_addr, view_addr, args.load, args.gui_mode,
-                      args.prometheus_dir, args.prometheus_port, args.hutch, args.use_opengl, src_cfg is None)
+                      args.prometheus_dir, args.prometheus_port, args.hutch, args.use_opengl, src_cfg is None,
+                      args.save_dir)
             )
             client_proc.daemon = False
             client_proc.start()

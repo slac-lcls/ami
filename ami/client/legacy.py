@@ -1,4 +1,5 @@
 #!/usr/bin/env python
+import os
 import re
 import sys
 import dill
@@ -476,8 +477,9 @@ class AmiGui(QWidget):
     saveFile = Signal(str, name='saveFile')
     statusUpdate = Signal(str, name='statusUpdate')
 
-    def __init__(self, queue, graphmgr_addr, ami_save, parent=None):
+    def __init__(self, queue, graphmgr_addr, ami_save, save_dir, parent=None):
         super(__class__, self).__init__(parent)
+        self.save_dir = save_dir
         self.setWindowTitle("AMI Client")
         self.comm_handler = AsyncGraphCommHandler(graphmgr_addr.name, graphmgr_addr.comm)
 
@@ -538,7 +540,10 @@ class AmiGui(QWidget):
     @Slot()
     def load(self):
         load_file = QFileDialog.getOpenFileName(
-            self, "Open file", "", "AMI Autosave files (*.ami);;All Files (*)")
+            self,
+            "Open file",
+            self.save_dir,
+            "AMI Autosave files (*.ami);;All Files (*)")
         if load_file[0]:
             logger.info("Loading graph configuration from file (%s)", load_file[0])
             self.loadFile.emit(load_file[0])
@@ -546,7 +551,10 @@ class AmiGui(QWidget):
     @Slot()
     def save(self):
         save_file = QFileDialog.getSaveFileName(
-            self, "Save file", "autosave.ami", "AMI Autosave files (*.ami);;All Files (*)")
+            self,
+            "Save file",
+            os.path.join(self.save_dir, "autosave.ami"),
+            "AMI Autosave files (*.ami);;All Files (*)")
         if save_file[0]:
             logger.info("Saving graph configuration to file (%s)", save_file[0])
             self.saveFile.emit(save_file[0])
@@ -574,11 +582,11 @@ def add_logging_handler(signal):
     logger.addHandler(QtSignalLogHandler(signal))
 
 
-def run_main_window(queue, graphmgr_addr, ami_save):
+def run_main_window(queue, graphmgr_addr, ami_save, save_dir):
     app = QApplication(sys.argv)
     loop = asyncqt.QEventLoop(app)
     asyncio.set_event_loop(loop)
-    gui = AmiGui(queue, graphmgr_addr, ami_save)
+    gui = AmiGui(queue, graphmgr_addr, ami_save, save_dir)
     gui.show()
 
     # wait for the qt app to exit
@@ -619,7 +627,9 @@ def run_widget(queue, window_type, name, topic, addr):
     return app.exec_()
 
 
-def run_client(graphmgr_addr, load):
+def run_client(graphmgr_addr, load, save_dir):
+    if save_dir is None:
+        save_dir = ""
     saved_cfg = None
     if load is not None:
         try:
@@ -635,7 +645,7 @@ def run_client(graphmgr_addr, load):
     queue = mp.Queue()
     list_proc = mp.Process(
         target=run_main_window, args=(
-            queue, graphmgr_addr, saved_cfg))
+            queue, graphmgr_addr, saved_cfg, save_dir))
     list_proc.start()
     widget_procs = []
 
