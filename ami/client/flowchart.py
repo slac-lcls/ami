@@ -200,6 +200,9 @@ class NodeProcess(QtCore.QObject):
         if msg.geometry:
             self.win.restoreGeometry(msg.geometry)
 
+        if msg.terminals:
+            self.node.restoreTerminals(msg.terminals)
+
         if self.widget is None:
             self.widget = self.node.display(msg.topics, msg.terms, self.graphmgr_addr, self.win,
                                             units=msg.units)
