@@ -196,28 +196,10 @@ class ExportWidget(QtWidgets.QWidget):
         terminals = {}
         for name, term in self.node.terminals.items():
             state = term.saveState()
-            state['ttype'] = amitypes.dumps(term._type)
+            state['ttype'] = amitypes.TypeDumper(term._type)
             terminals[name] = state
 
-        # ugly: need to remove the quotes around the various amitypes
-        # to produce valid python code for the exported box - cpo
-        def fixup_ttype(mystr):
-            # eliminate the quotes in the "ttype" field
-            # to produce valid python code
-            first_search = "'ttype': '"
-            start_ind = mystr.find(first_search)
-            if start_ind == -1:
-                return mystr
-            end_ind = mystr.find("'", start_ind+len(first_search)+1)
-            part1 = mystr[:start_ind+len(first_search)-1]       # before first quote
-            part2 = mystr[start_ind+len(first_search):end_ind]  # between first/second quote
-            part3 = mystr[end_ind+1:]                           # after second quote
-            # recursively see if there is another "ttype" that
-            # needs quotes removed
-            return fixup_ttype(part1+part2+part3)
-        str_terminals = fixup_ttype(str(terminals))
-
-        template = self.export(node_name, docstring, str_terminals, self.text)
+        template = self.export(node_name, docstring, terminals, self.text)
         if not fileName.endswith('.py'):
             fileName += '.py'
         with open(fileName, 'w') as f:
