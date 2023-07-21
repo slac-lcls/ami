@@ -2,8 +2,11 @@
 
 BUILDDIR=${1:-$PWD}
 
-pip install --prefix=${TESTRELDIR} asyncqt mypy setproctitle pyfftw sympy pint pytest-asyncio pytest-qt p4p==3.5.5
+pip install --prefix=${TESTRELDIR} asyncqt setproctitle pyfftw sympy pint pytest-asyncio pytest-qt p4p==3.5.5
 pip install --prefix=${TESTRELDIR} pyflakes autopep8 docutils pycodestyle pathspec qtawesome
+if [ -n "${MYPYRELDIR}" ]; then
+    pip install --prefix=${MYPYRELDIR} mypy
+fi
 cd "${BUILDDIR}/networkfox"
 pip install --no-deps --prefix=${TESTRELDIR} .
 cd "${BUILDDIR}/amityping"

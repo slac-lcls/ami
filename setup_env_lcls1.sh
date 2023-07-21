@@ -1,7 +1,7 @@
 unset LD_LIBRARY_PATH
 unset PYTHONPATH
 
-CONDA_ENV_NAME=ana-4.0.49-py3
+CONDA_ENV_NAME=ana-4.0.50-py3
 
 if [[ ${HOSTNAME} == sdf* ]]
 then
@@ -39,6 +39,13 @@ export PYTHONPATH=$RELDIR/install-lcls1/lib/python$pyver/site-packages
 export TESTRELDIR=$RELDIR/install-lcls1
 # needed so mypy finds type stubs in local dir
 export MYPYPATH=$PYTHONPATH
+# check if the release includes mypy
+if ! command -v mypy > /dev/null; then
+    # mypy needs to be installed a separate directory not added to MYPYPATH
+    export MYPYRELDIR=$RELDIR/install-mypy
+    export PATH=$MYPYRELDIR/bin:$PATH
+    export PYTHONPATH=$MYPYRELDIR/lib/python$pyver/site-packages:$PYTHONPATH
+fi
 
 # needed for SRCF
 export OPENBLAS_NUM_THREADS=1
