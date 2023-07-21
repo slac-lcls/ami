@@ -4,6 +4,8 @@ unset PYTHONPATH
 if [[ ${HOSTNAME} == sdf* ]]
 then
     # for s3df
+    # sdf conda envs seem to mangle the ps1 badly
+    PS1_BACKUP="${PS1}"
     source /sdf/group/lcls/ds/ana/sw/conda2/inst/etc/profile.d/conda.sh
     export CONDA_ENVS_DIRS=/sdf/group/lcls/ds/ana/sw/conda2/inst/envs
     export DIR_PSDM=/sdf/group/lcls/ds/ana/
@@ -17,6 +19,10 @@ else
 fi
 
 conda activate ps-4.6.0
+if [ -n "${PS1_BACKUP}" ]; then
+    PS1="(${CONDA_ENV_NAME}) ${PS1_BACKUP}"
+    unset PS1_BACKUP
+fi
 AUTH_FILE=$DIR_PSDM"/sw/conda2/auth.sh"
 if [ -f "$AUTH_FILE" ]; then
     source $AUTH_FILE

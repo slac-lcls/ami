@@ -6,6 +6,8 @@ CONDA_ENV_NAME=ana-4.0.50-py3
 if [[ ${HOSTNAME} == sdf* ]]
 then
     # for s3df
+    # sdf conda envs seem to mangle the ps1 badly
+    PS1_BACKUP="${PS1}"
     source /sdf/group/lcls/ds/ana/sw/conda2/inst/etc/profile.d/conda.sh
     export CONDA_ENVS_DIRS=/sdf/group/lcls/ds/ana/sw/conda1/inst/envs
     export SIT_ROOT=/sdf/group/lcls/ds/ana/
@@ -23,6 +25,10 @@ else
 fi
 
 conda activate "${CONDA_ENV_NAME}"
+if [ -n "${PS1_BACKUP}" ]; then
+    PS1="(${CONDA_ENV_NAME}) ${PS1_BACKUP}"
+    unset PS1_BACKUP
+fi
 unset CONDA_ENV_NAME
 
 RELDIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
