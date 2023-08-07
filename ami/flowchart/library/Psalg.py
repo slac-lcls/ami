@@ -808,8 +808,8 @@ except ImportError as e:
 
 
 try:
-    from psana.pyalgos.generic.NDArrUtils import reshape_to_2d, arr_rot_n90  # info_ndarr
-    from psana.pyalgos.generic.PSUtils import table_nxn_epix10ka_from_ndarr, table_nxm_jungfrau_from_ndarr
+    from ami.pyalgos.NDArrUtils import reshape_to_2d, arr_rot_n90  # info_ndarr
+    from ami.pyalgos.PSUtils import table_nxn_epix10ka_from_ndarr, table_nxm_jungfrau_from_ndarr
 
     class TableFromArr3dProd():
 

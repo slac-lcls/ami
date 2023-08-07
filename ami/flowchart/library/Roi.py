@@ -13,7 +13,7 @@ try:
     import logging
     logger = logging.getLogger(__name__)
     import ami.flowchart.library.UtilsROI as ur
-    from psana.pyalgos.generic.NDArrUtils import info_ndarr
+    from ami.pyalgos.NDArrUtils import info_ndarr
     QPen, QBrush, QColor = ur.QPen, ur.QBrush, ur.QColor
 
     class PolarHistogram():
