@@ -30,9 +30,9 @@ try:
                 logger.info('update hpolar with cx:%.1f, cy:%.1f, ro:%d, ri:%d, ao:%.1f, ai:%.1f, nr:%d, na:%d' %
                             (cx, cy, ro, ri, ao, ai, nr, na))
                 hp = self.hpolar = ur.polar_histogram(img.shape, mask, cx, cy, ro, ri, ao, ao+ai, nr, na)
-                logger.info(hp.info_attrs()
-                            + info_ndarr(hp.obj_radbins().bincenters(), '\n  rad bin centers')
-                            + info_ndarr(hp.obj_phibins().bincenters(), '\n  ang bin centers'))
+                logger.info(info_ndarr(hp.obj_radbins().bincenters(), '\n  rad bin centers')
+                          + info_ndarr(hp.obj_phibins().bincenters(), '\n  ang bin centers'))
+                            #hp.info_attrs()
 
             hp = self.hpolar
             orbins = hp.obj_radbins()
