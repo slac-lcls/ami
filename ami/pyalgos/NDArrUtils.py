@@ -1,11 +1,11 @@
 try:
     import psana
     if hasattr(psana, '_psana'):
-        from Detector.GlobalUtils import *             # noqa ignore=F405
-        from pyimgalgos.GlobalUtils import *           # noqa ignore=F405
-        from CalibManager.GlobalUtils import arr_rot_n90
+        from Detector.GlobalUtils import *               # noqa ignore=F405
+        from pyimgalgos.GlobalUtils import *             # noqa ignore=F405
+        from CalibManager.GlobalUtils import arr_rot_n90 # noqa ignore=F401
     else:
-        from psana.pyalgos.generic.NDArrUtils import * # noqa ignore=F405
+        from psana.pyalgos.generic.NDArrUtils import *   # noqa ignore=F405
 except ImportError:
     import numpy as np
 

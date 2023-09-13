@@ -41,7 +41,7 @@ except ImportError as e:
 
 
 try:
-    import psana.detector.UtilsMask as um
+    import ami.pyalgos.UtilsMask as um
     # mask_arc = um.mask_arc(shape, cx, cy, ro, ri, ao, ai, dtype=np.uint8)
     mask_arc = um.mask_arc
 
