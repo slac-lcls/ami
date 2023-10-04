@@ -573,7 +573,7 @@ def test_psana1_source(psana1_xtc):
             'XCS-SB2-BMMON:raw:peakT:14': int,
             'XCS-SB2-BMMON:raw:peakT:15': int,
             'XCS-USB-ENCODER-01': at.Detector,
-            'XCS-USB-ENCODER-01:calibconst': typing.Dict,
+            'XCS-USB-ENCODER-01:calibconst': dict,
             'XCS-USB-ENCODER-01:fex': at.Group,
             'XCS-USB-ENCODER-01:fex:values': at.MultiChannelFloat,
             'XCS-USB-ENCODER-01:fex:values:0': float,
@@ -606,10 +606,10 @@ def test_psana1_source(psana1_xtc):
             'eventid': int,
             'evr0': at.Detector,
             'evr0:raw': at.Group,
-            'evr0:raw:eventCodes': typing.List[int],
+            'evr0:raw:eventCodes': list[int],
             'evr1': at.Detector,
             'evr1:raw': at.Group,
-            'evr1:raw:eventCodes': typing.List[int],
+            'evr1:raw:eventCodes': list[int],
             'heartbeat': int,
             'opal_1': at.Detector,
             'opal_1:raw': at.Group,
@@ -765,6 +765,8 @@ def test_psana1_source(psana1_xtc):
     for name, cls in expected_cfg.items():
         if isinstance(cls, typing._GenericAlias):
             cls = at.loads('typing.'+cls._name)
+        elif isinstance(cls, typing.GenericAlias):
+            cls = type(cls())
         expected_types[name] = cls
 
     # loop over all the events
@@ -778,7 +780,6 @@ def test_psana1_source(psana1_xtc):
                 if type(data) in at.NumPyTypeDict:
                     assert at.NumPyTypeDict[type(data)] == expected_types[name]
                 else:
-                    print(data, expected_types[name])
                     assert isinstance(data, expected_types[name])
 
                 if isinstance(data, at.DataSource):
@@ -823,24 +824,24 @@ def test_psana_source(xtcwriter):
         'motor1': float,
         'motor2': float,
         'xpphsd': at.Detector,
-        'xpphsd:calibconst': typing.Dict,
+        'xpphsd:calibconst': dict,
         'xpphsd:raw:calib': at.Array1d,
-        'xpphsd:raw:config': typing.Dict,
+        'xpphsd:raw:config': dict,
         'xpphsd:raw': at.Group,
         'xpphsd:fex:calib': at.Array1d,
-        'xpphsd:fex:config': typing.Dict,
+        'xpphsd:fex:config': dict,
         'xpphsd:fex': at.Group,
         'xppcspad': at.Detector,
-        'xppcspad:calibconst': typing.Dict,
+        'xppcspad:calibconst': dict,
         'xppcspad:raw:calib': at.Array3d,
         'xppcspad:raw:image': at.Array2d,
         'xppcspad:raw:raw': at.Array3d,
-        'xppcspad:raw:config': typing.Dict,
+        'xppcspad:raw:config': dict,
         'xppcspad:raw': at.Group,
         'epicsinfo': at.Detector,
         'epicsinfo:epicsinfo': at.Group,
-        'epicsinfo:epicsinfo:config': typing.Dict,
-        'epicsinfo:calibconst': typing.Dict,
+        'epicsinfo:epicsinfo:config': dict,
+        'epicsinfo:calibconst': dict,
         'eventid': int,
         'timestamp': float,
         'heartbeat': int,
@@ -849,20 +850,20 @@ def test_psana_source(xtcwriter):
     expected_grps = {
         'xpphsd:raw': {
             'calib': at.Array1d,
-            'config': typing.Dict,
+            'config': dict,
         },
         'xpphsd:fex': {
             'calib': at.Array1d,
-            'config': typing.Dict,
+            'config': dict,
         },
         'xppcspad:raw': {
             'calib': at.Array3d,
             'image': at.Array2d,
             'raw': at.Array3d,
-            'config': typing.Dict,
+            'config': dict,
         },
         'epicsinfo:epicsinfo': {
-            'config': typing.Dict,
+            'config': dict,
         },
     }
     expected_grp_types = {

@@ -766,7 +766,7 @@
             "io": "in",
             "optional": false,
             "removable": false,
-            "ttype": "typing.Union[amitypes.array.Array3d, amitypes.array.Array2d, amitypes.array.Array1d, typing.List[float]]"
+            "ttype": "typing.Union[amitypes.array.Array3d, amitypes.array.Array2d, amitypes.array.Array1d, list[float]]"
           },
           "Out": {
             "group": null,

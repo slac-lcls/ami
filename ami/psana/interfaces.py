@@ -1,4 +1,3 @@
-import typing
 import psana
 import amitypes
 from Detector import DetectorTypes
@@ -55,7 +54,7 @@ class AreaDetector(Detector,
 class EvrDetector(Detector,
                   metaclass=DetectorMeta,
                   detcls=DetectorTypes.EvrDetector,
-                  annotations={'eventCodes': typing.List[int]},
+                  annotations={'eventCodes': list[int]},
                   configs={'config': [psana.EvrData.Config]}):
     pass
 
@@ -118,7 +117,7 @@ class OceanDetector(Detector,
 class TDCDetector(Detector,
                   metaclass=DetectorMeta,
                   detcls=DetectorTypes.TDCDetector,
-                  annotations={'times': typing.List[amitypes.Array1d], 'overflows': typing.List[amitypes.Array1d]},
+                  annotations={'times': list[amitypes.Array1d], 'overflows': list[amitypes.Array1d]},
                   configs={'config': [psana.Acqiris.TdcConfig]}):
     def __init__(self, src, env):
         super().__init__(src, env)

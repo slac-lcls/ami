@@ -570,13 +570,8 @@ def checkType(terminals, type_file=None):
     if f_out_annotation is inspect.Signature.empty or f_out_annotation is typing.Any:
         f_out_return_string = 'pass'
     else:
-        if f_out_annotation is typing.Dict:
-            f_out_return_string = 'return {}'
-        elif f_out_annotation is typing.List:
-            f_out_return_string = 'return []'
-        else:
-            f_out_annotation_str = f_out_annotation.__module__ + '.' + f_out_annotation.__name__
-            f_out_return_string = 'return '+f_out_annotation_str+'()'
+        f_out_annotation_str = f_out_annotation.__module__ + '.' + f_out_annotation.__name__
+        f_out_return_string = 'return '+f_out_annotation_str+'()'
     f_out = str(f_out_sig)
     f_out = f_out.replace('~', '')
     f_out = f_out_name + f_out
