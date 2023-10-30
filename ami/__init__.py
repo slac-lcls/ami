@@ -32,7 +32,7 @@ def p4p_available():
     try:
         import p4p  # noqa: F401
         return True
-    except ImportError:
+    except (ImportError, RuntimeError):
         return False
 
 

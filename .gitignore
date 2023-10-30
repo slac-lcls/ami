@@ -3,6 +3,7 @@ build_*_env.sh
 build
 install
 install-lcls1
+install-mypy
 htmlcov/
 .eggs/
 .pytest_cache/

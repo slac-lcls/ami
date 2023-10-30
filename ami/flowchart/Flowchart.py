@@ -1100,7 +1100,8 @@ class FlowchartWidget(dockarea.DockArea):
                     'state': state,
                     'redisplay': redisplay,
                     'geometry': node.geometry,
-                    'units': node.input_units()}
+                    'units': node.input_units(),
+                    'terminals': node.saveTerminals()}
 
             if node.buffered():
                 # buffered nodes are allowed to override their topics/terms

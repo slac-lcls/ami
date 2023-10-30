@@ -212,7 +212,7 @@
             "group": null,
             "io": "in",
             "removable": false,
-            "ttype": "typing.Union[amitypes.Array3d, amitypes.Array2d, amitypes.Array1d, typing.List[float]]"
+            "ttype": "typing.Union[amitypes.Array3d, amitypes.Array2d, amitypes.Array1d, list[float]]"
           },
           "Out": {
             "group": null,
@@ -391,7 +391,7 @@
             "group": null,
             "io": "in",
             "removable": false,
-            "ttype": "typing.Union[amitypes.Array3d, amitypes.Array2d, amitypes.Array1d, typing.List[float]]"
+            "ttype": "typing.Union[amitypes.Array3d, amitypes.Array2d, amitypes.Array1d, list[float]]"
           },
           "Out": {
             "group": null,
@@ -417,7 +417,7 @@
             "group": null,
             "io": "in",
             "removable": false,
-            "ttype": "typing.Union[amitypes.Array3d, amitypes.Array2d, amitypes.Array1d, typing.List[float]]"
+            "ttype": "typing.Union[amitypes.Array3d, amitypes.Array2d, amitypes.Array1d, list[float]]"
           },
           "Out": {
             "group": null,

@@ -1,5 +1,4 @@
 import psana
-import typing
 import amitypes
 from Detector import PyDetector
 from .detector import register_raw_interface
@@ -22,7 +21,7 @@ class ScanDetectorHelper(Extender):
         return self.config.npvControls()
 
     @property
-    def control_names(self) -> typing.List[str]:
+    def control_names(self) -> list[str]:
         names = []
         for ctrl in self.controls():
             names.append(ctrl.name())
@@ -36,7 +35,7 @@ class ScanDetectorHelper(Extender):
         return self.config.npvMonitors()
 
     @property
-    def monitor_names(self) -> typing.List[str]:
+    def monitor_names(self) -> list[str]:
         names = []
         for ctrl in self.monitors():
             names.append(ctrl.name())
@@ -50,7 +49,7 @@ class ScanDetectorHelper(Extender):
         return self.config.npvLabels()
 
     @property
-    def label_names(self) -> typing.List[str]:
+    def label_names(self) -> list[str]:
         names = []
         for ctrl in self.labels():
             names.append(ctrl.name())

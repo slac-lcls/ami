@@ -881,7 +881,7 @@ class PsanaSource(HierarchicalDataSource):
         }
         # special attributes that are per run instead of per event from a detectors interface, e.g. calib constants
         self.special_attrs = {
-            'calibconst': typing.Dict,
+            'calibconst': dict,
         }
         if psana is None:
             raise NotImplementedError("psana is not available!")
@@ -1039,8 +1039,8 @@ class PsanaSource(HierarchicalDataSource):
                 except ValueError:
                     attr_type = typing.Any
                 if attr_type in at.HSDTypes:
-                    # ignore things which are not derived from typing.Dict
-                    if str(attr_type).startswith('typing.Dict'):
+                    # ignore things which are not derived from dict
+                    if str(attr_type).startswith('dict'):
                         seg_chans = getattr(det_interface, det_xface_name)._seg_chans()
                         self._update_hsd_segment(attr_name, attr_type, seg_chans)
                     else:

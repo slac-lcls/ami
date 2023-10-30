@@ -23,6 +23,7 @@ class LibraryEditor(QtWidgets.QWidget):
         self.setWindowTitle("Manage Library")
 
         self.modules = {}  # {mod : [nodes]}
+        self.loaded = {}
         self.paths = set()
 
         self.ctrl = ctrlWidget
@@ -30,8 +31,11 @@ class LibraryEditor(QtWidgets.QWidget):
 
         self.layout = QtWidgets.QGridLayout(self)
 
-        self.loadBtn = QtWidgets.QPushButton("Load Modules", parent=self)
+        self.loadBtn = QtWidgets.QPushButton("Load Files", parent=self)
         self.loadBtn.clicked.connect(self.loadFile)
+
+        self.loadDirBtn = QtWidgets.QPushButton("Load Directory", parent=self)
+        self.loadDirBtn.clicked.connect(self.loadDirectory)
 
         # self.reloadBtn = QtWidgets.QPushButton("Reload Selected Modules", parent=self)
         # self.reloadBtn.clicked.connect(self.reloadFile)
@@ -44,8 +48,9 @@ class LibraryEditor(QtWidgets.QWidget):
 
         self.layout.addWidget(self.loadBtn, 1, 1, 1, -1)
         # self.layout.addWidget(self.reloadBtn, 1, 2, 1, 1)
-        self.layout.addWidget(self.tree, 2, 1, 1, -1)
-        self.layout.addWidget(self.applyBtn, 3, 1, 1, -1)
+        self.layout.addWidget(self.loadDirBtn, 2, 1, 1, -1)
+        self.layout.addWidget(self.tree, 3, 1, 1, -1)
+        self.layout.addWidget(self.applyBtn, 4, 1, 1, -1)
 
     def loadFile(self):
         file_filters = "*.py"
@@ -53,6 +58,21 @@ class LibraryEditor(QtWidgets.QWidget):
         self.fileDialog.setFileMode(FileDialog.ExistingFiles)
         self.fileDialog.filesSelected.connect(self.fileDialogFilesSelected)
         self.fileDialog.show()
+
+    def loadDirectory(self):
+        self.fileDialog = FileDialog(None, "Load Nodes", None, None)
+        self.fileDialog.setFileMode(FileDialog.Directory)
+        self.fileDialog.filesSelected.connect(self.fileDialogDirectorySelected)
+        self.fileDialog.show()
+
+    def fileDialogDirectorySelected(self, pths):
+        modules = []
+        for pth in pths:
+            for root, dirs, filenames in os.walk(pth):
+                for filename in filenames:
+                    if filename.endswith((".py", ".PY")) and not filename.startswith("_"):
+                        modules.append(os.path.join(root, filename))
+        self.fileDialogFilesSelected(modules)
 
     def fileDialogFilesSelected(self, pths):
         dirs = set(map(os.path.dirname, pths))
@@ -77,6 +97,7 @@ class LibraryEditor(QtWidgets.QWidget):
                 continue
 
             self.modules[mod] = nodes
+            self.loaded[mod] = False
 
             parent = QtWidgets.QTreeWidgetItem(self.tree, [mod.__name__])
             parent.mod = mod
@@ -100,12 +121,15 @@ class LibraryEditor(QtWidgets.QWidget):
         loaded = False
 
         for mod, nodes in self.modules.items():
+            if self.loaded[mod]:
+                continue
             for node in nodes:
                 try:
                     self.library.addNodeType(node, [(mod.__name__, )])
                     loaded = True
                 except Exception as e:
                     printExc(e)
+            self.loaded[mod] = True
 
         if not loaded:
             return

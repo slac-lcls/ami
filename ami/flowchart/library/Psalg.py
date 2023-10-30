@@ -6,7 +6,6 @@ from ami.flowchart.library.common import CtrlNode
 from ami.flowchart.library.Editors import ChannelEditor
 import ami.graph_nodes as gn
 import numpy as np
-import typing
 
 try:
     import logging
@@ -141,7 +140,7 @@ try:
             super().__init__(name, terminals={'Event Number': {'io': 'in', 'ttype': float},
                                               'Num of Hits': {'io': 'in', 'ttype': Array1d},
                                               'Peak Times': {'io': 'in', 'ttype': Array2d},
-                                              'Calib': {'io': 'in', 'ttype': typing.Dict},
+                                              'Calib': {'io': 'in', 'ttype': dict},
                                               'X': {'io': 'out', 'ttype': Array1d},
                                               'Y': {'io': 'out', 'ttype': Array1d},
                                               'R': {'io': 'out', 'ttype': Array1d},
@@ -476,7 +475,7 @@ try:
         def __init__(self, name):
             super().__init__(name, terminals={'Image': {'io': 'in', 'ttype': Array1d},
                                               'IIR': {'io': 'in', 'ttype': Array1d},
-                                              'Calib': {'io': 'in', 'ttype': typing.Dict},
+                                              'Calib': {'io': 'in', 'ttype': dict},
                                               'edge': {'io': 'out', 'ttype': float},
                                               'fwhm': {'io': 'out', 'ttype': float},
                                               'amplitude': {'io': 'out', 'ttype': float},
@@ -554,7 +553,7 @@ try:
         def __init__(self, name):
             """class constructor - called at droppong CtrlNode on flowchart'.
             """
-            super().__init__(name, terminals={'calibconst': {'io': 'in', 'ttype': typing.Dict},
+            super().__init__(name, terminals={'calibconst': {'io': 'in', 'ttype': dict},
                                               'Mask': {'io': 'out', 'ttype': Array2d},
                                               'Mask3D': {'io': 'out', 'ttype': Array3d}})
             logger.info('__init__: %s' % self.__init__.__doc__.rstrip()
@@ -713,10 +712,10 @@ try:
         def __init__(self, name):
             """constructor - called at droppong CtrlNode on flowchart'.
             """
-            super().__init__(name, terminals={'calibcons':  {'io': 'in',  'ttype': typing.Dict},
+            super().__init__(name, terminals={'calibcons':  {'io': 'in',  'ttype': dict},
                                               'arr3d':      {'io': 'in',  'ttype': Array3d, 'removable': True},
-                                              'inds_xy':    {'io': 'out', 'ttype': typing.List},
-                                              'coords_xyz': {'io': 'out', 'ttype': typing.List},
+                                              'inds_xy':    {'io': 'out', 'ttype': list},
+                                              'coords_xyz': {'io': 'out', 'ttype': list},
                                               'image':      {'io': 'out', 'ttype': Array2d},
                                               })
 # 'mask2d':   {'io': 'in', 'ttype': Array2d, 'removable': True},
@@ -792,7 +791,7 @@ try:
         def __init__(self, name):
             """constructor - called at droppong CtrlNode on flowchart'.
             """
-            super().__init__(name, terminals={'inds_xy':  {'io': 'in', 'ttype': typing.List},
+            super().__init__(name, terminals={'inds_xy':  {'io': 'in', 'ttype': list},
                                               'mask2d':   {'io': 'in',  'ttype': Array2d},
                                               'mask3d':   {'io': 'out', 'ttype': Array3d}})
 
@@ -808,8 +807,8 @@ except ImportError as e:
 
 
 try:
-    from psana.pyalgos.generic.NDArrUtils import reshape_to_2d, arr_rot_n90  # info_ndarr
-    from psana.pyalgos.generic.PSUtils import table_nxn_epix10ka_from_ndarr, table_nxm_jungfrau_from_ndarr
+    from ami.pyalgos.NDArrUtils import reshape_to_2d, arr_rot_n90  # info_ndarr
+    from ami.pyalgos.PSUtils import table_nxn_epix10ka_from_ndarr, table_nxm_jungfrau_from_ndarr
 
     class TableFromArr3dProd():
 

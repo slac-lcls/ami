@@ -26,7 +26,7 @@ logger = logging.getLogger(LogConfig.get_package_name(__name__))
 
 
 def run_editor_window(broker_addr, graphmgr_addr, checkpoint_addr, load=None, prometheus_dir=None,
-                      prometheus_port=None, hutch=None, configure=False):
+                      prometheus_port=None, hutch=None, configure=False, save_dir=None):
     subprocess.run(["dmypy", "start"])
     check_file = None
     with tempfile.NamedTemporaryFile(mode='w', delete=False) as f:
@@ -56,7 +56,8 @@ def run_editor_window(broker_addr, graphmgr_addr, checkpoint_addr, load=None, pr
                    graphmgr_addr=graphmgr_addr,
                    checkpoint_addr=checkpoint_addr,
                    prometheus_dir=prometheus_dir, hutch=hutch,
-                   configure=configure)
+                   configure=configure,
+                   filePath=save_dir)
 
     fc.start_prometheus(prometheus_port)
 
@@ -199,6 +200,9 @@ class NodeProcess(QtCore.QObject):
         if msg.geometry:
             self.win.restoreGeometry(msg.geometry)
 
+        if msg.terminals:
+            self.node.restoreTerminals(msg.terminals)
+
         if self.widget is None:
             self.widget = self.node.display(msg.topics, msg.terms, self.graphmgr_addr, self.win,
                                             units=msg.units)
@@ -250,7 +254,8 @@ class NodeProcess(QtCore.QObject):
 
 class MessageBroker(object):
 
-    def __init__(self, graphmgr_addr, load, ipcdir=None, prometheus_dir=None, prometheus_port=None, hutch=""):
+    def __init__(self, graphmgr_addr, load, ipcdir=None, prometheus_dir=None, prometheus_port=None, hutch="",
+                 save_dir=None):
 
         if ipcdir is None:
             ipcdir = tempfile.mkdtemp()
@@ -290,6 +295,7 @@ class MessageBroker(object):
         self.prometheus_dir = prometheus_dir
         self.prometheus_port = prometheus_port
         self.hutch = hutch
+        self.save_dir = save_dir
 
     def __enter__(self):
         return self
@@ -319,7 +325,8 @@ class MessageBroker(object):
                   self.prometheus_dir,
                   self.prometheus_port,
                   self.hutch,
-                  configure),
+                  configure,
+                  self.save_dir),
             daemon=True)
         editor_proc.start()
 
@@ -453,13 +460,13 @@ class MessageBroker(object):
         asyncio.create_task(self.monitor_processes())
 
 
-def run_client(graphmgr_addr, load, prometheus_dir, prometheus_port, hutch, use_opengl, configure):
+def run_client(graphmgr_addr, load, prometheus_dir, prometheus_port, hutch, use_opengl, configure, save_dir):
     use_opengl = use_opengl and "SSH_CONNECTION" not in os.environ
     pg.setConfigOptions(useOpenGL=use_opengl, enableExperimental=use_opengl)
 
     with tempfile.TemporaryDirectory() as ipcdir:
         mb = MessageBroker(graphmgr_addr, load, ipcdir=ipcdir, prometheus_dir=prometheus_dir,
-                           prometheus_port=prometheus_port, hutch=hutch)
+                           prometheus_port=prometheus_port, hutch=hutch, save_dir=save_dir)
         mb.launch_editor_window(configure)
         loop = asyncio.get_event_loop()
         task = asyncio.ensure_future(mb.run())

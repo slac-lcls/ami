@@ -19,7 +19,7 @@ QPen, QBrush, QColor = pg.QtGui.QPen, pg.QtGui.QBrush, pg.QtGui.QColor
 # scene.setClickRadius(r)
 
 try:
-    import psana.pyalgos.generic.HPolar as hp
+    import ami.pyalgos.HPolar as hp
 
     def polar_histogram(shape, mask, cx, cy, ro, ri, ao, ai, nr, na):
         """Returns hp.HPolar object.
@@ -41,7 +41,7 @@ except ImportError as e:
 
 
 try:
-    import psana.detector.UtilsMask as um
+    import ami.pyalgos.UtilsMask as um
     # mask_arc = um.mask_arc(shape, cx, cy, ro, ri, ao, ai, dtype=np.uint8)
     mask_arc = um.mask_arc
 
