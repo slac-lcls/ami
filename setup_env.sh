@@ -18,7 +18,7 @@ else
     export SIT_PSDM_DATA=/cds/data/psdm
 fi
 
-conda activate ps-4.6.0
+conda activate ps-4.6.1
 if [ -n "${PS1_BACKUP}" ]; then
     PS1="(${CONDA_ENV_NAME}) ${PS1_BACKUP}"
     unset PS1_BACKUP
