@@ -303,13 +303,7 @@ class Take(GroupedNode):
                 term._type = Array2d
             elif remoteTerm.type() == Array2d:
                 term._type = Array1d
-            elif (
-                    remoteTerm.type() == Array1d or
-                    remoteTerm.type() == list[float] or
-                    remoteTerm.type() == tuple[float] or
-                    remoteTerm.type() == list[int] or
-                    remoteTerm.type() == tuple[int]
-                ):
+            else:
                 term._type = float
 
 
