@@ -1,4 +1,4 @@
-from typing import Union, List
+from typing import Union
 from amitypes import Array, Array1d, Array2d, Array3d
 from ami.flowchart.library.common import CtrlNode, GroupedNode
 from ami.flowchart.Node import Node
@@ -192,7 +192,7 @@ class Stack1d(CtrlNode):
     uiTemplate = [('axis', 'intSpin', {'value': 0, 'min': 0, 'max': 0})]
 
     def __init__(self, name):
-        super().__init__(name, terminals={"In": {'io': 'in', 'ttype': Union[float, List[float]]},
+        super().__init__(name, terminals={"In": {'io': 'in', 'ttype': Union[float, list[float]]},
                                           "Out": {'io': 'out', 'ttype': Array1d}},
                          allowAddInput=True)
 
@@ -219,7 +219,7 @@ class Stack2d(CtrlNode):
     uiTemplate = [('axis', 'intSpin', {'value': 0, 'min': 0, 'max': 1})]
 
     def __init__(self, name):
-        super().__init__(name, terminals={"In": {'io': 'in', 'ttype': Union[Array1d, List[Array1d]]},
+        super().__init__(name, terminals={"In": {'io': 'in', 'ttype': Union[Array1d, list[Array1d]]},
                                           "Out": {'io': 'out', 'ttype': Array2d}},
                          allowAddInput=True)
 
@@ -303,7 +303,13 @@ class Take(GroupedNode):
                 term._type = Array2d
             elif remoteTerm.type() == Array2d:
                 term._type = Array1d
-            elif remoteTerm.type() == Array1d or remoteTerm.type() == List[float]:
+            elif (
+                    remoteTerm.type() == Array1d or
+                    remoteTerm.type() == list[float] or
+                    remoteTerm.type() == tuple[float] or
+                    remoteTerm.type() == list[int] or
+                    remoteTerm.type() == tuple[int]
+                ):
                 term._type = float
 
 
