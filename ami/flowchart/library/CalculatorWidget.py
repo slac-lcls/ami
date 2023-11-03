@@ -324,6 +324,7 @@ class FilterWidget(QtWidgets.QWidget):
         return state
 
     def restoreState(self, state):
+        print(f'restoring {state}')
         conditions = state['conditions']
         if not self.inputs:
             self.inputs = state.get('inputs', {})

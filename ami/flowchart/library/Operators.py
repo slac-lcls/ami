@@ -572,7 +572,6 @@ class EventProcessor():
 
             for idx, inp in enumerate(inputs):
                 inputs[idx] = sanitize_name(inp)
-
             func = gen_filter_func(values, inputs, outputs)
             return gn.Map(name=self.name()+"_operation", **kwargs, func=PythonEditorProc(func))
 

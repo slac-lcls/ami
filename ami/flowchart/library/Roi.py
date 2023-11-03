@@ -219,6 +219,11 @@ class Roi2D(CtrlNode):
                                     'Out': {'io': 'out', 'ttype': Array2d},
                                     'Roi_Coordinates': {'io': 'out', 'ttype': Array1d}},
                          viewable=True)
+        if self.widget:
+            self.rotation = self.widget.rotate
+        else:
+            self.rotation = 0
+        print(self.rotation) # it does not take the starting rotation.. How to fix that?
 
     def isChanged(self, restore_ctrl, restore_widget):
         return restore_ctrl
@@ -255,6 +260,8 @@ class Roi2D(CtrlNode):
         super().update(*args, **kwargs)
 
         if self.widget:
+            self.rotation = self.widget.rotate
+            print(self.rotation)
             self.roi.setPos(self.values['origin x'], y=self.values['origin y'], finish=False)
             self.roi.setSize((self.values['extent x'], self.values['extent y']), finish=False)
 
@@ -263,9 +270,16 @@ class Roi2D(CtrlNode):
         ex = self.values['extent x']
         oy = self.values['origin y']
         ey = self.values['extent y']
+        if hasattr(self, 'rotation'):
+            rotate = self.rotation
+        else:
+            rotate = 0
+        #breakpoint()
+        #print(rotate)
 
         def func(img):
-            return img[slice(ox, ox+ex), slice(oy, oy+ey)], (ox, ex, oy, ey)
+            print(rotate)
+            return np.rot90(img, rotate)[slice(ox, ox+ex), slice(oy, oy+ey)], (ox, ex, oy, ey)
 
         return gn.Map(name=self.name()+"_operation", **kwargs, func=func)
 
