@@ -557,6 +557,7 @@ class ImageWidget(PlotWidget):
 
         display = kwargs.pop("display", True)
         if display:
+            uiTemplate.append(('Lock Aspect Ratio', 'check', {'group': 'Display', 'checked': True}))
             uiTemplate.append(('Flip', 'check', {'group': 'Display', 'checked': False}))
             uiTemplate.append(('Rotate Counter Clockwise', 'combo',
                                {'group': 'Display', 'value': '0',
@@ -567,7 +568,9 @@ class ImageWidget(PlotWidget):
         self.flip = False
         self.rotate = 0
         self.log_scale_histogram = False
-        self.auto_levels = True
+        self.auto_levels = False
+        self.ratio = 1 # need to see how to get the right aspect ratio from data
+        self.lock = True
 
         self.view = self.plot_view.getViewBox()
 
@@ -582,6 +585,7 @@ class ImageWidget(PlotWidget):
         if self.node:
             self.histogramLUT.sigLookupTableChanged.connect(
                 lambda args: self.node.sigStateChanged.emit(self.node))
+        
 
     def cursor_hover_evt(self, evt):
         pos = evt[0]
@@ -600,6 +604,7 @@ class ImageWidget(PlotWidget):
         if 'Display' in self.plot_attrs:
             self.flip = self.plot_attrs['Display']['Flip']
             self.rotate = int(self.plot_attrs['Display']['Rotate Counter Clockwise'])/90
+            self.lock = self.plot_attrs['Display']['Lock Aspect Ratio']
 
         self.auto_levels = self.plot_attrs['Histogram']['Auto Levels']
         if not self.auto_levels:
@@ -627,9 +632,11 @@ class ImageWidget(PlotWidget):
                 v = np.rot90(v, self.rotate)
             if self.log_scale_histogram:
                 v = np.log10(v)
+            self.view.setAspectLocked(lock=self.lock, ratio=self.ratio)
+
 
             if v.any():
-                self.imageItem.setImage(v, autoLevels=self.auto_levels)
+                self.imageItem.setImage(v.T, autoLevels=self.auto_levels)
 
     def saveState(self):
         state = super().saveState()
