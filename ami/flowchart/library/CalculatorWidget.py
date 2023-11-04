@@ -376,12 +376,13 @@ def func(*args, **kwargs):
 
 
 def sanitize_name(name, space=True):
-    name = name.replace('.', '')
-    name = name.replace(':', '')
-    name = name.replace('-', '_')
-    if space:
-        name = name.replace(' ', '')
-    return name
+    return name.translate(sanitizer_space if space else sanitizer)
+
+
+sanitizer_space = str.maketrans(" .:|-", "_____")
+
+
+sanitizer = str.maketrans(".:|-", "____")
 
 
 if __name__ == '__main__':
