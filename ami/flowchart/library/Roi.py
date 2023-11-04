@@ -275,11 +275,10 @@ class Roi2D(CtrlNode):
         else:
             rotate = 0
         #breakpoint()
-        #print(rotate)
 
         def func(img):
-            print(rotate)
-            return np.rot90(img, rotate)[slice(ox, ox+ex), slice(oy, oy+ey)], (ox, ex, oy, ey)
+            #print(rotate)
+            return np.rot90(img.T, rotate)[slice(ox, ox+ex), slice(oy, oy+ey)], (ox, ex, oy, ey)
 
         return gn.Map(name=self.name()+"_operation", **kwargs, func=func)
 
