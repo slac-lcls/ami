@@ -237,6 +237,8 @@ class Roi2D(CtrlNode):
             self.roi.sigRegionChangeFinished.connect(self.set_values)
             self.widget.view.addItem(self.roi)
 
+        #from ami import forkedpdb; forkedpdb.ForkedPdb().set_trace()
+
         return self.widget
 
     def set_values(self, *args, **kwargs):
@@ -261,7 +263,6 @@ class Roi2D(CtrlNode):
 
         if self.widget:
             self.rotation = self.widget.rotate
-            print(self.rotation)
             self.roi.setPos(self.values['origin x'], y=self.values['origin y'], finish=False)
             self.roi.setSize((self.values['extent x'], self.values['extent y']), finish=False)
 
@@ -274,11 +275,14 @@ class Roi2D(CtrlNode):
             rotate = self.rotation
         else:
             rotate = 0
-        #breakpoint()
+
+        roi = self.roi
+        image_item = self.widget.imageItem
 
         def func(img):
             #print(rotate)
             return np.rot90(img.T, rotate)[slice(ox, ox+ex), slice(oy, oy+ey)], (ox, ex, oy, ey)
+            #return roi.getArrayRegion(image_item.image, image_item)
 
         return gn.Map(name=self.name()+"_operation", **kwargs, func=func)
 
