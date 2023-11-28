@@ -569,7 +569,7 @@ class ImageWidget(PlotWidget):
         self.rotate = 0
         self.log_scale_histogram = False
         self.auto_levels = False
-        self.ratio = 1 # need to see how to get the right aspect ratio from data
+        self.ratio = 1 # Update if we happen to have detectors that do not have square pixels
         self.lock = True
 
         self.view = self.plot_view.getViewBox()
