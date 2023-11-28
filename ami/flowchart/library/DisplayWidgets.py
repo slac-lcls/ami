@@ -634,7 +634,6 @@ class ImageWidget(PlotWidget):
                 v = np.log10(v)
             self.view.setAspectLocked(lock=self.lock, ratio=self.ratio)
 
-
             if v.any():
                 self.imageItem.setImage(v.T, autoLevels=self.auto_levels)
 
