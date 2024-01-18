@@ -366,6 +366,7 @@ class Source(abc.ABC):
         self._base_types = {
             'eventid': int if evtid_type is None else evtid_type,
             'timestamp': float,
+            'keepraw': int,
             'heartbeat': int,
             'source': type(self.source),
         }
@@ -623,7 +624,7 @@ class Source(abc.ABC):
         """
         return Message(MsgTypes.Heartbeat, self.idnum, self.old_heartbeat)
 
-    def event(self, eventid, timestamp, data):
+    def event(self, eventid, timestamp, keepraw, data):
         """
         Constructs a properly formatted event message
 
@@ -631,6 +632,8 @@ class Source(abc.ABC):
             eventid: the unique id of the event
 
             timestamp (float): timestamp of the event
+
+            keepraw (int): raw data flag of the event
 
             data (dict): the data of the event
 
@@ -640,6 +643,7 @@ class Source(abc.ABC):
         base = [
             ('eventid', eventid),
             ('timestamp', timestamp),
+            ('keepraw', keepraw),
             ('heartbeat', self.heartbeat.identity if self.heartbeat is not None else None),
             ('source', self.source)
         ]
@@ -835,7 +839,8 @@ class HierarchicalDataSource(Source):
                     if not self.prompt_mode and self.check_heartbeat_boundary(heartbeat, timestamp=unix_ts):
                         yield self.heartbeat_msg()
                     # emit the processed event data
-                    yield from self.event(eventid, unix_ts, self._process(evt))
+                    #print(f'keepraw {evt.keepraw()}')
+                    yield from self.event(eventid, unix_ts, evt.keepraw(), self._process(evt))
                     # check the heartbeat if in prompt mode
                     if self.prompt_mode and self.check_heartbeat_boundary(heartbeat, timestamp=unix_ts):
                         yield self.heartbeat_msg()
@@ -1368,7 +1373,7 @@ class RandomSource(SimSource):
                         event[name] = np.random.normal(config['pedestal'], config['width'], config['shape'])
                     else:
                         logger.warn("DataSrc: %s has unknown type %s", name, config['dtype'])
-            yield from self.event(eventid, timestamp, event)
+            yield from self.event(eventid, timestamp, 0, event)
             if self.prompt_mode and self.check_heartbeat_boundary(eventid):
                 yield self.heartbeat_msg()
             time.sleep(self.interval)
@@ -1400,7 +1405,7 @@ class StaticSource(SimSource):
                     else:
                         logger.warn("DataSrc: %s has unknown type %s", name, config['dtype'])
             count += 1
-            yield from self.event(eventid, timestamp, event)
+            yield from self.event(eventid, timestamp, 0, event)
             if self.prompt_mode and self.check_heartbeat_boundary(eventid):
                 yield self.heartbeat_msg()
             if count >= self.bound:
