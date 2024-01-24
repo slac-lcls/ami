@@ -551,8 +551,8 @@ class ImageWidget(PlotWidget):
                       ('Label', 'text', {'group': 'Y Axis'}),
                       ('Log Scale', 'check', {'group': 'Y Axis', 'checked': False}),
                       # histogram
-                      ('Auto Range', 'check', {'group': 'Histogram', 'checked': True}),
-                      ('Auto Levels', 'check', {'group': 'Histogram', 'checked': True}),
+                      ('Auto Range', 'check', {'group': 'Histogram', 'checked': False}),
+                      ('Auto Levels', 'check', {'group': 'Histogram', 'checked': False}),
                       ('Log Scale', 'check', {'group': 'Histogram', 'checked': False})]
 
         display = kwargs.pop("display", True)
@@ -577,6 +577,7 @@ class ImageWidget(PlotWidget):
         self.imageItem = pg.ImageItem()
         self.imageItem.setZValue(-99)
         self.view.addItem(self.imageItem)
+        self.view.setAspectLocked(lock=self.lock, ratio=self.ratio)
 
         self.histogramLUT = pg.HistogramLUTItem(self.imageItem)
         self.histogramLUT.gradient.loadPreset('thermal')
@@ -605,7 +606,7 @@ class ImageWidget(PlotWidget):
             self.flip = self.plot_attrs['Display']['Flip']
             self.rotate = int(self.plot_attrs['Display']['Rotate Counter Clockwise'])/90
             self.lock = self.plot_attrs['Display']['Lock Aspect Ratio']
-
+        
         self.auto_levels = self.plot_attrs['Histogram']['Auto Levels']
         if not self.auto_levels:
             self.histogram_connected = True
@@ -623,6 +624,8 @@ class ImageWidget(PlotWidget):
             self.histogramLUT.autoHistogramRange()
         else:
             self.histogramLUT.vb.disableAutoRange()
+        
+        self.view.setAspectLocked(lock=self.lock, ratio=self.ratio)
 
     def data_updated(self, data):
         for k, v in data.items():
@@ -632,10 +635,9 @@ class ImageWidget(PlotWidget):
                 v = np.rot90(v, self.rotate)
             if self.log_scale_histogram:
                 v = np.log10(v)
-            self.view.setAspectLocked(lock=self.lock, ratio=self.ratio)
 
             if v.any():
-                self.imageItem.setImage(v.T, autoLevels=self.auto_levels)
+                self.imageItem.setImage(v, autoLevels=self.auto_levels)
 
     def saveState(self):
         state = super().saveState()
