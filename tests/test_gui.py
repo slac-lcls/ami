@@ -281,12 +281,13 @@ def test_sources(qtbot, flowchart):
 
     source_tree = source_library.getSourceTree()
     sources = set(source_tree.keys())
-    assert sources == set(['delta_t', 'cspad', 'laser', 'eventid', 'timestamp', 'heartbeat', 'source'])
+    assert sources == set(['delta_t', 'cspad', 'laser', 'eventid', 'timestamp', 'keepraw', 'heartbeat', 'source'])
 
     label_tree = OrderedDict([('cspad', "<class 'amitypes.array.Array2d'>"),
                               ('delta_t', "<class 'int'>"),
                               ('eventid', "<class 'int'>"),
                               ('heartbeat', "<class 'int'>"),
+                              ('keepraw', "<class 'int'>"),
                               ('laser', "<class 'int'>"),
                               ('source', "<class 'amitypes.source.DataSource'>"),
                               ('timestamp', "<class 'float'>")])
