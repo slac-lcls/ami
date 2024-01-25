@@ -847,6 +847,7 @@ def test_psana_source(xtcwriter):
         'timestamp': float,
         'keepraw': int,
         'heartbeat': int,
+        'keepraw': int,
         'source': at.DataSource,
     }
     expected_grps = {

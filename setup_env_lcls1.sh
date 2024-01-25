@@ -1,7 +1,7 @@
 unset LD_LIBRARY_PATH
 unset PYTHONPATH
 
-CONDA_ENV_NAME=ana-4.0.51-py3
+CONDA_ENV_NAME=ana-4.0.58-py3
 
 if [[ ${HOSTNAME} == sdf* ]]
 then

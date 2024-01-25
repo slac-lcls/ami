@@ -366,7 +366,6 @@ class Source(abc.ABC):
         self._base_types = {
             'eventid': int if evtid_type is None else evtid_type,
             'timestamp': float,
-            'keepraw': int,
             'heartbeat': int,
             'source': type(self.source),
         }
@@ -624,7 +623,7 @@ class Source(abc.ABC):
         """
         return Message(MsgTypes.Heartbeat, self.idnum, self.old_heartbeat)
 
-    def event(self, eventid, timestamp, keepraw, data):
+    def event(self, eventid, timestamp, data):
         """
         Constructs a properly formatted event message
 
@@ -632,8 +631,6 @@ class Source(abc.ABC):
             eventid: the unique id of the event
 
             timestamp (float): timestamp of the event
-
-            keepraw (int): raw data flag of the event
 
             data (dict): the data of the event
 
@@ -643,7 +640,6 @@ class Source(abc.ABC):
         base = [
             ('eventid', eventid),
             ('timestamp', timestamp),
-            ('keepraw', keepraw),
             ('heartbeat', self.heartbeat.identity if self.heartbeat is not None else None),
             ('source', self.source)
         ]
@@ -839,8 +835,7 @@ class HierarchicalDataSource(Source):
                     if not self.prompt_mode and self.check_heartbeat_boundary(heartbeat, timestamp=unix_ts):
                         yield self.heartbeat_msg()
                     # emit the processed event data
-                    #print(f'keepraw {evt.keepraw()}')
-                    yield from self.event(eventid, unix_ts, evt.keepraw(), self._process(evt))
+                    yield from self.event(eventid, unix_ts, self._process(evt))
                     # check the heartbeat if in prompt mode
                     if self.prompt_mode and self.check_heartbeat_boundary(heartbeat, timestamp=unix_ts):
                         yield self.heartbeat_msg()
@@ -887,6 +882,9 @@ class PsanaSource(HierarchicalDataSource):
         # special attributes that are per run instead of per event from a detectors interface, e.g. calib constants
         self.special_attrs = {
             'calibconst': dict,
+        }
+        self.evt_attrs = {
+            'keepraw': int,
         }
         if psana is None:
             raise NotImplementedError("psana is not available!")
@@ -939,6 +937,12 @@ class PsanaSource(HierarchicalDataSource):
             yield detname, det_xface_name, [det_attr], True
         for (detname, det_xface_name), det_attr in run.scaninfo.items():
             yield detname, det_xface_name, [det_attr], True
+
+    def _update_evt_attrs(self):
+        for attr_name, attr_type in self.evt_attrs.items():
+            if hasattr(psana.event.Event, attr_name):
+                self.data_types[attr_name] = attr_type
+                self.special_types[attr_name] = getattr(psana.event.Event, attr_name)
 
     def _update_special_attrs(self, detname, det_interface):
         for attr, attr_type in self.special_attrs.items():
@@ -1025,6 +1029,9 @@ class PsanaSource(HierarchicalDataSource):
             # make & cache the psana Detector object
             det_interface = self._update_dets(run, detname, is_env_det)
 
+            # check if the evt has metadata to expose - e.g. keepraw
+            self._update_evt_attrs()
+
             # check if the detector has calibconstants
             self._update_special_attrs(detname, det_interface)
 
@@ -1104,7 +1111,10 @@ class PsanaSource(HierarchicalDataSource):
         for name in self.requested_data:
             # check if it is a special type like calibconst
             if name in self.special_types:
-                obj = self.special_types[name]
+                if name in self.evt_attrs:
+                    obj = self.special_types[name](evt)
+                else:
+                    obj = self.special_types[name]
                 # check if the object is callable or not before adding to the event
                 event[name] = obj() if callable(obj) else obj
             elif name in self.detectors and name not in self.env_detectors:
@@ -1373,7 +1383,7 @@ class RandomSource(SimSource):
                         event[name] = np.random.normal(config['pedestal'], config['width'], config['shape'])
                     else:
                         logger.warn("DataSrc: %s has unknown type %s", name, config['dtype'])
-            yield from self.event(eventid, timestamp, 0, event)
+            yield from self.event(eventid, timestamp, event)
             if self.prompt_mode and self.check_heartbeat_boundary(eventid):
                 yield self.heartbeat_msg()
             time.sleep(self.interval)
@@ -1405,7 +1415,7 @@ class StaticSource(SimSource):
                     else:
                         logger.warn("DataSrc: %s has unknown type %s", name, config['dtype'])
             count += 1
-            yield from self.event(eventid, timestamp, 0, event)
+            yield from self.event(eventid, timestamp, event)
             if self.prompt_mode and self.check_heartbeat_boundary(eventid):
                 yield self.heartbeat_msg()
             if count >= self.bound:

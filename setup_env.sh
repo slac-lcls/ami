@@ -1,7 +1,7 @@
 unset LD_LIBRARY_PATH
 unset PYTHONPATH
 
-if [[ ${HOSTNAME} == sdf* ]]
+if [ -d "/sdf/group/lcls/" ]
 then
     # for s3df
     # sdf conda envs seem to mangle the ps1 badly
@@ -18,7 +18,7 @@ else
     export SIT_PSDM_DATA=/cds/data/psdm
 fi
 
-conda activate ps-4.6.1
+conda activate ps-4.6.3
 if [ -n "${PS1_BACKUP}" ]; then
     PS1="(${CONDA_ENV_NAME}) ${PS1_BACKUP}"
     unset PS1_BACKUP
@@ -37,6 +37,7 @@ export PYTHONPATH=$RELDIR/install/lib/python$pyver/site-packages
 # for procmgr
 export TESTRELDIR=$RELDIR/install
 export PROCMGR_EXPORT=RDMAV_FORK_SAFE=1,RDMAV_HUGEPAGES_SAFE=1  # See fi_verbs man page regarding fork()
+export PROCMGR_EXPORT=$PROCMGR_EXPORT,OPENBLAS_NUM_THREADS=1,PS_PARALLEL='none'
 
 # cpo: seems that in more recent versions blas is creating many threads
 export OPENBLAS_NUM_THREADS=1
