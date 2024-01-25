@@ -38,7 +38,6 @@ def test_find_source():
     assert src_cls is None
 
 
-@pytest.mark.skip(reason="Need to resolve handling of new keepraw")
 @hdf5test
 def test_hdf5_source(hdf5writer):
     src_cls = Source.find_source('hdf5')
@@ -845,7 +844,6 @@ def test_psana_source(xtcwriter):
         'epicsinfo:calibconst': dict,
         'eventid': int,
         'timestamp': float,
-        'keepraw': int,
         'heartbeat': int,
         'keepraw': int,
         'source': at.DataSource,
@@ -945,11 +943,11 @@ def test_static_source(sim_src_cfg):
     assert source.src_type == 'static'
 
     # check the names from the source are correct
-    expected_names = {'eventid', 'timestamp', 'keepraw', 'heartbeat', 'source'}
+    expected_names = {'eventid', 'timestamp', 'heartbeat', 'source'}
     expected_names.update(sim_src_cfg['config'].keys())
     assert source.names == expected_names
     # check the types from the source are correct
-    expected_dtypes = {'eventid': int, 'timestamp': float, 'keepraw': int, 'heartbeat': int, 'source': at.DataSource}
+    expected_dtypes = {'eventid': int, 'timestamp': float, 'heartbeat': int, 'source': at.DataSource}
     for name, cfg in sim_src_cfg['config'].items():
         if cfg["dtype"] == "Scalar":
             if cfg.get("integer", False):
@@ -1022,11 +1020,11 @@ def test_random_source(sim_src_cfg):
     assert source.src_type == 'random'
 
     # check the names from the source are correct
-    expected_names = {'eventid', 'timestamp', 'keepraw', 'heartbeat', 'source'}
+    expected_names = {'eventid', 'timestamp', 'heartbeat', 'source'}
     expected_names.update(sim_src_cfg['config'].keys())
     assert source.names == expected_names
     # check the types from the source are correct
-    expected_dtypes = {'eventid': int, 'timestamp': float, 'keepraw': int, 'heartbeat': int, 'source': at.DataSource}
+    expected_dtypes = {'eventid': int, 'timestamp': float, 'heartbeat': int, 'source': at.DataSource}
     for name, cfg in sim_src_cfg['config'].items():
         if cfg["dtype"] == "Scalar":
             if cfg.get("integer", False):
