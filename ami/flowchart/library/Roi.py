@@ -251,6 +251,7 @@ class Roi2D(CtrlNode):
         self.stateGroup.blockSignals(False)
         self.sigStateChanged.emit(self)
 
+
     def update(self, *args, **kwargs):
         super().update(*args, **kwargs)
 
@@ -264,9 +265,13 @@ class Roi2D(CtrlNode):
         ex = self.values['extent x']
         oy = self.values['origin y']
         ey = self.values['extent y']
+        if self.widget is not None:
+            rotation = self.widget.rotate
+        else:
+            rotation = 0
 
-        def func(img):
-            return img[slice(oy, oy+ey), slice(ox, ox+ex)], (ox, ex, oy, ey)
+        def func(img): 
+            return np.rot90(img, rotation)[slice(oy, oy+ey), slice(ox, ox+ex)], (ox, ex, oy, ey)
 
         return gn.Map(name=self.name()+"_operation", **kwargs, func=func)
 
