@@ -240,10 +240,10 @@ class Roi2D(CtrlNode):
         self.stateGroup.blockSignals(True)
         roi = args[0]
         extent, _, origin = roi.getAffineSliceParams(self.widget.imageItem.image, self.widget.imageItem)
-        self.values['origin x'] = int(origin[0])
-        self.values['origin y'] = int(origin[1])
-        self.values['extent x'] = int(extent[0])
-        self.values['extent y'] = int(extent[1])
+        self.values['origin x'] = int(origin[1])
+        self.values['origin y'] = int(origin[0])
+        self.values['extent x'] = int(extent[1])
+        self.values['extent y'] = int(extent[0])
         self.ctrls['origin x'].setValue(self.values['origin x'])
         self.ctrls['extent x'].setValue(self.values['extent x'])
         self.ctrls['origin y'].setValue(self.values['origin y'])
@@ -257,16 +257,16 @@ class Roi2D(CtrlNode):
         if self.widget:
             self.roi.setPos(self.values['origin x'], y=self.values['origin y'], finish=False)
             self.roi.setSize((self.values['extent x'], self.values['extent y']), finish=False)
+        
 
     def to_operation(self, **kwargs):
         ox = self.values['origin x']
         ex = self.values['extent x']
         oy = self.values['origin y']
         ey = self.values['extent y']
-        rotate = self.widget.rotate
 
         def func(img):
-            return np.rot90(img, rotate)[slice(ox, ox+ex), slice(oy, oy+ey)], (ox, ex, oy, ey)
+            return img[slice(oy, oy+ey), slice(ox, ox+ex)], (ox, ex, oy, ey)
 
         return gn.Map(name=self.name()+"_operation", **kwargs, func=func)
 

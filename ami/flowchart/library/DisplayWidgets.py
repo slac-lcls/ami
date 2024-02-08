@@ -577,6 +577,7 @@ class ImageWidget(PlotWidget):
         self.imageItem = pg.ImageItem()
         self.imageItem.setZValue(-99)
         self.view.addItem(self.imageItem)
+        self.view.invertY()
         self.view.setAspectLocked(lock=self.lock, ratio=self.ratio)
 
         self.histogramLUT = pg.HistogramLUTItem(self.imageItem)
@@ -586,7 +587,6 @@ class ImageWidget(PlotWidget):
         if self.node:
             self.histogramLUT.sigLookupTableChanged.connect(
                 lambda args: self.node.sigStateChanged.emit(self.node))
-        
 
     def cursor_hover_evt(self, evt):
         pos = evt[0]
@@ -604,7 +604,7 @@ class ImageWidget(PlotWidget):
 
         if 'Display' in self.plot_attrs:
             self.flip = self.plot_attrs['Display']['Flip']
-            self.rotate = int(self.plot_attrs['Display']['Rotate Counter Clockwise'])/90
+            self.rotate = int(self.plot_attrs['Display']['Rotate Counter Clockwise']) #/90
             self.lock = self.plot_attrs['Display']['Lock Aspect Ratio']
         
         self.auto_levels = self.plot_attrs['Histogram']['Auto Levels']
@@ -631,10 +631,11 @@ class ImageWidget(PlotWidget):
         for k, v in data.items():
             if self.flip:
                 v = np.flip(v)
-            if self.rotate != 0:
-                v = np.rot90(v, self.rotate)
             if self.log_scale_histogram:
                 v = np.log10(v)
+            if self.rotate != 0:
+                self.imageItem.setTransformOriginPoint(self.imageItem.width()//2, self.imageItem.height()//2)
+                self.imageItem.setRotation(self.rotate)
 
             if v.any():
                 self.imageItem.setImage(v, autoLevels=self.auto_levels)
