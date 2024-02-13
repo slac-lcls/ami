@@ -24,6 +24,7 @@ from qtpy import QtCore, QtWidgets
 
 logger = logging.getLogger(LogConfig.get_package_name(__name__))
 
+pg.setConfigOption('imageAxisOrder', 'row-major')
 
 def run_editor_window(broker_addr, graphmgr_addr, checkpoint_addr, load=None, prometheus_dir=None,
                       prometheus_port=None, hutch=None, configure=False, save_dir=None):
