@@ -1152,10 +1152,16 @@ class GraphReceiver(BaseReceiver):
         function. Only one handler can be assigned to a topic, but a
         handler function can be used by multiple topics.
 
-        The handler function is called with three positional arguments:
+        The handler function is called with four positional arguments:
             name (str):      the name of the graph that is updated.
             version (int):   the version number of the updated graph.
+            args (dict) :    the arguments for the handler function.
             payload (bytes): the raw payload of the update.
+        The GraphReceiver expects the information to be sent in 3 steps, before it calls the handler:
+            1. Send topic: send_string(<topic>, zmq.SNDMORE)
+            2. Send graph name, version and args: send_pyobj((<name>, <version>, <args>), zmq.SNDMORE)
+            3. Send payload: send(dill.dumps(<payload>))
+        Note that special topics only expects the <topic>.
 
         Args:
             topic (str): the name of the topic.

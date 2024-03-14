@@ -340,6 +340,43 @@ class TimestampConverter:
         return raw_ts, int(timestamp * self.heartbeat), unix_ts
 
 
+@dataclass
+class RequestedData:
+    def __init__(self):
+        """ 
+        Container for the data sources names and their kwargs.
+        Any addition / modification of the data sources should ideally be done using
+        this class, as this allow for easy update from one instance to another.
+        """
+        self.names = set()
+        self.det_kwargs = dict()
+
+    def __repr__(self):
+        s = ', '.join(self.names)
+        if self.det_kwargs:
+            s += '\n'
+            #s += ', '.join(self.det_kwargs)
+            s += str(self.det_kwargs)
+        return s
+
+    def add(self, name, det_kwargs=None):
+        self.names.add(name)
+        if det_kwargs:
+            self.det_kwargs[name] = det_kwargs
+
+    def update(self, requested_data_update):
+        self.names.update(requested_data_update.names)
+        self.det_kwargs.update(requested_data_update.det_kwargs) 
+
+    def __iter__(self):
+        return self
+
+    def __next__(self):
+        for name in self.names:
+            return name
+        raise StopIteration
+
+
 class Source(abc.ABC):
     def __init__(self, idnum, num_workers, heartbeat_period, src_cfg, flags=None, evtid_type=None):
         """
@@ -357,8 +394,8 @@ class Source(abc.ABC):
         self.heartbeat = None
         self.old_heartbeat = None
         self.special_names = {}
-        self.requested_names = set()
-        self.requested_data = set()
+        self.requested_names = RequestedData()
+        self.requested_data = RequestedData()
         self.requested_special = {}
         self.config = src_cfg
         self.flags = flags or {}
@@ -655,8 +692,8 @@ class Source(abc.ABC):
         Args:
             names (list): names of the data being requested
         """
-        self.requested_names = set(names)
-        self.requested_data = set()
+        self.requested_names = names.names
+        self.requested_data = RequestedData()
         self.requested_special = {}
         for name in self.requested_names:
             if name in self.special_names:
@@ -1108,7 +1145,7 @@ class PsanaSource(HierarchicalDataSource):
     def _process(self, evt):
         event = {}
 
-        for name in self.requested_data:
+        for name in self.requested_data.names:
             # check if it is a special type like calibconst
             if name in self.special_types:
                 if name in self.evt_attrs:
@@ -1136,12 +1173,17 @@ class PsanaSource(HierarchicalDataSource):
                     for attr in self.grouped_types[name]:
                         grouped[attr] = getattr(obj, attr)(evt)
                     event[name] = at.Group(name, self.src_type, type(obj).__name__, grouped)
-                else:
+                else: # 'normal' detectors
                     # loop to the bottom level of the Det obj and get data
                     obj = self.detectors[detname].det
                     for token in namesplit[1:]:
                         obj = getattr(obj, token)
-                    event[name] = obj(evt)
+                    if name in self.requested_data.det_kwargs:
+                        print(f'Would use det_kwargs here: {self.requested_data.det_kwargs[name]}')
+                        #event[name] = obj(evt, **self.requested_data.det_kwargs[name]) # to clean up once the client side is working
+                        event[name] = obj(evt)
+                    else:
+                        event[name] = obj(evt)
 
         for name, sub_names in self.requested_special.items():
             namesplit = name.split(':')

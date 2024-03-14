@@ -14,7 +14,7 @@ import datetime as dt
 import prometheus_client as pc
 from ami import LogConfig
 from ami.comm import Ports, PlatformAction, AutoExport, Collector, Store, ZMQ_TOPIC_DELIM
-from ami.data import MsgTypes, Transitions, Serializer, Deserializer
+from ami.data import MsgTypes, Transitions, Serializer, Deserializer, RequestedData
 from ami.graphkit_wrapper import Graph
 
 
@@ -436,12 +436,27 @@ class Manager(Collector):
                 self.comm.send_string('error')
 
     def publish_delta(self, name, cmd, delta, reply=True):
+        """
+        Make a Graph update according to a given delta.
+
+        Parameters
+        ----------
+        name: graph name
+        cmd: function that the graphkit_wrapper.Graph must excecute. Typically 'add' or 'del'
+        delta: node or list of nodes to perform the command on.
+        """
         logger.info("Sending requested delta of graph...")
         try:
+            #print('\n')
+            #print(cmd)
+            #print(self.publish_info(name))
+            #print(delta)
+            #print('\n')
             self.versions[name] += 1
             self.graph_comm.send_string(cmd, zmq.SNDMORE)
             self.graph_comm.send_pyobj(self.publish_info(name), zmq.SNDMORE)
             self.graph_comm.send(dill.dumps(delta))
+            self.publish_requested_data(name)
             self.export_graph(name)
             logger.info("Sending delta of graph (%s v%d) completed", name, self.versions[name])
             if reply:
@@ -450,6 +465,14 @@ class Manager(Collector):
             logger.exception("Failed to send delta of graph (%s v%d) -", name, self.versions[name])
             if reply:
                 self.comm.send_string('error')
+
+    def publish_requested_data(self, name, requested_data=None):
+        """ Publishes the RequestedData, the data sources of the graph and their arguements. """
+        self.graph_comm.send_string("update_det_kwargs", zmq.SNDMORE)
+        self.graph_comm.send_pyobj((name, self.versions[name], None), zmq.SNDMORE)
+        requested_data = RequestedData() # test until client side is working
+        requested_data.add('jungfrau1M:raw:image', {'kwarg1': 'this_is_a_kwarg'}) # test until client side is working
+        self.graph_comm.send(dill.dumps(requested_data))
 
     def publish_graph(self, name, reply=True):
         logger.info("Sending requested graph...")
