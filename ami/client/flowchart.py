@@ -126,6 +126,9 @@ class NodeWindow(QtWidgets.QMainWindow):
 
 
 class NodeProcess(QtCore.QObject):
+    """
+    What is that for exaclty?
+    """
 
     def __init__(self, msg, broker_addr="", graphmgr_addr="", checkpoint_addr="", loop=None,
                  library_paths=None, hutch=''):
@@ -254,6 +257,9 @@ class NodeProcess(QtCore.QObject):
 
 
 class MessageBroker(object):
+    """
+    Handles messages between the editor window and the node process instance.
+    """
 
     def __init__(self, graphmgr_addr, load, ipcdir=None, prometheus_dir=None, prometheus_port=None, hutch="",
                  save_dir=None):

@@ -1697,6 +1697,14 @@ class CommHandler(abc.ABC):
         """
         return self._post_dill('add_graph', nodes)
 
+    def update_requested_data(self, requested_data):
+        """
+        Send the updated requested data to the graph.
+        """
+        requested_data = RequestedData() # test
+        requested_data.add('jungfrau1M:raw:image', {'kwarg1': 'this_is_a_kwarg'}) # test
+        return self._post_dill('update_requested_data', requested_data)
+
     def view(self, names):
         """
         Adds a Pick1 graph node for the requested graph output so that is can

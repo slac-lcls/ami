@@ -344,29 +344,29 @@ class TimestampConverter:
 class RequestedData:
     def __init__(self):
         """ 
-        Container for the data sources names and their kwargs.
-        Any addition / modification of the data sources should ideally be done using
-        this class, as this allow for easy update from one instance to another.
+        Container for the detectors names and their kwargs.
+        Any addition / modification of the data sources should be done using this class, as this 
+        allow for easy update from one instance to another.
         """
         self.names = set()
-        self.det_kwargs = dict()
+        self.kwargs = dict()
 
     def __repr__(self):
+        s = str(f"{self.__class__}: ")
         s = ', '.join(self.names)
-        if self.det_kwargs:
+        if self.kwargs:
             s += '\n'
-            #s += ', '.join(self.det_kwargs)
-            s += str(self.det_kwargs)
+            s += str(self.kwargs)
         return s
 
-    def add(self, name, det_kwargs=None):
+    def add(self, name, kwargs=None):
         self.names.add(name)
-        if det_kwargs:
-            self.det_kwargs[name] = det_kwargs
+        if kwargs:
+            self.kwargs[name] = kwargs
 
     def update(self, requested_data_update):
         self.names.update(requested_data_update.names)
-        self.det_kwargs.update(requested_data_update.det_kwargs) 
+        self.kwargs.update(requested_data_update.kwargs) 
 
     def __iter__(self):
         return self
@@ -1178,9 +1178,9 @@ class PsanaSource(HierarchicalDataSource):
                     obj = self.detectors[detname].det
                     for token in namesplit[1:]:
                         obj = getattr(obj, token)
-                    if name in self.requested_data.det_kwargs:
-                        print(f'Would use det_kwargs here: {self.requested_data.det_kwargs[name]}')
-                        #event[name] = obj(evt, **self.requested_data.det_kwargs[name]) # to clean up once the client side is working
+                    if name in self.requested_data.kwargs:
+                        #print(f'Would use kwargs here: {self.requested_data.kwargs[name]}')
+                        #event[name] = obj(evt, **self.requested_data.kwargs[name]) # to clean up once the client side is working
                         event[name] = obj(evt)
                     else:
                         event[name] = obj(evt)

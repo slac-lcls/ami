@@ -383,6 +383,18 @@ class Manager(Collector):
         else:
             self.comm.send(dill.dumps({}))
 
+    def cmd_update_requested_data(self, name):
+        """
+        Client request to update the detector and kwargs. It basically just forwards the
+        RequestedData instance to the workers.
+        Note that the detector names are also sent via the graph, this pathway here is intended
+        for when custom argument must be passed to the raw data methods.
+        """
+        requested_data = dill.loads(self.comm.recv())
+        self.publish_requested_data(name, requested_data)
+        self.comm.send_string('ok')
+        return
+ 
     def cmd_update_sources(self, name):
         src_cfg = self.comm.recv_pyobj()
         self.graph_comm.send_string("update_sources", zmq.SNDMORE)
@@ -447,16 +459,11 @@ class Manager(Collector):
         """
         logger.info("Sending requested delta of graph...")
         try:
-            #print('\n')
-            #print(cmd)
-            #print(self.publish_info(name))
-            #print(delta)
-            #print('\n')
             self.versions[name] += 1
             self.graph_comm.send_string(cmd, zmq.SNDMORE)
             self.graph_comm.send_pyobj(self.publish_info(name), zmq.SNDMORE)
             self.graph_comm.send(dill.dumps(delta))
-            self.publish_requested_data(name)
+            #self.publish_requested_data(name) # do we still want to do it here?
             self.export_graph(name)
             logger.info("Sending delta of graph (%s v%d) completed", name, self.versions[name])
             if reply:
@@ -467,12 +474,16 @@ class Manager(Collector):
                 self.comm.send_string('error')
 
     def publish_requested_data(self, name, requested_data=None):
-        """ Publishes the RequestedData, the data sources of the graph and their arguements. """
-        self.graph_comm.send_string("update_det_kwargs", zmq.SNDMORE)
+        """ Publishes the detectors (or any raw data sources) and their arguments to the worker.
+
+        Args:
+            name (str): name of the graph
+            requested_data (ami.data.RequestedData): detectors and detector kwargs
+        """
+        self.graph_comm.send_string("update_requested_data", zmq.SNDMORE)
         self.graph_comm.send_pyobj((name, self.versions[name], None), zmq.SNDMORE)
-        requested_data = RequestedData() # test until client side is working
-        requested_data.add('jungfrau1M:raw:image', {'kwarg1': 'this_is_a_kwarg'}) # test until client side is working
         self.graph_comm.send(dill.dumps(requested_data))
+        self.comm.send_string('ok')
 
     def publish_graph(self, name, reply=True):
         logger.info("Sending requested graph...")
