@@ -12,6 +12,7 @@ from ami import LogConfig, Defaults
 from ami.comm import Ports, PlatformAction, Colors, ResultStore, Node, AutoExport
 from ami.data import MsgTypes, Source, Transitions
 from ami.graphkit_wrapper import Graph
+from ami.data import RequestedData
 
 
 logger = logging.getLogger(__name__)
@@ -34,6 +35,7 @@ class Worker(Node):
         self.store = ResultStore(collector_addr, self.ctx)
 
         self.graph_comm.add_handler("update_sources", self.update_sources)
+        self.graph_comm.add_handler("update_requested_data", self.update_requested_data)
 
         self.exports = {}
 
@@ -64,12 +66,16 @@ class Worker(Node):
         self.update_requests()
 
     def update_requests(self):
-        requests = set()
+        requests = RequestedData()
         for graph in self.graphs.values():
             if graph is not None:
                 requests.update(graph.sources)
         if self.src is not None:
             self.src.request(requests)
+
+    def update_requested_data(self, name, version, args, requested_data):
+        self.src.requested_data.update(requested_data)
+        return
 
     def update_graph(self, name, version, args):
         if self.graphs[name]:
@@ -178,7 +184,6 @@ class Worker(Node):
                 if msg.mtype == MsgTypes.Heartbeat:
                     heartbeat_start = time.time()
                     size = self.collect(msg.payload)
-
                     for name, graph in self.graphs.items():
                         if graph:
                             graph.heartbeat_finished()

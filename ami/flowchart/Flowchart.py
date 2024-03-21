@@ -608,11 +608,16 @@ class FlowchartCtrlWidget(QtWidgets.QWidget):
     """
     The widget that contains the list of all the nodes in a flowchart and their controls,
     as well as buttons for loading/saving flowcharts.
+    
+    Args
+        chart (ami.flowchart.Flowchart.Flowchart): 
+        graphmgr_addr (ami.client.GraphMgrAddress):
+        configure (bool):
     """
 
     def __init__(self, chart, graphmgr_addr, configure):
         super().__init__()
-
+       
         self.graphCommHandler = AsyncGraphCommHandler(graphmgr_addr.name, graphmgr_addr.comm, ctx=chart.ctx)
         self.graph_name = graphmgr_addr.name
         self.metadata = None

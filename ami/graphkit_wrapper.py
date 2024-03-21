@@ -1,6 +1,7 @@
 import networkx as nx
 import collections
 import ami.graph_nodes as gn
+from ami.data import RequestedData
 from networkfox import compose, modifiers
 
 
@@ -68,7 +69,7 @@ class Graph():
         Returns:
             The set of all the input data sources
         """
-        sources = set()
+        sources = RequestedData()
 
         for var in self.inputs['worker']:
             if self.name_is_valid(var):
