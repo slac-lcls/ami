@@ -392,8 +392,6 @@ class Manager(Collector):
         """
         requested_data = dill.loads(self.comm.recv())
         self.publish_requested_data(name, requested_data)
-        self.comm.send_string('ok')
-        return
  
     def cmd_update_sources(self, name):
         src_cfg = self.comm.recv_pyobj()

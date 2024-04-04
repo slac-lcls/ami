@@ -1701,8 +1701,6 @@ class CommHandler(abc.ABC):
         """
         Send the updated requested data to the graph.
         """
-        requested_data = RequestedData() # test
-        requested_data.add('jungfrau1M:raw:image', {'kwarg1': 'this_is_a_kwarg'}) # test
         return self._post_dill('update_requested_data', requested_data)
 
     def view(self, names):

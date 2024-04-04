@@ -11,6 +11,8 @@ import weakref
 import amitypes  # noqa
 import typing  # noqa
 
+from ami.data import RequestedData
+
 
 def find_nearest(x):
     gs = 100
@@ -320,7 +322,10 @@ class Node(QtCore.QObject):
         """Return the GraphicsItem for this node. Subclasses may re-implement
         this method to customize their appearance in the flowchart."""
         if self._graphicsItem is None:
-            self._graphicsItem = NodeGraphicsItem(self, brush)
+            if self.isSource():
+                self._graphicsItem = SourceNodeGraphicsItem(self, brush)
+            else:
+                self._graphicsItem = NodeGraphicsItem(self, brush)
         return self._graphicsItem
 
     def __getitem__(self, item):
@@ -761,7 +766,6 @@ class NodeGraphicsItem(GraphicsObject):
             if self.node._allowRemove:
                 self.menu.addAction("Remove node", self.node.close)
             self.menu.addAction("View Source Code", self.viewSource)
-
         return self.menu
 
     def enabledFromMenu(self, checked):
@@ -790,3 +794,72 @@ class NodeGraphicsItem(GraphicsObject):
         self.sourceEditor.setReadOnly(True)
         self.sourceEditor.setWindowTitle(self.node.__class__.__name__ + ' Source')
         self.sourceEditor.show()
+
+
+class SourceNodeGraphicsItem(NodeGraphicsItem):
+    """
+    Extension of the NodeGraphicsItem to handle the source kwargs graphics.
+    """
+    sigSourceKwargs = QtCore.Signal(object)
+
+    def __init__(self, node, brush=None):
+        super().__init__(node, brush=brush)
+        self.source_kwargs = {}
+
+    def buildMenu(self, reset=False):
+        if reset:
+            # qt seg. faults if you don't delete old menu first
+            self.menu = None
+
+        if self.menu is None:
+            self.menu = QtWidgets.QMenu()
+            self.menu.setTitle("Node")
+            self.enabled.toggled.connect(self.enabledFromMenu)
+            self.menu.addAction(self.enabled)
+            if self.node._allowOptional:
+                self.optional.toggled.connect(self.optionalFromMenu)
+                self.menu.addAction(self.optional)
+            if self.node._allowAddInput:
+                self.menu.addAction("Add input", self.addInputFromMenu)
+            if self.node._allowAddOutput:
+                self.menu.addAction("Add output", self.addOutputFromMenu)
+            if self.node._allowRemove:
+                self.menu.addAction("Remove node", self.node.close)
+            if self.node.isSource():
+                self.menu.addAction("Source kwargs", self.editSourceKwargs)
+            self.menu.addAction("View Source Code", self.viewSource)
+        return self.menu
+
+    def editSourceKwargs(self):
+        self.kwargsEditorWindow = QtWidgets.QWidget()
+        layout = QtWidgets.QVBoxLayout()
+
+        label = QtWidgets.QLabel()
+        label.setText("Enter kwargs in a dict format: {\'k1\': v1, ...}")
+
+        self.kwargs_edit = QtWidgets.QLineEdit()
+        self.kwargs_edit.setText(str(self.source_kwargs))
+
+        cmdLayout = QtWidgets.QHBoxLayout()
+        cmd_save = QtWidgets.QPushButton("Save")
+        cmd_save.clicked.connect(self.make_requested_data)
+        cmd_cancel = QtWidgets.QPushButton("Close")
+        cmd_cancel.clicked.connect(self.kwargsEditorWindow.close) 
+        cmdLayout.addWidget(cmd_save)
+        cmdLayout.addWidget(cmd_cancel)
+ 
+        layout.addWidget(label)
+        layout.addWidget(self.kwargs_edit)
+        layout.addLayout(cmdLayout)
+        self.kwargsEditorWindow.setLayout(layout)
+        self.kwargsEditorWindow.show()
+        self.kwargsEditorWindow.resize(450, self.kwargsEditorWindow.height())
+
+    def make_requested_data(self):
+        self.source_kwargs = eval(self.kwargs_edit.text())
+        # Code injection risk here. Should perhaps parse the dict explicitly
+        requested_data = RequestedData()
+        requested_data.add(self.node._name, self.source_kwargs)
+        self.sigSourceKwargs.emit(requested_data)
+
+
