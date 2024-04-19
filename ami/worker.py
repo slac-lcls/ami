@@ -71,10 +71,13 @@ class Worker(Node):
             if graph is not None:
                 requests.update(graph.sources)
         if self.src is not None:
+            requests.update(self.src.requested_data)
             self.src.request(requests)
+        print(f'Worker: requests: {requests}')
 
     def update_requested_data(self, name, version, args, requested_data):
-        self.src.requested_data.update(requested_data)
+        print('Worker: update requested data')
+        self.src.request(requested_data)
         return
 
     def update_graph(self, name, version, args):

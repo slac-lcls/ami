@@ -369,12 +369,15 @@ class RequestedData:
         self.kwargs.update(requested_data_update.kwargs) 
 
     def __iter__(self):
-        return self
-
-    def __next__(self):
         for name in self.names:
-            return name
-        raise StopIteration
+            yield self.__next__(name)
+        return
+
+    def __next__(self, name):
+        kws = self.kwargs.get(name, None)
+        req = RequestedData()
+        req.add(name, kwargs=kws)
+        return req
 
 
 class Source(abc.ABC):
@@ -684,7 +687,7 @@ class Source(abc.ABC):
         msg = Message(mtype=MsgTypes.Datagram, identity=self.idnum, payload=data, timestamp=eventid)
         yield msg
 
-    def request(self, names):
+    def request(self, requested_data):
         """
         Request that the source includes the specified data from its list of
         available data when it emits event messages.
@@ -692,10 +695,12 @@ class Source(abc.ABC):
         Args:
             names (list): names of the data being requested
         """
-        self.requested_names = names.names
+        print(f'Data: request: {requested_data}')
         self.requested_data = RequestedData()
         self.requested_special = {}
-        for name in self.requested_names:
+
+        for name, req in zip(requested_data.names, requested_data):
+            print(req)
             if name in self.special_names:
                 sub_name, info = self.special_names[name]
                 if sub_name not in self.requested_special:
@@ -703,7 +708,7 @@ class Source(abc.ABC):
                 self.requested_special[sub_name][name] = info
             elif name not in self._base_names:
                 if name in self.names:
-                    self.requested_data.add(name)
+                    self.requested_data.update(req)
                 else:
                     logger.debug("DataSrc: requested source \'%s\' is not available", name)
 

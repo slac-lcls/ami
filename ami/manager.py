@@ -456,6 +456,10 @@ class Manager(Collector):
         delta: node or list of nodes to perform the command on.
         """
         logger.info("Sending requested delta of graph...")
+        print(f'Manager: cmd: {cmd}')
+        print(f'Manager: delta: {delta}')
+        #from ami.forkedpdb import ForkedPdb
+        #ForkedPdb().set_trace()
         try:
             self.versions[name] += 1
             self.graph_comm.send_string(cmd, zmq.SNDMORE)
