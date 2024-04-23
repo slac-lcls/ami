@@ -342,14 +342,18 @@ class TimestampConverter:
 
 @dataclass
 class RequestedData:
-    def __init__(self):
+    def __init__(self, name=None, kws=None):
         """ 
         Container for the detectors names and their kwargs.
         Any addition / modification of the data sources should be done using this class, as this 
         allow for easy update from one instance to another.
         """
         self.names = set()
+        if name:
+            self.names.add(name)
         self.kwargs = dict()
+        if kws and name:
+            self.kwargs = self.kwargs[name] = kws
 
     def __repr__(self):
         s = str(f"{self.__class__}: ")
@@ -366,7 +370,7 @@ class RequestedData:
 
     def update(self, requested_data_update):
         self.names.update(requested_data_update.names)
-        self.kwargs.update(requested_data_update.kwargs) 
+        self.kwargs.update(requested_data_update.kwargs)
 
     def __iter__(self):
         for name in self.names:
@@ -374,6 +378,11 @@ class RequestedData:
         return
 
     def __next__(self, name):
+        """
+        Is that not too weird?
+        Iterating over this class return an instance of this class, with
+        a single name and its potential kwargs.
+        """
         kws = self.kwargs.get(name, None)
         req = RequestedData()
         req.add(name, kwargs=kws)
@@ -687,20 +696,21 @@ class Source(abc.ABC):
         msg = Message(mtype=MsgTypes.Datagram, identity=self.idnum, payload=data, timestamp=eventid)
         yield msg
 
-    def request(self, requested_data):
+    def request(self, requested_data, is_kws_update=False):
         """
         Request that the source includes the specified data from its list of
         available data when it emits event messages.
 
         Args:
-            names (list): names of the data being requested
+            requested_data (RequestedData): names of the data being requested
         """
-        print(f'Data: request: {requested_data}')
-        self.requested_data = RequestedData()
+        print(f"Data: requested_data before: {self.requested_data}")
+        print(f"Data: requested_data: {requested_data}")
+        if not is_kws_update:
+            self.requested_data = RequestedData()
         self.requested_special = {}
 
         for name, req in zip(requested_data.names, requested_data):
-            print(req)
             if name in self.special_names:
                 sub_name, info = self.special_names[name]
                 if sub_name not in self.requested_special:
@@ -709,8 +719,13 @@ class Source(abc.ABC):
             elif name not in self._base_names:
                 if name in self.names:
                     self.requested_data.update(req)
+                    # self.requested_data.add(name, kwargs=req.kwargs.get(name, None))
+                    if is_kws_update: # super ugly way to clear kwargs...
+                        if name not in requested_data.kwargs and name in self.requested_data.kwargs:
+                            self.requested_data.kwargs.pop(name)
                 else:
                     logger.debug("DataSrc: requested source \'%s\' is not available", name)
+        print(f"Data: requested_data after: {self.requested_data}\n")
 
     @abc.abstractmethod
     def events(self):

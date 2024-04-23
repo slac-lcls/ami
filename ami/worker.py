@@ -35,7 +35,7 @@ class Worker(Node):
         self.store = ResultStore(collector_addr, self.ctx)
 
         self.graph_comm.add_handler("update_sources", self.update_sources)
-        self.graph_comm.add_handler("update_requested_data", self.update_requested_data)
+        self.graph_comm.add_handler("update_requested_data", self.update_requests_kwargs)
 
         self.exports = {}
 
@@ -66,6 +66,7 @@ class Worker(Node):
         self.update_requests()
 
     def update_requests(self):
+        print('Worker: update requests')
         requests = RequestedData()
         for graph in self.graphs.values():
             if graph is not None:
@@ -73,11 +74,10 @@ class Worker(Node):
         if self.src is not None:
             requests.update(self.src.requested_data)
             self.src.request(requests)
-        print(f'Worker: requests: {requests}')
 
-    def update_requested_data(self, name, version, args, requested_data):
+    def update_requests_kwargs(self, name, version, args, requested_data):
         print('Worker: update requested data')
-        self.src.request(requested_data)
+        self.src.request(requested_data, is_kws_update=True)
         return
 
     def update_graph(self, name, version, args):

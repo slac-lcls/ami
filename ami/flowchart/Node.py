@@ -804,7 +804,22 @@ class SourceNodeGraphicsItem(NodeGraphicsItem):
 
     def __init__(self, node, brush=None):
         super().__init__(node, brush=brush)
-        self.source_kwargs = {}
+        self._source_kwargs = {}
+    
+    @property
+    def source_kwargs(self):
+        return self._source_kwargs
+    
+    @source_kwargs.setter
+    def source_kwargs(self, kws):
+        self._source_kwargs = kws
+        self.emit_source_kwargs()
+
+    def emit_source_kwargs(self):
+        print(f'Emit kws: {self.node._name} {self.source_kwargs}')
+        requested_data = RequestedData()
+        requested_data.add(self.node._name, kwargs=self.source_kwargs)
+        self.sigSourceKwargs.emit(requested_data)
 
     def buildMenu(self, reset=False):
         if reset:
@@ -842,7 +857,7 @@ class SourceNodeGraphicsItem(NodeGraphicsItem):
 
         cmdLayout = QtWidgets.QHBoxLayout()
         cmd_save = QtWidgets.QPushButton("Save")
-        cmd_save.clicked.connect(self.make_requested_data)
+        cmd_save.clicked.connect(self.cmd_save)
         cmd_cancel = QtWidgets.QPushButton("Close")
         cmd_cancel.clicked.connect(self.kwargsEditorWindow.close) 
         cmdLayout.addWidget(cmd_save)
@@ -855,11 +870,8 @@ class SourceNodeGraphicsItem(NodeGraphicsItem):
         self.kwargsEditorWindow.show()
         self.kwargsEditorWindow.resize(450, self.kwargsEditorWindow.height())
 
-    def make_requested_data(self):
-        self.source_kwargs = eval(self.kwargs_edit.text())
+    def cmd_save(self):
         # Code injection risk here. Should perhaps parse the dict explicitly
-        requested_data = RequestedData()
-        requested_data.add(self.node._name, self.source_kwargs)
-        self.sigSourceKwargs.emit(requested_data)
+        self.source_kwargs = eval(self.kwargs_edit.text())
 
 
