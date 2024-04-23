@@ -150,7 +150,10 @@ class SourceNode(CtrlNode):
     def restoreState(self, state):
         super().restoreState(state)
         self.setWidgetType()
-        self._graphicsItem.source_kwargs = state['source_kwargs']
+        try:
+            self._graphicsItem.source_kwargs = state['source_kwargs']
+        except:
+            pass
 
 
 class GroupedNode(CtrlNode):
