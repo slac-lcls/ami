@@ -800,16 +800,16 @@ class SourceNodeGraphicsItem(NodeGraphicsItem):
     """
     Extension of the NodeGraphicsItem to handle the source kwargs graphics.
     """
-    sigSourceKwargs = QtCore.Signal(object)
+    sigSourceKwargs = QtCore.Signal(object) # signal emitted when new user kwargs are supplied
 
     def __init__(self, node, brush=None):
         super().__init__(node, brush=brush)
         self._source_kwargs = {}
-    
+
     @property
     def source_kwargs(self):
         return self._source_kwargs
-    
+
     @source_kwargs.setter
     def source_kwargs(self, kws):
         self._source_kwargs = kws
@@ -849,8 +849,17 @@ class SourceNodeGraphicsItem(NodeGraphicsItem):
         self.kwargsEditorWindow = QtWidgets.QWidget()
         layout = QtWidgets.QVBoxLayout()
 
-        label = QtWidgets.QLabel()
-        label.setText("Enter kwargs in a dict format: {\'k1\': v1, ...}")
+        label1 = QtWidgets.QLabel()
+        label1.setWordWrap(True)
+        label1_font = QtGui.QFont()
+        label1_font.setBold(True)
+        label1_font.setPointSize(14)
+        label1.setFont(label1_font)
+        label1.setText("/!\ Expert only /!\\")
+
+        label2 = QtWidgets.QLabel()
+        label2.setWordWrap(True)
+        label2.setText("Enter kwargs in a dict format: {\'k1\': v1, ...}")
 
         self.kwargs_edit = QtWidgets.QLineEdit()
         self.kwargs_edit.setText(str(self.source_kwargs))
@@ -859,11 +868,12 @@ class SourceNodeGraphicsItem(NodeGraphicsItem):
         cmd_save = QtWidgets.QPushButton("Save")
         cmd_save.clicked.connect(self.cmd_save)
         cmd_cancel = QtWidgets.QPushButton("Close")
-        cmd_cancel.clicked.connect(self.kwargsEditorWindow.close) 
+        cmd_cancel.clicked.connect(self.kwargsEditorWindow.close)
         cmdLayout.addWidget(cmd_save)
         cmdLayout.addWidget(cmd_cancel)
- 
-        layout.addWidget(label)
+
+        layout.addWidget(label1)
+        layout.addWidget(label2)
         layout.addWidget(self.kwargs_edit)
         layout.addLayout(cmdLayout)
         self.kwargsEditorWindow.setLayout(layout)
@@ -872,6 +882,7 @@ class SourceNodeGraphicsItem(NodeGraphicsItem):
 
     def cmd_save(self):
         # Code injection risk here. Should perhaps parse the dict explicitly
+        # or even setup a grammar (lark)?
         self.source_kwargs = eval(self.kwargs_edit.text())
 
 

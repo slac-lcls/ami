@@ -342,18 +342,23 @@ class TimestampConverter:
 
 @dataclass
 class RequestedData:
-    def __init__(self, name=None, kws=None):
-        """ 
+    def __init__(self, names=None, kws={}):
+        """
         Container for the detectors names and their kwargs.
-        Any addition / modification of the data sources should be done using this class, as this 
+        Any addition / modification of the data sources should be done using this class, as this
         allow for easy update from one instance to another.
         """
         self.names = set()
-        if name:
-            self.names.add(name)
+        if names:
+            #self.names.add(name)
+            self.names = set(names)
         self.kwargs = dict()
-        if kws and name:
-            self.kwargs = self.kwargs[name] = kws
+        if kws:
+            for k,v in kws.items():
+                if k not in self.names:
+                    continue
+                else:
+                    self.kwargs[k] = v
 
     def __repr__(self):
         s = str(f"{self.__class__}: ")
@@ -692,7 +697,7 @@ class Source(abc.ABC):
             ('heartbeat', self.heartbeat.identity if self.heartbeat is not None else None),
             ('source', self.source)
         ]
-        data.update({k: v for k, v in base if k in self.requested_names})
+        data.update({k: v for k, v in base if k in self.requested_names.names})
         msg = Message(mtype=MsgTypes.Datagram, identity=self.idnum, payload=data, timestamp=eventid)
         yield msg
 
@@ -702,13 +707,14 @@ class Source(abc.ABC):
         available data when it emits event messages.
 
         Args:
-            requested_data (RequestedData): names of the data being requested
+            requested_data (ami.data.RequestedData): names of the data being requested
         """
-        print(f"Data: requested_data before: {self.requested_data}")
-        print(f"Data: requested_data: {requested_data}")
+        logger.debug(f"Requested_data before: {self.requested_data}")
+        logger.debug(f"Requested_data: {requested_data}")
         if not is_kws_update:
-            self.requested_data = RequestedData()
-        self.requested_special = {}
+            self.requested_names = requested_data # includes things like timestamp, source, ...
+            self.requested_data = RequestedData() # will weed out timestamp, source, ...
+            self.requested_special = {}
 
         for name, req in zip(requested_data.names, requested_data):
             if name in self.special_names:
@@ -719,13 +725,12 @@ class Source(abc.ABC):
             elif name not in self._base_names:
                 if name in self.names:
                     self.requested_data.update(req)
-                    # self.requested_data.add(name, kwargs=req.kwargs.get(name, None))
-                    if is_kws_update: # super ugly way to clear kwargs...
+                    if is_kws_update: # ugly way to clear kwargs
                         if name not in requested_data.kwargs and name in self.requested_data.kwargs:
                             self.requested_data.kwargs.pop(name)
                 else:
                     logger.debug("DataSrc: requested source \'%s\' is not available", name)
-        print(f"Data: requested_data after: {self.requested_data}\n")
+        logger.debug(f"Requested_data after: {self.requested_data}\n")
 
     @abc.abstractmethod
     def events(self):
@@ -1336,7 +1341,7 @@ class Hdf5Source(HierarchicalDataSource):
 
         event = {}
 
-        for name in self.requested_data:
+        for name in self.requested_data.names:
             if name in self.special_types:
                 dset = run[self.decode(name)]
                 with dset.astype(self.special_types[name]):
@@ -1434,7 +1439,7 @@ class RandomSource(SimSource):
             if not self.prompt_mode and self.check_heartbeat_boundary(eventid):
                 yield self.heartbeat_msg()
             for name, config in self.simulated.items():
-                if name in self.requested_data:
+                if name in self.requested_data.names:
                     if config['dtype'] == 'Scalar':
                         value = config['range'][0] + (config['range'][1] - config['range'][0]) * np.random.rand(1)[0]
                         if config.get('integer', False):
@@ -1469,7 +1474,7 @@ class StaticSource(SimSource):
             if not self.prompt_mode and self.check_heartbeat_boundary(eventid):
                 yield self.heartbeat_msg()
             for name, config in self.simulated.items():
-                if name in self.requested_data:
+                if name in self.requested_data.names:
                     if config['dtype'] == 'Scalar':
                         event[name] = 1
                     elif config['dtype'] == 'Waveform' or config['dtype'] == 'Image':
