@@ -551,8 +551,8 @@ class ImageWidget(PlotWidget):
                       ('Label', 'text', {'group': 'Y Axis'}),
                       ('Log Scale', 'check', {'group': 'Y Axis', 'checked': False}),
                       # histogram
-                      ('Auto Range', 'check', {'group': 'Histogram', 'checked': False}),
-                      ('Auto Levels', 'check', {'group': 'Histogram', 'checked': False}),
+                      ('Auto Range', 'check', {'group': 'Histogram', 'checked': True}),
+                      ('Auto Levels', 'check', {'group': 'Histogram', 'checked': True}),
                       ('Log Scale', 'check', {'group': 'Histogram', 'checked': False})]
 
         display = kwargs.pop("display", True)

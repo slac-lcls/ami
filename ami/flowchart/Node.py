@@ -11,9 +11,11 @@ import inspect
 import weakref
 import amitypes  # noqa
 import typing  # noqa
+import logging
 
 from ami.data import RequestedData
 
+logger = logging.getLogger(__name__)
 
 def find_nearest(x):
     gs = 100
@@ -820,7 +822,7 @@ class SourceNodeGraphicsItem(NodeGraphicsItem):
         self.emit_source_kwargs()
 
     def emit_source_kwargs(self):
-        print(f'Emit kws: {self.node._name} {self.source_kwargs}')
+        logger.debug(f'Emit kws: {self.node._name} {self.source_kwargs}')
         requested_data = RequestedData()
         requested_data.add(self.node._name, kwargs=self.source_kwargs)
         self.sigSourceKwargs.emit(requested_data)

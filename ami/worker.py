@@ -66,7 +66,7 @@ class Worker(Node):
         self.update_requests()
 
     def update_requests(self):
-        print('Worker: update requests')
+        logger.debug('Update requests')
         requests = RequestedData()
         for graph in self.graphs.values():
             if graph is not None:
@@ -76,7 +76,7 @@ class Worker(Node):
             self.src.request(requests)
 
     def update_requests_kwargs(self, name, version, args, requested_data):
-        print('Worker: update requested data')
+        logger.info('Update requested data')
         self.src.request(requested_data, is_kws_update=True)
         return
 

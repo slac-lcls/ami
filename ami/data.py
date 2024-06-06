@@ -1203,9 +1203,12 @@ class PsanaSource(HierarchicalDataSource):
                     for token in namesplit[1:]:
                         obj = getattr(obj, token)
                     if name in self.requested_data.kwargs:
-                        print(f'Would use kwargs here: {self.requested_data.kwargs[name]}')
-                        #event[name] = obj(evt, **self.requested_data.kwargs[name]) # to clean up once the client side is working
-                        event[name] = obj(evt)
+                        logger.debug(f'Use kwargs here: {self.requested_data.kwargs[name]}')
+                        try:
+                            event[name] = obj(evt, **self.requested_data.kwargs[name])
+                        except TypeError:
+                            print(f'Bad kwargs passed to {obj}')
+                            event[name] = obj(evt)  # default back to not using kwargs
                     else:
                         event[name] = obj(evt)
 
