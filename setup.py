@@ -37,7 +37,8 @@ setup(
         'mypy',
         'setproctitle',
         'prometheus_client',
-        'qtconsole'
+        'qtconsole',
+#        'lark'
     ],
     tests_require=[
         'pytest',

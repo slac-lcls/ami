@@ -350,7 +350,6 @@ class RequestedData:
         """
         self.names = set()
         if names:
-            #self.names.add(name)
             self.names = set(names)
         self.kwargs = dict()
         if kws:

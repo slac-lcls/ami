@@ -6,6 +6,7 @@ from pyqtgraph.debug import printExc
 from collections import OrderedDict
 from ami.flowchart.Terminal import Terminal
 from networkfox import modifiers
+from lark import Lark, Transformer
 import inspect
 import weakref
 import amitypes  # noqa
@@ -806,6 +807,9 @@ class SourceNodeGraphicsItem(NodeGraphicsItem):
         super().__init__(node, brush=brush)
         self._source_kwargs = {}
 
+        self.kwargs_parser = Lark(kwargs_grammar, start='value') #, transformer=MyTransformer_2(), parser='lalr')
+        self.kwargs_transformer = KwargsTransformer()
+
     @property
     def source_kwargs(self):
         return self._source_kwargs
@@ -881,8 +885,45 @@ class SourceNodeGraphicsItem(NodeGraphicsItem):
         self.kwargsEditorWindow.resize(450, self.kwargsEditorWindow.height())
 
     def cmd_save(self):
-        # Code injection risk here. Should perhaps parse the dict explicitly
-        # or even setup a grammar (lark)?
-        self.source_kwargs = eval(self.kwargs_edit.text())
+        #self.source_kwargs = eval(self.kwargs_edit.text())  # Code injection risk
+        kwargs = self.kwargs_edit.text()
+        if kwargs == '':
+            kwargs = "{}"
+        p = self.kwargs_parser.parse(kwargs)
+        self.source_kwargs = dict(self.kwargs_transformer.transform(p))
 
+
+kwargs_grammar = r"""
+    ?value : list
+           | dict
+           | kv_pair
+           | number
+           | string
+
+    kv_pair : (string | number) ":" value
+    list : "[" [value ("," value)*] "]"
+    dict : "{" [kv_pair ("," kv_pair)*] "}"
+
+    STRING : /".*?(?<!\\)"/ | /'.*?(?<!\\)'/
+    string : STRING
+    number : SIGNED_NUMBER
+
+    %import common.ESCAPED_STRING
+    %import common.SIGNED_NUMBER
+    %import common.WS
+    %ignore WS // ignore white space
+"""
+
+class KwargsTransformer(Transformer):
+    list = list
+    dict = dict
+    kv_pair = tuple
+
+    def number(self, value):
+        value = value[0]
+        return float(value)
+
+    def string(self, s):
+        s = s[0]
+        return str(s[1:-1])
 
