@@ -126,9 +126,6 @@ class NodeWindow(QtWidgets.QMainWindow):
 
 
 class NodeProcess(QtCore.QObject):
-    """
-    What is that for exaclty?
-    """
 
     def __init__(self, msg, broker_addr="", graphmgr_addr="", checkpoint_addr="", loop=None,
                  library_paths=None, hutch=''):

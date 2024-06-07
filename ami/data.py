@@ -1207,7 +1207,7 @@ class PsanaSource(HierarchicalDataSource):
                         try:
                             event[name] = obj(evt, **self.requested_data.kwargs[name])
                         except TypeError:
-                            print(f'Bad kwargs passed to {obj}')
+                            print(f'Bad kwargs passed to {obj}.\nIgnoring custom kwargs.')
                             event[name] = obj(evt)  # default back to not using kwargs
                     else:
                         event[name] = obj(evt)

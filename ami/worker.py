@@ -76,7 +76,7 @@ class Worker(Node):
             self.src.request(requests)
 
     def update_requests_kwargs(self, name, version, args, requested_data):
-        logger.info('Update requested data')
+        logger.debug('Update requested data')
         self.src.request(requested_data, is_kws_update=True)
         return
 
