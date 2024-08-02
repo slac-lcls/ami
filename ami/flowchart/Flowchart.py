@@ -177,9 +177,20 @@ class Flowchart(Node):
         node.sigTerminalAdded.connect(self.nodeTermChanged)
         node.sigTerminalRemoved.connect(self.nodeTermChanged)
         node.setGraph(self._graph)
+
+        # if the node is a source, connect the source kwargs interface to the manager
+        if node.isSource():
+            source_kwargs = node.graphicsItem().source_kwargs
+            node.graphicsItem().sigSourceKwargs.connect(self.send_requested_data)
+
         self.sigNodeCreated.emit(node)
         if node.isChanged(True, True):
             self.sigNodeChanged.emit(node)
+
+    @asyncSlot(object)
+    async def send_requested_data(self, requested_data):
+        ctrl = self.widget()
+        await ctrl.graphCommHandler.update_requested_data(requested_data)
 
     @asyncSlot(object, object)
     async def nodeClosed(self, node, input_vars):
@@ -608,11 +619,16 @@ class FlowchartCtrlWidget(QtWidgets.QWidget):
     """
     The widget that contains the list of all the nodes in a flowchart and their controls,
     as well as buttons for loading/saving flowcharts.
+    
+    Args
+        chart (ami.flowchart.Flowchart.Flowchart): 
+        graphmgr_addr (ami.client.GraphMgrAddress):
+        configure (bool):
     """
 
     def __init__(self, chart, graphmgr_addr, configure):
         super().__init__()
-
+       
         self.graphCommHandler = AsyncGraphCommHandler(graphmgr_addr.name, graphmgr_addr.comm, ctx=chart.ctx)
         self.graph_name = graphmgr_addr.name
         self.metadata = None
