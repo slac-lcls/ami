@@ -282,10 +282,11 @@ class PlotWidget(QtWidgets.QWidget):
             self.stateGroup.addWidget(w, idx)
             self.legend_layout.addRow(idx, w)
 
-            editor = self.editor(node=self.node, parent=self.legend_groupbox, **kwargs)
+            editor = self.editor(parent=self.legend_groupbox, **kwargs)
             if restore:
                 state = kwargs.get("editor_state", {})
                 editor.restoreState(state)
+
             self.legend_editors[idx] = editor
             self.legend_layout.addWidget(editor)
         elif restore:
@@ -324,8 +325,8 @@ class PlotWidget(QtWidgets.QWidget):
         if self.node:
             self.node.sigStateChanged.emit(self.node)
 
-    def editor(self, node, parent, **kwargs):
-        return TraceEditor(node=node, parent=parent, **kwargs)
+    def editor(self, parent, **kwargs):
+        return TraceEditor(parent=parent, **kwargs)
 
     def state_changed(self, *args, **kwargs):
         name, group, val = args
@@ -606,7 +607,7 @@ class ImageWidget(PlotWidget):
             self.flip = self.plot_attrs['Display']['Flip']
             self.rotate = int(self.plot_attrs['Display']['Rotate Counter Clockwise']) / 90
             self.lock = self.plot_attrs['Display']['Lock Aspect Ratio']
-        
+
         self.auto_levels = self.plot_attrs['Histogram']['Auto Levels']
         if not self.auto_levels:
             self.histogram_connected = True
@@ -624,7 +625,7 @@ class ImageWidget(PlotWidget):
             self.histogramLUT.autoHistogramRange()
         else:
             self.histogramLUT.vb.disableAutoRange()
-        
+
         self.view.setAspectLocked(lock=self.lock, ratio=self.ratio)
 
     def data_updated(self, data):
