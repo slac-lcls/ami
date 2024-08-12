@@ -393,6 +393,8 @@ class PlotWidget(QtWidgets.QWidget):
                 if self.legend:
                     self.legend.addItem(item, editor.ctrls["name"].text())
 
+        self.node.sigStateChanged.emit(self.node)
+
     def saveState(self):
         state = {}
 
