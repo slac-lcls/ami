@@ -269,7 +269,7 @@ class FilterWidget(QtWidgets.QWidget):
 
     def add_condition(self, name=''):
         if len(self.condition_groups) >= len(self.outputs):
-            return
+            return None, None, None, None
 
         if not name:
             name = f"Condition {len(self.condition_groups)}"
@@ -337,8 +337,9 @@ class FilterWidget(QtWidgets.QWidget):
             else:
                 _, stateGroup, _, _ = self.condition_groups[name]
 
-            self.values[name] = state[name]
-            stateGroup.setState({name: state[name]})
+            if stateGroup:
+                self.values[name] = state[name]
+                stateGroup.setState({name: state[name]})
 
 
 def gen_filter_func(values, inputs, outputs):
@@ -372,11 +373,15 @@ def func(*args, **kwargs):
         filter_func += elif_condition
 
     filter_func += "\n\treturn %s" % (', '.join([str(None)]*len(outputs)))
+    print(filter_func)
     return filter_func
 
 
 def sanitize_name(name, space=True):
-    return name.translate(sanitizer_space if space else sanitizer)
+    if name:
+        return name.translate(sanitizer_space if space else sanitizer)
+    else:
+        return str(name)
 
 
 sanitizer_space = str.maketrans(" .:|-", "_____")
