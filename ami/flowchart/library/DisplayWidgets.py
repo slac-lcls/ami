@@ -335,9 +335,6 @@ class PlotWidget(QtWidgets.QWidget):
         else:
             self.plot_attrs[name] = val
 
-        if self.node:
-            self.node.sigStateChanged.emit(self.node)
-
     def apply_clicked(self):
         title = self.plot_attrs.get('Title', None)
         if title:
@@ -603,8 +600,6 @@ class ImageWidget(PlotWidget):
                 self.pixel_value.setText(f"x={x}, y={y}, z={z:.5g}")
 
     def apply_clicked(self):
-        super().apply_clicked()
-
         if 'Display' in self.plot_attrs:
             self.flip = self.plot_attrs['Display']['Flip']
             self.rotate = int(self.plot_attrs['Display']['Rotate Counter Clockwise']) / 90
@@ -629,6 +624,8 @@ class ImageWidget(PlotWidget):
             self.histogramLUT.vb.disableAutoRange()
 
         self.view.setAspectLocked(lock=self.lock, ratio=self.ratio)
+
+        super().apply_clicked()
 
     def data_updated(self, data):
         for k, v in data.items():
