@@ -213,19 +213,20 @@ class FilterWidget(QtWidgets.QWidget):
         self.layout = QtWidgets.QFormLayout()
         self.setLayout(self.layout)
 
-        addBtn = QtWidgets.QPushButton("Add", parent=self)
-        addBtn.clicked.connect(self.add_condition)
+        addElifBtn = QtWidgets.QPushButton("Add Elif", parent=self)
+        addElifBtn.clicked.connect(self.add_elif_condition)
 
-        removeBtn = QtWidgets.QPushButton("Remove", parent=self)
-        removeBtn.clicked.connect(self.remove_condition)
+        addElseBtn = QtWidgets.QPushButton("Add Else", parent=self)
+        addElseBtn.clicked.connect(self.add_else_condition)
 
         hbox = QtWidgets.QHBoxLayout()
-        hbox.addWidget(addBtn)
-        hbox.addWidget(removeBtn)
+        hbox.addWidget(addElifBtn)
+        hbox.addWidget(addElseBtn)
         self.layout.addRow(hbox)
 
         self.values = {}
         self.condition_groups = {}
+        self.else_condition = None
 
         if self.inputs:
             self.variable_widget = QtWidgets.QWidget(parent=self)
@@ -248,7 +249,7 @@ class FilterWidget(QtWidgets.QWidget):
             self.variable_widget.setLayout(self.variable_layout)
             self.layout.addRow(self.variable_widget)
 
-            self.add_condition()
+            self.add_elif_condition(name="If")
 
     def createButton(self, text, member, op=None):
         button = Button(parent=self, text=text)
@@ -267,12 +268,9 @@ class FilterWidget(QtWidgets.QWidget):
         if isinstance(widget, QtWidgets.QLineEdit):
             widget.setText(widget.text() + value)
 
-    def add_condition(self, name=''):
-        if len(self.condition_groups) >= len(self.outputs):
-            return None, None, None, None
-
+    def add_elif_condition(self, name=''):
         if not name:
-            name = f"Condition {len(self.condition_groups)}"
+            name = f"Elif {len(self.condition_groups)}"
 
         condition_group = [('condition', 'text', {'values': '', 'group': name})]
 
@@ -286,21 +284,57 @@ class FilterWidget(QtWidgets.QWidget):
         ctrls[name]['condition'].setFocus()
         self.values[name] = attrs[name]
 
+        if name.startswith("Elif"):
+            removeBtn = QtWidgets.QPushButton("Remove", parent=self)
+            removeBtn.name = name
+            removeBtn.clicked.connect(self.remove_condition)
+            ui.layout().addWidget(removeBtn)
+
+        self.layout.addWidget(ui)
+        stateGroup.sigChanged.connect(self.state_changed)
+
+        return ui, stateGroup, ctrls, attrs
+
+    def add_else_condition(self, name=''):
+        if self.else_condition:
+            return self.else_condition
+
+        if not name:
+            name = "Else"
+
+        condition_group = []
+
+        inputs = list(self.inputs.values())
+        inputs.append("None")
+        for output in self.outputs:
+            condition_group.append((output, 'combo', {'values': inputs, 'value': 'None', 'group': name}))
+
+        self.else_condition = generateUi(condition_group)
+        ui, stateGroup, ctrls, attrs = self.else_condition
+        self.values[name] = attrs[name]
+
+        removeBtn = QtWidgets.QPushButton("Remove", parent=self)
+        removeBtn.name = name
+        removeBtn.clicked.connect(self.remove_condition)
+        ui.layout().addWidget(removeBtn)
+
         self.layout.addWidget(ui)
         stateGroup.sigChanged.connect(self.state_changed)
 
         return ui, stateGroup, ctrls, attrs
 
     def remove_condition(self):
-        condition = len(self.condition_groups)-1
-        if condition == 0:
-            return
-
-        name = f"Condition {condition}"
-        ui, stateGroup, ctrls, attrs = self.condition_groups[name]
+        name = self.sender().name
+        if name == "Else":
+            ui, stateGroup, ctrls, attrs = self.else_condition
+        else:
+            ui, stateGroup, ctrls, attrs = self.condition_groups[name]
         self.layout.removeWidget(ui)
         ctrls[name]['groupbox'].deleteLater()
-        del self.condition_groups[name]
+        if name == "Else":
+            del self.else_condition
+        else:
+            del self.condition_groups[name]
 
     def state_changed(self, *args, **kwargs):
         attr, group, val = args
@@ -321,19 +355,28 @@ class FilterWidget(QtWidgets.QWidget):
             _, stateGroup, _, _ = group
             state[name] = stateGroup.state()[name]
 
+        if self.else_condition is not None:
+            _, stateGroup, _, _ = self.else_condition
+            state["Else"] = stateGroup.state()["Else"]
+
         return state
 
     def restoreState(self, state):
         conditions = state['conditions']
+
         if not self.inputs:
             self.inputs = state.get('inputs', {})
         if not self.outputs:
             self.outputs = state.get('outputs', [])
 
         for condition in range(0, conditions):
-            name = f"Condition {condition}"
+            if condition == 0:
+                name = f"If"
+            else:
+                name = f"Elif {condition}"
+
             if name not in self.condition_groups:
-                _, stateGroup, _, _ = self.add_condition(name=name)
+                _, stateGroup, _, _ = self.add_elif_condition(name=name)
             else:
                 _, stateGroup, _, _ = self.condition_groups[name]
 
@@ -341,11 +384,17 @@ class FilterWidget(QtWidgets.QWidget):
                 self.values[name] = state[name]
                 stateGroup.setState({name: state[name]})
 
+        name = "Else"
+        if name in state:
+            _, stateGroup, _, _ = self.add_else_condition(name)
+
+            self.values[name] = state[name]
+            stateGroup.setState({name: state[name]})
 
 def gen_filter_func(values, inputs, outputs):
     assert (len(values) >= 1)
 
-    cond = sanitize_name(values['Condition 0']['condition'], space=False)
+    cond = sanitize_name(values['If']['condition'], space=False)
 
     filter_func = """
 def func(*args, **kwargs):
@@ -353,14 +402,13 @@ def func(*args, **kwargs):
 \tif %s:
 \t\treturn %s
 """ % (', '.join(inputs), cond,
-       ', '.join(map(lambda x: sanitize_name(values['Condition 0'].get(x)),
+       ', '.join(map(lambda x: sanitize_name(values['If'].get(x)),
                      outputs)))
 
-    for condition in range(0, len(values)):
-        if condition == 0:
+    for k, condition in values.items():
+        if not k.startswith("Elif"):
             continue
 
-        condition = values['Condition %d' % condition]
         cond = sanitize_name(condition['condition'], space=False)
 
         elif_condition = """
@@ -371,6 +419,14 @@ def func(*args, **kwargs):
                              outputs)))
 
         filter_func += elif_condition
+
+    if "Else" in values:
+        else_condition = """
+\telse:
+\t\treturn %s
+        """ % ', '.join(map(lambda x: sanitize_name(values['Else'].get(x)),
+                            outputs))
+        filter_func += else_condition
 
     filter_func += "\n\treturn %s" % (', '.join([str(None)]*len(outputs)))
     print(filter_func)
