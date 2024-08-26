@@ -523,9 +523,9 @@ class Flowchart(Node):
                 node.geometry = QtCore.QByteArray.fromHex(bytes(new_node_state['geometry'], 'ascii'))
 
             if restore_ctrl or restore_widget:
-                self.blockSignals(True)
+                node.blockSignals(True)
                 node.restoreState(current_node_state)
-                self.blockSignals(False)
+                node.blockSignals(False)
                 node.changed = node.isChanged(restore_ctrl, restore_widget)
                 if node.changed:
                     self.sigNodeChanged.emit(node)
