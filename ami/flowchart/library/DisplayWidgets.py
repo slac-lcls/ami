@@ -691,8 +691,8 @@ class HistogramWidget(PlotWidget):
         self.graphics_layout.useOpenGL(False)
         self.num_terms = int(len(terms)/2) if terms else 0
 
-    def editor(self, node, parent, **kwargs):
-        return HistEditor(node=node, parent=parent, **kwargs)
+    def editor(self, parent, **kwargs):
+        return HistEditor(parent=parent, **kwargs)
 
     def data_updated(self, data):
         for i in range(0, self.num_terms):
