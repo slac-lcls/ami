@@ -63,8 +63,16 @@ class MeanVsScan(CtrlNode):
                              'Bin': {'io': 'in', 'ttype': float},
                              'Value': {'io': 'in', 'ttype': float},
                              'Bins': {'io': 'out', 'ttype': Array1d},
-                             'Counts': {'io': 'out', 'ttype': Array1d}
-                         })
+                             'Counts': {'io': 'out', 'ttype': Array1d},
+                         },
+                         allowAddInput=True
+                         )
+
+    def addInput(self, **args):
+        group = self.nextGroupName()
+        self.addTerminal(name="Value", io='in', ttype=float, group=group, **args)
+        self.addTerminal(name="Counts", io='out', ttype=Array1d, group=group, **args)
+        return
 
     def to_operation(self, inputs, outputs, **kwargs):
         outputs = self.output_vars()
@@ -86,7 +94,6 @@ class MeanVsScan(CtrlNode):
                         res[bins[k]] = v[0]/v[1]
                     except IndexError:
                         pass
-
                 keys, values = zip(*sorted(res.items()))
                 return np.array(keys), np.array(values)
 
@@ -100,26 +107,71 @@ class MeanVsScan(CtrlNode):
                        **kwargs)
             ]
         else:
-            map_outputs = [self.name()+'_map_count']
-            reduce_outputs = [self.name()+'_reduce_count']
+            return self.get_gnodes(inputs, outputs, **kwargs)
+        return nodes
 
-            def mean(d):
-                res = {}
-                for k, v in d.items():
-                    res[k] = v[0]/v[1]
-                keys, values = zip(*sorted(res.items()))
-                return np.array(keys), np.array(values)
+    def get_gnodes_binned(self, inputs, outputs, **kwargs):
+        return nodes
 
-            nodes = [
-                gn.Map(name=self.name()+'_map', inputs=[inputs['Value']], outputs=map_outputs,
-                       func=lambda a: (a, 1), **kwargs),
-                gn.ReduceByKey(name=self.name()+'_reduce',
-                               inputs=[inputs['Bin']]+map_outputs, outputs=reduce_outputs,
-                               reduction=lambda cv, v: (cv[0]+v[0], cv[1]+v[1]), **kwargs),
-                gn.Map(name=self.name()+'_mean', inputs=reduce_outputs, outputs=outputs, func=mean,
-                       **kwargs)
-            ]
+    def get_gnodes(self, inputs, outputs, **kwargs):
+        value_inputs = {k: v for k,v in inputs.items() if 'Bin' not in k}
 
+        print(f"inputs: {inputs}\noutputs: {outputs}\nvalue_inputs: {value_inputs}")
+
+        value_array_outputs = [self.name()+'_value_array']
+        map_outputs = [self.name()+'_map_count']
+        reduce_outputs = [self.name()+'_reduce_count']
+        mean_outputs = [self.name()+'_mean_outputs']
+
+        def values_array(*value_inputs):
+            return np.asarray([v for v in value_inputs])
+
+        def mean(d):
+            res = {}
+            for k, v in d.items():
+                res[k] = v[0]/v[1]
+            keys, values = zip(*sorted(res.items()))
+            return np.array(keys), np.array(values)
+
+        def distribute_outputs(args):
+            """
+            Distribute the binned array elements to the corresponding outputs.
+
+            Inputs:
+                args[0]: bins
+                args[1]: mean_values (array_bin1, array_bin2, array_bin3, ...)
+            """
+            bins = args[0]
+            mean_values = args[1]
+            return tuple([bins]) + tuple(mean_values.transpose())
+
+        nodes = [
+            gn.Map(name=self.name()+'_array',
+                   inputs=value_inputs,
+                   outputs=value_array_outputs,
+                   func=values_array,
+                   **kwargs),
+            gn.Map(name=self.name()+'_map',
+                   inputs=value_array_outputs,
+                   outputs=map_outputs,
+                   func=lambda a: (a, 1),
+                   **kwargs),
+            gn.ReduceByKey(name=self.name()+'_reduce',
+                           inputs=[inputs['Bin']]+map_outputs,
+                           outputs=reduce_outputs,
+                           reduction=lambda cv, v: (cv[0]+v[0], cv[1]+v[1]),
+                           **kwargs),
+            gn.Map(name=self.name()+'_mean',
+                   inputs=reduce_outputs,
+                   outputs=mean_outputs,
+                   func=mean,
+                   **kwargs),
+            gn.Map(name=self.name()+'_distribute_outputs',
+                   inputs=mean_outputs,
+                   outputs=outputs,
+                   func=distribute_outputs,
+                   **kwargs)
+        ]
         return nodes
 
 
