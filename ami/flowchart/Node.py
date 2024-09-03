@@ -6,11 +6,16 @@ from pyqtgraph.debug import printExc
 from collections import OrderedDict
 from ami.flowchart.Terminal import Terminal
 from networkfox import modifiers
+from lark import Lark, Transformer
 import inspect
 import weakref
 import amitypes  # noqa
 import typing  # noqa
+import logging
 
+from ami.data import RequestedData
+
+logger = logging.getLogger(__name__)
 
 def find_nearest(x):
     gs = 100
@@ -320,7 +325,10 @@ class Node(QtCore.QObject):
         """Return the GraphicsItem for this node. Subclasses may re-implement
         this method to customize their appearance in the flowchart."""
         if self._graphicsItem is None:
-            self._graphicsItem = NodeGraphicsItem(self, brush)
+            if self.isSource():
+                self._graphicsItem = SourceNodeGraphicsItem(self, brush)
+            else:
+                self._graphicsItem = NodeGraphicsItem(self, brush)
         return self._graphicsItem
 
     def __getitem__(self, item):
@@ -761,7 +769,6 @@ class NodeGraphicsItem(GraphicsObject):
             if self.node._allowRemove:
                 self.menu.addAction("Remove node", self.node.close)
             self.menu.addAction("View Source Code", self.viewSource)
-
         return self.menu
 
     def enabledFromMenu(self, checked):
@@ -790,3 +797,135 @@ class NodeGraphicsItem(GraphicsObject):
         self.sourceEditor.setReadOnly(True)
         self.sourceEditor.setWindowTitle(self.node.__class__.__name__ + ' Source')
         self.sourceEditor.show()
+
+
+class SourceNodeGraphicsItem(NodeGraphicsItem):
+    """
+    Extension of the NodeGraphicsItem to handle the source kwargs graphics.
+    """
+    sigSourceKwargs = QtCore.Signal(object) # signal emitted when new user kwargs are supplied
+
+    def __init__(self, node, brush=None):
+        super().__init__(node, brush=brush)
+        self._source_kwargs = {}
+
+        self.kwargs_parser = Lark(kwargs_grammar, start='value') #, transformer=MyTransformer_2(), parser='lalr')
+        self.kwargs_transformer = KwargsTransformer()
+
+    @property
+    def source_kwargs(self):
+        return self._source_kwargs
+
+    @source_kwargs.setter
+    def source_kwargs(self, kws):
+        self._source_kwargs = kws
+        self.emit_source_kwargs()
+
+    def emit_source_kwargs(self):
+        logger.debug(f'Emit kws: {self.node._name} {self.source_kwargs}')
+        requested_data = RequestedData()
+        requested_data.add(self.node._name, kwargs=self.source_kwargs)
+        self.sigSourceKwargs.emit(requested_data)
+
+    def buildMenu(self, reset=False):
+        if reset:
+            # qt seg. faults if you don't delete old menu first
+            self.menu = None
+
+        if self.menu is None:
+            self.menu = QtWidgets.QMenu()
+            self.menu.setTitle("Node")
+            self.enabled.toggled.connect(self.enabledFromMenu)
+            self.menu.addAction(self.enabled)
+            if self.node._allowOptional:
+                self.optional.toggled.connect(self.optionalFromMenu)
+                self.menu.addAction(self.optional)
+            if self.node._allowAddInput:
+                self.menu.addAction("Add input", self.addInputFromMenu)
+            if self.node._allowAddOutput:
+                self.menu.addAction("Add output", self.addOutputFromMenu)
+            if self.node._allowRemove:
+                self.menu.addAction("Remove node", self.node.close)
+            if self.node.isSource():
+                self.menu.addAction("Source kwargs", self.editSourceKwargs)
+            self.menu.addAction("View Source Code", self.viewSource)
+        return self.menu
+
+    def editSourceKwargs(self):
+        self.kwargsEditorWindow = QtWidgets.QWidget()
+        layout = QtWidgets.QVBoxLayout()
+
+        label1 = QtWidgets.QLabel()
+        label1.setWordWrap(True)
+        label1_font = QtGui.QFont()
+        label1_font.setBold(True)
+        label1_font.setPointSize(14)
+        label1.setFont(label1_font)
+        label1.setText("/!\ Expert only /!\\")
+
+        label2 = QtWidgets.QLabel()
+        label2.setWordWrap(True)
+        label2.setText("Enter kwargs in a dict format: {\'k1\': v1, ...}")
+
+        self.kwargs_edit = QtWidgets.QLineEdit()
+        self.kwargs_edit.setText(str(self.source_kwargs))
+
+        cmdLayout = QtWidgets.QHBoxLayout()
+        cmd_save = QtWidgets.QPushButton("Save")
+        cmd_save.clicked.connect(self.cmd_save)
+        cmd_cancel = QtWidgets.QPushButton("Close")
+        cmd_cancel.clicked.connect(self.kwargsEditorWindow.close)
+        cmdLayout.addWidget(cmd_save)
+        cmdLayout.addWidget(cmd_cancel)
+
+        layout.addWidget(label1)
+        layout.addWidget(label2)
+        layout.addWidget(self.kwargs_edit)
+        layout.addLayout(cmdLayout)
+        self.kwargsEditorWindow.setLayout(layout)
+        self.kwargsEditorWindow.show()
+        self.kwargsEditorWindow.resize(450, self.kwargsEditorWindow.height())
+
+    def cmd_save(self):
+        #self.source_kwargs = eval(self.kwargs_edit.text())  # Code injection risk
+        kwargs = self.kwargs_edit.text()
+        if kwargs == '':
+            kwargs = "{}"
+        p = self.kwargs_parser.parse(kwargs)
+        self.source_kwargs = dict(self.kwargs_transformer.transform(p))
+
+
+kwargs_grammar = r"""
+    ?value : list
+           | dict
+           | kv_pair
+           | number
+           | string
+
+    kv_pair : (string | number) ":" value
+    list : "[" [value ("," value)*] "]"
+    dict : "{" [kv_pair ("," kv_pair)*] "}"
+
+    STRING : /".*?(?<!\\)"/ | /'.*?(?<!\\)'/
+    string : STRING
+    number : SIGNED_NUMBER
+
+    %import common.ESCAPED_STRING
+    %import common.SIGNED_NUMBER
+    %import common.WS
+    %ignore WS // ignore white space
+"""
+
+class KwargsTransformer(Transformer):
+    list = list
+    dict = dict
+    kv_pair = tuple
+
+    def number(self, value):
+        value = value[0]
+        return float(value)
+
+    def string(self, s):
+        s = s[0]
+        return str(s[1:-1])
+

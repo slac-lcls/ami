@@ -254,6 +254,9 @@ class NodeProcess(QtCore.QObject):
 
 
 class MessageBroker(object):
+    """
+    Handles messages between the editor window and the node process instance.
+    """
 
     def __init__(self, graphmgr_addr, load, ipcdir=None, prometheus_dir=None, prometheus_port=None, hutch="",
                  save_dir=None):

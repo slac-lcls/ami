@@ -340,6 +340,59 @@ class TimestampConverter:
         return raw_ts, int(timestamp * self.heartbeat), unix_ts
 
 
+@dataclass
+class RequestedData:
+    def __init__(self, names=None, kws={}):
+        """
+        Container for the detectors names and their kwargs.
+        Any addition / modification of the data sources should be done using this class, as this
+        allow for easy update from one instance to another.
+        """
+        self.names = set()
+        if names:
+            self.names = set(names)
+        self.kwargs = dict()
+        if kws:
+            for k,v in kws.items():
+                if k not in self.names:
+                    continue
+                else:
+                    self.kwargs[k] = v
+
+    def __repr__(self):
+        s = str(f"{self.__class__}: ")
+        s = ', '.join(self.names)
+        if self.kwargs:
+            s += '\n'
+            s += str(self.kwargs)
+        return s
+
+    def add(self, name, kwargs=None):
+        self.names.add(name)
+        if kwargs:
+            self.kwargs[name] = kwargs
+
+    def update(self, requested_data_update):
+        self.names.update(requested_data_update.names)
+        self.kwargs.update(requested_data_update.kwargs)
+
+    def __iter__(self):
+        for name in self.names:
+            yield self.__next__(name)
+        return
+
+    def __next__(self, name):
+        """
+        Is that not too weird?
+        Iterating over this class return an instance of this class, with
+        a single name and its potential kwargs.
+        """
+        kws = self.kwargs.get(name, None)
+        req = RequestedData()
+        req.add(name, kwargs=kws)
+        return req
+
+
 class Source(abc.ABC):
     def __init__(self, idnum, num_workers, heartbeat_period, src_cfg, flags=None, evtid_type=None):
         """
@@ -357,8 +410,8 @@ class Source(abc.ABC):
         self.heartbeat = None
         self.old_heartbeat = None
         self.special_names = {}
-        self.requested_names = set()
-        self.requested_data = set()
+        self.requested_names = RequestedData()
+        self.requested_data = RequestedData()
         self.requested_special = {}
         self.config = src_cfg
         self.flags = flags or {}
@@ -643,22 +696,26 @@ class Source(abc.ABC):
             ('heartbeat', self.heartbeat.identity if self.heartbeat is not None else None),
             ('source', self.source)
         ]
-        data.update({k: v for k, v in base if k in self.requested_names})
+        data.update({k: v for k, v in base if k in self.requested_names.names})
         msg = Message(mtype=MsgTypes.Datagram, identity=self.idnum, payload=data, timestamp=eventid)
         yield msg
 
-    def request(self, names):
+    def request(self, requested_data, is_kws_update=False):
         """
         Request that the source includes the specified data from its list of
         available data when it emits event messages.
 
         Args:
-            names (list): names of the data being requested
+            requested_data (ami.data.RequestedData): names of the data being requested
         """
-        self.requested_names = set(names)
-        self.requested_data = set()
-        self.requested_special = {}
-        for name in self.requested_names:
+        logger.debug(f"Requested_data before: {self.requested_data}")
+        logger.debug(f"Requested_data: {requested_data}")
+        if not is_kws_update:
+            self.requested_names = requested_data # includes things like timestamp, source, ...
+            self.requested_data = RequestedData() # will weed out timestamp, source, ...
+            self.requested_special = {}
+
+        for name, req in zip(requested_data.names, requested_data):
             if name in self.special_names:
                 sub_name, info = self.special_names[name]
                 if sub_name not in self.requested_special:
@@ -666,9 +723,13 @@ class Source(abc.ABC):
                 self.requested_special[sub_name][name] = info
             elif name not in self._base_names:
                 if name in self.names:
-                    self.requested_data.add(name)
+                    self.requested_data.update(req)
+                    if is_kws_update: # ugly way to clear kwargs
+                        if name not in requested_data.kwargs and name in self.requested_data.kwargs:
+                            self.requested_data.kwargs.pop(name)
                 else:
                     logger.debug("DataSrc: requested source \'%s\' is not available", name)
+        logger.debug(f"Requested_data after: {self.requested_data}\n")
 
     @abc.abstractmethod
     def events(self):
@@ -1108,7 +1169,7 @@ class PsanaSource(HierarchicalDataSource):
     def _process(self, evt):
         event = {}
 
-        for name in self.requested_data:
+        for name in self.requested_data.names:
             # check if it is a special type like calibconst
             if name in self.special_types:
                 if name in self.evt_attrs:
@@ -1136,12 +1197,20 @@ class PsanaSource(HierarchicalDataSource):
                     for attr in self.grouped_types[name]:
                         grouped[attr] = getattr(obj, attr)(evt)
                     event[name] = at.Group(name, self.src_type, type(obj).__name__, grouped)
-                else:
+                else: # 'normal' detectors
                     # loop to the bottom level of the Det obj and get data
                     obj = self.detectors[detname].det
                     for token in namesplit[1:]:
                         obj = getattr(obj, token)
-                    event[name] = obj(evt)
+                    if name in self.requested_data.kwargs:
+                        logger.debug(f'Use kwargs here: {self.requested_data.kwargs[name]}')
+                        try:
+                            event[name] = obj(evt, **self.requested_data.kwargs[name])
+                        except TypeError:
+                            print(f'Bad kwargs passed to {obj}.\nIgnoring custom kwargs.')
+                            event[name] = obj(evt)  # default back to not using kwargs
+                    else:
+                        event[name] = obj(evt)
 
         for name, sub_names in self.requested_special.items():
             namesplit = name.split(':')
@@ -1274,7 +1343,7 @@ class Hdf5Source(HierarchicalDataSource):
 
         event = {}
 
-        for name in self.requested_data:
+        for name in self.requested_data.names:
             if name in self.special_types:
                 dset = run[self.decode(name)]
                 with dset.astype(self.special_types[name]):
@@ -1372,7 +1441,7 @@ class RandomSource(SimSource):
             if not self.prompt_mode and self.check_heartbeat_boundary(eventid):
                 yield self.heartbeat_msg()
             for name, config in self.simulated.items():
-                if name in self.requested_data:
+                if name in self.requested_data.names:
                     if config['dtype'] == 'Scalar':
                         value = config['range'][0] + (config['range'][1] - config['range'][0]) * np.random.rand(1)[0]
                         if config.get('integer', False):
@@ -1407,7 +1476,7 @@ class StaticSource(SimSource):
             if not self.prompt_mode and self.check_heartbeat_boundary(eventid):
                 yield self.heartbeat_msg()
             for name, config in self.simulated.items():
-                if name in self.requested_data:
+                if name in self.requested_data.names:
                     if config['dtype'] == 'Scalar':
                         event[name] = 1
                     elif config['dtype'] == 'Waveform' or config['dtype'] == 'Image':

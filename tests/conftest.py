@@ -151,15 +151,16 @@ def hdf5writer(tmpdir_factory):
 
 @pytest.fixture(scope='session')
 def psana1_testdata():
-    return pathlib.Path("/reg/g/psdm/data_test")
+    return pathlib.Path("/sdf/data/lcls/ds")
 
 
 @pytest.fixture(scope='function')
 def psana1_xtc(request, psana1_testdata):
     directory, filename = request.param
-    calibDir = psana1_testdata / 'multifile' / directory / 'calib'
+    #calibDir = psana1_testdata / 'multifile' / directory / 'calib' # do we want to keep a special dir or use the xpptut15?
+    calibDir = psana1_testdata / directory / 'calib'
     psana.setOption('psana.calib-dir', calibDir)
-    return psana1_testdata / 'multifile' / directory / 'xtc' / filename
+    return psana1_testdata / directory / 'xtc' / filename
 
 
 @pytest.fixture(scope='session')

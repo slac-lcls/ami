@@ -282,10 +282,11 @@ class PlotWidget(QtWidgets.QWidget):
             self.stateGroup.addWidget(w, idx)
             self.legend_layout.addRow(idx, w)
 
-            editor = self.editor(node=self.node, parent=self.legend_groupbox, **kwargs)
+            editor = self.editor(parent=self.legend_groupbox, **kwargs)
             if restore:
                 state = kwargs.get("editor_state", {})
                 editor.restoreState(state)
+
             self.legend_editors[idx] = editor
             self.legend_layout.addWidget(editor)
         elif restore:
@@ -324,8 +325,8 @@ class PlotWidget(QtWidgets.QWidget):
         if self.node:
             self.node.sigStateChanged.emit(self.node)
 
-    def editor(self, node, parent, **kwargs):
-        return TraceEditor(node=node, parent=parent, **kwargs)
+    def editor(self, parent, **kwargs):
+        return TraceEditor(parent=parent, **kwargs)
 
     def state_changed(self, *args, **kwargs):
         name, group, val = args
@@ -333,9 +334,6 @@ class PlotWidget(QtWidgets.QWidget):
             self.plot_attrs[group][name] = val
         else:
             self.plot_attrs[name] = val
-
-        if self.node:
-            self.node.sigStateChanged.emit(self.node)
 
     def apply_clicked(self):
         title = self.plot_attrs.get('Title', None)
@@ -391,6 +389,8 @@ class PlotWidget(QtWidgets.QWidget):
                 item.setData(x, y, pen=pen, **point)
                 if self.legend:
                     self.legend.addItem(item, editor.ctrls["name"].text())
+
+        self.node.sigStateChanged.emit(self.node)
 
     def saveState(self):
         state = {}
@@ -551,8 +551,8 @@ class ImageWidget(PlotWidget):
                       ('Label', 'text', {'group': 'Y Axis'}),
                       ('Log Scale', 'check', {'group': 'Y Axis', 'checked': False}),
                       # histogram
-                      ('Auto Range', 'check', {'group': 'Histogram', 'checked': False}),
-                      ('Auto Levels', 'check', {'group': 'Histogram', 'checked': False}),
+                      ('Auto Range', 'check', {'group': 'Histogram', 'checked': True}),
+                      ('Auto Levels', 'check', {'group': 'Histogram', 'checked': True}),
                       ('Log Scale', 'check', {'group': 'Histogram', 'checked': False})]
 
         display = kwargs.pop("display", True)
@@ -600,13 +600,11 @@ class ImageWidget(PlotWidget):
                 self.pixel_value.setText(f"x={x}, y={y}, z={z:.5g}")
 
     def apply_clicked(self):
-        super().apply_clicked()
-
         if 'Display' in self.plot_attrs:
             self.flip = self.plot_attrs['Display']['Flip']
             self.rotate = int(self.plot_attrs['Display']['Rotate Counter Clockwise']) / 90
             self.lock = self.plot_attrs['Display']['Lock Aspect Ratio']
-        
+
         self.auto_levels = self.plot_attrs['Histogram']['Auto Levels']
         if not self.auto_levels:
             self.histogram_connected = True
@@ -624,8 +622,10 @@ class ImageWidget(PlotWidget):
             self.histogramLUT.autoHistogramRange()
         else:
             self.histogramLUT.vb.disableAutoRange()
-        
+
         self.view.setAspectLocked(lock=self.lock, ratio=self.ratio)
+
+        super().apply_clicked()
 
     def data_updated(self, data):
         for k, v in data.items():

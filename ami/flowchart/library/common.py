@@ -142,9 +142,18 @@ class SourceNode(CtrlNode):
     def plotMetadata(self, topics, terms, **kwargs):
         return {'type': self.widgetType.__name__, 'terms': terms, 'topics': topics}
 
+    def saveState(self):
+        state = super().saveState()
+        state['source_kwargs'] = self._graphicsItem.source_kwargs
+        return state
+
     def restoreState(self, state):
         super().restoreState(state)
         self.setWidgetType()
+        try:
+            self._graphicsItem.source_kwargs = state['source_kwargs']
+        except:
+            pass
 
 
 class GroupedNode(CtrlNode):

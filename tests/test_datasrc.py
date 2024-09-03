@@ -9,7 +9,7 @@ except ImportError:
 
 from ami import psana
 from conftest import psanatest, psana1test, hdf5test
-from ami.data import MsgTypes, Source, Transition, Transitions
+from ami.data import MsgTypes, Source, Transition, Transitions, RequestedData
 
 
 @pytest.fixture(scope='function')
@@ -74,7 +74,8 @@ def test_hdf5_source(hdf5writer):
     assert source.src_type == 'hdf5'
 
     # request all the sources
-    source.request(set(expected_cfg))
+    requested_data = RequestedData(names=set(expected_cfg))
+    source.request(requested_data)
 
     # loop over all the events
     count = 0
@@ -118,7 +119,7 @@ def test_hdf5_source(hdf5writer):
 
 @psana1test
 @pytest.mark.parametrize('psana1_xtc',
-                         [('test_031_xpptut15', 'e665-r0540-s01-c00.xtc')],
+                         [('xpp/xpptut15', 'e665-r0540-s01-c00.xtc')],
                          indirect=['psana1_xtc'])
 def test_psana1_source(psana1_xtc):
     psana_src_cls = Source.find_source('psana')
@@ -758,7 +759,8 @@ def test_psana1_source(psana1_xtc):
     assert step.payload.payload == 0
 
     # request all the sources
-    psana_source.request(set(expected_cfg))
+    requested_data = RequestedData(names=set(expected_cfg))
+    psana_source.request(requested_data)
 
     # patch expected_cfg to remove typing._GenericAlias and convert to real type
     expected_types = {}
@@ -897,7 +899,8 @@ def test_psana_source(xtcwriter):
     assert step.payload.payload == 0
 
     # request all the sources
-    psana_source.request(set(expected_cfg))
+    requested_data = RequestedData(names=set(expected_cfg))
+    psana_source.request(requested_data)
 
     # loop over all the events
     for count, msg in enumerate(evtgen):
@@ -984,9 +987,10 @@ def test_static_source(sim_src_cfg):
     assert count == sim_src_cfg['bound']
 
     # test the request feature of the source
-    assert not source.requested_names
-    source.request(expected_names)
-    assert source.requested_names == expected_names
+    assert not source.requested_names.names
+    requested_data = RequestedData(names=expected_names)
+    source.request(requested_data)
+    assert source.requested_names.names == expected_names
 
     # do a second loop over the data (events should be non-empty)
     count = 0
@@ -1056,9 +1060,10 @@ def test_random_source(sim_src_cfg):
             break
 
     # test the request feature of the source
-    assert not source.requested_names
-    source.request(expected_names)
-    assert source.requested_names == expected_names
+    assert not source.requested_names.names
+    requested_data = RequestedData(names=expected_names)
+    source.request(requested_data)
+    assert source.requested_names.names == expected_names
 
     # do a second loop over the data (events should be non-empty)
     for msg in source.events():
@@ -1121,9 +1126,10 @@ def test_source_request(sim_src_cfg):
     # loop over the events testing that data dict keys match the requested names
     for msg in source.events():
         if msg.mtype == MsgTypes.Datagram:
-            assert set(msg.payload.keys()) == source.requested_names
+            assert set(msg.payload.keys()) == source.requested_names.names
         elif msg.mtype == MsgTypes.Heartbeat:
-            source.request(expected_names[msg.payload.identity])
+            req = RequestedData(names=expected_names[msg.payload.identity])
+            source.request(req)
 
 
 def test_source_badrequest(sim_src_cfg):
@@ -1142,10 +1148,11 @@ def test_source_badrequest(sim_src_cfg):
     ]
 
     source = src_cls(idnum, num_workers, heartbeat_period, sim_src_cfg)
-    source.request(entry[0] for entry in requested_names)
+    requested_data = RequestedData(names=[entry[0] for entry in requested_names])
+    source.request(requested_data)
 
     for name, present in requested_names:
         # check that the requested names are there
-        assert name in source.requested_names
+        assert name in source.requested_names.names
         # check that the bad names are not in requested_data
-        assert (name in source.requested_data) is present
+        assert (name in source.requested_data.names) is present
