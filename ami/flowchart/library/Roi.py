@@ -221,7 +221,7 @@ class Roi2D(CtrlNode):
                          viewable=True)
 
     def isChanged(self, restore_ctrl, restore_widget):
-        return restore_ctrl
+        return restore_ctrl or self.changed
 
     def display(self, topics, terms, addr, win, **kwargs):
         super().display(topics, terms, addr, win, ImageWidget, **kwargs)
@@ -251,14 +251,12 @@ class Roi2D(CtrlNode):
         self.stateGroup.blockSignals(False)
         self.sigStateChanged.emit(self)
 
-
     def update(self, *args, **kwargs):
         super().update(*args, **kwargs)
 
         if self.widget:
             self.roi.setPos(self.values['origin x'], y=self.values['origin y'], finish=False)
             self.roi.setSize((self.values['extent x'], self.values['extent y']), finish=False)
-        
 
     def to_operation(self, **kwargs):
         ox = self.values['origin x']
