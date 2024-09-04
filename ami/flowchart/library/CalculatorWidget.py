@@ -224,7 +224,6 @@ class FilterWidget(QtWidgets.QWidget):
         hbox.addWidget(addElseBtn)
         self.layout.addRow(hbox)
 
-        self.values = {}
         self.condition_groups = {}
         self.else_condition = None
 
@@ -282,7 +281,6 @@ class FilterWidget(QtWidgets.QWidget):
         self.condition_groups[name] = generateUi(condition_group)
         ui, stateGroup, ctrls, attrs = self.condition_groups[name]
         ctrls[name]['condition'].setFocus()
-        self.values[name] = attrs[name]
 
         if name.startswith("Elif"):
             removeBtn = QtWidgets.QPushButton("Remove", parent=self)
@@ -311,7 +309,6 @@ class FilterWidget(QtWidgets.QWidget):
 
         self.else_condition = generateUi(condition_group)
         ui, stateGroup, ctrls, attrs = self.else_condition
-        self.values[name] = attrs[name]
 
         removeBtn = QtWidgets.QPushButton("Remove", parent=self)
         removeBtn.name = name
@@ -339,10 +336,15 @@ class FilterWidget(QtWidgets.QWidget):
     def state_changed(self, *args, **kwargs):
         attr, group, val = args
 
-        if group:
-            self.values[group][attr] = val
+        if group == "Else":
+            values = self.else_condition[3]
         else:
-            self.values[attr] = val
+            values = self.condition_groups[group][3]
+
+        if group:
+            values[group][attr] = val
+        else:
+            values[attr] = val
 
         self.sigStateChanged.emit(attr, group, val)
 
@@ -376,19 +378,19 @@ class FilterWidget(QtWidgets.QWidget):
                 name = f"Elif {condition}"
 
             if name not in self.condition_groups:
-                _, stateGroup, _, _ = self.add_elif_condition(name=name)
+                _, stateGroup, _, values = self.add_elif_condition(name=name)
             else:
-                _, stateGroup, _, _ = self.condition_groups[name]
+                _, stateGroup, _, values = self.condition_groups[name]
 
             if stateGroup:
-                self.values[name] = state[name]
+                values[name] = state[name]
                 stateGroup.setState({name: state[name]})
 
         name = "Else"
         if name in state:
-            _, stateGroup, _, _ = self.add_else_condition(name)
+            _, stateGroup, _, values = self.add_else_condition(name)
 
-            self.values[name] = state[name]
+            values[name] = state[name]
             stateGroup.setState({name: state[name]})
 
 def gen_filter_func(values, inputs, outputs):
@@ -429,7 +431,6 @@ def func(*args, **kwargs):
         filter_func += else_condition
 
     filter_func += "\n\treturn %s" % (', '.join([str(None)]*len(outputs)))
-    print(filter_func)
     return filter_func
 
 
