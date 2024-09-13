@@ -492,7 +492,7 @@ try:
             expr = self.values['operation']
 
             # sympy doesn't like symbols name likes Sum.0.Out, need to remove dots.
-            for arg in list(self.input_vars().values())[::-1]:  # Reverse order so "In" does not messes up with the replacement if "In.1"
+            for arg in list(self.input_vars().values())[::-1]:  # Reverse order so "In" does not messes up with the replacement of "In.1"
                 rarg = sanitize_name(arg)
                 args.append(rarg)
                 expr = expr.replace(arg, rarg)
