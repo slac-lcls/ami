@@ -1,7 +1,46 @@
-from typing import Union
+from typing import Union, Any
+from qtpy import QtCore, QtWidgets
 from amitypes import Array1d, Array2d
 from ami.flowchart.library.common import CtrlNode
 import ami.graph_nodes as gn
+
+
+class ZMQWidget(QtWidgets.QLabel):
+
+    def __init__(self, topics=None, terms=None, addr=None, parent=None, **kwargs):
+        super().__init__(parent)
+
+        topic_label = ""
+
+        if addr:
+            topic_label = f"Address: {addr.view}\n"
+
+        if terms:
+            for term, name in terms.items():
+                topic = topics[name]
+                sub_topic = "Sub Topic Name: view:%s:%s\\0" % (addr.name, topic)
+                topic_label += sub_topic + "\n"
+
+        self.setText(topic_label)
+        self.setTextInteractionFlags(QtCore.Qt.TextInteractionFlag.TextSelectableByMouse)
+
+
+class ZMQ(CtrlNode):
+
+    """
+    Export data over ZMQ PUB/SUB
+    """
+
+    nodeName = "ZMQ"
+    uiTemplate = []
+
+    def __init__(self, name):
+        super().__init__(name, terminals={"In": {'io': 'in', 'ttype': Any}},
+                         allowAddInput=True,
+                         viewable=True)
+
+    def display(self, topics, terms, addr, win, **kwargs):
+        return super().display(topics, terms, addr, win, ZMQWidget, **kwargs)
 
 try:
     import epics
