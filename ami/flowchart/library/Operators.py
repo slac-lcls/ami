@@ -87,6 +87,7 @@ class MeanVsScan(CtrlNode):
                                         bins=self.values['bins'],
                                         range=(self.values['min'], self.values['max']))
         value_inputs = {k: v for k,v in inputs.items() if 'Bin' not in k}
+        n_values = len(value_inputs)
 
         value_array_outputs = [self.name()+'_value_array']
         map_outputs = [self.name()+'_bin', self.name()+'_map_count']
@@ -100,8 +101,7 @@ class MeanVsScan(CtrlNode):
             return np.digitize(k, bins), (v, 1)
 
         def mean(d):
-            n_values = 2
-            res = {bins[i]: [0]*2 for i in range(0, bins.size)}
+            res = {bins[i]: [0]*n_values for i in range(0, bins.size)}
             for k, v in d.items():
                 try:
                     res[bins[k]] = v[0]/v[1]
