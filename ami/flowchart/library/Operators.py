@@ -492,12 +492,12 @@ try:
             expr = self.values['operation']
 
             # sympy doesn't like symbols name likes Sum.0.Out, need to remove dots.
-            for arg in self.input_vars().values():
+            for arg in list(self.input_vars().values())[::-1]:  # Reverse order so "In" does not messes up with the replacement if "In.1"
                 rarg = sanitize_name(arg)
                 args.append(rarg)
                 expr = expr.replace(arg, rarg)
 
-            params = {'args': args,
+            params = {'args': args[::-1],
                       'expr': expr}
 
             return gn.Map(name=self.name()+"_operation", **kwargs, func=CalcProc(params))
