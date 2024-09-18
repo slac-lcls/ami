@@ -336,21 +336,6 @@ class Combinations(CtrlNode):
         return gn.Map(name=self.name()+"_operation", func=func, **kwargs)
 
 
-class Export(CtrlNode):
-
-    """
-    Send data back to worker.
-    """
-
-    nodeName = "Export"
-    uiTemplate = [('alias', 'text')]
-
-    def __init__(self, name):
-        super().__init__(name, terminals={"In": {'io': 'in', 'ttype': Any},
-                                          "Out": {'io': 'out', 'ttype': Any}},
-                         exportable=True)
-
-
 try:
     import sympy
 

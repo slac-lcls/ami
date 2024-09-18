@@ -5,6 +5,21 @@ from ami.flowchart.library.common import CtrlNode
 import ami.graph_nodes as gn
 
 
+class Export(CtrlNode):
+
+    """
+    Send data back to worker.
+    """
+
+    nodeName = "Export"
+    uiTemplate = [('alias', 'text')]
+
+    def __init__(self, name):
+        super().__init__(name, terminals={"In": {'io': 'in', 'ttype': Any},
+                                          "Out": {'io': 'out', 'ttype': Any}},
+                         exportable=True)
+
+
 class ZMQWidget(QtWidgets.QLabel):
 
     def __init__(self, topics=None, terms=None, addr=None, parent=None, **kwargs):
