@@ -3,6 +3,10 @@ from qtpy import QtCore, QtWidgets
 from amitypes import Array1d, Array2d
 from ami.flowchart.library.common import CtrlNode
 import ami.graph_nodes as gn
+import socket
+import time
+import struct
+import ipaddress
 
 
 class ExportToWorker(CtrlNode):
@@ -71,6 +75,85 @@ class ZMQ(CtrlNode):
     def display(self, topics, terms, addr, win, **kwargs):
         return super().display(topics, terms, addr, win, ZMQWidget, **kwargs)
 
+
+class McastProc():
+    def __init__(self, grp, port, rate):
+        self._nextTime = 0
+        self.mcast_grp_port = (grp, int(port))
+        self._rate = rate
+        self._socket = None
+
+    def __del__(self):
+        if self._socket is not None:
+            self._socket.close()
+            self._socket = None
+
+    def __call__(self, data, timestamp, pulseId):
+        if self._socket is None:
+            self._socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM, socket.IPPROTO_UDP)
+            self._socket.setsockopt(socket.IPPROTO_IP, socket.IP_MULTICAST_TTL, 8)
+
+        now = time.time()
+        if now > self._nextTime:
+            version = 0
+            validMask = 0
+            header = struct.pack('QQII', timestamp, pulseId, version, validMask)
+
+            self._socket.sendmsg((header, data), (), 0, self.mcast_grp_port)
+            self._nextTime = now + 1/self._rate
+            #print(f"*** now {now}, nextTime {self._nextTime}, pd {1/self._rate}, ts %08x %08x, pid %08x %08x" % \
+            #      (timestamp>>32, timestamp&((1<<32)-1), pulseId>>32, pulseId&((1<<32)-1)))
+
+        return []
+
+
+class Mcast(CtrlNode):
+
+    """
+    UDP multicast a reduced rate of input in BLD format.
+    """
+
+    nodeName = "Mcast"
+    uiTemplate = [('Multicast Group', 'text'),
+                  ('Port', 'text'),
+                  ('rate_Hz', 'intSpin', {'value': 10, 'min': 1}),
+                  ('global', 'check', {'checked': True,
+                                       'tip': "Insert Pick1 and export values from global collector."})]
+
+    def __init__(self, name):
+        super().__init__(name,
+                         terminals={'data':  {'io': 'in',  'removable': False, 'ttype': Any},
+                                    'timestamp': {'io': 'in',  'removable': False, 'ttype': int},
+                                    'pulseId':   {'io': 'in',  'removable': False, 'ttype': int}})
+
+    def to_operation(self, inputs, outputs, **kwargs):
+
+        if not ipaddress.IPv4Address(self.values['Multicast Group']).is_multicast:
+            raise Exception("Invalid multicast address")
+
+        picked_outputs = []
+        for k, v in inputs.items():
+            picked_outputs.append(f"{v}_picked")
+
+        if self.values['global']:
+            nodes = [gn.PickN(name=self.name()+"_picked",
+                              inputs=inputs, outputs=picked_outputs,
+                              N=1, **kwargs),
+                     gn.Map(name=self.name()+"_operation",
+                            inputs=picked_outputs, outputs=outputs,
+                            func=McastProc(self.values['Multicast Group'],
+                                           self.values['Port'],
+                                           self.values['rate_Hz']), **kwargs)]
+        else:
+            nodes = [gn.Map(name=self.name()+"_operation",
+                            inputs=inputs, outputs=outputs,
+                            func=McastProc(self.values['Multicast Group'],
+                                           self.values['Port'],
+                                           self.values['rate_Hz']), **kwargs)]
+
+        return nodes
+
+
 try:
     import caproto.threading.client as ct
 
@@ -101,7 +184,6 @@ try:
             super().__init__(name, terminals={"In": {'io': 'in', 'ttype': Union[str, int, float, Array1d]}})
 
         def to_operation(self, inputs, outputs, **kwargs):
-            outputs = [self.name()+"_unused"]
             picked_outputs = [self.name()+"_pickedoutput"]
 
             if self.values['global']:
@@ -149,7 +231,6 @@ try:
                              terminals={"In": {'io': 'in', 'ttype': Union[str, int, float, Array1d, Array2d]}})
 
         def to_operation(self, inputs, outputs, **kwargs):
-            outputs = [self.name()+"_unused"]
             picked_outputs = [self.name()+"_pickedoutput"]
 
             if self.values['global']:
