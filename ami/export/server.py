@@ -1,9 +1,9 @@
 #!/usr/bin/env python
+import abc
 import zmq
 import time
 import dill
 import logging
-import threading
 import functools
 import numpy as np
 import ami.comm
@@ -11,12 +11,134 @@ from ami import LogConfig, p4pConfig
 from ami.export.nt import NTBytes, NTObject, NTGraph, NTStore
 from p4p.nt import NTScalar, NTNDArray
 from p4p.server import Server, StaticProvider
-from p4p.server.thread import SharedPV
+from p4p.server.asyncio import SharedPV
 from p4p.rpc import rpc, NTURIDispatcher
 from p4p.util import ThreadedWorkQueue
 
 
 logger = logging.getLogger(LogConfig.get_package_name(__name__))
+
+
+class EpicsExportServer(abc.ABC):
+    def __init__(self, name, comm_addr, export_addr, *args, **kwargs):
+        self.base = name
+        self.ctx = zmq.asyncio.Context()
+        self.export = self.ctx.socket(zmq.SUB)
+        self.export.setsockopt_string(zmq.SUBSCRIBE, "")
+        self.export.connect(export_addr)
+
+        self.pvs = {}
+        self.ignored = set()
+        self.graph_pvbase = "ana"
+        self.data_pvbase = "data"
+        self.info_pvbase = "info"
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc_value, traceback):
+        self.close()
+
+    def close(self):
+        self.ctx.destroy()
+
+    @staticmethod
+    def join_pv(*args):
+        return ":".join(args)
+
+    def graph_pvname(self, graph, name=None):
+        if name is not None:
+            return ":".join([self.graph_pvbase, graph, name])
+        else:
+            return ":".join([self.graph_pvbase, graph])
+
+    def data_pvname(self, graph, name):
+        return ":".join([self.graph_pvbase, graph, self.data_pvbase, name])
+
+    def info_pvname(self, name):
+        return ":".join([self.info_pvbase, name])
+
+    def find_graph_pvnames(self, graph, names):
+        return [name for name in names if name.startswith(self.graph_pvname(graph))]
+
+    @abc.abstractmethod
+    def create_pv(self, name, nt, initial, timestamp, func=None):
+        pass
+
+    @abc.abstractmethod
+    async def post_pv(self, pvname, value, timestamp):
+        pass
+
+    def valid(self, name, group=None):
+        return not name.startswith('_')
+
+    @abc.abstractmethod
+    def get_pv_type(self, data):
+        pass
+
+    @staticmethod
+    def converted_data(data):
+        for key, value in data.items():
+            # convert any sets to tuples since p4p doesn't like sets...
+            if isinstance(value, set):
+                value = tuple(value)
+            yield key, value
+
+    @abc.abstractmethod
+    async def update_graph(self, graph, data, timestamp):
+        pass
+
+    @abc.abstractmethod
+    async def update_store(self, graph, data, timestamp):
+        pass
+
+    @abc.abstractmethod
+    async def update_heartbeat(self, graph, heartbeat, timestamp):
+        pass
+
+    @abc.abstractmethod
+    async def update_info(self, data, timestamp):
+        pass
+
+    @abc.abstractmethod
+    async def update_data(self, graph, name, data, timestamp):
+        pass
+
+    @abc.abstractmethod
+    def update_destroy(self, graph):
+        pass
+
+    @abc.abstractmethod
+    def server(self):
+        pass
+
+    async def run(self):
+        # start the pva server thread
+        # self.server_thread.start()
+        logger.info("Starting export server")
+        while True:
+            topic = await self.export.recv_string()
+            graph = await self.export.recv_string()
+            exports = await self.export.recv_pyobj()
+            timestamp = time.time()
+            logger.debug("received: %s graph: %s", topic, graph)
+            if topic == 'data':
+                for name, data in exports.items():
+                    # ignore names starting with '_' - these are private
+                    if self.valid(name):
+                        await self.update_data(graph, name, data, timestamp)
+            elif topic == 'graph':
+                await self.update_graph(graph, exports, timestamp)
+            elif topic == 'store':
+                await self.update_store(graph, exports, timestamp)
+            elif topic == 'heartbeat':
+                await self.update_heartbeat(graph, exports, timestamp)
+            elif topic == 'info':
+                await self.update_info(exports, timestamp)
+            elif topic == 'destroy':
+                self.update_destroy(graph)
+            else:
+                logger.warn("No handler for topic: %s", topic)
 
 
 def tsrpc(rtype=None):
@@ -92,60 +214,19 @@ class PvaExportRpcHandler:
         return self._get_comm(graph).export(name, alias)
 
 
-class PvaExportServer:
+class PvaExportServer(EpicsExportServer):
     def __init__(self, name, comm_addr, export_addr, aggregate=False):
-        self.base = name
-        self.ctx = zmq.Context()
-        self.export = self.ctx.socket(zmq.SUB)
-        self.export.setsockopt_string(zmq.SUBSCRIBE, "")
-        self.export.connect(export_addr)
-        self.comm = self.ctx.socket(zmq.REQ)
-        self.comm.connect(comm_addr)
-        self.queue = ThreadedWorkQueue(maxsize=20, workers=1)
+        super().__init__(name, comm_addr, export_addr)
+        # self.queue = ThreadedWorkQueue(maxsize=20, workers=1)
         # pva server provider
         self.provider = StaticProvider(name)
-        self.rpc_provider = NTURIDispatcher(self.queue,
-                                            target=PvaExportRpcHandler(self.ctx, comm_addr),
-                                            name="%s:cmd" % self.base,
-                                            prefix="%s:cmd:" % self.base)
-        self.server_thread = threading.Thread(target=self.server, name='pvaserv')
-        self.server_thread.daemon = True
+        # self.rpc_provider = NTURIDispatcher(self.queue,
+        #                                     target=PvaExportRpcHandler(self.ctx, comm_addr),
+        #                                     name="%s:cmd" % self.base,
+        #                                     prefix="%s:cmd:" % self.base)
+        # self.server_thread = threading.Thread(target=self.server, name='pvaserv')
+        # self.server_thread.daemon = True
         self.aggregate = aggregate
-        self.pvs = {}
-        self.ignored = set()
-        self.graph_pvbase = "ana"
-        self.data_pvbase = "data"
-        self.info_pvbase = "info"
-        self.cmd_pvs = {'command'}
-        self.payload_cmd_pvs = {'add', 'set', 'del'}
-
-    def __enter__(self):
-        return self
-
-    def __exit__(self, exc_type, exc_value, traceback):
-        self.close()
-
-    def close(self):
-        self.ctx.destroy()
-
-    @staticmethod
-    def join_pv(*args):
-        return ":".join(args)
-
-    def graph_pvname(self, graph, name=None):
-        if name is not None:
-            return ":".join([self.graph_pvbase, graph, name])
-        else:
-            return ":".join([self.graph_pvbase, graph])
-
-    def data_pvname(self, graph, name):
-        return ":".join([self.graph_pvbase, graph, self.data_pvbase, name])
-
-    def info_pvname(self, name):
-        return ":".join([self.info_pvbase, name])
-
-    def find_graph_pvnames(self, graph, names):
-        return [name for name in names if name.startswith(self.graph_pvname(graph))]
 
     def create_pv(self, name, nt, initial, timestamp, func=None):
         extras = {}
@@ -160,7 +241,7 @@ class PvaExportServer:
     def create_bytes_pv(self, name, initial, timestamp, func=None):
         self.create_pv(name, NTBytes(), initial, timestamp, func=func)
 
-    def post_pv(self, pvname, value, timestamp):
+    async def post_pv(self, pvname, value, timestamp):
         extras = {}
         if p4pConfig.SupportsTimestamps:
             extras['timestamp'] = timestamp
@@ -181,15 +262,7 @@ class PvaExportServer:
         else:
             return NTObject()
 
-    @staticmethod
-    def converted_data(data):
-        for key, value in data.items():
-            # convert any sets to tuples since p4p doesn't like sets...
-            if isinstance(value, set):
-                value = tuple(value)
-            yield key, value
-
-    def update_graph(self, graph, data, timestamp):
+    async def update_graph(self, graph, data, timestamp):
         # add the unaggregated version of the pvs
         for key, value in self.converted_data(data):
             if key in NTGraph.flat_schema:
@@ -198,7 +271,7 @@ class PvaExportServer:
                 if pvname not in self.pvs:
                     self.create_pv(pvname, nttype, value, timestamp)
                 else:
-                    self.post_pv(pvname, value, timestamp)
+                    await self.post_pv(pvname, value, timestamp)
         # add the aggregated graph pv if requested
         if self.aggregate:
             pvname = self.graph_pvname(graph)
@@ -206,9 +279,9 @@ class PvaExportServer:
                 logger.debug("Creating pv for info on the graph")
                 self.create_pv(pvname, NTGraph(), data, timestamp)
             else:
-                self.post_pv(pvname, data, timestamp)
+                await self.post_pv(pvname, data, timestamp)
 
-    def update_store(self, graph, data, timestamp):
+    async def update_store(self, graph, data, timestamp):
         # add the unaggregated version of the pvs
         for key, value in data.items():
             if key in NTStore.flat_schema:
@@ -217,7 +290,7 @@ class PvaExportServer:
                 if pvname not in self.pvs:
                     self.create_pv(pvname, nttype, value, timestamp)
                 else:
-                    self.post_pv(pvname, value, timestamp)
+                    await self.post_pv(pvname, value, timestamp)
         # add the aggregated graph pv if requested
         if self.aggregate:
             pvname = self.graph_pvname(graph, 'store')
@@ -225,25 +298,25 @@ class PvaExportServer:
                 logger.debug("Creating pv for info on the store")
                 self.create_pv(pvname, NTStore(), data, timestamp)
             else:
-                self.post_pv(pvname, data, timestamp)
+                await self.post_pv(pvname, data, timestamp)
 
-    def update_heartbeat(self, graph, heartbeat, timestamp):
+    async def update_heartbeat(self, graph, heartbeat, timestamp):
         pvname = self.graph_pvname(graph, 'heartbeat')
         if pvname not in self.pvs:
             self.create_pv(pvname, NTScalar('d'), heartbeat.identity, timestamp)
         else:
-            self.post_pv(pvname, heartbeat.identity, timestamp)
+            await self.post_pv(pvname, heartbeat.identity, timestamp)
 
-    def update_info(self, data, timestamp):
+    async def update_info(self, data, timestamp):
         # add the unaggregated version of the pvs
         for key, value in self.converted_data(data):
             pvname = self.info_pvname(key)
             if pvname not in self.pvs:
                 self.create_pv(pvname, NTScalar('as'), value, timestamp)
             else:
-                self.post_pv(pvname, value, timestamp)
+                await self.post_pv(pvname, value, timestamp)
 
-    def update_data(self, graph, name, data, timestamp):
+    async def update_data(self, graph, name, data, timestamp):
         pvname = self.data_pvname(graph, name)
         if pvname not in self.ignored:
             if pvname not in self.pvs:
@@ -255,7 +328,7 @@ class PvaExportServer:
                     logger.warn("Cannot map type of '%s' from graph '%s' to PV: %s", name, graph, type(data))
                     self.ignored.add(pvname)
             else:
-                self.post_pv(pvname, data, timestamp)
+                await self.post_pv(pvname, data, timestamp)
 
     def update_destroy(self, graph):
         # close all the pvs associated with the purged graph
@@ -267,38 +340,14 @@ class PvaExportServer:
         for name in self.find_graph_pvnames(graph, self.ignored):
             self.ignored.remove(name)
 
-    def server(self):
-        server = Server(providers=[self.provider, self.rpc_provider])
-        with server, self.queue:
+    async def server(self):
+        server = Server(providers=[self.provider,
+                                   # self.rpc_provider
+                                   ])
+        with server: #, self.queue:
             try:
                 while True:
                     time.sleep(100)
             except KeyboardInterrupt:
                 pass
 
-    def run(self):
-        # start the pva server thread
-        self.server_thread.start()
-        logger.info("Starting PVA data export server")
-        while True:
-            topic = self.export.recv_string()
-            graph = self.export.recv_string()
-            exports = self.export.recv_pyobj()
-            timestamp = time.time()
-            if topic == 'data':
-                for name, data in exports.items():
-                    # ignore names starting with '_' - these are private
-                    if self.valid(name):
-                        self.update_data(graph, name, data, timestamp)
-            elif topic == 'graph':
-                self.update_graph(graph, exports, timestamp)
-            elif topic == 'store':
-                self.update_store(graph, exports, timestamp)
-            elif topic == 'heartbeat':
-                self.update_heartbeat(graph, exports, timestamp)
-            elif topic == 'info':
-                self.update_info(exports, timestamp)
-            elif topic == 'destroy':
-                self.update_destroy(graph)
-            else:
-                logger.warn("No handler for topic: %s", topic)
