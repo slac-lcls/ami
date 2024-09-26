@@ -336,21 +336,6 @@ class Combinations(CtrlNode):
         return gn.Map(name=self.name()+"_operation", func=func, **kwargs)
 
 
-class Export(CtrlNode):
-
-    """
-    Send data back to worker.
-    """
-
-    nodeName = "Export"
-    uiTemplate = [('alias', 'text')]
-
-    def __init__(self, name):
-        super().__init__(name, terminals={"In": {'io': 'in', 'ttype': Any},
-                                          "Out": {'io': 'out', 'ttype': Any}},
-                         exportable=True)
-
-
 try:
     import sympy
 
@@ -442,7 +427,7 @@ try:
             prompt.name = QtWidgets.QLineEdit(name, parent=prompt)
             prompt.type_selector = QtWidgets.QComboBox(prompt)
             prompt.ok = QtWidgets.QPushButton('Ok', parent=prompt)
-            for typ in [Any, bool, float, Array1d, Array2d, Array3d]:
+            for typ in [Any, bool, int, float, Array1d, Array2d, Array3d]:
                 prompt.type_selector.addItem(str(typ), typ)
             prompt.layout.addRow("Name:", prompt.name)
             prompt.layout.addRow("Type:", prompt.type_selector)

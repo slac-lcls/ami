@@ -3,7 +3,7 @@ import logging
 import argparse
 
 from ami import LogConfig, Defaults
-from ami.comm import Ports
+from ami.comm import Ports, PlatformAction
 from ami.export import server
 
 
@@ -26,19 +26,12 @@ def main():
     )
 
     parser.add_argument(
-        '-e',
-        '--export',
+        '-p',
+        '--port',
         type=int,
-        default=Ports.Export,
-        help='port for receiving data to export (default: %d)' % Ports.Export
-    )
-
-    parser.add_argument(
-        '-c',
-        '--comm',
-        type=int,
-        default=Ports.Comm,
-        help='port for DataExport-Manager communication (default: %d)' % Ports.Comm
+        default=Ports.BasePort,
+        action=PlatformAction,
+        help='base port for ami (default: %d) reserves next %d consecutive ports' % (Ports.BasePort, Ports.NumPorts)
     )
 
     parser.add_argument(
@@ -66,8 +59,8 @@ def main():
 
     args = parser.parse_args()
 
-    export_addr = "tcp://%s:%d" % (args.host, args.export)
-    comm_addr = "tcp://%s:%d" % (args.host, args.comm)
+    export_addr = "tcp://%s:%d" % (args.host, args.port + Ports.Export)
+    comm_addr = "tcp://%s:%d" % (args.host, args.port + Ports.Comm)
 
     log_handlers = [logging.StreamHandler()]
     if args.log_file is not None:
