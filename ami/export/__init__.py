@@ -1,6 +1,7 @@
 import sys
 import logging
 import argparse
+import asyncio
 
 from ami import LogConfig, Defaults
 from ami.comm import Ports, PlatformAction
@@ -9,11 +10,14 @@ from ami.export import server
 
 logger = logging.getLogger(__name__)
 
+async def run_export_async(name, comm_addr, export_addr, aggregate=False):
+    with server.PvaExportServer(name, comm_addr, export_addr, aggregate) as export:
+        srv = asyncio.create_task(export.server())
+        listen = asyncio.create_task(export.run())
+        await asyncio.gather(listen, srv)
 
 def run_export(name, comm_addr, export_addr, aggregate=False):
-    with server.PvaExportServer(name, comm_addr, export_addr, aggregate) as export:
-        return export.run()
-
+    asyncio.run(run_export_async(name, comm_addr, export_addr, aggregate))
 
 def main():
     parser = argparse.ArgumentParser(description='AMII DataExport App')
@@ -70,6 +74,7 @@ def main():
 
     try:
         return run_export(args.name, comm_addr, export_addr, args.aggregate)
+        # asyncio.run(run_export(args.name, comm_addr, export_addr, args.aggregate))
     except KeyboardInterrupt:
         logger.info("DataExport killed by user...")
         return 0
