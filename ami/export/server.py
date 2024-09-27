@@ -1,5 +1,6 @@
 #!/usr/bin/env python
 import abc
+import asyncio
 import zmq
 import time
 import dill
@@ -12,9 +13,11 @@ from ami.export.nt import NTBytes, NTObject, NTGraph, NTStore
 from p4p.nt import NTScalar, NTNDArray
 from p4p.server import Server, StaticProvider
 from p4p.server.asyncio import SharedPV
-from p4p.rpc import rpc, NTURIDispatcher
-from p4p.util import ThreadedWorkQueue
-
+# from p4p.rpc import rpc, NTURIDispatcher
+# from p4p.util import ThreadedWorkQueue
+from caproto.asyncio.server import Context as CAPContext
+from caproto.server import PVSpec
+from caproto import ChannelType
 
 logger = logging.getLogger(LogConfig.get_package_name(__name__))
 
@@ -93,23 +96,43 @@ class EpicsExportServer(abc.ABC):
         pass
 
     @abc.abstractmethod
-    async def update_heartbeat(self, graph, heartbeat, timestamp):
-        pass
+    async def update_heartbeat(self, graph, heartbeat, timestamp, nt=None):
+        pvname = self.graph_pvname(graph, 'heartbeat')
+        if pvname not in self.pvs:
+            self.create_pv(pvname, nt, heartbeat.identity, timestamp)
+        else:
+            await self.post_pv(pvname, heartbeat.identity, timestamp)
 
     @abc.abstractmethod
-    async def update_info(self, data, timestamp):
-        pass
+    async def update_info(self, data, timestamp, nt=None):
+        # add the unaggregated version of the pvs
+        for key, value in self.converted_data(data):
+            pvname = self.info_pvname(key)
+            if pvname not in self.pvs:
+                self.create_pv(pvname, nt, value, timestamp)
+            else:
+                await self.post_pv(pvname, value, timestamp)
 
-    @abc.abstractmethod
     async def update_data(self, graph, name, data, timestamp):
-        pass
+        pvname = self.data_pvname(graph, name)
+        if pvname not in self.ignored:
+            if pvname not in self.pvs:
+                pv_type = self.get_pv_type(data)
+                if pv_type is not None:
+                    logger.debug("Creating new pv named %s for graph %s", name, graph)
+                    self.create_pv(pvname, pv_type, data, timestamp)
+                else:
+                    logger.warn("Cannot map type of '%s' from graph '%s' to PV: %s", name, graph, type(data))
+                    self.ignored.add(pvname)
+            else:
+                await self.post_pv(pvname, data, timestamp)
 
     @abc.abstractmethod
     def update_destroy(self, graph):
         pass
 
     @abc.abstractmethod
-    def server(self):
+    async def start_server(self):
         pass
 
     async def run(self):
@@ -227,6 +250,9 @@ class PvaExportServer(EpicsExportServer):
         # self.server_thread = threading.Thread(target=self.server, name='pvaserv')
         # self.server_thread.daemon = True
         self.aggregate = aggregate
+        self.server = Server(providers=[self.provider,
+                                        # self.rpc_provider
+                                        ])
 
     def create_pv(self, name, nt, initial, timestamp, func=None):
         extras = {}
@@ -300,35 +326,11 @@ class PvaExportServer(EpicsExportServer):
             else:
                 await self.post_pv(pvname, data, timestamp)
 
-    async def update_heartbeat(self, graph, heartbeat, timestamp):
-        pvname = self.graph_pvname(graph, 'heartbeat')
-        if pvname not in self.pvs:
-            self.create_pv(pvname, NTScalar('d'), heartbeat.identity, timestamp)
-        else:
-            await self.post_pv(pvname, heartbeat.identity, timestamp)
+    async def update_heartbeat(self, graph, heartbeat, timestamp, nt=NTScalar('d')):
+        await super().update_heartbeat(graph, heartbeat, timestamp, nt)
 
     async def update_info(self, data, timestamp):
-        # add the unaggregated version of the pvs
-        for key, value in self.converted_data(data):
-            pvname = self.info_pvname(key)
-            if pvname not in self.pvs:
-                self.create_pv(pvname, NTScalar('as'), value, timestamp)
-            else:
-                await self.post_pv(pvname, value, timestamp)
-
-    async def update_data(self, graph, name, data, timestamp):
-        pvname = self.data_pvname(graph, name)
-        if pvname not in self.ignored:
-            if pvname not in self.pvs:
-                pv_type = self.get_pv_type(data)
-                if pv_type is not None:
-                    logger.debug("Creating new pv named %s for graph %s", name, graph)
-                    self.create_pv(pvname, pv_type, data, timestamp)
-                else:
-                    logger.warn("Cannot map type of '%s' from graph '%s' to PV: %s", name, graph, type(data))
-                    self.ignored.add(pvname)
-            else:
-                await self.post_pv(pvname, data, timestamp)
+        await super().update_info(data, timestamp, nt=NTScalar('as'))
 
     def update_destroy(self, graph):
         # close all the pvs associated with the purged graph
@@ -340,14 +342,68 @@ class PvaExportServer(EpicsExportServer):
         for name in self.find_graph_pvnames(graph, self.ignored):
             self.ignored.remove(name)
 
-    async def server(self):
-        server = Server(providers=[self.provider,
-                                   # self.rpc_provider
-                                   ])
-        with server: #, self.queue:
+    async def start_server(self):
+        with self.server: #, self.queue:
             try:
                 while True:
-                    time.sleep(100)
+                    await asyncio.sleep(100)
             except KeyboardInterrupt:
                 pass
 
+class CaExportServer(EpicsExportServer):
+    def __init__(self, name, comm_addr, export_addr, aggregate=False):
+        super().__init__(name, comm_addr, export_addr)
+        self.pvdb = {}
+        self.server = CAPContext(self.pvdb)
+
+    def create_pv(self, name, nt, initial, timestamp, func=None):
+        pv = PVSpec(name=f"{self.base}:{name}", value=initial, dtype=nt, read_only=True)
+        self.pvs[name] = pv.name
+        self.pvdb[pv.name] = pv.create()
+        self.server.pvdb = self.pvdb
+
+    def get_pv_type(self, data):
+        if isinstance(data, np.ndarray):
+            return ChannelType.FLOAT
+        elif isinstance(data, bool):
+            return ChannelType.INT
+        elif isinstance(data, int):
+            return ChannelType.INT
+        elif isinstance(data, float):
+            return ChannelType.FLOAT
+        else:
+            return None
+
+    async def post_pv(self, pvname, value, timestamp):
+        pvdb_name = self.pvs[pvname]
+        await self.pvdb[pvdb_name].write(value, timestamp=timestamp)
+
+    async def update_graph(self, graph, data, timestamp):
+        pass
+
+    async def update_store(self, graph, data, timestamp):
+        pass
+
+    async def update_heartbeat(self, graph, heartbeat, timestamp, nt=None):
+        # super().update_heartbeat(graph, heartbeat, timestamp, nt)
+        pass
+
+    async def update_info(self, data, timestamp):
+        # await super().update_info(data, timestamp, nt=ChannelType.STRING)
+        pass
+
+    def update_destroy(self, graph):
+        # close all the pvs associated with the purged graph
+        for name in self.find_graph_pvnames(graph, self.pvs):
+            logger.debug("Removing pv named %s for graph %s", name, graph)
+            pvname = self.pvs[name]
+            del self.pvdb[pvname]
+            del self.pvs[name]
+        # remove any ignored pvs associated with the purged graph
+        for name in self.find_graph_pvnames(graph, self.ignored):
+            self.ignored.remove(name)
+
+        self.server.pvdb = self.pvs
+
+    async def start_server(self):
+        await self.server.run(log_pv_names=True)
