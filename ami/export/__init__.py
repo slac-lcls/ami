@@ -11,10 +11,16 @@ from ami.export import server
 logger = logging.getLogger(__name__)
 
 async def run_export_async(name, comm_addr, export_addr, aggregate=False):
-    with server.PvaExportServer(name, comm_addr, export_addr, aggregate) as export:
-        srv = asyncio.create_task(export.server())
-        listen = asyncio.create_task(export.run())
-        await asyncio.gather(listen, srv)
+    tasks = []
+    paexport = server.PvaExportServer(name, comm_addr, export_addr, aggregate)
+    tasks.append(asyncio.create_task(paexport.start_server()))
+    tasks.append(asyncio.create_task(paexport.run()))
+
+    caexport = server.CaExportServer(name, comm_addr, export_addr, aggregate)
+    tasks.append(asyncio.create_task(caexport.start_server()))
+    tasks.append(asyncio.create_task(caexport.run()))
+
+    await asyncio.gather(*tasks)
 
 def run_export(name, comm_addr, export_addr, aggregate=False):
     asyncio.run(run_export_async(name, comm_addr, export_addr, aggregate))
