@@ -4,6 +4,7 @@ import numpy as np
 import collections
 from p4p import Type, Value
 from p4p.nt import alarm, timeStamp, NTScalar
+from caproto import ChannelType
 
 
 def _generate_schema(graph=True):
@@ -272,3 +273,53 @@ CUSTOM_TYPE_WRAPPERS = {
 
 if bool not in NTScalar.typeMap:
     NTScalar.typeMap[bool] = ntbool
+
+
+def _generate_schema_caproto(graph=True):
+    if graph:
+        fields = collections.OrderedDict([
+            ('names', ChannelType.STRING),
+            # ('sources', ChannelType.CHAR),
+            ('version', ChannelType.INT),
+            ('dill', ChannelType.LONG),
+        ])
+        schema = [(k, v) for k, v in fields.items()]
+        byte_fields = {'dill'}
+        object_fields = {'sources'}
+        flat_names = {
+            'names':    'names',
+            # 'sources':  'sources',
+            'version':  'version',
+            'dill':     'dill',
+        }
+    else:
+        fields = collections.OrderedDict([
+            ('version', ChannelType.INT),
+            ('features', ChannelType.CHAR),
+        ])
+        schema = [(k, v) for k, v in fields.items()]
+        byte_fields = set()
+        object_fields = {'features'}
+        flat_names = {
+            'version':  'store:version',
+            'features': 'store:features',
+        }
+
+    def get_type(key, value):
+        if key in byte_fields:
+            return ChannelType.LONG
+        elif key in object_fields:
+            return ChannelType.CHAR
+        else:
+            return fields[key]
+
+    flat_schema = {
+        k: (flat_names[k], get_type(k, v)) for k, v in fields.items()
+    }
+    return schema, flat_schema, byte_fields, object_fields
+
+class CAGraph:
+    schema, flat_schema, byte_fields, object_fields = _generate_schema_caproto()
+
+class CAStore:
+    schema, flat_schema, byte_fields, object_fields = _generate_schema_caproto(False)
