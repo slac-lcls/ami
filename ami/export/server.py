@@ -9,11 +9,11 @@ import functools
 import numpy as np
 import ami.comm
 from ami import LogConfig, p4pConfig
-from ami.export.nt import NTBytes, NTObject, NTGraph, NTStore
+from ami.export.nt import NTBytes, NTObject, NTGraph, NTStore, CAGraph, CAStore
 from p4p.nt import NTScalar, NTNDArray
 from p4p.server import Server, StaticProvider
 from p4p.server.asyncio import SharedPV
-# from p4p.rpc import rpc, NTURIDispatcher
+from p4p.rpc import rpc, NTURIDispatcher
 # from p4p.util import ThreadedWorkQueue
 from caproto.asyncio.server import Context as CAPContext
 from caproto.server import PVSpec
@@ -88,8 +88,16 @@ class EpicsExportServer(abc.ABC):
             yield key, value
 
     @abc.abstractmethod
-    async def update_graph(self, graph, data, timestamp):
-        pass
+    async def update_graph(self, graph, data, timestamp, schema=None):
+        # add the unaggregated version of the pvs
+        for key, value in self.converted_data(data):
+            if key in schema:
+                name, nttype = schema[key]
+                pvname = self.graph_pvname(graph, name)
+                if pvname not in self.pvs:
+                    self.create_pv(pvname, nttype, value, timestamp)
+                else:
+                    await self.post_pv(pvname, value, timestamp)
 
     @abc.abstractmethod
     async def update_store(self, graph, data, timestamp):
@@ -288,16 +296,8 @@ class PvaExportServer(EpicsExportServer):
         else:
             return NTObject()
 
-    async def update_graph(self, graph, data, timestamp):
-        # add the unaggregated version of the pvs
-        for key, value in self.converted_data(data):
-            if key in NTGraph.flat_schema:
-                name, nttype = NTGraph.flat_schema[key]
-                pvname = self.graph_pvname(graph, name)
-                if pvname not in self.pvs:
-                    self.create_pv(pvname, nttype, value, timestamp)
-                else:
-                    await self.post_pv(pvname, value, timestamp)
+    async def update_graph(self, graph, data, timestamp, schema=NTGraph.flat_schema):
+        await super().update_graph(graph, data, timestamp, schema)
         # add the aggregated graph pv if requested
         if self.aggregate:
             pvname = self.graph_pvname(graph)
@@ -357,7 +357,11 @@ class CaExportServer(EpicsExportServer):
         self.server = CAPContext(self.pvdb)
 
     def create_pv(self, name, nt, initial, timestamp, func=None):
-        pv = PVSpec(name=f"{self.base}:{name}", value=initial, dtype=nt, read_only=True)
+        kwargs = {}
+        if nt == ChannelType.STRING:
+            kwargs['max_length'] = 128
+
+        pv = PVSpec(name=f"{self.base}:{name}", value=initial, dtype=nt, read_only=True, **kwargs)
         self.pvs[name] = pv.name
         self.pvdb[pv.name] = pv.create()
         self.server.pvdb = self.pvdb
@@ -378,19 +382,19 @@ class CaExportServer(EpicsExportServer):
         pvdb_name = self.pvs[pvname]
         await self.pvdb[pvdb_name].write(value, timestamp=timestamp)
 
-    async def update_graph(self, graph, data, timestamp):
-        pass
+    async def update_graph(self, graph, data, timestamp, schema=CAGraph.flat_schema):
+        await super().update_graph(graph, data, timestamp, schema)
 
     async def update_store(self, graph, data, timestamp):
         pass
 
-    async def update_heartbeat(self, graph, heartbeat, timestamp, nt=None):
-        # super().update_heartbeat(graph, heartbeat, timestamp, nt)
-        pass
+    async def update_heartbeat(self, graph, heartbeat, timestamp, nt=ChannelType.INT):
+        await super().update_heartbeat(graph, heartbeat, timestamp, nt)
 
     async def update_info(self, data, timestamp):
-        # await super().update_info(data, timestamp, nt=ChannelType.STRING)
-        pass
+        if not all(data.values()):
+            return
+        await super().update_info(data, timestamp, nt=ChannelType.STRING)
 
     def update_destroy(self, graph):
         # close all the pvs associated with the purged graph
@@ -406,4 +410,4 @@ class CaExportServer(EpicsExportServer):
         self.server.pvdb = self.pvs
 
     async def start_server(self):
-        await self.server.run(log_pv_names=True)
+        await self.server.run()
