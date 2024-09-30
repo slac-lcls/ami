@@ -100,8 +100,16 @@ class EpicsExportServer(abc.ABC):
                     await self.post_pv(pvname, value, timestamp)
 
     @abc.abstractmethod
-    async def update_store(self, graph, data, timestamp):
-        pass
+    async def update_store(self, graph, data, timestamp, schema=None):
+        # add the unaggregated version of the pvs
+        for key, value in data.items():
+            if key in schema:
+                name, nttype = schema[key]
+                pvname = self.graph_pvname(graph, name)
+                if pvname not in self.pvs:
+                    self.create_pv(pvname, nttype, value, timestamp)
+                else:
+                    await self.post_pv(pvname, value, timestamp)
 
     @abc.abstractmethod
     async def update_heartbeat(self, graph, heartbeat, timestamp, nt=None):
@@ -307,16 +315,8 @@ class PvaExportServer(EpicsExportServer):
             else:
                 await self.post_pv(pvname, data, timestamp)
 
-    async def update_store(self, graph, data, timestamp):
-        # add the unaggregated version of the pvs
-        for key, value in data.items():
-            if key in NTStore.flat_schema:
-                name, nttype = NTStore.flat_schema[key]
-                pvname = self.graph_pvname(graph, name)
-                if pvname not in self.pvs:
-                    self.create_pv(pvname, nttype, value, timestamp)
-                else:
-                    await self.post_pv(pvname, value, timestamp)
+    async def update_store(self, graph, data, timestamp, schema=NTStore.flat_schema):
+        await super().update_store(graph, data, timestamp, schema)
         # add the aggregated graph pv if requested
         if self.aggregate:
             pvname = self.graph_pvname(graph, 'store')
@@ -385,8 +385,8 @@ class CaExportServer(EpicsExportServer):
     async def update_graph(self, graph, data, timestamp, schema=CAGraph.flat_schema):
         await super().update_graph(graph, data, timestamp, schema)
 
-    async def update_store(self, graph, data, timestamp):
-        pass
+    async def update_store(self, graph, data, timestamp, schema=CAStore.flat_schema):
+        await super().update_store(graph, data, timestamp, schema)
 
     async def update_heartbeat(self, graph, heartbeat, timestamp, nt=ChannelType.INT):
         await super().update_heartbeat(graph, heartbeat, timestamp, nt)
