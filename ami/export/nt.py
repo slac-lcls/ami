@@ -295,14 +295,14 @@ def _generate_schema_caproto(graph=True):
     else:
         fields = collections.OrderedDict([
             ('version', ChannelType.INT),
-            ('features', ChannelType.CHAR),
+            # ('features', ChannelType.CHAR),
         ])
         schema = [(k, v) for k, v in fields.items()]
         byte_fields = set()
         object_fields = {'features'}
         flat_names = {
             'version':  'store:version',
-            'features': 'store:features',
+            # 'features': 'store:features',
         }
 
     def get_type(key, value):
