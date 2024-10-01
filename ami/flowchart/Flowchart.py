@@ -595,7 +595,18 @@ class Flowchart(Node):
                     ctrl.ui.rateLbl.setText(f"Num Events: {total_num_events} Events/Sec: {events_per_second}")
                     events_per_second = [None]*num_workers
                     total_events = [None]*num_workers
-
+            elif topic == 'warning':
+                ctrl = self.widget()
+                if hasattr(msg, 'node_name'):
+                    if msg.graph_name != ctrl.graph_name:
+                        continue
+                    node_name = ""
+                    if msg.node_name in ctrl.metadata:
+                        node_name = ctrl.metadata[msg.node_name]['parent']
+                    if node_name in self.nodes(data='node'):
+                        node = self.nodes(data='node')[node_name]
+                        node.setException(msg, "warning")
+                        ctrl.chartWidget.updateStatus(f"{source} {node.name()}: {msg}", color='red')
             elif topic == 'error':
                 ctrl = self.widget()
                 if hasattr(msg, 'node_name'):

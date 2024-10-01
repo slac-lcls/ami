@@ -2291,3 +2291,7 @@ class GraphCommHandler(ZmqCommHandler):
     def _save(self, filename):
         with open(filename, 'wb') as cnf:
             dill.dump(self.graph, cnf)
+
+
+class AMIWarning(Exception):
+    pass

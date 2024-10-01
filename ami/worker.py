@@ -9,7 +9,7 @@ import argparse
 import time
 import prometheus_client as pc
 from ami import LogConfig, Defaults
-from ami.comm import Ports, PlatformAction, Colors, ResultStore, Node, AutoExport
+from ami.comm import Ports, PlatformAction, Colors, ResultStore, Node, AutoExport, AMIWarning
 from ami.data import MsgTypes, Source, Transitions
 from ami.graphkit_wrapper import Graph
 from ami.data import RequestedData
@@ -224,6 +224,7 @@ class Worker(Node):
                         event_counter.labels(self.hutch, 'Partial', self.name).inc()
 
                     for name, graph in self.graphs.items():
+                        graph_result = None
                         try:
                             if graph:
                                 if name in self.exports:
@@ -231,6 +232,19 @@ class Worker(Node):
 
                                 start = time.time()
                                 graph_result = graph(msg.payload, color=Colors.Worker)
+                        except AMIWarning as e:
+                            e.graph_name = name
+                            self.report("warning", e)
+                        except Exception as e:
+                            e.graph_name = name
+                            logger.exception("%s: Failure encountered while executing graph (%s, v%d):",
+                                             self.name, name, self.store.version(name))
+                            self.report("error", e)
+                            logger.error("%s: Purging graph (%s v%d)", self.name, name, self.store.version(name))
+                            self.clear_graph(name)
+                            self.report("purge", name)
+                        finally:
+                            if graph_result:
                                 stop = time.time()
 
                                 self.store.update(name, graph_result)
@@ -243,16 +257,6 @@ class Worker(Node):
                                 # if name not in self.times:
                                 #     self.times[name] = []
                                 # self.times[name].append((start, stop, graph.times()))
-
-                        except Exception as e:
-                            e.graph_name = name
-                            logger.exception("%s: Failure encountered while executing graph (%s, v%d):",
-                                             self.name, name, self.store.version(name))
-                            self.report("error", e)
-                            logger.error("%s: Purging graph (%s v%d)", self.name, name, self.store.version(name))
-                            self.clear_graph(name)
-                            self.report("purge", name)
-
                     self.num_events += 1
                     event_counter.labels(self.hutch, 'Datagram', self.name).inc()
                     datagram_duration = time.time() - datagram_start

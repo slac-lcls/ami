@@ -392,15 +392,17 @@ class Node(QtCore.QObject):
 
         return True
 
-    def setException(self, exc):
+    def setException(self, exc, typ="exception"):
         self.exception = exc
-        self.recolor(typ="exception")
+        self.recolor(typ=typ)
 
     def clearException(self):
-        self.setException(None)
+        self.setException(None, None)
 
     def recolor(self, typ=None):
-        if typ == "exception":
+        if typ == "warning":
+            self.graphicsItem().setPen(QtGui.QPen(QtGui.QColor(255, 255, 0), 5))
+        elif typ == "exception":
             self.graphicsItem().setPen(QtGui.QPen(QtGui.QColor(255, 0, 0), 5))
         elif typ == "selected":
             self.graphicsItem().setPen(QtGui.QPen(QtGui.QColor(250, 150, 0), 3))
