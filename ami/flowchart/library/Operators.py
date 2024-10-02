@@ -63,64 +63,152 @@ class MeanVsScan(CtrlNode):
                              'Bin': {'io': 'in', 'ttype': float},
                              'Value': {'io': 'in', 'ttype': float},
                              'Bins': {'io': 'out', 'ttype': Array1d},
-                             'Counts': {'io': 'out', 'ttype': Array1d}
-                         })
+                             'Counts': {'io': 'out', 'ttype': Array1d},
+                         },
+                         allowAddInput=True
+                         )
+
+    def addInput(self, **args):
+        group = self.nextGroupName()
+        self.addTerminal(name="Value", io='in', ttype=float, group=group, **args)
+        self.addTerminal(name="Counts", io='out', ttype=Array1d, group=group, **args)
+        return
 
     def to_operation(self, inputs, outputs, **kwargs):
         outputs = self.output_vars()
 
         if self.values['binned']:
-            bins = np.histogram_bin_edges(np.arange(self.values['min'], self.values['max']),
-                                          bins=self.values['bins'],
-                                          range=(self.values['min'], self.values['max']))
-            map_outputs = [self.name()+'_bin', self.name()+'_map_count']
-            reduce_outputs = [self.name()+'_reduce_count']
-
-            def func(k, v):
-                return np.digitize(k, bins), (v, 1)
-
-            def mean(d):
-                res = {bins[i]: 0 for i in range(0, bins.size)}
-                for k, v in d.items():
-                    try:
-                        res[bins[k]] = v[0]/v[1]
-                    except IndexError:
-                        pass
-
-                keys, values = zip(*sorted(res.items()))
-                return np.array(keys), np.array(values)
-
-            nodes = [
-                gn.Map(name=self.name()+'_map', inputs=inputs, outputs=map_outputs,
-                       func=func, **kwargs),
-                gn.ReduceByKey(name=self.name()+'_reduce',
-                               inputs=map_outputs, outputs=reduce_outputs,
-                               reduction=lambda cv, v: (cv[0]+v[0], cv[1]+v[1]), **kwargs),
-                gn.Map(name=self.name()+'_mean', inputs=reduce_outputs, outputs=outputs, func=mean,
-                       **kwargs)
-            ]
+            return self.get_gnodes_binned(inputs, outputs, **kwargs)
         else:
-            map_outputs = [self.name()+'_map_count']
-            reduce_outputs = [self.name()+'_reduce_count']
+            return self.get_gnodes(inputs, outputs, **kwargs)
 
-            def mean(d):
-                res = {}
-                for k, v in d.items():
-                    res[k] = v[0]/v[1]
-                keys, values = zip(*sorted(res.items()))
-                return np.array(keys), np.array(values)
+    def get_gnodes_binned(self, inputs, outputs, **kwargs):
+        bins = np.histogram_bin_edges(np.arange(self.values['min'], self.values['max']),
+                                        bins=self.values['bins'],
+                                        range=(self.values['min'], self.values['max']))
+        value_inputs = {k: v for k,v in inputs.items() if 'Bin' not in k}
+        n_values = len(value_inputs)
 
-            nodes = [
-                gn.Map(name=self.name()+'_map', inputs=[inputs['Value']], outputs=map_outputs,
-                       func=lambda a: (a, 1), **kwargs),
-                gn.ReduceByKey(name=self.name()+'_reduce',
-                               inputs=[inputs['Bin']]+map_outputs, outputs=reduce_outputs,
-                               reduction=lambda cv, v: (cv[0]+v[0], cv[1]+v[1]), **kwargs),
-                gn.Map(name=self.name()+'_mean', inputs=reduce_outputs, outputs=outputs, func=mean,
-                       **kwargs)
-            ]
+        value_array_outputs = [self.name()+'_value_array']
+        map_outputs = [self.name()+'_bin', self.name()+'_map_count']
+        reduce_outputs = [self.name()+'_reduce_count']
+        mean_outputs = [self.name()+'_mean_outputs']
 
-        return nodes
+        def values_array(*value_inputs):
+            return np.asarray(value_inputs)
+
+        def bin_func(k, v):
+            return np.digitize(k, bins), (v, 1)
+
+        def mean(d):
+            res = {bins[i]: [0]*n_values for i in range(0, bins.size)}
+            for k, v in d.items():
+                try:
+                    res[bins[k]] = v[0]/v[1]
+                except IndexError:
+                    pass
+            keys, values = zip(*sorted(res.items()))
+            return np.array(keys), np.array(values)
+        
+        def distribute_outputs(args):
+            """
+            Distribute the binned array elements to the corresponding outputs.
+
+            Inputs:
+                args[0]: bins
+                args[1]: mean_values (array_bin1, array_bin2, array_bin3, ...)
+            """
+            bins = args[0]
+            mean_values = np.atleast_2d(args[1].transpose())
+            return tuple([bins]) + tuple(mean_values)
+
+        gnodes = [
+            gn.Map(name=self.name()+'_array',
+                   inputs = value_inputs,
+                   outputs = value_array_outputs,
+                   func = values_array,
+                   **kwargs),
+            gn.Map(name = self.name()+'_map',
+                   inputs = [inputs['Bin']] + value_array_outputs,
+                   outputs = map_outputs,
+                   func = bin_func, 
+                   **kwargs),
+            gn.ReduceByKey(name = self.name()+'_reduce',
+                           inputs = map_outputs,
+                           outputs = reduce_outputs,
+                           reduction = lambda cv, v: (cv[0]+v[0], cv[1]+v[1]),
+                           **kwargs),
+            gn.Map(name=self.name()+'_mean',
+                   inputs = reduce_outputs,
+                   outputs = mean_outputs,
+                   func = mean,
+                   **kwargs),
+            gn.Map(name = self.name()+'_distribute_outputs',
+                   inputs = mean_outputs,
+                   outputs = outputs,
+                   func = distribute_outputs,
+                   **kwargs)
+        ]
+        return gnodes
+
+    def get_gnodes(self, inputs, outputs, **kwargs):
+        value_inputs = {k: v for k,v in inputs.items() if 'Bin' not in k}
+
+        value_array_outputs = [self.name()+'_value_array']
+        map_outputs = [self.name()+'_map_count']
+        reduce_outputs = [self.name()+'_reduce_count']
+        mean_outputs = [self.name()+'_mean_outputs']
+
+        def values_array(*value_inputs):
+            return np.asarray(value_inputs)
+
+        def mean(d):
+            res = {}
+            for k, v in d.items():
+                res[k] = v[0]/v[1]
+            keys, values = zip(*sorted(res.items()))
+            return np.array(keys), np.array(values)
+
+        def distribute_outputs(args):
+            """
+            Distribute the binned array elements to the corresponding outputs.
+
+            Inputs:
+                args[0]: bins
+                args[1]: mean_values (array_bin1, array_bin2, array_bin3, ...)
+            """
+            bins = args[0]
+            mean_values = np.atleast_2d(args[1].transpose())
+            return tuple([bins]) + tuple(mean_values)
+
+        gnodes = [
+            gn.Map(name=self.name()+'_array',
+                   inputs=value_inputs,
+                   outputs=value_array_outputs,
+                   func=values_array,
+                   **kwargs),
+            gn.Map(name=self.name()+'_map',
+                   inputs=value_array_outputs,
+                   outputs=map_outputs,
+                   func=lambda a: (a, 1),
+                   **kwargs),
+            gn.ReduceByKey(name=self.name()+'_reduce',
+                           inputs=[inputs['Bin']] + map_outputs,
+                           outputs=reduce_outputs,
+                           reduction=lambda cv, v: (cv[0]+v[0], cv[1]+v[1]),
+                           **kwargs),
+            gn.Map(name=self.name()+'_mean',
+                   inputs=reduce_outputs,
+                   outputs=mean_outputs,
+                   func=mean,
+                   **kwargs),
+            gn.Map(name=self.name()+'_distribute_outputs',
+                   inputs=mean_outputs,
+                   outputs=outputs,
+                   func=distribute_outputs,
+                   **kwargs)
+        ]
+        return gnodes
 
 
 class MeanWaveformVsScan(CtrlNode):
@@ -389,12 +477,12 @@ try:
             expr = self.values['operation']
 
             # sympy doesn't like symbols name likes Sum.0.Out, need to remove dots.
-            for arg in self.input_vars().values():
+            for arg in list(self.input_vars().values())[::-1]:  # Reverse order so "In" does not messes up with the replacement of "In.1"
                 rarg = sanitize_name(arg)
                 args.append(rarg)
                 expr = expr.replace(arg, rarg)
 
-            params = {'args': args,
+            params = {'args': args[::-1],
                       'expr': expr}
 
             return gn.Map(name=self.name()+"_operation", **kwargs, func=CalcProc(params))
