@@ -8,6 +8,13 @@ import scipy.stats as stats
 import scipy.ndimage as ndimage
 
 
+def gaussian_func(x, ampl, mu, sigma):
+    return ampl * np.exp( -(x-mu)**2/(2.0*sigma**2) )
+    #return ampl *   np.exp( -(x-mu)**2/(2.0*sigma**2) )
+
+def lorentzian_func(x, ampl, x0, gamma):
+    return ampl * ( gamma / ((x-x0)**2 + gamma**2) )
+
 try:
     from psana.peakFinder import blobfinder
 
@@ -179,6 +186,87 @@ try:
 
         def to_operation(self, **kwargs):
             return gn.Map(name=self.name()+"_operation", **kwargs, func=FitProc(**self.values))
+
+
+
+    class FitPeakProc():
+
+        def __init__(self, *args, **kwargs):
+            self.model = kwargs['Model']
+            self.use_offset = kwargs['Use offset']
+            self.a_0 = kwargs['Initial amplitude']
+            self.x_0 = kwargs['Initial x0']
+            self.fwhm_0 = kwargs['Initial FWHM']
+            self.c_0 = kwargs['Initial offset']
+            self.func = None
+
+        def get_func(self):
+            if self.model == "Gaussian":
+                sigma_0 = self.fwhm_0 / 2.355
+                if self.use_offset:
+                    p0 = [self.a_0, self.x_0, sigma_0, self.c_0]
+                    func = lambda x, a, mu, sig, c: gaussian_func(x, a, mu, sig) + c
+                    return func, p0
+                else:
+                    p0 = [self.a_0, self.x_0, sigma_0]
+                    return gaussian_func, p0
+            elif self.model == "Lorentzian":
+                gamma_0 = self.fwhm_0 / 2
+                if self.use_offset:
+                    p0 = [self.a_0, self.x_0, gamma_0, self.c_0]
+                    func = lambda x, a, x0, gamma, c: lorentzian_func(x, a, x0, gamma) + c
+                    return func, p0
+                else:
+                    p0 = [self.a_0, self.x_0, gamma_0]
+                    return lorentzian_func, p0
+                return
+            return
+
+        def __call__(self, y, *args, **kwargs):
+            if self.func is None:
+                self.func, self.p0 = self.get_func()
+
+            x = np.arange(0, y.size, 1)
+            try:
+                best_vals, covar = optimize.curve_fit(self.func, x, y, p0=self.p0)
+                fwhm = 2.355 * best_vals[2]
+                if self.use_offset:
+                    return self.func(x, *best_vals), best_vals[0], best_vals[1], best_vals[2], fwhm, best_vals[3]
+                else:
+                    return self.func(x, *best_vals), best_vals[0], best_vals[1], best_vals[2], fwhm, 0.0
+            except RuntimeError:
+                printExc()
+
+            return np.array([])
+
+
+    class PeakFit(CtrlNode):
+        """
+        Fit a peak to 1d data
+        Models:
+            Gaussian
+            Lorentzian
+        """
+
+        nodeName = "PeakFit"
+        uiTemplate = [('Model', 'combo', {'values':['Gaussian', 'Lorentzian', 'Moments']}),
+                      ('Use offset', 'check', {'checked': True}),
+                      ('Initial amplitude', 'doubleSpin', {'value': 1}),
+                      ('Initial x0', 'doubleSpin', {'value': 0}),
+                      ('Initial FWHM', 'doubleSpin', {'value': 1}),
+                      ('Initial offset', 'doubleSpin')]
+
+        def __init__(self, name):
+            super().__init__(name, terminals={'In': {'io': 'in', 'ttype': Array1d},
+                                              'fit_out': {'io': 'out', 'ttype': Array1d},
+                                              'ampl': {'io': 'out', 'ttype': float},
+                                              'x0': {'io': 'out', 'ttype': float},
+                                              'width': {'io': 'out', 'ttype': float},
+                                              'fwhm': {'io': 'out', 'ttype': float},
+                                              'offset': {'io': 'out', 'ttype': float}})
+
+        def to_operation(self, **kwargs):
+            return gn.Map(name=self.name()+"_operation", **kwargs, func=FitPeakProc(**self.values))
 
 except ImportError as e:
     print(e)
