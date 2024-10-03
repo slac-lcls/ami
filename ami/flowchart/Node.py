@@ -104,7 +104,7 @@ class Node(QtCore.QObject):
         self._enabled = True
 
         self.created = False
-        self.changed = True
+        self._changed = True
         self.viewed = False
         self.exception = None
         self.global_op = kwargs.get("global_op", False)
@@ -117,6 +117,14 @@ class Node(QtCore.QObject):
 
         for name, opts in terminals.items():
             self.addTerminal(name, **opts)
+
+    @property
+    def changed(self):
+        return self._changed
+
+    @changed.setter
+    def changed(self, value):
+        self._changed = value
 
     def nextGroupName(self):
         group = "group.%d"

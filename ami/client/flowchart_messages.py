@@ -79,10 +79,10 @@ class DisplayNode(NodeMsg):
 
 class NodeCheckpoint(NodeMsg):
 
-    def __init__(self, name, state={}):
+    def __init__(self, name, state={}, stacktrace=['']):
         super().__init__(name)
         self.state = state
-
+        self.stacktrace = stacktrace
 
 class Profiler(Msg):
 
