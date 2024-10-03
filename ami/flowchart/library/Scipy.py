@@ -210,6 +210,7 @@ try:
                 else:
                     p0 = [self.a_0, self.x_0, sigma_0]
                     return gaussian_func, p0
+
             elif self.model == "Lorentzian":
                 gamma_0 = self.fwhm_0 / 2
                 if self.use_offset:
@@ -219,7 +220,6 @@ try:
                 else:
                     p0 = [self.a_0, self.x_0, gamma_0]
                     return lorentzian_func, p0
-                return
             return
 
         def __call__(self, y, *args, **kwargs):
@@ -252,7 +252,7 @@ try:
         uiTemplate = [('Model', 'combo', {'values':['Gaussian', 'Lorentzian', 'Moments']}),
                       ('Use offset', 'check', {'checked': True}),
                       ('Initial amplitude', 'doubleSpin', {'value': 1}),
-                      ('Initial x0', 'doubleSpin', {'value': 0}),
+                      ('Initial x0', 'doubleSpin'),
                       ('Initial FWHM', 'doubleSpin', {'value': 1}),
                       ('Initial offset', 'doubleSpin')]
 
