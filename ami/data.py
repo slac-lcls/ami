@@ -392,6 +392,8 @@ class RequestedData:
         req.add(name, kwargs=kws)
         return req
 
+    def __contains__(self, name):
+        return name in self.names
 
 class Source(abc.ABC):
     def __init__(self, idnum, num_workers, heartbeat_period, src_cfg, flags=None, evtid_type=None):
