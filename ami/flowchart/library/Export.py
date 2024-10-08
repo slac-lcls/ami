@@ -1,6 +1,7 @@
 from typing import Union, Any
 from qtpy import QtCore, QtWidgets
 from amitypes import Array1d, Array2d
+from ami.comm import AMIWarning
 from ami.flowchart.library.common import CtrlNode
 import ami.graph_nodes as gn
 import socket
@@ -155,6 +156,7 @@ class Mcast(CtrlNode):
 
 
 try:
+    import caproto
     import caproto.threading.client as ct
 
     class CaputProc():
@@ -167,7 +169,10 @@ try:
             if self.ctx is None:
                 self.ctx = ct.Context()
                 self.pv = self.ctx.get_pvs(self.pvname)[0]
-            return self.pv.write(value)
+            try:
+                return self.pv.write(value)
+            except caproto._utils.CaprotoTimeoutError as e:
+                raise AMIWarning(e)
 
     class Caput(CtrlNode):
 
@@ -213,7 +218,10 @@ try:
         def __call__(self, value):
             if self.ctx is None:
                 self.ctx = pct.Context('pva')
-            return self.ctx.put(self.pvname, value)
+            try:
+                return self.ctx.put(self.pvname, value)
+            except TimeoutError:
+                raise AMIWarning("pvput timed out")
 
     class Pvput(CtrlNode):
 
