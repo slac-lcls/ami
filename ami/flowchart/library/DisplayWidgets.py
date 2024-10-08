@@ -13,7 +13,7 @@ from ami.data import Deserializer
 from ami.comm import ZMQ_TOPIC_DELIM
 from ami.flowchart.library.WidgetGroup import generateUi
 from ami.flowchart.library.Editors import TraceEditor, HistEditor, \
-    LineEditor, CircleEditor, RectEditor, camera, pixmapFromBase64
+    LineEditor, CircleEditor, RectEditor, camera, pixmapFromBase64, load_style
 
 
 logger = logging.getLogger(LogConfig.get_package_name(__name__))
@@ -189,8 +189,8 @@ class PlotWidget(QtWidgets.QWidget):
 
         self.plot = {}  # { name : PlotDataItem }
         self.trace_ids = {}  # { trace_idx : name }
-        self.trace_attrs = {}
-        self.legend_editors = {}
+        self.trace_attrs = {}  # { name : legend_editors[trace_idx].attrs }
+        self.legend_editors = {}  # { trace_idx : TraceEditor() }
         self.annotation_editors = {}
         self.annotation_traces = {}
 
@@ -282,7 +282,7 @@ class PlotWidget(QtWidgets.QWidget):
             self.stateGroup.addWidget(w, idx)
             self.legend_layout.addRow(idx, w)
 
-            editor = self.editor(parent=self.legend_groupbox, **kwargs)
+            editor = self.editor(parent=self.legend_groupbox, widget=self, **kwargs)
             if restore:
                 state = kwargs.get("editor_state", {})
                 editor.restoreState(state)
@@ -581,7 +581,14 @@ class ImageWidget(PlotWidget):
         self.view.setAspectLocked(lock=self.lock, ratio=self.ratio)
 
         self.histogramLUT = pg.HistogramLUTItem(self.imageItem)
-        self.histogramLUT.gradient.loadPreset('thermal')
+        style = load_style()
+        if "ImageWidget" in style:
+            style = style['ImageWidget']
+        else:
+            style['gradient'] = "thermal"
+
+        self.histogramLUT.gradient.loadPreset(style['gradient'])
+
         self.histogram_connected = False
         self.graphics_layout.addItem(self.histogramLUT)
         if self.node:
@@ -709,11 +716,11 @@ class HistogramWidget(PlotWidget):
                 legend_name = self.update_legend_layout(idx, name, color=color)
                 attrs = self.legend_editors[idx].attrs
                 self.trace_attrs[name] = attrs
-                self.plot[name] = self.plot_view.plot(x, y, name=legend_name, brush=color,
+                self.plot[name] = self.plot_view.plot(x, y, name=legend_name, brush=attrs['Brush'],
                                                       stepMode=True, fillLevel=0)
             else:
                 attrs = self.trace_attrs[name]
-                self.plot[name].setData(x=x, y=y, **attrs)
+                self.plot[name].setData(x=x, y=y, brush=attrs['Brush'])
 
 
 class Histogram2DWidget(ImageWidget):

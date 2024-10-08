@@ -219,6 +219,7 @@ class NodeProcess(QtCore.QObject):
             elif self.ctrlWidget:
                 scrollarea = QtWidgets.QScrollArea(parent=self.win)
                 scrollarea.setWidget(self.ctrlWidget)
+                scrollarea.setWidgetResizable(True)
                 self.ctrlWidget.setParent(scrollarea)
                 self.win.setCentralWidget(scrollarea)
             elif self.widget:
