@@ -313,7 +313,7 @@ try:
 
         def __init__(self, name):
             super().__init__(name, terminals={'In': {'io': 'in', 'ttype': Array1d},
-                                              'fit_out': {'io': 'out', 'ttype': Array1d},
+                                              'fit': {'io': 'out', 'ttype': Array1d},
                                               'ampl': {'io': 'out', 'ttype': float},
                                               'center': {'io': 'out', 'ttype': float},
                                               'width': {'io': 'out', 'ttype': float},
