@@ -15,6 +15,29 @@ def gaussian_func(x, ampl, mu, sigma):
 def lorentzian_func(x, ampl, x0, gamma):
     return ampl * ( gamma / ((x-x0)**2 + gamma**2) )
 
+def stats_from_moments(x, y=None):
+    """
+    Weigted mean, sigma, and skew.
+    Use case is typically for quick stats on a gaussian-like
+    distribution.
+
+    Parameters
+    ----------
+    x: np.ndarray
+        values
+    y: np.ndarray
+        weights
+    """
+    if y is None:
+        y = np.ones_like(x)
+    #y = np.abs(y)  # negative values in the baseline screw things up
+    mean = np.sum(x*y) / np.sum(y)
+    variance = np.sum((x-mean)**2*y) / y.sum()
+    sigma = np.sqrt(variance)
+    skew = np.sum((x-mean)**3*y) / sigma**3
+    return mean, sigma, skew
+
+
 try:
     from psana.peakFinder import blobfinder
 
@@ -234,6 +257,9 @@ try:
                 else:
                     p0 = [self.a_0, self.x_0, gamma_0]
                     return lorentzian_func, p0
+
+            elif self.model == "Moments":
+                return stats_from_moments, None
             return
 
         def __call__(self, y, *args, **kwargs):
@@ -241,9 +267,24 @@ try:
                 self.func, self.p0 = self.get_func()
 
             x = np.arange(0, y.size, 1)
+
+            if self.p0 is None:
+                # Calculate moments and make-up a gaussian
+                # Dirtier but faster
+                mean, sigma, skew = self.func(x, y=y)
+                fwhm = 2.355 * sigma
+                ampl = np.max(y)
+                y = gaussian_func(x, ampl, mean, sigma)
+                return y, ampl, mean, sigma, fwhm, 0.0
+
             try:
+                # Real fits
                 best_vals, covar = optimize.curve_fit(self.func, x, y, p0=self.p0)
-                fwhm = 2.355 * best_vals[2]
+                if self.model == "Gaussian":
+                    fwhm = 2.355 * best_vals[2]
+                elif self.model == "Lorentzian":
+                    fwhm = 2 * best_vals[2]
+
                 if self.use_offset:
                     return self.func(x, *best_vals), best_vals[0], best_vals[1], best_vals[2], fwhm, best_vals[3]
                 else:
