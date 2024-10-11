@@ -564,7 +564,7 @@ class ImageWidget(PlotWidget):
                                 'values': ['0', '90', '180', '270']}))
 
         super().__init__(topics, terms, addr, uiTemplate=uiTemplate, parent=parent, legend=False, **kwargs)
-        self.graphics_layout.useOpenGL(False)
+        # self.graphics_layout.useOpenGL(False)
         self.flip = False
         self.rotate = 0
         self.log_scale_histogram = False
@@ -695,7 +695,7 @@ class HistogramWidget(PlotWidget):
 
     def __init__(self, topics=None, terms=None, addr=None, parent=None, **kwargs):
         super().__init__(topics, terms, addr, parent=parent, **kwargs)
-        self.graphics_layout.useOpenGL(False)
+        self.graphics_layout.useOpenGL(False)  # pyqtgraph broken
         self.num_terms = int(len(terms)/2) if terms else 0
 
     def editor(self, parent, **kwargs):

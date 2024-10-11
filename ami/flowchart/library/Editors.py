@@ -102,8 +102,8 @@ class TraceEditor(QtWidgets.QWidget):
         line = {'color': line['color'],
                 'style': line_styles[line['style']]}
 
-        if pg.getConfigOption('useOpenGL'):
-            line['width'] = width
+        # if pg.getConfigOption('useOpenGL'):
+        line['width'] = width
 
         pen = pg.mkPen(**line)
 
