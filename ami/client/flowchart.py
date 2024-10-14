@@ -219,6 +219,7 @@ class NodeProcess(QtCore.QObject):
             elif self.ctrlWidget:
                 scrollarea = QtWidgets.QScrollArea(parent=self.win)
                 scrollarea.setWidget(self.ctrlWidget)
+                scrollarea.setWidgetResizable(True)
                 self.ctrlWidget.setParent(scrollarea)
                 self.win.setCentralWidget(scrollarea)
             elif self.widget:
@@ -465,7 +466,7 @@ class MessageBroker(object):
 
 
 def run_client(graphmgr_addr, load, prometheus_dir, prometheus_port, hutch, use_opengl, configure, save_dir):
-    use_opengl = use_opengl and "SSH_CONNECTION" not in os.environ
+    use_opengl = use_opengl and "SSH_CONNECTION" not in os.environ and "NX_CONNECTION" not in os.environ
     pg.setConfigOptions(useOpenGL=use_opengl, enableExperimental=use_opengl)
 
     with tempfile.TemporaryDirectory() as ipcdir:

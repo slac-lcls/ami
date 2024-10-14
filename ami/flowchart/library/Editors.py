@@ -1,3 +1,5 @@
+import os
+import json
 import numpy as np
 import pyqtgraph as pg
 from qtpy import QtGui, QtWidgets, QtCore
@@ -12,9 +14,22 @@ line_styles = {'None': QtCore.Qt.PenStyle.NoPen,
                'DashDotDot': QtCore.Qt.PenStyle.DashDotDotLine}
 
 
+def load_style():
+    style_path = os.path.expanduser("~/.config/ami/stylesheet.json")
+    style = {}
+    if os.path.exists(style_path):
+        with open(style_path, 'r') as f:
+            try:
+                style = json.load(f)
+            except json.decoder.JSONDecodeError as e:
+                print(e)
+
+    return style
+
+
 class TraceEditor(QtWidgets.QWidget):
 
-    def __init__(self, parent=None, **kwargs):
+    def __init__(self, parent=None, widget=None, **kwargs):
         super().__init__(parent)
 
         if 'uiTemplate' in kwargs:
@@ -65,6 +80,12 @@ class TraceEditor(QtWidgets.QWidget):
 
         self.layout.addWidget(self.plot_widget, 0, 2, -1, -1)
 
+        if 'restore' not in kwargs:
+            style = load_style()
+            name = widget.__class__.__name__
+            if name in style:
+                self.restoreState(style[name])
+
     def update_plot(self):
         point = self.trace_attrs['Point']
 
@@ -81,8 +102,8 @@ class TraceEditor(QtWidgets.QWidget):
         line = {'color': line['color'],
                 'style': line_styles[line['style']]}
 
-        if pg.getConfigOption('useOpenGL'):
-            line['width'] = width
+        # if pg.getConfigOption('useOpenGL'):
+        line['width'] = width
 
         pen = pg.mkPen(**line)
 
@@ -118,7 +139,7 @@ class TraceEditor(QtWidgets.QWidget):
 class HistEditor(TraceEditor):
 
     def __init__(self, parent=None, **kwargs):
-        kwargs['uiTemplate'] = [('brush', 'color', {'value': kwargs.get('color', (255, 0, 0))})]
+        kwargs['uiTemplate'] = [('Brush', 'color', {'value': kwargs.get('color', (255, 0, 0))})]
         super().__init__(parent=parent, **kwargs)
 
     def update_plot(self):
