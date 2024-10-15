@@ -23,18 +23,25 @@ logger = logging.getLogger(LogConfig.get_package_name(__name__))
 
 
 class EpicsExportServer(abc.ABC):
-    def __init__(self, name, comm_addr, export_addr, *args, **kwargs):
+    def __init__(self, name, msg_addr, export_addr, *args, **kwargs):
         self.base = name
         self.ctx = zmq.asyncio.Context()
         self.export = self.ctx.socket(zmq.SUB)
         self.export.setsockopt_string(zmq.SUBSCRIBE, "")
         self.export.connect(export_addr)
 
+        self.node_msg_comm = self.ctx.socket(zmq.PUSH)
+        self.node_msg_comm.connect(msg_addr)
+
         self.pvs = {}
         self.ignored = set()
         self.graph_pvbase = "ana"
         self.data_pvbase = "data"
         self.info_pvbase = "info"
+
+        self.node_msg_comm.send_string("epics", zmq.SNDMORE)
+        self.node_msg_comm.send_string("export", zmq.SNDMORE)
+        self.node_msg_comm.send_string(f"{name}:{self.graph_pvbase}")
 
     def __enter__(self):
         return self
@@ -254,8 +261,8 @@ class PvaExportRpcHandler:
 
 
 class PvaExportServer(EpicsExportServer):
-    def __init__(self, name, comm_addr, export_addr, aggregate=False):
-        super().__init__(name, comm_addr, export_addr)
+    def __init__(self, name, msg_addr, export_addr, aggregate=False):
+        super().__init__(name, msg_addr, export_addr)
         # self.queue = ThreadedWorkQueue(maxsize=20, workers=1)
         # pva server provider
         self.provider = StaticProvider(name)
@@ -351,8 +358,8 @@ class PvaExportServer(EpicsExportServer):
                 pass
 
 class CaExportServer(EpicsExportServer):
-    def __init__(self, name, comm_addr, export_addr, aggregate=False):
-        super().__init__(name, comm_addr, export_addr)
+    def __init__(self, name, msg_addr, export_addr, aggregate=False):
+        super().__init__(name, msg_addr, export_addr)
         self.pvdb = {}
         self.server = CAPContext(self.pvdb)
 

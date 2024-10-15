@@ -81,7 +81,6 @@ class Node(QtCore.QObject):
         buffered        bool; whether a node has a to_operation which returns a rolling
                         buffer
         exportable      bool; whether export should be called
-        filter          bool; whether a node is a filter
         ==============  ============================================================
 
         """
@@ -99,7 +98,6 @@ class Node(QtCore.QObject):
         self._viewable = kwargs.get("viewable", False)
         self._buffered = kwargs.get("buffered", False)
         self._exportable = kwargs.get("exportable", False)
-        self._filter = kwargs.get("filter", False)
         self._editor = None
         self._enabled = True
 
@@ -286,9 +284,6 @@ class Node(QtCore.QObject):
 
     def exportable(self):
         return self._exportable
-
-    def filter(self):
-        return self._filter
 
     def enabled(self):
         return self._enabled

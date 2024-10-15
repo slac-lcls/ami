@@ -10,20 +10,20 @@ from ami.export import server
 
 logger = logging.getLogger(__name__)
 
-async def run_export_async(name, comm_addr, export_addr, aggregate=False):
+async def run_export_async(name, msg_addr, export_addr, aggregate=False):
     tasks = []
-    paexport = server.PvaExportServer(name, comm_addr, export_addr, aggregate)
+    paexport = server.PvaExportServer(name, msg_addr, export_addr, aggregate)
     tasks.append(asyncio.create_task(paexport.start_server()))
     tasks.append(asyncio.create_task(paexport.run()))
 
-    caexport = server.CaExportServer(name, comm_addr, export_addr, aggregate)
+    caexport = server.CaExportServer(name, msg_addr, export_addr, aggregate)
     tasks.append(asyncio.create_task(caexport.start_server()))
     tasks.append(asyncio.create_task(caexport.run()))
 
     await asyncio.gather(*tasks)
 
-def run_export(name, comm_addr, export_addr, aggregate=False):
-    asyncio.run(run_export_async(name, comm_addr, export_addr, aggregate))
+def run_export(name, msg_addr, export_addr, aggregate=False):
+    asyncio.run(run_export_async(name, msg_addr, export_addr, aggregate))
 
 def main():
     parser = argparse.ArgumentParser(description='AMII DataExport App')
@@ -70,7 +70,7 @@ def main():
     args = parser.parse_args()
 
     export_addr = "tcp://%s:%d" % (args.host, args.port + Ports.Export)
-    comm_addr = "tcp://%s:%d" % (args.host, args.port + Ports.Comm)
+    msg_addr = "tcp://%s:%d" % (args.host, args.port + Ports.Message)
 
     log_handlers = [logging.StreamHandler()]
     if args.log_file is not None:
@@ -79,8 +79,7 @@ def main():
     logging.basicConfig(format=LogConfig.Format, level=log_level, handlers=log_handlers)
 
     try:
-        return run_export(args.name, comm_addr, export_addr, args.aggregate)
-        # asyncio.run(run_export(args.name, comm_addr, export_addr, args.aggregate))
+        return run_export(args.name, msg_addr, export_addr, args.aggregate)
     except KeyboardInterrupt:
         logger.info("DataExport killed by user...")
         return 0

@@ -354,7 +354,7 @@ def run_ami(args, queue=None):
             export_proc = mp.Process(
                 name='export',
                 target=functools.partial(_sys_exit, run_export),
-                args=(args.export, comm_addr, export_addr, args.aggregate)
+                args=(args.export, msg_addr, export_addr, args.aggregate)
             )
             export_proc.daemon = True
             export_proc.start()

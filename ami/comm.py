@@ -1743,6 +1743,16 @@ class CommHandler(abc.ABC):
     def plot(self, item):
         pass
 
+    @property
+    def epics_prefix(self):
+        """
+        Epics export prefix.
+
+        Returns:
+            Returns string of epics export prefix.
+        """
+        return self._request('get_epics_prefix')
+
     def export(self, names, aliases=None):
         """
         Adds a Pick1 graph node for the requested graph output so that is can
