@@ -80,7 +80,7 @@ class Binning(CtrlNode):
         node = [gn.Map(name=self.name()+"_map",
                        inputs=inputs, outputs=map_outputs, func=bin, **kwargs),
                 gn.Accumulator(name=self.name()+"_accumulated", inputs=map_outputs, outputs=outputs,
-                               res_factory=lambda: [None, 0], reduction=reduction, **kwargs)]
+                               res_factory=lambda *args: ([None, 0], ()), reduction=reduction, **kwargs)]
         return node
 
 
@@ -148,7 +148,7 @@ class Binning2D(CtrlNode):
         node = [gn.Map(name=self.name()+"_map",
                        inputs=inputs, outputs=map_outputs, func=bin, **kwargs),
                 gn.Accumulator(name=self.name()+"_accumulated", inputs=map_outputs, outputs=outputs,
-                               res_factory=lambda: [None, None, 0], reduction=reduction, **kwargs)]
+                               res_factory=lambda *args: ([None, None, 0], ()), reduction=reduction, **kwargs)]
         return node
 
 
@@ -539,7 +539,7 @@ class Average0D(CtrlNode):
 
             nodes = [gn.Accumulator(name=self.name()+"_accumulated",
                                     inputs=inputs, outputs=accumulated_outputs,
-                                    res_factory=lambda: [0, 0], reduction=reduction, **kwargs),
+                                    res_factory=lambda *args: ([0, 0], ()), reduction=reduction, **kwargs),
                      gn.Map(name=self.name()+"_map",
                             inputs=accumulated_outputs, outputs=outputs,
                             func=avg, **kwargs)]
@@ -587,7 +587,7 @@ class Average1D(CtrlNode):
 
             nodes = [gn.Accumulator(name=self.name()+"_accumulated",
                                     inputs=inputs, outputs=accumulated_outputs,
-                                    res_factory=lambda: [0, 0], reduction=reduction, **kwargs),
+                                    res_factory=lambda *args: ([0, 0], ()), reduction=reduction, **kwargs),
                      gn.Map(name=self.name()+"_map",
                             inputs=accumulated_outputs, outputs=outputs,
                             func=avg, **kwargs)]
@@ -636,7 +636,7 @@ class Average2D(CtrlNode):
 
             nodes = [gn.Accumulator(name=self.name()+"_accumulated",
                                     inputs=inputs, outputs=accumulated_outputs,
-                                    res_factory=lambda: [0, 0], reduction=reduction, **kwargs),
+                                    res_factory=lambda *args: ([0, 0], ()), reduction=reduction, **kwargs),
                      gn.Map(name=self.name()+"_map",
                             inputs=accumulated_outputs, outputs=outputs,
                             func=avg, **kwargs)]

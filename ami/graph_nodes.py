@@ -204,19 +204,31 @@ class ReduceByKey(GlobalTransformation):
 
 
 class Accumulator(GlobalTransformation):
+    """
+    Accumulator is a GlobalTransformation that will infinitely acculumate events.
+    """
 
     def __init__(self, **kwargs):
+        """
+        Keyword Arguments:
+            reduction (function): Function is used to reduce arguments
+            res_factory (function): Function that is called at the end of a heartbeat to reset accumulator \
+                                    on workers and local collectors
+        """
         super().__init__(**kwargs)
-        self.res_factory = kwargs.pop('res_factory', lambda: 0)
+        self.res_factory = kwargs.pop('res_factory', lambda *args: 0)
         assert hasattr(self.res_factory, '__call__'), 'res_factory is not callable'
-        self.res = self.res_factory()
+        self.res_args = ()
+        self.res = None
 
     def __call__(self, *args, **kwargs):
+        if self.res is None:
+            self.res, self.res_args = self.res_factory(*args)
         self.res = self.reduction(self.res, *args)
         return self.res
 
     def reset(self):
-        self.res = self.res_factory()
+        self.res, _ = self.res_factory(self.res_args)
 
     def heartbeat_finished(self):
         if self.color != 'globalCollector':
