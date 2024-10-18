@@ -926,13 +926,14 @@ except ImportError as e:
 class ThresholdingHitFinder(CtrlNode):
 
     """
-    Collect N 1d arrays and average them.
+    Apply a threshold to an image and infinitely sum.
     """
 
     nodeName = "ThresholdingHitFinder"
     uiTemplate = [('Threshold', 'doubleSpin', {'value': 1.0}),
-                  ('N', 'intSpin', {'value': 2, 'min': 2}),
-                  ('infinite', 'check')]
+                  # ('N', 'intSpin', {'value': 2, 'min': 2}),
+                  # ('infinite', 'check')
+                  ]
 
     def __init__(self, name):
         super().__init__(name, terminals={'In': {'io': 'in', 'ttype': Array2d},
@@ -945,9 +946,7 @@ class ThresholdingHitFinder(CtrlNode):
         threshold = self.values['Threshold']
 
         def threshold_img(img):
-            threshold_img = np.zeros(img.shape)
-            threshold_img[img >= threshold] = 1
-            return threshold_img
+            return np.where(img >= threshold, 1, 0)
 
         def res_factory(*args):
             if type(args[0]) is np.ndarray:
@@ -955,29 +954,34 @@ class ThresholdingHitFinder(CtrlNode):
             else:
                 return np.zeros(*args), ()
 
-        if self.values['infinite']:
-            def reduction(res, *rest):
-                res += np.sum(rest, axis=0)
-                return res
+        # if self.values['infinite']:
+        summed_outputs = [self.name()+"_sum"]
 
-            nodes = [gn.Map(name=self.name()+"_map",
-                            inputs=inputs, outputs=mapped_outputs,
-                            func=threshold_img, **kwargs),
-                     gn.Accumulator(name=self.name()+"_accumulated",
-                                    inputs=mapped_outputs, outputs=outputs,
-                                    res_factory=res_factory,
-                                    reduction=reduction, **kwargs)]
-        else:
-            summed_outputs = [self.name()+"_count", self.name()+"_sum"]
+        def reduction(res, *rest):
+            res += np.sum(rest, axis=0)
+            return res
 
-            nodes = [gn.Map(name=self.name()+"_map",
-                            inputs=inputs, outputs=mapped_outputs,
-                            func=threshold_img, **kwargs),
-                     gn.SumN(name=self.name()+"_accumulated",
-                             inputs=mapped_outputs, outputs=summed_outputs,
-                             N=self.values['N'], **kwargs),
-                     gn.Map(name=self.name()+"_unzip",
-                            inputs=summed_outputs, outputs=outputs,
-                            func=lambda count, s: s, **kwargs)]
+        nodes = [gn.Map(name=self.name()+"_map",
+                        inputs=inputs, outputs=mapped_outputs,
+                        func=threshold_img, **kwargs),
+                 gn.Accumulator(name=self.name()+"_accumulated",
+                                inputs=mapped_outputs, outputs=summed_outputs,
+                                res_factory=res_factory,
+                                reduction=reduction, **kwargs),
+                 gn.Map(name=self.name()+"_unzip",
+                        inputs=summed_outputs, outputs=outputs,
+                        func=lambda s: s, **kwargs)]
+        # else:
+        #     summed_outputs = [self.name()+"_count", self.name()+"_sum"]
+
+        #     nodes = [gn.Map(name=self.name()+"_map",
+        #                     inputs=inputs, outputs=mapped_outputs,
+        #                     func=threshold_img, **kwargs),
+        #              gn.SumN(name=self.name()+"_accumulated",
+        #                      inputs=mapped_outputs, outputs=summed_outputs,
+        #                      N=self.values['N'], **kwargs),
+        #              gn.Map(name=self.name()+"_unzip",
+        #                     inputs=summed_outputs, outputs=outputs,
+        #                     func=lambda count, s: s, **kwargs)]
 
         return nodes
