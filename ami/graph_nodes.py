@@ -216,7 +216,7 @@ class Accumulator(GlobalTransformation):
                                     on workers and local collectors
         """
         super().__init__(**kwargs)
-        self.res_factory = kwargs.pop('res_factory', lambda *args: 0)
+        self.res_factory = kwargs.pop('res_factory', lambda *args: (0, ()))
         assert hasattr(self.res_factory, '__call__'), 'res_factory is not callable'
         self.res_args = ()
         self.res = None

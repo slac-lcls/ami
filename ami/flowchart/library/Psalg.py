@@ -948,12 +948,6 @@ class ThresholdingHitFinder(CtrlNode):
         def threshold_img(img):
             return np.where(img >= threshold, 1, 0)
 
-        def res_factory(*args):
-            if type(args[0]) is np.ndarray:
-                return np.zeros(args[0].shape), args[0].shape
-            else:
-                return np.zeros(*args), ()
-
         # if self.values['infinite']:
         summed_outputs = [self.name()+"_sum"]
 
@@ -966,7 +960,6 @@ class ThresholdingHitFinder(CtrlNode):
                         func=threshold_img, **kwargs),
                  gn.Accumulator(name=self.name()+"_accumulated",
                                 inputs=mapped_outputs, outputs=summed_outputs,
-                                res_factory=res_factory,
                                 reduction=reduction, **kwargs),
                  gn.Map(name=self.name()+"_unzip",
                         inputs=summed_outputs, outputs=outputs,
