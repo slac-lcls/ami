@@ -157,7 +157,8 @@ try:
         def __init__(self, name):
             super().__init__(name,
                              terminals={'In': {'io': 'in', 'ttype': Any},
-                                        'Out': {'io': 'out', 'ttype': Any}},
+                                        'Count': {'io': 'out', 'ttype': int},
+                                        'Sum': {'io': 'out', 'ttype': Any}},
                              allowAddInput=True,
                              global_op=True)
 

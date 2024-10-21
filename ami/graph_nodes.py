@@ -53,8 +53,8 @@ class Transformation(abc.ABC):
                     self.name == getattr(other, 'name', None))
 
     def __repr__(self):
-        return u"%s(name='%s', color='%s', inputs=%s, outputs=%s)" % \
-            (self.__class__.__name__, self.name, self.color, self.inputs, self.outputs)
+        return u"%s(name='%s', color='%s', inputs=%s, outputs=%s, parent=%s)" % \
+            (self.__class__.__name__, self.name, self.color, self.inputs, self.outputs, self.parent)
 
     def to_operation(self):
         """
@@ -220,15 +220,27 @@ class Accumulator(GlobalTransformation):
         assert hasattr(self.res_factory, '__call__'), 'res_factory is not callable'
         self.res_args = ()
         self.res = None
+        self.count = 0
 
     def __call__(self, *args, **kwargs):
+        if self.is_expanded:
+            count, value = args
+        else:
+            count = 1
+            value = args[0]
+
+        self.count += count
+
         if self.res is None:
-            self.res, self.res_args = self.res_factory(*args)
-        self.res = self.reduction(self.res, *args)
-        return self.res
+            self.res, self.res_args = self.res_factory(value)
+
+        self.res = self.reduction(self.res, value)
+
+        return self.count, self.res
 
     def reset(self):
         self.res, _ = self.res_factory(self.res_args)
+        self.count = 0
 
     def heartbeat_finished(self):
         if self.color != 'globalCollector':
@@ -300,7 +312,9 @@ class SumN(GlobalTransformation):
         else:
             count = 1
             value = args[0]
+
         self.count += count
+
         if self.res is None:
             self.res = value
         else:
