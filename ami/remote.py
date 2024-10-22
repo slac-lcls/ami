@@ -9,7 +9,7 @@ from mpi4py import MPI
 
 from ami import LogConfig
 from ami.multiproc import check_mp_start_method
-from ami.comm import Ports
+from ami.comm import Ports, PlatformAction
 from ami.worker import run_worker
 from ami.collector import run_node_collector
 
@@ -26,14 +26,13 @@ def build_parser():
         type=str,
         help='ami manager host')
 
-    comm_group = parser.add_mutually_exclusive_group()
-
-    comm_group.add_argument(
+    parser.add_argument(
         '-p',
         '--port',
         type=int,
-        default=Ports.Comm,
-        help='starting port when using tcp for communication (default: %d)' % Ports.Comm
+        default=Ports.BasePort,
+        action=PlatformAction,
+        help='base port for ami (default: %d) reserves next %d consecutive ports' % (Ports.BasePort, Ports.NumPorts)
     )
 
     parser.add_argument(
@@ -42,6 +41,14 @@ def build_parser():
         type=int,
         default=10,
         help='the heartbeat period in ms (default: 10)'
+    )
+
+    parser.add_argument(
+        '-d',
+        '--eb-depth',
+        type=int,
+        default=10,
+        help='the depth of contribution builder buffer in units of heartbeats (default: 10)'
     )
 
     parser.add_argument(
@@ -68,6 +75,13 @@ def build_parser():
         nargs='?',
         metavar='SOURCE',
         help='data source configuration (exampes: static://test.json, psana://exp=xcsdaq13:run=14)'
+    )
+
+    parser.add_argument(
+        '--prometheus-port',
+        type=int,
+        default=Ports.Prometheus,
+        help='port for prometheus'
     )
 
     parser.add_argument(
@@ -121,11 +135,11 @@ def run_ami(args, queue=None):
         queue = mp.Queue()
 
     host = args.host
-    graph_addr = "tcp://%s:%d" % (host, args.port+1)
-    collector_addr = "tcp://127.0.0.1:%d" % (args.port+2)
-    globalcol_addr = "tcp://%s:%d" % (host, args.port+3)
-    export_addr = "tcp://%s:%d" % (host, args.port+5)
-    msg_addr = "tcp://%s:%d" % (host, args.port+6)
+    graph_addr = "tcp://%s:%d" % (host, args.port + Ports.Graph)
+    collector_addr = "tcp://127.0.0.1:%d" % (args.port + Ports.NodeCollector)
+    globalcol_addr = "tcp://%s:%d" % (host, args.port + Ports.FinalCollector)
+    export_addr = "tcp://%s:%d" % (host, args.port + Ports.Export)
+    msg_addr = "tcp://%s:%d" % (host, args.port + Ports.Message)
 
     procs = []
 
@@ -162,15 +176,16 @@ def run_ami(args, queue=None):
         local_rank = local_comm.Get_rank()
         node_rank = global_rank // local_rank_size
 
-        # name = MPI.Get_processor_name()
+        name = MPI.Get_processor_name()
         # print(f"SIZE: {size}, RANK: {global_rank}, LOCAL RANK: {local_rank}, NODE RANK: {node_rank} NAME: {name}")
 
         if local_rank == 0:
             collector_proc = mp.Process(
                 name=f'nodecol-n{node_rank}',
                 target=functools.partial(_sys_exit, run_node_collector),
-                args=(node_rank, local_rank_size, collector_addr, globalcol_addr, graph_addr, msg_addr,
-                      args.prometheus_dir, args.hutch)
+                args=(node_rank, local_rank_size, args.eb_depth,
+                      collector_addr, globalcol_addr, graph_addr, msg_addr,
+                      args.prometheus_dir, args.prometheus_port, args.hutch)
             )
             collector_proc.daemon = True
             collector_proc.start()
@@ -178,7 +193,7 @@ def run_ami(args, queue=None):
 
         run_worker(global_rank, size, args.heartbeat, src_cfg,
                    collector_addr, graph_addr, msg_addr, export_addr,
-                   flags, args.prometheus_dir, args.hutch)
+                   flags, args.prometheus_dir, args.prometheus_port, args.hutch)
 
         # register a signal handler for cleanup on sigterm
         signal.signal(signal.SIGTERM, functools.partial(_sig_handler, procs))

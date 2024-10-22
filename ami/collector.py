@@ -9,7 +9,7 @@ import datetime as dt
 import ami.multiproc as mp
 from ami.worker import run_worker, parse_args
 from ami import LogConfig, Defaults
-from ami.comm import Ports, PlatformAction, Colors, Node, Collector, TransitionBuilder, EventBuilder
+from ami.comm import Ports, PlatformAction, Colors, Node, Collector, TransitionBuilder, EventBuilder, AMIWarning
 from ami.data import MsgTypes, Transitions
 
 
@@ -138,6 +138,7 @@ class GraphCollector(Node, Collector):
             datagram_start = time.time()
             self.store.update(msg.name, msg.heartbeat, self.eb_id(msg.identity), msg.version, msg.payload)
             if msg.heartbeat.prompt or self.store.ready(msg.name, msg.heartbeat):
+                times, size = (None, None)
                 try:
                     # prune entries older than the current heartbeat
                     pruned_times, pruned_size = self.store.prune(msg.name, self.node, msg.heartbeat)
@@ -149,12 +150,9 @@ class GraphCollector(Node, Collector):
 
                     # times = self.store.complete(msg.name, msg.heartbeat, self.node)
                     # self.report_times(times, msg.name, msg.heartbeat)
-
-                    self.event_counter.labels(self.hutch, 'Heartbeat', self.name).inc()
-                    self.heartbeat_time[msg.heartbeat.identity] += time.time() - datagram_start
-                    heartbeat_time = self.heartbeat_time.pop(msg.heartbeat.identity, 0)
-                    self.event_time.labels(self.hutch, 'Heartbeat', self.name).set(heartbeat_time)
-                    self.event_size.labels(self.hutch, self.name).set(size)
+                except AMIWarning as e:
+                    e.graph_name = msg.name
+                    self.report("warning", e)
                 except Exception as e:
                     e.graph_name = msg.name
                     logger.exception("%s: Failure encountered while executing graph %s:", self.name, msg.name)
@@ -162,6 +160,14 @@ class GraphCollector(Node, Collector):
                     logger.error("%s: Purging graph (%s v%d)", self.name, msg.name, self.store.version(msg.name))
                     self.store.destroy(msg.name)
                     self.report("purge", msg.name)
+                finally:
+                    if times is not None and size is not None:
+                        self.event_counter.labels(self.hutch, 'Heartbeat', self.name).inc()
+                        self.heartbeat_time[msg.heartbeat.identity] += time.time() - datagram_start
+                        heartbeat_time = self.heartbeat_time.pop(msg.heartbeat.identity, 0)
+                        self.event_time.labels(self.hutch, 'Heartbeat', self.name).set(heartbeat_time)
+                        self.event_size.labels(self.hutch, self.name).set(size)
+
             else:
                 # prune older entries from the event builder
                 pruned_times, pruned_size = self.store.prune(msg.name, self.node)

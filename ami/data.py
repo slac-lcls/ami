@@ -1394,6 +1394,8 @@ class SimSource(Source):
                 return int
             else:
                 return float
+        elif config['dtype'] == 'List':
+            return list
         elif config['dtype'] == 'Waveform':
             return at.Array1d
         elif config['dtype'] == 'Image':
@@ -1432,6 +1434,7 @@ class RandomSource(SimSource):
     def __init__(self, idnum, num_workers, heartbeat_period, src_cfg, flags=None):
         super().__init__(idnum, num_workers, heartbeat_period, src_cfg, flags)
         np.random.seed([idnum])
+        self.rng = np.random.default_rng(idnum)
 
     def events(self):
         time.sleep(self.init_time)
@@ -1452,6 +1455,11 @@ class RandomSource(SimSource):
                             event[name] = value
                     elif config['dtype'] == 'Waveform' or config['dtype'] == 'Image':
                         event[name] = np.random.normal(config['pedestal'], config['width'], config['shape'])
+                    elif config['dtype'] == 'List':
+                        if config.get('type', "integer") == "integer":
+                            event[name] = list(self.rng.integers(low=config['range'][0],
+                                                                 high=config['range'][1],
+                                                                 size=config['shape']))
                     else:
                         logger.warn("DataSrc: %s has unknown type %s", name, config['dtype'])
             yield from self.event(eventid, timestamp, event)
