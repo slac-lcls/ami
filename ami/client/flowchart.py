@@ -66,7 +66,7 @@ def run_editor_window(broker_addr, graphmgr_addr, checkpoint_addr, load=None, pr
         title = 'AMI Client'
         if hutch:
             title += f' hutch: {hutch}'
-        if filename:
+        if filename is not None:
             title += ' - ' + filename.split('/')[-1]
 
         win.setWindowTitle(title)
