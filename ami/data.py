@@ -941,6 +941,8 @@ class PsanaSource(HierarchicalDataSource):
             'live',
             'smd',
             'calibdir',
+            'monitor',
+            'detectors'
         }
         # special attributes that are per run instead of per event from a detectors interface, e.g. calib constants
         self.special_attrs = {
@@ -963,6 +965,8 @@ class PsanaSource(HierarchicalDataSource):
             'run': lambda s: s if isinstance(s, int) else int(s),
             'live': lambda s: s if isinstance(s, bool) else s.lower() == 'true',
             'smd': lambda s: s if isinstance(s, bool) else s.lower() == 'true',
+            'monitor': lambda s: s if isinstance(s, bool) else s.lower() == 'true',
+            'detectors': lambda s: s.split(';')
         }
         for key, func in convert_kwargs.items():
             if key in ps_kwargs:
