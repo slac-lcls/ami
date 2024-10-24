@@ -893,7 +893,7 @@ class FlowchartCtrlWidget(QtWidgets.QWidget):
         await self.chart.clear()
         self.chartWidget.clear()
         self.setCurrentFile(None)
-        self.chart.sigFileLoaded.emit('')
+        self.chart.sigFileLoaded.emit(None)
         self.features = Features(self.graphCommHandler)
         await self.graphCommHandler.updatePlots(self.features.plots)
 

@@ -66,7 +66,7 @@ def run_editor_window(broker_addr, graphmgr_addr, checkpoint_addr, load=None, pr
         title = 'AMI Client'
         if hutch:
             title += f' hutch: {hutch}'
-        if filename:
+        if filename is not None:
             title += ' - ' + filename.split('/')[-1]
 
         win.setWindowTitle(title)
@@ -172,6 +172,7 @@ class NodeProcess(QtCore.QObject):
 
         self.ctrlWidget = self.node.ctrlWidget(self.win)
         self.widget = None
+        self.connected = False
 
         title = msg.name
         if hutch:
@@ -230,9 +231,13 @@ class NodeProcess(QtCore.QObject):
                 self.win.setCentralWidget(scrollarea)
 
             if msg.state and hasattr(self.widget, 'restoreState'):
+                self.widget.blockSignals(True)
                 self.widget.restoreState(msg.state)
+                self.widget.blockSignals(False)
 
-            self.node.sigStateChanged.connect(self.send_checkpoint)
+            if not self.connected:
+                self.node.sigStateChanged.connect(self.send_checkpoint)
+                self.connected = True
 
         self.win.show()
         if self.node.viewed:
