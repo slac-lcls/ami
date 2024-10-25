@@ -208,8 +208,8 @@ class FilterWidget(QtWidgets.QWidget):
 
     def __init__(self, inputs={}, outputs=[], parent=None):
         super().__init__(parent)
-        self.inputs = inputs
-        self.outputs = outputs
+        self.inputs = inputs or {}
+        self.outputs = outputs or []
         self.layout = QtWidgets.QFormLayout()
         self.setLayout(self.layout)
 
@@ -366,10 +366,10 @@ class FilterWidget(QtWidgets.QWidget):
     def restoreState(self, state):
         conditions = state['conditions']
 
-        if not self.inputs:
-            self.inputs = state.get('inputs', {})
-        if not self.outputs:
-            self.outputs = state.get('outputs', [])
+        inputs = state.get('inputs', {}) or {}
+        self.inputs.update(inputs)
+        outputs = state.get('outputs', []) or []
+        self.outputs.extend(outputs)
 
         for condition in range(0, conditions):
             if condition == 0:

@@ -108,17 +108,17 @@ class NodeWindow(QtWidgets.QMainWindow):
     def moveEvent(self, event):
         super().moveEvent(event)
         self.proc.node.geometry = self.saveGeometry()
-        self.proc.send_checkpoint(self.proc.node)
+        self.proc.send_checkpoint(self.proc.node, 'moveEvent')
 
     def resizeEvent(self, event):
         super().resizeEvent(event)
         self.proc.node.geometry = self.saveGeometry()
-        self.proc.send_checkpoint(self.proc.node)
+        self.proc.send_checkpoint(self.proc.node, 'resizeEvent')
 
     def closeEvent(self, event):
         self.proc.node.viewed = False
         self.proc.node.geometry = self.saveGeometry()
-        self.proc.send_checkpoint(self.proc.node)
+        self.proc.send_checkpoint(self.proc.node, 'closeEvent')
         self.proc.node.close()
         self.proc.widget = None
         self.destroy()
@@ -250,11 +250,10 @@ class NodeProcess(QtCore.QObject):
             pg.reload.reload(mod)
 
     @asyncSlot(object)
-    async def send_checkpoint(self, node):
+    async def send_checkpoint(self, node, event='sigStateChanged'):
         state = node.saveState()
 
-        msg = fcMsgs.NodeCheckpoint(node.name(),
-                                    state=state)
+        msg = fcMsgs.NodeCheckpoint(node.name(), state=state, event=event)
         await self.checkpoint.send_string(node.name() + ZMQ_TOPIC_DELIM, zmq.SNDMORE)
         await self.checkpoint.send_pyobj(msg)
 
