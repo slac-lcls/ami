@@ -67,7 +67,7 @@ def run_editor_window(broker_addr, graphmgr_addr, checkpoint_addr, load=None, pr
         title = 'AMI Client'
         if hutch:
             title += f' hutch: {hutch}'
-        if filename:
+        if filename is not None:
             title += ' - ' + filename.split('/')[-1]
 
         win.setWindowTitle(title)
@@ -109,17 +109,17 @@ class NodeWindow(QtWidgets.QMainWindow):
     def moveEvent(self, event):
         super().moveEvent(event)
         self.proc.node.geometry = self.saveGeometry()
-        self.proc.send_checkpoint(self.proc.node)
+        self.proc.send_checkpoint(self.proc.node, 'moveEvent')
 
     def resizeEvent(self, event):
         super().resizeEvent(event)
         self.proc.node.geometry = self.saveGeometry()
-        self.proc.send_checkpoint(self.proc.node)
+        self.proc.send_checkpoint(self.proc.node, 'resizeEvent')
 
     def closeEvent(self, event):
         self.proc.node.viewed = False
         self.proc.node.geometry = self.saveGeometry()
-        self.proc.send_checkpoint(self.proc.node)
+        self.proc.send_checkpoint(self.proc.node, 'closeEvent')
         self.proc.node.close()
         self.proc.widget = None
         self.destroy()
@@ -275,11 +275,10 @@ class NodeProcess(QtCore.QObject):
             pg.reload.reload(mod)
 
     @QtCore.Slot(object)
-    def send_checkpoint(self, node):
+    def send_checkpoint(self, node, event=None):
         state = node.saveState()
 
-        msg = fcMsgs.NodeCheckpoint(node.name(),
-                                    state=state, stacktrace=traceback.format_stack())
+        msg = fcMsgs.NodeCheckpoint(node.name(), state=state, event=event, stacktrace=traceback.format_stack())
         self.checkpoint.send_string(node.name() + ZMQ_TOPIC_DELIM, zmq.SNDMORE)
         self.checkpoint.send_pyobj(msg)
 
