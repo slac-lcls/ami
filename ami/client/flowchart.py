@@ -108,18 +108,18 @@ class NodeWindow(QtWidgets.QMainWindow):
 
     def moveEvent(self, event):
         super().moveEvent(event)
-        # self.proc.node.geometry = self.saveGeometry()
-        # self.proc.send_checkpoint(self.proc.node)
+        self.proc.node.geometry = self.saveGeometry()
+        self.proc.send_checkpoint(self.proc.node)
 
     def resizeEvent(self, event):
         super().resizeEvent(event)
-        # self.proc.node.geometry = self.saveGeometry()
-        # self.proc.send_checkpoint(self.proc.node)
+        self.proc.node.geometry = self.saveGeometry()
+        self.proc.send_checkpoint(self.proc.node)
 
     def closeEvent(self, event):
         self.proc.node.viewed = False
-        # self.proc.node.geometry = self.saveGeometry()
-        # self.proc.send_checkpoint(self.proc.node)
+        self.proc.node.geometry = self.saveGeometry()
+        self.proc.send_checkpoint(self.proc.node)
         self.proc.node.close()
         self.proc.widget = None
         self.destroy()
@@ -204,6 +204,7 @@ class NodeProcess(QtCore.QObject):
 
         self.ctrlWidget = self.node.ctrlWidget(self.win)
         self.widget = None
+        self.connected = False
 
         title = msg.name
         if hutch:
@@ -248,9 +249,13 @@ class NodeProcess(QtCore.QObject):
                 self.win.setCentralWidget(scrollarea)
 
             if msg.state and hasattr(self.widget, 'restoreState'):
+                self.widget.blockSignals(True)
                 self.widget.restoreState(msg.state)
+                self.widget.blockSignals(False)
 
-            self.node.sigStateChanged.connect(self.send_checkpoint)
+            if not self.connected:
+                self.node.sigStateChanged.connect(self.send_checkpoint)
+                self.connected = True
 
         self.win.show()
         if self.node.viewed:
