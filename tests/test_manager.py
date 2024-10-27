@@ -60,12 +60,21 @@ class ResultsInjector(Node, ZmqHandler):
         self._name = name
         self.version = version
         self.exceptions = {}
+        self.num_subscribers = 0
+        self.graph_comm.add_command("subscribed", self._subscribe)
+        self.graph_comm.add_command("unsubscribed", self._unsubscribe)
 
     def __enter__(self):
         return self
 
     def __exit__(self, exc_type, exc_value, traceback):
         self.close()
+
+    def _subscribe(self):
+        self.num_subscribers += 1
+
+    def _unsubscribe(self):
+        self.num_subscribers -= 1
 
     def close(self):
         self.graph_comm.close()
@@ -145,6 +154,10 @@ class ResultsInjector(Node, ZmqHandler):
                     pass
             return not failed
 
+    def wait_for_subs(self, nsubs=1):
+        while self.num_subscribers < nsubs:
+            self.graph_comm.recv()
+
 
 @pytest.fixture(scope='function')
 def result_data():
@@ -200,7 +213,7 @@ def manager_ctrl(manager_proc):
     try:
         with ResultsInjector(manager_proc, ctx, 0, name) as inject:
             # wait for the graph subscription to finish setting up
-            inject.graph_comm.recv()
+            inject.wait_for_subs()
 
             yield inject.comm, inject
     finally:
@@ -216,7 +229,7 @@ def manager_export(manager_proc):
     try:
         with ExportHelper(addr, ctx) as export, ResultsInjector(manager_proc, ctx, 0, name) as inject:
             # wait for the graph subscription to finish setting up
-            inject.graph_comm.recv()
+            inject.wait_for_subs()
 
             yield export, inject
     finally:
@@ -234,7 +247,7 @@ def manager_info(request, manager_proc):
             info.connect(manager_proc['info'])
 
             # wait for the graph subscription to finish setting up
-            inject.graph_comm.recv()
+            inject.wait_for_subs()
 
             yield info, inject
     finally:

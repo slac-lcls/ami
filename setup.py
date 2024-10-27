@@ -36,6 +36,9 @@ setup(
         'amityping>=1.1.2',
         'mypy',
         'setproctitle',
+        'prometheus_client',
+        'qtconsole',
+#        'lark'
     ],
     tests_require=[
         'pytest',

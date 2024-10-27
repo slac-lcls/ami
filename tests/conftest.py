@@ -4,6 +4,7 @@ import sys
 import dill
 import json
 import shutil
+import pathlib
 import asyncio
 import tempfile
 import itertools
@@ -34,10 +35,13 @@ from ami.graphkit_wrapper import Graph
 from ami.graph_nodes import Map, PickN
 from ami.flowchart.library.Operators import MeanVsScan
 from ami.local import build_parser, run_ami
-from ami.comm import BasePort, Ports, GraphCommHandler
+from ami.comm import Ports, GraphCommHandler
 
 
-psanatest = pytest.mark.skipif(psana is None, reason="psana not avaliable")
+psanatest = pytest.mark.skipif(psana is None or hasattr(psana, "_psana"), reason="psana not avaliable")
+
+
+psana1test = pytest.mark.skipif(psana is None or not hasattr(psana, "_psana"), reason="psana1 not avaliable")
 
 
 epicstest = pytest.mark.skipif(p4p is None, reason="p4p not avaliable")
@@ -146,6 +150,20 @@ def hdf5writer(tmpdir_factory):
 
 
 @pytest.fixture(scope='session')
+def psana1_testdata():
+    return pathlib.Path("/sdf/data/lcls/ds")
+
+
+@pytest.fixture(scope='function')
+def psana1_xtc(request, psana1_testdata):
+    directory, filename = request.param
+    #calibDir = psana1_testdata / 'multifile' / directory / 'calib' # do we want to keep a special dir or use the xpptut15?
+    calibDir = psana1_testdata / directory / 'calib'
+    psana.setOption('psana.calib-dir', calibDir)
+    return psana1_testdata / directory / 'xtc' / filename
+
+
+@pytest.fixture(scope='session')
 def workerjson(tmpdir_factory, xtcwriter):
 
     cfg = {
@@ -194,7 +212,7 @@ def start_ami(request, workerjson):
 
     try:
         host = "127.0.0.1"
-        comm_addr = "tcp://%s:%d" % (host, BasePort + Ports.Comm)
+        comm_addr = "tcp://%s:%d" % (host, Ports.BasePort + Ports.Comm)
         with GraphCommHandler(args.graph_name, comm_addr) as comm_handler:
             yield comm_handler
     except Exception as e:
@@ -228,7 +246,8 @@ def qevent_loop(qevent_loop_gbl):
     asyncio.set_event_loop(loop)
     yield loop
     # clean out the old socket notifiers - not necessary if zmq sockets are explicitly closed
-    for notifier in itertools.chain(loop._read_notifiers.values(), loop._write_notifiers.values()):
+    for notifier in itertools.chain(loop._read_notifiers.values() if loop._read_notifiers is not None else [],
+                                    loop._write_notifiers.values() if loop._write_notifiers is not None else []):
         notifier.setEnabled(False)
 
 

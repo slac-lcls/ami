@@ -1,5 +1,5 @@
 from typing import Union, Any
-from pyqtgraph.Qt import QtWidgets, QtGui
+from qtpy import QtWidgets
 from amitypes import Array1d, Array2d, Array3d
 from ami.flowchart.library.common import CtrlNode, GroupedNode
 from ami.flowchart.library.CalculatorWidget import CalculatorWidget, FilterWidget, gen_filter_func, sanitize_name
@@ -58,68 +58,157 @@ class MeanVsScan(CtrlNode):
                   ('max', 'intSpin', {'value': 10})]
 
     def __init__(self, name):
-        super().__init__(name, terminals={
-            'Bin': {'io': 'in', 'ttype': float},
-            'Value': {'io': 'in', 'ttype': float},
-            'Bins': {'io': 'out', 'ttype': Array1d},
-            'Counts': {'io': 'out', 'ttype': Array1d}
-        })
+        super().__init__(name, global_op=True,
+                         terminals={
+                             'Bin': {'io': 'in', 'ttype': float},
+                             'Value': {'io': 'in', 'ttype': float},
+                             'Bins': {'io': 'out', 'ttype': Array1d},
+                             'Counts': {'io': 'out', 'ttype': Array1d},
+                         },
+                         allowAddInput=True
+                         )
+
+    def addInput(self, **args):
+        group = self.nextGroupName()
+        self.addTerminal(name="Value", io='in', ttype=float, group=group, **args)
+        self.addTerminal(name="Counts", io='out', ttype=Array1d, group=group, **args)
+        return
 
     def to_operation(self, inputs, outputs, **kwargs):
         outputs = self.output_vars()
 
         if self.values['binned']:
-            bins = np.histogram_bin_edges(np.arange(self.values['min'], self.values['max']),
-                                          bins=self.values['bins'],
-                                          range=(self.values['min'], self.values['max']))
-            map_outputs = [self.name()+'_bin', self.name()+'_map_count']
-            reduce_outputs = [self.name()+'_reduce_count']
-
-            def func(k, v):
-                return np.digitize(k, bins), (v, 1)
-
-            def mean(d):
-                res = {bins[i]: 0 for i in range(0, bins.size)}
-                for k, v in d.items():
-                    try:
-                        res[bins[k]] = v[0]/v[1]
-                    except IndexError:
-                        pass
-
-                keys, values = zip(*sorted(res.items()))
-                return np.array(keys), np.array(values)
-
-            nodes = [
-                gn.Map(name=self.name()+'_map', inputs=inputs, outputs=map_outputs,
-                       func=func, **kwargs),
-                gn.ReduceByKey(name=self.name()+'_reduce',
-                               inputs=map_outputs, outputs=reduce_outputs,
-                               reduction=lambda cv, v: (cv[0]+v[0], cv[1]+v[1]), **kwargs),
-                gn.Map(name=self.name()+'_mean', inputs=reduce_outputs, outputs=outputs, func=mean,
-                       **kwargs)
-            ]
+            return self.get_gnodes_binned(inputs, outputs, **kwargs)
         else:
-            map_outputs = [self.name()+'_map_count']
-            reduce_outputs = [self.name()+'_reduce_count']
+            return self.get_gnodes(inputs, outputs, **kwargs)
 
-            def mean(d):
-                res = {}
-                for k, v in d.items():
-                    res[k] = v[0]/v[1]
-                keys, values = zip(*sorted(res.items()))
-                return np.array(keys), np.array(values)
+    def get_gnodes_binned(self, inputs, outputs, **kwargs):
+        bins = np.histogram_bin_edges(np.arange(self.values['min'], self.values['max']),
+                                        bins=self.values['bins'],
+                                        range=(self.values['min'], self.values['max']))
+        value_inputs = {k: v for k,v in inputs.items() if 'Bin' not in k}
+        n_values = len(value_inputs)
 
-            nodes = [
-                gn.Map(name=self.name()+'_map', inputs=[inputs['Value']], outputs=map_outputs,
-                       func=lambda a: (a, 1), **kwargs),
-                gn.ReduceByKey(name=self.name()+'_reduce',
-                               inputs=[inputs['Bin']]+map_outputs, outputs=reduce_outputs,
-                               reduction=lambda cv, v: (cv[0]+v[0], cv[1]+v[1]), **kwargs),
-                gn.Map(name=self.name()+'_mean', inputs=reduce_outputs, outputs=outputs, func=mean,
-                       **kwargs)
-            ]
+        value_array_outputs = [self.name()+'_value_array']
+        map_outputs = [self.name()+'_bin', self.name()+'_map_count']
+        reduce_outputs = [self.name()+'_reduce_count']
+        mean_outputs = [self.name()+'_mean_outputs']
 
-        return nodes
+        def values_array(*value_inputs):
+            return np.asarray(value_inputs)
+
+        def bin_func(k, v):
+            return np.digitize(k, bins), (v, 1)
+
+        def mean(d):
+            res = {bins[i]: [0]*n_values for i in range(0, bins.size)}
+            for k, v in d.items():
+                try:
+                    res[bins[k]] = v[0]/v[1]
+                except IndexError:
+                    pass
+            keys, values = zip(*sorted(res.items()))
+            return np.array(keys), np.array(values)
+        
+        def distribute_outputs(args):
+            """
+            Distribute the binned array elements to the corresponding outputs.
+
+            Inputs:
+                args[0]: bins
+                args[1]: mean_values (array_bin1, array_bin2, array_bin3, ...)
+            """
+            bins = args[0]
+            mean_values = np.atleast_2d(args[1].transpose())
+            return tuple([bins]) + tuple(mean_values)
+
+        gnodes = [
+            gn.Map(name=self.name()+'_array',
+                   inputs = value_inputs,
+                   outputs = value_array_outputs,
+                   func = values_array,
+                   **kwargs),
+            gn.Map(name = self.name()+'_map',
+                   inputs = [inputs['Bin']] + value_array_outputs,
+                   outputs = map_outputs,
+                   func = bin_func, 
+                   **kwargs),
+            gn.ReduceByKey(name = self.name()+'_reduce',
+                           inputs = map_outputs,
+                           outputs = reduce_outputs,
+                           reduction = lambda cv, v: (cv[0]+v[0], cv[1]+v[1]),
+                           **kwargs),
+            gn.Map(name=self.name()+'_mean',
+                   inputs = reduce_outputs,
+                   outputs = mean_outputs,
+                   func = mean,
+                   **kwargs),
+            gn.Map(name = self.name()+'_distribute_outputs',
+                   inputs = mean_outputs,
+                   outputs = outputs,
+                   func = distribute_outputs,
+                   **kwargs)
+        ]
+        return gnodes
+
+    def get_gnodes(self, inputs, outputs, **kwargs):
+        value_inputs = {k: v for k,v in inputs.items() if 'Bin' not in k}
+
+        value_array_outputs = [self.name()+'_value_array']
+        map_outputs = [self.name()+'_map_count']
+        reduce_outputs = [self.name()+'_reduce_count']
+        mean_outputs = [self.name()+'_mean_outputs']
+
+        def values_array(*value_inputs):
+            return np.asarray(value_inputs)
+
+        def mean(d):
+            res = {}
+            for k, v in d.items():
+                res[k] = v[0]/v[1]
+            keys, values = zip(*sorted(res.items()))
+            return np.array(keys), np.array(values)
+
+        def distribute_outputs(args):
+            """
+            Distribute the binned array elements to the corresponding outputs.
+
+            Inputs:
+                args[0]: bins
+                args[1]: mean_values (array_bin1, array_bin2, array_bin3, ...)
+            """
+            bins = args[0]
+            mean_values = np.atleast_2d(args[1].transpose())
+            return tuple([bins]) + tuple(mean_values)
+
+        gnodes = [
+            gn.Map(name=self.name()+'_array',
+                   inputs=value_inputs,
+                   outputs=value_array_outputs,
+                   func=values_array,
+                   **kwargs),
+            gn.Map(name=self.name()+'_map',
+                   inputs=value_array_outputs,
+                   outputs=map_outputs,
+                   func=lambda a: (a, 1),
+                   **kwargs),
+            gn.ReduceByKey(name=self.name()+'_reduce',
+                           inputs=[inputs['Bin']] + map_outputs,
+                           outputs=reduce_outputs,
+                           reduction=lambda cv, v: (cv[0]+v[0], cv[1]+v[1]),
+                           **kwargs),
+            gn.Map(name=self.name()+'_mean',
+                   inputs=reduce_outputs,
+                   outputs=mean_outputs,
+                   func=mean,
+                   **kwargs),
+            gn.Map(name=self.name()+'_distribute_outputs',
+                   inputs=mean_outputs,
+                   outputs=outputs,
+                   func=distribute_outputs,
+                   **kwargs)
+        ]
+        return gnodes
 
 
 class MeanWaveformVsScan(CtrlNode):
@@ -137,13 +226,14 @@ class MeanWaveformVsScan(CtrlNode):
                   ('max', 'intSpin', {'value': 10})]
 
     def __init__(self, name):
-        super().__init__(name, terminals={
-            'Bin': {'io': 'in', 'ttype': float},
-            'Value': {'io': 'in', 'ttype': Array1d},
-            'X Bins': {'io': 'out', 'ttype': Array1d},
-            'Y Bins': {'io': 'out', 'ttype': Array1d},
-            'Counts': {'io': 'out', 'ttype': Array2d}
-        })
+        super().__init__(name, global_op=True,
+                         terminals={
+                             'Bin': {'io': 'in', 'ttype': float},
+                             'Value': {'io': 'in', 'ttype': Array1d},
+                             'X Bins': {'io': 'out', 'ttype': Array1d},
+                             'Y Bins': {'io': 'out', 'ttype': Array1d},
+                             'Counts': {'io': 'out', 'ttype': Array2d}
+                         })
 
     def to_operation(self, inputs, outputs, **kwargs):
         if self.values['binned']:
@@ -207,6 +297,97 @@ class MeanWaveformVsScan(CtrlNode):
         return nodes
 
 
+class StatsVsScan(CtrlNode):
+
+    """
+    StatsVsScan creates a histogram using a variable number of bins.
+
+    Returns a dict with keys Bins and values mean, std, error of bins.
+    """
+
+    nodeName = "StatsVsScan"
+    uiTemplate = [('binned', 'check', {'checked': False}),
+                  ('bins', 'intSpin', {'value': 10, 'min': 1}),
+                  ('min', 'intSpin', {'value': 0}),
+                  ('max', 'intSpin', {'value': 10})]
+
+    def __init__(self, name):
+        super().__init__(name, global_op=True,
+                         terminals={
+                             'Bin': {'io': 'in', 'ttype': float},
+                             'Value': {'io': 'in', 'ttype': float},
+                             'Bins': {'io': 'out', 'ttype': Array1d},
+                             'Mean': {'io': 'out', 'ttype': Array1d},
+                             'Stdev': {'io': 'out', 'ttype': Array1d},
+                             'Error': {'io': 'out', 'ttype': Array1d},
+                         })
+
+    def to_operation(self, inputs, outputs, **kwargs):
+        outputs = self.output_vars()
+
+        def reduction(cv, v):
+            cv.extend(v)
+            return cv
+
+        if self.values['binned']:
+            bins = np.histogram_bin_edges(np.arange(self.values['min'], self.values['max']),
+                                          bins=self.values['bins'],
+                                          range=(self.values['min'], self.values['max']))
+            map_outputs = [self.name()+'_bin', self.name()+'_map_count']
+            reduce_outputs = [self.name()+'_reduce_count']
+
+            def func(k, v):
+                return np.digitize(k, bins), [v]
+
+            def stats(d):
+                res = {bins[i]: (0, 0, 0) for i in range(0, bins.size)}
+                for k, v in d.items():
+                    try:
+                        stddev = np.std(v)
+                        res[bins[k]] = (np.mean(v), stddev, stddev/np.sqrt(len(v)))
+                    except IndexError:
+                        pass
+
+                keys, values = zip(*sorted(res.items()))
+                mean, stddev, error = zip(*values)
+                return np.array(keys), np.array(mean), np.array(stddev), np.array(error)
+
+            nodes = [
+                gn.Map(name=self.name()+'_map', inputs=inputs, outputs=map_outputs,
+                       func=func, **kwargs),
+                gn.ReduceByKey(name=self.name()+'_reduce',
+                               inputs=map_outputs, outputs=reduce_outputs,
+                               reduction=reduction, **kwargs),
+                gn.Map(name=self.name()+'_stats', inputs=reduce_outputs, outputs=outputs, func=stats,
+                       **kwargs)
+            ]
+        else:
+            map_outputs = [self.name()+'_map_count']
+            reduce_outputs = [self.name()+'_reduce_count']
+
+            def stats(d):
+                res = {}
+                for k, v in d.items():
+                    stddev = np.std(v)
+                    res[k] = (np.mean(v), stddev, stddev/np.sqrt(len(v)))
+                keys, values = zip(*sorted(res.items()))
+                mean, stddev, error = zip(*values)
+                return np.array(keys), np.array(mean), np.array(stddev), np.array(error)
+
+            nodes = [
+                gn.Map(name=self.name()+'_map', inputs=[inputs['Value']], outputs=map_outputs,
+                       func=lambda a: [a], **kwargs),
+                gn.ReduceByKey(name=self.name()+'_reduce',
+                               inputs=[inputs['Bin']]+map_outputs, outputs=reduce_outputs,
+                               reduction=reduction,
+                               **kwargs),
+                gn.Map(name=self.name()+'_stats', inputs=reduce_outputs, outputs=outputs, func=stats,
+                       **kwargs)
+            ]
+
+        return nodes
+
+
 class Combinations(CtrlNode):
 
     """
@@ -241,20 +422,6 @@ class Combinations(CtrlNode):
                 return [np.array([])]*length
 
         return gn.Map(name=self.name()+"_operation", func=func, **kwargs)
-
-
-class Export(CtrlNode):
-
-    """
-    Send data back to worker.
-    """
-
-    nodeName = "Export"
-    uiTemplate = [('alias', 'text')]
-
-    def __init__(self, name):
-        super().__init__(name, terminals={"In": {'io': 'in', 'ttype': Any}},
-                         exportable=True)
 
 
 try:
@@ -310,12 +477,12 @@ try:
             expr = self.values['operation']
 
             # sympy doesn't like symbols name likes Sum.0.Out, need to remove dots.
-            for arg in self.input_vars().values():
+            for arg in list(self.input_vars().values())[::-1]:  # Reverse order so "In" does not messes up with the replacement of "In.1"
                 rarg = sanitize_name(arg)
                 args.append(rarg)
                 expr = expr.replace(arg, rarg)
 
-            params = {'args': args,
+            params = {'args': args[::-1],
                       'expr': expr}
 
             return gn.Map(name=self.name()+"_operation", **kwargs, func=CalcProc(params))
@@ -345,10 +512,10 @@ try:
         def terminal_prompt(self, name='', title='', **kwargs):
             prompt = QtWidgets.QWidget()
             prompt.layout = QtWidgets.QFormLayout(parent=prompt)
-            prompt.name = QtGui.QLineEdit(name, parent=prompt)
-            prompt.type_selector = QtGui.QComboBox(prompt)
-            prompt.ok = QtGui.QPushButton('Ok', parent=prompt)
-            for typ in [Any, bool, float, Array1d, Array2d, Array3d]:
+            prompt.name = QtWidgets.QLineEdit(name, parent=prompt)
+            prompt.type_selector = QtWidgets.QComboBox(prompt)
+            prompt.ok = QtWidgets.QPushButton('Ok', parent=prompt)
+            for typ in [Any, bool, int, float, Array1d, Array2d, Array3d]:
                 prompt.type_selector.addItem(str(typ), typ)
             prompt.layout.addRow("Name:", prompt.name)
             prompt.layout.addRow("Type:", prompt.type_selector)

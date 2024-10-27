@@ -19,11 +19,9 @@ class DialogWidget(QtWidgets.QWidget):
             self.fetcher = AsyncFetcher(topics, terms, addr, parent=self)
             self.fetcher.start()
 
-    @QtCore.Slot()
     def set_active(self):
         self.active = True
 
-    @QtCore.Slot()
     def update(self):
         if self.sleep_clicked:
             self.sleep_clicked = False

@@ -1,8 +1,13 @@
 def get_version():
-    import pkg_resources
     try:
-        return pkg_resources.get_distribution(__name__).version
-    except pkg_resources.DistributionNotFound:
+        # python > 3.7
+        import importlib.metadata as importlib_metadata
+    except ImportError:
+        # backport to python 3.7
+        import importlib_metadata
+    try:
+        return importlib_metadata.version(__name__)
+    except importlib_metadata.PackageNotFoundError:
         # package is not installed
         pass
 
@@ -13,6 +18,41 @@ def psana_available():
         return True
     except ImportError:
         return False
+
+
+def psana_uses_epics_epoch():
+    try:
+        import psana  # noqa: F401
+        return not hasattr(psana, '_psana')
+    except ImportError:
+        return False
+
+
+def p4p_available():
+    try:
+        import p4p  # noqa: F401
+        return True
+    except (ImportError, RuntimeError):
+        return False
+
+
+def p4p_get_version():
+    try:
+        # python > 3.7
+        import importlib.metadata as importlib_metadata
+    except ImportError:
+        # backport to python 3.7
+        import importlib_metadata
+    try:
+        return importlib_metadata.version('p4p')
+    except importlib_metadata.PackageNotFoundError:
+        # package is not installed
+        pass
+
+
+class p4pConfig:
+    Version = p4p_get_version()
+    SupportsTimestamps = p4p_get_version() >= '4.0.0' if p4p_available() else False
 
 
 class LogConfig:

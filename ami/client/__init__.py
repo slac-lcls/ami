@@ -1,12 +1,13 @@
 import os
 import sys
 import glob
+import pathlib
 import logging
 import argparse
 import tempfile
 import collections
 from ami import LogConfig, Defaults
-from ami.comm import BasePort, Ports
+from ami.comm import Ports, PlatformAction
 from ami.client import flowchart, legacy
 
 
@@ -16,15 +17,23 @@ logger = logging.getLogger(__name__)
 GraphMgrAddress = collections.namedtuple('GraphMgrAddress', ['name', 'comm', 'view', 'info'])
 
 
+def check_dir(pathname):
+    path = pathlib.Path(pathname)
+    if path.is_dir():
+        return str(path)
+    else:
+        raise ValueError(f"specified path ({path}) is not a directory")
+
+
 def run_client(graph_name, comm_addr, info_addr, view_addr, load,
                use_legacy=True, prometheus_dir=None, prometheus_port=None, hutch='', use_opengl=False,
-               configure=False):
+               configure=False, save_dir=None):
     graphmgr_addr = GraphMgrAddress(graph_name, comm_addr, view_addr, info_addr)
     if use_legacy:
-        return legacy.run_client(graphmgr_addr, load)
+        return legacy.run_client(graphmgr_addr, load, save_dir)
     else:
         return flowchart.run_client(graphmgr_addr, load, prometheus_dir, prometheus_port, hutch, use_opengl,
-                                    configure)
+                                    configure, save_dir)
 
 
 def main():
@@ -43,8 +52,9 @@ def main():
         '-p',
         '--port',
         type=int,
-        default=BasePort,
-        help='base port for ami (default: %d) reserves next 10 consecutive ports' % BasePort
+        default=Ports.BasePort,
+        action=PlatformAction,
+        help='base port for ami (default: %d) reserves next %d consecutive ports' % (Ports.BasePort, Ports.NumPorts)
     )
 
     addr_group.add_argument(
@@ -89,6 +99,14 @@ def main():
         '-l',
         '--load',
         help='saved AMII configuration to load'
+    )
+
+    parser.add_argument(
+        '-s',
+        '--save-dir',
+        type=check_dir,
+        default=None,
+        help='default directory for saving flowcharts'
     )
 
     guimode_parser = parser.add_mutually_exclusive_group()
@@ -172,7 +190,7 @@ def main():
     try:
         return run_client(args.graph_name, comm_addr, info_addr, view_addr, args.load,
                           args.gui_mode, args.prometheus_dir, args.prometheus_port, args.hutch, args.use_opengl,
-                          False)
+                          False, args.save_dir)
     except KeyboardInterrupt:
         logger.info("Client killed by user...")
         return 0

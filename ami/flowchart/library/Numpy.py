@@ -1,9 +1,10 @@
-from typing import Union, List
+from typing import Union
 from amitypes import Array, Array1d, Array2d, Array3d
 from ami.flowchart.library.common import CtrlNode, GroupedNode
 from ami.flowchart.Node import Node
 import ami.graph_nodes as gn
 import numpy as np
+import os
 
 
 class Sum(Node):
@@ -39,11 +40,12 @@ class Binning(CtrlNode):
                   ('density', 'check', {'checked': False})]
 
     def __init__(self, name):
-        super().__init__(name, terminals={
-            'In': {'io': 'in', 'ttype': Union[float, Array1d, Array2d]},
-            'Bins': {'io': 'out', 'ttype': Array1d},
-            'Counts': {'io': 'out', 'ttype': Array1d}
-        })
+        super().__init__(name, global_op=True,
+                         terminals={
+                             'In': {'io': 'in', 'ttype': Union[float, Array1d, Array2d]},
+                             'Bins': {'io': 'out', 'ttype': Array1d},
+                             'Counts': {'io': 'out', 'ttype': Array1d}
+                         })
         self.weighted = None
 
     def state_changed(self, *args, **kwargs):
@@ -78,7 +80,7 @@ class Binning(CtrlNode):
         node = [gn.Map(name=self.name()+"_map",
                        inputs=inputs, outputs=map_outputs, func=bin, **kwargs),
                 gn.Accumulator(name=self.name()+"_accumulated", inputs=map_outputs, outputs=outputs,
-                               res_factory=lambda: [None, 0], reduction=reduction, **kwargs)]
+                               res_factory=lambda *args: ([None, 0], ()), reduction=reduction, **kwargs)]
         return node
 
 
@@ -98,13 +100,14 @@ class Binning2D(CtrlNode):
                   ('density', 'check', {'checked': False})]
 
     def __init__(self, name):
-        super().__init__(name, terminals={
-            'X': {'io': 'in', 'ttype': Union[float, Array1d]},
-            'Y': {'io': 'in', 'ttype': Union[float, Array1d]},
-            'XBins': {'io': 'out', 'ttype': Array1d},
-            'YBins': {'io': 'out', 'ttype': Array1d},
-            'Counts': {'io': 'out', 'ttype': Array2d}
-        })
+        super().__init__(name, global_op=True,
+                         terminals={
+                             'X': {'io': 'in', 'ttype': Union[float, Array1d]},
+                             'Y': {'io': 'in', 'ttype': Union[float, Array1d]},
+                             'XBins': {'io': 'out', 'ttype': Array1d},
+                             'YBins': {'io': 'out', 'ttype': Array1d},
+                             'Counts': {'io': 'out', 'ttype': Array2d}
+                         })
         self.x_type = None
         self.y_type = None
         self.sigTerminalConnected.connect(self.setType)
@@ -145,7 +148,7 @@ class Binning2D(CtrlNode):
         node = [gn.Map(name=self.name()+"_map",
                        inputs=inputs, outputs=map_outputs, func=bin, **kwargs),
                 gn.Accumulator(name=self.name()+"_accumulated", inputs=map_outputs, outputs=outputs,
-                               res_factory=lambda: [None, None, 0], reduction=reduction, **kwargs)]
+                               res_factory=lambda *args: ([None, None, 0], ()), reduction=reduction, **kwargs)]
         return node
 
 
@@ -189,7 +192,7 @@ class Stack1d(CtrlNode):
     uiTemplate = [('axis', 'intSpin', {'value': 0, 'min': 0, 'max': 0})]
 
     def __init__(self, name):
-        super().__init__(name, terminals={"In": {'io': 'in', 'ttype': Union[float, List[float]]},
+        super().__init__(name, terminals={"In": {'io': 'in', 'ttype': Union[float, list[float]]},
                                           "Out": {'io': 'out', 'ttype': Array1d}},
                          allowAddInput=True)
 
@@ -216,7 +219,7 @@ class Stack2d(CtrlNode):
     uiTemplate = [('axis', 'intSpin', {'value': 0, 'min': 0, 'max': 1})]
 
     def __init__(self, name):
-        super().__init__(name, terminals={"In": {'io': 'in', 'ttype': Union[Array1d, List[Array1d]]},
+        super().__init__(name, terminals={"In": {'io': 'in', 'ttype': Union[Array1d, list[Array1d]]},
                                           "Out": {'io': 'out', 'ttype': Array2d}},
                          allowAddInput=True)
 
@@ -300,7 +303,7 @@ class Take(GroupedNode):
                 term._type = Array2d
             elif remoteTerm.type() == Array2d:
                 term._type = Array1d
-            elif remoteTerm.type() == Array1d or remoteTerm.type() == List[float]:
+            else:
                 term._type = float
 
 
@@ -396,7 +399,8 @@ class TimeMeanRMS0D(CtrlNode):
     def __init__(self, name):
         super().__init__(name, terminals={'In': {'io': 'in', 'ttype': float},
                                           'Mean': {'io': 'out', 'ttype': float},
-                                          'RMS': {'io': 'out', 'ttype': float}})
+                                          'RMS': {'io': 'out', 'ttype': float}},
+                         global_op=True)
 
     def to_operation(self, inputs, outputs, **kwargs):
         def func(arr):
@@ -426,7 +430,8 @@ class TimeMeanRMS1D(CtrlNode):
     def __init__(self, name):
         super().__init__(name, terminals={'In': {'io': 'in', 'ttype': Array1d},
                                           'Mean': {'io': 'out', 'ttype': Array1d},
-                                          'RMS': {'io': 'out', 'ttype': Array1d}})
+                                          'RMS': {'io': 'out', 'ttype': Array1d}},
+                         global_op=True)
 
     def to_operation(self, inputs, outputs, **kwargs):
         def func(arr):
@@ -457,7 +462,8 @@ class TimeMeanRMS2D(CtrlNode):
     def __init__(self, name):
         super().__init__(name, terminals={'In': {'io': 'in', 'ttype': Array2d},
                                           'Mean': {'io': 'out', 'ttype': Array2d},
-                                          'RMS': {'io': 'out', 'ttype': Array2d}})
+                                          'RMS': {'io': 'out', 'ttype': Array2d}},
+                         global_op=True)
 
     def to_operation(self, inputs, outputs, **kwargs):
         def func(arr):
@@ -512,40 +518,33 @@ class Average0D(CtrlNode):
 
     def __init__(self, name):
         super().__init__(name, terminals={'In': {'io': 'in', 'ttype': float},
-                                          'Out': {'io': 'out', 'ttype': float}})
+                                          'Out': {'io': 'out', 'ttype': float}},
+                         global_op=True)
 
     def to_operation(self, inputs, outputs, **kwargs):
-        accumulated_outputs = [self.name()+'_accumulated_events']
+        accumulated_outputs = [self.name()+'_accumulated_counts', self.name()+'_accumulated_sum']
+
+        def avg(count, value):
+            return value/count
 
         if self.values['infinite']:
             def reduction(res, *rest):
-                if type(rest[0]) is list:
-                    res[0] += rest[0][0]
-                    res[1] += rest[0][1]
-                else:
-                    res[0] = res[0] + rest[0]
-                    res[1] = res[1] + 1
+                res += np.sum(rest, axis=0)
                 return res
-
-            def avg(*args, **kwargs):
-                return args[0][0]/args[0][1]
 
             nodes = [gn.Accumulator(name=self.name()+"_accumulated",
                                     inputs=inputs, outputs=accumulated_outputs,
-                                    res_factory=lambda: [0, 0], reduction=reduction, **kwargs),
+                                    reduction=reduction, **kwargs),
                      gn.Map(name=self.name()+"_map",
                             inputs=accumulated_outputs, outputs=outputs,
                             func=avg, **kwargs)]
         else:
-            def func(arrs):
-                return np.average(arrs)
-
-            nodes = [gn.PickN(name=self.name()+"_accumulated",
-                              inputs=inputs, outputs=accumulated_outputs,
-                              N=self.values['N'], **kwargs),
+            nodes = [gn.SumN(name=self.name()+"_accumulated",
+                             inputs=inputs, outputs=accumulated_outputs,
+                             N=self.values['N'], **kwargs),
                      gn.Map(name=self.name()+"_map",
-                            inputs=accumulated_outputs, outputs=outputs, func=func,
-                            **kwargs)]
+                            inputs=accumulated_outputs, outputs=outputs,
+                            func=avg, **kwargs)]
 
         return nodes
 
@@ -558,47 +557,38 @@ class Average1D(CtrlNode):
 
     nodeName = "Average1D"
     uiTemplate = [('N', 'intSpin', {'value': 2, 'min': 2}),
-                  ('axis', 'intSpin', {'value': 0, 'min': 0, 'max': 1}),
                   ('infinite', 'check')]
 
     def __init__(self, name):
         super().__init__(name, terminals={'In': {'io': 'in', 'ttype': Array1d},
-                                          'Out': {'io': 'out', 'ttype': Array1d}})
+                                          'Out': {'io': 'out', 'ttype': Array1d}},
+                         global_op=True)
 
     def to_operation(self, inputs, outputs, **kwargs):
-        axis = self.values['axis']
-        accumulated_outputs = [self.name()+'_accumulated_events']
+        accumulated_outputs = [self.name()+'_accumulated_counts', self.name()+'_accumulated_sum']
+
+        def avg(count, value):
+            return value/count
 
         if self.values['infinite']:
             def reduction(res, *rest):
-                if type(rest[0]) is list:
-                    res[0] = np.sum([res[0], rest[0][0]], axis=axis)
-                    res[1] += rest[0][1]
-                else:
-                    res[0] = np.sum([res[0], rest[0]], axis=axis)
-                    res[1] = res[1] + 1
+                res += np.sum(rest, axis=0)
                 return res
-
-            def avg(*args, **kwargs):
-                return args[0][0]/args[0][1]
 
             nodes = [gn.Accumulator(name=self.name()+"_accumulated",
                                     inputs=inputs, outputs=accumulated_outputs,
-                                    res_factory=lambda: [0, 0], reduction=reduction, **kwargs),
+                                    reduction=reduction, **kwargs),
                      gn.Map(name=self.name()+"_map",
                             inputs=accumulated_outputs, outputs=outputs,
                             func=avg, **kwargs)]
 
         else:
-            def func(arrs):
-                return np.sum(arrs, axis=axis)/len(arrs)
-
-            nodes = [gn.PickN(name=self.name()+"_accumulated",
-                              inputs=inputs, outputs=accumulated_outputs,
-                              N=self.values['N'], **kwargs),
+            nodes = [gn.SumN(name=self.name()+"_accumulated",
+                             inputs=inputs, outputs=accumulated_outputs,
+                             N=self.values['N'], **kwargs),
                      gn.Map(name=self.name()+"_map",
-                            inputs=accumulated_outputs, outputs=outputs, func=func,
-                            **kwargs)]
+                            inputs=accumulated_outputs, outputs=outputs,
+                            func=avg, **kwargs)]
 
         return nodes
 
@@ -611,45 +601,57 @@ class Average2D(CtrlNode):
 
     nodeName = "Average2D"
     uiTemplate = [('N', 'intSpin', {'value': 2, 'min': 2}),
-                  ('axis', 'intSpin', {'value': 0, 'min': 0, 'max': 2}),
                   ('infinite', 'check')]
 
     def __init__(self, name):
         super().__init__(name, terminals={'In': {'io': 'in', 'ttype': Array2d},
-                                          'Out': {'io': 'out', 'ttype': Array2d}})
+                                          'Out': {'io': 'out', 'ttype': Array2d}},
+                         global_op=True)
 
     def to_operation(self, inputs, outputs, **kwargs):
-        axis = self.values['axis']
-        accumulated_outputs = [self.name()+'_accumulated_events']
+        accumulated_outputs = [self.name()+'_accumulated_counts', self.name()+'_accumulated_sum']
+
+        def avg(count, value):
+            return value/count
 
         if self.values['infinite']:
             def reduction(res, *rest):
-                if type(rest[0]) is list:
-                    res[0] = np.sum([res[0], rest[0][0]], axis=axis)
-                    res[1] += rest[0][1]
-                else:
-                    res[0] = np.sum([res[0], rest[0]], axis=axis)
-                    res[1] = res[1] + 1
+                res += np.sum(rest, axis=0)
                 return res
-
-            def avg(*args, **kwargs):
-                return args[0][0]/args[0][1]
 
             nodes = [gn.Accumulator(name=self.name()+"_accumulated",
                                     inputs=inputs, outputs=accumulated_outputs,
-                                    res_factory=lambda: [0, 0], reduction=reduction, **kwargs),
+                                    reduction=reduction, **kwargs),
                      gn.Map(name=self.name()+"_map",
                             inputs=accumulated_outputs, outputs=outputs,
                             func=avg, **kwargs)]
         else:
-            def func(arrs):
-                return np.sum(arrs, axis=axis)/len(arrs)
-
-            nodes = [gn.PickN(name=self.name()+"_accumulated",
-                              inputs=inputs, outputs=accumulated_outputs,
-                              N=self.values['N'], **kwargs),
+            nodes = [gn.SumN(name=self.name()+"_accumulated",
+                             inputs=inputs, outputs=accumulated_outputs,
+                             N=self.values['N'], **kwargs),
                      gn.Map(name=self.name()+"_map",
-                            inputs=accumulated_outputs, outputs=outputs, func=func,
-                            **kwargs)]
+                            inputs=accumulated_outputs, outputs=outputs,
+                            func=avg, **kwargs)]
 
         return nodes
+
+
+class LoadReference1D(CtrlNode):
+
+    """
+    Load 1d reference array from csv.
+    """
+
+    nodeName = "LoadReference1D"
+    uiTemplate = [('path', 'text')]
+
+    def __init__(self, name):
+        super().__init__(name, terminals={"X": {'io': 'out', 'ttype': Array1d},
+                                          "Y": {'io': 'out', 'ttype': Array1d}})
+
+    def to_operation(self, **kwargs):
+        path = self.values['path']
+        assert (os.path.exists(self.values['path']))
+        assert (path.endswith('.csv'))
+        arr = np.genfromtxt(path, delimiter=',', usecols=(0, 1), skip_header=1)
+        return gn.Map(name=self.name()+"_operation", **kwargs, func=lambda: (arr[:, 0], arr[:, 1]))

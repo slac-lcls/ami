@@ -1,4 +1,4 @@
-from pyqtgraph.Qt import QtGui, QtCore, QtWidgets
+from qtpy import QtGui, QtCore, QtWidgets
 from pyqtgraph.widgets.GraphicsView import GraphicsView
 from pyqtgraph.graphicsItems.ViewBox import ViewBox
 from pyqtgraph import GridItem, GraphicsWidget
@@ -38,7 +38,7 @@ class CommentRect(GraphicsWidget):
         super().__init__()
         self.setZValue(2)
         self.id = id
-        self.headerLayout = QtGui.QGraphicsLinearLayout(QtCore.Qt.Horizontal)
+        self.headerLayout = QtWidgets.QGraphicsLinearLayout(QtCore.Qt.Horizontal)
         self.commentName = CommentName(parent=self)
         self.headerLayout.addItem(self.commentName)
         self.__mouseDownPos = mouseDownPos
@@ -120,7 +120,7 @@ class CommentRect(GraphicsWidget):
             self.raiseContextMenu(ev)
 
     def buildMenu(self):
-        self.menu = QtGui.QMenu()
+        self.menu = QtWidgets.QMenu()
         self.menu.setTitle("Comment")
         self.menu.addAction("Remove Comment", self.destroy)
 
@@ -201,7 +201,7 @@ class ViewManager(QtWidgets.QWidget):
         self.chart = widget.chart  # Flowchart
         self.ctrl = widget.ctrl  # FlowchartCtrlWidget
 
-        self.layout = QtGui.QGridLayout()
+        self.layout = QtWidgets.QGridLayout()
         self.setLayout(self.layout)
 
         self.toolBar = QtWidgets.QToolBar(parent)
@@ -335,13 +335,13 @@ class FlowchartViewBox(ViewBox):
 
     def getMenu(self, ev):
         # called by ViewBox to create a new context menu
-        self._fc_menu = QtGui.QMenu()
+        self._fc_menu = QtWidgets.QMenu()
         self._subMenus = self.getContextMenus(ev)
         for menu in self._subMenus:
             self._fc_menu.addMenu(menu)
 
         if self.selected_nodes:
-            self.selected_node_menu = QtGui.QMenu("Selection")
+            self.selected_node_menu = QtWidgets.QMenu("Selection")
             if self.isRoot:
                 self.selected_node_menu.addAction("Make Subgraph", self.makeSubgraphFromSelection)
             if not self.copy:

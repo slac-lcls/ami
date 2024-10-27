@@ -72,7 +72,7 @@ class Linregress0D(CtrlNode):
     Collect N scalars and apply Scipy.stats.linregress
     """
 
-    nodeName = "Linregress0d"
+    nodeName = "Linregress0D"
     uiTemplate = [('N', 'intSpin', {'value': 2, 'min': 2})]
 
     def __init__(self, name):
@@ -81,7 +81,8 @@ class Linregress0D(CtrlNode):
                                           'X': {'io': 'out', 'ttype': Array1d},
                                           'Y': {'io': 'out', 'ttype': Array1d},
                                           'Fit': {'io': 'out', 'ttype': Array1d},
-                                          'rvalue': {'io': 'out', 'ttype': float}})
+                                          'rvalue': {'io': 'out', 'ttype': float}},
+                         global_op=True)
 
     def to_operation(self, inputs, outputs, **kwargs):
         def fit(arr):
@@ -106,7 +107,7 @@ class Linregress1D(Node):
     Scipy.stats.linregress
     """
 
-    nodeName = "Linregress1d"
+    nodeName = "Linregress1D"
 
     def __init__(self, name):
         super().__init__(name, terminals={'X': {'io': 'in', 'ttype': Array1d},
@@ -133,9 +134,14 @@ try:
     class FitProc():
 
         def __init__(self, *args, **kwargs):
-            self.expr = kwargs['expr']
-            self.step_size = kwargs['step size']
-            self.p0 = kwargs.get('init vals', None)
+            self.expr = kwargs['f']
+            self.p0 = kwargs['p0']
+            self.syms = kwargs['variables']
+
+            if not self.p0:
+                self.p0 = None
+            else:
+                self.p0 = tuple(map(float, self.p0.split(',')))
             self.func = None
 
         def set_func(self):
@@ -144,20 +150,21 @@ try:
             so we need to reorder arguments
             """
             func = sp.sympify(self.expr)
-            x = sp.Symbol('x')
-            syms = list(func.free_symbols)
-            syms.remove(x)
-            syms.insert(0, x)
-            return sp.lambdify(syms, func, modules=["numpy", "scipy"])
+            return sp.lambdify(self.syms, func, modules=["numpy", "scipy"])
 
         def __call__(self, y, *args, **kwargs):
             if self.func is None:
                 self.func = self.set_func()
+                self.x = np.arange(0, y.size, 1)
 
-            x = np.arange(0, y.size, 1)
+            if args:
+                x = args[0]
+            else:
+                x = self.x
+
             try:
-                best_vals, covar = optimize.curve_fit(self.func, x, y, p0=self.p0)
-                return self.func(x, *best_vals)
+                popt, covar = optimize.curve_fit(self.func, x, y, p0=self.p0)
+                return self.func(x, *popt), popt, covar
             except RuntimeError:
                 printExc()
 
@@ -165,16 +172,24 @@ try:
 
     class CurveFit(CtrlNode):
         """
-        Fit a function to data.
+        Calls scipy.optimize.curve_fit to fit a function to its inputs.
         """
 
         nodeName = "CurveFit"
-        uiTemplate = [('expr', 'text'),
-                      ('step size', 'intSpin', {'value': 1, 'min': 1})]
+        uiTemplate = [('f', 'text', {'tip': "Function to fit."}),
+                      ('variables', 'text', {'tip': "Comma separated list of variables in f."}),
+                      ('p0', 'text', {'tip': "Optional comma separated list of initial guesses."})]
 
         def __init__(self, name):
-            super().__init__(name, terminals={'In': {'io': 'in', 'ttype': Array1d},
-                                              'Out': {'io': 'out', 'ttype': Array1d}})
+            super().__init__(name, terminals={'Y': {'io': 'in', 'ttype': Array1d},
+                                              'fx': {'io': 'out', 'ttype': Array1d},
+                                              'p0': {'io': 'out', 'ttype': Array1d},
+                                              'pcov': {'io': 'out', 'ttype': Array2d}},
+                             allowAddInput=True)
+
+        def addInput(self, **args):
+            if "X" not in self.terminals:
+                self.addTerminal(name="X", io='in', ttype=Array1d, **args)
 
         def to_operation(self, **kwargs):
             return gn.Map(name=self.name()+"_operation", **kwargs, func=FitProc(**self.values))

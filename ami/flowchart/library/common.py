@@ -1,11 +1,11 @@
 # -*- coding: utf-8 -*-
-from pyqtgraph.Qt import QtCore
+from qtpy import QtCore
 
 from ami.flowchart.Node import Node
 from ami.flowchart.library.WidgetGroup import generateUi
 from ami.flowchart.library.DisplayWidgets import ScalarWidget, WaveformWidget, ImageWidget, \
-        ObjectWidget
-from amitypes import Array1d, Array2d
+        ObjectWidget, MultiWaveformWidget
+from amitypes import Array1d, Array2d, MultiChannelWaveformTypes
 
 
 class CtrlNode(Node):
@@ -134,15 +134,26 @@ class SourceNode(CtrlNode):
                 self.widgetType = WaveformWidget
             elif ttype is Array2d:
                 self.widgetType = ImageWidget
+            elif ttype in MultiChannelWaveformTypes:
+                self.widgetType = MultiWaveformWidget
             else:
                 self.widgetType = ObjectWidget
 
     def plotMetadata(self, topics, terms, **kwargs):
         return {'type': self.widgetType.__name__, 'terms': terms, 'topics': topics}
 
+    def saveState(self):
+        state = super().saveState()
+        state['source_kwargs'] = self._graphicsItem.source_kwargs
+        return state
+
     def restoreState(self, state):
         super().restoreState(state)
         self.setWidgetType()
+        try:
+            self._graphicsItem.source_kwargs = state['source_kwargs']
+        except:
+            pass
 
 
 class GroupedNode(CtrlNode):

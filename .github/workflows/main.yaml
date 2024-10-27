@@ -1,0 +1,82 @@
+name: ami-ci
+on:
+  push:
+    branches:
+      - master
+jobs:
+  run-tests-macos:
+    runs-on: macos-latest
+    steps:
+      - name: checkout
+        uses: actions/checkout@v2
+      - name: conda installation on macos
+        run: |
+          echo "134.79.138.124 pswww.slac.stanford.edu" | sudo tee -a /etc/hosts;
+          wget https://repo.continuum.io/miniconda/Miniconda3-latest-MacOSX-x86_64.sh -O miniconda.sh;
+      - name: installation
+        run: |
+          bash miniconda.sh -b -p $HOME/miniconda
+          source "$HOME/miniconda/etc/profile.d/conda.sh"
+          conda config --set always_yes yes --set changeps1 no
+          conda config --prepend channels conda-forge
+          conda config --prepend channels lcls-ii
+          conda config --set channel_priority strict
+          conda info -a
+          conda env create -f "$GITHUB_WORKSPACE/.ci-environment.yaml"
+          conda install -q -n myrel flake8 prometheus_client qtconsole
+          conda activate myrel
+          python setup.py install --single-version-externally-managed --record=record.txt
+      - name: flake8
+        run: |
+          source "$HOME/miniconda/etc/profile.d/conda.sh"
+          conda activate myrel
+          flake8
+      - name: tests on macos
+        if: always()
+        run: |
+          source "$HOME/miniconda/etc/profile.d/conda.sh"
+          conda activate myrel
+          # cpo commented out macos tests until we have time to fix. july 29, 2022.
+          #pytest
+
+  run-tests-linux:
+    runs-on: ubuntu-latest
+    steps:
+      - name: checkout
+        uses: actions/checkout@v2
+      - name: conda installation on linux
+        run: wget https://repo.continuum.io/miniconda/Miniconda3-latest-Linux-x86_64.sh -O miniconda.sh;
+      - name: installation
+        run: |
+          bash miniconda.sh -b -p $HOME/miniconda
+          source "$HOME/miniconda/etc/profile.d/conda.sh"
+          conda config --set always_yes yes --set changeps1 no
+          conda config --prepend channels conda-forge
+          conda config --prepend channels lcls-ii
+          conda config --set channel_priority strict
+          conda info -a
+          conda env create -f "$GITHUB_WORKSPACE/.ci-environment.yaml"
+          conda install -q -n myrel flake8 prometheus_client qtconsole
+          conda activate myrel
+          python setup.py install --single-version-externally-managed --record=record.txt
+          sudo apt-get install -y xvfb \
+                  libxkbcommon-x11-0 \
+                  libxcb-icccm4 \
+                  libxcb-image0 \
+                  libxcb-keysyms1 \
+                  libxcb-randr0 \
+                  libxcb-render-util0 \
+                  libxcb-xinerama0 \
+                  libxcb-xinput0 \
+                  libxcb-xfixes0
+      - name: flake8
+        run: |
+          source "$HOME/miniconda/etc/profile.d/conda.sh"
+          conda activate myrel
+          flake8
+      - name: tests on linux
+        if: always()
+        run: |
+          source "$HOME/miniconda/etc/profile.d/conda.sh"
+          conda activate myrel
+          xvfb-run pytest

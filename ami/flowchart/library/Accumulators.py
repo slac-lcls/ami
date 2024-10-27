@@ -1,5 +1,6 @@
 from typing import Any
-from amitypes import Array1d, T
+from qtpy import QtWidgets
+from amitypes import Array1d, Array2d, Array3d, T
 from ami.flowchart.Node import Node
 from ami.flowchart.library.common import CtrlNode
 import ami.graph_nodes as gn
@@ -16,7 +17,8 @@ class Pick1(Node):
     def __init__(self, name):
         super().__init__(name,
                          terminals={'In': {'io': 'in', 'ttype': T},
-                                    'Out': {'io': 'out', 'ttype': T}})
+                                    'Out': {'io': 'out', 'ttype': T}},
+                         global_op=True)
 
     def to_operation(self, **kwargs):
         return gn.PickN(name=self.name()+"_operation", N=1, **kwargs)
@@ -35,10 +37,61 @@ class PickN(CtrlNode):
         super().__init__(name,
                          terminals={'In': {'io': 'in', 'ttype': T},
                                     'Out': {'io': 'out', 'ttype': Array1d}},
-                         allowAddInput=True)
+                         allowAddInput=True,
+                         global_op=True)
 
     def to_operation(self, **kwargs):
         return gn.PickN(name=self.name()+"_operation", N=self.values['N'], **kwargs)
+
+
+class SumN(CtrlNode):
+
+    """
+    SumN sums N of its input.
+    """
+
+    nodeName = "SumN"
+    uiTemplate = [('N', 'intSpin', {'value': 2, 'min': 2})]
+
+    def __init__(self, name):
+        super().__init__(name,
+                         global_op=True)
+        self.ttype_prompt = None
+
+    def terminal_prompt(self, name='', title='', **kwargs):
+        prompt = QtWidgets.QWidget()
+        prompt.layout = QtWidgets.QFormLayout(parent=prompt)
+        prompt.type_selector = QtWidgets.QComboBox(prompt)
+        prompt.ok = QtWidgets.QPushButton('Ok', parent=prompt)
+        for typ in [Any, bool, float, Array1d, Array2d, Array3d]:
+            prompt.type_selector.addItem(str(typ), typ)
+        prompt.layout.addRow("Type:", prompt.type_selector)
+        prompt.layout.addRow("", prompt.ok)
+        prompt.setLayout(prompt.layout)
+        prompt.setWindowTitle("Add " + name)
+        return prompt
+
+    def onCreate(self):
+        self.ttype_prompt = self.terminal_prompt()
+        self.ttype_prompt.ok.clicked.connect(self._addTerminals)
+        self.ttype_prompt.show()
+
+    def _addTerminals(self, **kwargs):
+        ttype = self.ttype_prompt.type_selector.currentData()
+        self.ttype_prompt.close()
+        kwargs['name'] = self.nextTerminalName('In')
+        kwargs['ttype'] = ttype
+        kwargs['removable'] = False
+        self.addInput(**kwargs)
+        kwargs['name'] = 'Count'
+        kwargs['ttype'] = int
+        self.addOutput(**kwargs)
+        kwargs['name'] = self.nextTerminalName('Out')
+        kwargs['ttype'] = ttype
+        self.addOutput(**kwargs)
+
+    def to_operation(self, **kwargs):
+        return gn.SumN(name=self.name()+"_operation", N=self.values['N'], **kwargs)
 
 
 class RollingBuffer(CtrlNode):
@@ -54,7 +107,8 @@ class RollingBuffer(CtrlNode):
         super().__init__(name,
                          terminals={'In': {'io': 'in', 'ttype': T},
                                     'Out': {'io': 'out', 'ttype': Array1d}},
-                         allowAddInput=True)
+                         allowAddInput=True,
+                         global_op=True)
 
     def to_operation(self, **kwargs):
         return gn.RollingBuffer(name=self.name()+"_operation", N=self.values['N'], **kwargs)
@@ -87,11 +141,11 @@ try:
 
             return self.accumulator.reduction(res, *rest)
 
-        def res_factory(self):
+        def res_factory(self, *args):
             if self.file is None:
                 self.load()
 
-            return self.accumulator.reset()
+            return self.accumulator.reset(*args)
 
     class Accumulator(CtrlNode):
         """
@@ -103,8 +157,10 @@ try:
         def __init__(self, name):
             super().__init__(name,
                              terminals={'In': {'io': 'in', 'ttype': Any},
-                                        'Out': {'io': 'out', 'ttype': Any}},
-                             allowAddInput=True)
+                                        'Count': {'io': 'out', 'ttype': int},
+                                        'Sum': {'io': 'out', 'ttype': Any}},
+                             allowAddInput=True,
+                             global_op=True)
 
             self.values = {'text': ''}
 
@@ -119,7 +175,7 @@ try:
             return self.widget
 
         def generate_template(self):
-            template = f"""
+            template = """
 class Accumulator():
 
     def __init__(self):
@@ -128,8 +184,8 @@ class Accumulator():
     def reduction(self, res, *rest):
         pass
 
-    def reset(self):
-        return 0
+    def reset(self, *args):
+        return 0, ()
             """
 
             return template
@@ -137,7 +193,7 @@ class Accumulator():
         def to_operation(self, **kwargs):
             proc = AccumulatorProc(self.values['text'])
             node = gn.Accumulator(name=self.name()+"_accumulated", **kwargs,
-                                  res_factor=proc.res_factory, reduction=proc)
+                                  res_factory=proc.res_factory, reduction=proc)
             return node
 
     class ReduceByKeyProc(object):
@@ -173,7 +229,8 @@ class Accumulator():
             super().__init__(name,
                              terminals={'Key': {'io': 'in', 'ttype': Any},
                                         'Value': {'io': 'in', 'ttype': Any},
-                                        'Out': {'io': 'out', 'ttype': dict}})
+                                        'Out': {'io': 'out', 'ttype': dict}},
+                             global_op=True)
 
             self.values = {'text': ''}
 
@@ -188,7 +245,7 @@ class Accumulator():
             return self.widget
 
         def generate_template(self):
-            template = f"""
+            template = """
 class ReduceByKey():
 
     def __init__(self):

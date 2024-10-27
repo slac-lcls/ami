@@ -1,16 +1,21 @@
 # -*- coding: utf-8 -*-
-from pyqtgraph.Qt import QtCore, QtGui, QtWidgets
+from qtpy import QtCore, QtGui, QtWidgets
 from pyqtgraph.graphicsItems.GraphicsObject import GraphicsObject
 from pyqtgraph import functions as fn
-from pyqtgraph.pgcollections import OrderedDict
 from pyqtgraph.debug import printExc
+from collections import OrderedDict
 from ami.flowchart.Terminal import Terminal
 from networkfox import modifiers
+from lark import Lark, Transformer
 import inspect
 import weakref
 import amitypes  # noqa
 import typing  # noqa
+import logging
 
+from ami.data import RequestedData
+
+logger = logging.getLogger(__name__)
 
 def find_nearest(x):
     gs = 100
@@ -102,14 +107,17 @@ class Node(QtCore.QObject):
         self.changed = True
         self.viewed = False
         self.exception = None
+
         self.isSubgraph = False
         self.isSubgraphInput = False
         self.isSubgraphOutput = False
 
+        self.global_op = kwargs.get("global_op", False)
+
         self._input_vars = {}  # term:var
 
         terminals = kwargs.get("terminals", {})
-        self.brush = self.determineColor(terminals)
+        self.brush = self.determineColor(terminals, self.global_op)
         self.graphicsItem(self.brush)
 
         for name, opts in terminals.items():
@@ -131,7 +139,7 @@ class Node(QtCore.QObject):
             i += 1
         return name2
 
-    def determineColor(self, terminals):
+    def determineColor(self, terminals, global_op=False):
         isInput = True
         isOutput = True
         for name, term in terminals.items():
@@ -141,6 +149,8 @@ class Node(QtCore.QObject):
                 isOutput = False
 
         brush = None
+        if global_op:
+            brush = fn.mkBrush(100, 150, 255, 255)
         if isInput and not isOutput:
             brush = fn.mkBrush(255, 0, 0, 255)
         elif isOutput and not isInput:
@@ -320,7 +330,10 @@ class Node(QtCore.QObject):
         """Return the GraphicsItem for this node. Subclasses may re-implement
         this method to customize their appearance in the flowchart."""
         if self._graphicsItem is None:
-            self._graphicsItem = NodeGraphicsItem(self, brush)
+            if self.isSource():
+                self._graphicsItem = SourceNodeGraphicsItem(self, brush)
+            else:
+                self._graphicsItem = NodeGraphicsItem(self, brush)
         return self._graphicsItem
 
     def __getitem__(self, item):
@@ -351,19 +364,20 @@ class Node(QtCore.QObject):
         node = remoteTerm.node()
 
         if localTerm.isInput() and remoteTerm.isOutput():
-            # if node.exportable():
-            #     self._input_vars[localTerm.name()] = AutoExport.mangle('.'.join([node.name(),
-            #                                                                      remoteTerm.name()]))
             if node.isSubgraphInput:
                 remoteTerm = node.getInputTerm(remoteTerm)
                 node = remoteTerm.node()
 
-            if node.isSource():
+            if node.exportable() and node.values['alias']:
+                self._input_vars[localTerm.name()] = node.values['alias']
+            elif node.isSource():
                 self._input_vars[localTerm.name()] = node.name()
             else:
                 self._input_vars[localTerm.name()] = '.'.join([node.name(), remoteTerm.name()])
 
-        self.changed = localTerm.isInput()
+        if not self.changed:
+            self.changed = localTerm.isInput()
+
         self.sigTerminalConnected.emit(localTerm, remoteTerm)
 
     def disconnected(self, localTerm, remoteTerm):
@@ -386,15 +400,17 @@ class Node(QtCore.QObject):
 
         return True
 
-    def setException(self, exc):
+    def setException(self, exc, typ="exception"):
         self.exception = exc
-        self.recolor(typ="exception")
+        self.recolor(typ=typ)
 
     def clearException(self):
-        self.setException(None)
+        self.setException(None, None)
 
     def recolor(self, typ=None):
-        if typ == "exception":
+        if typ == "warning":
+            self.graphicsItem().setPen(QtGui.QPen(QtGui.QColor(255, 255, 0), 5))
+        elif typ == "exception":
             self.graphicsItem().setPen(QtGui.QPen(QtGui.QColor(255, 0, 0), 5))
         elif typ == "selected":
             self.graphicsItem().setPen(QtGui.QPen(QtGui.QColor(250, 150, 0), 3))
@@ -518,7 +534,7 @@ class NodeGraphicsItem(GraphicsObject):
 
         self.setFlags(flags)
         self.bounds = QtCore.QRectF(0, 0, 100, 100)
-        self.nameItem = QtGui.QGraphicsTextItem(self.node.name(), self)
+        self.nameItem = QtWidgets.QGraphicsTextItem(self.node.name(), self)
         self.nameItem.setDefaultTextColor(QtGui.QColor(50, 50, 50))
         self.nameItem.moveBy(self.bounds.width()/2. - self.nameItem.boundingRect().width()/2., 0)
 
@@ -527,8 +543,8 @@ class NodeGraphicsItem(GraphicsObject):
 
         self.menu = None
         self.connectedTo = None
-        self.enabled = QtGui.QAction("Enabled", self.menu, checkable=True, checked=True)
-        self.optional = QtGui.QAction("Optional Inputs", self.menu, checkable=True, checked=False)
+        self.enabled = QtWidgets.QAction("Enabled", self.menu, checkable=True, checked=True)
+        self.optional = QtWidgets.QAction("Optional Inputs", self.menu, checkable=True, checked=False)
         self.buildMenu()
 
     def setPen(self, *args, **kwargs):
@@ -662,7 +678,7 @@ class NodeGraphicsItem(GraphicsObject):
             return self.menu
 
         graph = self.node._graph
-        self.connectTo = QtGui.QMenu("Connect To")
+        self.connectTo = QtWidgets.QMenu("Connect To")
         self.connectToSubMenus = []
 
         def connect(action):
@@ -675,7 +691,7 @@ class NodeGraphicsItem(GraphicsObject):
 
         for name, from_term in self.node.terminals.items():
             if from_term.isInput() and not from_term.isConnected():
-                term_menu = QtGui.QMenu(self.node.name() + '.' + name)
+                term_menu = QtWidgets.QMenu(self.node.name() + '.' + name)
                 add_term_menu = False
 
                 for node_name, node in graph.nodes(data='node'):
@@ -683,7 +699,7 @@ class NodeGraphicsItem(GraphicsObject):
                         continue
 
                     added = False
-                    node_menu = QtGui.QMenu(node_name)
+                    node_menu = QtWidgets.QMenu(node_name)
 
                     for term_name, to_term in node.terminals.items():
                         if to_term.isOutput():
@@ -703,7 +719,7 @@ class NodeGraphicsItem(GraphicsObject):
                     self.connectToSubMenus.append(term_menu)
 
             if from_term.isOutput():
-                term_menu = QtGui.QMenu(self.node.name() + '.' + name)
+                term_menu = QtWidgets.QMenu(self.node.name() + '.' + name)
                 add_term_menu = False
 
                 for node_name, node in graph.nodes(data='node'):
@@ -711,7 +727,7 @@ class NodeGraphicsItem(GraphicsObject):
                         continue
 
                     added = False
-                    node_menu = QtGui.QMenu(node_name)
+                    node_menu = QtWidgets.QMenu(node_name)
 
                     for term_name, to_term in node.terminals.items():
                         if to_term.isInput() and not to_term.isConnected():
@@ -750,7 +766,7 @@ class NodeGraphicsItem(GraphicsObject):
             self.menu = None
 
         if self.menu is None:
-            self.menu = QtGui.QMenu()
+            self.menu = QtWidgets.QMenu()
             self.menu.setTitle("Node")
             self.enabled.toggled.connect(self.enabledFromMenu)
             self.menu.addAction(self.enabled)
@@ -764,7 +780,6 @@ class NodeGraphicsItem(GraphicsObject):
             if self.node._allowRemove:
                 self.menu.addAction("Remove node", self.node.close)
             self.menu.addAction("View Source Code", self.viewSource)
-
         return self.menu
 
     def enabledFromMenu(self, checked):
@@ -793,3 +808,135 @@ class NodeGraphicsItem(GraphicsObject):
         self.sourceEditor.setReadOnly(True)
         self.sourceEditor.setWindowTitle(self.node.__class__.__name__ + ' Source')
         self.sourceEditor.show()
+
+
+class SourceNodeGraphicsItem(NodeGraphicsItem):
+    """
+    Extension of the NodeGraphicsItem to handle the source kwargs graphics.
+    """
+    sigSourceKwargs = QtCore.Signal(object) # signal emitted when new user kwargs are supplied
+
+    def __init__(self, node, brush=None):
+        super().__init__(node, brush=brush)
+        self._source_kwargs = {}
+
+        self.kwargs_parser = Lark(kwargs_grammar, start='value') #, transformer=MyTransformer_2(), parser='lalr')
+        self.kwargs_transformer = KwargsTransformer()
+
+    @property
+    def source_kwargs(self):
+        return self._source_kwargs
+
+    @source_kwargs.setter
+    def source_kwargs(self, kws):
+        self._source_kwargs = kws
+        self.emit_source_kwargs()
+
+    def emit_source_kwargs(self):
+        logger.debug(f'Emit kws: {self.node._name} {self.source_kwargs}')
+        requested_data = RequestedData()
+        requested_data.add(self.node._name, kwargs=self.source_kwargs)
+        self.sigSourceKwargs.emit(requested_data)
+
+    def buildMenu(self, reset=False):
+        if reset:
+            # qt seg. faults if you don't delete old menu first
+            self.menu = None
+
+        if self.menu is None:
+            self.menu = QtWidgets.QMenu()
+            self.menu.setTitle("Node")
+            self.enabled.toggled.connect(self.enabledFromMenu)
+            self.menu.addAction(self.enabled)
+            if self.node._allowOptional:
+                self.optional.toggled.connect(self.optionalFromMenu)
+                self.menu.addAction(self.optional)
+            if self.node._allowAddInput:
+                self.menu.addAction("Add input", self.addInputFromMenu)
+            if self.node._allowAddOutput:
+                self.menu.addAction("Add output", self.addOutputFromMenu)
+            if self.node._allowRemove:
+                self.menu.addAction("Remove node", self.node.close)
+            if self.node.isSource():
+                self.menu.addAction("Source kwargs", self.editSourceKwargs)
+            self.menu.addAction("View Source Code", self.viewSource)
+        return self.menu
+
+    def editSourceKwargs(self):
+        self.kwargsEditorWindow = QtWidgets.QWidget()
+        layout = QtWidgets.QVBoxLayout()
+
+        label1 = QtWidgets.QLabel()
+        label1.setWordWrap(True)
+        label1_font = QtGui.QFont()
+        label1_font.setBold(True)
+        label1_font.setPointSize(14)
+        label1.setFont(label1_font)
+        label1.setText("/!\ Expert only /!\\")
+
+        label2 = QtWidgets.QLabel()
+        label2.setWordWrap(True)
+        label2.setText("Enter kwargs in a dict format: {\'k1\': v1, ...}")
+
+        self.kwargs_edit = QtWidgets.QLineEdit()
+        self.kwargs_edit.setText(str(self.source_kwargs))
+
+        cmdLayout = QtWidgets.QHBoxLayout()
+        cmd_save = QtWidgets.QPushButton("Save")
+        cmd_save.clicked.connect(self.cmd_save)
+        cmd_cancel = QtWidgets.QPushButton("Close")
+        cmd_cancel.clicked.connect(self.kwargsEditorWindow.close)
+        cmdLayout.addWidget(cmd_save)
+        cmdLayout.addWidget(cmd_cancel)
+
+        layout.addWidget(label1)
+        layout.addWidget(label2)
+        layout.addWidget(self.kwargs_edit)
+        layout.addLayout(cmdLayout)
+        self.kwargsEditorWindow.setLayout(layout)
+        self.kwargsEditorWindow.show()
+        self.kwargsEditorWindow.resize(450, self.kwargsEditorWindow.height())
+
+    def cmd_save(self):
+        #self.source_kwargs = eval(self.kwargs_edit.text())  # Code injection risk
+        kwargs = self.kwargs_edit.text()
+        if kwargs == '':
+            kwargs = "{}"
+        p = self.kwargs_parser.parse(kwargs)
+        self.source_kwargs = dict(self.kwargs_transformer.transform(p))
+
+
+kwargs_grammar = r"""
+    ?value : list
+           | dict
+           | kv_pair
+           | number
+           | string
+
+    kv_pair : (string | number) ":" value
+    list : "[" [value ("," value)*] "]"
+    dict : "{" [kv_pair ("," kv_pair)*] "}"
+
+    STRING : /".*?(?<!\\)"/ | /'.*?(?<!\\)'/
+    string : STRING
+    number : SIGNED_NUMBER
+
+    %import common.ESCAPED_STRING
+    %import common.SIGNED_NUMBER
+    %import common.WS
+    %ignore WS // ignore white space
+"""
+
+class KwargsTransformer(Transformer):
+    list = list
+    dict = dict
+    kv_pair = tuple
+
+    def number(self, value):
+        value = value[0]
+        return float(value)
+
+    def string(self, s):
+        s = s[0]
+        return str(s[1:-1])
+

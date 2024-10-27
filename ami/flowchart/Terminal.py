@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-from pyqtgraph.Qt import QtCore, QtGui, QtWidgets
+from qtpy import QtCore, QtGui, QtWidgets
 from pyqtgraph.graphicsItems.GraphicsObject import GraphicsObject
 from pyqtgraph import functions as fn
 from pyqtgraph.Point import Point
@@ -7,6 +7,7 @@ import subprocess
 import inspect
 import weakref
 import tempfile
+import typing
 
 
 class Terminal(QtCore.QObject):
@@ -164,7 +165,7 @@ class Terminal(QtCore.QObject):
                     types["Output"] = t
 
             if not checkType(types, type_file):
-                raise Exception(f"Invalid types. Expected: {self.type()} Got: {term.type()}")
+                raise Exception(f"Invalid types. Expected: {term.type()} Got: {self.type()}")
         except Exception:
             if connectionItem is not None:
                 connectionItem.close()
@@ -261,9 +262,9 @@ class TerminalGraphicsItem(GraphicsObject):
         self.term = term
         GraphicsObject.__init__(self, parent)
         self.brush = fn.mkBrush(0, 0, 0)
-        self.box = QtGui.QGraphicsRectItem(0, 0, 10, 10, self)
-        self.label = QtGui.QGraphicsTextItem(self.term.name(), self)
-        self.label.scale(0.7, 0.7)
+        self.box = QtWidgets.QGraphicsRectItem(0, 0, 10, 10, self)
+        self.label = QtWidgets.QGraphicsTextItem(self.term.name(), self)
+        self.label.setTransform(self.label.transform().scale(0.7, 0.7))
         self.newConnection = None
         self.setFiltersChildEvents(True)  # to pick up mouse events on the rectitem
         self.setZValue(1)
@@ -328,7 +329,7 @@ class TerminalGraphicsItem(GraphicsObject):
             self.menu = None
 
         if self.menu is None:
-            self.menu = QtGui.QMenu()
+            self.menu = QtWidgets.QMenu()
             self.menu.setTitle("Terminal")
 
             if self.term.isConnected():
@@ -338,7 +339,7 @@ class TerminalGraphicsItem(GraphicsObject):
                         conn.graphicsItem().buildMenu(reset=True)
                     term.graphicsItem().buildMenu(reset=True)
 
-                disconAct = QtGui.QAction("Disconnect", self.menu)
+                disconAct = QtWidgets.QAction("Disconnect", self.menu)
                 if self.term.inputTerminals():
                     disconAct.triggered.connect(lambda: disconnect(self.term, self.term.inputTerminals()))
                 elif self.term.dependentTerms():
@@ -349,13 +350,13 @@ class TerminalGraphicsItem(GraphicsObject):
                 pass
 
             if self.term.isRemovable():
-                remAct = QtGui.QAction("Remove terminal", self.menu)
+                remAct = QtWidgets.QAction("Remove terminal", self.menu)
                 remAct.triggered.connect(self.removeSelf)
                 self.menu.addAction(remAct)
                 self.menu.remAct = remAct
 
             if self.term._allowOptional:
-                optionalAct = QtGui.QAction("Optional", self.menu, checkable=True, checked=self.term.optional())
+                optionalAct = QtWidgets.QAction("Optional", self.menu, checkable=True, checked=self.term.optional())
                 optionalAct.triggered.connect(self.optional)
                 self.menu.addAction(optionalAct)
                 self.menu.optionalAct = optionalAct
@@ -564,9 +565,7 @@ def checkType(terminals, type_file=None):
         pass
 
     f_in_name = t_in.node().name() + '_' + t_in.name()
-    f_in_name = f_in_name.replace(' ', '_')
-    f_in_name = f_in_name.replace('.', '_')
-    f_in_name = f_in_name.replace(':', '_')
+    f_in_name = f_in_name.translate(checkType.replacements)
     f_in.__annotations__ = {'t': t_in.type()}
     f_in = str(inspect.signature(f_in))
     f_in = f_in.replace('~', '')
@@ -576,11 +575,16 @@ def checkType(terminals, type_file=None):
         pass
 
     f_out_name = t_out.node().name() + '_' + t_out.name()
-    f_out_name = f_out_name.replace(' ', '_')
-    f_out_name = f_out_name.replace('.', '_')
-    f_out_name = f_out_name.replace(':', '_')
+    f_out_name = f_out_name.translate(checkType.replacements)
     f_out.__annotations__ = {'return': t_out.type()}
-    f_out = str(inspect.signature(f_out))
+    f_out_sig = inspect.signature(f_out)
+    f_out_annotation = f_out_sig.return_annotation
+    if f_out_annotation is inspect.Signature.empty or f_out_annotation is typing.Any:
+        f_out_return_string = 'pass'
+    else:
+        f_out_annotation_str = f_out_annotation.__module__ + '.' + f_out_annotation.__name__
+        f_out_return_string = 'return '+f_out_annotation_str+'()'
+    f_out = str(f_out_sig)
     f_out = f_out.replace('~', '')
     f_out = f_out_name + f_out
 
@@ -592,7 +596,7 @@ def checkType(terminals, type_file=None):
             checked.append(f_in_name)
 
         if f_out_name not in checked:
-            type_file.write(f"def {f_out}:\n\tpass\n")
+            type_file.write(f"def {f_out}:\n\t{f_out_return_string}\n")
             checked.append(f_out_name)
 
         type_file.write(f"\n{f_in_name}({f_out_name}())\n\n")
@@ -602,10 +606,11 @@ def checkType(terminals, type_file=None):
             f.write("from typing import *\n")
             f.write("from mypy_extensions import TypedDict\n")
             f.write("import numbers\n")
+            f.write("import builtins\n")
             f.write("import amitypes\n")
             f.write("T = TypeVar('T')\n")
             f.write(f"def {f_in}:\n\tpass\n")
-            f.write(f"def {f_out}:\n\tpass")
+            f.write(f"def {f_out}:\n\t{f_out_return_string}")
             f.write(f"\n{f_in_name}({f_out_name}())")
             f.flush()
             status = subprocess.call(["dmypy", "check", f.name])
@@ -613,3 +618,7 @@ def checkType(terminals, type_file=None):
                 subprocess.call(["dmypy", "start"])
                 status = subprocess.call(["dmypy", "check", f.name])
             return status == 0
+
+
+# only create the translation table once
+checkType.replacements = str.maketrans(" .:|-", "_____")

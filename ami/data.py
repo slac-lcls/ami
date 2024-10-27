@@ -4,6 +4,7 @@ import abc
 import zmq
 import time
 import dill
+import json
 import typing
 import inspect
 import logging
@@ -14,10 +15,8 @@ try:
 except ImportError:
     h5py = None
 try:
-    import psana
-except ImportError:
-    psana = None
-try:
+    import warnings
+    warnings.simplefilter(action='ignore', category=FutureWarning)
     import pyarrow as pa
 except ImportError:
     pa = None
@@ -25,31 +24,10 @@ import numpy as np
 import amitypes as at
 from enum import Enum
 from dataclasses import dataclass, asdict, field
+from ami import psana, psana_uses_epics_epoch
 
 
 logger = logging.getLogger(__name__)
-
-
-def _map_numpy_types():
-    nptypemap = {}
-    for name, dtype in inspect.getmembers(np, lambda x: inspect.isclass(x) and issubclass(x, np.generic)):
-        try:
-            ptype = None
-            if 'time' in name:
-                ptype = type(dtype(0, 'D').item())
-            elif 'object' not in name:
-                ptype = type(dtype(0).item())
-
-            # if it is still a numpy dtype don't make a mapping
-            if not issubclass(ptype, np.generic):
-                nptypemap[dtype] = ptype
-        except TypeError:
-            pass
-
-    return nptypemap
-
-
-NumPyTypeDict = _map_numpy_types()
 
 
 class MsgTypes(Enum):
@@ -105,9 +83,11 @@ class Heartbeat:
     Args:
         identity (int): Heartbeat integer id number
         timestamp (float): Unix timestamp associated with heartbeat
+        prompt (bool): Flag to indicate the heartbeat prompt (not to be built)
     """
     identity: int = 0
     timestamp: float = 0.0
+    prompt: bool = False
 
     def __hash__(self):
         return hash(self.identity)
@@ -220,12 +200,30 @@ class ModuleSerializer:
     def __init__(self, module):
         self.module = module
 
+        if module == pickle and pickle.HIGHEST_PROTOCOL >= 5:
+            def dumps(msg):
+                buffers = []
+                m = pickle.dumps(msg, protocol=5, buffer_callback=buffers.append)
+                buffers.append(m)
+                return buffers
+        else:
+            def dumps(msg):
+                return [self.module.dumps(msg)]
+
+        self.dumps = dumps
+
     def __call__(self, msg):
-        return [self.module.dumps(msg)]
+        return self.dumps(msg)
 
     def sizeof(self, msg):
-        assert type(msg) is list and type(msg[0]) is bytes, "Excepts serialized message!"
-        return sys.getsizeof(msg[0])
+        assert type(msg) is list, "Excepts serialized message!"
+        size = sys.getsizeof(msg[-1])
+        for c in msg[:-1]:
+            if hasattr(pickle, 'PickleBuffer') and type(c) is pickle.PickleBuffer:
+                size += c.raw().nbytes
+            elif type(c) is bytes:
+                size += sys.getsizeof(c)
+        return size
 
 
 class ModuleDeserializer:
@@ -233,14 +231,23 @@ class ModuleDeserializer:
     def __init__(self, module):
         self.module = module
 
-    def __call__(self, data):
-        msg = [self.module.loads(d) for d in data]
-        if len(msg) == 0:
-            return None
-        elif len(msg) == 1:
-            return msg[0]
+        if module == pickle and pickle.HIGHEST_PROTOCOL >= 5:
+            def loads(data):
+                return pickle.loads(data[-1], buffers=data[:-1])
         else:
-            return msg
+            def loads(data):
+                msg = [self.module.loads(d) for d in data]
+                if len(msg) == 0:
+                    return None
+                elif len(msg) == 1:
+                    return msg[0]
+                else:
+                    return msg
+
+        self.loads = loads
+
+    def __call__(self, data):
+        return self.loads(data)
 
 
 class ArrowSerializer:
@@ -284,8 +291,8 @@ SerializationProtocols = {
     'arrow': (ArrowSerializer, ArrowDeserializer, {}),
     None:
         (ArrowSerializer, ArrowDeserializer, {})
-        if pa is not None else
-        (ModuleSerializer, ModuleDeserializer, {'module': dill}),
+        if pa is not None and pickle.HIGHEST_PROTOCOL < 5 else
+        (ModuleSerializer, ModuleDeserializer, {'module': pickle}),
 }
 
 
@@ -333,6 +340,61 @@ class TimestampConverter:
         return raw_ts, int(timestamp * self.heartbeat), unix_ts
 
 
+@dataclass
+class RequestedData:
+    def __init__(self, names=None, kws={}):
+        """
+        Container for the detectors names and their kwargs.
+        Any addition / modification of the data sources should be done using this class, as this
+        allow for easy update from one instance to another.
+        """
+        self.names = set()
+        if names:
+            self.names = set(names)
+        self.kwargs = dict()
+        if kws:
+            for k,v in kws.items():
+                if k not in self.names:
+                    continue
+                else:
+                    self.kwargs[k] = v
+
+    def __repr__(self):
+        s = str(f"{self.__class__}: ")
+        s = ', '.join(self.names)
+        if self.kwargs:
+            s += '\n'
+            s += str(self.kwargs)
+        return s
+
+    def add(self, name, kwargs=None):
+        self.names.add(name)
+        if kwargs:
+            self.kwargs[name] = kwargs
+
+    def update(self, requested_data_update):
+        self.names.update(requested_data_update.names)
+        self.kwargs.update(requested_data_update.kwargs)
+
+    def __iter__(self):
+        for name in self.names:
+            yield self.__next__(name)
+        return
+
+    def __next__(self, name):
+        """
+        Is that not too weird?
+        Iterating over this class return an instance of this class, with
+        a single name and its potential kwargs.
+        """
+        kws = self.kwargs.get(name, None)
+        req = RequestedData()
+        req.add(name, kwargs=kws)
+        return req
+
+    def __contains__(self, name):
+        return name in self.names
+
 class Source(abc.ABC):
     def __init__(self, idnum, num_workers, heartbeat_period, src_cfg, flags=None, evtid_type=None):
         """
@@ -350,8 +412,8 @@ class Source(abc.ABC):
         self.heartbeat = None
         self.old_heartbeat = None
         self.special_names = {}
-        self.requested_names = set()
-        self.requested_data = set()
+        self.requested_names = RequestedData()
+        self.requested_data = RequestedData()
         self.requested_special = {}
         self.config = src_cfg
         self.flags = flags or {}
@@ -370,6 +432,7 @@ class Source(abc.ABC):
             'repeat': lambda s: s if isinstance(s, bool) else s.lower() == 'true',
             'counting': lambda s: s if isinstance(s, bool) else s.lower() == 'true',
             'files': lambda n: n if isinstance(n, list) else [os.path.expanduser(f) for f in n.split(',')],
+            'config': lambda c: c if isinstance(c, dict) else os.path.expanduser(c),
         }
         # Correct the types of special keys in the dictionary that might have
         # been passed as strings (can happen when specifying config on the
@@ -427,6 +490,17 @@ class Source(abc.ABC):
         """
         return self.config.get('type', 'generic')
 
+    @property
+    def prompt_mode(self):
+        """
+        Getter for the prompt mode state. This is based on the heartbeat period.
+        A heartbeat period of 0 will yield True otherwise False.
+
+        Returns:
+            Boolean value of whether prompt mode is active
+        """
+        return self.heartbeat_period == 0
+
     def reset_heartbeat(self):
         """
         Resets the heartbeat to its initial state.
@@ -450,7 +524,10 @@ class Source(abc.ABC):
         """
         if timestamp is None:
             timestamp = time.time()
-        if self.heartbeat is None:
+        if self.prompt_mode:
+            self.old_heartbeat = Heartbeat(value, timestamp, True)
+            return True
+        elif self.heartbeat is None:
             self.heartbeat = Heartbeat(value // self.heartbeat_period, timestamp)
             return False
         elif (value // self.heartbeat_period) > self.heartbeat:
@@ -621,22 +698,26 @@ class Source(abc.ABC):
             ('heartbeat', self.heartbeat.identity if self.heartbeat is not None else None),
             ('source', self.source)
         ]
-        data.update({k: v for k, v in base if k in self.requested_names})
+        data.update({k: v for k, v in base if k in self.requested_names.names})
         msg = Message(mtype=MsgTypes.Datagram, identity=self.idnum, payload=data, timestamp=eventid)
         yield msg
 
-    def request(self, names):
+    def request(self, requested_data, is_kws_update=False):
         """
         Request that the source includes the specified data from its list of
         available data when it emits event messages.
 
         Args:
-            names (list): names of the data being requested
+            requested_data (ami.data.RequestedData): names of the data being requested
         """
-        self.requested_names = set(names)
-        self.requested_data = set()
-        self.requested_special = {}
-        for name in self.requested_names:
+        logger.debug(f"Requested_data before: {self.requested_data}")
+        logger.debug(f"Requested_data: {requested_data}")
+        if not is_kws_update:
+            self.requested_names = requested_data # includes things like timestamp, source, ...
+            self.requested_data = RequestedData() # will weed out timestamp, source, ...
+            self.requested_special = {}
+
+        for name, req in zip(requested_data.names, requested_data):
             if name in self.special_names:
                 sub_name, info = self.special_names[name]
                 if sub_name not in self.requested_special:
@@ -644,9 +725,13 @@ class Source(abc.ABC):
                 self.requested_special[sub_name][name] = info
             elif name not in self._base_names:
                 if name in self.names:
-                    self.requested_data.add(name)
+                    self.requested_data.update(req)
+                    if is_kws_update: # ugly way to clear kwargs
+                        if name not in requested_data.kwargs and name in self.requested_data.kwargs:
+                            self.requested_data.kwargs.pop(name)
                 else:
                     logger.debug("DataSrc: requested source \'%s\' is not available", name)
+        logger.debug(f"Requested_data after: {self.requested_data}\n")
 
     @abc.abstractmethod
     def events(self):
@@ -781,89 +866,107 @@ class HierarchicalDataSource(Source):
         self._counter = None
         time.sleep(self.init_time)
 
-        while self.repeat:
-            for run in self._runs():
-                self.source.run = run
-                self.source.key += 1
-                # reset the step count to zero
-                self.step_count = 0
-                # clear type info from previous runs
-                self.data_types = {}
-                self.special_types = {}
-                self.grouped_types = {}
-                # call the subclasses update function then emit the configure message
-                self._update(run)
-                yield self.configure()
+        for run in self._runs():
+            self.source.run = run
+            self.source.key += 1
+            # reset the step count to zero
+            self.step_count = 0
+            # clear type info from previous runs
+            self.data_types = {}
+            self.special_types = {}
+            self.grouped_types = {}
+            # call the subclasses update function then emit the configure message
+            self._update(run)
+            yield self.configure()
 
-                # loop over the steps in the run (if any)
-                for step in self._steps(run):
-                    # add the step to the source
-                    self.source.step = step
-                    # if the run has more than one step increase the source key
-                    if self.step_count > 0:
-                        self.source.key += 1
-                    # emit the beginstep message
-                    yield self.begin_step()
+            # loop over the steps in the run (if any)
+            for step in self._steps(run):
+                # add the step to the source
+                self.source.step = step
+                # if the run has more than one step increase the source key
+                if self.step_count > 0:
+                    self.source.key += 1
+                # emit the beginstep message
+                yield self.begin_step()
 
-                    # loop over the events in the step
-                    for evt in self._events(step):
-                        self.source.evt = evt
-                        # get the subclasses timestamp implementation
-                        eventid, heartbeat, unix_ts = self.timestamp(evt)
-                        # check the heartbeat
-                        if self.check_heartbeat_boundary(heartbeat, timestamp=unix_ts):
-                            yield self.heartbeat_msg()
+                # loop over the events in the step
+                for evt in self._events(step):
+                    self.source.evt = evt
+                    # get the subclasses timestamp implementation
+                    eventid, heartbeat, unix_ts = self.timestamp(evt)
+                    # check the heartbeat if not in prompt mode
+                    if not self.prompt_mode and self.check_heartbeat_boundary(heartbeat, timestamp=unix_ts):
+                        yield self.heartbeat_msg()
+                    # emit the processed event data
+                    yield from self.event(eventid, unix_ts, self._process(evt))
+                    # check the heartbeat if in prompt mode
+                    if self.prompt_mode and self.check_heartbeat_boundary(heartbeat, timestamp=unix_ts):
+                        yield self.heartbeat_msg()
+                    # sleep for the requested event interval
+                    time.sleep(self.interval)
+                    # remove reference to evt object
+                    self.source.evt = None
 
-                        # emit the processed event data
-                        yield from self.event(eventid, unix_ts, self._process(evt))
-                        time.sleep(self.interval)
-                        # remove reference to evt object
-                        self.source.evt = None
+                # emit the endstep message
+                yield self.end_step()
+                # remove reference to step object
+                self.source.step = None
+                # increase the step count
+                self.step_count += 1
 
-                    # emit the endstep message
-                    yield self.end_step()
-                    # remove reference to step object
-                    self.source.step = None
-                    # increase the step count
-                    self.step_count += 1
-
-                # signal that the run has ended
-                yield self.unconfigure()
-                # remove reference to run object
-                self.source.run = None
-                # call the subclass cleanup method
-                self._cleanup()
-            # To avoid reconnecting to the previous shmem server (which is
-            # being destroyed), hold off attempting to connect again
-            time.sleep(1)
+            # signal that the run has ended
+            yield self.unconfigure()
+            # remove reference to run object
+            self.source.run = None
+            # call the subclass cleanup method
+            self._cleanup()
 
 
 class PsanaSource(HierarchicalDataSource):
     def __init__(self, idnum, num_workers, heartbeat_period, src_cfg, flags=None):
         super().__init__(idnum, num_workers, heartbeat_period, src_cfg, flags)
         self.ts_converter = TimestampConverter()
+        self.epics_epoch = psana_uses_epics_epoch()
         self.ds_keys = {
-            'exp', 'dir', 'files', 'shmem', 'filter', 'batch_size', 'max_events', 'sel_det_ids', 'det_name', 'run'
+            'exp',
+            'dir',
+            'files',
+            'shmem',
+            'filter',
+            'batch_size',
+            'max_events',
+            'sel_det_ids',
+            'det_name',
+            'run',
+            'live',
+            'smd',
+            'calibdir',
         }
         # special attributes that are per run instead of per event from a detectors interface, e.g. calib constants
         self.special_attrs = {
-            'calibconst': typing.Dict,
-            'epicsinfo': typing.Dict,
+            'calibconst': dict,
+        }
+        self.evt_attrs = {
+            'keepraw': int,
         }
         if psana is None:
             raise NotImplementedError("psana is not available!")
 
     def _timestamp(self, evt):
-        return self.ts_converter(evt.timestamp)
+        return self.ts_converter(evt.timestamp, epics_epoch=self.epics_epoch)
 
     @property
     def ds(self):
         ps_kwargs = {k: self.config[k] for k in self.ds_keys if k in self.config}
-        if 'files' in ps_kwargs and type(ps_kwargs['files']) is list:
-            ps_kwargs['files'] = ps_kwargs['files'][0]
 
-        if 'run' in ps_kwargs:
-            ps_kwargs['run'] = int(ps_kwargs['run'])
+        convert_kwargs = {
+            'run': lambda s: s if isinstance(s, int) else int(s),
+            'live': lambda s: s if isinstance(s, bool) else s.lower() == 'true',
+            'smd': lambda s: s if isinstance(s, bool) else s.lower() == 'true',
+        }
+        for key, func in convert_kwargs.items():
+            if key in ps_kwargs:
+                ps_kwargs[key] = func(ps_kwargs[key])
 
         return psana.DataSource(**ps_kwargs)
 
@@ -898,6 +1001,12 @@ class PsanaSource(HierarchicalDataSource):
         for (detname, det_xface_name), det_attr in run.scaninfo.items():
             yield detname, det_xface_name, [det_attr], True
 
+    def _update_evt_attrs(self):
+        for attr_name, attr_type in self.evt_attrs.items():
+            if hasattr(psana.event.Event, attr_name):
+                self.data_types[attr_name] = attr_type
+                self.special_types[attr_name] = getattr(psana.event.Event, attr_name)
+
     def _update_special_attrs(self, detname, det_interface):
         for attr, attr_type in self.special_attrs.items():
             if hasattr(det_interface, attr):
@@ -923,6 +1032,35 @@ class PsanaSource(HierarchicalDataSource):
             group_name = self.delimiter.join((detname, det_xface_name))
             self.data_types[group_name] = at.Group
             self.grouped_types[group_name] = det_attr_list
+
+    def _update_scanvars(self, scan_name, var_type, var_names):
+        def safe_access(o, c):
+            for v in o:
+                if v.name() == c:
+                    if var_type == at.ScanMonitorType:
+                        return v.loValue(), v.hiValue()
+                    else:
+                        return v.value()
+
+        for var_key_name in var_names:
+            var_name = self.delimiter.join((scan_name, var_key_name))
+            self.data_types[var_name] = var_type
+            accessor = (safe_access, (var_key_name,), {})
+            self.special_names[var_name] = (scan_name, accessor)
+
+    def _update_waveform(self, wf_name, chan_type, num_chans):
+        def safe_access(o, c):
+            try:
+                return o[c]
+            except IndexError:
+                return None
+
+        for chan_key in range(num_chans):
+            chan_key_name = str(chan_key)
+            chan_name = self.delimiter.join((wf_name, chan_key_name))
+            self.data_types[chan_name] = chan_type
+            accessor = (safe_access, (chan_key,), {})
+            self.special_names[chan_name] = (wf_name, accessor)
 
     def _update_hsd_segment(self, hsd_name, hsd_type, seg_chans):
         for seg_key, chanlist in seg_chans.items():
@@ -954,6 +1092,9 @@ class PsanaSource(HierarchicalDataSource):
             # make & cache the psana Detector object
             det_interface = self._update_dets(run, detname, is_env_det)
 
+            # check if the evt has metadata to expose - e.g. keepraw
+            self._update_evt_attrs()
+
             # check if the detector has calibconstants
             self._update_special_attrs(detname, det_interface)
 
@@ -973,14 +1114,54 @@ class PsanaSource(HierarchicalDataSource):
                 except ValueError:
                     attr_type = typing.Any
                 if attr_type in at.HSDTypes:
-                    # ignore things which are not derived from typing.Dict
-                    if str(attr_type).startswith('typing.Dict'):
+                    # ignore things which are not derived from dict
+                    if str(attr_type).startswith('dict'):
                         seg_chans = getattr(det_interface, det_xface_name)._seg_chans()
                         self._update_hsd_segment(attr_name, attr_type, seg_chans)
                     else:
                         logger.debug("DataSrc: unsupported HSDType: %s", attr_type)
                     # add the overall hsdtype too
                     self.data_types[attr_name] = attr_type
+                elif attr_type in at.MultiChannelScalarTypes:
+                    if attr_type is at.MultiChannelInt:
+                        chan_type = int
+                    else:
+                        chan_type = float
+                    # update the individual channels
+                    self._update_waveform(attr_name, chan_type, det_interface.nchannels)
+                    # add the overall acqiris type too
+                    self.data_types[attr_name] = attr_type
+                elif attr_type in at.AcqirisTypes:
+                    # update the individual channels
+                    self._update_waveform(attr_name, at.AcqirisChannel, det_interface.nchannels)
+                    # add the overall acqiris type too
+                    self.data_types[attr_name] = attr_type
+                elif attr_type in at.GenericWfTypes:
+                    # update the individual channels
+                    self._update_waveform(attr_name, at.GenericWfChannel, det_interface.nchannels)
+                    # add the overall genericwf type too
+                    self.data_types[attr_name] = attr_type
+                elif attr_type in at.ScanTypes:
+                    var_type = None
+                    var_names = None
+                    # set the var_type and var_names based on the type
+                    if attr_type is at.ScanControls:
+                        var_type = at.ScanControlType
+                        var_names = getattr(det_interface, det_xface_name).control_names
+                    elif attr_type is at.ScanMonitors:
+                        var_type = at.ScanMonitorType
+                        var_names = getattr(det_interface, det_xface_name).monitor_names
+                    elif attr_type is at.ScanLabels:
+                        var_type = at.ScanLabelType
+                        var_names = getattr(det_interface, det_xface_name).label_names
+                    else:
+                        logger.debug("DataSrc: unsupported ScanType: %s", attr_type)
+                    # if var_type is not None then update the scan vars
+                    if var_type is not None:
+                        # update the individual scan variables
+                        self._update_scanvars(attr_name, var_type, var_names)
+                        # add the overall scan variable type too
+                        self.data_types[attr_name] = attr_type
                 else:
                     self.data_types[attr_name] = attr_type
 
@@ -990,10 +1171,13 @@ class PsanaSource(HierarchicalDataSource):
     def _process(self, evt):
         event = {}
 
-        for name in self.requested_data:
+        for name in self.requested_data.names:
             # check if it is a special type like calibconst
             if name in self.special_types:
-                obj = self.special_types[name]
+                if name in self.evt_attrs:
+                    obj = self.special_types[name](evt)
+                else:
+                    obj = self.special_types[name]
                 # check if the object is callable or not before adding to the event
                 event[name] = obj() if callable(obj) else obj
             elif name in self.detectors and name not in self.env_detectors:
@@ -1015,12 +1199,20 @@ class PsanaSource(HierarchicalDataSource):
                     for attr in self.grouped_types[name]:
                         grouped[attr] = getattr(obj, attr)(evt)
                     event[name] = at.Group(name, self.src_type, type(obj).__name__, grouped)
-                else:
+                else: # 'normal' detectors
                     # loop to the bottom level of the Det obj and get data
                     obj = self.detectors[detname].det
                     for token in namesplit[1:]:
                         obj = getattr(obj, token)
-                    event[name] = obj(evt)
+                    if name in self.requested_data.kwargs:
+                        logger.debug(f'Use kwargs here: {self.requested_data.kwargs[name]}')
+                        try:
+                            event[name] = obj(evt, **self.requested_data.kwargs[name])
+                        except TypeError:
+                            print(f'Bad kwargs passed to {obj}.\nIgnoring custom kwargs.')
+                            event[name] = obj(evt)  # default back to not using kwargs
+                    else:
+                        event[name] = obj(evt)
 
         for name, sub_names in self.requested_special.items():
             namesplit = name.split(':')
@@ -1131,7 +1323,7 @@ class Hdf5Source(HierarchicalDataSource):
                     if isinstance(h5_native_type, h5py.h5t.TypeBitfieldID):
                         self.data_types[self.encode(name)] = bool
                     else:
-                        self.data_types[self.encode(name)] = NumPyTypeDict.get(obj.dtype.type, typing.Any)
+                        self.data_types[self.encode(name)] = at.NumPyTypeDict.get(obj.dtype.type, typing.Any)
                 else:
                     self.data_types[self.encode(name)] = typing.Any
 
@@ -1153,7 +1345,7 @@ class Hdf5Source(HierarchicalDataSource):
 
         event = {}
 
-        for name in self.requested_data:
+        for name in self.requested_data.names:
             if name in self.special_types:
                 dset = run[self.decode(name)]
                 with dset.astype(self.special_types[name]):
@@ -1184,6 +1376,12 @@ class SimSource(Source):
         super().__init__(idnum, num_workers, heartbeat_period, src_cfg, flags)
         self.count = 0
         self.synced = False
+        # load the simulation configuration if not already done
+        sim_cfg = self.config.get('config', {})
+        if not isinstance(sim_cfg, dict):
+            with open(sim_cfg, 'r') as cnf:
+                self.config['config'] = json.load(cnf)
+        # set up sync connection if specified
         if 'sync' in self.config:
             self.ctx = zmq.Context()
             self.ts_src = self.ctx.socket(zmq.REQ)
@@ -1196,6 +1394,8 @@ class SimSource(Source):
                 return int
             else:
                 return float
+        elif config['dtype'] == 'List':
+            return list
         elif config['dtype'] == 'Waveform':
             return at.Array1d
         elif config['dtype'] == 'Image':
@@ -1208,6 +1408,13 @@ class SimSource(Source):
 
     def _types(self):
         return {name: self._map_dtype(config) for name, config in self.simulated.items()}
+
+    def _load_sim_config(self):
+        sim_cfg = self.config.get('config', {})
+        if not isinstance(sim_cfg, dict):
+            with open(sim_cfg, 'r') as cnf:
+                sim_cfg = json.load(cnf)
+        self.config['config'] = sim_cfg
 
     @property
     def simulated(self):
@@ -1227,6 +1434,7 @@ class RandomSource(SimSource):
     def __init__(self, idnum, num_workers, heartbeat_period, src_cfg, flags=None):
         super().__init__(idnum, num_workers, heartbeat_period, src_cfg, flags)
         np.random.seed([idnum])
+        self.rng = np.random.default_rng(idnum)
 
     def events(self):
         time.sleep(self.init_time)
@@ -1235,10 +1443,10 @@ class RandomSource(SimSource):
             event = {}
             # get the timestamp and check heartbeat
             eventid, timestamp = self.timestamp
-            if self.check_heartbeat_boundary(eventid):
+            if not self.prompt_mode and self.check_heartbeat_boundary(eventid):
                 yield self.heartbeat_msg()
             for name, config in self.simulated.items():
-                if name in self.requested_data:
+                if name in self.requested_data.names:
                     if config['dtype'] == 'Scalar':
                         value = config['range'][0] + (config['range'][1] - config['range'][0]) * np.random.rand(1)[0]
                         if config.get('integer', False):
@@ -1247,9 +1455,16 @@ class RandomSource(SimSource):
                             event[name] = value
                     elif config['dtype'] == 'Waveform' or config['dtype'] == 'Image':
                         event[name] = np.random.normal(config['pedestal'], config['width'], config['shape'])
+                    elif config['dtype'] == 'List':
+                        if config.get('type', "integer") == "integer":
+                            event[name] = list(self.rng.integers(low=config['range'][0],
+                                                                 high=config['range'][1],
+                                                                 size=config['shape']))
                     else:
                         logger.warn("DataSrc: %s has unknown type %s", name, config['dtype'])
             yield from self.event(eventid, timestamp, event)
+            if self.prompt_mode and self.check_heartbeat_boundary(eventid):
+                yield self.heartbeat_msg()
             time.sleep(self.interval)
         # signal source has finished
         yield self.unconfigure()
@@ -1268,10 +1483,10 @@ class StaticSource(SimSource):
             event = {}
             # get the timestamp and check heartbeat
             eventid, timestamp = self.timestamp
-            if self.check_heartbeat_boundary(eventid):
+            if not self.prompt_mode and self.check_heartbeat_boundary(eventid):
                 yield self.heartbeat_msg()
             for name, config in self.simulated.items():
-                if name in self.requested_data:
+                if name in self.requested_data.names:
                     if config['dtype'] == 'Scalar':
                         event[name] = 1
                     elif config['dtype'] == 'Waveform' or config['dtype'] == 'Image':
@@ -1280,6 +1495,8 @@ class StaticSource(SimSource):
                         logger.warn("DataSrc: %s has unknown type %s", name, config['dtype'])
             count += 1
             yield from self.event(eventid, timestamp, event)
+            if self.prompt_mode and self.check_heartbeat_boundary(eventid):
+                yield self.heartbeat_msg()
             if count >= self.bound:
                 break
             time.sleep(self.interval)

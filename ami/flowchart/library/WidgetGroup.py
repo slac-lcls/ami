@@ -7,8 +7,7 @@ Distributed under MIT/X11 license. See license.txt for more information.
 This class addresses the problem of having to save and restore the state
 of a large group of widgets.
 """
-
-from pyqtgraph.Qt import QtCore, QtGui, QtWidgets
+from qtpy import QtCore, QtGui, QtWidgets
 from pyqtgraph.widgets.ColorButton import ColorButton
 from pyqtgraph.widgets.SpinBox import SpinBox
 import weakref
@@ -16,6 +15,9 @@ import inspect
 import re
 import numpy as np
 
+import os
+import logging
+logger = logging.getLogger(__name__)
 
 __all__ = ['WidgetGroup']
 
@@ -78,35 +80,38 @@ class WidgetGroup(QtCore.QObject):
     # Custom widgets not in this list can be made to work with WidgetGroup by giving them a
     # 'widgetGroupInterface' method which returns the tuple.
     classes = {
-        QtGui.QSpinBox: (lambda w: w.valueChanged,
-                         QtGui.QSpinBox.value,
-                         QtGui.QSpinBox.setValue),
-        QtGui.QDoubleSpinBox: (lambda w: w.valueChanged,
-                               QtGui.QDoubleSpinBox.value,
-                               QtGui.QDoubleSpinBox.setValue),
-        QtGui.QSplitter: (None,
-                          splitterState,
-                          restoreSplitter,
-                          True),
-        QtGui.QCheckBox: (lambda w: w.stateChanged,
-                          QtGui.QCheckBox.isChecked,
-                          QtGui.QCheckBox.setChecked),
-        QtGui.QComboBox: (lambda w: w.currentIndexChanged,
-                          comboState,
-                          setComboState),
-        QtGui.QGroupBox: (lambda w: w.toggled,
-                          QtGui.QGroupBox.isChecked,
-                          QtGui.QGroupBox.setChecked,
-                          True),
-        QtGui.QLineEdit: (lambda w: w.textChanged,
-                          lambda w: str(w.text()),
-                          QtGui.QLineEdit.setText),
-        QtGui.QRadioButton: (lambda w: w.toggled,
-                             QtGui.QRadioButton.isChecked,
-                             QtGui.QRadioButton.setChecked),
-        QtGui.QSlider: (lambda w: w.valueChanged,
-                        QtGui.QSlider.value,
-                        QtGui.QSlider.setValue),
+        QtWidgets.QSpinBox: (lambda w: w.valueChanged,
+                             QtWidgets.QSpinBox.value,
+                             QtWidgets.QSpinBox.setValue),
+        QtWidgets.QDoubleSpinBox: (lambda w: w.valueChanged,
+                                   QtWidgets.QDoubleSpinBox.value,
+                                   QtWidgets.QDoubleSpinBox.setValue),
+        QtWidgets.QSplitter: (None,
+                              splitterState,
+                              restoreSplitter,
+                              True),
+        QtWidgets.QCheckBox: (lambda w: w.stateChanged,
+                              QtWidgets.QCheckBox.isChecked,
+                              QtWidgets.QCheckBox.setChecked),
+        QtWidgets.QComboBox: (lambda w: w.currentIndexChanged,
+                              comboState,
+                              setComboState),
+        QtWidgets.QGroupBox: (lambda w: w.toggled,
+                              QtWidgets.QGroupBox.isChecked,
+                              QtWidgets.QGroupBox.setChecked,
+                              True),
+        QtWidgets.QLineEdit: (lambda w: w.textChanged,
+                              lambda w: str(w.text()),
+                              QtWidgets.QLineEdit.setText),
+        QtWidgets.QRadioButton: (lambda w: w.toggled,
+                                 QtWidgets.QRadioButton.isChecked,
+                                 QtWidgets.QRadioButton.setChecked),
+        QtWidgets.QSlider: (lambda w: w.valueChanged,
+                            QtWidgets.QSlider.value,
+                            QtWidgets.QSlider.setValue),
+        # PushButtonSelectFile: (lambda w: w.path_is_changed,
+        #                       PushButtonSelectFile.fname,
+        #                       PushButtonSelectFile.set_fname),
     }
 
     sigChanged = QtCore.Signal(object, object, object)
@@ -156,6 +161,7 @@ class WidgetGroup(QtCore.QObject):
         self.scales[w] = scale
         self.readWidget(w)
 
+        logger.debug('WidgetGroup.addWidget for type=%s' % (str(type(w))))
         if type(w) in WidgetGroup.classes:
             signal = WidgetGroup.classes[type(w)][0]
         else:
@@ -180,6 +186,7 @@ class WidgetGroup(QtCore.QObject):
 
     def interface(self, obj):
         t = type(obj)
+        logger.debug('WidgetGroup.interface for type %s' % str(t))
         if t in WidgetGroup.classes:
             return WidgetGroup.classes[t]
         else:
@@ -224,6 +231,7 @@ class WidgetGroup(QtCore.QObject):
             n, g = n
 
         val = self.readWidget(w)
+        logger.debug('WidgetGroup.widgetChanged for type %s  args=%s  val=%s' % (str(type(w)), str(args), str(val)))
         self.sigChanged.emit(n, g, val)
 
     def state(self):
@@ -250,6 +258,7 @@ class WidgetGroup(QtCore.QObject):
                 self.setWidget(w, v)
 
     def readWidget(self, w):
+        logger.debug('WidgetGroup.readWidget for type %s' % str(type(w)))
         if type(w) in WidgetGroup.classes:
             getFunc = WidgetGroup.classes[type(w)][1]
         else:
@@ -276,12 +285,16 @@ class WidgetGroup(QtCore.QObject):
             self.cache[g][n] = val
         else:
             self.cache[n] = val
+
+        logger.debug('WidgetGroup.readWidget name: %s  val: %s' % (str(n), str(val)))
+
         return val
 
     def setWidget(self, w, v):
         if self.scales[w] is not None:
             v *= self.scales[w]
 
+        logger.debug('WidgetGroup.setWidget for type=%s value=%s' % (str(type(w)), str(v)))
         if type(w) in WidgetGroup.classes:
             setFunc = WidgetGroup.classes[type(w)][2]
         else:
@@ -291,8 +304,10 @@ class WidgetGroup(QtCore.QObject):
         # then just call the method directly. Otherwise, pass in the widget as the first arg
         # to the function.
         if inspect.ismethod(setFunc) and setFunc.__self__ is not None:
+            logger.debug('WidgetGroup.setWidget setFunc(v) v: "%s"' % str(v))
             setFunc(v)
         else:
+            logger.debug('WidgetGroup.setWidget setFunc(w, v)')
             setFunc(w, v)
 
 
@@ -327,7 +342,7 @@ class FloatValidator(QtGui.QValidator):
         return match.groups()[0] if match else ""
 
 
-class ScientificDoubleSpinBox(QtGui.QDoubleSpinBox):
+class ScientificDoubleSpinBox(QtWidgets.QDoubleSpinBox):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -358,8 +373,71 @@ class ScientificDoubleSpinBox(QtGui.QDoubleSpinBox):
 
     def widgetGroupInterface(self):
         return (lambda w: w.valueChanged,
-                QtGui.QDoubleSpinBox.value,
-                QtGui.QDoubleSpinBox.setValue)
+                QtWidgets.QDoubleSpinBox.value,
+                QtWidgets.QDoubleSpinBox.setValue)
+
+
+class PushButtonSelectFile(QtWidgets.QPushButton):
+    path_is_changed = QtCore.Signal()  # ('QString')
+
+    def __init__(self, *args,
+                 parent=None,
+                 path='select',
+                 mode='r',
+                 fltr='*.text *.txt *.data *.dat\n *', **kwargs):
+        super().__init__(path, parent=parent)
+        self.mode = mode
+        self.fltr = fltr
+        self.setToolTip('Click on button and select file')
+        self.setMinimumWidth(500)
+        # self.setTextInteractionFlags(Qt.TextSelectableByMouse)
+        self.clicked.connect(self.on_but)
+        logging.debug('PushButtonSelectFile.__init__ for path %s' % path)
+
+    def on_but(self):
+        logger.info('PushButtonSelectFileemit.on_but %s' % self.text())
+        path_old = self.fname()
+
+        resp = QtWidgets.QFileDialog.getSaveFileName(None, 'Output file', path_old, filter=self.fltr)\
+            if self.mode == 'w' else\
+            QtWidgets.QFileDialog.getOpenFileName(None, 'Input file', path_old, filter=self.fltr)
+
+        logger.debug('response: %s len=%d' % (resp, len(resp)))
+
+        path, filt = resp
+        dname, fname = os.path.split(path)
+
+        if self.mode == 'r' and not os.path.exists(path):
+            logger.info('pass does not exist: %s' % path)
+            return
+
+        elif dname == '' or fname == '':
+            logger.info('input directiry name "%s" or file name "%s" is empty... use default values' % (dname, fname))
+            return
+
+        elif path == path_old:
+            logger.info('path has not been changed: %s' % str(path))
+            return
+
+        else:
+            self.set_fname(path)
+            logger.info('PushButtonSelectFileemit.on_but signal for selected file: %s' % path)
+            self.path_is_changed.emit()
+
+    def fname(self):
+        return str(self.text())
+
+    def set_fname(self, s=None):
+        logging.info('PushButtonSelectFile.set_fname: %s' % str(s))
+        if s is None:
+            return
+        self.setText(str(s))
+
+    def widgetGroupInterface(self):
+        logging.info('PushButtonSelectFile.widgetGroupInterface fname: %s' % self.fname())
+        return (lambda w: w.path_is_changed,
+                self.fname,
+                self.set_fname)
 
 
 def generateUi(opts):
@@ -367,8 +445,8 @@ def generateUi(opts):
     if len(opts) == 0:
         return None, None, None, None
 
-    widget = QtGui.QWidget()
-    layout = QtGui.QFormLayout()
+    widget = QtWidgets.QWidget()
+    layout = QtWidgets.QFormLayout()
     # layout.setSpacing(0)
     widget.setLayout(layout)
     ctrls = {}
@@ -395,7 +473,7 @@ def generateUi(opts):
             name = o['group']
             if name not in groupboxes:
                 groupbox = QtWidgets.QGroupBox(parent=widget)
-                groupbox_layout = QtGui.QFormLayout()
+                groupbox_layout = QtWidgets.QFormLayout()
                 groupbox.setLayout(groupbox_layout)
                 groupboxes[name] = (groupbox, groupbox_layout)
                 groupbox.setTitle(name)
@@ -409,7 +487,7 @@ def generateUi(opts):
             parent = widget
 
         if t == 'intSpin':
-            w = QtGui.QSpinBox(parent=parent)
+            w = QtWidgets.QSpinBox(parent=parent)
             if 'max' in o:
                 w.setMaximum(o['max'])
             else:
@@ -436,7 +514,7 @@ def generateUi(opts):
             w = SpinBox(parent=widget)
             w.setOpts(**o)
         elif t == 'check':
-            w = QtGui.QCheckBox(parent=parent)
+            w = QtWidgets.QCheckBox(parent=parent)
             w.setFocus()
             if 'checked' in o:
                 val = o['checked']
@@ -444,7 +522,7 @@ def generateUi(opts):
             else:
                 val = False
         elif t == 'combo':
-            w = QtGui.QComboBox(parent=parent)
+            w = QtWidgets.QComboBox(parent=parent)
             for i in o['values']:
                 w.addItem(str(i), i)
             if 'value' in o:
@@ -454,11 +532,21 @@ def generateUi(opts):
             if 'value' in o:
                 w.setColor(o['value'])
         elif t == 'text':
-            w = QtGui.QLineEdit(parent=parent)
+            w = QtWidgets.QLineEdit(parent=parent)
             if 'placeholder' in o:
                 w.setPlaceholderText(o['placeholder'])
             if 'value' in o:
                 w.setText(o['value'])
+        elif t == 'file_in':
+            w = PushButtonSelectFile(parent=parent, mode='r', fltr='*.text *.txt *.data *.dat *.npy\n *')
+            logger.info('file_in widget: %s' % str(w))
+            if 'value' in o:
+                w.set_fname(o['value'])
+        elif t == 'file_out':
+            w = PushButtonSelectFile(parent=parent, mode='w', fltr='*.text *.txt *.data *.dat *.npy\n *')
+            logger.info('file_out widget: %s' % str(w))
+            if 'value' in o:
+                w.set_fname(o['value'])
         else:
             raise Exception("Unknown widget type '%s'" % str(t))
 

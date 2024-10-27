@@ -36,6 +36,7 @@ class Transformation(abc.ABC):
         self.end_run_func = kwargs.get('end_run', None)
         self.begin_step_func = kwargs.get('begin_step', None)
         self.end_step_func = kwargs.get('end_step', None)
+        self.exportable = False
         self.is_global_operation = False
 
     def __hash__(self):
@@ -52,8 +53,8 @@ class Transformation(abc.ABC):
                     self.name == getattr(other, 'name', None))
 
     def __repr__(self):
-        return u"%s(name='%s', color='%s', inputs=%s, outputs=%s)" % \
-            (self.__class__.__name__, self.name, self.color, self.inputs, self.outputs)
+        return u"%s(name='%s', color='%s', inputs=%s, outputs=%s, parent=%s)" % \
+            (self.__class__.__name__, self.name, self.color, self.inputs, self.outputs, self.parent)
 
     def to_operation(self):
         """
@@ -203,19 +204,43 @@ class ReduceByKey(GlobalTransformation):
 
 
 class Accumulator(GlobalTransformation):
+    """
+    Accumulator is a GlobalTransformation that will infinitely acculumate events.
+    """
 
     def __init__(self, **kwargs):
+        """
+        Keyword Arguments:
+            reduction (function): Function is used to reduce arguments
+            res_factory (function): Function that is called at the end of a heartbeat to reset accumulator \
+                                    on workers and local collectors
+        """
         super().__init__(**kwargs)
-        self.res_factory = kwargs.pop('res_factory', lambda: 0)
+        self.res_factory = kwargs.pop('res_factory', lambda *args: (0, ()))
         assert hasattr(self.res_factory, '__call__'), 'res_factory is not callable'
-        self.res = self.res_factory()
+        self.res_args = ()
+        self.res = None
+        self.count = 0
 
     def __call__(self, *args, **kwargs):
-        self.res = self.reduction(self.res, *args)
-        return self.res
+        if self.is_expanded:
+            count, value = args
+        else:
+            count = 1
+            value = args[0]
+
+        self.count += count
+
+        if self.res is None:
+            self.res, self.res_args = self.res_factory(value)
+
+        self.res = self.reduction(self.res, value)
+
+        return self.count, self.res
 
     def reset(self):
-        self.res = self.res_factory()
+        self.res, _ = self.res_factory(self.res_args)
+        self.count = 0
 
     def heartbeat_finished(self):
         if self.color != 'globalCollector':
@@ -229,8 +254,10 @@ class PickN(GlobalTransformation):
 
     def __init__(self, **kwargs):
         N = kwargs.pop('N', 1)
+        exportable = kwargs.pop('exportable', False)
         super().__init__(**kwargs)
         self.N = N
+        self.exportable = exportable
         self.idx = 0
         self.res = [None]*self.N
         self.clear = False
@@ -260,6 +287,48 @@ class PickN(GlobalTransformation):
 
     def reset(self):
         self.res = [None]*self.N
+
+
+class SumN(GlobalTransformation):
+
+    def __init__(self, **kwargs):
+        N = kwargs.pop('N', 1)
+        exportable = kwargs.pop('exportable', False)
+        super().__init__(**kwargs)
+        self.N = N
+        self.exportable = exportable
+        self.count = 0
+        self.res = None
+        self.clear = False
+
+    def __call__(self, *args, **kwargs):
+        if self.clear:
+            self.count = 0
+            self.res = None
+            self.clear = False
+
+        if self.is_expanded:
+            count, value = args
+        else:
+            count = 1
+            value = args[0]
+
+        self.count += count
+
+        if self.res is None:
+            self.res = value
+        else:
+            self.res = np.add(self.res, value)
+
+        if self.count >= self.N:
+            self.clear = True
+            return self.count, self.res
+        else:
+            return None, None
+
+    def reset(self):
+        self.count = 0
+        self.res = None
 
 
 class RollingBuffer(GlobalTransformation):

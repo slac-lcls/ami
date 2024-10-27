@@ -13,11 +13,11 @@ import ami.multiproc as mp
 
 from ami import LogConfig, Defaults
 from ami.multiproc import check_mp_start_method
-from ami.comm import BasePort, Ports, GraphCommHandler
+from ami.comm import Ports, PlatformAction, GraphCommHandler
 from ami.manager import run_manager
 from ami.worker import run_worker
 from ami.collector import run_node_collector, run_global_collector
-from ami.client import run_client
+from ami.client import run_client, check_dir
 from ami.console import run_console
 try:
     from ami.export import run_export
@@ -46,6 +46,14 @@ def build_parser():
     )
 
     parser.add_argument(
+        '-s',
+        '--save-dir',
+        type=check_dir,
+        default=None,
+        help='default directory for saving flowcharts'
+    )
+
+    parser.add_argument(
         '-e',
         '--export',
         help='the base name to use for data export (e.g. the base of all the PV names)'
@@ -58,15 +66,17 @@ def build_parser():
         help='aggregates graph and store related variables into structured data when exporting'
     )
 
-    comm_group = parser.add_mutually_exclusive_group()
-
-    comm_group.add_argument(
+    parser.add_argument(
         '-p',
         '--port',
         type=int,
-        default=BasePort,
-        help='use tcp for communication using the specified starting port'
+        default=Ports.BasePort,
+        action=PlatformAction,
+        help='use tcp for communication using the specified base port (default: %d)'
+             ' reserves next %d consecutive ports' % (Ports.BasePort, Ports.NumPorts)
     )
+
+    comm_group = parser.add_mutually_exclusive_group()
 
     comm_group.add_argument(
         '-i',
@@ -78,6 +88,14 @@ def build_parser():
         '--tcp',
         action='store_true',
         help='use tcp for communication using a randomly chosen port'
+    )
+
+    parser.add_argument(
+        '-d',
+        '--eb-depth',
+        type=int,
+        default=10,
+        help='the depth of contribution builder buffer in units of heartbeats (default: 10)'
     )
 
     parser.add_argument(
@@ -302,8 +320,8 @@ def run_ami(args, queue=None):
         collector_proc = mp.Process(
             name='nodecol-n0',
             target=functools.partial(_sys_exit, run_node_collector),
-            args=(0, args.num_workers, collector_addr, globalcol_addr, graph_addr, msg_addr,
-                  args.prometheus_dir, args.prometheus_port, args.hutch)
+            args=(0, args.num_workers, args.eb_depth, collector_addr, globalcol_addr, graph_addr,
+                  msg_addr, args.prometheus_dir, args.prometheus_port, args.hutch)
         )
         collector_proc.daemon = True
         collector_proc.start()
@@ -312,7 +330,7 @@ def run_ami(args, queue=None):
         globalcol_proc = mp.Process(
             name='globalcol',
             target=functools.partial(_sys_exit, run_global_collector),
-            args=(0, 1, globalcol_addr, results_addr, graph_addr, msg_addr,
+            args=(0, 1, args.eb_depth, globalcol_addr, results_addr, graph_addr, msg_addr,
                   args.prometheus_dir, args.prometheus_port, args.hutch)
         )
         globalcol_proc.daemon = True
@@ -347,7 +365,8 @@ def run_ami(args, queue=None):
                 name='client',
                 target=run_client,
                 args=(args.graph_name, comm_addr, info_addr, view_addr, args.load, args.gui_mode,
-                      args.prometheus_dir, args.prometheus_port, args.hutch, args.use_opengl, src_cfg is None)
+                      args.prometheus_dir, args.prometheus_port, args.hutch, args.use_opengl, src_cfg is None,
+                      args.save_dir)
             )
             client_proc.daemon = False
             client_proc.start()

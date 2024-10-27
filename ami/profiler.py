@@ -8,7 +8,7 @@ import zmq
 import zmq.asyncio
 import numpy as np
 import pyqtgraph as pg
-from pyqtgraph.Qt import QtGui, QtCore, QtWidgets
+from qtpy import QtCore, QtWidgets
 from pyqtgraph.WidgetGroup import WidgetGroup
 from ami import Defaults
 from ami.data import Deserializer
@@ -95,7 +95,7 @@ class HeartbeatData(object):
             self.total_heartbeat_time += np.average(times)
 
 
-class ProfilerWindow(QtGui.QMainWindow):
+class ProfilerWindow(QtWidgets.QMainWindow):
 
     def __init__(self, proc):
         super().__init__()
@@ -113,7 +113,7 @@ class Profiler(QtCore.QObject):
         super().__init__()
 
         if loop is None:
-            self.app = QtGui.QApplication([])
+            self.app = QtWidgets.QApplication([])
             loop = QEventLoop(self.app)
 
         asyncio.set_event_loop(loop)
@@ -141,11 +141,11 @@ class Profiler(QtCore.QObject):
         self.heartbeat_data = {}
 
         self.widget = QtWidgets.QWidget()
-        self.layout = QtGui.QGridLayout(self.widget)
+        self.layout = QtWidgets.QGridLayout(self.widget)
         self.widget.setLayout(self.layout)
 
         self.enabled_nodes = {}
-        self.trace_layout = QtGui.QFormLayout(self.widget)
+        self.trace_layout = QtWidgets.QFormLayout(self.widget)
         hbox = QtWidgets.QHBoxLayout(self.widget)
         selectAll = QtWidgets.QPushButton("Select All", self.widget)
         selectAll.clicked.connect(self.selectAll)

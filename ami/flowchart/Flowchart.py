@@ -1,10 +1,10 @@
 # -*- coding: utf-8 -*-
 from datetime import datetime
-from pyqtgraph.Qt import QtCore, QtGui, QtWidgets
-from pyqtgraph.pgcollections import OrderedDict
+from qtpy import QtCore, QtWidgets
 from pyqtgraph import FileDialog
 from pyqtgraph.debug import printExc
 from pyqtgraph import dockarea as dockarea
+from collections import OrderedDict
 from ami import LogConfig
 from ami.asyncqt import asyncSlot
 from ami.flowchart.FlowchartGraphicsView import ViewManager
@@ -177,6 +177,12 @@ class Flowchart(QtCore.QObject):
         node.sigTerminalAdded.connect(self.nodeTermChanged)
         node.sigTerminalRemoved.connect(self.nodeTermChanged)
         node.setGraph(self._graph)
+
+        # if the node is a source, connect the source kwargs interface to the manager
+        if node.isSource():
+            source_kwargs = node.graphicsItem().source_kwargs
+            node.graphicsItem().sigSourceKwargs.connect(self.send_requested_data)
+
         self.sigNodeCreated.emit(node)
         if node.isChanged(True, True):
             self.sigNodeChanged.emit(node)
@@ -315,6 +321,11 @@ class Flowchart(QtCore.QObject):
 
         self.viewManager().displayView(name=subgraphNode.name(), autoRange=True)
 
+    @asyncSlot(object)
+    async def send_requested_data(self, requested_data):
+        ctrl = self.widget()
+        await ctrl.graphCommHandler.update_requested_data(requested_data)
+
     @asyncSlot(object, object)
     async def nodeClosed(self, node, input_vars):
         if isinstance(node, SubgraphNode):
@@ -331,7 +342,7 @@ class Flowchart(QtCore.QObject):
             self.deleted_nodes.append(name)
             self.sigNodeChanged.emit(node)
             if ctrl.features.remove_plot(name):
-                await self.ctrl.graphCommHandler.updatePlots(ctrl.features.plots)
+                await ctrl.graphCommHandler.updatePlots(ctrl.features.plots)
         elif isinstance(node, SourceNode):
             await ctrl.features.discard(name, name)
             await ctrl.graphCommHandler.unview(name)
@@ -534,7 +545,7 @@ class Flowchart(QtCore.QObject):
                         printExc("Error connecting terminals %s.%s - %s.%s:" % (n1, t1, n2, t2))
 
                 type_file.flush()
-                status = subprocess.run(["mypy", "--follow-imports", "silent", type_file.name],
+                status = subprocess.run(["dmypy", "--follow-imports", "silent", "check", type_file.name],
                                         capture_output=True, text=True)
                 if status.returncode != 0:
                     lines = status.stdout.split('\n')[:-1]
@@ -596,7 +607,7 @@ class Flowchart(QtCore.QObject):
             if startDir is None:
                 startDir = '.'
             self.fileDialog = FileDialog(None, "Save Flowchart..", startDir, "Flowchart (*.fc)")
-            self.fileDialog.setAcceptMode(QtGui.QFileDialog.AcceptSave)
+            self.fileDialog.setAcceptMode(QtWidgets.QFileDialog.AcceptSave)
             self.fileDialog.show()
             self.fileDialog.fileSelected.connect(self.saveFile)
             return
@@ -657,9 +668,9 @@ class Flowchart(QtCore.QObject):
                 node.geometry = QtCore.QByteArray.fromHex(bytes(new_node_state['geometry'], 'ascii'))
 
             if restore_ctrl or restore_widget:
-                self.blockSignals(True)
+                node.blockSignals(True)
                 node.restoreState(current_node_state)
-                self.blockSignals(False)
+                node.blockSignals(False)
                 node.changed = node.isChanged(restore_ctrl, restore_widget)
                 if node.changed:
                     self.sigNodeChanged.emit(node)
@@ -718,7 +729,18 @@ class Flowchart(QtCore.QObject):
                     ctrl.ui.rateLbl.setText(f"Num Events: {total_num_events} Events/Sec: {events_per_second}")
                     events_per_second = [None]*num_workers
                     total_events = [None]*num_workers
-
+            elif topic == 'warning':
+                ctrl = self.widget()
+                if hasattr(msg, 'node_name'):
+                    if msg.graph_name != ctrl.graph_name:
+                        continue
+                    node_name = ""
+                    if msg.node_name in ctrl.metadata:
+                        node_name = ctrl.metadata[msg.node_name]['parent']
+                    if node_name in self.nodes(data='node'):
+                        node = self.nodes(data='node')[node_name]
+                        node.setException(msg, "warning")
+                        ctrl.chartWidget.updateStatus(f"{source} {node.name()}: {msg}", color='red')
             elif topic == 'error':
                 ctrl = self.widget()
                 if hasattr(msg, 'node_name'):
@@ -738,10 +760,15 @@ class Flowchart(QtCore.QObject):
             await self.loadFile(load)
 
 
-class FlowchartCtrlWidget(QtGui.QWidget):
+class FlowchartCtrlWidget(QtWidgets.QWidget):
     """
     The widget that contains the list of all the nodes in a flowchart and their controls,
     as well as buttons for loading/saving flowcharts.
+    
+    Args
+        chart (ami.flowchart.Flowchart.Flowchart): 
+        graphmgr_addr (ami.client.GraphMgrAddress):
+        configure (bool):
     """
 
     def __init__(self, chart, graphmgr_addr, configure, parent=None):
@@ -840,7 +867,13 @@ class FlowchartCtrlWidget(QtGui.QWidget):
                     if gnode.viewable() and gnode.viewed:
                         displays.add(gnode)
                     elif gnode.exportable():
+                        try:
+                            assert (gnode.values['alias'])
+                        except AssertionError:
+                            gnode.setException(True)
+                            self.chartWidget.updateStatus(f"{gnode.name()} set alias!", color='red')
                         displays.add(gnode)
+
                     continue
 
                 outputs = [name]
@@ -1088,13 +1121,13 @@ class FlowchartWidget(dockarea.DockArea):
         self.viewDock.hideTitleBar()
         self.addDock(self.viewDock)
 
-        self.hoverText = QtGui.QTextEdit()
+        self.hoverText = QtWidgets.QTextEdit()
         self.hoverText.setReadOnly(True)
         self.hoverDock = dockarea.Dock('Hover Info', size=(1000, 20))
         self.hoverDock.addWidget(self.hoverText)
         self.addDock(self.hoverDock, 'bottom')
 
-        self.statusText = QtGui.QTextEdit()
+        self.statusText = QtWidgets.QTextEdit()
         self.statusText.setReadOnly(True)
         self.statusDock = dockarea.Dock('Status', size=(1000, 20))
         self.statusDock.addWidget(self.statusText)
@@ -1120,7 +1153,7 @@ class FlowchartWidget(dockarea.DockArea):
     def buildOperationMenu(self, pos=None):
         def buildSubMenu(node, rootMenu, subMenus, pos=None):
             for section, node in node.items():
-                menu = QtGui.QMenu(section)
+                menu = QtWidgets.QMenu(section)
                 rootMenu.addMenu(menu)
                 if isinstance(node, OrderedDict):
                     buildSubMenu(node, menu, subMenus, pos=pos)
@@ -1129,7 +1162,7 @@ class FlowchartWidget(dockarea.DockArea):
                     act = rootMenu.addAction(section)
                     act.nodeType = section
                     act.pos = pos
-        self.operationMenu = QtGui.QMenu()
+        self.operationMenu = QtWidgets.QMenu()
         self.operationSubMenus = []
         buildSubMenu(self.chart.library.getNodeTree(), self.operationMenu, self.operationSubMenus, pos=pos)
         self.operationMenu.triggered.connect(self.operationMenuTriggered)
@@ -1138,7 +1171,7 @@ class FlowchartWidget(dockarea.DockArea):
     def buildSourceMenu(self, pos=None):
         def buildSubMenu(node, rootMenu, subMenus, pos=None):
             for section, node in node.items():
-                menu = QtGui.QMenu(section)
+                menu = QtWidgets.QMenu(section)
                 rootMenu.addMenu(menu)
                 if isinstance(node, OrderedDict):
                     buildSubMenu(node, menu, subMenus, pos=pos)
@@ -1147,7 +1180,7 @@ class FlowchartWidget(dockarea.DockArea):
                     act = rootMenu.addAction(section)
                     act.nodeType = section
                     act.pos = pos
-        self.sourceMenu = QtGui.QMenu()
+        self.sourceMenu = QtWidgets.QMenu()
         self.sourceSubMenus = []
         buildSubMenu(self.chart.source_library.getSourceTree(), self.sourceMenu, self.sourceSubMenus, pos=pos)
         self.sourceMenu.triggered.connect(self.sourceMenuTriggered)
@@ -1247,7 +1280,8 @@ class FlowchartWidget(dockarea.DockArea):
                     'state': state,
                     'redisplay': redisplay,
                     'geometry': node.geometry,
-                    'units': node.input_units()}
+                    'units': node.input_units(),
+                    'terminals': node.saveTerminals()}
 
             if node.buffered():
                 # buffered nodes are allowed to override their topics/terms

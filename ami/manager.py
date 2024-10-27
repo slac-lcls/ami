@@ -13,8 +13,8 @@ import time
 import datetime as dt
 import prometheus_client as pc
 from ami import LogConfig
-from ami.comm import BasePort, Ports, AutoExport, Collector, Store, ZMQ_TOPIC_DELIM
-from ami.data import MsgTypes, Transitions, Serializer, Deserializer
+from ami.comm import Ports, PlatformAction, AutoExport, Collector, Store, ZMQ_TOPIC_DELIM
+from ami.data import MsgTypes, Transitions, Serializer, Deserializer, RequestedData
 from ami.graphkit_wrapper import Graph
 
 
@@ -383,6 +383,16 @@ class Manager(Collector):
         else:
             self.comm.send(dill.dumps({}))
 
+    def cmd_update_requested_data(self, name):
+        """
+        Client request to update the detector and kwargs. It basically just forwards the
+        RequestedData instance to the workers.
+        Note that the detector names are also sent via the graph, this pathway here is intended
+        for when custom argument must be passed to the raw data methods.
+        """
+        requested_data = dill.loads(self.comm.recv())
+        self.publish_requested_data(name, requested_data)
+ 
     def cmd_update_sources(self, name):
         src_cfg = self.comm.recv_pyobj()
         self.graph_comm.send_string("update_sources", zmq.SNDMORE)
@@ -436,12 +446,22 @@ class Manager(Collector):
                 self.comm.send_string('error')
 
     def publish_delta(self, name, cmd, delta, reply=True):
+        """
+        Make a Graph update according to a given delta.
+
+        Parameters
+        ----------
+        name: graph name
+        cmd: function that the graphkit_wrapper.Graph must excecute. Typically 'add' or 'del'
+        delta: node or list of nodes to perform the command on.
+        """
         logger.info("Sending requested delta of graph...")
         try:
             self.versions[name] += 1
             self.graph_comm.send_string(cmd, zmq.SNDMORE)
             self.graph_comm.send_pyobj(self.publish_info(name), zmq.SNDMORE)
             self.graph_comm.send(dill.dumps(delta))
+            #self.publish_requested_data(name) # do we still want to do it here?
             self.export_graph(name)
             logger.info("Sending delta of graph (%s v%d) completed", name, self.versions[name])
             if reply:
@@ -450,6 +470,18 @@ class Manager(Collector):
             logger.exception("Failed to send delta of graph (%s v%d) -", name, self.versions[name])
             if reply:
                 self.comm.send_string('error')
+
+    def publish_requested_data(self, name, requested_data=None):
+        """ Publishes the detectors (or any raw data sources) and their arguments to the worker.
+
+        Args:
+            name (str): name of the graph
+            requested_data (ami.data.RequestedData): detectors and detector kwargs
+        """
+        self.graph_comm.send_string("update_requested_data", zmq.SNDMORE)
+        self.graph_comm.send_pyobj((name, self.versions[name], None), zmq.SNDMORE)
+        self.graph_comm.send(dill.dumps(requested_data))
+        self.comm.send_string('ok')
 
     def publish_graph(self, name, reply=True):
         logger.info("Sending requested graph...")
@@ -491,9 +523,13 @@ class Manager(Collector):
                 self.graph_comm.send_string("init", zmq.SNDMORE)
                 self.graph_comm.send_pyobj(self.publish_info(name), zmq.SNDMORE)
                 self.graph_comm.send(dill.dumps(graph))
-            # re-ask for config information on connect
+            # publish a message that a new subscriber has subscribed
             self.graph_comm.send_string("cmd", zmq.SNDMORE)
-            self.graph_comm.send_string("config")
+            self.graph_comm.send_string("subscribed")
+        elif request == "\x00":
+            # publish a message that a suscriber has unsubscribed
+            self.graph_comm.send_string("cmd", zmq.SNDMORE)
+            self.graph_comm.send_string("unsubscribed")
 
     def node_request(self):
         topic = self.node_msg_comm.recv_string()
@@ -688,8 +724,9 @@ def main():
         '-p',
         '--port',
         type=int,
-        default=BasePort,
-        help='base port for ami (default: %d) reserves next 10 consecutive ports' % BasePort
+        default=Ports.BasePort,
+        action=PlatformAction,
+        help='base port for ami (default: %d) reserves next %d consecutive ports' % (Ports.BasePort, Ports.NumPorts)
     )
 
     parser.add_argument(
@@ -755,7 +792,7 @@ def main():
     logging.basicConfig(format=LogConfig.Format, level=log_level, handlers=log_handlers)
 
     try:
-        if args.port != BasePort:
+        if args.port != Ports.BasePort:
             logger.info('Manager comm port: %d view port: %d', args.port + Ports.Comm, args.port + Ports.View)
         return run_manager(args.num_workers,
                            args.num_nodes,

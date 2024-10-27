@@ -1,8 +1,8 @@
 from ami.flowchart.library.DisplayWidgets import ScalarWidget, ScatterWidget, WaveformWidget, \
     ImageWidget, ObjectWidget, LineWidget, TimeWidget, HistogramWidget, \
-    Histogram2DWidget
+    Histogram2DWidget, MultiWaveformWidget
 from ami.flowchart.library.common import CtrlNode
-from amitypes import Array1d, Array2d
+from amitypes import Array1d, Array2d, MultiChannelWaveform
 from typing import Any
 import ami.graph_nodes as gn
 
@@ -53,6 +53,29 @@ class WaveformViewer(CtrlNode):
 
     def plotMetadata(self, topics, terms, **kwargs):
         return {'type': 'WaveformWidget', 'terms': terms, 'topics': topics}
+
+
+class MultiWaveformViewer(CtrlNode):
+
+    """
+    MultiWaveformViewer displays 2D arrays as series of 1D arrays.
+    """
+
+    nodeName = "MultiWaveformViewer"
+    uiTemplate = []
+
+    def __init__(self, name):
+        super().__init__(name, terminals={"In": {"io": "in", "ttype": MultiChannelWaveform}},
+                         viewable=True)
+
+    def isChanged(self, restore_ctrl, restore_widget):
+        return False
+
+    def display(self, topics, terms, addr, win, **kwargs):
+        return super().display(topics, terms, addr, win, MultiWaveformWidget, **kwargs)
+
+    def plotMetadata(self, topics, terms, **kwargs):
+        return {'type': 'MultiWaveformWidget', 'terms': terms, 'topics': topics}
 
 
 class ImageViewer(CtrlNode):

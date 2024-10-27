@@ -1,0 +1,30 @@
+name: myrel
+channels:
+  - lcls-ii
+  - conda-forge
+dependencies:
+  - python=3.9
+  - dill
+  - pyzmq
+  - pyqtgraph=0.12.4
+  - networkfox
+  - psana
+  - ipython
+  - qtconsole
+  - pint
+  - qtpy
+  - asyncqt
+  - amityping
+  - mypy
+  - numba
+  - h5py # optional: to use h5 source
+  - pyarrow # optional: better pickling for arrays
+  - scipy # optional: more algorithms
+  - pytest-qt # optional: for test
+  - pytest-asyncio # optional: for test
+  - sympy
+  - htop # optional: for memory leak debugging
+  - pygraphviz # optional: for debugging
+  - setproctitle
+  - pyfftw
+  - pyqode.python

@@ -1,6 +1,8 @@
+import os
+import json
 import numpy as np
 import pyqtgraph as pg
-from pyqtgraph.Qt import QtGui, QtWidgets, QtCore
+from qtpy import QtGui, QtWidgets, QtCore
 from ami.flowchart.library.WidgetGroup import generateUi
 
 
@@ -12,9 +14,22 @@ line_styles = {'None': QtCore.Qt.PenStyle.NoPen,
                'DashDotDot': QtCore.Qt.PenStyle.DashDotDotLine}
 
 
+def load_style():
+    style_path = os.path.expanduser("~/.config/ami/stylesheet.json")
+    style = {}
+    if os.path.exists(style_path):
+        with open(style_path, 'r') as f:
+            try:
+                style = json.load(f)
+            except json.decoder.JSONDecodeError as e:
+                print(e)
+
+    return style
+
+
 class TraceEditor(QtWidgets.QWidget):
 
-    def __init__(self, node=None, parent=None, **kwargs):
+    def __init__(self, parent=None, widget=None, **kwargs):
         super().__init__(parent)
 
         if 'uiTemplate' in kwargs:
@@ -38,9 +53,7 @@ class TraceEditor(QtWidgets.QWidget):
         if self.stateGroup:
             self.stateGroup.sigChanged.connect(self.state_changed)
 
-        self.node = node
-
-        self.layout = QtGui.QGridLayout()
+        self.layout = QtWidgets.QGridLayout()
         self.setLayout(self.layout)
 
         self.layout.addWidget(self.ui, 0, 0, -1, 2)
@@ -67,6 +80,12 @@ class TraceEditor(QtWidgets.QWidget):
 
         self.layout.addWidget(self.plot_widget, 0, 2, -1, -1)
 
+        if 'restore' not in kwargs:
+            style = load_style()
+            name = widget.__class__.__name__
+            if name in style:
+                self.restoreState(style[name])
+
     def update_plot(self):
         point = self.trace_attrs['Point']
 
@@ -83,8 +102,8 @@ class TraceEditor(QtWidgets.QWidget):
         line = {'color': line['color'],
                 'style': line_styles[line['style']]}
 
-        if pg.getConfigOption('useOpenGL'):
-            line['width'] = width
+        # if pg.getConfigOption('useOpenGL'):
+        line['width'] = width
 
         pen = pg.mkPen(**line)
 
@@ -109,9 +128,6 @@ class TraceEditor(QtWidgets.QWidget):
 
         self.update_plot()
 
-        if self.node:
-            self.node.sigStateChanged.emit(self.node)
-
     def saveState(self):
         return self.stateGroup.state()
 
@@ -122,9 +138,9 @@ class TraceEditor(QtWidgets.QWidget):
 
 class HistEditor(TraceEditor):
 
-    def __init__(self, node=None, parent=None, **kwargs):
-        kwargs['uiTemplate'] = [('brush', 'color', {'value': kwargs.get('color', (255, 0, 0))})]
-        super().__init__(node=node, parent=parent, **kwargs)
+    def __init__(self, parent=None, **kwargs):
+        kwargs['uiTemplate'] = [('Brush', 'color', {'value': kwargs.get('color', (255, 0, 0))})]
+        super().__init__(parent=parent, **kwargs)
 
     def update_plot(self):
         y = [0, 1, 2, 3, 4, 5, 4, 3, 2, 1]
@@ -154,7 +170,7 @@ class ChannelEditor(QtWidgets.QWidget):
         self.ui, self.stateGroup, self.ctrls, self.values = generateUi(self.uiTemplate)
         self.stateGroup.sigChanged.connect(self.state_changed)
 
-        self.layout = QtGui.QFormLayout()
+        self.layout = QtWidgets.QFormLayout()
         self.setLayout(self.layout)
 
         self.layout.addRow(self.ui)
@@ -301,7 +317,7 @@ class AnnotationEditor(TraceEditor):
 
     sigRemoved = QtCore.Signal(object)
 
-    def __init__(self, node=None, parent=None, name="", **kwargs):
+    def __init__(self, parent=None, name="", **kwargs):
         uiTemplate = [
             ('name', 'text'),
             # from
@@ -329,7 +345,7 @@ class AnnotationEditor(TraceEditor):
                 ('Brush', 'color', {'value': (255, 0, 0, 100), 'group': 'Fill'})
             ])
 
-        super().__init__(node=node, parent=parent, uiTemplate=uiTemplate)
+        super().__init__(parent=parent, uiTemplate=uiTemplate)
         self.name = name
         self.remove_btn = QtWidgets.QPushButton("Remove", self)
         self.remove_btn.clicked.connect(self.remove)
@@ -352,8 +368,8 @@ class AnnotationEditor(TraceEditor):
 
 class LineEditor(AnnotationEditor):
 
-    def __init__(self, node=None, parent=None, name="", **kwargs):
-        super().__init__(node, parent, name, from_='From', to='To')
+    def __init__(self, parent=None, name="", **kwargs):
+        super().__init__(parent, name, from_='From', to='To')
 
     def trace_data(self):
         x = [self.trace_attrs['From']['X'], self.trace_attrs['To']['X']]
@@ -363,8 +379,8 @@ class LineEditor(AnnotationEditor):
 
 class RectEditor(AnnotationEditor):
 
-    def __init__(self, node=None, parent=None, name="", **kwargs):
-        super().__init__(node, parent, name, from_='Top Left', to='Bottom Right', symbol='None', fill=True)
+    def __init__(self, parent=None, name="", **kwargs):
+        super().__init__(parent, name, from_='Top Left', to='Bottom Right', symbol='None', fill=True)
 
     def trace_data(self):
         tl = (self.trace_attrs['Top Left']['X'], self.trace_attrs['Top Left']['Y'])
@@ -377,8 +393,8 @@ class RectEditor(AnnotationEditor):
 
 class CircleEditor(AnnotationEditor):
 
-    def __init__(self, node=None, parent=None, name="", **kwargs):
-        super().__init__(node, parent, name, from_='Center', to='Radius', symbol='None', fill=True)
+    def __init__(self, parent=None, name="", **kwargs):
+        super().__init__(parent, name, from_='Center', to='Radius', symbol='None', fill=True)
 
     def trace_data(self):
         x = [self.trace_attrs['Center']['X'], self.trace_attrs['Radius']['X']]

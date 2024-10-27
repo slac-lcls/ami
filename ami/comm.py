@@ -8,6 +8,7 @@ import dill
 import json
 import asyncio
 import logging
+import argparse
 import functools
 import numpy as np
 import zmq.asyncio
@@ -30,9 +31,6 @@ class Colors:
     GlobalCollector = "globalCollector"
 
 
-BasePort = 5555
-
-
 class Ports(IntEnum):
     Comm = 0
     Graph = 1
@@ -43,8 +41,46 @@ class Ports(IntEnum):
     Message = 6
     Info = 7
     View = 8
-    Sync = 5600
-    Prometheus = 9200
+    Sync = 9
+    NumPorts = 10
+    PortsPerPlatform = 50
+    PlatformMax = 1023
+    BasePort = 5555
+    Prometheus = 9300
+
+    @classmethod
+    def resolve_platform(cls, port):
+        """
+        Class method for determining if a specified port is a platform, a.k.a
+        a generic numbered port set or a real tcp port. If the port is less
+        than 1023 consider it a port set. The port sets are groups of 50 ports
+        starting at the base port of 5555.
+
+        Args:
+            port (int): The platform or tcp resolve
+
+        Returns:
+            The actual tcp port number to use
+        """
+        if port <= cls.PlatformMax:
+            return cls.BasePort+cls.PortsPerPlatform*port
+        else:
+            return port
+
+
+class PlatformAction(argparse.Action):
+    """Class that defines an argparse action or ports/platforms.
+
+    When a platform number is passed instead of tcp port. The platform number
+    is resolved to a port and then returned.
+    """
+    def __init__(self, option_strings, dest, nargs=None, **kwargs):
+        if nargs is not None:
+            raise ValueError("nargs not allowed")
+        super().__init__(option_strings, dest, **kwargs)
+
+    def __call__(self, parser, namespace, values, option_string=None):
+        setattr(namespace, self.dest, Ports.resolve_platform(values))
 
 
 class AutoName:
@@ -186,10 +222,13 @@ class Store:
         Returns:
             the type of the object.
         """
+        dtype = type(data)
         if isinstance(data, np.ndarray):
-            return type(data), data.ndim
+            return dtype, data.ndim
+        elif dtype in at.NumPyTypeDict:
+            return at.NumPyTypeDict[dtype]
         else:
-            return type(data)
+            return dtype
 
     def create(self, name, datatype=None):
         """
@@ -499,7 +538,7 @@ class GraphBuilder(ContributionBuilder):
 
         if len(self.pending) > depth:
             for eb_key in reversed(sorted(self.pending.keys(), reverse=True)[depth:]):
-                logger.debug("Pruned uncompleted key %d", eb_key)
+                logger.debug("Pruned uncompleted key %s", eb_key)
                 times, size = self.complete(eb_key, identity, drop)
 
         return times, size
@@ -1113,10 +1152,16 @@ class GraphReceiver(BaseReceiver):
         function. Only one handler can be assigned to a topic, but a
         handler function can be used by multiple topics.
 
-        The handler function is called with three positional arguments:
+        The handler function is called with four positional arguments:
             name (str):      the name of the graph that is updated.
             version (int):   the version number of the updated graph.
+            args (dict) :    the arguments for the handler function.
             payload (bytes): the raw payload of the update.
+        The GraphReceiver expects the information to be sent in 3 steps, before it calls the handler:
+            1. Send topic: send_string(<topic>, zmq.SNDMORE)
+            2. Send graph name, version and args: send_pyobj((<name>, <version>, <args>), zmq.SNDMORE)
+            3. Send payload: send(dill.dumps(<payload>))
+        Note that special topics only expects the <topic>.
 
         Args:
             topic (str): the name of the topic.
@@ -1409,7 +1454,7 @@ class CommHandler(abc.ABC):
         """
         node_name = '%s_export' % export_name
 
-        return self._make_node(gn.PickN, name=node_name, inputs=name, outputs=export_name, N=1)
+        return self._make_node(gn.PickN, name=node_name, inputs=name, outputs=export_name, N=1, exportable=True)
 
     def alias(self, name, alias=None):
         """
@@ -1651,6 +1696,12 @@ class CommHandler(abc.ABC):
             True if the graph change was successful, False otherwise.
         """
         return self._post_dill('add_graph', nodes)
+
+    def update_requested_data(self, requested_data):
+        """
+        Send the updated requested data to the graph.
+        """
+        return self._post_dill('update_requested_data', requested_data)
 
     def view(self, names):
         """
@@ -2240,3 +2291,7 @@ class GraphCommHandler(ZmqCommHandler):
     def _save(self, filename):
         with open(filename, 'wb') as cnf:
             dill.dump(self.graph, cnf)
+
+
+class AMIWarning(Exception):
+    pass

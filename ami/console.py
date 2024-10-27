@@ -49,8 +49,8 @@ def main():
         '-p',
         '--port',
         type=int,
-        default=Ports.Comm,
-        help='port for manager/client (SHELL) communication (default: %d)' % Ports.Comm
+        default=Ports.BasePort,
+        help='base port for manager/client (SHELL) communication (default: %d)' % Ports.BasePort
     )
 
     addr_group.add_argument(
@@ -127,7 +127,7 @@ def main():
     elif args.ipc_dir is not None:
         addr = "ipc://%s/comm" % args.ipc_dir
     else:
-        addr = "tcp://%s:%d" % (args.host, args.port)
+        addr = "tcp://%s:%d" % (args.host, args.port + Ports.Comm)
 
     try:
         return run_console(args.graph_name, addr, args.load)

@@ -9,7 +9,7 @@ import datetime as dt
 import ami.multiproc as mp
 from ami.worker import run_worker, parse_args
 from ami import LogConfig, Defaults
-from ami.comm import BasePort, Ports, Colors, Node, Collector, TransitionBuilder, EventBuilder
+from ami.comm import Ports, PlatformAction, Colors, Node, Collector, TransitionBuilder, EventBuilder, AMIWarning
 from ami.data import MsgTypes, Transitions
 
 
@@ -17,15 +17,15 @@ logger = logging.getLogger(__name__)
 
 
 class GraphCollector(Node, Collector):
-    def __init__(self, node, base_name, num_workers, color, collector_addr, downstream_addr, graph_addr,
-                 msg_addr, prometheus_dir, prometheus_port, hutch):
+    def __init__(self, node, base_name, num_workers, eb_depth, color, collector_addr, downstream_addr,
+                 graph_addr, msg_addr, prometheus_dir, prometheus_port, hutch):
         Node.__init__(self, node, graph_addr, msg_addr, prometheus_dir=prometheus_dir,
                       prometheus_port=prometheus_port, hutch=hutch)
         Collector.__init__(self, collector_addr, ctx=self.ctx, hutch=hutch)
         self.base_name = base_name
         self.num_workers = num_workers
         self.transitions = TransitionBuilder(self.num_workers, downstream_addr, self.ctx)
-        self.store = EventBuilder(self.num_workers, 10, color, downstream_addr, self.ctx)
+        self.store = EventBuilder(self.num_workers, eb_depth, color, downstream_addr, self.ctx)
         self.sender = 'worker%03d' if color == 'localCollector' else 'localCollector%03d'
         self.pickers = {}
         self.strategies = {}
@@ -137,7 +137,8 @@ class GraphCollector(Node, Collector):
                                       self.name).set(latency.total_seconds())
             datagram_start = time.time()
             self.store.update(msg.name, msg.heartbeat, self.eb_id(msg.identity), msg.version, msg.payload)
-            if self.store.ready(msg.name, msg.heartbeat):
+            if msg.heartbeat.prompt or self.store.ready(msg.name, msg.heartbeat):
+                times, size = (None, None)
                 try:
                     # prune entries older than the current heartbeat
                     pruned_times, pruned_size = self.store.prune(msg.name, self.node, msg.heartbeat)
@@ -149,12 +150,9 @@ class GraphCollector(Node, Collector):
 
                     # times = self.store.complete(msg.name, msg.heartbeat, self.node)
                     # self.report_times(times, msg.name, msg.heartbeat)
-
-                    self.event_counter.labels(self.hutch, 'Heartbeat', self.name).inc()
-                    self.heartbeat_time[msg.heartbeat.identity] += time.time() - datagram_start
-                    heartbeat_time = self.heartbeat_time.pop(msg.heartbeat.identity, 0)
-                    self.event_time.labels(self.hutch, 'Heartbeat', self.name).set(heartbeat_time)
-                    self.event_size.labels(self.hutch, self.name).set(size)
+                except AMIWarning as e:
+                    e.graph_name = msg.name
+                    self.report("warning", e)
                 except Exception as e:
                     e.graph_name = msg.name
                     logger.exception("%s: Failure encountered while executing graph %s:", self.name, msg.name)
@@ -162,6 +160,14 @@ class GraphCollector(Node, Collector):
                     logger.error("%s: Purging graph (%s v%d)", self.name, msg.name, self.store.version(msg.name))
                     self.store.destroy(msg.name)
                     self.report("purge", msg.name)
+                finally:
+                    if times is not None and size is not None:
+                        self.event_counter.labels(self.hutch, 'Heartbeat', self.name).inc()
+                        self.heartbeat_time[msg.heartbeat.identity] += time.time() - datagram_start
+                        heartbeat_time = self.heartbeat_time.pop(msg.heartbeat.identity, 0)
+                        self.event_time.labels(self.hutch, 'Heartbeat', self.name).set(heartbeat_time)
+                        self.event_size.labels(self.hutch, self.name).set(size)
+
             else:
                 # prune older entries from the event builder
                 pruned_times, pruned_size = self.store.prune(msg.name, self.node)
@@ -173,7 +179,7 @@ class GraphCollector(Node, Collector):
             self.heartbeat_time[msg.heartbeat.identity] += time.time() - datagram_start
 
 
-def run_collector(node_num, base_name, num_contribs, color,
+def run_collector(node_num, base_name, num_contribs, eb_depth, color,
                   collector_addr, upstream_addr, graph_addr, msg_addr,
                   prometheus_dir, prometheus_port, hutch):
     logger.info('Starting collector on node # %d PID: %d', node_num, os.getpid())
@@ -181,6 +187,7 @@ def run_collector(node_num, base_name, num_contribs, color,
             node_num,
             base_name,
             num_contribs,
+            eb_depth,
             color,
             collector_addr,
             upstream_addr,
@@ -192,12 +199,13 @@ def run_collector(node_num, base_name, num_contribs, color,
         return collector.run()
 
 
-def run_node_collector(node_num, num_contribs,
+def run_node_collector(node_num, num_contribs, eb_depth,
                        collector_addr, upstream_addr, graph_addr, msg_addr,
                        prometheus_dir, prometheus_port, hutch):
     return run_collector(node_num,
                          "localCollector%03d",
                          num_contribs,
+                         eb_depth,
                          Colors.LocalCollector,
                          collector_addr,
                          upstream_addr,
@@ -208,12 +216,13 @@ def run_node_collector(node_num, num_contribs,
                          hutch)
 
 
-def run_global_collector(node_num, num_contribs,
+def run_global_collector(node_num, num_contribs, eb_depth,
                          collector_addr, upstream_addr, graph_addr, msg_addr,
                          prometheus_dir, prometheus_port, hutch):
     return run_collector(node_num,
                          "globalCollector%03d",
                          num_contribs,
+                         eb_depth,
                          Colors.GlobalCollector,
                          collector_addr,
                          upstream_addr,
@@ -238,8 +247,16 @@ def main(color, upstream_port, downstream_port):
         '-p',
         '--port',
         type=int,
-        default=BasePort,
-        help='base port for ami (default: %d) reserves next 10 consecutive ports' % BasePort
+        default=Ports.BasePort,
+        action=PlatformAction,
+        help='base port for ami (default: %d) reserves next %d consecutive ports' % (Ports.BasePort, Ports.NumPorts)
+    )
+
+    parser.add_argument(
+        '-C',
+        '--collection-host',
+        default=None,
+        help='hostname of the next collector if different than the manager hostname'
     )
 
     parser.add_argument(
@@ -256,6 +273,14 @@ def main(color, upstream_port, downstream_port):
         type=int,
         default=0,
         help='node identification number (default: 0)'
+    )
+
+    parser.add_argument(
+        '-d',
+        '--eb-depth',
+        type=int,
+        default=10,
+        help='the depth of contribution builder buffer in units of heartbeats (default: 10)'
     )
 
     parser.add_argument(
@@ -316,8 +341,14 @@ def main(color, upstream_port, downstream_port):
 
     args = parser.parse_args()
 
+    # if an address for the downstream collector is not specified just use the manager address
+    if args.collection_host is not None:
+        downstream_host = args.collection_host
+    else:
+        downstream_host = args.host
+
     collector_addr = "tcp://*:%d" % (args.port + upstream_port)
-    downstream_addr = "tcp://%s:%d" % (args.host, args.port + downstream_port)
+    downstream_addr = "tcp://%s:%d" % (downstream_host, args.port + downstream_port)
     graph_addr = "tcp://%s:%d" % (args.host, args.port + Ports.Graph)
     msg_addr = "tcp://%s:%d" % (args.host, args.port + Ports.Message)
 
@@ -355,6 +386,7 @@ def main(color, upstream_port, downstream_port):
 
             return run_node_collector(args.node_num,
                                       args.num_contribs,
+                                      args.eb_depth,
                                       collector_addr,
                                       downstream_addr,
                                       graph_addr,
@@ -365,6 +397,7 @@ def main(color, upstream_port, downstream_port):
         elif color == Colors.GlobalCollector:
             return run_global_collector(args.node_num,
                                         args.num_contribs,
+                                        args.eb_depth,
                                         collector_addr,
                                         downstream_addr,
                                         graph_addr,

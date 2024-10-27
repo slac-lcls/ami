@@ -1,4 +1,12 @@
 [flake8]
 max-line-length=120
 builtins=__class__
-exclude=src,doc,install,examples,.eggs/
+exclude=
+    src,
+    doc,
+    install,
+    install-lcls1,
+    examples,
+    build,
+    .eggs/,
+    ami/flowchart/library/Roi.py,

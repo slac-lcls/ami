@@ -1,5 +1,6 @@
+import amitypes
 from pyqtgraph import FileDialog
-from pyqtgraph.Qt import QtWidgets, QtCore, QtGui
+from qtpy import QtWidgets, QtCore
 from pyqode.python.backend import server
 # from pyqode.python.widgets import PyCodeEdit
 from pyqode.core import api, modes, panels
@@ -184,7 +185,7 @@ class ExportWidget(QtWidgets.QWidget):
 
     def ok_clicked(self):
         self.fileDialog = FileDialog(None, "Save File..", '.', "Python (*.py)")
-        self.fileDialog.setAcceptMode(QtGui.QFileDialog.AcceptSave)
+        self.fileDialog.setAcceptMode(QtWidgets.QFileDialog.AcceptSave)
         self.fileDialog.show()
         self.fileDialog.fileSelected.connect(self.saveFile)
 
@@ -195,18 +196,20 @@ class ExportWidget(QtWidgets.QWidget):
         terminals = {}
         for name, term in self.node.terminals.items():
             state = term.saveState()
-            state['ttype'] = term._type.__name__
+            state['ttype'] = amitypes.TypeDumper(term._type)
             terminals[name] = state
 
         template = self.export(node_name, docstring, terminals, self.text)
+        if not fileName.endswith('.py'):
+            fileName += '.py'
         with open(fileName, 'w') as f:
             f.write(template)
 
     def export(self, name, docstring, terminals, text):
         template = f"""
-from typing import Any
-from amitypes import Array1d, Array2d, Array3d
 from ami.flowchart.Node import Node
+import typing
+import amitypes
 import ami.graph_nodes as gn
 
 

@@ -81,17 +81,17 @@ def test_rolling_buffer():
         if type(node) is str:
             continue
         if node.name == 'ScatterPlot_worker':
-            assert(node.N == 2)
+            assert (node.N == 2)
         elif node.name == 'ScatterPlot_localCollector':
-            assert(node.N == 4)
+            assert (node.N == 4)
         elif node.name == 'ScatterPlot_globalCollector':
-            assert(node.N == 8)
+            assert (node.N == 8)
 
     worker1 = graph({'x': 0, 'y': 1}, color='worker')
     worker1 = graph({'x': 2, 'y': 3}, color='worker')
-    assert(worker1 == {'scatter_worker': [(0, 1), (2, 3)]})
+    assert (worker1 == {'scatter_worker': [(0, 1), (2, 3)]})
     worker1 = graph({'x': 4, 'y': 5}, color='worker')
-    assert(worker1 == {'scatter_worker': [(2, 3), (4, 5)]})
+    assert (worker1 == {'scatter_worker': [(2, 3), (4, 5)]})
 
     worker1 = {'scatter_worker': [(2, 3), (4, 5)]}
     worker2 = {'scatter_worker': [(3, 2), (5, 4)]}
@@ -100,19 +100,19 @@ def test_rolling_buffer():
 
     localCollector1 = graph(worker1, color='localCollector')
     localCollector1 = graph(worker2, color='localCollector')
-    assert(localCollector1 == {'scatter_localCollector': [(2, 3), (4, 5), (3, 2), (5, 4)]})
+    assert (localCollector1 == {'scatter_localCollector': [(2, 3), (4, 5), (3, 2), (5, 4)]})
     localCollector1 = graph(worker3, color='localCollector')
-    assert(localCollector1 == {'scatter_localCollector': [(3, 2), (5, 4), (0, 1), (2, 3)]})
+    assert (localCollector1 == {'scatter_localCollector': [(3, 2), (5, 4), (0, 1), (2, 3)]})
     localCollector1 = graph(worker4, color='localCollector')
-    assert(localCollector1 == {'scatter_localCollector': [(0, 1), (2, 3), (1, 0), (3, 2)]})
+    assert (localCollector1 == {'scatter_localCollector': [(0, 1), (2, 3), (1, 0), (3, 2)]})
 
     localCollector1 = {'scatter_localCollector': [(0, 1), (2, 3), (4, 5), (6, 7)]}
     localCollector2 = {'scatter_localCollector': [(8, 9), (10, 11), (12, 13), (14, 15)]}
     globalCollector = graph(localCollector1, color='globalCollector')
     globalCollector = graph(localCollector2, color='globalCollector')
-    assert(globalCollector == {'scatter_x': (0, 2, 4, 6, 8, 10, 12, 14),
-                               'scatter_y': (1, 3, 5, 7, 9, 11, 13, 15)})
+    assert (globalCollector == {'scatter_x': (0, 2, 4, 6, 8, 10, 12, 14),
+                                'scatter_y': (1, 3, 5, 7, 9, 11, 13, 15)})
     localCollector1 = {'scatter_localCollector': [(16, 17), (18, 19), (20, 21), (22, 23)]}
     globalCollector = graph(localCollector1, color='globalCollector')
-    assert(globalCollector == {'scatter_x': (8, 10, 12, 14, 16, 18, 20, 22),
-                               'scatter_y': (9, 11, 13, 15, 17, 19, 21, 23)})
+    assert (globalCollector == {'scatter_x': (8, 10, 12, 14, 16, 18, 20, 22),
+                                'scatter_y': (9, 11, 13, 15, 17, 19, 21, 23)})

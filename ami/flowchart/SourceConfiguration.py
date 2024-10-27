@@ -1,8 +1,8 @@
 from pyqtgraph import FileDialog
-from pyqtgraph.Qt import QtCore, QtGui, QtWidgets
+from qtpy import QtCore, QtWidgets
 
 
-class SourceConfiguration(QtGui.QWidget):
+class SourceConfiguration(QtWidgets.QWidget):
 
     sigApply = QtCore.Signal(object)  # src_cfg dict
 
@@ -11,19 +11,19 @@ class SourceConfiguration(QtGui.QWidget):
         self.setWindowTitle("Configure")
         self.formLayout = QtWidgets.QFormLayout(self)
 
-        self.interval = QtGui.QDoubleSpinBox(self)
+        self.interval = QtWidgets.QDoubleSpinBox(self)
         self.interval.setValue(0.01)
         self.formLayout.addRow("Interval", self.interval)
 
-        self.init_time = QtGui.QDoubleSpinBox(self)
+        self.init_time = QtWidgets.QDoubleSpinBox(self)
         self.init_time.setValue(0.5)
         self.formLayout.addRow("Init Time", self.init_time)
 
-        self.hb_period = QtGui.QSpinBox(self)
+        self.hb_period = QtWidgets.QSpinBox(self)
         self.hb_period.setValue(10)
         self.formLayout.addRow("Heartbeat Period", self.hb_period)
 
-        self.source_type = QtGui.QComboBox(self)
+        self.source_type = QtWidgets.QComboBox(self)
         self.source_type.addItem("hdf5")
         self.source_type.addItem("psana")
         self.formLayout.addRow("Source Type", self.source_type)
