@@ -61,7 +61,7 @@ class PvExport(CtrlNode):
         super().state_changed(*args, **kwargs)
         name, group, val = args
         if name == 'alias':
-            self.lbl.setText(f"pvname: {self.epics_prefix}:{self.graph}:{val}")
+            self.lbl.setText(f"pvname: {self.epics_prefix}:{self.graph}:data:{val}")
 
 class ZMQWidget(QtWidgets.QLabel):
 
