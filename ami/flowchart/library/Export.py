@@ -33,7 +33,8 @@ class PvExport(CtrlNode):
     """
 
     nodeName = "PvExport"
-    uiTemplate = [('alias', 'text', {'tip': "PV name to export variable under."})]
+    uiTemplate = [('alias', 'text', {'tip': "PV name to export variable under."}),
+                  ('events', 'intSpin', {'value': 2, 'min': 2, 'tip': "Number of events to export"})]
 
     def __init__(self, name):
         super().__init__(name, terminals={"In": {'io': 'in', 'ttype': Any},
@@ -59,7 +60,8 @@ class PvExport(CtrlNode):
     def state_changed(self, *args, **kwargs):
         super().state_changed(*args, **kwargs)
         name, group, val = args
-        self.lbl.setText(f"pvname: {self.epics_prefix}:{self.graph}:{val}")
+        if name == 'alias':
+            self.lbl.setText(f"pvname: {self.epics_prefix}:{self.graph}:{val}")
 
 class ZMQWidget(QtWidgets.QLabel):
 

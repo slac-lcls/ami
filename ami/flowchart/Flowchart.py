@@ -218,6 +218,9 @@ class Flowchart(Node):
             if views:
                 await ctrl.graphCommHandler.unview(views)
                 await ctrl.graphCommHandler.updatePlots(ctrl.features.plots)
+        elif node.exportable():
+            await ctrl.graphCommHandler.unexport([input_vars['In'], input_vars['Timestamp']],
+                                                 [node.values['alias'], "_timestamp"])
 
     def nodeConnected(self, localTerm, remoteTerm):
         if remoteTerm.isOutput():
@@ -1183,8 +1186,10 @@ class FlowchartWidget(dockarea.DockArea):
             display_args.append(args)
 
             if node.exportable() and export:
-                await self.ctrl.graphCommHandler.export([node.input_vars()['In'], node.input_vars()['Timestamp']],
-                                                        [node.values['alias'], "_timestamp"])
+                await self.ctrl.graphCommHandler.export([node.input_vars()['In'],
+                                                         node.input_vars()['Timestamp']],
+                                                        [node.values['alias'], "_timestamp"],
+                                                        N=node.values['events'])
                 if not ctrl:
                     display_args.pop()
 
