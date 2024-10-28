@@ -1,39 +1,41 @@
 #!/bin/bash
 
 usage() {
-    echo "Usage: $0 [ -n RANKS ] [ -H <HOST:SLOTS>,<HOST:SLOTS>,... ] psana://<exp>:<run>" 1>&2
+    echo "Usage: $0 [ -n WORKERS ] [ -N WORKERS_PER_NODE ] psana://<exp>:<run>" 1>&2
 }
 
 NUMARGS=$#
-if [ $NUMARGS -ne 5 ]; then
+
+if [ $NUMARGS -lt 3 ]; then
     usage
     exit 1
 fi
 
-while getopts n:H: flag
+while getopts n:N: flag
 do
     case "${flag}" in
         n) ranks=${OPTARG};;
-        H) workers=${OPTARG};;
+        N) ranks_per_node=${OPTARG};;
     esac
 done
 
-IFS=', ' read -r -a array <<< "$workers"
-num_worker_nodes=${#array[@]}
+hosts=`uname -n`
+worker_nodes=${SLURM_JOB_NODELIST:-$hosts}
+num_worker_nodes=${SLURM_NNODES:-1}
 
 shift $(($OPTIND - 1))
 rest=$@
 
 manager=`hostname`
-echo "ranks: $ranks";
-echo "workers: $workers";
+echo "worker nodes: $worker_nodes"
 echo "num worker nodes: $num_worker_nodes"
+echo "workers per node: $ranks_per_node";
 echo "manager: $manager";
 ami-manager -n $ranks -N $num_worker_nodes &
 MANAGER_PID=$!
 ami-global -N 0 -n $num_worker_nodes -H $manager &
 GLOBAL_PID=$!
-`which mpirun` -np $ranks -H $workers -x LD_LIBRARY_PATH -x PYTHONPATH -x PATH ami-remote -H $manager -f interval=0.01 -f repeat=True $@ &
+`which mpirun` -n $ranks -N $ranks_per_node -x LD_LIBRARY_PATH -x PYTHONPATH -x PATH ami-remote -H $manager -f interval=0.01 -f repeat=True $@ &
 WORKER_PID=$!
 
 echo "manager: $MANAGER_PID";
