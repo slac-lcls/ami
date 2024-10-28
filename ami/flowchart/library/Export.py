@@ -38,7 +38,7 @@ class PvExport(CtrlNode):
 
     def __init__(self, name):
         super().__init__(name, terminals={"In": {'io': 'in', 'ttype': Any},
-                                          "Timestamp": {'io': 'in', 'ttype': float}},
+                                          "eventid": {'io': 'in', 'ttype': int}},
                          exportable=True)
 
         self.lbl = QtWidgets.QLabel(parent=self.ui)
@@ -54,7 +54,7 @@ class PvExport(CtrlNode):
             self.epics_prefix = self.graphCommHandler.epics_prefix
 
         val = self.values['alias']
-        self.lbl.setText(f"pvname: {self.epics_prefix}:{self.graph}:{val}")
+        self.lbl.setText(f"pvname: {self.epics_prefix}:{self.graph}:data:{val}")
         return super().display(topics, terms, addr, win, widget, **kwargs)
 
     def state_changed(self, *args, **kwargs):

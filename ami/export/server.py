@@ -10,6 +10,7 @@ import numpy as np
 import ami.comm
 from ami import LogConfig, p4pConfig
 from ami.export.nt import NTBytes, NTObject, NTGraph, NTStore, CAGraph, CAStore
+from ami.data import TimestampConverter
 from p4p.nt import NTScalar, NTNDArray
 from p4p.server import Server, StaticProvider
 from p4p.server.asyncio import SharedPV
@@ -76,7 +77,7 @@ class EpicsExportServer(abc.ABC):
         pass
 
     @abc.abstractmethod
-    async def post_pv(self, pvname, value, timestamp):
+    async def post_pv(self, pvname, value, timestamp, convert_timestamp=False):
         pass
 
     def valid(self, name, group=None):
@@ -148,7 +149,7 @@ class EpicsExportServer(abc.ABC):
                     logger.warn("Cannot map type of '%s' from graph '%s' to PV: %s", name, graph, type(data))
                     self.ignored.add(pvname)
             else:
-                await self.post_pv(pvname, data, timestamp)
+                await self.post_pv(pvname, data, timestamp, convert_timestamp=True)
 
     @abc.abstractmethod
     def update_destroy(self, graph):
@@ -181,7 +182,7 @@ class EpicsExportServer(abc.ABC):
                         if self.valid(name):
                             await self.update_data(graph, name, data, timestamp)
             elif topic == 'graph':
-                await self.update_graph(graph, exports, timestamp)
+               await self.update_graph(graph, exports, timestamp)
             elif topic == 'store':
                 await self.update_store(graph, exports, timestamp)
             elif topic == 'heartbeat':
@@ -297,7 +298,7 @@ class PvaExportServer(EpicsExportServer):
     def create_bytes_pv(self, name, initial, timestamp, func=None):
         self.create_pv(name, NTBytes(), initial, timestamp, func=func)
 
-    async def post_pv(self, pvname, value, timestamp):
+    async def post_pv(self, pvname, value, timestamp, convert_timestamp=False):
         extras = {}
         if p4pConfig.SupportsTimestamps:
             extras['timestamp'] = timestamp
@@ -369,11 +370,11 @@ class CaExportServer(EpicsExportServer):
         super().__init__(name, msg_addr, export_addr)
         self.pvdb = {}
         self.server = CAPContext(self.pvdb)
-
+        self.ts_converter = TimestampConverter()
     def create_pv(self, name, nt, initial, timestamp, func=None):
         kwargs = {}
         if nt == ChannelType.STRING:
-            kwargs['max_length'] = 128
+            kwargs['max_length'] = 1024
 
         pv = PVSpec(name=f"{self.base}:{name}", value=initial, dtype=nt, read_only=True, **kwargs)
         self.pvs[name] = pv.name
@@ -392,8 +393,10 @@ class CaExportServer(EpicsExportServer):
         else:
             return None
 
-    async def post_pv(self, pvname, value, timestamp):
+    async def post_pv(self, pvname, value, timestamp, convert_timestamp=False):
         pvdb_name = self.pvs[pvname]
+        if convert_timestamp:
+            timestamp = self.ts_converter.decode(timestamp)
         await self.pvdb[pvdb_name].write(value, timestamp=timestamp)
 
     async def update_graph(self, graph, data, timestamp, schema=CAGraph.flat_schema):
