@@ -169,6 +169,7 @@ class EpicsExportServer(abc.ABC):
             timestamp = time.time()
             logger.debug("received: %s graph: %s", topic, graph)
             if topic == 'data':
+                timestamp = exports.pop("_timestamp")
                 for name, data in exports.items():
                     # ignore names starting with '_' - these are private
                     if self.valid(name):

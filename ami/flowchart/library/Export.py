@@ -21,9 +21,9 @@ class ExportToWorker(CtrlNode):
 
     def __init__(self, name):
         super().__init__(name, terminals={"In": {'io': 'in', 'ttype': Any},
+                                          "Timestamp": {'io': 'in', 'ttype': float},
                                           "Out": {'io': 'out', 'ttype': Any}},
-                         exportable=True,
-                         allowAddInput=False)
+                         exportable=True)
 
 
 class PvExport(CtrlNode):
@@ -38,8 +38,7 @@ class PvExport(CtrlNode):
     def __init__(self, name):
         super().__init__(name, terminals={"In": {'io': 'in', 'ttype': Any},
                                           "Timestamp": {'io': 'in', 'ttype': float}},
-                         exportable=True,
-                         allowAddInput=False)
+                         exportable=True)
 
         self.lbl = QtWidgets.QLabel(parent=self.ui)
         self.ui.layout().addRow(self.lbl)
@@ -92,7 +91,8 @@ class ZMQ(CtrlNode):
     uiTemplate = []
 
     def __init__(self, name):
-        super().__init__(name, terminals={"In": {'io': 'in', 'ttype': Any}},
+        super().__init__(name, terminals={"Timestamp": {'io': 'in', 'ttype': float},
+                                          "In": {'io': 'in', 'ttype': Any}},
                          allowAddInput=True,
                          viewable=True)
 
@@ -147,7 +147,7 @@ class Mcast(CtrlNode):
     def __init__(self, name):
         super().__init__(name,
                          terminals={'Data':  {'io': 'in', 'removable': False, 'ttype': Any},
-                                    'Timestamp': {'io': 'in', 'removable': False, 'ttype': int},
+                                    'Timestamp': {'io': 'in', 'removable': False, 'ttype': float},
                                     'PulseId':   {'io': 'in', 'removable': False, 'ttype': int}})
 
     def to_operation(self, inputs, outputs, **kwargs):

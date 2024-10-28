@@ -734,10 +734,16 @@ class FlowchartCtrlWidget(QtWidgets.QWidget):
                         displays.add(gnode)
                     elif gnode.exportable():
                         try:
-                            assert (gnode.values['alias'])
+                            assert(gnode.values['alias'])
                         except AssertionError:
                             gnode.setException(True)
                             self.chartWidget.updateStatus(f"{gnode.name()} set alias!", color='red')
+                        try:
+                            assert(gnode.values['alias'] != gnode.input_vars()['In'])
+                        except AssertionError:
+                            gnode.setException(True)
+                            self.chartWidget.updateStatus(f"{gnode.name()} alias name cannot be same as input!",
+                                                          color='red')
                         displays.add(gnode)
 
                     continue
@@ -1177,7 +1183,8 @@ class FlowchartWidget(dockarea.DockArea):
             display_args.append(args)
 
             if node.exportable() and export:
-                await self.ctrl.graphCommHandler.export(node.input_vars()['In'], node.values['alias'])
+                await self.ctrl.graphCommHandler.export([node.input_vars()['In'], node.input_vars()['Timestamp']],
+                                                        [node.values['alias'], "_timestamp"])
                 if not ctrl:
                     display_args.pop()
 
