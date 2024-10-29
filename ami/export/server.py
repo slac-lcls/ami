@@ -40,6 +40,8 @@ class EpicsExportServer(abc.ABC):
         self.data_pvbase = "data"
         self.info_pvbase = "info"
 
+        self.ts_converter = TimestampConverter()
+
         self.node_msg_comm.send_string("epics", zmq.SNDMORE)
         self.node_msg_comm.send_string("export", zmq.SNDMORE)
         self.node_msg_comm.send_string(f"{name}:{self.graph_pvbase}")
@@ -301,6 +303,8 @@ class PvaExportServer(EpicsExportServer):
     async def post_pv(self, pvname, value, timestamp, convert_timestamp=False):
         extras = {}
         if p4pConfig.SupportsTimestamps:
+            if convert_timestamp:
+                timestamp = self.ts_converter.decode(timestamp)
             extras['timestamp'] = timestamp
         self.pvs[pvname].post(value, **extras)
 
@@ -370,7 +374,7 @@ class CaExportServer(EpicsExportServer):
         super().__init__(name, msg_addr, export_addr)
         self.pvdb = {}
         self.server = CAPContext(self.pvdb)
-        self.ts_converter = TimestampConverter()
+
     def create_pv(self, name, nt, initial, timestamp, func=None):
         kwargs = {}
         if nt == ChannelType.STRING:

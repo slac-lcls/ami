@@ -55,6 +55,7 @@ class PvExport(CtrlNode):
 
         val = self.values['alias']
         self.lbl.setText(f"pvname: {self.epics_prefix}:{self.graph}:data:{val}")
+        self.lbl.setTextInteractionFlags(QtCore.Qt.TextInteractionFlag.TextSelectableByMouse)
         return super().display(topics, terms, addr, win, widget, **kwargs)
 
     def state_changed(self, *args, **kwargs):
@@ -62,6 +63,7 @@ class PvExport(CtrlNode):
         name, group, val = args
         if name == 'alias':
             self.lbl.setText(f"pvname: {self.epics_prefix}:{self.graph}:data:{val}")
+
 
 class ZMQWidget(QtWidgets.QLabel):
 
