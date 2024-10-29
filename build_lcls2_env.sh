@@ -4,23 +4,19 @@ BUILDDIR=${1:-$PWD}
 
 # if no env is setup activate the script
 if [ -z "${TESTRELDIR}" ]; then
-    # if the caller of this export RELDIR use that
-    if [ -z "${RELDIR}" ]; then
-        source "${PWD}/setup_env.sh"
-    else
+    # if the caller sets builddir use setup_env.sh from there
+    if [ -n "${BUILDDIR}" ]; then
+        source "${BUILDDIR}/setup_env.sh"
+    elif [ -n "${RELDIR}" ]; then
         source "${RELDIR}/setup_env.sh"
+    else
+        source "${PWD}/setup_env.sh"
     fi
 fi
 
 # run the build script
-if [ -z "${RELDIR}" ]; then
-    "${PWD}/build_all.sh"
-else
+if [ -n "${RELDIR}" ]; then
     "${RELDIR}/build_all.sh"
-fi
-
-# try to build psana
-if [ -d "${BUILDDIR}/lcls2" ]; then
-    cd -P -- "${BUILDDIR}/lcls2"
-    "${BUILDDIR}/lcls2/build_all.sh" -d
+else
+    "${PWD}/build_all.sh"
 fi
