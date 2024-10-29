@@ -1186,10 +1186,16 @@ class FlowchartWidget(dockarea.DockArea):
             display_args.append(args)
 
             if node.exportable() and export:
-                await self.ctrl.graphCommHandler.export([node.input_vars()['In'],
-                                                         node.input_vars()['eventid']],
-                                                        [node.values['alias'], "_timestamp"],
-                                                        N=node.values['events'])
+                input_vars = node.input_vars()
+                values = node.values
+                if 'eventid' in input_vars:
+                    await self.ctrl.graphCommHandler.export([input_vars['In'],
+                                                             input_vars['eventid']],
+                                                            [values['alias'], "_timestamp"],
+                                                            N=values['events'])
+                else:
+                    await self.ctrl.graphCommHandler.export(input_vars['In'], values['alias'])
+
                 if not ctrl:
                     display_args.pop()
 
