@@ -1187,7 +1187,7 @@ class FlowchartWidget(dockarea.DockArea):
 
             if node.exportable() and export:
                 await self.ctrl.graphCommHandler.export([node.input_vars()['In'],
-                                                         node.input_vars()['Timestamp']],
+                                                         node.input_vars()['eventid']],
                                                         [node.values['alias'], "_timestamp"],
                                                         N=node.values['events'])
                 if not ctrl:
