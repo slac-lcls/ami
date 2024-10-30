@@ -204,42 +204,30 @@ class ReduceByKey(GlobalTransformation):
 
 
 class Accumulator(GlobalTransformation):
-    """
-    Accumulator is a GlobalTransformation that will infinitely acculumate events.
-    """
 
     def __init__(self, **kwargs):
-        """
-        Keyword Arguments:
-            reduction (function): Function is used to reduce arguments
-            res_factory (function): Function that is called at the end of a heartbeat to reset accumulator \
-                                    on workers and local collectors
-        """
         super().__init__(**kwargs)
-        self.res_factory = kwargs.pop('res_factory', lambda *args: (0, ()))
+        self.res_factory = kwargs.pop('res_factory', lambda: 0)
         assert hasattr(self.res_factory, '__call__'), 'res_factory is not callable'
-        self.res_args = ()
-        self.res = None
+        self.res = self.res_factory()
         self.count = 0
 
     def __call__(self, *args, **kwargs):
         if self.is_expanded:
-            count, value = args
+            count, values = args
+            if not (isinstance(values, list) or isinstance(values, tuple)):
+                values = (values,)
         else:
             count = 1
-            value = args[0]
+            values = args
 
+        self.res = self.reduction(self.res, *values)
         self.count += count
-
-        if self.res is None:
-            self.res, self.res_args = self.res_factory(value)
-
-        self.res = self.reduction(self.res, value)
 
         return self.count, self.res
 
     def reset(self):
-        self.res, _ = self.res_factory(self.res_args)
+        self.res = self.res_factory()
         self.count = 0
 
     def heartbeat_finished(self):
@@ -248,6 +236,53 @@ class Accumulator(GlobalTransformation):
 
     def on_expand(self):
         return {'parent': self.parent, 'res_factory': self.res_factory}
+
+
+# class Accumulator(GlobalTransformation):
+#     """
+#     Accumulator is a GlobalTransformation that will infinitely acculumate events.
+#     """
+
+#     def __init__(self, **kwargs):
+#         """
+#         Keyword Arguments:
+#             reduction (function): Function is used to reduce arguments
+#             res_factory (function): Function that is called at the end of a heartbeat to reset accumulator \
+#                                     on workers and local collectors
+#         """
+#         super().__init__(**kwargs)
+#         self.res_factory = kwargs.pop('res_factory', lambda *args: (0, ()))
+#         assert hasattr(self.res_factory, '__call__'), 'res_factory is not callable'
+#         self.res_args = ()
+#         self.res = None
+#         self.count = 0
+
+#     def __call__(self, *args, **kwargs):
+#         if self.is_expanded:
+#             count, value = args
+#         else:
+#             count = 1
+#             value = args[0]
+
+#         self.count += count
+
+#         if self.res is None:
+#             self.res, self.res_args = self.res_factory(value)
+
+#         self.res = self.reduction(self.res, value)
+
+#         return self.count, self.res
+
+#     def reset(self):
+#         self.res, _ = self.res_factory(self.res_args)
+#         self.count = 0
+
+#     def heartbeat_finished(self):
+#         if self.color != 'globalCollector':
+#             self.reset()
+
+#     def on_expand(self):
+#         return {'parent': self.parent, 'res_factory': self.res_factory}
 
 
 class PickN(GlobalTransformation):
