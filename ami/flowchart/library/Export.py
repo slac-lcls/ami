@@ -21,6 +21,7 @@ class ExportToWorker(CtrlNode):
 
     def __init__(self, name):
         super().__init__(name, terminals={"In": {'io': 'in', 'ttype': Any},
+                                          "Timestamp": {'io': 'in', 'ttype': float},
                                           "Out": {'io': 'out', 'ttype': Any}},
                          exportable=True)
 

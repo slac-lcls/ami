@@ -172,17 +172,19 @@ class EpicsExportServer(abc.ABC):
             timestamp = time.time()
             logger.debug("received: %s graph: %s", topic, graph)
             if topic == 'data':
-                timestamp = exports.pop("_timestamp")
+                timestamp = exports.pop("_timestamp", None)
                 if type(timestamp) is list:
                     for name, data in exports.items():
                         if self.valid(name):
                             for data_timestamp, data in sorted(zip(timestamp, data), key=lambda v: v[0]):
                                 await self.update_data(graph, name, data, data_timestamp)
-                else:
+                elif timestamp is not None:
                     for name, data in exports.items():
                         # ignore names starting with '_' - these are private
                         if self.valid(name):
                             await self.update_data(graph, name, data, timestamp)
+                else:
+                    logging.warn("received data without timestamp: %s", exports.keys())
             elif topic == 'graph':
                await self.update_graph(graph, exports, timestamp)
             elif topic == 'store':

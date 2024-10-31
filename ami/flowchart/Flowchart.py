@@ -219,8 +219,12 @@ class Flowchart(Node):
                 await ctrl.graphCommHandler.unview(views)
                 await ctrl.graphCommHandler.updatePlots(ctrl.features.plots)
         elif node.exportable():
-            await ctrl.graphCommHandler.unexport([input_vars['In'], input_vars['Timestamp']],
-                                                 [node.values['alias'], "_timestamp"])
+            if 'eventid' in input_vars:
+                await ctrl.graphCommHandler.unexport([input_vars['In'], input_vars['eventid']],
+                                                     [node.values['alias'], "_timestamp"])
+            elif 'Timestamp' in input_vars:
+                await ctrl.graphCommHandler.unexport([input_vars['In'], input_vars['Timestamp']],
+                                                     [node.values['alias'], "_timestamp"])
 
     def nodeConnected(self, localTerm, remoteTerm):
         if remoteTerm.isOutput():
@@ -741,12 +745,14 @@ class FlowchartCtrlWidget(QtWidgets.QWidget):
                         except AssertionError:
                             gnode.setException(True)
                             self.chartWidget.updateStatus(f"{gnode.name()} set alias!", color='red')
+                            continue
                         try:
                             assert(gnode.values['alias'] != gnode.input_vars()['In'])
                         except AssertionError:
                             gnode.setException(True)
                             self.chartWidget.updateStatus(f"{gnode.name()} alias name cannot be same as input!",
                                                           color='red')
+                            continue
                         displays.add(gnode)
 
                     continue
@@ -1193,8 +1199,9 @@ class FlowchartWidget(dockarea.DockArea):
                                                              input_vars['eventid']],
                                                             [values['alias'], "_timestamp"],
                                                             N=values['events'])
-                else:
-                    await self.ctrl.graphCommHandler.export(input_vars['In'], values['alias'])
+                elif 'Timestamp' in input_vars:
+                    await self.ctrl.graphCommHandler.export([input_vars['In'], input_vars['Timestamp']],
+                                                            [values['alias'], "_timestamp"])
 
                 if not ctrl:
                     display_args.pop()
