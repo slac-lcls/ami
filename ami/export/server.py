@@ -186,7 +186,7 @@ class EpicsExportServer(abc.ABC):
                 else:
                     logging.warn("received data without timestamp: %s", exports.keys())
             elif topic == 'graph':
-               await self.update_graph(graph, exports, timestamp)
+                await self.update_graph(graph, exports, timestamp)
             elif topic == 'store':
                 await self.update_store(graph, exports, timestamp)
             elif topic == 'heartbeat':

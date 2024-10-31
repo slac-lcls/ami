@@ -70,6 +70,8 @@ class Terminal(QtCore.QObject):
         (note--this function is called on both terminals)
         """
         self.node().disconnected(self, term)
+        if self.node().name().startswith("Filter"):
+            self.node().close()
 
     def type(self):
         return self._type
