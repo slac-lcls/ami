@@ -454,7 +454,7 @@ def main():
     )
 
     args = parser.parse_args()
-    collector_addr = "tcp://localhost:%d" % args.port + Ports.NodeCollector
+    collector_addr = "tcp://localhost:%d" % (args.port + Ports.NodeCollector)
     graph_addr = "tcp://%s:%d" % (args.host, args.port + Ports.Graph)
     msg_addr = "tcp://%s:%d" % (args.host, args.port + Ports.Message)
     export_addr = "tcp://%s:%d" % (args.host, args.port + Ports.Export)
