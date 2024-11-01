@@ -13,7 +13,7 @@ from ami.data import Deserializer
 from ami.comm import ZMQ_TOPIC_DELIM
 from ami.flowchart.library.WidgetGroup import generateUi
 from ami.flowchart.library.Editors import TraceEditor, HistEditor, \
-    LineEditor, CircleEditor, RectEditor, camera, pixmapFromBase64, load_style
+    LineEditor, CircleEditor, RectEditor, camera, pixmapFromBase64, style
 
 
 logger = logging.getLogger(LogConfig.get_package_name(__name__))
@@ -167,8 +167,6 @@ class PlotWidget(QtWidgets.QWidget):
                                                 delay=0.5,
                                                 slot=lambda args: self.node.sigStateChanged.emit(self.node))
             self.plot_view.autoBtn.clicked.connect(lambda args: self.node.sigStateChanged.emit(self.node))
-
-        style = load_style()
 
         if "Background" in style:
             self.graphics_layout.setBackground(style["Background"])
@@ -586,7 +584,7 @@ class ImageWidget(PlotWidget):
         self.view.setAspectLocked(lock=self.lock, ratio=self.ratio)
 
         self.histogramLUT = pg.HistogramLUTItem(self.imageItem)
-        style = load_style()
+
         if "ImageWidget" in style:
             style = style['ImageWidget']
         else:

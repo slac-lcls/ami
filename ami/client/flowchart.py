@@ -18,15 +18,13 @@ from ami.flowchart.Flowchart import Flowchart
 from ami.flowchart.library import LIBRARY
 from ami.flowchart.NodeLibrary import isNodeClass
 from ami.flowchart.library.common import SourceNode
-from ami.flowchart.library.Editors import load_style
+from ami.flowchart.library.Editors import style
 from ami.asyncqt import QEventLoop, asyncSlot
 from qtpy import QtCore, QtWidgets
 
 try:
     import qdarktheme
-    style = load_style()
     THEME = style.get("Theme", None)
-
 except ModuleNotFoundError:
     THEME = None
 
