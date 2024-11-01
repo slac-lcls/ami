@@ -18,9 +18,17 @@ from ami.flowchart.Flowchart import Flowchart
 from ami.flowchart.library import LIBRARY
 from ami.flowchart.NodeLibrary import isNodeClass
 from ami.flowchart.library.common import SourceNode
+from ami.flowchart.library.Editors import load_style
 from ami.asyncqt import QEventLoop, asyncSlot
 from qtpy import QtCore, QtWidgets
 
+try:
+    import qdarktheme
+    style = load_style()
+    THEME = style.get("Theme", None)
+
+except ModuleNotFoundError:
+    THEME = None
 
 logger = logging.getLogger(LogConfig.get_package_name(__name__))
 
@@ -41,6 +49,9 @@ def run_editor_window(broker_addr, graphmgr_addr, checkpoint_addr, load=None, pr
         subprocess.run(["dmypy", "check", f.name])
 
     app = QtWidgets.QApplication([])
+
+    if THEME:
+        qdarktheme.setup_theme(THEME)
 
     loop = QEventLoop(app)
     asyncio.set_event_loop(loop)
@@ -133,6 +144,10 @@ class NodeProcess(QtCore.QObject):
 
         if loop is None:
             self.app = QtWidgets.QApplication([])
+
+            if THEME:
+                qdarktheme.setup_theme(THEME)
+
             loop = QEventLoop(self.app)
 
         asyncio.set_event_loop(loop)

@@ -4,7 +4,7 @@ from pyqtgraph.graphicsItems.ViewBox import ViewBox
 from pyqtgraph import GridItem, GraphicsWidget
 from ami.flowchart.Node import NodeGraphicsItem, find_nearest
 from ami.flowchart.library.common import SourceNode
-
+from ami.flowchart.library.Editors import load_style
 
 def clamp(pos):
     pos = [find_nearest(pos.x()), find_nearest(pos.y())]
@@ -222,6 +222,11 @@ class FlowchartViewBox(ViewBox):
         super().__init__(*args, **kwargs)
         self.widget = widget
         self.chart = widget.chart
+
+        style = load_style()
+
+        if "Background" in style:
+            self.setBackgroundColor(style["Background"])
 
         self.setLimits(minXRange=200, minYRange=200,
                        xMin=-1000, yMin=-1000, xMax=5.2e3, yMax=5.2e3)

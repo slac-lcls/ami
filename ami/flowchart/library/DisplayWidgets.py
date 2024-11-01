@@ -168,6 +168,11 @@ class PlotWidget(QtWidgets.QWidget):
                                                 slot=lambda args: self.node.sigStateChanged.emit(self.node))
             self.plot_view.autoBtn.clicked.connect(lambda args: self.node.sigStateChanged.emit(self.node))
 
+        style = load_style()
+
+        if "Background" in style:
+            self.graphics_layout.setBackground(style["Background"])
+
         self.plot_view.showGrid(True, True)
 
         ax = self.plot_view.getAxis('bottom')
