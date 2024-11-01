@@ -11,7 +11,7 @@ from ami.flowchart.FlowchartGraphicsView import FlowchartGraphicsView
 from ami.flowchart.Terminal import Terminal, TerminalGraphicsItem, ConnectionItem
 from ami.flowchart.library import LIBRARY
 from ami.flowchart.library.common import SourceNode, CtrlNode
-from ami.flowchart.library.Editors import style
+from ami.flowchart.library.Editors import STYLE
 from ami.flowchart.Node import Node, NodeGraphicsItem, find_nearest
 from ami.flowchart.NodeLibrary import SourceLibrary
 from ami.flowchart.SourceConfiguration import SourceConfiguration
@@ -1338,7 +1338,7 @@ class FlowchartWidget(dockarea.DockArea):
 
     def updateStatus(self, text, color='black'):
         now = datetime.now().strftime('%H:%M:%S')
-        if style.get("Theme", None) == "dark" and color == 'black':
+        if STYLE.get("Theme", None) == "dark" and color == 'black':
             color = '#fff'
         self.statusText.insertHtml(f"<font color={color}>[{now}] {text}</font>")
         self.statusText.append("")

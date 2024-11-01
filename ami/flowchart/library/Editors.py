@@ -27,7 +27,7 @@ def load_style():
     return style
 
 
-style = load_style()
+STYLE = load_style()
 
 
 class TraceEditor(QtWidgets.QWidget):
@@ -85,8 +85,8 @@ class TraceEditor(QtWidgets.QWidget):
 
         if 'restore' not in kwargs:
             name = widget.__class__.__name__
-            if name in style:
-                self.restoreState(style[name])
+            if name in STYLE:
+                self.restoreState(STYLE[name])
 
     def update_plot(self):
         point = self.trace_attrs['Point']
