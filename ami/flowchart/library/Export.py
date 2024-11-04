@@ -1,7 +1,8 @@
+from networkfox.modifiers import GraphWarning
 from typing import Union, Any
 from qtpy import QtCore, QtWidgets
 from amitypes import Array1d, Array2d
-from ami.comm import AMIWarning, GraphCommHandler
+from ami.comm import GraphCommHandler
 from ami.flowchart.library.common import CtrlNode
 import ami.graph_nodes as gn
 import socket
@@ -199,7 +200,8 @@ try:
             try:
                 return self.pv.write(value)
             except caproto._utils.CaprotoTimeoutError as e:
-                raise AMIWarning(e)
+                raise GraphWarning(e)
+
 
     class Caput(CtrlNode):
 
@@ -247,8 +249,9 @@ try:
                 self.ctx = pct.Context('pva')
             try:
                 return self.ctx.put(self.pvname, value)
-            except TimeoutError:
-                raise AMIWarning("pvput timed out")
+            except TimeoutError as e:
+                raise GraphWarning(e)
+
 
     class Pvput(CtrlNode):
 
