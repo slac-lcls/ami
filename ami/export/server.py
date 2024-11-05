@@ -6,6 +6,7 @@ import time
 import dill
 import logging
 import functools
+import struct
 import numpy as np
 import ami.comm
 from ami import LogConfig, p4pConfig
@@ -24,7 +25,7 @@ logger = logging.getLogger(LogConfig.get_package_name(__name__))
 
 
 class EpicsExportServer(abc.ABC):
-    def __init__(self, name, msg_addr, export_addr, *args, **kwargs):
+    def __init__(self, name, msg_addr, export_addr, batched, *args, **kwargs):
         self.base = name
         self.ctx = zmq.asyncio.Context()
         self.export = self.ctx.socket(zmq.SUB)
@@ -41,6 +42,8 @@ class EpicsExportServer(abc.ABC):
         self.info_pvbase = "info"
 
         self.ts_converter = TimestampConverter()
+
+        self.batched = batched
 
         self.node_msg_comm.send_string("epics", zmq.SNDMORE)
         self.node_msg_comm.send_string("export", zmq.SNDMORE)
@@ -146,7 +149,7 @@ class EpicsExportServer(abc.ABC):
                 pv_type = self.get_pv_type(data)
                 if pv_type is not None:
                     logger.debug("Creating new pv named %s for graph %s", name, graph)
-                    self.create_pv(pvname, pv_type, data, timestamp)
+                    self.create_pv(pvname, pv_type, data, timestamp, convert_timestamp=True)
                 else:
                     logger.warn("Cannot map type of '%s' from graph '%s' to PV: %s", name, graph, type(data))
                     self.ignored.add(pvname)
@@ -174,10 +177,21 @@ class EpicsExportServer(abc.ABC):
             if topic == 'data':
                 timestamp = exports.pop("_timestamp", None)
                 if type(timestamp) is list:
+                    # for batch send timestamp, length in bytes, payload, send as byte or char array
                     for name, data in exports.items():
                         if self.valid(name):
-                            for data_timestamp, data in sorted(zip(timestamp, data), key=lambda v: v[0]):
-                                await self.update_data(graph, name, data, data_timestamp)
+                            if self.batched:
+                                batched_data = b""
+                                for data_timestamp, data in sorted(zip(timestamp, data), key=lambda v: v[0]):
+                                    if isinstance(data, np.ndarray):
+                                        nbytes = data.nbytes
+                                        data_bytes = data.tobytes()
+                                        batched_data += struct.pack(f"fN{nbytes}s",
+                                                                    data_timestamp, nbytes, data_bytes)
+                                await self.update_data(graph, name, batched_data, data_timestamp)
+                            else:
+                                for data_timestamp, data in sorted(zip(timestamp, data), key=lambda v: v[0]):
+                                    await self.update_data(graph, name, data, data_timestamp)
                 elif timestamp is not None:
                     for name, data in exports.items():
                         # ignore names starting with '_' - these are private
@@ -273,8 +287,8 @@ class PvaExportRpcHandler:
 
 
 class PvaExportServer(EpicsExportServer):
-    def __init__(self, name, msg_addr, export_addr, aggregate=False):
-        super().__init__(name, msg_addr, export_addr)
+    def __init__(self, name, msg_addr, export_addr, aggregate=False, batched=False):
+        super().__init__(name, msg_addr, export_addr, batched=batched)
         # self.queue = ThreadedWorkQueue(maxsize=20, workers=1)
         # pva server provider
         self.provider = StaticProvider(name)
@@ -289,18 +303,20 @@ class PvaExportServer(EpicsExportServer):
                                         # self.rpc_provider
                                         ])
 
-    def create_pv(self, name, nt, initial, timestamp, func=None):
+    def create_pv(self, name, nt, initial, timestamp, func=None, convert_timestamp=False):
         extras = {}
         if func is not None:
             extras['handler'] = PvaExportPutHandler(put=func)
         if p4pConfig.SupportsTimestamps:
+            if convert_timestamp:
+                timestamp = self.ts_converter.decode(timestamp)
             extras['timestamp'] = timestamp
         pv = SharedPV(nt=nt, initial=initial, **extras)
         self.provider.add('%s:%s' % (self.base, name), pv)
         self.pvs[name] = pv
 
-    def create_bytes_pv(self, name, initial, timestamp, func=None):
-        self.create_pv(name, NTBytes(), initial, timestamp, func=func)
+    def create_bytes_pv(self, name, initial, timestamp, func=None, convert_timestamp=False):
+        self.create_pv(name, NTBytes(), initial, timestamp, func=func, convert_timestamp=convert_timestamp)
 
     async def post_pv(self, pvname, value, timestamp, convert_timestamp=False):
         extras = {}
@@ -322,6 +338,8 @@ class PvaExportServer(EpicsExportServer):
             return NTScalar('l')
         elif isinstance(data, float):
             return NTScalar('d')
+        elif isinstance(data, bytes):
+            return NTBytes()
         else:
             return NTObject()
 
@@ -372,12 +390,12 @@ class PvaExportServer(EpicsExportServer):
                 pass
 
 class CaExportServer(EpicsExportServer):
-    def __init__(self, name, msg_addr, export_addr, aggregate=False):
-        super().__init__(name, msg_addr, export_addr)
+    def __init__(self, name, msg_addr, export_addr, aggregate=False, batched=False):
+        super().__init__(name, msg_addr, export_addr, batched=batched)
         self.pvdb = {}
         self.server = CAPContext(self.pvdb)
 
-    def create_pv(self, name, nt, initial, timestamp, func=None):
+    def create_pv(self, name, nt, initial, timestamp, func=None, convert_timestamp=False):
         kwargs = {}
         if nt == ChannelType.STRING:
             kwargs['max_length'] = 1024
@@ -396,6 +414,8 @@ class CaExportServer(EpicsExportServer):
             return ChannelType.INT
         elif isinstance(data, float):
             return ChannelType.FLOAT
+        elif isinstance(data, bytes):
+            return ChannelType.CHAR
         else:
             return None
 
