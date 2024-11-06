@@ -10,20 +10,20 @@ from ami.export import server
 
 logger = logging.getLogger(__name__)
 
-async def run_export_async(name, msg_addr, export_addr, aggregate=False):
+async def run_export_async(name, msg_addr, export_addr, aggregate=False, batched=False):
     tasks = []
-    paexport = server.PvaExportServer(name, msg_addr, export_addr, aggregate)
+    paexport = server.PvaExportServer(name, msg_addr, export_addr, aggregate, batched)
     tasks.append(asyncio.create_task(paexport.start_server()))
     tasks.append(asyncio.create_task(paexport.run()))
 
-    caexport = server.CaExportServer(name, msg_addr, export_addr, aggregate)
+    caexport = server.CaExportServer(name, msg_addr, export_addr, aggregate, batched)
     tasks.append(asyncio.create_task(caexport.start_server()))
     tasks.append(asyncio.create_task(caexport.run()))
 
     await asyncio.gather(*tasks)
 
-def run_export(name, msg_addr, export_addr, aggregate=False):
-    asyncio.run(run_export_async(name, msg_addr, export_addr, aggregate))
+def run_export(name, msg_addr, export_addr, aggregate=False, batched=False):
+    asyncio.run(run_export_async(name, msg_addr, export_addr, aggregate, batched))
 
 def main():
     parser = argparse.ArgumentParser(description='AMII DataExport App')
@@ -49,6 +49,12 @@ def main():
         '--aggregate',
         action='store_true',
         help='aggregates graph and store related variables into structured data (not all clients support this)'
+    )
+
+    parser.add_argument(
+        '--batched',
+        action='store_true',
+        help='batch export as a list of structs'
     )
 
     parser.add_argument(
@@ -79,7 +85,7 @@ def main():
     logging.basicConfig(format=LogConfig.Format, level=log_level, handlers=log_handlers)
 
     try:
-        return run_export(args.name, msg_addr, export_addr, args.aggregate)
+        return run_export(args.name, msg_addr, export_addr, args.aggregate, args.batched)
     except KeyboardInterrupt:
         logger.info("DataExport killed by user...")
         return 0
