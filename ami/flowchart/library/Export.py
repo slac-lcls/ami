@@ -1,12 +1,11 @@
-from networkfox.modifiers import GraphWarning
 from typing import Union, Any
 from qtpy import QtCore, QtWidgets
 from amitypes import Array1d, Array2d
 from ami.comm import GraphCommHandler
+from ami.data import TimestampConverter
 from ami.flowchart.library.common import CtrlNode
 import ami.graph_nodes as gn
 import socket
-import time
 import struct
 import ipaddress
 
@@ -35,7 +34,7 @@ class PvExport(CtrlNode):
 
     nodeName = "PvExport"
     uiTemplate = [('alias', 'text', {'tip': "PV name to export variable under."}),
-                  ('events', 'intSpin', {'value': 2, 'min': 2, 'tip': "Number of events to export"})]
+                  ('events', 'intSpin', {'value': 2, 'min': 2, 'tip': "Number of events/heartbeat to export"})]
 
     def __init__(self, name):
         super().__init__(name, terminals={"In": {'io': 'in', 'ttype': Any},
@@ -106,79 +105,63 @@ class ZMQ(CtrlNode):
 
 
 class McastProc():
-    def __init__(self, grp, port, rate):
-        self._nextTime = 0
+    def __init__(self, grp, port):
         self.mcast_grp_port = (grp, int(port))
-        self._rate = rate
         self._socket = None
+        self.ts_converter = None
 
     def __del__(self):
         if self._socket is not None:
             self._socket.close()
             self._socket = None
 
-    def __call__(self, data, timestamp, pulseId):
+    def __call__(self, values):
         if self._socket is None:
             self._socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM, socket.IPPROTO_UDP)
             self._socket.setsockopt(socket.IPPROTO_IP, socket.IP_MULTICAST_TTL, 8)
+            self.ts_converter = TimestampConverter()
 
-        now = time.time()
-        if now > self._nextTime:
-            version = 0
-            validMask = 0
+        version = 0
+        validMask = 0
+
+        for data, eventid in sorted(values, key=lambda v: v[1]):
+            timestamp, pulseId = self.ts_converter.decode(eventid)
             header = struct.pack('QQII', timestamp, pulseId, version, validMask)
 
             self._socket.sendmsg((header, data), (), 0, self.mcast_grp_port)
-            self._nextTime = now + 1/self._rate
-            #print(f"*** now {now}, nextTime {self._nextTime}, pd {1/self._rate}, ts %08x %08x, pid %08x %08x" % \
-            #      (timestamp>>32, timestamp&((1<<32)-1), pulseId>>32, pulseId&((1<<32)-1)))
 
         return []
 
 
-class Mcast(CtrlNode):
+class UDPMcast(CtrlNode):
 
     """
     UDP multicast a reduced rate of input in BLD format.
     """
 
-    nodeName = "Mcast"
+    nodeName = "UDPMcast"
     uiTemplate = [('Multicast Group', 'text'),
                   ('Port', 'text'),
-                  ('rate_Hz', 'intSpin', {'value': 10, 'min': 1}),
-                  ('global', 'check', {'checked': True,
-                                       'tip': "Insert Pick1 and export values from global collector."})]
+                  ('events', 'intSpin', {'value': 2, 'min': 2, 'tip': "Number of events/heartbeat to export"})]
 
     def __init__(self, name):
         super().__init__(name,
-                         terminals={'Data':  {'io': 'in', 'removable': False, 'ttype': Any},
-                                    'Timestamp': {'io': 'in', 'removable': False, 'ttype': float},
-                                    'PulseId':   {'io': 'in', 'removable': False, 'ttype': int}})
+                         terminals={'In':  {'io': 'in', 'removable': False, 'ttype': Any},
+                                    'eventid': {'io': 'in', 'ttype': int}})
 
     def to_operation(self, inputs, outputs, **kwargs):
-
         if not ipaddress.IPv4Address(self.values['Multicast Group']).is_multicast:
             raise Exception("Invalid multicast address")
 
-        picked_outputs = []
-        for k, v in inputs.items():
-            picked_outputs.append(f"{v}_picked")
+        picked_outputs = [self.name()+"_pickedoutput"]
 
-        if self.values['global']:
-            nodes = [gn.PickN(name=self.name()+"_picked",
-                              inputs=inputs, outputs=picked_outputs,
-                              N=1, **kwargs),
-                     gn.Map(name=self.name()+"_operation",
-                            inputs=picked_outputs, outputs=outputs,
-                            func=McastProc(self.values['Multicast Group'],
-                                           self.values['Port'],
-                                           self.values['rate_Hz']), **kwargs)]
-        else:
-            nodes = [gn.Map(name=self.name()+"_operation",
-                            inputs=inputs, outputs=outputs,
-                            func=McastProc(self.values['Multicast Group'],
-                                           self.values['Port'],
-                                           self.values['rate_Hz']), **kwargs)]
+        nodes = [gn.PickN(name=self.name()+"_picked",
+                          inputs=inputs, outputs=picked_outputs,
+                          N=self.values['events'], **kwargs),
+                 gn.Map(name=self.name()+"_operation",
+                        inputs=picked_outputs, outputs=outputs,
+                        func=McastProc(self.values['Multicast Group'],
+                                       self.values['Port']), **kwargs)]
 
         return nodes
 
@@ -188,19 +171,23 @@ try:
     import caproto.threading.client as ct
 
     class CaputProc():
-        def __init__(self, pvname):
-            self.pvname = pvname
+
+        def __init__(self, **kwargs):
+            self.pvname = kwargs['pvname']
             self.ctx = None
             self.pv = None
+            self.wait = kwargs['wait']
+            self.timeout = kwargs['timeout']
 
-        def __call__(self, value):
+        def __call__(self, values):
             if self.ctx is None:
                 self.ctx = ct.Context()
                 self.pv = self.ctx.get_pvs(self.pvname)[0]
             try:
-                return self.pv.write(value)
+                for value in sorted(values, key=lambda v: v[1]):
+                    self.pv.write(value, wait=self.wait, timeout=self.timeout)
             except caproto._utils.CaprotoTimeoutError as e:
-                raise GraphWarning(e)
+                raise gn.AMIWarning(e)
 
 
     class Caput(CtrlNode):
@@ -211,25 +198,24 @@ try:
 
         nodeName = "Caput"
         uiTemplate = [('pvname', 'text'),
-                      ('global', 'check', {'checked': True,
-                                           'tip': "Insert Pick1 and export values from global collector."})]
+                      ('events', 'intSpin', {'value': 2, 'min': 2,
+                                             'tip': "Number of events/heartbeat to export"}),
+                      ('wait', 'check', {'checked': False}),
+                      ('timeout', 'doubleSpin', {'value': 0.5})]
 
         def __init__(self, name):
-            super().__init__(name, terminals={"In": {'io': 'in', 'ttype': Union[str, int, float, Array1d]}})
+            super().__init__(name, terminals={"In": {'io': 'in', 'ttype': Union[str, int, float, Array1d]},
+                                              "eventid": {'io': 'in', 'ttype': int}})
 
         def to_operation(self, inputs, outputs, **kwargs):
             picked_outputs = [self.name()+"_pickedoutput"]
+            values = self.values
 
-            if self.values['global']:
-                nodes = [gn.PickN(name=self.name()+"_picked",
-                                  inputs=inputs, outputs=picked_outputs, N=1, **kwargs),
-                         gn.Map(name=self.name()+"_operation",
-                                inputs=picked_outputs, outputs=outputs,
-                                func=CaputProc(self.values['pvname']), **kwargs)]
-            else:
-                nodes = [gn.Map(name=self.name()+"_operation",
-                                inputs=inputs, outputs=outputs,
-                                func=CaputProc(self.values['pvname']), **kwargs)]
+            nodes = [gn.PickN(name=self.name()+"_picked",
+                              inputs=inputs, outputs=picked_outputs, N=self.values['events'], **kwargs),
+                     gn.Map(name=self.name()+"_operation",
+                            inputs=picked_outputs, outputs=outputs,
+                            func=CaputProc(**values), **kwargs)]
 
             return nodes
 
@@ -240,17 +226,21 @@ try:
     import p4p.client.thread as pct
 
     class PvputProc():
-        def __init__(self, pvname):
-            self.pvname = pvname
-            self.ctx = None
 
-        def __call__(self, value):
+        def __init__(self, **kwargs):
+            self.pvname = kwargs['pvname']
+            self.ctx = None
+            self.wait = kwargs['wait']
+            self.timeout = kwargs['timeout']
+
+        def __call__(self, values):
             if self.ctx is None:
                 self.ctx = pct.Context('pva')
             try:
-                return self.ctx.put(self.pvname, value)
-            except TimeoutError as e:
-                raise GraphWarning(e)
+                for value in sorted(values, key=lambda v: v[1]):
+                    self.ctx.put(self.pvname, value, wait=self.wait, timeout=self.timeout)
+            except TimeoutError:
+                raise gn.AMIWarning("pvput timeout error")
 
 
     class Pvput(CtrlNode):
@@ -261,27 +251,26 @@ try:
 
         nodeName = "Pvput"
         uiTemplate = [('pvname', 'text'),
-                      ('global', 'check', {'checked': True,
-                                           'tip': "Insert Pick1 and export values from global collector."})]
+                      ('events', 'intSpin', {'value': 2, 'min': 2,
+                                             'tip': "Number of events/heartbeat to export"}),
+                      ('wait', 'check', {'checked': False}),
+                      ('timeout', 'doubleSpin', {'value': 0.5})]
 
         def __init__(self, name):
             super().__init__(name,
-                             terminals={"In": {'io': 'in', 'ttype': Union[str, int, float, Array1d, Array2d]}})
+                             terminals={"In": {'io': 'in', 'ttype': Union[str, int, float, Array1d, Array2d]},
+                                        "eventid": {'io': 'in', 'ttype': int}})
 
         def to_operation(self, inputs, outputs, **kwargs):
             picked_outputs = [self.name()+"_pickedoutput"]
+            values = self.values
 
-            if self.values['global']:
-                nodes = [gn.PickN(name=self.name()+"_picked",
-                                  inputs=inputs, outputs=picked_outputs,
-                                  N=1, **kwargs),
-                         gn.Map(name=self.name()+"_operation",
-                                inputs=picked_outputs, outputs=outputs,
-                                func=PvputProc(self.values['pvname']), **kwargs)]
-            else:
-                nodes = [gn.Map(name=self.name()+"_operation",
-                                inputs=inputs, outputs=outputs,
-                                func=PvputProc(self.values['pvname']), **kwargs)]
+            nodes = [gn.PickN(name=self.name()+"_picked",
+                              inputs=inputs, outputs=picked_outputs,
+                              N=self.values['events'], **kwargs),
+                     gn.Map(name=self.name()+"_operation",
+                            inputs=picked_outputs, outputs=outputs,
+                            func=PvputProc(**values), **kwargs)]
 
             return nodes
 

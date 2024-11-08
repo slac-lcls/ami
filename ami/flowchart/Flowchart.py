@@ -647,7 +647,7 @@ class FlowchartCtrlWidget(QtWidgets.QWidget):
 
     def __init__(self, chart, graphmgr_addr, configure):
         super().__init__()
-       
+
         self.graphCommHandler = AsyncGraphCommHandler(graphmgr_addr.name, graphmgr_addr.comm, ctx=chart.ctx)
         self.graph_name = graphmgr_addr.name
         self.metadata = None
@@ -770,8 +770,8 @@ class FlowchartCtrlWidget(QtWidgets.QWidget):
                             nodes = node.to_operation(inputs=node.input_vars(),
                                                       outputs=node.output_vars(),
                                                       parent=node.name())
-                        except Exception:
-                            self.chartWidget.updateStatus(f"{node.name()} error!", color='red')
+                        except Exception as e:
+                            self.chartWidget.updateStatus(f"{node.name()} {e}!", color='red')
                             printExc(f"{node.name()} raised exception! See console for stacktrace.")
                             node.setException(True)
                             failed_nodes.add(node)
