@@ -186,8 +186,9 @@ class EpicsExportServer(abc.ABC):
                                     if isinstance(data, np.ndarray):
                                         nbytes = data.nbytes
                                         data_bytes = data.tobytes()
-                                        batched_data += struct.pack(f"fN{nbytes}s",
-                                                                    data_timestamp, nbytes, data_bytes)
+                                        sec, nsec = self.ts_converter.decode(data_timestamp)
+                                        batched_data += struct.pack(f"IIN{nbytes}s",
+                                                                    sec, nsec, nbytes, data_bytes)
                                 await self.update_data(graph, name, batched_data, data_timestamp)
                             else:
                                 for data_timestamp, data in sorted(zip(timestamp, data), key=lambda v: v[0]):
