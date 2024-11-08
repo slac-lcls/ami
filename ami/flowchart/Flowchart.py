@@ -563,10 +563,16 @@ class Flowchart(Node):
                 source_library = SourceLibrary()
                 for source, node_type in msg.items():
                     pth = []
-                    for part in source.split(':')[:-1]:
-                        if pth:
-                            part = ":".join((pth[-1], part))
-                        pth.append(part)
+                    if ":" in source:
+                        for part in source.split(':')[:-1]:
+                            if pth:
+                                part = ":".join((pth[-1], part))
+                            pth.append(part)
+                    elif "_" in source:
+                        for part in source.split('_')[:-1]:
+                            if pth:
+                                part = "_".join((pth[-1], part))
+                            pth.append(part)
                     source_library.addNodeType(source, amitypes.loads(node_type), [pth])
 
                 self.source_library = source_library
