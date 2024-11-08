@@ -34,9 +34,10 @@ pg.setConfigOption('imageAxisOrder', 'row-major')
 
 def run_editor_window(broker_addr, graphmgr_addr, checkpoint_addr, load=None, prometheus_dir=None,
                       prometheus_port=None, hutch=None, configure=False, save_dir=None):
-    dmypy_file = tempfile.NamedTemporaryFile(mode='w', delete=True)
+    dmypy_file = tempfile.NamedTemporaryFile(mode='w', delete=False)
     os.environ['DMYPY_STATUS_FILE'] = dmypy_file.name
     logger.debug(f"dmypy status file: {dmypy_file.name}")
+    logger.info(f"dmypy status file: {dmypy_file.name}")
     subprocess.run(["dmypy", "--status-file", dmypy_file.name, "start"])
     check_file = None
     with tempfile.NamedTemporaryFile(mode='w', delete=False) as f:
