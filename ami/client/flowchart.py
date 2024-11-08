@@ -34,7 +34,10 @@ pg.setConfigOption('imageAxisOrder', 'row-major')
 
 def run_editor_window(broker_addr, graphmgr_addr, checkpoint_addr, load=None, prometheus_dir=None,
                       prometheus_port=None, hutch=None, configure=False, save_dir=None):
-    subprocess.run(["dmypy", "start"])
+    dmypy_file = tempfile.NamedTemporaryFile(mode='w', delete=True)
+    os.environ['DMYPY_STATUS_FILE'] = dmypy_file.name
+    logger.debug(f"dmypy status file: {dmypy_file.name}")
+    subprocess.run(["dmypy", "--status-file", dmypy_file.name, "start"])
     check_file = None
     with tempfile.NamedTemporaryFile(mode='w', delete=False) as f:
         f.write("from typing import *\n")
@@ -44,7 +47,7 @@ def run_editor_window(broker_addr, graphmgr_addr, checkpoint_addr, load=None, pr
         f.write("T = TypeVar('T')\n")
         f.flush()
         check_file = f.name
-        subprocess.run(["dmypy", "check", f.name])
+        subprocess.run(["dmypy", "--status-file", dmypy_file.name, "check", f.name])
 
     app = QtWidgets.QApplication([])
 
@@ -99,10 +102,10 @@ def run_editor_window(broker_addr, graphmgr_addr, checkpoint_addr, load=None, pr
         loop.close()
 
     try:
-        proc = subprocess.run(["dmypy", "stop"])
+        proc = subprocess.run(["dmypy", "--status-file", dmypy_file.name, "stop"])
         proc.check_returncode()
     except subprocess.CalledProcessError:
-        subprocess.run(["dmypy", "kill"])
+        subprocess.run(["dmypy", "--status-file", dmypy_file.name, "kill"])
     finally:
         if check_file:
             os.remove(check_file)

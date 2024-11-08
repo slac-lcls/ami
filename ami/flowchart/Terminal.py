@@ -1,4 +1,5 @@
 # -*- coding: utf-8 -*-
+import os
 from qtpy import QtCore, QtGui, QtWidgets
 from pyqtgraph.graphicsItems.GraphicsObject import GraphicsObject
 from pyqtgraph import functions as fn
@@ -603,10 +604,11 @@ def checkType(terminals, type_file=None):
             f.write(f"def {f_out}:\n\t{f_out_return_string}")
             f.write(f"\n{f_in_name}({f_out_name}())")
             f.flush()
-            status = subprocess.call(["dmypy", "check", f.name])
+            dmypy_status = os.environ['DMYPY_STATUS_FILE']
+            status = subprocess.call(["dmypy", "--status-file", dmypy_status, "check", f.name])
             if status == 2:
-                subprocess.call(["dmypy", "start"])
-                status = subprocess.call(["dmypy", "check", f.name])
+                subprocess.call(["dmypy", "--status-file", dmypy_status, "start"])
+                status = subprocess.call(["dmypy", "--status-file", dmypy_status, "check", f.name])
             return status == 0
 
 
