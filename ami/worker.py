@@ -191,6 +191,10 @@ class Worker(Node):
                         if graph:
                             graph.heartbeat_finished()
 
+                            for node_name, warning in graph.warnings().items():
+                                warning.graph_name = name
+                                self.report("warning", warning)
+
                     # check if there are graph updates
                     while True:
                         try:

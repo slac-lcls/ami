@@ -159,6 +159,11 @@ class GraphCollector(Node, Collector):
                     self.event_time.labels(self.hutch, 'Heartbeat', self.name).set(heartbeat_time)
                     self.event_size.labels(self.hutch, self.name).set(size)
 
+                    if self.store.graph(msg.name):
+                        for node, warning in self.store.graph(msg.name).warnings().items():
+                            warning.graph_name = msg.name
+                            self.report("warning", warning)
+
                 except Exception as e:
                     e.graph_name = msg.name
                     logger.exception("%s: Failure encountered while executing graph %s:", self.name, msg.name)
