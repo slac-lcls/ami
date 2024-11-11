@@ -597,10 +597,10 @@ class Flowchart(Node):
                 total_events[worker] = msg['num_events']
 
                 if all(events_per_second):
-                    events_per_second = int(np.sum(events_per_second))
+                    events_per_second = int(np.average(events_per_second))
                     total_num_events = int(np.sum(total_events))
                     ctrl = self.widget()
-                    ctrl.ui.rateLbl.setText(f"Num Events: {total_num_events} Events/Sec: {events_per_second}")
+                    ctrl.ui.rateLbl.setText(f"Num Events: {total_num_events} Avg Events/Sec: {events_per_second}")
                     events_per_second = [None]*num_workers
                     total_events = [None]*num_workers
             elif topic == 'warning':
@@ -613,8 +613,9 @@ class Flowchart(Node):
                         node_name = ctrl.metadata[msg.node_name]['parent']
                     if node_name in self.nodes(data='node'):
                         node = self.nodes(data='node')[node_name]
-                        node.setException(msg, "warning")
-                        ctrl.chartWidget.updateStatus(f"{source} {node.name()}: {msg}", color='red')
+                        if node.exception is None:
+                            node.setException(msg, "warning")
+                            ctrl.chartWidget.updateStatus(f"WARNING: {source} {node.name()}: {msg}", color='red')
             elif topic == 'error':
                 ctrl = self.widget()
                 if hasattr(msg, 'node_name'):
@@ -623,9 +624,9 @@ class Flowchart(Node):
                     node_name = ctrl.metadata[msg.node_name]['parent']
                     node = self.nodes(data='node')[node_name]
                     node.setException(msg)
-                    ctrl.chartWidget.updateStatus(f"{source} {node.name()}: {msg}", color='red')
+                    ctrl.chartWidget.updateStatus(f"ERROR: {source} {node.name()}: {msg}", color='red')
                 else:
-                    ctrl.chartWidget.updateStatus(f"{source}: {msg}", color='red')
+                    ctrl.chartWidget.updateStatus(f"ERROR: {source}: {msg}", color='red')
 
     async def run(self, load=None):
         asyncio.create_task(self.updateState())
@@ -638,9 +639,9 @@ class FlowchartCtrlWidget(QtWidgets.QWidget):
     """
     The widget that contains the list of all the nodes in a flowchart and their controls,
     as well as buttons for loading/saving flowcharts.
-    
+
     Args
-        chart (ami.flowchart.Flowchart.Flowchart): 
+        chart (ami.flowchart.Flowchart.Flowchart):
         graphmgr_addr (ami.client.GraphMgrAddress):
         configure (bool):
     """
