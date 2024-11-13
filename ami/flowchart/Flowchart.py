@@ -563,10 +563,16 @@ class Flowchart(Node):
                 source_library = SourceLibrary()
                 for source, node_type in msg.items():
                     pth = []
-                    for part in source.split(':')[:-1]:
-                        if pth:
-                            part = ":".join((pth[-1], part))
-                        pth.append(part)
+                    if ":" in source:
+                        for part in source.split(':')[:-1]:
+                            if pth:
+                                part = ":".join((pth[-1], part))
+                            pth.append(part)
+                    elif "_" in source:
+                        for part in source.split('_')[:-1]:
+                            if pth:
+                                part = "_".join((pth[-1], part))
+                            pth.append(part)
                     source_library.addNodeType(source, amitypes.loads(node_type), [pth])
 
                 self.source_library = source_library
@@ -577,7 +583,7 @@ class Flowchart(Node):
                 ctrl = self.widget()
                 tree = ctrl.ui.source_tree
                 ctrl.ui.clear_model(tree)
-                ctrl.ui.create_model(ctrl.ui.source_tree, self.source_library.getLabelTree())
+                ctrl.ui.create_model(ctrl.ui.source_tree, self.source_library.getLabelTree(), typ="SourceTree")
 
                 ctrl.chartWidget.updateStatus("Updated sources.")
 
@@ -647,7 +653,7 @@ class FlowchartCtrlWidget(QtWidgets.QWidget):
 
     def __init__(self, chart, graphmgr_addr, configure):
         super().__init__()
-       
+
         self.graphCommHandler = AsyncGraphCommHandler(graphmgr_addr.name, graphmgr_addr.comm, ctx=chart.ctx)
         self.graph_name = graphmgr_addr.name
         self.metadata = None
@@ -659,7 +665,7 @@ class FlowchartCtrlWidget(QtWidgets.QWidget):
         self.ui = EditorTemplate.Ui_Toolbar()
         self.ui.setupUi(parent=self, chart=self.chartWidget, configure=configure)
         self.ui.create_model(self.ui.node_tree, self.chart.library.getLabelTree())
-        self.ui.create_model(self.ui.source_tree, self.chart.source_library.getLabelTree())
+        self.ui.create_model(self.ui.source_tree, self.chart.source_library.getLabelTree(), typ="SourceTree")
 
         self.chart.sigNodeChanged.connect(self.ui.setPending)
 
