@@ -366,14 +366,12 @@ class FilterWidget(QtWidgets.QWidget):
     def restoreState(self, state):
         conditions = state['conditions']
 
-        inputs = state.get('inputs', {}) or {}
-        self.inputs.update(inputs)
-        outputs = state.get('outputs', []) or []
-        self.outputs.extend(outputs)
+        self.inputs = state.get('inputs', {})
+        self.outputs = state.get('outputs', [])
 
         for condition in range(0, conditions):
             if condition == 0:
-                name = f"If"
+                name = "If"
             else:
                 name = f"Elif {condition}"
 
@@ -392,6 +390,7 @@ class FilterWidget(QtWidgets.QWidget):
 
             values[name] = state[name]
             stateGroup.setState({name: state[name]})
+
 
 def gen_filter_func(values, inputs, outputs):
     assert (len(values) >= 1)

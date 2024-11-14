@@ -633,7 +633,7 @@ class EventProcessor():
 
         def display(self, topics, terms, addr, win, **kwargs):
             if self.widget is None:
-                self.widget = FilterWidget(terms, self.output_vars(), win)
+                self.widget = FilterWidget(terms or self.input_vars(), self.output_vars(), win)
                 self.widget.sigStateChanged.connect(self.state_changed)
 
             return self.widget
