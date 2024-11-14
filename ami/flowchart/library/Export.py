@@ -1,7 +1,7 @@
 from typing import Union, Any
 from qtpy import QtCore, QtWidgets
 from amitypes import Array1d, Array2d
-from ami.comm import AMIWarning
+from ami.comm import AMIWarning, GraphCommHandler
 from ami.flowchart.library.common import CtrlNode
 import ami.graph_nodes as gn
 import socket
@@ -21,6 +21,7 @@ class ExportToWorker(CtrlNode):
 
     def __init__(self, name):
         super().__init__(name, terminals={"In": {'io': 'in', 'ttype': Any},
+                                          "Timestamp": {'io': 'in', 'ttype': float},
                                           "Out": {'io': 'out', 'ttype': Any}},
                          exportable=True)
 
@@ -32,11 +33,36 @@ class PvExport(CtrlNode):
     """
 
     nodeName = "PvExport"
-    uiTemplate = [('alias', 'text', {'tip': "PV name to export variable under."})]
+    uiTemplate = [('alias', 'text', {'tip': "PV name to export variable under."}),
+                  ('events', 'intSpin', {'value': 2, 'min': 2, 'tip': "Number of events to export"})]
 
     def __init__(self, name):
-        super().__init__(name, terminals={"In": {'io': 'in', 'ttype': Any}},
+        super().__init__(name, terminals={"In": {'io': 'in', 'ttype': Any},
+                                          "eventid": {'io': 'in', 'ttype': int}},
                          exportable=True)
+
+        self.lbl = QtWidgets.QLabel(parent=self.ui)
+        self.ui.layout().addRow(self.lbl)
+        self.graph = ""
+        self.epics_prefix = ""
+        self.graphCommHandler = None
+
+    def display(self, topics, terms, addr, win, widget=None, **kwargs):
+        if addr:
+            self.graphCommHandler = GraphCommHandler(addr.name, addr.comm)
+            self.graph = addr.name
+            self.epics_prefix = self.graphCommHandler.epics_prefix
+
+        val = self.values['alias']
+        self.lbl.setText(f"pvname: {self.epics_prefix}:{self.graph}:data:{val}")
+        self.lbl.setTextInteractionFlags(QtCore.Qt.TextInteractionFlag.TextSelectableByMouse)
+        return super().display(topics, terms, addr, win, widget, **kwargs)
+
+    def state_changed(self, *args, **kwargs):
+        super().state_changed(*args, **kwargs)
+        name, group, val = args
+        if name == 'alias':
+            self.lbl.setText(f"pvname: {self.epics_prefix}:{self.graph}:data:{val}")
 
 
 class ZMQWidget(QtWidgets.QLabel):
@@ -69,7 +95,8 @@ class ZMQ(CtrlNode):
     uiTemplate = []
 
     def __init__(self, name):
-        super().__init__(name, terminals={"In": {'io': 'in', 'ttype': Any}},
+        super().__init__(name, terminals={"Timestamp": {'io': 'in', 'ttype': float},
+                                          "In": {'io': 'in', 'ttype': Any}},
                          allowAddInput=True,
                          viewable=True)
 
@@ -123,9 +150,9 @@ class Mcast(CtrlNode):
 
     def __init__(self, name):
         super().__init__(name,
-                         terminals={'data':  {'io': 'in',  'removable': False, 'ttype': Any},
-                                    'timestamp': {'io': 'in',  'removable': False, 'ttype': int},
-                                    'pulseId':   {'io': 'in',  'removable': False, 'ttype': int}})
+                         terminals={'Data':  {'io': 'in', 'removable': False, 'ttype': Any},
+                                    'Timestamp': {'io': 'in', 'removable': False, 'ttype': float},
+                                    'PulseId':   {'io': 'in', 'removable': False, 'ttype': int}})
 
     def to_operation(self, inputs, outputs, **kwargs):
 

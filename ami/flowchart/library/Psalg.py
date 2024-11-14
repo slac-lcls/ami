@@ -931,7 +931,7 @@ class ThresholdingHitFinder(CtrlNode):
 
     nodeName = "ThresholdingHitFinder"
     uiTemplate = [('Threshold', 'doubleSpin', {'value': 1.0}),
-                  ('N', 'intSpin', {'value': 2, 'min': 2}),
+                  ('N', 'intSpin', {'value': 1, 'min': 1}),
                   ('infinite', 'check')]
 
     def __init__(self, name):

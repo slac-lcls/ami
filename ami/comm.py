@@ -1441,7 +1441,7 @@ class CommHandler(abc.ABC):
 
         return self._make_node(gn.PickN, name=node_name, inputs=name, outputs=view_name, N=1, parent=parent)
 
-    def _make_export_node(self, name, export_name):
+    def _make_export_node(self, name, export_name, N=1):
         """
         Constructs a special graph export node of the requested type.
 
@@ -1454,7 +1454,7 @@ class CommHandler(abc.ABC):
         """
         node_name = '%s_export' % export_name
 
-        return self._make_node(gn.PickN, name=node_name, inputs=name, outputs=export_name, N=1, exportable=True)
+        return self._make_node(gn.PickN, name=node_name, inputs=name, outputs=export_name, N=N, exportable=True)
 
     def alias(self, name, alias=None):
         """
@@ -1743,7 +1743,17 @@ class CommHandler(abc.ABC):
     def plot(self, item):
         pass
 
-    def export(self, names, aliases=None):
+    @property
+    def epics_prefix(self):
+        """
+        Epics export prefix.
+
+        Returns:
+            Returns string of epics export prefix.
+        """
+        return self._request('get_epics_prefix')
+
+    def export(self, names, aliases=None, N=1):
         """
         Adds a Pick1 graph node for the requested graph output so that is can
         be exported. The format of output name of the Pick1 node is determined
@@ -1767,7 +1777,7 @@ class CommHandler(abc.ABC):
         if len(names) != len(aliases):
             raise ValueError("The number of names and aliases passed must be equal")
 
-        return self._export(names, aliases)
+        return self._export(names, aliases, N=N)
 
     def unexport(self, names, aliases=None):
         """
@@ -2012,7 +2022,7 @@ class CommHandler(abc.ABC):
         pass
 
     @abc.abstractmethod
-    def _export(self, names, aliases):
+    def _export(self, names, aliases, N=1):
         pass
 
     @abc.abstractmethod
@@ -2152,10 +2162,10 @@ class AsyncGraphCommHandler(ZmqCommHandler):
 
         return await self.add(nodes)
 
-    async def _export(self, names, aliases):
+    async def _export(self, names, aliases, N=1):
         nodes = []
         for name, alias in zip(names, aliases):
-            nodes.append(self._make_export_node(name, self.alias(name, alias)))
+            nodes.append(self._make_export_node(name, self.alias(name, alias), N=N))
 
         return await self.add(nodes)
 
@@ -2267,10 +2277,10 @@ class GraphCommHandler(ZmqCommHandler):
 
         return self.add(nodes)
 
-    def _export(self, names, aliases):
+    def _export(self, names, aliases, N=1):
         nodes = []
         for name, alias in zip(names, aliases):
-            nodes.append(self._make_export_node(name, self.alias(name, alias)))
+            nodes.append(self._make_export_node(name, self.alias(name, alias), N=N))
 
         return self.add(nodes)
 

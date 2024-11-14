@@ -61,6 +61,7 @@ class Manager(Collector):
         self.purged_graphs = {}  # { graph_name : dill.dumps(graph) }
         self.global_cmds = {"list_graphs"}
         self.no_auto_create_cmds = {"create_graph", "destroy_graph"}
+        self.epics_prefix = ""
 
         self.export = self.ctx.socket(zmq.XPUB)
         self.export.setsockopt(zmq.XPUB_VERBOSE, True)
@@ -276,6 +277,9 @@ class Manager(Collector):
 
     def cmd_get_exports(self, name):
         self.comm.send_pyobj(self.exports(name))
+
+    def cmd_get_epics_prefix(self, name=None):
+        self.comm.send_pyobj(self.epics_prefix)
 
     def cmd_get_sources(self, name):
         self.comm.send_pyobj(self.partition)
@@ -548,6 +552,9 @@ class Manager(Collector):
                 self.publish_purge(name, reply=False)
                 # delete the local graph information
                 self.delete(name)
+        elif topic == "epics":
+            payload = self.node_msg_comm.recv_string()
+            self.epics_prefix = payload
         else:
             payload = self.node_msg_comm.recv(copy=False)
             self.publish_message(topic, node, payload)

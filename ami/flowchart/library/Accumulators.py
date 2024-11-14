@@ -185,7 +185,7 @@ class Accumulator():
         pass
 
     def reset(self, *args):
-        return 0, ()
+        return 0
             """
 
             return template
