@@ -32,7 +32,7 @@ setup(
         'networkfox',
         'ipython',
         'qtpy',
-        'asyncqt>=0.8.0',
+        'qasync>=0.27.1',
         'amityping>=1.1.2',
         'mypy',
         'setproctitle',

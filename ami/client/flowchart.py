@@ -86,20 +86,17 @@ def run_editor_window(broker_addr, graphmgr_addr, checkpoint_addr, load=None, pr
     fc.sigFileLoaded.connect(update_title)
     fc.sigFileSaved.connect(update_title)
 
-    loop.run_until_complete(fc.updateSources(init=True))
+    with loop:
+        loop.run_until_complete(fc.updateSources(init=True))
 
-    # Add flowchart control panel to the main window
-    win.setCentralWidget(fc.widget())
-    win.show()
+        # # Add flowchart control panel to the main window
+        win.setCentralWidget(fc.widget())
+        win.show()
 
-    try:
-        task = asyncio.create_task(fc.run(load))
+        app.aboutToQuit.connect(fc.widget().clear)
+
+        loop.create_task(fc.run(load))
         loop.run_forever()
-    finally:
-        if not task.done():
-            loop.run_until_complete(fc.widget().clear())
-            task.cancel()
-        loop.close()
 
     try:
         proc = subprocess.run(["dmypy", "--status-file", dmypy_file.name, "stop"])
@@ -475,10 +472,11 @@ class MessageBroker(object):
                 self.library_paths.update(msg.paths)
 
     async def run(self):
-        asyncio.create_task(self.handle_connect())
-        asyncio.create_task(self.handle_checkpoint())
-        asyncio.create_task(self.process_messages())
-        asyncio.create_task(self.monitor_processes())
+        tasks = [asyncio.create_task(self.handle_connect()),
+                 asyncio.create_task(self.handle_checkpoint()),
+                 asyncio.create_task(self.process_messages()),
+                 asyncio.create_task(self.monitor_processes())]
+        await asyncio.gather(*tasks)
 
 
 def run_client(graphmgr_addr, load, prometheus_dir, prometheus_port, hutch, use_opengl, configure, save_dir):

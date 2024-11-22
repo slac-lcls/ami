@@ -634,19 +634,22 @@ class Flowchart(Node):
                     ctrl.chartWidget.updateStatus(f"{source}: {msg}", color='red')
 
     async def run(self, load=None):
-        asyncio.create_task(self.updateState())
-        asyncio.create_task(self.updateSources())
+        tasks = [asyncio.create_task(self.updateState()),
+                 asyncio.create_task(self.updateSources())]
+
         if load:
             await self.loadFile(load)
+
+        await asyncio.gather(*tasks)
 
 
 class FlowchartCtrlWidget(QtWidgets.QWidget):
     """
     The widget that contains the list of all the nodes in a flowchart and their controls,
     as well as buttons for loading/saving flowcharts.
-    
+
     Args
-        chart (ami.flowchart.Flowchart.Flowchart): 
+        chart (ami.flowchart.Flowchart.Flowchart):
         graphmgr_addr (ami.client.GraphMgrAddress):
         configure (bool):
     """

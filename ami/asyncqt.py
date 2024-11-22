@@ -1,1 +1,1 @@
-from asyncqt import * # noqa
+from qasync import * # noqa
