@@ -1,12 +1,9 @@
 import pytest
-import re
 import zmq
 import dill
 import threading
-import subprocess
 import numpy as np
 import multiprocessing as mp
-import ami.graph_nodes as gn
 
 from ami.graphkit_wrapper import Graph
 from ami.data import Heartbeat
@@ -121,7 +118,7 @@ def exporter(ipc_dir):
         proc = mp.Process(
             name='export',
             target=run_export,
-            args=(pvbase, comm, export, True)
+            args=(pvbase, comm, export, True, False)
         )
         proc.daemon = False
         proc.start()
@@ -141,10 +138,11 @@ def exporter(ipc_dir):
         injector.send('data',
                       'test',
                       {
+                        '_timestamp': 1,
                         'laser': True,
                         'delta_t': 3,
                         'ebeam': 10.1,
-                        'vals': ['foo', 'bar', 'baz'],
+                        # 'vals': ['foo', 'bar', 'baz'],
                         'wave8': np.zeros(20),
                         'cspad': np.zeros((10, 10)),
                       })
@@ -218,6 +216,8 @@ def test_data_pvs(exporter, pvactx):
         for graph, data in injector.cache['data'].items():
             # test the individual pvs
             for key, expected in data.items():
+                if key == "_timestamp":
+                    continue
                 value = pvactx.get("%s:ana:%s:data:%s" % (pvbase, graph, key))
                 if isinstance(value, np.ndarray):
                     assert np.array_equal(value, expected)

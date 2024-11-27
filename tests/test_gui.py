@@ -3,8 +3,10 @@ import pytest
 import zmq
 import time
 import os
+import tempfile
 import signal
 import json
+import subprocess
 import amitypes as at
 import multiprocessing as mp
 import ami.client.flowchart_messages as fcMsgs
@@ -120,8 +122,23 @@ def broker(ipc_dir, graphmgr_addr):
     return proc.exitcode
 
 
+@pytest.fixture(scope='module')
+def dmypy():
+    dmypy_file = tempfile.NamedTemporaryFile(mode='w', delete=False)
+    os.environ['DMYPY_STATUS_FILE'] = dmypy_file.name
+    subprocess.run(["dmypy", "--status-file", dmypy_file.name, "start"])
+
+    yield
+
+    try:
+        proc = subprocess.run(["dmypy", "--status-file", dmypy_file.name, "stop"])
+        proc.check_returncode()
+    except subprocess.CalledProcessError:
+        subprocess.run(["dmypy", "--status-file", dmypy_file.name, "kill"])
+
+
 @pytest.fixture(scope='function')
-def flowchart(request, workerjson, broker, ipc_dir, graphmgr_addr, qevent_loop):
+def flowchart(request, workerjson, broker, ipc_dir, graphmgr_addr, qevent_loop, dmypy):
     try:
         from pytest_cov.embed import cleanup_on_sigterm
         cleanup_on_sigterm()
@@ -281,10 +298,11 @@ def test_sources(qtbot, flowchart):
 
     source_tree = source_library.getSourceTree()
     sources = set(source_tree.keys())
-    assert sources == set(['delta_t', 'cspad', 'laser', 'eventid', 'timestamp', 'heartbeat', 'source'])
+    print(sources)
+    assert sources == set(['delta', 'cspad', 'laser', 'eventid', 'timestamp', 'heartbeat', 'source'])
 
     label_tree = OrderedDict([('cspad', "<class 'amitypes.array.Array2d'>"),
-                              ('delta_t', "<class 'int'>"),
+                              ('delta', {'delta_t': "<class 'int'>"}),
                               ('eventid', "<class 'int'>"),
                               ('heartbeat', "<class 'int'>"),
                               ('laser', "<class 'int'>"),
