@@ -819,8 +819,7 @@ def test_psana_source(xtcwriter):
         'files': [str(xtcwriter)],
     }
     # these are broken in xtcwriter
-    excludes = {'HX2:DVD:GCC:01:PMON', 'HX2:DVD:GPI:01:PMON', 'motor1', 'motor2',
-                'xpphsd:raw:Damage', 'xpphsd:fex:Damage', 'xppcspad:raw:Damage', 'epicsinfo:epicsinfo:Damage'}
+    excludes = {'HX2:DVD:GCC:01:PMON', 'HX2:DVD:GPI:01:PMON', 'motor1', 'motor2'}
     expected_cfg = {
         'HX2:DVD:GCC:01:PMON': float,
         'HX2:DVD:GPI:01:PMON': str,
@@ -831,11 +830,9 @@ def test_psana_source(xtcwriter):
         'xpphsd:raw:calib': at.Array1d,
         'xpphsd:raw:config': dict,
         'xpphsd:raw': at.Group,
-        'xpphsd:raw:Damage': typing.Any,
         'xpphsd:fex:calib': at.Array1d,
         'xpphsd:fex:config': dict,
         'xpphsd:fex': at.Group,
-        'xpphsd:fex:Damage': typing.Any,
         'xppcspad': at.Detector,
         'xppcspad:calibconst': dict,
         'xppcspad:raw:calib': at.Array3d,
@@ -843,10 +840,8 @@ def test_psana_source(xtcwriter):
         'xppcspad:raw:raw': at.Array3d,
         'xppcspad:raw:config': dict,
         'xppcspad:raw': at.Group,
-        'xppcspad:raw:Damage': typing.Any,
         'epicsinfo': at.Detector,
         'epicsinfo:epicsinfo': at.Group,
-        'epicsinfo:epicsinfo:Damage': typing.Any,
         'epicsinfo:epicsinfo:config': dict,
         'epicsinfo:calibconst': dict,
         'eventid': int,
@@ -857,24 +852,20 @@ def test_psana_source(xtcwriter):
     }
     expected_grps = {
         'xpphsd:raw': {
-            'Damage': typing.Any,
             'calib': at.Array1d,
             'config': dict,
         },
         'xpphsd:fex': {
-            'Damage': typing.Any,
             'calib': at.Array1d,
             'config': dict,
         },
         'xppcspad:raw': {
-            'Damage': typing.Any,
             'calib': at.Array3d,
             'image': at.Array2d,
             'raw': at.Array3d,
             'config': dict,
         },
         'epicsinfo:epicsinfo': {
-            'Damage': typing.Any,
             'config': dict,
         },
     }
@@ -934,8 +925,6 @@ def test_psana_source(xtcwriter):
                     assert set(data) == set(expected_grps[name])
                     # check the types of the group
                     for k, v in expected_grps[name].items():
-                        if v == typing.Any:
-                            continue
                         assert isinstance(data[k], v)
         elif msg.mtype == MsgTypes.Heartbeat:
             break
