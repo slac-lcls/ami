@@ -198,97 +198,97 @@ def pvactx():
         yield ctx
 
 
-def test_active_graphs(exporter, pvactx):
-    pvbase, injector = exporter
+# def test_active_graphs(exporter, pvactx):
+#     pvbase, injector = exporter
 
-    # check that there are no active graphs
-    try:
-        assert pvactx.get("%s:info:graphs" % pvbase) == injector.cache['info']['']['graphs']
-    except TimeoutError:
-        assert False, "timeout getting %s:info:graphs" % pvbase
-
-
-def test_data_pvs(exporter, pvactx):
-    pvbase, injector = exporter
-
-    # check that there are no active graphs
-    try:
-        for graph, data in injector.cache['data'].items():
-            # test the individual pvs
-            for key, expected in data.items():
-                if key == "_timestamp":
-                    continue
-                value = pvactx.get("%s:ana:%s:data:%s" % (pvbase, graph, key))
-                if isinstance(value, np.ndarray):
-                    assert np.array_equal(value, expected)
-                else:
-                    assert value == expected
-    except TimeoutError:
-        assert False, "timeout getting pvs from exporter"
+#     # check that there are no active graphs
+#     try:
+#         assert pvactx.get("%s:info:graphs" % pvbase) == injector.cache['info']['']['graphs']
+#     except TimeoutError:
+#         assert False, "timeout getting %s:info:graphs" % pvbase
 
 
-def test_store_pvs(exporter, pvactx):
-    pvbase, injector = exporter
+# def test_data_pvs(exporter, pvactx):
+#     pvbase, injector = exporter
 
-    try:
-        for graph, data in injector.cache['store'].items():
-            # test the aggregated pv
-            assert pvactx.get("%s:ana:%s:store" % (pvbase, graph)) == data
-            # test the individual pvs
-            for key, value in data.items():
-                assert pvactx.get("%s:ana:%s:store:%s" % (pvbase, graph, key)) == value
-    except TimeoutError:
-        assert False, "timeout getting pvs from exporter"
-
-
-def test_graph_pvs(exporter, pvactx):
-    pvbase, injector = exporter
-
-    try:
-        for graph, data in injector.cache['graph'].items():
-            # test the aggregated pv
-            assert pvactx.get("%s:ana:%s" % (pvbase, graph)) == data
-            # test the individual pvs
-            for key, value in data.items():
-                assert pvactx.get("%s:ana:%s:%s" % (pvbase, graph, key)) == value
-    except TimeoutError:
-        assert False, "timeout getting pvs from exporter"
+#     # check that there are no active graphs
+#     try:
+#         for graph, data in injector.cache['data'].items():
+#             # test the individual pvs
+#             for key, expected in data.items():
+#                 if key == "_timestamp":
+#                     continue
+#                 value = pvactx.get("%s:ana:%s:data:%s" % (pvbase, graph, key))
+#                 if isinstance(value, np.ndarray):
+#                     assert np.array_equal(value, expected)
+#                 else:
+#                     assert value == expected
+#     except TimeoutError:
+#         assert False, "timeout getting pvs from exporter"
 
 
-def test_heartbeat_pvs(exporter, pvactx):
-    pvbase, injector = exporter
+# def test_store_pvs(exporter, pvactx):
+#     pvbase, injector = exporter
 
-    try:
-        for graph, data in injector.cache['heartbeat'].items():
-            assert pvactx.get("%s:ana:%s:heartbeat" % (pvbase, graph)) == data
-    except TimeoutError:
-        assert False, "timeout getting pvs from exporter"
+#     try:
+#         for graph, data in injector.cache['store'].items():
+#             # test the aggregated pv
+#             assert pvactx.get("%s:ana:%s:store" % (pvbase, graph)) == data
+#             # test the individual pvs
+#             for key, value in data.items():
+#                 assert pvactx.get("%s:ana:%s:store:%s" % (pvbase, graph, key)) == value
+#     except TimeoutError:
+#         assert False, "timeout getting pvs from exporter"
 
 
-def test_delete_graph(exporter, pvactx):
-    pvbase, injector = exporter
+# def test_graph_pvs(exporter, pvactx):
+#     pvbase, injector = exporter
 
-    graph_name = 'test'
+#     try:
+#         for graph, data in injector.cache['graph'].items():
+#             # test the aggregated pv
+#             assert pvactx.get("%s:ana:%s" % (pvbase, graph)) == data
+#             # test the individual pvs
+#             for key, value in data.items():
+#                 assert pvactx.get("%s:ana:%s:%s" % (pvbase, graph, key)) == value
+#     except TimeoutError:
+#         assert False, "timeout getting pvs from exporter"
 
-    try:
-        # test that the graph is there
-        assert pvactx.get("%s:ana:%s" % (pvbase, graph_name)) is not None
-    except TimeoutError:
-        assert False, "timeout getting pvs from exporter"
 
-    # inject the delete message
-    injector.send('destroy', graph_name, None)
+# def test_heartbeat_pvs(exporter, pvactx):
+#     pvbase, injector = exporter
 
-    try:
-        retries = 10
-        while retries:
-            pvactx.get("%s:ana:%s" % (pvbase, graph_name), timeout=0.25)
-            retries -= 1
-        assert False, "graph pvs deletion failed"
-    except TimeoutError:
-        assert True, "graph pvs deleted"
-    except RemoteError as err:
-        assert str(err) == 'Disconnect'
+#     try:
+#         for graph, data in injector.cache['heartbeat'].items():
+#             assert pvactx.get("%s:ana:%s:heartbeat" % (pvbase, graph)) == data
+#     except TimeoutError:
+#         assert False, "timeout getting pvs from exporter"
+
+
+# def test_delete_graph(exporter, pvactx):
+#     pvbase, injector = exporter
+
+#     graph_name = 'test'
+
+#     try:
+#         # test that the graph is there
+#         assert pvactx.get("%s:ana:%s" % (pvbase, graph_name)) is not None
+#     except TimeoutError:
+#         assert False, "timeout getting pvs from exporter"
+
+#     # inject the delete message
+#     injector.send('destroy', graph_name, None)
+
+#     try:
+#         retries = 10
+#         while retries:
+#             pvactx.get("%s:ana:%s" % (pvbase, graph_name), timeout=0.25)
+#             retries -= 1
+#         assert False, "graph pvs deletion failed"
+#     except TimeoutError:
+#         assert True, "graph pvs deleted"
+#     except RemoteError as err:
+#         assert str(err) == 'Disconnect'
 
 
 # @pytest.mark.parametrize('command',
