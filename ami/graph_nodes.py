@@ -2,6 +2,7 @@ import abc
 import operator
 import numpy as np
 from networkfox import operation
+from networkfox.modifiers import GraphWarning
 
 
 class Transformation(abc.ABC):
@@ -386,3 +387,7 @@ class RollingBuffer(GlobalTransformation):
 
     def reset(self):
         self.idx = 0
+
+
+class AMIWarning(GraphWarning):
+    pass
