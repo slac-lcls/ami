@@ -517,7 +517,9 @@ class NodeGraphicsItem(GraphicsObject):
         self.hovered = False
 
         self.node = node
-        flags = self.ItemIsMovable | self.ItemIsSelectable | self.ItemSendsGeometryChanges
+        flags = QtWidgets.QGraphicsItem.ItemIsMovable | \
+            QtWidgets.QGraphicsItem.ItemIsSelectable | \
+            QtWidgets.QGraphicsItem.ItemSendsGeometryChanges
 
         self.setFlags(flags)
         self.bounds = QtCore.QRectF(0, 0, 100, 100)
@@ -653,7 +655,7 @@ class NodeGraphicsItem(GraphicsObject):
             ev.ignore()
 
     def itemChange(self, change, val):
-        if change == self.ItemPositionHasChanged:
+        if change == QtWidgets.QGraphicsItem.ItemPositionHasChanged:
             for k, t in self.terminals.items():
                 t[1].nodeMoved()
 

@@ -151,15 +151,14 @@ class SearchProxyModel(QtCore.QSortFilterProxyModel):
 
     def setFilterRegExp(self, pattern):
         if isinstance(pattern, str):
-            pattern = QtCore.QRegExp(
-                pattern, QtCore.Qt.CaseInsensitive,
-                QtCore.QRegExp.FixedString)
+            pattern = QtCore.QRegularExpression(
+                pattern, QtCore.Qt.CaseInsensitive)
         super(SearchProxyModel, self).setFilterRegExp(pattern)
 
     def _accept_index(self, idx):
         if idx.isValid():
             text = idx.data(QtCore.Qt.DisplayRole)
-            if self.filterRegExp().indexIn(text) >= 0:
+            if self.filterRegularExpression().match(text):
                 return True
             for row in range(idx.model().rowCount(idx)):
                 if self._accept_index(idx.model().index(row, 0, idx)):
