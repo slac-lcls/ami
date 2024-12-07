@@ -599,14 +599,16 @@ class NodeGraphicsItem(GraphicsObject):
         ev.ignore()
 
     def mouseClickEvent(self, ev):
-        if int(ev.button()) == int(QtCore.Qt.LeftButton):
+        # if int(ev.button()) == int(QtCore.Qt.LeftButton):
+        if ev.button() == QtCore.Qt.LeftButton:
             ev.accept()
             sel = self.isSelected()
             self.setSelected(True)
             if not sel and self.isSelected():
                 self.update()
 
-        elif int(ev.button()) == int(QtCore.Qt.RightButton):
+        # elif int(ev.button()) == int(QtCore.Qt.RightButton):
+        elif ev.button() == QtCore.Qt.RightButton:
             ev.accept()
             self.raiseContextMenu(ev)
 
