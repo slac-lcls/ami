@@ -149,16 +149,16 @@ class LibraryEditor(QtWidgets.QWidget):
 
 class SearchProxyModel(QtCore.QSortFilterProxyModel):
 
-    def setFilterRegExp(self, pattern):
+    def setFilterRegularExpression(self, pattern):
         if isinstance(pattern, str):
             pattern = QtCore.QRegularExpression(
-                pattern, QtCore.Qt.CaseInsensitive)
-        super(SearchProxyModel, self).setFilterRegExp(pattern)
+                pattern, QtCore.QRegularExpression.PatternOption.CaseInsensitiveOption)
+        super(SearchProxyModel, self).setFilterRegularExpression(pattern)
 
     def _accept_index(self, idx):
         if idx.isValid():
             text = idx.data(QtCore.Qt.DisplayRole)
-            if self.filterRegularExpression().match(text):
+            if self.filterRegularExpression().match(text).hasMatch():
                 return True
             for row in range(idx.model().rowCount(idx)):
                 if self._accept_index(idx.model().index(row, 0, idx)):
@@ -377,7 +377,7 @@ class Ui_Toolbar(object):
         self.search_text_changed(self.source_tree, self.source_model, self.source_search.text())
 
     def search_text_changed(self, tree, model, text):
-        model.setFilterRegExp(text)
+        model.setFilterRegularExpression(text)
         tree.expandAll()
 
     def setPending(self, node):
