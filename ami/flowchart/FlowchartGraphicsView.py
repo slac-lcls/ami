@@ -292,26 +292,31 @@ class FlowchartViewBox(ViewBox):
         return [sourceMenu, operationMenu, ViewBox.getMenu(self, ev)]
 
     def decode_data(self, arr):
-        data = []
-        item = {}
+        data = QtCore.QMimeData()
+        data.setData('application/x-qabstractitemmodeldatalist', arr)
+        source_item = QtGui.QStandardItemModel()
+        source_item.dropMimeData(data, QtCore.Qt.CopyAction, 0,0, QtCore.QModelIndex())
+        return source_item.item(0, 0).text()
+        # data = []
+        # item = {}
 
-        ds = QtCore.QDataStream(arr)
-        while not ds.atEnd():
-            ds.readInt32()
-            ds.readInt32()
+        # ds = QtCore.QDataStream(arr)
+        # while not ds.atEnd():
+        #     ds.readInt32()
+        #     ds.readInt32()
 
-            map_items = ds.readInt32()
-            for i in range(map_items):
+        #     map_items = ds.readInt32()
+        #     for i in range(map_items):
 
-                key = ds.readInt32()
+        #         key = ds.readInt32()
 
-                value = QtCore.QVariant()
-                ds >> value
-                item[QtCore.Qt.ItemDataRole(key)] = value
+        #         value = QtCore.QVariant()
+        #         ds >> value
+        #         item[QtCore.Qt.ItemDataRole(key)] = value
 
-                data.append(item)
+        #         data.append(item)
 
-        return data
+        # return data
 
     def mouseDragEvent(self, ev):
         ev.accept()
@@ -373,8 +378,10 @@ class FlowchartViewBox(ViewBox):
 
     def dropEvent(self, ev):
         if ev.mimeData().hasFormat('application/x-qabstractitemmodeldatalist'):
+            # arr = ev.mimeData().data('application/x-qabstractitemmodeldatalist')
+            # node = self.decode_data(arr)[0][0].value()
             arr = ev.mimeData().data('application/x-qabstractitemmodeldatalist')
-            node = self.decode_data(arr)[0][0].value()
+            node = self.decode_data(arr)
 
             try:
                 self.widget.chart.createNode(node, pos=self.mapToView(ev.pos()), prompt=True)
