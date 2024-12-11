@@ -1,4 +1,5 @@
 import amitypes
+from ami.flowchart.library.Editors import STYLE
 from pyqtgraph import FileDialog
 from qtpy import QtWidgets, QtCore, QtGui
 try:
@@ -141,7 +142,7 @@ class PythonEditorWidget(QtWidgets.QWidget):
         super().__init__(parent)
         self.layout = QtWidgets.QGridLayout(self)
 
-        if HAS_PYQODE:
+        if HAS_PYQODE and "PythonEditor" in STYLE and STYLE["PythonEditor"].get("pyqode", False):
             self.editor = MyPythonCodeEdit(parent=self)
         else:
             # self.editor = QtWidgets.QPlainTextEdit(parent=self)
