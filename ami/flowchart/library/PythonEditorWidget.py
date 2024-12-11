@@ -130,6 +130,7 @@ class EditWidget(QtWidgets.QPlainTextEdit):
     def event(self, event):
         if event.type() == QtCore.QEvent.KeyPress and event.key() == QtCore.Qt.Key_Tab:
             self.keyPressEvent(QtGui.QKeyEvent(QtCore.QEvent.KeyPress, QtCore.Qt.Key_Space, QtCore.Qt.NoModifier, "    "))
+            return True
         else:
             return super().event(event)
 
@@ -147,6 +148,7 @@ class PythonEditorWidget(QtWidgets.QWidget):
         else:
             # self.editor = QtWidgets.QPlainTextEdit(parent=self)
             self.editor = EditWidget(parent=self)
+            self.editor.setTabChangesFocus(False)
         self.editor.setPlainText(text)
         self.editor.textChanged.connect(self.stateChanged)
 
