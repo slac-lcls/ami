@@ -1,12 +1,13 @@
 import amitypes
 from pyqtgraph import FileDialog
-from qtpy import QtWidgets, QtCore
+from qtpy import QtWidgets, QtCore, QtGui
 try:
     from pyqode.python.backend import server
     # from pyqode.python.widgets import PyCodeEdit
     from pyqode.core import api, modes, panels
     from pyqode.python import modes as pymodes, panels as pypanels, widgets
-    HAS_PYQODE = False
+    import qtpy
+    HAS_PYQODE = qtpy.API == "pyqt5"
 except ImportError:
     HAS_PYQODE = False
 import tempfile
@@ -123,6 +124,15 @@ if HAS_PYQODE:
             self.modes.append(pymodes.PythonSH(self.document()))
 
 
+class EditWidget(QtWidgets.QPlainTextEdit):
+
+    def event(self, event):
+        if event.type() == QtCore.QEvent.KeyPress and event.key() == QtCore.Qt.Key_Tab:
+            self.keyPressEvent(QtGui.QKeyEvent(QtCore.QEvent.KeyPress, QtCore.Qt.Key_Space, QtCore.Qt.NoModifier, "    "))
+        else:
+            return super().event(event)
+
+
 class PythonEditorWidget(QtWidgets.QWidget):
 
     sigStateChanged = QtCore.Signal(object, object, object)
@@ -134,7 +144,8 @@ class PythonEditorWidget(QtWidgets.QWidget):
         if HAS_PYQODE:
             self.editor = MyPythonCodeEdit(parent=self)
         else:
-            self.editor = QtWidgets.QPlainTextEdit(parent=self)
+            # self.editor = QtWidgets.QPlainTextEdit(parent=self)
+            self.editor = EditWidget(parent=self)
         self.editor.setPlainText(text)
         self.editor.textChanged.connect(self.stateChanged)
 
