@@ -8,6 +8,12 @@ from pyqtgraph import dockarea, FileDialog
 from qtpy import QtGui, QtWidgets, QtCore
 from ami.flowchart.NodeLibrary import isNodeClass
 from ami.flowchart.library.Editors import STYLE
+try:
+    from qtconsole.rich_jupyter_widget import RichJupyterWidget
+    from qtconsole.inprocess import QtInProcessKernelManager
+    HAS_QTCONSOLE = True
+except ImportError:
+    HAS_QTCONSOLE = False
 
 
 logger = logging.getLogger(__name__)
@@ -241,10 +247,11 @@ class Ui_Toolbar(object):
         self.actionReset.setIconText("Reset")
         self.actionReset.setObjectName("actionReset")
 
-        # console
-        self.actionConsole = QtWidgets.QAction(parent)
-        self.actionConsole.setIconText("Console")
-        self.actionConsole.setObjectName("actionConsole")
+        if HAS_QTCONSOLE:
+            # console
+            self.actionConsole = QtWidgets.QAction(parent)
+            self.actionConsole.setIconText("Console")
+            self.actionConsole.setObjectName("actionConsole")
 
         # Arrange
         self.actionArrange = QtWidgets.QAction(parent)
@@ -289,7 +296,8 @@ class Ui_Toolbar(object):
             self.toolBar.addAction(self.actionConfigure)
         self.toolBar.addAction(self.actionApply)
         self.toolBar.addAction(self.actionReset)
-        self.toolBar.addAction(self.actionConsole)
+        if HAS_QTCONSOLE:
+            self.toolBar.addAction(self.actionConsole)
         # self.toolBar.addAction(self.actionProfiler)
         if configure:
             self.toolBar.insertSeparator(self.actionConfigure)
