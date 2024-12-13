@@ -7,6 +7,7 @@ from pyqtgraph.debug import printExc
 from pyqtgraph import dockarea, FileDialog
 from qtpy import QtGui, QtWidgets, QtCore
 from ami.flowchart.NodeLibrary import isNodeClass
+from ami.flowchart.library.Editors import STYLE
 
 
 logger = logging.getLogger(__name__)
@@ -358,11 +359,13 @@ class Ui_Toolbar(object):
             if recurse:
                 self.populate_tree(children[child], node)
 
-    def create_model(self, tree, data):
+    def create_model(self, tree, data, typ="OperationTree"):
         model = tree.model().sourceModel()
         self.populate_tree(data, model.invisibleRootItem())
         tree.sortByColumn(0, QtCore.Qt.AscendingOrder)
         tree.expandAll()
+        if typ in STYLE and not STYLE[typ].get('expand', True):
+            tree.collapseAll()
 
     def clear_model(self, tree):
         model = tree.model().sourceModel()

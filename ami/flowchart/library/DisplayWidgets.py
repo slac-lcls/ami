@@ -588,6 +588,7 @@ class ImageWidget(PlotWidget):
         if "ImageWidget" in STYLE:
             style = STYLE['ImageWidget']
         else:
+            style = {}
             style['gradient'] = "thermal"
 
         self.histogramLUT.gradient.loadPreset(style['gradient'])

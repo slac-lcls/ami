@@ -60,6 +60,12 @@ def build_parser():
     )
 
     parser.add_argument(
+        '--batched',
+        action='store_true',
+        help='batch export as a list of structs'
+    )
+
+    parser.add_argument(
         '-a',
         '--aggregate',
         action='store_true',
@@ -354,7 +360,7 @@ def run_ami(args, queue=None):
             export_proc = mp.Process(
                 name='export',
                 target=functools.partial(_sys_exit, run_export),
-                args=(args.export, msg_addr, export_addr, args.aggregate)
+                args=(args.export, msg_addr, export_addr, args.aggregate, args.batched)
             )
             export_proc.daemon = True
             export_proc.start()
