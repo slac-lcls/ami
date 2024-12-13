@@ -491,6 +491,10 @@ class Graph():
         assert self.graphkit is not None, "call compile first"
         return self.graphkit.times()
 
+    def warnings(self):
+        assert self.graphkit is not None, "call compile first"
+        return self.graphkit.warnings()
+
     def metadata(self):
         """
         Return dictionary of node metadata.
