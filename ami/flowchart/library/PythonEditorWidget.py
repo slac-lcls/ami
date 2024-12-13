@@ -1,10 +1,16 @@
 import amitypes
+from ami.flowchart.library.Editors import STYLE
 from pyqtgraph import FileDialog
-from qtpy import QtWidgets, QtCore
-from pyqode.python.backend import server
-# from pyqode.python.widgets import PyCodeEdit
-from pyqode.core import api, modes, panels
-from pyqode.python import modes as pymodes, panels as pypanels, widgets
+from qtpy import QtWidgets, QtCore, QtGui
+try:
+    from pyqode.python.backend import server
+    # from pyqode.python.widgets import PyCodeEdit
+    from pyqode.core import api, modes, panels
+    from pyqode.python import modes as pymodes, panels as pypanels, widgets
+    import qtpy
+    HAS_PYQODE = qtpy.API == "pyqt5"
+except ImportError:
+    HAS_PYQODE = False
 import tempfile
 import importlib
 
@@ -70,53 +76,63 @@ class PythonEditorProc(object):
         if self.proc:
             return self.proc.end_step(step)
 
+if HAS_PYQODE:
+    class MyPythonCodeEdit(widgets.PyCodeEditBase):
+        def __init__(self, parent=None):
+            super().__init__(parent=parent)
 
-class MyPythonCodeEdit(widgets.PyCodeEditBase):
-    def __init__(self, parent=None):
-        super().__init__(parent=parent)
+            # starts the default pyqode.python server (which enable the jedi code
+            # completion worker).
+            self.backend.start(server.__file__)
 
-        # starts the default pyqode.python server (which enable the jedi code
-        # completion worker).
-        self.backend.start(server.__file__)
+            # some other modes/panels require the analyser mode, the best is to
+            # install it first
+            # self.modes.append(pymodes.DocumentAnalyserMode())
 
-        # some other modes/panels require the analyser mode, the best is to
-        # install it first
-        # self.modes.append(pymodes.DocumentAnalyserMode())
+            # --- core panels
+            self.panels.append(panels.FoldingPanel())
+            self.panels.append(panels.LineNumberPanel())
+            self.panels.append(panels.CheckerPanel())
+            # self.panels.append(panels.SearchAndReplacePanel(),
+            #                    panels.SearchAndReplacePanel.Position.BOTTOM)
+            # self.panels.append(panels.EncodingPanel(), api.Panel.Position.TOP)
+            # add a context menu separator between editor's
+            # builtin action and the python specific actions
+            self.add_separator()
 
-        # --- core panels
-        self.panels.append(panels.FoldingPanel())
-        self.panels.append(panels.LineNumberPanel())
-        self.panels.append(panels.CheckerPanel())
-        # self.panels.append(panels.SearchAndReplacePanel(),
-        #                    panels.SearchAndReplacePanel.Position.BOTTOM)
-        # self.panels.append(panels.EncodingPanel(), api.Panel.Position.TOP)
-        # add a context menu separator between editor's
-        # builtin action and the python specific actions
-        self.add_separator()
+            # --- python specific panels
+            self.panels.append(pypanels.QuickDocPanel(), api.Panel.Position.BOTTOM)
 
-        # --- python specific panels
-        self.panels.append(pypanels.QuickDocPanel(), api.Panel.Position.BOTTOM)
+            # --- core modes
+            self.modes.append(modes.CaretLineHighlighterMode())
+            self.modes.append(modes.CodeCompletionMode())
+            self.modes.append(modes.ExtendedSelectionMode())
+            self.modes.append(modes.FileWatcherMode())
+            self.modes.append(modes.OccurrencesHighlighterMode())
+            self.modes.append(modes.RightMarginMode())
+            self.modes.append(modes.SmartBackSpaceMode())
+            self.modes.append(modes.SymbolMatcherMode())
+            self.modes.append(modes.ZoomMode())
 
-        # --- core modes
-        self.modes.append(modes.CaretLineHighlighterMode())
-        self.modes.append(modes.CodeCompletionMode())
-        self.modes.append(modes.ExtendedSelectionMode())
-        self.modes.append(modes.FileWatcherMode())
-        self.modes.append(modes.OccurrencesHighlighterMode())
-        self.modes.append(modes.RightMarginMode())
-        self.modes.append(modes.SmartBackSpaceMode())
-        self.modes.append(modes.SymbolMatcherMode())
-        self.modes.append(modes.ZoomMode())
+            # ---  python specific modes
+            self.modes.append(pymodes.CommentsMode())
+            self.modes.append(pymodes.CalltipsMode())
+            self.modes.append(pymodes.FrostedCheckerMode())
+            self.modes.append(pymodes.PEP8CheckerMode())
+            self.modes.append(pymodes.PyAutoCompleteMode())
+            self.modes.append(pymodes.PyAutoIndentMode())
+            self.modes.append(pymodes.PyIndenterMode())
+            self.modes.append(pymodes.PythonSH(self.document()))
 
-        # ---  python specific modes
-        self.modes.append(pymodes.CommentsMode())
-        self.modes.append(pymodes.CalltipsMode())
-        self.modes.append(pymodes.FrostedCheckerMode())
-        self.modes.append(pymodes.PEP8CheckerMode())
-        self.modes.append(pymodes.PyAutoCompleteMode())
-        self.modes.append(pymodes.PyAutoIndentMode())
-        self.modes.append(pymodes.PyIndenterMode())
-        self.modes.append(pymodes.PythonSH(self.document()))
+
+class EditWidget(QtWidgets.QPlainTextEdit):
+
+    def event(self, event):
+        if event.type() == QtCore.QEvent.KeyPress and event.key() == QtCore.Qt.Key_Tab:
+            self.keyPressEvent(QtGui.QKeyEvent(QtCore.QEvent.KeyPress, QtCore.Qt.Key_Space, QtCore.Qt.NoModifier, "    "))
+            return True
+        else:
+            return super().event(event)
 
 
 class PythonEditorWidget(QtWidgets.QWidget):
@@ -127,11 +143,12 @@ class PythonEditorWidget(QtWidgets.QWidget):
         super().__init__(parent)
         self.layout = QtWidgets.QGridLayout(self)
 
-        # try:
-        #     self.editor = PyCodeEdit(server_script=server.__file__, parent=self)
-        # except Exception as e:
-        #     self.editor = QtWidgets.QPlainTextEdit(parent=self)
-        self.editor = MyPythonCodeEdit(parent=self)
+        if HAS_PYQODE and "PythonEditor" in STYLE and STYLE["PythonEditor"].get("pyqode", False):
+            self.editor = MyPythonCodeEdit(parent=self)
+        else:
+            # self.editor = QtWidgets.QPlainTextEdit(parent=self)
+            self.editor = EditWidget(parent=self)
+            self.editor.setTabChangesFocus(False)
         self.editor.setPlainText(text)
         self.editor.textChanged.connect(self.stateChanged)
 

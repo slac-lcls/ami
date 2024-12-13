@@ -517,7 +517,9 @@ class NodeGraphicsItem(GraphicsObject):
         self.hovered = False
 
         self.node = node
-        flags = self.ItemIsMovable | self.ItemIsSelectable | self.ItemSendsGeometryChanges
+        flags = QtWidgets.QGraphicsItem.ItemIsMovable | \
+            QtWidgets.QGraphicsItem.ItemIsSelectable | \
+            QtWidgets.QGraphicsItem.ItemSendsGeometryChanges
 
         self.setFlags(flags)
         self.bounds = QtCore.QRectF(0, 0, 100, 100)
@@ -597,14 +599,16 @@ class NodeGraphicsItem(GraphicsObject):
         ev.ignore()
 
     def mouseClickEvent(self, ev):
-        if int(ev.button()) == int(QtCore.Qt.LeftButton):
+        # if int(ev.button()) == int(QtCore.Qt.LeftButton):
+        if ev.button() == QtCore.Qt.LeftButton:
             ev.accept()
             sel = self.isSelected()
             self.setSelected(True)
             if not sel and self.isSelected():
                 self.update()
 
-        elif int(ev.button()) == int(QtCore.Qt.RightButton):
+        # elif int(ev.button()) == int(QtCore.Qt.RightButton):
+        elif ev.button() == QtCore.Qt.RightButton:
             ev.accept()
             self.raiseContextMenu(ev)
 
@@ -653,7 +657,7 @@ class NodeGraphicsItem(GraphicsObject):
             ev.ignore()
 
     def itemChange(self, change, val):
-        if change == self.ItemPositionHasChanged:
+        if change == QtWidgets.QGraphicsItem.ItemPositionHasChanged:
             for k, t in self.terminals.items():
                 t[1].nodeMoved()
 
