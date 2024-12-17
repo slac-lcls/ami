@@ -141,11 +141,11 @@ try:
 
             return self.accumulator.reduction(res, *rest)
 
-        def res_factory(self):
+        def res_factory(self, *args):
             if self.file is None:
                 self.load()
 
-            return self.accumulator.reset()
+            return self.accumulator.reset(*args)
 
     class Accumulator(CtrlNode):
         """
@@ -157,7 +157,8 @@ try:
         def __init__(self, name):
             super().__init__(name,
                              terminals={'In': {'io': 'in', 'ttype': Any},
-                                        'Out': {'io': 'out', 'ttype': Any}},
+                                        'Count': {'io': 'out', 'ttype': int},
+                                        'Sum': {'io': 'out', 'ttype': Any}},
                              allowAddInput=True,
                              global_op=True)
 
@@ -183,7 +184,7 @@ class Accumulator():
     def reduction(self, res, *rest):
         pass
 
-    def reset(self):
+    def reset(self, *args):
         return 0
             """
 
@@ -192,7 +193,7 @@ class Accumulator():
         def to_operation(self, **kwargs):
             proc = AccumulatorProc(self.values['text'])
             node = gn.Accumulator(name=self.name()+"_accumulated", **kwargs,
-                                  res_factor=proc.res_factory, reduction=proc)
+                                  res_factory=proc.res_factory, reduction=proc)
             return node
 
     class ReduceByKeyProc(object):

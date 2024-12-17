@@ -2,6 +2,7 @@ import abc
 import operator
 import numpy as np
 from networkfox import operation
+from networkfox.modifiers import GraphWarning
 
 
 class Transformation(abc.ABC):
@@ -53,8 +54,8 @@ class Transformation(abc.ABC):
                     self.name == getattr(other, 'name', None))
 
     def __repr__(self):
-        return u"%s(name='%s', color='%s', inputs=%s, outputs=%s)" % \
-            (self.__class__.__name__, self.name, self.color, self.inputs, self.outputs)
+        return u"%s(name='%s', color='%s', inputs=%s, outputs=%s, parent=%s)" % \
+            (self.__class__.__name__, self.name, self.color, self.inputs, self.outputs, self.parent)
 
     def to_operation(self):
         """
@@ -210,13 +211,25 @@ class Accumulator(GlobalTransformation):
         self.res_factory = kwargs.pop('res_factory', lambda: 0)
         assert hasattr(self.res_factory, '__call__'), 'res_factory is not callable'
         self.res = self.res_factory()
+        self.count = 0
 
     def __call__(self, *args, **kwargs):
-        self.res = self.reduction(self.res, *args)
-        return self.res
+        if self.is_expanded:
+            count, values = args
+            if not (isinstance(values, list) or isinstance(values, tuple)):
+                values = (values,)
+        else:
+            count = 1
+            values = args
+
+        self.res = self.reduction(self.res, *values)
+        self.count += count
+
+        return self.count, self.res
 
     def reset(self):
         self.res = self.res_factory()
+        self.count = 0
 
     def heartbeat_finished(self):
         if self.color != 'globalCollector':
@@ -288,7 +301,9 @@ class SumN(GlobalTransformation):
         else:
             count = 1
             value = args[0]
+
         self.count += count
+
         if self.res is None:
             self.res = value
         else:
@@ -372,3 +387,7 @@ class RollingBuffer(GlobalTransformation):
 
     def reset(self):
         self.idx = 0
+
+
+class AMIWarning(GraphWarning):
+    pass

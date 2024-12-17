@@ -138,12 +138,15 @@ class GraphCollector(Node, Collector):
             datagram_start = time.time()
             self.store.update(msg.name, msg.heartbeat, self.eb_id(msg.identity), msg.version, msg.payload)
             if msg.heartbeat.prompt or self.store.ready(msg.name, msg.heartbeat):
+                times, size = (None, None)
                 try:
                     # prune entries older than the current heartbeat
                     pruned_times, pruned_size = self.store.prune(msg.name, self.node, msg.heartbeat)
+
                     if pruned_size:
                         self.event_counter.labels(self.hutch, 'Pruned Heartbeat', self.name).inc()
                         self.event_size.labels(self.hutch, self.name).set(pruned_size)
+
                     # complete the current heartbeat
                     times, size = self.store.complete(msg.name, msg.heartbeat, self.node)
 
@@ -155,6 +158,12 @@ class GraphCollector(Node, Collector):
                     heartbeat_time = self.heartbeat_time.pop(msg.heartbeat.identity, 0)
                     self.event_time.labels(self.hutch, 'Heartbeat', self.name).set(heartbeat_time)
                     self.event_size.labels(self.hutch, self.name).set(size)
+
+                    if self.store.graph(msg.name):
+                        for node, warning in self.store.graph(msg.name).warnings().items():
+                            warning.graph_name = msg.name
+                            self.report("warning", warning)
+
                 except Exception as e:
                     e.graph_name = msg.name
                     logger.exception("%s: Failure encountered while executing graph %s:", self.name, msg.name)

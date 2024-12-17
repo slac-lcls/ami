@@ -18,9 +18,15 @@ from ami.flowchart.Flowchart import Flowchart
 from ami.flowchart.library import LIBRARY
 from ami.flowchart.NodeLibrary import isNodeClass
 from ami.flowchart.library.common import SourceNode
+from ami.flowchart.library.Editors import STYLE
 from ami.asyncqt import QEventLoop, asyncSlot
 from qtpy import QtCore, QtWidgets
 
+try:
+    import qdarktheme
+    THEME = STYLE.get("Theme", None)
+except ModuleNotFoundError:
+    THEME = None
 
 logger = logging.getLogger(LogConfig.get_package_name(__name__))
 
@@ -28,7 +34,10 @@ pg.setConfigOption('imageAxisOrder', 'row-major')
 
 def run_editor_window(broker_addr, graphmgr_addr, checkpoint_addr, load=None, prometheus_dir=None,
                       prometheus_port=None, hutch=None, configure=False, save_dir=None):
-    subprocess.run(["dmypy", "start"])
+    dmypy_file = tempfile.NamedTemporaryFile(mode='w', delete=False)
+    os.environ['DMYPY_STATUS_FILE'] = dmypy_file.name
+    logger.debug(f"dmypy status file: {dmypy_file.name}")
+    subprocess.run(["dmypy", "--status-file", dmypy_file.name, "start"])
     check_file = None
     with tempfile.NamedTemporaryFile(mode='w', delete=False) as f:
         f.write("from typing import *\n")
@@ -38,9 +47,12 @@ def run_editor_window(broker_addr, graphmgr_addr, checkpoint_addr, load=None, pr
         f.write("T = TypeVar('T')\n")
         f.flush()
         check_file = f.name
-        subprocess.run(["dmypy", "check", f.name])
+        subprocess.run(["dmypy", "--status-file", dmypy_file.name, "check", f.name])
 
     app = QtWidgets.QApplication([])
+
+    if THEME:
+        qdarktheme.setup_theme(THEME)
 
     loop = QEventLoop(app)
     asyncio.set_event_loop(loop)
@@ -74,26 +86,23 @@ def run_editor_window(broker_addr, graphmgr_addr, checkpoint_addr, load=None, pr
     fc.sigFileLoaded.connect(update_title)
     fc.sigFileSaved.connect(update_title)
 
-    loop.run_until_complete(fc.updateSources(init=True))
+    with loop:
+        loop.run_until_complete(fc.updateSources(init=True))
 
-    # Add flowchart control panel to the main window
-    win.setCentralWidget(fc.widget())
-    win.show()
+        # # Add flowchart control panel to the main window
+        win.setCentralWidget(fc.widget())
+        win.show()
 
-    try:
-        task = asyncio.create_task(fc.run(load))
+        app.aboutToQuit.connect(fc.widget().clear)
+
+        loop.create_task(fc.run(load))
         loop.run_forever()
-    finally:
-        if not task.done():
-            loop.run_until_complete(fc.widget().clear())
-            task.cancel()
-        loop.close()
 
     try:
-        proc = subprocess.run(["dmypy", "stop"])
+        proc = subprocess.run(["dmypy", "--status-file", dmypy_file.name, "stop"])
         proc.check_returncode()
     except subprocess.CalledProcessError:
-        subprocess.run(["dmypy", "kill"])
+        subprocess.run(["dmypy", "--status-file", dmypy_file.name, "kill"])
     finally:
         if check_file:
             os.remove(check_file)
@@ -133,6 +142,10 @@ class NodeProcess(QtCore.QObject):
 
         if loop is None:
             self.app = QtWidgets.QApplication([])
+
+            if THEME:
+                qdarktheme.setup_theme(THEME)
+
             loop = QEventLoop(self.app)
 
         asyncio.set_event_loop(loop)
@@ -459,14 +472,15 @@ class MessageBroker(object):
                 self.library_paths.update(msg.paths)
 
     async def run(self):
-        asyncio.create_task(self.handle_connect())
-        asyncio.create_task(self.handle_checkpoint())
-        asyncio.create_task(self.process_messages())
-        asyncio.create_task(self.monitor_processes())
+        tasks = [asyncio.create_task(self.handle_connect()),
+                 asyncio.create_task(self.handle_checkpoint()),
+                 asyncio.create_task(self.process_messages()),
+                 asyncio.create_task(self.monitor_processes())]
+        await asyncio.gather(*tasks)
 
 
 def run_client(graphmgr_addr, load, prometheus_dir, prometheus_port, hutch, use_opengl, configure, save_dir):
-    use_opengl = use_opengl and "SSH_CONNECTION" not in os.environ
+    use_opengl = use_opengl and "SSH_CONNECTION" not in os.environ and "NX_CONNECTION" not in os.environ
     pg.setConfigOptions(useOpenGL=use_opengl, enableExperimental=use_opengl)
 
     with tempfile.TemporaryDirectory() as ipcdir:

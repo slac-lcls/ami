@@ -191,6 +191,10 @@ class Worker(Node):
                         if graph:
                             graph.heartbeat_finished()
 
+                            for node_name, warning in graph.warnings().items():
+                                warning.graph_name = name
+                                self.report("warning", warning)
+
                     # check if there are graph updates
                     while True:
                         try:
@@ -224,6 +228,7 @@ class Worker(Node):
                         event_counter.labels(self.hutch, 'Partial', self.name).inc()
 
                     for name, graph in self.graphs.items():
+                        graph_result = None
                         try:
                             if graph:
                                 if name in self.exports:
@@ -450,7 +455,7 @@ def main():
     )
 
     args = parser.parse_args()
-    collector_addr = "tcp://localhost:%d" % args.port + Ports.NodeCollector
+    collector_addr = "tcp://localhost:%d" % (args.port + Ports.NodeCollector)
     graph_addr = "tcp://%s:%d" % (args.host, args.port + Ports.Graph)
     msg_addr = "tcp://%s:%d" % (args.host, args.port + Ports.Message)
     export_addr = "tcp://%s:%d" % (args.host, args.port + Ports.Export)

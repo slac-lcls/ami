@@ -1,0 +1,86 @@
+{
+    "Theme": "dark",
+    "Background": [32, 33, 36],
+    "WaveformWidget":
+    {
+        "Point": {
+            "symbol": "o",
+            "Brush": [
+                0,
+                0,
+                255,
+                255
+            ],
+            "Size": 14
+        },
+        "Line": {
+            "color": [
+                255,
+                0,
+                0,
+                255
+            ],
+            "width": 1,
+            "style": "Solid"
+        }
+    },
+    "ScatterWidget":
+    {
+        "Point": {
+            "symbol": "p",
+            "Brush": [
+                255,
+                255,
+                0,
+                255
+            ],
+            "Size": 14
+        },
+        "Line": {
+            "color": [
+                255,
+                255,
+                255,
+                255
+            ],
+            "width": 1,
+            "style": "None"
+        }
+    },
+    "HistogramWidget":
+    {
+        "Brush": [
+            0,
+            255,
+            0,
+            255
+        ]
+    },
+    "ImageWidget":
+    {
+        "gradient": "viridis"
+    },
+    "TimeWidget":
+    {
+        "Point": {
+            "symbol": "o",
+            "Brush": [
+                255,
+                0,
+                0,
+                255
+            ],
+            "Size": 14
+        },
+        "Line": {
+            "color": [
+                0,
+                255,
+                0,
+                255
+            ],
+            "width": 1,
+            "style": "Solid"
+        }
+    }
+}

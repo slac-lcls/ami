@@ -7,6 +7,13 @@ from pyqtgraph.debug import printExc
 from pyqtgraph import dockarea, FileDialog
 from qtpy import QtGui, QtWidgets, QtCore
 from ami.flowchart.NodeLibrary import isNodeClass
+from ami.flowchart.library.Editors import STYLE
+try:
+    from qtconsole.rich_jupyter_widget import RichJupyterWidget
+    from qtconsole.inprocess import QtInProcessKernelManager
+    HAS_QTCONSOLE = True
+except ImportError:
+    HAS_QTCONSOLE = False
 
 
 logger = logging.getLogger(__name__)
@@ -148,17 +155,16 @@ class LibraryEditor(QtWidgets.QWidget):
 
 class SearchProxyModel(QtCore.QSortFilterProxyModel):
 
-    def setFilterRegExp(self, pattern):
+    def setFilterRegularExpression(self, pattern):
         if isinstance(pattern, str):
-            pattern = QtCore.QRegExp(
-                pattern, QtCore.Qt.CaseInsensitive,
-                QtCore.QRegExp.FixedString)
-        super(SearchProxyModel, self).setFilterRegExp(pattern)
+            pattern = QtCore.QRegularExpression(
+                pattern, QtCore.QRegularExpression.PatternOption.CaseInsensitiveOption)
+        super(SearchProxyModel, self).setFilterRegularExpression(pattern)
 
     def _accept_index(self, idx):
         if idx.isValid():
             text = idx.data(QtCore.Qt.DisplayRole)
-            if self.filterRegExp().indexIn(text) >= 0:
+            if self.filterRegularExpression().match(text).hasMatch():
                 return True
             for row in range(idx.model().rowCount(idx)):
                 if self._accept_index(idx.model().index(row, 0, idx)):
@@ -241,10 +247,11 @@ class Ui_Toolbar(object):
         self.actionReset.setIconText("Reset")
         self.actionReset.setObjectName("actionReset")
 
-        # console
-        self.actionConsole = QtWidgets.QAction(parent)
-        self.actionConsole.setIconText("Console")
-        self.actionConsole.setObjectName("actionConsole")
+        if HAS_QTCONSOLE:
+            # console
+            self.actionConsole = QtWidgets.QAction(parent)
+            self.actionConsole.setIconText("Console")
+            self.actionConsole.setObjectName("actionConsole")
 
         # Arrange
         self.actionArrange = QtWidgets.QAction(parent)
@@ -289,7 +296,8 @@ class Ui_Toolbar(object):
             self.toolBar.addAction(self.actionConfigure)
         self.toolBar.addAction(self.actionApply)
         self.toolBar.addAction(self.actionReset)
-        self.toolBar.addAction(self.actionConsole)
+        if HAS_QTCONSOLE:
+            self.toolBar.addAction(self.actionConsole)
         # self.toolBar.addAction(self.actionProfiler)
         if configure:
             self.toolBar.insertSeparator(self.actionConfigure)
@@ -358,11 +366,13 @@ class Ui_Toolbar(object):
             if recurse:
                 self.populate_tree(children[child], node)
 
-    def create_model(self, tree, data):
+    def create_model(self, tree, data, typ="OperationTree"):
         model = tree.model().sourceModel()
         self.populate_tree(data, model.invisibleRootItem())
         tree.sortByColumn(0, QtCore.Qt.AscendingOrder)
         tree.expandAll()
+        if typ in STYLE and not STYLE[typ].get('expand', True):
+            tree.collapseAll()
 
     def clear_model(self, tree):
         model = tree.model().sourceModel()
@@ -375,7 +385,7 @@ class Ui_Toolbar(object):
         self.search_text_changed(self.source_tree, self.source_model, self.source_search.text())
 
     def search_text_changed(self, tree, model, text):
-        model.setFilterRegExp(text)
+        model.setFilterRegularExpression(text)
         tree.expandAll()
 
     def setPending(self, node):

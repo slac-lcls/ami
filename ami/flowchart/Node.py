@@ -81,7 +81,6 @@ class Node(QtCore.QObject):
         buffered        bool; whether a node has a to_operation which returns a rolling
                         buffer
         exportable      bool; whether export should be called
-        filter          bool; whether a node is a filter
         ==============  ============================================================
 
         """
@@ -99,7 +98,6 @@ class Node(QtCore.QObject):
         self._viewable = kwargs.get("viewable", False)
         self._buffered = kwargs.get("buffered", False)
         self._exportable = kwargs.get("exportable", False)
-        self._filter = kwargs.get("filter", False)
         self._editor = None
         self._enabled = True
 
@@ -287,9 +285,6 @@ class Node(QtCore.QObject):
     def exportable(self):
         return self._exportable
 
-    def filter(self):
-        return self._filter
-
     def enabled(self):
         return self._enabled
 
@@ -392,15 +387,17 @@ class Node(QtCore.QObject):
 
         return True
 
-    def setException(self, exc):
+    def setException(self, exc, typ="exception"):
         self.exception = exc
-        self.recolor(typ="exception")
+        self.recolor(typ=typ)
 
     def clearException(self):
-        self.setException(None)
+        self.setException(None, None)
 
     def recolor(self, typ=None):
-        if typ == "exception":
+        if typ == "warning":
+            self.graphicsItem().setPen(QtGui.QPen(QtGui.QColor(255, 255, 0), 5))
+        elif typ == "exception":
             self.graphicsItem().setPen(QtGui.QPen(QtGui.QColor(255, 0, 0), 5))
         elif typ == "selected":
             self.graphicsItem().setPen(QtGui.QPen(QtGui.QColor(250, 150, 0), 3))
@@ -520,7 +517,9 @@ class NodeGraphicsItem(GraphicsObject):
         self.hovered = False
 
         self.node = node
-        flags = self.ItemIsMovable | self.ItemIsSelectable | self.ItemSendsGeometryChanges
+        flags = QtWidgets.QGraphicsItem.ItemIsMovable | \
+            QtWidgets.QGraphicsItem.ItemIsSelectable | \
+            QtWidgets.QGraphicsItem.ItemSendsGeometryChanges
 
         self.setFlags(flags)
         self.bounds = QtCore.QRectF(0, 0, 100, 100)
@@ -600,14 +599,16 @@ class NodeGraphicsItem(GraphicsObject):
         ev.ignore()
 
     def mouseClickEvent(self, ev):
-        if int(ev.button()) == int(QtCore.Qt.LeftButton):
+        # if int(ev.button()) == int(QtCore.Qt.LeftButton):
+        if ev.button() == QtCore.Qt.LeftButton:
             ev.accept()
             sel = self.isSelected()
             self.setSelected(True)
             if not sel and self.isSelected():
                 self.update()
 
-        elif int(ev.button()) == int(QtCore.Qt.RightButton):
+        # elif int(ev.button()) == int(QtCore.Qt.RightButton):
+        elif ev.button() == QtCore.Qt.RightButton:
             ev.accept()
             self.raiseContextMenu(ev)
 
@@ -656,7 +657,7 @@ class NodeGraphicsItem(GraphicsObject):
             ev.ignore()
 
     def itemChange(self, change, val):
-        if change == self.ItemPositionHasChanged:
+        if change == QtWidgets.QGraphicsItem.ItemPositionHasChanged:
             for k, t in self.terminals.items():
                 t[1].nodeMoved()
 

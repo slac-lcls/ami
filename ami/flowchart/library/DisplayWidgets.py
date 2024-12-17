@@ -13,7 +13,7 @@ from ami.data import Deserializer
 from ami.comm import ZMQ_TOPIC_DELIM
 from ami.flowchart.library.WidgetGroup import generateUi
 from ami.flowchart.library.Editors import TraceEditor, HistEditor, \
-    LineEditor, CircleEditor, RectEditor, camera, pixmapFromBase64, load_style
+    LineEditor, CircleEditor, RectEditor, camera, pixmapFromBase64, STYLE
 
 
 logger = logging.getLogger(LogConfig.get_package_name(__name__))
@@ -167,6 +167,9 @@ class PlotWidget(QtWidgets.QWidget):
                                                 delay=0.5,
                                                 slot=lambda args: self.node.sigStateChanged.emit(self.node))
             self.plot_view.autoBtn.clicked.connect(lambda args: self.node.sigStateChanged.emit(self.node))
+
+        if "Background" in STYLE:
+            self.graphics_layout.setBackground(STYLE["Background"])
 
         self.plot_view.showGrid(True, True)
 
@@ -564,7 +567,7 @@ class ImageWidget(PlotWidget):
                                 'values': ['0', '90', '180', '270']}))
 
         super().__init__(topics, terms, addr, uiTemplate=uiTemplate, parent=parent, legend=False, **kwargs)
-        self.graphics_layout.useOpenGL(False)
+        # self.graphics_layout.useOpenGL(False)
         self.flip = False
         self.rotate = 0
         self.log_scale_histogram = False
@@ -581,10 +584,11 @@ class ImageWidget(PlotWidget):
         self.view.setAspectLocked(lock=self.lock, ratio=self.ratio)
 
         self.histogramLUT = pg.HistogramLUTItem(self.imageItem)
-        style = load_style()
-        if "ImageWidget" in style:
-            style = style['ImageWidget']
+
+        if "ImageWidget" in STYLE:
+            style = STYLE['ImageWidget']
         else:
+            style = {}
             style['gradient'] = "thermal"
 
         self.histogramLUT.gradient.loadPreset(style['gradient'])
@@ -695,7 +699,7 @@ class HistogramWidget(PlotWidget):
 
     def __init__(self, topics=None, terms=None, addr=None, parent=None, **kwargs):
         super().__init__(topics, terms, addr, parent=parent, **kwargs)
-        self.graphics_layout.useOpenGL(False)
+        self.graphics_layout.useOpenGL(False)  # pyqtgraph broken
         self.num_terms = int(len(terms)/2) if terms else 0
 
     def editor(self, parent, **kwargs):

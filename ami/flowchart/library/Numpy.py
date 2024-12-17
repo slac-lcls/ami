@@ -61,6 +61,8 @@ class Binning(CtrlNode):
 
     def to_operation(self, inputs, outputs, **kwargs):
         map_outputs = [self.name()+"_bins", self.name()+"_counts"]
+        accum_outputs = [self.name()+"_count", self.name()+"_accum_bins_counts"]
+
         nbins = self.values['bins']
         density = self.values['density']
 
@@ -73,14 +75,17 @@ class Binning(CtrlNode):
             return bins, counts
 
         def reduction(res, *rest):
-            res[0] = rest[0]
-            res[1] = res[1] + rest[1]
+            res[0] = rest[0]  # bins
+            res[1] = res[1] + rest[1]  # counts
             return res
 
         node = [gn.Map(name=self.name()+"_map",
                        inputs=inputs, outputs=map_outputs, func=bin, **kwargs),
-                gn.Accumulator(name=self.name()+"_accumulated", inputs=map_outputs, outputs=outputs,
-                               res_factory=lambda: [None, 0], reduction=reduction, **kwargs)]
+                gn.Accumulator(name=self.name()+"_accumulated", inputs=map_outputs, outputs=accum_outputs,
+                               res_factory=lambda: [None, 0], reduction=reduction, **kwargs),
+                gn.Map(name=self.name()+"_unzip",
+                       inputs=accum_outputs, outputs=outputs,
+                       func=lambda count, bins_counts: (bins_counts[0], bins_counts[1]), **kwargs)]
         return node
 
 
@@ -120,6 +125,10 @@ class Binning2D(CtrlNode):
 
     def to_operation(self, inputs, outputs, **kwargs):
         map_outputs = [self.name()+"_xbins", self.name()+"_ybins", self.name()+"_counts"]
+        accum_outputs = [self.name()+"_count",
+                         self.name()+"_accum_xbins", self.name()+"_accum_ybins",
+                         self.name()+"_accum_counts"]
+
         nxbins = self.values['x bins']
         nybins = self.values['y bins']
         xmin = self.values['range x min']
@@ -140,15 +149,19 @@ class Binning2D(CtrlNode):
                 return xbins, ybins, counts
 
         def reduction(res, *rest):
-            res[0] = rest[0]
-            res[1] = rest[1]
-            res[2] = res[2] + rest[2]
+            res[0] = rest[0]  # xbins
+            res[1] = rest[1]  # ybins
+            res[2] = res[2] + rest[2]  # counts
             return res
 
         node = [gn.Map(name=self.name()+"_map",
                        inputs=inputs, outputs=map_outputs, func=bin, **kwargs),
-                gn.Accumulator(name=self.name()+"_accumulated", inputs=map_outputs, outputs=outputs,
-                               res_factory=lambda: [None, None, 0], reduction=reduction, **kwargs)]
+                gn.Accumulator(name=self.name()+"_accumulated", inputs=map_outputs, outputs=accum_outputs,
+                               res_factory=lambda: [None, None, 0], reduction=reduction, **kwargs),
+                gn.Map(name=self.name()+"_unzip",
+                       inputs=accum_outputs, outputs=outputs,
+                       func=lambda count, bins_counts: (bins_counts[0], bins_counts[1], bins_counts[2]),
+                       **kwargs)]
         return node
 
 
@@ -529,17 +542,12 @@ class Average0D(CtrlNode):
 
         if self.values['infinite']:
             def reduction(res, *rest):
-                if len(rest) > 1:
-                    res[0] += rest[0]
-                    res[1] += rest[1]
-                else:
-                    res[0] = res[0] + 1
-                    res[1] = res[1] + rest[1]
+                res += np.sum(rest, axis=0)
                 return res
 
             nodes = [gn.Accumulator(name=self.name()+"_accumulated",
                                     inputs=inputs, outputs=accumulated_outputs,
-                                    res_factory=lambda: [0, 0], reduction=reduction, **kwargs),
+                                    reduction=reduction, **kwargs),
                      gn.Map(name=self.name()+"_map",
                             inputs=accumulated_outputs, outputs=outputs,
                             func=avg, **kwargs)]
@@ -577,17 +585,12 @@ class Average1D(CtrlNode):
 
         if self.values['infinite']:
             def reduction(res, *rest):
-                if len(rest) > 1:
-                    res[0] += rest[0]
-                    res[1] = np.add(res[1], rest[1])
-                else:
-                    res[0] = res[0] + 1
-                    res[1] = np.add(res[1], rest[0])
+                res += np.sum(rest, axis=0)
                 return res
 
             nodes = [gn.Accumulator(name=self.name()+"_accumulated",
                                     inputs=inputs, outputs=accumulated_outputs,
-                                    res_factory=lambda: [0, 0], reduction=reduction, **kwargs),
+                                    reduction=reduction, **kwargs),
                      gn.Map(name=self.name()+"_map",
                             inputs=accumulated_outputs, outputs=outputs,
                             func=avg, **kwargs)]
@@ -626,17 +629,12 @@ class Average2D(CtrlNode):
 
         if self.values['infinite']:
             def reduction(res, *rest):
-                if len(rest) > 1:
-                    res[0] += rest[0]
-                    res[1] = np.add(res[1], rest[1])
-                else:
-                    res[0] = res[0] + 1
-                    res[1] = np.add(res[1], rest[0])
+                res += np.sum(rest, axis=0)
                 return res
 
             nodes = [gn.Accumulator(name=self.name()+"_accumulated",
                                     inputs=inputs, outputs=accumulated_outputs,
-                                    res_factory=lambda: [0, 0], reduction=reduction, **kwargs),
+                                    reduction=reduction, **kwargs),
                      gn.Map(name=self.name()+"_map",
                             inputs=accumulated_outputs, outputs=outputs,
                             func=avg, **kwargs)]

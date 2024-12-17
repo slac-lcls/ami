@@ -922,3 +922,56 @@ except ImportError as e:
     print(e)
 
 # =========
+
+class ThresholdingHitFinder(CtrlNode):
+
+    """
+    Apply a threshold to an image and infinitely sum.
+    """
+
+    nodeName = "ThresholdingHitFinder"
+    uiTemplate = [('Threshold', 'doubleSpin', {'value': 1.0}),
+                  ('N', 'intSpin', {'value': 1, 'min': 1}),
+                  ('infinite', 'check')]
+
+    def __init__(self, name):
+        super().__init__(name, terminals={'In': {'io': 'in', 'ttype': Array2d},
+                                          'Out': {'io': 'out', 'ttype': Array2d}},
+                         global_op=True)
+
+    def to_operation(self, inputs, outputs, **kwargs):
+        mapped_outputs = [self.name()+'_threshold']
+        summed_outputs = [self.name()+"_count", self.name()+"_sum"]
+
+        threshold = self.values['Threshold']
+
+        def threshold_img(img):
+            return np.where(img >= threshold, 1, 0)
+
+        if self.values['infinite']:
+
+            def reduction(res, *rest):
+                res += np.sum(rest, axis=0)
+                return res
+
+            nodes = [gn.Map(name=self.name()+"_map",
+                            inputs=inputs, outputs=mapped_outputs,
+                            func=threshold_img, **kwargs),
+                     gn.Accumulator(name=self.name()+"_accumulated",
+                                    inputs=mapped_outputs, outputs=summed_outputs,
+                                    reduction=reduction, **kwargs),
+                     gn.Map(name=self.name()+"_unzip",
+                            inputs=summed_outputs, outputs=outputs,
+                            func=lambda count, s: s, **kwargs)]
+        else:
+            nodes = [gn.Map(name=self.name()+"_map",
+                            inputs=inputs, outputs=mapped_outputs,
+                            func=threshold_img, **kwargs),
+                     gn.SumN(name=self.name()+"_accumulated",
+                             inputs=mapped_outputs, outputs=summed_outputs,
+                             N=self.values['N'], **kwargs),
+                     gn.Map(name=self.name()+"_unzip",
+                            inputs=summed_outputs, outputs=outputs,
+                            func=lambda count, s: s, **kwargs)]
+
+        return nodes
