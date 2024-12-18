@@ -289,8 +289,8 @@ try:
                     return self.func(x, *best_vals), best_vals[0], best_vals[1], best_vals[2], fwhm, best_vals[3]
                 else:
                     return self.func(x, *best_vals), best_vals[0], best_vals[1], best_vals[2], fwhm, 0.0
-            except RuntimeError:
-                printExc()
+            except Exception as e:  # catch a number of fitting errors
+                raise gn.AMIWarning(e)
 
             return np.array([])
 
