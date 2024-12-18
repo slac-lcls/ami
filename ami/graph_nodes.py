@@ -305,6 +305,8 @@ class SumN(GlobalTransformation):
         self.count += count
 
         if self.res is None:
+            if isinstance(value, np.ndarray):
+                value = value.astype(np.float32)
             self.res = value
         else:
             self.res = np.add(self.res, value)

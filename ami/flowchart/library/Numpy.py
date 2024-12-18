@@ -449,7 +449,7 @@ class TimeMeanRMS1D(CtrlNode):
     def to_operation(self, inputs, outputs, **kwargs):
         def func(arr):
             mean = np.mean(arr, axis=0)
-            sq = list(map(np.square, arr))
+            sq = list(map(np.square, arr.astype(np.float32)))
             rms = np.sqrt(np.mean(sq, axis=0))
             return mean, rms
 
@@ -481,7 +481,7 @@ class TimeMeanRMS2D(CtrlNode):
     def to_operation(self, inputs, outputs, **kwargs):
         def func(arr):
             mean = np.mean(arr, axis=0)
-            sq = list(map(np.square, arr))
+            sq = list(map(np.square, arr.astype(np.float32)))
             rms = np.sqrt(np.mean(sq, axis=0))
             return mean, rms
 
