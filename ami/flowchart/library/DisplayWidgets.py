@@ -604,11 +604,11 @@ class ImageWidget(PlotWidget):
         pos = self.view.mapSceneToView(pos)
         if self.imageItem.image is not None:
             shape = self.imageItem.image.shape
-            if 0 <= pos.x() <= shape[0] and 0 <= pos.y() <= shape[1]:
-                x = int(pos.x())
-                y = int(pos.y())
-                z = self.imageItem.image[x, y]
-                self.pixel_value.setText(f"x={x}, y={y}, z={z:.5g}")
+            i = int(pos.y())  # image is row-major
+            j = int(pos.x())  # image is row-major
+            if 0 <= i < shape[0] and 0 <= j < shape[1]:
+                z = self.imageItem.image[i, j]
+                self.pixel_value.setText(f"x={j}, y={i}, z={z:.5g}")
 
     def apply_clicked(self):
         if 'Display' in self.plot_attrs:
