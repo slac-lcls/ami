@@ -18,8 +18,12 @@ from ami.flowchart.SourceConfiguration import SourceConfiguration
 from ami.flowchart.TypeEncoder import TypeEncoder
 from ami.comm import AsyncGraphCommHandler
 from ami.client import flowchart_messages as fcMsgs
-from qtconsole.rich_jupyter_widget import RichJupyterWidget
-from qtconsole.inprocess import QtInProcessKernelManager
+try:
+    from qtconsole.rich_jupyter_widget import RichJupyterWidget
+    from qtconsole.inprocess import QtInProcessKernelManager
+    HAS_QTCONSOLE = True
+except ImportError:
+    HAS_QTCONSOLE = False
 
 import ami.flowchart.Editor as EditorTemplate
 import amitypes
@@ -608,10 +612,10 @@ class Flowchart(Node):
                 total_events[worker] = msg['num_events']
 
                 if all(events_per_second):
-                    events_per_second = int(np.sum(events_per_second))
+                    events_per_second = int(np.average(events_per_second))
                     total_num_events = int(np.sum(total_events))
                     ctrl = self.widget()
-                    ctrl.ui.rateLbl.setText(f"Num Events: {total_num_events} Events/Sec: {events_per_second}")
+                    ctrl.ui.rateLbl.setText(f"Num Events: {total_num_events} Avg Events/Sec: {events_per_second}")
                     events_per_second = [None]*num_workers
                     total_events = [None]*num_workers
             elif topic == 'warning':
@@ -624,8 +628,9 @@ class Flowchart(Node):
                         node_name = ctrl.metadata[msg.node_name]['parent']
                     if node_name in self.nodes(data='node'):
                         node = self.nodes(data='node')[node_name]
-                        node.setException(msg, "warning")
-                        ctrl.chartWidget.updateStatus(f"{source} {node.name()}: {msg}", color='red')
+                        if node.exception is None:
+                            node.setException(msg, "warning")
+                            ctrl.chartWidget.updateStatus(f"WARNING: {source} {node.name()}: {msg}", color='red')
             elif topic == 'error':
                 ctrl = self.widget()
                 if hasattr(msg, 'node_name'):
@@ -634,9 +639,9 @@ class Flowchart(Node):
                     node_name = ctrl.metadata[msg.node_name]['parent']
                     node = self.nodes(data='node')[node_name]
                     node.setException(msg)
-                    ctrl.chartWidget.updateStatus(f"{source} {node.name()}: {msg}", color='red')
+                    ctrl.chartWidget.updateStatus(f"ERROR: {source} {node.name()}: {msg}", color='red')
                 else:
-                    ctrl.chartWidget.updateStatus(f"{source}: {msg}", color='red')
+                    ctrl.chartWidget.updateStatus(f"ERROR: {source}: {msg}", color='red')
 
     async def run(self, load=None):
         tasks = [asyncio.create_task(self.updateState()),
@@ -688,7 +693,8 @@ class FlowchartCtrlWidget(QtWidgets.QWidget):
             self.ui.actionConfigure.triggered.connect(self.configureClicked)
         self.ui.actionApply.triggered.connect(self.applyClicked)
         self.ui.actionReset.triggered.connect(self.resetClicked)
-        self.ui.actionConsole.triggered.connect(self.consoleClicked)
+        if HAS_QTCONSOLE:
+            self.ui.actionConsole.triggered.connect(self.consoleClicked)
         # self.ui.actionProfiler.triggered.connect(self.profilerClicked)
 
         self.ui.actionHome.triggered.connect(self.homeClicked)
@@ -784,8 +790,8 @@ class FlowchartCtrlWidget(QtWidgets.QWidget):
                             nodes = node.to_operation(inputs=node.input_vars(),
                                                       outputs=node.output_vars(),
                                                       parent=node.name())
-                        except Exception:
-                            self.chartWidget.updateStatus(f"{node.name()} error!", color='red')
+                        except Exception as e:
+                            self.chartWidget.updateStatus(f"{node.name()} {e}!", color='red')
                             printExc(f"{node.name()} raised exception! See console for stacktrace.")
                             node.setException(True)
                             failed_nodes.add(node)
@@ -930,27 +936,28 @@ class FlowchartCtrlWidget(QtWidgets.QWidget):
     def configureClicked(self):
         self.sourceConfigure.show()
 
-    def consoleClicked(self):
-        if self.ipython_widget is None:
-            kernel_manager = QtInProcessKernelManager()
-            kernel_manager.start_kernel(show_banner=False)
-            kernel = kernel_manager.kernel
-            kernel.gui = 'qt'
+    if HAS_QTCONSOLE:
+        def consoleClicked(self):
+            if self.ipython_widget is None:
+                kernel_manager = QtInProcessKernelManager()
+                kernel_manager.start_kernel(show_banner=False)
+                kernel = kernel_manager.kernel
+                kernel.gui = 'qt'
 
-            kernel_client = kernel_manager.client()
-            kernel_client.start_channels()
+                kernel_client = kernel_manager.client()
+                kernel_client.start_channels()
 
-            self.ipython_widget = RichJupyterWidget()
-            self.ipython_widget.setWindowTitle('AMI Console')
-            self.ipython_widget.kernel_manager = kernel_manager
-            self.ipython_widget.kernel_client = kernel_client
+                self.ipython_widget = RichJupyterWidget()
+                self.ipython_widget.setWindowTitle('AMI Console')
+                self.ipython_widget.kernel_manager = kernel_manager
+                self.ipython_widget.kernel_client = kernel_client
 
-        self.ipython_widget.kernel_manager.kernel.shell.push({'ctrl': self,
-                                                              'chartWidget': self.chartWidget,
-                                                              'chart': self.chart,
-                                                              'graph': self.chart._graph,
-                                                              'graphCommHandler': self.graphCommHandler})
-        self.ipython_widget.show()
+            self.ipython_widget.kernel_manager.kernel.shell.push({'ctrl': self,
+                                                                  'chartWidget': self.chartWidget,
+                                                                  'chart': self.chart,
+                                                                  'graph': self.chart._graph,
+                                                                  'graphCommHandler': self.graphCommHandler})
+            self.ipython_widget.show()
 
     @asyncSlot(object)
     async def configureApply(self, src_cfg):

@@ -1,7 +1,8 @@
 #!/bin/bash -eu
 
 usage() {
-    echo "Usage: $0 [ -n WORKERS ] [ -N WORKERS_PER_NODE ] [ -p BASE_PORT] psana://<exp>:<run>" 1>&2
+    # echo "Usage: $0 [ -n WORKERS ] [ -N WORKERS_PER_NODE ] [ -p BASE_PORT] psana://<exp>:<run>" 1>&2
+    echo "Usage: $0 [ -n WORKERS ] [ -p BASE_PORT] psana://<exp>:<run>" 1>&2
 }
 
 NUMARGS=$#
@@ -11,8 +12,8 @@ if [ $NUMARGS -lt 3 ]; then
     exit 1
 fi
 
-workers=3
-workers_per_node=3
+workers=1
+# workers_per_node=1
 heartbeat=10
 port=5555
 worker_args=""
@@ -21,7 +22,7 @@ while getopts n:N:p:b:f: flag
 do
     case "${flag}" in
         n) workers=${OPTARG};;
-        N) workers_per_node=${OPTARG};;
+        # N) workers_per_node=${OPTARG};;
         b) heartbeat=${OPTARG};;
         p) port=${OPTARG};;
         f) worker_args="$worker_args -f ""${OPTARG}";;
@@ -31,13 +32,13 @@ done
 hosts=`uname -n`
 worker_nodes=${SLURM_JOB_NODELIST:-$hosts}
 num_worker_nodes=${SLURM_NNODES:-1}
-ranks=$(( $workers * $num_worker_nodes ))
-ranks_per_node=$(( $workers_per_node ))
+ranks=$(( $workers * $num_worker_nodes + 2 ))
+# ranks_per_node=$(( $workers_per_node ))
 
-if [ $workers -lt 3 ]; then
-    echo "need at least 3 workers"
-    exit 1
-fi
+# if [ $workers -lt 3 ]; then
+#     echo "need at least 3 workers"
+#     exit 1
+# fi
 
 if [ $num_worker_nodes -gt 1 ]; then
     echo "ami-mpi currently only supports 1 node"
@@ -48,9 +49,10 @@ shift $(($OPTIND - 1))
 rest=$@
 echo $rest
 manager=`uname -n`
+echo "workers: $workers"
 echo "worker nodes: $worker_nodes"
 echo "num worker nodes: $num_worker_nodes"
-echo "workers per node: $workers_per_node";
+# echo "workers per node: $workers_per_node";
 echo "manager: $manager";
 
 ami-manager -n $workers -N $num_worker_nodes -p $port &
@@ -62,7 +64,7 @@ GLOBAL_PID=$!
 ami-node -N 0 -n $workers -H $manager -p $port -C $manager &
 COLLECTOR_PID=$!
 
-mpirun -n $ranks -N $ranks -x LD_LIBRARY_PATH -x PYTHONPATH -x PATH ami-remote -p $port -H $manager -b $heartbeat $worker_args $rest &!
+mpirun -n $ranks -N $ranks -x LD_LIBRARY_PATH -x PYTHONPATH -x PATH ami-remote -p $port -H $manager -b $heartbeat $worker_args -f repeat=true $rest &!
 WORKER_PID=$!
 
 echo "manager: $MANAGER_PID";

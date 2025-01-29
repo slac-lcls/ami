@@ -37,7 +37,6 @@ setup(
         'mypy',
         'setproctitle',
         'prometheus_client',
-        'qtconsole',
 #        'lark'
     ],
     tests_require=[
@@ -50,6 +49,7 @@ setup(
         'hdf5': ['h5py'],
         'arrow': ['pyarrow>=0.17'],
         'lcls': ['psana', 'h5py', 'p4p'],
+        'console': ['qtconsole']
     },
     entry_points={
         'console_scripts': [

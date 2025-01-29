@@ -2,6 +2,7 @@ import abc
 import operator
 import numpy as np
 from networkfox import operation
+from networkfox.modifiers import GraphWarning
 
 
 class Transformation(abc.ABC):
@@ -304,6 +305,8 @@ class SumN(GlobalTransformation):
         self.count += count
 
         if self.res is None:
+            if isinstance(value, np.ndarray):
+                value = value.astype(np.float32)
             self.res = value
         else:
             self.res = np.add(self.res, value)
@@ -386,3 +389,7 @@ class RollingBuffer(GlobalTransformation):
 
     def reset(self):
         self.idx = 0
+
+
+class AMIWarning(GraphWarning):
+    pass
