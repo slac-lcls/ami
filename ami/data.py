@@ -1115,8 +1115,11 @@ class PsanaSource(HierarchicalDataSource):
                             attr_type = typing.Any
                         else:
                             attr_type = attr_sig.return_annotation
+                            if type(attr_type) is str:
+                                attr_type = getattr(at, attr_type, attr_type)
                 except ValueError:
                     attr_type = typing.Any
+
                 if attr_type in at.HSDTypes:
                     # ignore things which are not derived from dict
                     if str(attr_type).startswith('dict'):
