@@ -117,9 +117,13 @@ class AsyncFetcher(QtCore.QThread):
                             count += 1
                         except zmq.ZMQError as e:
                             if e.errno == zmq.EAGAIN:
+                                logger.debug("%s: Number of queued messages discarded: %d", topic, count)
                                 break
                             else:
                                 raise
+
+                    if count >= limit:
+                        logger.warn("%s: Number of queued messages exceeds limit: %d", topic, count)
 
                     if topic is not None:
                         break
