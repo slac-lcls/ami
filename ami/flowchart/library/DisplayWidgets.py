@@ -93,16 +93,41 @@ class AsyncFetcher(QtCore.QThread):
                 self.sockets[name] = (sock, count+1)
 
     def run(self):
+
         while self.running:
             for sock, flag in self.poller.poll():
                 if flag != zmq.POLLIN:
                     continue
                 if sock == self.recv_interrupt and sock.recv_pyobj():
                     break
-                topic = sock.recv_string()
-                topic = topic.rstrip('\0')
-                heartbeat = sock.recv_pyobj()
-                reply = sock.recv_serialized(self.deserializer, copy=False)
+
+                limit = 10
+
+                while True:
+                    count = 0
+                    topic = None
+                    heartbeat = None
+                    reply = None
+                    while count < limit:
+                        try:
+                            topic = sock.recv_string(flags=zmq.NOBLOCK)
+                            topic = topic.rstrip('\0')
+                            heartbeat = sock.recv_pyobj(flags=zmq.NOBLOCK)
+                            reply = sock.recv_serialized(self.deserializer, copy=False, flags=zmq.NOBLOCK)
+                            count += 1
+                        except zmq.ZMQError as e:
+                            if e.errno == zmq.EAGAIN:
+                                logger.debug("%s: Number of queued messages discarded: %d", topic, count)
+                                break
+                            else:
+                                raise
+
+                    if count >= limit:
+                        logger.warn("%s: Number of queued messages exceeds limit: %d", topic, count)
+
+                    if topic is not None:
+                        break
+
                 self.data[self.view_subs[topic]] = reply
                 self.timestamps[self.view_subs[topic]] = heartbeat
                 # check if the data is ready
