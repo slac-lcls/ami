@@ -835,6 +835,10 @@ class WaveformWidget(PlotWidget):
         for term, name in self.terms.items():
             if name not in data:
                 continue
+
+            if not type(data[name]) is np.array:
+                data[name] = np.array(data[name], dtype=float)
+
             if name not in self.plot:
                 _, color = symbols_colors[i]
                 idx = f"trace.{i}"
