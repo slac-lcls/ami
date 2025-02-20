@@ -388,7 +388,7 @@ class ZmqHandler:
 
     def send(self, msg):
         msg = self.serializer(msg)
-        self.collector.send_multipart(msg, flags=zmq.NOBLOCK, copy=False)
+        self.collector.send_multipart(msg, copy=False)
         return self.serializer.sizeof(msg)
 
     def message(self, mtype, identity, payload):
@@ -454,7 +454,7 @@ class ResultStore(ZmqHandler):
 class ContributionBuilder(abc.ABC):
     def __init__(self, num_contribs):
         self.num_contribs = num_contribs
-        self.pending = {}
+        self.pending = {}  # {eb_key : payload}
         self.contribs = {}
 
     @abc.abstractmethod
@@ -642,11 +642,16 @@ class TransitionBuilder(ContributionBuilder, ZmqHandler):
         return [], 0
 
     def _update(self, eb_key, eb_id, payload):
+        """
+        eb_key transition type (Configure, Unconfigure, BeginStep, EndStep)
+        eb_id worker
+        payload transition number
+        """
         if eb_key not in self.pending:
             self.pending[eb_key] = payload
         elif payload != self.pending[eb_key]:
-            logger.error("Transition mismatch: %s payload from id %s does not match the other contributers",
-                         eb_key, eb_id)
+            logger.error("Transition mismatch: %s payload %s from id %s does not match the other contributers: %s",
+                         eb_key, payload, eb_id, self.pending)
 
 
 class EventBuilder(ZmqHandler):
@@ -909,13 +914,13 @@ class Node(abc.ABC):
             payload (obj): the payload of the report. This can be any arbitrary
                 object that can be serialized using dill.
         """
-        self.node_msg_comm.send_string(topic, zmq.NOBLOCK | zmq.SNDMORE)
-        self.node_msg_comm.send_string(self.name, zmq.NOBLOCK | zmq.SNDMORE)
+        self.node_msg_comm.send_string(topic, zmq.SNDMORE)
+        self.node_msg_comm.send_string(self.name, zmq.SNDMORE)
         if topic == "profile":
-            self.node_msg_comm.send_string(payload['graph'], zmq.NOBLOCK | zmq.SNDMORE)
-            self.node_msg_comm.send_serialized(payload, self.serializer, zmq.NOBLOCK, copy=False)
+            self.node_msg_comm.send_string(payload['graph'], zmq.SNDMORE)
+            self.node_msg_comm.send_serialized(payload, self.serializer, copy=False)
         else:
-            self.node_msg_comm.send(dill.dumps(payload), zmq.NOBLOCK, copy=False)
+            self.node_msg_comm.send(dill.dumps(payload), copy=False)
 
     def update_path(self, name, version, args, paths):
         exists = True
