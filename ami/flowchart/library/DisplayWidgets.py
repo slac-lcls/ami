@@ -151,6 +151,7 @@ class AsyncFetcher(QtCore.QThread):
                     latency = dt.datetime.now() - dt.datetime.fromtimestamp(heartbeat.timestamp)
                     self.last_updated = f"Last Updated: {now} Latency: {latency}"
                     # put results on the reply queue
+                    res['heartbeat_timestamp'] = heartbeat.timestamp
                     self.reply_queue.put(res)
                     # send a signal that data is ready
                     self.sig.emit()
@@ -664,6 +665,7 @@ class ImageWidget(PlotWidget):
         super().apply_clicked()
 
     def data_updated(self, data):
+        timestamp = data.pop('heartbeat_timestamp')
         for k, v in data.items():
             if self.flip:
                 v = np.flip(v)
@@ -673,6 +675,8 @@ class ImageWidget(PlotWidget):
                 v = np.rot90(v, self.rotate)
 
             if v.any():
+                latency = dt.datetime.now() - dt.datetime.fromtimestamp(timestamp)
+                self.last_updated.setText(self.fetcher.last_updated + f" Queue Latency: {latency}")
                 self.imageItem.setImage(v, autoLevels=self.auto_levels)
 
     def saveState(self):
