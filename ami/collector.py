@@ -141,7 +141,7 @@ class GraphCollector(Node, Collector):
                 times, size = (None, None)
                 try:
                     # prune entries older than the current heartbeat
-                    pruned_times, pruned_size = self.store.prune(msg.name, self.node, msg.heartbeat)
+                    pruned_times, pruned_size = self.store.prune(msg.name, self.node, msg.heartbeat, drop=True)
 
                     if pruned_size:
                         self.event_counter.labels(self.hutch, 'Pruned Heartbeat', self.name).inc()
