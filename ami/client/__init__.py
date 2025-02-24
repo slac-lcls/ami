@@ -33,7 +33,8 @@ def run_client(graph_name, comm_addr, info_addr, view_addr, load,
     if use_legacy:
         return legacy.run_client(graphmgr_addr, load, save_dir)
     else:
-        return flowchart.run_client(graphmgr_addr, load, prometheus_dir, prometheus_port, hutch, use_opengl,
+        return flowchart.run_client(graphmgr_addr, load, prometheus_dir, prometheus_port, hutch,
+                                    use_opengl, use_numba,
                                     configure, save_dir)
 
 
