@@ -26,13 +26,15 @@ def check_dir(pathname):
 
 
 def run_client(graph_name, comm_addr, info_addr, view_addr, load,
-               use_legacy=True, prometheus_dir=None, prometheus_port=None, hutch='', use_opengl=False,
+               use_legacy=True, prometheus_dir=None, prometheus_port=None, hutch='',
+               use_opengl=False, use_numba=False,
                configure=False, save_dir=None):
     graphmgr_addr = GraphMgrAddress(graph_name, comm_addr, view_addr, info_addr)
     if use_legacy:
         return legacy.run_client(graphmgr_addr, load, save_dir)
     else:
-        return flowchart.run_client(graphmgr_addr, load, prometheus_dir, prometheus_port, hutch, use_opengl,
+        return flowchart.run_client(graphmgr_addr, load, prometheus_dir, prometheus_port, hutch,
+                                    use_opengl, use_numba,
                                     configure, save_dir)
 
 
@@ -142,6 +144,12 @@ def main():
         action='store_true'
     )
 
+    parser.add_argument(
+        '--use-numba',
+        help='Use numba for plots.',
+        action='store_true'
+    )
+
     args = parser.parse_args()
 
     log_handlers = [logging.StreamHandler()]
@@ -189,7 +197,8 @@ def main():
 
     try:
         return run_client(args.graph_name, comm_addr, info_addr, view_addr, args.load,
-                          args.gui_mode, args.prometheus_dir, args.prometheus_port, args.hutch, args.use_opengl,
+                          args.gui_mode, args.prometheus_dir, args.prometheus_port, args.hutch,
+                          args.use_opengl, args.use_numba,
                           False, args.save_dir)
     except KeyboardInterrupt:
         logger.info("Client killed by user...")

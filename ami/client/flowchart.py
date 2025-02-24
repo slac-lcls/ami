@@ -479,9 +479,10 @@ class MessageBroker(object):
         await asyncio.gather(*tasks)
 
 
-def run_client(graphmgr_addr, load, prometheus_dir, prometheus_port, hutch, use_opengl, configure, save_dir):
+def run_client(graphmgr_addr, load, prometheus_dir, prometheus_port, hutch, use_opengl, use_numba,
+               configure, save_dir):
     use_opengl = use_opengl and "SSH_CONNECTION" not in os.environ and "NX_CONNECTION" not in os.environ
-    pg.setConfigOptions(useOpenGL=use_opengl, enableExperimental=use_opengl)
+    pg.setConfigOptions(useOpenGL=use_opengl, enableExperimental=use_opengl, useNumba=use_numba)
 
     with tempfile.TemporaryDirectory() as ipcdir:
         mb = MessageBroker(graphmgr_addr, load, ipcdir=ipcdir, prometheus_dir=prometheus_dir,

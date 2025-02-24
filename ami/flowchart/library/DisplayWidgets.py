@@ -1,4 +1,5 @@
 import zmq
+import resource
 import queue
 import logging
 import datetime as dt
@@ -36,7 +37,7 @@ class AsyncFetcher(QtCore.QThread):
         self.data = {}
         self.timestamps = {}
         self.reply_queue = queue.Queue()
-        self.last_updated = "Last Updated: None"
+        self.heartbeat_timestamp = None
         self.deserializer = Deserializer()
         self.update_topics(topics, terms)
         self.recv_interrupt = self.ctx.socket(zmq.REP)
@@ -145,13 +146,9 @@ class AsyncFetcher(QtCore.QThread):
                             res[name] = self.data[topic]
 
                 if res:
-                    now = dt.datetime.now()
-                    now = now.strftime("%T")
                     heartbeat = heartbeats.pop()
-                    latency = dt.datetime.now() - dt.datetime.fromtimestamp(heartbeat.timestamp)
-                    self.last_updated = f"Last Updated: {now} Latency: {latency}"
+                    self.heartbeat_timestamp = heartbeat.timestamp
                     # put results on the reply queue
-                    res['heartbeat_timestamp'] = heartbeat.timestamp
                     self.reply_queue.put(res)
                     # send a signal that data is ready
                     self.sig.emit()
@@ -493,8 +490,12 @@ class PlotWidget(QtWidgets.QWidget):
 
     def update(self):
         while self.fetcher.ready:
-            self.last_updated.setText(self.fetcher.last_updated)
             self.data_updated(self.fetcher.reply)
+            now = dt.datetime.now()
+            now = now.strftime("%T")
+            ru = resource.getrusage(resource.RUSAGE_SELF)
+            latency = dt.datetime.now() - dt.datetime.fromtimestamp(self.fetcher.heartbeat_timestamp)
+            self.last_updated.setText(f"Last Updated: {now} Latency: {latency} RSS: {ru.ru_maxrss/1024} MB")
 
     def close(self):
         if self.fetcher:
@@ -665,7 +666,6 @@ class ImageWidget(PlotWidget):
         super().apply_clicked()
 
     def data_updated(self, data):
-        timestamp = data.pop('heartbeat_timestamp')
         for k, v in data.items():
             if self.flip:
                 v = np.flip(v)
@@ -675,8 +675,6 @@ class ImageWidget(PlotWidget):
                 v = np.rot90(v, self.rotate)
 
             if v.any():
-                latency = dt.datetime.now() - dt.datetime.fromtimestamp(timestamp)
-                self.last_updated.setText(self.fetcher.last_updated + f" Queue Latency: {latency}")
                 self.imageItem.setImage(v, autoLevels=self.auto_levels)
 
     def saveState(self):
