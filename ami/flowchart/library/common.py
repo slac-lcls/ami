@@ -16,6 +16,7 @@ class CtrlNode(Node):
     def __init__(self, name, ui=None, terminals={}, **kwargs):
         super().__init__(name=name, terminals=terminals, **kwargs)
         self.widget = None
+        self.widget_state = None
         self.geometry = None
 
         if ui is None:
