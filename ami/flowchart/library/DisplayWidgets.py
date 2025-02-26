@@ -105,7 +105,7 @@ class AsyncFetcher(QtCore.QThread):
                 limit = 10
 
                 while True:
-                    count = 0
+                    count = -1  # So the good (last) message in the socket queue is not counted
                     topic = None
                     heartbeat = None
                     reply = None
@@ -118,7 +118,8 @@ class AsyncFetcher(QtCore.QThread):
                             count += 1
                         except zmq.ZMQError as e:
                             if e.errno == zmq.EAGAIN:
-                                logger.debug("%s: Number of queued messages discarded: %d", topic, count)
+                                if count > 0:
+                                    logger.info("%s: Number of queued messages discarded: %d", topic, count)
                                 break
                             else:
                                 raise
