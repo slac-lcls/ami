@@ -41,11 +41,12 @@ class Manager(Collector):
                  export_addr,
                  view_addr,
                  prometheus_dir,
-                 hutch):
+                 hutch,
+                 hwm):
         """
         protocol right now only tells you how to communicate with workers
         """
-        super().__init__(results_addr, hutch=hutch)
+        super().__init__(results_addr, hutch=hutch, hwm=hwm)
         self.name = "manager"
         self.num_workers = num_workers
         self.num_nodes = num_nodes
@@ -697,7 +698,8 @@ def run_manager(num_workers,
                 view_addr,
                 prometheus_dir,
                 prometheus_port,
-                hutch):
+                hutch,
+                hwm):
     logger.info('Starting manager, controlling %d workers on %d nodes PID: %d',
                 num_workers, num_nodes, os.getpid())
     with Manager(
@@ -711,7 +713,8 @@ def run_manager(num_workers,
             export_addr,
             view_addr,
             prometheus_dir,
-            hutch) as manager:
+            hutch,
+            hwm) as manager:
         if prometheus_port:
             manager.start_prometheus(prometheus_port)
         return manager.run()
@@ -782,6 +785,13 @@ def main():
         default=None
     )
 
+    parser.add_argument(
+        '--hwm',
+        help='zmq HWM for push/pull sockets.',
+        type=int,
+        default=None
+    )
+
     args = parser.parse_args()
 
     results_addr = "tcp://%s:%d" % (args.host, args.port + Ports.Results)
@@ -812,7 +822,8 @@ def main():
                            view_addr,
                            args.prometheus_dir,
                            args.prometheus_port,
-                           args.hutch)
+                           args.hutch,
+                           args.hwm)
     except KeyboardInterrupt:
         logger.info("Manager killed by user...")
         return 0

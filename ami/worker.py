@@ -20,7 +20,7 @@ logger = logging.getLogger(__name__)
 
 class Worker(Node):
     def __init__(self, node, src, collector_addr, graph_addr, msg_addr, export_addr, prometheus_dir,
-                 prometheus_port, hutch):
+                 prometheus_port, hutch, hwm):
         """
         node : int
             a unique integer identifying this worker
@@ -32,7 +32,7 @@ class Worker(Node):
 
         self.src = src
         self.pending_src = False
-        self.store = ResultStore(collector_addr, self.ctx)
+        self.store = ResultStore(collector_addr, self.ctx, hwm)
 
         self.graph_comm.add_handler("update_sources", self.update_sources)
         self.graph_comm.add_handler("update_requested_data", self.update_requests_kwargs)
@@ -302,7 +302,7 @@ class Worker(Node):
 
 
 def run_worker(num, num_workers, hb_period, source, collector_addr, graph_addr, msg_addr, export_addr,
-               flags=None, prometheus_dir=None, prometheus_port=None, hutch=None):
+               flags=None, prometheus_dir=None, prometheus_port=None, hutch=None, hwm=None):
 
     logger.info('Starting worker # %d, sending to collector at %s PID: %d', num, collector_addr, os.getpid())
 
@@ -340,7 +340,7 @@ def run_worker(num, num_workers, hb_period, source, collector_addr, graph_addr, 
             return 1
 
     with Worker(num, src, collector_addr, graph_addr, msg_addr, export_addr, prometheus_dir, prometheus_port,
-                hutch) as worker:
+                hutch, hwm) as worker:
         return worker.run()
 
 
@@ -448,6 +448,13 @@ def main():
     )
 
     parser.add_argument(
+        '--hwm',
+        help='zmq HWM for push/pull sockets.',
+        type=int,
+        default=None
+    )
+
+    parser.add_argument(
         'source',
         nargs='?',
         metavar='SOURCE',
@@ -480,7 +487,8 @@ def main():
                           flags,
                           args.prometheus_dir,
                           args.prometheus_port,
-                          args.hutch)
+                          args.hutch,
+                          args.hwm)
     except KeyboardInterrupt:
         logger.info("Worker killed by user...")
         return 0

@@ -392,7 +392,8 @@ def main(color, upstream_port, downstream_port):
                                               flags,
                                               args.prometheus_dir,
                                               args.prometheus_port,
-                                              args.hutch),
+                                              args.hutch,
+                                              args.hwm),
                                         daemon=True)
                     worker.start()
 

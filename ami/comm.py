@@ -411,8 +411,8 @@ class ResultStore(ZmqHandler):
     a Collector object.
     """
 
-    def __init__(self, addr, ctx=None):
-        super().__init__(addr, ctx)
+    def __init__(self, addr, ctx=None, hwm=None):
+        super().__init__(addr, ctx, hwm)
         self.stores = {}
 
     def __bool__(self):
