@@ -377,12 +377,14 @@ class Store:
 
 
 class ZmqHandler:
-    def __init__(self, addr, ctx=None):
+    def __init__(self, addr, ctx=None, hwm=None):
         if ctx is None:
             self.ctx = zmq.Context()
         else:
             self.ctx = ctx
         self.collector = self.ctx.socket(zmq.PUSH)
+        if hwm:
+            self.collector.setsockopt(zmq.SNDHWM, hwm)
         self.collector.connect(addr)
         self.serializer = Serializer()
 
@@ -409,8 +411,8 @@ class ResultStore(ZmqHandler):
     a Collector object.
     """
 
-    def __init__(self, addr, ctx=None):
-        super().__init__(addr, ctx)
+    def __init__(self, addr, ctx=None, hwm=None):
+        super().__init__(addr, ctx, hwm)
         self.stores = {}
 
     def __bool__(self):
@@ -632,9 +634,9 @@ class GraphBuilder(ContributionBuilder):
 
 
 class TransitionBuilder(ContributionBuilder, ZmqHandler):
-    def __init__(self, num_contribs, addr, ctx=None):
+    def __init__(self, num_contribs, addr, ctx=None, hwm=None):
         ContributionBuilder.__init__(self, num_contribs)
-        ZmqHandler.__init__(self, addr, ctx)
+        ZmqHandler.__init__(self, addr, ctx, hwm)
 
     def _complete(self, eb_key, identity, drop):
         if not drop:
@@ -656,8 +658,8 @@ class TransitionBuilder(ContributionBuilder, ZmqHandler):
 
 class EventBuilder(ZmqHandler):
 
-    def __init__(self, num_contribs, depth, color, addr, ctx=None):
-        super().__init__(addr, ctx)
+    def __init__(self, num_contribs, depth, color, addr, ctx=None, hwm=None):
+        super().__init__(addr, ctx, hwm)
         self.num_contribs = num_contribs
         self.depth = depth
         self.color = color
@@ -976,13 +978,15 @@ class Collector(abc.ABC):
             passed it creates one.
     """
 
-    def __init__(self, addr, ctx=None, hutch=None):
+    def __init__(self, addr, ctx=None, hutch=None, hwm=None):
         if ctx is None:
             self.ctx = zmq.Context(io_threads=2)
         else:
             self.ctx = ctx
         self.poller = zmq.Poller()
         self.collector = self.ctx.socket(zmq.PULL)
+        if hwm:
+            self.collector.setsockopt(zmq.RCVHWM, hwm)
         self.collector.bind(addr)
         self.poller.register(self.collector, zmq.POLLIN)
         self.handlers = {}
