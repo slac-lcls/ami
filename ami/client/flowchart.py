@@ -138,36 +138,6 @@ class NodeWindow(QtWidgets.QMainWindow):
         event.ignore()
 
 
-class BrokerFetcher(QtCore.QThread):
-
-    sig = QtCore.Signal(object)
-
-    def __init__(self, msg, broker_addr="", node=None):
-        super(__class__, self).__init__(parent=node)
-
-        self.ctx = zmq.Context()
-
-        self.node = node
-        self.broker = self.ctx.socket(zmq.SUB)
-        self.broker.connect(broker_addr)
-        self.broker.setsockopt_string(zmq.SUBSCRIBE, msg.name + ZMQ_TOPIC_DELIM)
-
-        self.running = True
-        self.sig.connect(self.node.process)
-
-    def run(self):
-        while self.running:
-            self.broker.recv_string()
-            msg = self.broker.recv_pyobj()
-
-            if isinstance(msg, fcMsgs.CloseNode):
-                self.running = False
-                self.wait()
-                self.ctx.destroy()
-            else:
-                self.sig.emit(msg)
-
-
 class NodeProcess(QtCore.QObject):
 
     def __init__(self, msg, broker_addr="", graphmgr_addr="", checkpoint_addr="", loop=None,
