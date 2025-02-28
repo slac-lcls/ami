@@ -6,10 +6,12 @@ import time
 import dill
 import logging
 import functools
+import struct
 import numpy as np
 import ami.comm
 from ami import LogConfig, p4pConfig
 from ami.export.nt import NTBytes, NTObject, NTGraph, NTStore, CAGraph, CAStore
+from ami.data import TimestampConverter
 from p4p.nt import NTScalar, NTNDArray
 from p4p.server import Server, StaticProvider
 from p4p.server.asyncio import SharedPV
@@ -23,18 +25,29 @@ logger = logging.getLogger(LogConfig.get_package_name(__name__))
 
 
 class EpicsExportServer(abc.ABC):
-    def __init__(self, name, comm_addr, export_addr, *args, **kwargs):
+    def __init__(self, name, msg_addr, export_addr, batched, *args, **kwargs):
         self.base = name
         self.ctx = zmq.asyncio.Context()
         self.export = self.ctx.socket(zmq.SUB)
         self.export.setsockopt_string(zmq.SUBSCRIBE, "")
         self.export.connect(export_addr)
 
+        self.node_msg_comm = self.ctx.socket(zmq.PUSH)
+        self.node_msg_comm.connect(msg_addr)
+
         self.pvs = {}
         self.ignored = set()
         self.graph_pvbase = "ana"
         self.data_pvbase = "data"
         self.info_pvbase = "info"
+
+        self.ts_converter = TimestampConverter()
+
+        self.batched = batched
+
+        self.node_msg_comm.send_string("epics", zmq.SNDMORE)
+        self.node_msg_comm.send_string("export", zmq.SNDMORE)
+        self.node_msg_comm.send_string(f"{name}:{self.graph_pvbase}")
 
     def __enter__(self):
         return self
@@ -69,7 +82,7 @@ class EpicsExportServer(abc.ABC):
         pass
 
     @abc.abstractmethod
-    async def post_pv(self, pvname, value, timestamp):
+    async def post_pv(self, pvname, value, timestamp, convert_timestamp=False):
         pass
 
     def valid(self, name, group=None):
@@ -136,12 +149,12 @@ class EpicsExportServer(abc.ABC):
                 pv_type = self.get_pv_type(data)
                 if pv_type is not None:
                     logger.debug("Creating new pv named %s for graph %s", name, graph)
-                    self.create_pv(pvname, pv_type, data, timestamp)
+                    self.create_pv(pvname, pv_type, data, timestamp, convert_timestamp=True)
                 else:
                     logger.warn("Cannot map type of '%s' from graph '%s' to PV: %s", name, graph, type(data))
                     self.ignored.add(pvname)
             else:
-                await self.post_pv(pvname, data, timestamp)
+                await self.post_pv(pvname, data, timestamp, convert_timestamp=True)
 
     @abc.abstractmethod
     def update_destroy(self, graph):
@@ -162,10 +175,31 @@ class EpicsExportServer(abc.ABC):
             timestamp = time.time()
             logger.debug("received: %s graph: %s", topic, graph)
             if topic == 'data':
-                for name, data in exports.items():
-                    # ignore names starting with '_' - these are private
-                    if self.valid(name):
-                        await self.update_data(graph, name, data, timestamp)
+                timestamp = exports.pop("_timestamp", None)
+                if type(timestamp) is list:
+                    # for batch send timestamp, length in bytes, payload, send as byte or char array
+                    for name, data in exports.items():
+                        if self.valid(name):
+                            if self.batched:
+                                batched_data = b""
+                                for data_timestamp, data in sorted(zip(timestamp, data), key=lambda v: v[0]):
+                                    if isinstance(data, np.ndarray):
+                                        nbytes = data.nbytes
+                                        data_bytes = data.tobytes()
+                                        sec, nsec = self.ts_converter.decode(data_timestamp)
+                                        batched_data += struct.pack(f"IIN{nbytes}s",
+                                                                    sec, nsec, nbytes, data_bytes)
+                                await self.update_data(graph, name, batched_data, data_timestamp)
+                            else:
+                                for data_timestamp, data in sorted(zip(timestamp, data), key=lambda v: v[0]):
+                                    await self.update_data(graph, name, data, data_timestamp)
+                elif timestamp is not None:
+                    for name, data in exports.items():
+                        # ignore names starting with '_' - these are private
+                        if self.valid(name):
+                            await self.update_data(graph, name, data, timestamp)
+                else:
+                    logging.warn("received data without timestamp: %s", exports.keys())
             elif topic == 'graph':
                 await self.update_graph(graph, exports, timestamp)
             elif topic == 'store':
@@ -254,8 +288,8 @@ class PvaExportRpcHandler:
 
 
 class PvaExportServer(EpicsExportServer):
-    def __init__(self, name, comm_addr, export_addr, aggregate=False):
-        super().__init__(name, comm_addr, export_addr)
+    def __init__(self, name, msg_addr, export_addr, aggregate=False, batched=False):
+        super().__init__(name, msg_addr, export_addr, batched=batched)
         # self.queue = ThreadedWorkQueue(maxsize=20, workers=1)
         # pva server provider
         self.provider = StaticProvider(name)
@@ -270,22 +304,26 @@ class PvaExportServer(EpicsExportServer):
                                         # self.rpc_provider
                                         ])
 
-    def create_pv(self, name, nt, initial, timestamp, func=None):
+    def create_pv(self, name, nt, initial, timestamp, func=None, convert_timestamp=False):
         extras = {}
         if func is not None:
             extras['handler'] = PvaExportPutHandler(put=func)
         if p4pConfig.SupportsTimestamps:
+            if convert_timestamp:
+                timestamp = self.ts_converter.decode(timestamp)
             extras['timestamp'] = timestamp
         pv = SharedPV(nt=nt, initial=initial, **extras)
         self.provider.add('%s:%s' % (self.base, name), pv)
         self.pvs[name] = pv
 
-    def create_bytes_pv(self, name, initial, timestamp, func=None):
-        self.create_pv(name, NTBytes(), initial, timestamp, func=func)
+    def create_bytes_pv(self, name, initial, timestamp, func=None, convert_timestamp=False):
+        self.create_pv(name, NTBytes(), initial, timestamp, func=func, convert_timestamp=convert_timestamp)
 
-    async def post_pv(self, pvname, value, timestamp):
+    async def post_pv(self, pvname, value, timestamp, convert_timestamp=False):
         extras = {}
         if p4pConfig.SupportsTimestamps:
+            if convert_timestamp:
+                timestamp = self.ts_converter.decode(timestamp)
             extras['timestamp'] = timestamp
         self.pvs[pvname].post(value, **extras)
 
@@ -301,6 +339,8 @@ class PvaExportServer(EpicsExportServer):
             return NTScalar('l')
         elif isinstance(data, float):
             return NTScalar('d')
+        elif isinstance(data, bytes):
+            return NTBytes()
         else:
             return NTObject()
 
@@ -351,15 +391,15 @@ class PvaExportServer(EpicsExportServer):
                 pass
 
 class CaExportServer(EpicsExportServer):
-    def __init__(self, name, comm_addr, export_addr, aggregate=False):
-        super().__init__(name, comm_addr, export_addr)
+    def __init__(self, name, msg_addr, export_addr, aggregate=False, batched=False):
+        super().__init__(name, msg_addr, export_addr, batched=batched)
         self.pvdb = {}
         self.server = CAPContext(self.pvdb)
 
-    def create_pv(self, name, nt, initial, timestamp, func=None):
+    def create_pv(self, name, nt, initial, timestamp, func=None, convert_timestamp=False):
         kwargs = {}
         if nt == ChannelType.STRING:
-            kwargs['max_length'] = 128
+            kwargs['max_length'] = 1024
 
         pv = PVSpec(name=f"{self.base}:{name}", value=initial, dtype=nt, read_only=True, **kwargs)
         self.pvs[name] = pv.name
@@ -375,11 +415,15 @@ class CaExportServer(EpicsExportServer):
             return ChannelType.INT
         elif isinstance(data, float):
             return ChannelType.FLOAT
+        elif isinstance(data, bytes):
+            return ChannelType.CHAR
         else:
             return None
 
-    async def post_pv(self, pvname, value, timestamp):
+    async def post_pv(self, pvname, value, timestamp, convert_timestamp=False):
         pvdb_name = self.pvs[pvname]
+        if convert_timestamp:
+            timestamp = self.ts_converter.decode(timestamp)
         await self.pvdb[pvdb_name].write(value, timestamp=timestamp)
 
     async def update_graph(self, graph, data, timestamp, schema=CAGraph.flat_schema):

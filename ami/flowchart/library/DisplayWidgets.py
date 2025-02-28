@@ -1,4 +1,5 @@
 import zmq
+import resource
 import queue
 import logging
 import datetime as dt
@@ -13,7 +14,7 @@ from ami.data import Deserializer
 from ami.comm import ZMQ_TOPIC_DELIM
 from ami.flowchart.library.WidgetGroup import generateUi
 from ami.flowchart.library.Editors import TraceEditor, HistEditor, \
-    LineEditor, CircleEditor, RectEditor, camera, pixmapFromBase64, load_style
+    LineEditor, CircleEditor, RectEditor, camera, pixmapFromBase64, STYLE
 
 
 logger = logging.getLogger(LogConfig.get_package_name(__name__))
@@ -36,7 +37,7 @@ class AsyncFetcher(QtCore.QThread):
         self.data = {}
         self.timestamps = {}
         self.reply_queue = queue.Queue()
-        self.last_updated = "Last Updated: None"
+        self.heartbeat_timestamp = None
         self.deserializer = Deserializer()
         self.update_topics(topics, terms)
         self.recv_interrupt = self.ctx.socket(zmq.REP)
@@ -93,16 +94,42 @@ class AsyncFetcher(QtCore.QThread):
                 self.sockets[name] = (sock, count+1)
 
     def run(self):
+
         while self.running:
             for sock, flag in self.poller.poll():
                 if flag != zmq.POLLIN:
                     continue
                 if sock == self.recv_interrupt and sock.recv_pyobj():
                     break
-                topic = sock.recv_string()
-                topic = topic.rstrip('\0')
-                heartbeat = sock.recv_pyobj()
-                reply = sock.recv_serialized(self.deserializer, copy=False)
+
+                limit = 10
+
+                while True:
+                    count = -1  # So the good (last) message in the socket queue is not counted
+                    topic = None
+                    heartbeat = None
+                    reply = None
+                    while count < limit:
+                        try:
+                            topic = sock.recv_string(flags=zmq.NOBLOCK)
+                            topic = topic.rstrip('\0')
+                            heartbeat = sock.recv_pyobj(flags=zmq.NOBLOCK)
+                            reply = sock.recv_serialized(self.deserializer, copy=False, flags=zmq.NOBLOCK)
+                            count += 1
+                        except zmq.ZMQError as e:
+                            if e.errno == zmq.EAGAIN:
+                                if count > 0:
+                                    logger.info("%s: Number of queued messages discarded: %d", topic, count)
+                                break
+                            else:
+                                raise
+
+                    if count >= limit:
+                        logger.warn("%s: Number of queued messages exceeds limit: %d", topic, count)
+
+                    if topic is not None:
+                        break
+
                 self.data[self.view_subs[topic]] = reply
                 self.timestamps[self.view_subs[topic]] = heartbeat
                 # check if the data is ready
@@ -120,11 +147,8 @@ class AsyncFetcher(QtCore.QThread):
                             res[name] = self.data[topic]
 
                 if res:
-                    now = dt.datetime.now()
-                    now = now.strftime("%T")
                     heartbeat = heartbeats.pop()
-                    latency = dt.datetime.now() - dt.datetime.fromtimestamp(heartbeat.timestamp)
-                    self.last_updated = f"Last Updated: {now} Latency: {latency}"
+                    self.heartbeat_timestamp = heartbeat.timestamp
                     # put results on the reply queue
                     self.reply_queue.put(res)
                     # send a signal that data is ready
@@ -167,6 +191,9 @@ class PlotWidget(QtWidgets.QWidget):
                                                 delay=0.5,
                                                 slot=lambda args: self.node.sigStateChanged.emit(self.node))
             self.plot_view.autoBtn.clicked.connect(lambda args: self.node.sigStateChanged.emit(self.node))
+
+        if "Background" in STYLE:
+            self.graphics_layout.setBackground(STYLE["Background"])
 
         self.plot_view.showGrid(True, True)
 
@@ -464,8 +491,12 @@ class PlotWidget(QtWidgets.QWidget):
 
     def update(self):
         while self.fetcher.ready:
-            self.last_updated.setText(self.fetcher.last_updated)
             self.data_updated(self.fetcher.reply)
+            now = dt.datetime.now()
+            now = now.strftime("%T")
+            ru = resource.getrusage(resource.RUSAGE_SELF)
+            latency = dt.datetime.now() - dt.datetime.fromtimestamp(self.fetcher.heartbeat_timestamp)
+            self.last_updated.setText(f"Last Updated: {now} Latency: {latency} RSS: {ru.ru_maxrss/1024} MB")
 
     def close(self):
         if self.fetcher:
@@ -581,10 +612,11 @@ class ImageWidget(PlotWidget):
         self.view.setAspectLocked(lock=self.lock, ratio=self.ratio)
 
         self.histogramLUT = pg.HistogramLUTItem(self.imageItem)
-        style = load_style()
-        if "ImageWidget" in style:
-            style = style['ImageWidget']
+
+        if "ImageWidget" in STYLE:
+            style = STYLE['ImageWidget']
         else:
+            style = {}
             style['gradient'] = "thermal"
 
         self.histogramLUT.gradient.loadPreset(style['gradient'])
@@ -600,11 +632,11 @@ class ImageWidget(PlotWidget):
         pos = self.view.mapSceneToView(pos)
         if self.imageItem.image is not None:
             shape = self.imageItem.image.shape
-            if 0 <= pos.x() <= shape[0] and 0 <= pos.y() <= shape[1]:
-                x = int(pos.x())
-                y = int(pos.y())
-                z = self.imageItem.image[x, y]
-                self.pixel_value.setText(f"x={x}, y={y}, z={z:.5g}")
+            i = int(pos.y())  # image is row-major
+            j = int(pos.x())  # image is row-major
+            if 0 <= i < shape[0] and 0 <= j < shape[1]:
+                z = self.imageItem.image[i, j]
+                self.pixel_value.setText(f"x={j}, y={i}, z={z:.5g}")
 
     def apply_clicked(self):
         if 'Display' in self.plot_attrs:
@@ -806,6 +838,10 @@ class WaveformWidget(PlotWidget):
         for term, name in self.terms.items():
             if name not in data:
                 continue
+
+            if not type(data[name]) is np.array:
+                data[name] = np.array(data[name], dtype=float)
+
             if name not in self.plot:
                 _, color = symbols_colors[i]
                 idx = f"trace.{i}"

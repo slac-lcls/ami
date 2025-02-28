@@ -60,6 +60,12 @@ def build_parser():
     )
 
     parser.add_argument(
+        '--batched',
+        action='store_true',
+        help='batch export as a list of structs'
+    )
+
+    parser.add_argument(
         '-a',
         '--aggregate',
         action='store_true',
@@ -190,6 +196,12 @@ def build_parser():
     parser.add_argument(
         '--use-opengl',
         help='Use opengl for plots.',
+        action='store_true'
+    )
+
+    parser.add_argument(
+        '--use-numba',
+        help='Use numba for plots.',
         action='store_true'
     )
 
@@ -354,7 +366,7 @@ def run_ami(args, queue=None):
             export_proc = mp.Process(
                 name='export',
                 target=functools.partial(_sys_exit, run_export),
-                args=(args.export, comm_addr, export_addr, args.aggregate)
+                args=(args.export, msg_addr, export_addr, args.aggregate, args.batched)
             )
             export_proc.daemon = True
             export_proc.start()
@@ -365,7 +377,9 @@ def run_ami(args, queue=None):
                 name='client',
                 target=run_client,
                 args=(args.graph_name, comm_addr, info_addr, view_addr, args.load, args.gui_mode,
-                      args.prometheus_dir, args.prometheus_port, args.hutch, args.use_opengl, src_cfg is None,
+                      args.prometheus_dir, args.prometheus_port, args.hutch,
+                      args.use_opengl, args.use_numba,
+                      src_cfg is None,
                       args.save_dir)
             )
             client_proc.daemon = False

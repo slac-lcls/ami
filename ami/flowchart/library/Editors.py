@@ -27,6 +27,9 @@ def load_style():
     return style
 
 
+STYLE = load_style()
+
+
 class TraceEditor(QtWidgets.QWidget):
 
     def __init__(self, parent=None, widget=None, **kwargs):
@@ -81,10 +84,9 @@ class TraceEditor(QtWidgets.QWidget):
         self.layout.addWidget(self.plot_widget, 0, 2, -1, -1)
 
         if 'restore' not in kwargs:
-            style = load_style()
             name = widget.__class__.__name__
-            if name in style:
-                self.restoreState(style[name])
+            if name in STYLE:
+                self.restoreState(STYLE[name])
 
     def update_plot(self):
         point = self.trace_attrs['Point']

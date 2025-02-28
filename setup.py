@@ -32,12 +32,11 @@ setup(
         'networkfox',
         'ipython',
         'qtpy',
-        'asyncqt>=0.8.0',
+        'qasync>=0.27.1',
         'amityping>=1.1.2',
         'mypy',
         'setproctitle',
         'prometheus_client',
-        'qtconsole',
 #        'lark'
     ],
     tests_require=[
@@ -50,6 +49,7 @@ setup(
         'hdf5': ['h5py'],
         'arrow': ['pyarrow>=0.17'],
         'lcls': ['psana', 'h5py', 'p4p'],
+        'console': ['qtconsole']
     },
     entry_points={
         'console_scripts': [
