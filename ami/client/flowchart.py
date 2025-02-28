@@ -1,5 +1,7 @@
 #!/usr/bin/env python
 import os
+import socket
+import json
 import sys
 import logging
 import importlib
@@ -10,6 +12,7 @@ import zmq.asyncio
 import subprocess
 import ami.multiproc as mp
 import pyqtgraph as pg
+import prometheus_client as pc
 
 from ami import LogConfig
 from ami.client import flowchart_messages as fcMsgs
@@ -31,6 +34,7 @@ except ModuleNotFoundError:
 logger = logging.getLogger(LogConfig.get_package_name(__name__))
 
 pg.setConfigOption('imageAxisOrder', 'row-major')
+
 
 def run_editor_window(broker_addr, graphmgr_addr, checkpoint_addr, load=None, prometheus_dir=None,
                       prometheus_port=None, hutch=None, configure=False, save_dir=None):
@@ -137,7 +141,8 @@ class NodeWindow(QtWidgets.QMainWindow):
 class NodeProcess(QtCore.QObject):
 
     def __init__(self, msg, broker_addr="", graphmgr_addr="", checkpoint_addr="", loop=None,
-                 library_paths=None, hutch=''):
+                 library_paths=None, prometheus_dir=None, prometheus_port=None, hutch=''):
+
         super().__init__()
 
         if loop is None:
@@ -191,6 +196,14 @@ class NodeProcess(QtCore.QObject):
             title += f' hutch: {hutch}'
         self.win.setWindowTitle(title)
 
+        self.hutch = hutch
+        self.name = msg.name
+
+        self.prometheus_dir = prometheus_dir
+        self.prometheus_port = prometheus_port
+
+        self.start_prometheus()
+
         with loop:
             loop.run_until_complete(self.process())
 
@@ -219,7 +232,7 @@ class NodeProcess(QtCore.QObject):
 
         if self.widget is None:
             self.widget = self.node.display(msg.topics, msg.terms, self.graphmgr_addr, self.win,
-                                            units=msg.units)
+                                            units=msg.units, name=self.name, hutch=self.hutch)
 
             if self.ctrlWidget and self.widget:
                 splitter = QtWidgets.QSplitter(parent=self.win)
@@ -265,6 +278,32 @@ class NodeProcess(QtCore.QObject):
                                     state=state)
         await self.checkpoint.send_string(node.name() + ZMQ_TOPIC_DELIM, zmq.SNDMORE)
         await self.checkpoint.send_pyobj(msg)
+
+    def start_prometheus(self):
+        port = self.prometheus_port
+
+        while True:
+            try:
+                pc.start_http_server(port)
+                break
+            except OSError:
+                port += 1
+
+        if self.prometheus_dir:
+            if not os.path.exists(self.prometheus_dir):
+                os.makedirs(self.prometheus_dir)
+            pth = f"drpami_{socket.gethostname()}_{self.hutch}_{self.name}.json"
+            pth = os.path.join(self.prometheus_dir, pth)
+            conf = [{"targets": [f"{socket.gethostname()}:{port}"]}]
+            try:
+                with open(pth, 'w') as f:
+                    json.dump(conf, f)
+            except PermissionError:
+                logging.error("Permission denied: %s", pth)
+                pass
+
+        logger.info("%s: Started Prometheus client on port: %d", self.name, port)
+        return port
 
 
 class MessageBroker(object):
@@ -422,7 +461,10 @@ class MessageBroker(object):
                         target=NodeProcess,
                         name=msg.name,
                         args=(msg, self.broker_pub_addr, self.graphmgr_addr, self.checkpoint_sub_addr),
-                        kwargs={'library_paths': self.library_paths},
+                        kwargs={'library_paths': self.library_paths,
+                                'prometheus_dir': self.prometheus_dir,
+                                'prometheus_port': self.prometheus_port,
+                                'hutch': self.hutch},
                         daemon=True
                     )
                     proc.start()
@@ -440,7 +482,10 @@ class MessageBroker(object):
                     target=NodeProcess,
                     name=msg.name,
                     args=(msg, self.broker_pub_addr, self.graphmgr_addr, self.checkpoint_sub_addr),
-                    kwargs={'library_paths': self.library_paths, 'hutch': self.hutch},
+                    kwargs={'library_paths': self.library_paths,
+                            'prometheus_dir': self.prometheus_dir,
+                            'prometheus_port': self.prometheus_port,
+                            'hutch': self.hutch},
                     daemon=True
                 )
                 proc.start()

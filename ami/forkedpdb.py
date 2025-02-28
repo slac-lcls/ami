@@ -12,11 +12,13 @@ class ForkedPdb(pdb.Pdb):
         _stdin = sys.stdin
         try:
             sys.stdin = open('/dev/stdin')
-            QtCore.pyqtRemoveInputHook()
+            if hasattr(QtCore, 'pyqtRemoveInputHook'):
+                QtCore.pyqtRemoveInputHook()
             pdb.Pdb.interaction(self, *args, **kwargs)
         finally:
             sys.stdin = _stdin
-            QtCore.pyqtRestoreInputHook()
+            if hasattr(QtCore, 'pyqtRestoreInputHook'):
+                QtCore.pyqtRestoreInputHook()
 
 # Use it the same way you might use the classic Pdb:
 # ForkedPdb().set_trace()
