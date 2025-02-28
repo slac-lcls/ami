@@ -6,6 +6,8 @@ import datetime as dt
 import itertools as it
 import numpy as np
 import pyqtgraph as pg
+import prometheus_client as pc
+
 from pyqtgraph.GraphicsScene.exportDialog import ExportDialog
 from qtpy import QtGui, QtWidgets, QtCore
 from networkfox import modifiers
@@ -174,11 +176,17 @@ class PlotWidget(QtWidgets.QWidget):
         super().__init__(parent)
         self.node = kwargs.get('node', None)
         self.units = kwargs.get('units', {})
+        self.hutch = kwargs.get('hutch', None)
+        self.name = kwargs.get('name', None)
 
         self.fetcher = None
         if addr:
             self.fetcher = AsyncFetcher(topics, terms, addr, parent=self)
             self.fetcher.start()
+            # prometheus client is not thread safe and does not like being passed to the
+            # async fetcher (through parent=self)
+            self.latency = pc.Gauge('ami_plot_latency_secs', 'Plot Latency', ['hutch', 'process'])
+            self.memory = pc.Gauge('ami_plot_memory_mb', 'Plot Memory', ['hutch', 'process'])
 
         self.layout = QtWidgets.QGridLayout()
         self.setLayout(self.layout)
@@ -495,8 +503,11 @@ class PlotWidget(QtWidgets.QWidget):
             now = dt.datetime.now()
             now = now.strftime("%T")
             ru = resource.getrusage(resource.RUSAGE_SELF)
+            rss = ru.ru_maxrss/1024
             latency = dt.datetime.now() - dt.datetime.fromtimestamp(self.fetcher.heartbeat_timestamp)
-            self.last_updated.setText(f"Last Updated: {now} Latency: {latency} RSS: {ru.ru_maxrss/1024} MB")
+            self.last_updated.setText(f"Last Updated: {now} Latency: {latency} RSS: {rss} MB")
+            self.latency.labels(self.hutch, self.name).set(latency.total_seconds())
+            self.memory.labels(self.hutch, self.name).set(rss)
 
     def close(self):
         if self.fetcher:
