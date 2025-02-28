@@ -167,14 +167,6 @@ class BrokerFetcher(QtCore.QThread):
             else:
                 self.sig.emit(msg)
 
-def launch_node(msg, broker_addr="", graphmgr_addr="", checkpoint_addr="",
-                library_paths=None, prometheus_dir=None, prometheus_port=None, hutch=''):
-
-    app = QtWidgets.QApplication([])
-    proc = NodeProcess(msg, broker_addr, graphmgr_addr, checkpoint_addr, library_paths,
-                       prometheus_dir=prometheus_dir, prometheus_port=prometheus_port, hutch=hutch)
-    app.exec()
-
 
 class NodeProcess(QtCore.QObject):
 
