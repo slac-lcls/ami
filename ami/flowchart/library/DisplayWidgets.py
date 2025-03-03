@@ -1,4 +1,5 @@
 import zmq
+import time
 import resource
 import queue
 import logging
@@ -69,7 +70,6 @@ class AsyncFetcher(QtCore.QThread):
     def update_topics(self, topics, terms):
         self.topics = topics
         self.terms = terms
-        self.names = list(topics.keys())
         self.subs = set(topics.values())
         self.optional = set([value for key, value in topics.items() if type(key) is modifiers.optional])
 
@@ -80,14 +80,16 @@ class AsyncFetcher(QtCore.QThread):
 
         self.sockets = {}
         self.view_subs = {}
+        self.sub_views = {}
 
         for term, name in terms.items():
             if name not in self.sockets:
                 topic = topics[name]
                 sub_topic = "view:%s:%s" % (self.addr.name, topic)
                 self.view_subs[sub_topic] = topic
-                sock = self.ctx.socket(zmq.SUB)
-                sock.setsockopt_string(zmq.SUBSCRIBE, sub_topic + ZMQ_TOPIC_DELIM)
+                self.timestamps[topic] = 0
+                self.sub_views[topic] = sub_topic
+                sock = self.ctx.socket(zmq.REQ)
                 sock.connect(self.addr.view)
                 self.poller.register(sock, zmq.POLLIN)
                 self.sockets[name] = (sock, 1)  # reference count
@@ -98,42 +100,32 @@ class AsyncFetcher(QtCore.QThread):
     def run(self):
 
         while self.running:
+            time.sleep(0.01)
+
+            for term, name in self.terms.items():
+                req = self.sub_views[self.topics[name]]
+                sock = self.sockets[name][0]
+                sock.send_string(req, flags=zmq.NOBLOCK)
+
             for sock, flag in self.poller.poll():
+
                 if flag != zmq.POLLIN:
                     continue
                 if sock == self.recv_interrupt and sock.recv_pyobj():
                     break
 
-                limit = 10
+                topic = sock.recv_string()
+                topic = topic.rstrip('\0')
+                heartbeat = sock.recv_pyobj()
+                reply = sock.recv_serialized(self.deserializer, copy=False)
 
-                while True:
-                    count = -1  # So the good (last) message in the socket queue is not counted
-                    topic = None
-                    heartbeat = None
-                    reply = None
-                    while count < limit:
-                        try:
-                            topic = sock.recv_string(flags=zmq.NOBLOCK)
-                            topic = topic.rstrip('\0')
-                            heartbeat = sock.recv_pyobj(flags=zmq.NOBLOCK)
-                            reply = sock.recv_serialized(self.deserializer, copy=False, flags=zmq.NOBLOCK)
-                            count += 1
-                        except zmq.ZMQError as e:
-                            if e.errno == zmq.EAGAIN:
-                                if count > 0:
-                                    logger.info("%s: Number of queued messages discarded: %d", topic, count)
-                                break
-                            else:
-                                raise
+                view_sub = self.view_subs[topic]
 
-                    if count >= limit:
-                        logger.warn("%s: Number of queued messages exceeds limit: %d", topic, count)
+                if heartbeat is None or self.timestamps[view_sub] >= heartbeat:
+                    continue
 
-                    if topic is not None:
-                        break
-
-                self.data[self.view_subs[topic]] = reply
-                self.timestamps[self.view_subs[topic]] = heartbeat
+                self.data[view_sub] = reply
+                self.timestamps[view_sub] = heartbeat
                 # check if the data is ready
                 heartbeats = set(self.timestamps.values())
                 num_heartbeats = len(heartbeats)
@@ -150,9 +142,8 @@ class AsyncFetcher(QtCore.QThread):
 
                 if res:
                     heartbeat = heartbeats.pop()
-                    self.heartbeat_timestamp = heartbeat.timestamp
                     # put results on the reply queue
-                    self.reply_queue.put(res)
+                    self.reply_queue.put((heartbeat.timestamp, res))
                     # send a signal that data is ready
                     self.sig.emit()
 
@@ -499,12 +490,13 @@ class PlotWidget(QtWidgets.QWidget):
 
     def update(self):
         while self.fetcher.ready:
-            self.data_updated(self.fetcher.reply)
+            heartbeat_timestamp, reply = self.fetcher.reply
+            self.data_updated(reply)
             now = dt.datetime.now()
             now = now.strftime("%T")
             ru = resource.getrusage(resource.RUSAGE_SELF)
             rss = ru.ru_maxrss/1024
-            latency = dt.datetime.now() - dt.datetime.fromtimestamp(self.fetcher.heartbeat_timestamp)
+            latency = dt.datetime.now() - dt.datetime.fromtimestamp(heartbeat_timestamp)
             self.last_updated.setText(f"Last Updated: {now} Latency: {latency} RSS: {rss} MB")
             self.latency.labels(self.hutch, self.name).set(latency.total_seconds())
             self.memory.labels(self.hutch, self.name).set(rss)

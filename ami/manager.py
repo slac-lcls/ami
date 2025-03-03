@@ -89,8 +89,7 @@ class Manager(Collector):
         self.node_msg_comm.bind(msg_addr)
         self.register(self.node_msg_comm, self.node_request)
 
-        self.view_comm = self.ctx.socket(zmq.XPUB)  # exports plot data to clients
-        self.view_comm.setsockopt(zmq.XPUB_VERBOSE, True)
+        self.view_comm = self.ctx.socket(zmq.REP)  # exports plot data to clients
         self.view_comm.bind(view_addr)
         self.register(self.view_comm, self.view_request)
 
@@ -142,7 +141,7 @@ class Manager(Collector):
                 # export the heartbeat to epics
                 self.export_heartbeat(msg.name)
                 # export data for viewing in the AMI GUI
-                self.export_view(msg.name, keys=msg.payload.keys())
+                # self.export_view(msg.name, keys=msg.payload.keys())
 
             self.event_counter.labels(self.hutch, 'Heartbeat', self.name).inc()
             self.event_time.labels(self.hutch, 'Heartbeat', self.name).set(time.time() - datagram_start)
@@ -569,20 +568,21 @@ class Manager(Collector):
     def view_request(self):
         request = self.view_comm.recv_string()
 
-        if request.startswith("\x01"):
-            request = request.strip('\x01')
-            matched = self.view_req.match(request)
-            if matched:
-                graph = matched.group('graph')
-                name = matched.group('name')
-                if self.exists(graph) and name in self.feature_stores[graph]:
-                    self.publish_view("view:%s:%s" % (graph, name),
-                                      self.heartbeats[graph],
-                                      self.feature_stores[graph].get(name))
-                else:
-                    logger.debug("Received view request for unknown graph/feature: %s", request)
+        matched = self.view_req.match(request)
+
+        if matched:
+            graph = matched.group('graph')
+            name = matched.group('name')
+            if self.exists(graph) and name in self.feature_stores[graph]:
+                self.publish_view("view:%s:%s" % (graph, name),
+                                  self.heartbeats[graph],
+                                  self.feature_stores[graph].get(name))
             else:
-                logger.warn("Received invalid view request: %s", request)
+                self.publish_view("view:%s:%s" % (graph, name),
+                                  None, None)
+                logger.debug("Received view request for unknown graph/feature: %s", request)
+        else:
+            logger.warn("Received invalid view request: %s", request)
 
     def export_view(self, name, keys=[]):
         size = 0
