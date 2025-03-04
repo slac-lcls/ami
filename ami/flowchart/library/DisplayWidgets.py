@@ -40,7 +40,7 @@ class AsyncFetcher(QtCore.QThread):
         self.data = {}
         self.timestamps = {}
         self.reply_queue = queue.Queue()
-        self.heartbeat_timestamp = None
+        self.heartbeat_timestamp = 0
         self.deserializer = Deserializer()
         self.update_topics(topics, terms)
         self.recv_interrupt = self.ctx.socket(zmq.REP)
@@ -48,6 +48,9 @@ class AsyncFetcher(QtCore.QThread):
         self.poller.register(self.recv_interrupt, zmq.POLLIN)
         self.send_interrupt = self.ctx.socket(zmq.REQ)
         self.send_interrupt.connect("inproc://fetcher_interrupt")
+        self.comm = self.ctx.socket(zmq.REQ)
+        self.comm.connect(addr.comm)
+
         if parent is not None:
             if ratelimit is None:
                 self.sig.connect(parent.update)
@@ -100,7 +103,14 @@ class AsyncFetcher(QtCore.QThread):
     def run(self):
 
         while self.running:
-            time.sleep(0.01)
+            self.comm.send_string("get_heartbeat", zmq.SNDMORE)
+            self.comm.send_string(self.addr.name)
+            heartbeat = self.comm.recv_pyobj()
+
+            if heartbeat is None or self.heartbeat_timestamp >= heartbeat.timestamp:
+                continue
+
+            self.heartbeat_timestamp = heartbeat.timestamp
 
             for term, name in self.terms.items():
                 req = self.sub_views[self.topics[name]]
@@ -163,6 +173,8 @@ class AsyncFetcher(QtCore.QThread):
 
 class PlotWidget(QtWidgets.QWidget):
 
+    registered = False
+
     def __init__(self, topics=None, terms=None, addr=None, uiTemplate=None, parent=None, **kwargs):
         super().__init__(parent)
         self.node = kwargs.get('node', None)
@@ -176,8 +188,10 @@ class PlotWidget(QtWidgets.QWidget):
             self.fetcher.start()
             # prometheus client is not thread safe and does not like being passed to the
             # async fetcher (through parent=self)
-            self.latency = pc.Gauge('ami_plot_latency_secs', 'Plot Latency', ['hutch', 'process'])
-            self.memory = pc.Gauge('ami_plot_memory_mb', 'Plot Memory', ['hutch', 'process'])
+            if not self.registered:
+                self.latency = pc.Gauge('ami_plot_latency_secs', 'Plot Latency', ['hutch', 'process'])
+                self.memory = pc.Gauge('ami_plot_memory_mb', 'Plot Memory', ['hutch', 'process'])
+                self.regisetred = True
 
         self.layout = QtWidgets.QGridLayout()
         self.setLayout(self.layout)
