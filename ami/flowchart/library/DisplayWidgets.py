@@ -172,6 +172,9 @@ class AsyncFetcher(QtCore.QThread):
 
 class PlotWidget(QtWidgets.QWidget):
 
+    latency = pc.Gauge('ami_plot_latency_secs', 'Plot Latency', ['hutch', 'process'])
+    memory = pc.Gauge('ami_plot_memory_mb', 'Plot Memory', ['hutch', 'process'])
+
     def __init__(self, topics=None, terms=None, addr=None, uiTemplate=None, parent=None, **kwargs):
         super().__init__(parent)
         self.node = kwargs.get('node', None)
@@ -183,10 +186,6 @@ class PlotWidget(QtWidgets.QWidget):
         if addr:
             self.fetcher = AsyncFetcher(topics, terms, addr, parent=self)
             self.fetcher.start()
-            # prometheus client is not thread safe and does not like being passed to the
-            # async fetcher (through parent=self)
-            self.latency = pc.Gauge('ami_plot_latency_secs', 'Plot Latency', ['hutch', 'process'])
-            self.memory = pc.Gauge('ami_plot_memory_mb', 'Plot Memory', ['hutch', 'process'])
 
         self.layout = QtWidgets.QGridLayout()
         self.setLayout(self.layout)
