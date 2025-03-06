@@ -48,6 +48,10 @@ class AsyncFetcher(QtCore.QThread):
         self.poller.register(self.recv_interrupt, zmq.POLLIN)
         self.send_interrupt = self.ctx.socket(zmq.REQ)
         self.send_interrupt.connect("inproc://fetcher_interrupt")
+        self.export = self.ctx.socket(zmq.SUB)
+        self.export.connect(addr.export)
+        self.export.setsockopt_string(zmq.SUBSCRIBE, "heartbeat")
+
         self.comm = self.ctx.socket(zmq.REQ)
         self.comm.connect(addr.comm)
 
@@ -103,11 +107,14 @@ class AsyncFetcher(QtCore.QThread):
     def run(self):
 
         while self.running:
-            self.comm.send_string("get_heartbeat", zmq.SNDMORE)
-            self.comm.send_string(self.addr.name)
-            heartbeat = self.comm.recv_pyobj()
+            topic = self.export.recv_string()
+            graph = self.export.recv_string()
+            heartbeat = self.export.recv_pyobj()
 
-            if heartbeat is None or self.heartbeat_timestamp >= heartbeat.timestamp:
+            if graph != self.addr.name:
+                continue
+
+            if self.heartbeat_timestamp >= heartbeat.timestamp:
                 continue
 
             self.heartbeat_timestamp = heartbeat.timestamp
@@ -118,7 +125,6 @@ class AsyncFetcher(QtCore.QThread):
                 sock.send_string(req, flags=zmq.NOBLOCK)
 
             for sock, flag in self.poller.poll():
-
                 if flag != zmq.POLLIN:
                     continue
                 if sock == self.recv_interrupt and sock.recv_pyobj():
@@ -128,7 +134,6 @@ class AsyncFetcher(QtCore.QThread):
                 topic = topic.rstrip('\0')
                 heartbeat = sock.recv_pyobj()
                 reply = sock.recv_serialized(self.deserializer, copy=False)
-
                 view_sub = self.view_subs[topic]
 
                 if heartbeat is None or self.timestamps[view_sub] >= heartbeat:
@@ -173,7 +178,8 @@ class AsyncFetcher(QtCore.QThread):
 
 class PlotWidget(QtWidgets.QWidget):
 
-    registered = False
+    latency = pc.Gauge('ami_plot_latency_secs', 'Plot Latency', ['hutch', 'process'])
+    memory = pc.Gauge('ami_plot_memory_mb', 'Plot Memory', ['hutch', 'process'])
 
     def __init__(self, topics=None, terms=None, addr=None, uiTemplate=None, parent=None, **kwargs):
         super().__init__(parent)
@@ -186,12 +192,6 @@ class PlotWidget(QtWidgets.QWidget):
         if addr:
             self.fetcher = AsyncFetcher(topics, terms, addr, parent=self)
             self.fetcher.start()
-            # prometheus client is not thread safe and does not like being passed to the
-            # async fetcher (through parent=self)
-            if not self.registered:
-                self.latency = pc.Gauge('ami_plot_latency_secs', 'Plot Latency', ['hutch', 'process'])
-                self.memory = pc.Gauge('ami_plot_memory_mb', 'Plot Memory', ['hutch', 'process'])
-                self.regisetred = True
 
         self.layout = QtWidgets.QGridLayout()
         self.setLayout(self.layout)

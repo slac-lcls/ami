@@ -14,7 +14,7 @@ import datetime as dt
 import prometheus_client as pc
 from ami import LogConfig
 from ami.comm import Ports, PlatformAction, AutoExport, Collector, Store, ZMQ_TOPIC_DELIM
-from ami.data import MsgTypes, Transitions, Serializer, Deserializer, RequestedData
+from ami.data import MsgTypes, Transitions, Serializer, Deserializer
 from ami.graphkit_wrapper import Graph
 
 
@@ -89,8 +89,17 @@ class Manager(Collector):
         self.node_msg_comm.bind(msg_addr)
         self.register(self.node_msg_comm, self.node_request)
 
-        self.view_comm = self.ctx.socket(zmq.REP)  # exports plot data to clients
-        self.view_comm.bind(view_addr)
+        self.view_comm_frontend = self.ctx.socket(zmq.ROUTER)  # exports plot data to clients
+        self.view_comm_frontend.bind(view_addr)
+        self.register(self.view_comm_frontend, self.view_front_forward)
+
+        self.view_comm_backend = self.ctx.socket(zmq.DEALER)
+        self.view_comm_backend.bind("inproc:///view_dealer")
+        self.register(self.view_comm_backend, self.view_back_forward)
+
+        self.view_comm = self.ctx.socket(zmq.REP)
+        self.view_comm.connect("inproc:///view_dealer")
+
         self.register(self.view_comm, self.view_request)
 
         self.prometheus_dir = prometheus_dir
@@ -135,7 +144,7 @@ class Manager(Collector):
                     # if there are new entries in the store notify the export layer
                     self.export_store(msg.name)
                 # export the collector data to epics
-                self.export_data(msg.name, msg.payload)
+                # self.export_data(msg.name, msg.payload)
                 # update the latest heartbeat indicator
                 self.heartbeats[msg.name] = msg.heartbeat
                 # export the heartbeat to epics
@@ -583,6 +592,14 @@ class Manager(Collector):
                 logger.debug("Received view request for unknown graph/feature: %s", request)
         else:
             logger.warn("Received invalid view request: %s", request)
+
+    def view_front_forward(self):
+        req = self.view_comm_frontend.recv_multipart()
+        self.view_comm_backend.send_multipart(req)
+
+    def view_back_forward(self):
+        rep = self.view_comm_backend.recv_multipart()
+        self.view_comm_frontend.send_multipart(rep)
 
     def export_view(self, name, keys=[]):
         size = 0
