@@ -36,13 +36,13 @@ class AsyncFetcher(QtCore.QThread):
         self.running = True
         self.ctx = zmq.Context()
         self.poller = zmq.Poller()
-        self.sockets = {}
         self.data = {}
         self.timestamps = {}
         self.reply_queue = queue.Queue()
         self.heartbeat_timestamp = 0
         self.deserializer = Deserializer()
         self.update_topics(topics, terms)
+
         self.recv_interrupt = self.ctx.socket(zmq.REP)
         self.recv_interrupt.bind("inproc://fetcher_interrupt")
         self.poller.register(self.recv_interrupt, zmq.POLLIN)
@@ -51,9 +51,8 @@ class AsyncFetcher(QtCore.QThread):
         self.export = self.ctx.socket(zmq.SUB)
         self.export.connect(addr.export)
         self.export.setsockopt_string(zmq.SUBSCRIBE, "heartbeat")
-
-        self.comm = self.ctx.socket(zmq.REQ)
-        self.comm.connect(addr.comm)
+        self.view = self.ctx.socket(zmq.REQ)
+        self.view.connect(addr.view)
 
         if parent is not None:
             if ratelimit is None:
@@ -80,29 +79,15 @@ class AsyncFetcher(QtCore.QThread):
         self.subs = set(topics.values())
         self.optional = set([value for key, value in topics.items() if type(key) is modifiers.optional])
 
-        for name, sock_count in self.sockets.items():
-            sock, count = sock_count
-            self.poller.unregister(sock)
-            sock.close()
-
-        self.sockets = {}
         self.view_subs = {}
         self.sub_views = {}
 
         for term, name in terms.items():
-            if name not in self.sockets:
-                topic = topics[name]
-                sub_topic = "view:%s:%s" % (self.addr.name, topic)
-                self.view_subs[sub_topic] = topic
-                self.timestamps[topic] = 0
-                self.sub_views[topic] = sub_topic
-                sock = self.ctx.socket(zmq.REQ)
-                sock.connect(self.addr.view)
-                self.poller.register(sock, zmq.POLLIN)
-                self.sockets[name] = (sock, 1)  # reference count
-            else:
-                sock, count = self.sockets[name]
-                self.sockets[name] = (sock, count+1)
+            topic = topics[name]
+            sub_topic = "view:%s:%s" % (self.addr.name, topic)
+            self.view_subs[sub_topic] = topic
+            self.timestamps[topic] = 0
+            self.sub_views[topic] = sub_topic
 
     def run(self):
 
@@ -121,19 +106,13 @@ class AsyncFetcher(QtCore.QThread):
 
             for term, name in self.terms.items():
                 req = self.sub_views[self.topics[name]]
-                sock = self.sockets[name][0]
-                sock.send_string(req, flags=zmq.NOBLOCK)
+                self.view.send_string(req, flags=zmq.NOBLOCK)
 
-            for sock, flag in self.poller.poll():
-                if flag != zmq.POLLIN:
-                    continue
-                if sock == self.recv_interrupt and sock.recv_pyobj():
-                    break
-
-                topic = sock.recv_string()
+                topic = self.view.recv_string()
                 topic = topic.rstrip('\0')
-                heartbeat = sock.recv_pyobj()
-                reply = sock.recv_serialized(self.deserializer, copy=False)
+                heartbeat = self.view.recv_pyobj()
+                reply = self.view.recv_serialized(self.deserializer, copy=False)
+
                 view_sub = self.view_subs[topic]
 
                 if heartbeat is None or self.timestamps[view_sub] >= heartbeat:
@@ -162,17 +141,20 @@ class AsyncFetcher(QtCore.QThread):
                     # send a signal that data is ready
                     self.sig.emit()
 
+            try:
+                if self.recv_interrupt.recv_pyobj(flags=zmq.NOBLOCK):
+                    break
+            except zmq.error.Again:
+                continue
+
     def close(self):
         self.running = False
         # signal asyncfetcher thread to die then wait
         self.send_interrupt.send_pyobj(True)
         self.wait()
         self.poller.unregister(self.recv_interrupt)
-        for name, sock_count in self.sockets.items():
-            sock, count = sock_count
-            self.poller.unregister(sock)
-            sock.close()
-
+        self.export.close()
+        self.view.close()
         self.ctx.destroy()
 
 
