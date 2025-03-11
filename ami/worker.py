@@ -225,9 +225,9 @@ class Worker(Node):
 
                 elif msg.mtype == MsgTypes.Datagram:
                     datagram_start = time.time()
-                    datagram_start_latency = dt.datetime.now() - dt.datetime.fromtimestamp(msg.heartbeat.timestamp)
+                    input_latency = dt.datetime.now() - dt.datetime.fromtimestamp(msg.unix_ts)
                     self.event_latency.labels(self.hutch, "Source",
-                                      self.name).set(datagram_start_latency.total_seconds())
+                                              self.name).set(input_latency.total_seconds())
 
                     if any(v is None for k, v in msg.payload.items()):
                         event_counter.labels(self.hutch, 'Partial', self.name).inc()
