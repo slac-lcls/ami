@@ -7,6 +7,7 @@ import json
 import logging
 import argparse
 import time
+import datetime as dt
 import prometheus_client as pc
 from ami import LogConfig, Defaults
 from ami.comm import Ports, PlatformAction, Colors, ResultStore, Node, AutoExport
@@ -173,6 +174,7 @@ class Worker(Node):
         event_counter = pc.Counter('ami_event_count', 'Event Counter', ['hutch', 'type', 'process'])
         event_time = pc.Gauge('ami_event_time_secs', 'Event Time', ['hutch', 'type', 'process'])
         event_size = pc.Gauge('ami_event_size_bytes', 'Event Size', ['hutch', 'process'])
+        event_latency = pc.Gauge('ami_event_latency_secs', 'Event Latency', ['hutch', 'sender', 'process'])
 
         idle_start = time.time()
         idle_stop = time.time()
@@ -223,6 +225,9 @@ class Worker(Node):
 
                 elif msg.mtype == MsgTypes.Datagram:
                     datagram_start = time.time()
+                    datagram_start_latency = dt.datetime.now() - dt.datetime.fromtimestamp(msg.heartbeat.timestamp)
+                    self.event_latency.labels(self.hutch, "Source",
+                                      self.name).set(datagram_start_latency.total_seconds())
 
                     if any(v is None for k, v in msg.payload.items()):
                         event_counter.labels(self.hutch, 'Partial', self.name).inc()
