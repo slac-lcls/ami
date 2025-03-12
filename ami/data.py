@@ -147,7 +147,7 @@ class Message:
     identity: int
     payload: dict
     timestamp: int = 0  # typically raw data source (LCLS) timestamp
-    unix_ts: int = 0  # timestamp converted to unix_ts
+    unix_ts: float = 0  # timestamp converted to unix_ts
 
     def _serialize(self):
         return asdict(self)
