@@ -144,7 +144,7 @@ class Manager(Collector):
                     # if there are new entries in the store notify the export layer
                     self.export_store(msg.name)
                 # export the collector data to epics
-                # self.export_data(msg.name, msg.payload)
+                self.export_data(msg.name, msg.payload)
                 # update the latest heartbeat indicator
                 self.heartbeats[msg.name] = msg.heartbeat
                 # export the heartbeat to epics
