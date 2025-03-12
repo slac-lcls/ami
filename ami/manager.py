@@ -582,14 +582,17 @@ class Manager(Collector):
         if matched:
             graph = matched.group('graph')
             name = matched.group('name')
+            size = 0
             if self.exists(graph) and name in self.feature_stores[graph]:
-                self.publish_view("view:%s:%s" % (graph, name),
-                                  self.heartbeats[graph],
-                                  self.feature_stores[graph].get(name))
+                size += self.publish_view("view:%s:%s" % (graph, name),
+                                          self.heartbeats[graph],
+                                          self.feature_stores[graph].get(name))
             else:
-                self.publish_view("view:%s:%s" % (graph, name),
-                                  None, None)
+                size += self.publish_view("view:%s:%s" % (graph, name),
+                                          None, None)
                 logger.debug("Received view request for unknown graph/feature: %s", request)
+
+            self.event_size.labels(self.hutch, self.name).set(size)
         else:
             logger.warn("Received invalid view request: %s", request)
 
