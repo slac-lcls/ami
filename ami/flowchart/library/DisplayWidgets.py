@@ -121,7 +121,7 @@ class AsyncFetcher(QtCore.QThread):
                 self.data[view_sub] = reply
                 self.timestamps[view_sub] = heartbeat
                 # check if the data is ready
-                heartbeats = set(self.timestamps.values())  # this only keeps the first value in the timestamps dict. Ok?
+                heartbeats = set(self.timestamps.values())  # this will remove duplicates. Happens for multi-inputs plots
                 num_heartbeats = len(heartbeats)
                 res = {}
 
