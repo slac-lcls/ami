@@ -13,7 +13,7 @@ from pyqtgraph.GraphicsScene.exportDialog import ExportDialog
 from qtpy import QtGui, QtWidgets, QtCore
 from networkfox import modifiers
 from ami import LogConfig
-from ami.data import Deserializer
+from ami.data import Deserializer, Heartbeat
 from ami.comm import ZMQ_TOPIC_DELIM
 from ami.flowchart.library.WidgetGroup import generateUi
 from ami.flowchart.library.Editors import TraceEditor, HistEditor, \
@@ -37,7 +37,7 @@ class AsyncFetcher(QtCore.QThread):
         self.ctx = zmq.Context()
         self.poller = zmq.Poller()
         self.data = {}
-        self.timestamps = {}
+        self.timestamps = {}  # Heartbeats for each view_sub
         self.reply_queue = queue.Queue()
         self.heartbeat_timestamp = 0
         self.deserializer = Deserializer()
@@ -86,7 +86,7 @@ class AsyncFetcher(QtCore.QThread):
             topic = topics[name]
             sub_topic = "view:%s:%s" % (self.addr.name, topic)
             self.view_subs[sub_topic] = topic
-            self.timestamps[topic] = 0
+            self.timestamps[topic] = Heartbeat()
             self.sub_views[topic] = sub_topic
 
     def run(self):
@@ -121,7 +121,7 @@ class AsyncFetcher(QtCore.QThread):
                 self.data[view_sub] = reply
                 self.timestamps[view_sub] = heartbeat
                 # check if the data is ready
-                heartbeats = set(self.timestamps.values())
+                heartbeats = set(self.timestamps.values())  # this only keeps the first value in the timestamps dict. Ok?
                 num_heartbeats = len(heartbeats)
                 res = {}
 
@@ -533,7 +533,8 @@ class ObjectWidget(pg.LayoutWidget):
 
     def update(self):
         while self.fetcher.ready:
-            for k, v in self.fetcher.reply.items():
+            heartbeat_timestamp, reply = self.fetcher.reply
+            for k, v in reply.items():
 
                 if type(v) is np.ndarray:
                     txt = "variable: %s\ntype: %s\nvalue: %s\nshape: %s\ndtype: %s" % (k, type(v), v, v.shape, v.dtype)
@@ -561,7 +562,8 @@ class ScalarWidget(QtWidgets.QLCDNumber):
 
     def update(self):
         while self.fetcher.ready:
-            for k, v in self.fetcher.reply.items():
+            heartbeat_timestamp, reply = self.fetcher.reply
+            for k, v in reply.items():
                 self.display(float(v))
 
     def close(self):
