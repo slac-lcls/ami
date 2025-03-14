@@ -54,7 +54,7 @@ class Manager(Collector):
         self.partition = {}
         self.feature_stores = {}
         self.feature_req = re.compile(r"(?P<type>fetch):(?P<name>.*)")
-        self.view_req = re.compile(r"view:(?P<graph>.*):(?P<name>.*)")
+        self.view_req = re.compile(r"view:(?P<graph>[^:]+):(?P<name>.+)$")
         self.graphs = {}
         self.paths = collections.defaultdict(set)
         self.versions = {}  # { graph_name : version_number}
