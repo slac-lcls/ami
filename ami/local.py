@@ -194,8 +194,21 @@ def build_parser():
     )
 
     parser.add_argument(
+        '--hwm',
+        help='zmq HWM for push/pull sockets.',
+        type=int,
+        default=None
+    )
+
+    parser.add_argument(
         '--use-opengl',
         help='Use opengl for plots.',
+        action='store_true'
+    )
+
+    parser.add_argument(
+        '--use-numba',
+        help='Use numba for plots.',
         action='store_true'
     )
 
@@ -317,7 +330,7 @@ def run_ami(args, queue=None):
                 target=functools.partial(_sys_exit, run_worker),
                 args=(i, args.num_workers, args.heartbeat, src_cfg,
                       collector_addr, graph_addr, msg_addr, export_addr, flags, args.prometheus_dir,
-                      args.prometheus_port, args.hutch)
+                      args.prometheus_port, args.hutch, args.hwm)
             )
             proc.daemon = True
             proc.start()
@@ -327,7 +340,7 @@ def run_ami(args, queue=None):
             name='nodecol-n0',
             target=functools.partial(_sys_exit, run_node_collector),
             args=(0, args.num_workers, args.eb_depth, collector_addr, globalcol_addr, graph_addr,
-                  msg_addr, args.prometheus_dir, args.prometheus_port, args.hutch)
+                  msg_addr, args.prometheus_dir, args.prometheus_port, args.hutch, args.hwm)
         )
         collector_proc.daemon = True
         collector_proc.start()
@@ -337,7 +350,7 @@ def run_ami(args, queue=None):
             name='globalcol',
             target=functools.partial(_sys_exit, run_global_collector),
             args=(0, 1, args.eb_depth, globalcol_addr, results_addr, graph_addr, msg_addr,
-                  args.prometheus_dir, args.prometheus_port, args.hutch)
+                  args.prometheus_dir, args.prometheus_port, args.hutch, args.hwm)
         )
         globalcol_proc.daemon = True
         globalcol_proc.start()
@@ -347,7 +360,7 @@ def run_ami(args, queue=None):
             name='manager',
             target=functools.partial(_sys_exit, run_manager),
             args=(args.num_workers, 1, results_addr, graph_addr, comm_addr, msg_addr, info_addr, export_addr,
-                  view_addr, args.prometheus_dir, args.prometheus_port, args.hutch)
+                  view_addr, args.prometheus_dir, args.prometheus_port, args.hutch, args.hwm)
         )
         manager_proc.daemon = True
         manager_proc.start()
@@ -371,7 +384,9 @@ def run_ami(args, queue=None):
                 name='client',
                 target=run_client,
                 args=(args.graph_name, comm_addr, info_addr, view_addr, args.load, args.gui_mode,
-                      args.prometheus_dir, args.prometheus_port, args.hutch, args.use_opengl, src_cfg is None,
+                      args.prometheus_dir, args.prometheus_port, args.hutch,
+                      args.use_opengl, args.use_numba,
+                      src_cfg is None,
                       args.save_dir)
             )
             client_proc.daemon = False

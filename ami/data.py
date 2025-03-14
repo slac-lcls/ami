@@ -3,6 +3,7 @@ import sys
 import abc
 import zmq
 import time
+import datetime as dt
 import dill
 import json
 import typing
@@ -24,6 +25,7 @@ import numpy as np
 import amitypes as at
 from enum import Enum
 from dataclasses import dataclass, asdict, field
+import prometheus_client as pc
 from ami import psana, psana_uses_epics_epoch
 
 
@@ -144,7 +146,8 @@ class Message:
     mtype: MsgTypes
     identity: int
     payload: dict
-    timestamp: int = 0
+    timestamp: int = 0  # typically raw data source (LCLS) timestamp
+    unix_ts: float = 0  # timestamp converted to unix_ts
 
     def _serialize(self):
         return asdict(self)
@@ -699,7 +702,7 @@ class Source(abc.ABC):
             ('source', self.source)
         ]
         data.update({k: v for k, v in base if k in self.requested_names.names})
-        msg = Message(mtype=MsgTypes.Datagram, identity=self.idnum, payload=data, timestamp=eventid)
+        msg = Message(mtype=MsgTypes.Datagram, identity=self.idnum, payload=data, timestamp=eventid, unix_ts=timestamp)
         yield msg
 
     def request(self, requested_data, is_kws_update=False):

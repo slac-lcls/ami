@@ -1,3 +1,4 @@
+import dill
 import networkx as nx
 import collections
 import ami.graph_nodes as gn
@@ -501,3 +502,7 @@ class Graph():
         """
         assert self.graphkit is not None, "call compile first"
         return self.graphkit.node_metadata()
+
+    def dump(self, pth):
+        with open(pth, 'wb') as f:
+            dill.dump(self, f)

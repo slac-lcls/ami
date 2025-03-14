@@ -1,10 +1,13 @@
 import zmq
+import resource
 import queue
 import logging
 import datetime as dt
 import itertools as it
 import numpy as np
 import pyqtgraph as pg
+import prometheus_client as pc
+
 from pyqtgraph.GraphicsScene.exportDialog import ExportDialog
 from qtpy import QtGui, QtWidgets, QtCore
 from networkfox import modifiers
@@ -36,7 +39,7 @@ class AsyncFetcher(QtCore.QThread):
         self.data = {}
         self.timestamps = {}
         self.reply_queue = queue.Queue()
-        self.last_updated = "Last Updated: None"
+        self.heartbeat_timestamp = None
         self.deserializer = Deserializer()
         self.update_topics(topics, terms)
         self.recv_interrupt = self.ctx.socket(zmq.REP)
@@ -104,7 +107,7 @@ class AsyncFetcher(QtCore.QThread):
                 limit = 10
 
                 while True:
-                    count = 0
+                    count = -1  # So the good (last) message in the socket queue is not counted
                     topic = None
                     heartbeat = None
                     reply = None
@@ -117,7 +120,8 @@ class AsyncFetcher(QtCore.QThread):
                             count += 1
                         except zmq.ZMQError as e:
                             if e.errno == zmq.EAGAIN:
-                                logger.debug("%s: Number of queued messages discarded: %d", topic, count)
+                                if count > 0:
+                                    logger.info("%s: Number of queued messages discarded: %d", topic, count)
                                 break
                             else:
                                 raise
@@ -145,11 +149,8 @@ class AsyncFetcher(QtCore.QThread):
                             res[name] = self.data[topic]
 
                 if res:
-                    now = dt.datetime.now()
-                    now = now.strftime("%T")
                     heartbeat = heartbeats.pop()
-                    latency = dt.datetime.now() - dt.datetime.fromtimestamp(heartbeat.timestamp)
-                    self.last_updated = f"Last Updated: {now} Latency: {latency}"
+                    self.heartbeat_timestamp = heartbeat.timestamp
                     # put results on the reply queue
                     self.reply_queue.put(res)
                     # send a signal that data is ready
@@ -171,10 +172,15 @@ class AsyncFetcher(QtCore.QThread):
 
 class PlotWidget(QtWidgets.QWidget):
 
+    latency = pc.Gauge('ami_plot_latency_secs', 'Plot Latency', ['hutch', 'process'])
+    memory = pc.Gauge('ami_plot_memory_mb', 'Plot Memory', ['hutch', 'process'])
+
     def __init__(self, topics=None, terms=None, addr=None, uiTemplate=None, parent=None, **kwargs):
         super().__init__(parent)
         self.node = kwargs.get('node', None)
         self.units = kwargs.get('units', {})
+        self.hutch = kwargs.get('hutch', None)
+        self.name = kwargs.get('name', None)
 
         self.fetcher = None
         if addr:
@@ -492,8 +498,15 @@ class PlotWidget(QtWidgets.QWidget):
 
     def update(self):
         while self.fetcher.ready:
-            self.last_updated.setText(self.fetcher.last_updated)
             self.data_updated(self.fetcher.reply)
+            now = dt.datetime.now()
+            now = now.strftime("%T")
+            ru = resource.getrusage(resource.RUSAGE_SELF)
+            rss = ru.ru_maxrss/1024
+            latency = dt.datetime.now() - dt.datetime.fromtimestamp(self.fetcher.heartbeat_timestamp)
+            self.last_updated.setText(f"Last Updated: {now} Latency: {latency} RSS: {rss} MB")
+            self.latency.labels(self.hutch, self.name).set(latency.total_seconds())
+            self.memory.labels(self.hutch, self.name).set(rss)
 
     def close(self):
         if self.fetcher:

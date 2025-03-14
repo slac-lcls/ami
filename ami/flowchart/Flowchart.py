@@ -16,7 +16,7 @@ from ami.flowchart.Node import Node, NodeGraphicsItem, find_nearest
 from ami.flowchart.NodeLibrary import SourceLibrary
 from ami.flowchart.SourceConfiguration import SourceConfiguration
 from ami.flowchart.TypeEncoder import TypeEncoder
-from ami.comm import AsyncGraphCommHandler
+from ami.comm import AsyncGraphCommHandler, GraphCommHandler
 from ami.client import flowchart_messages as fcMsgs
 try:
     from qtconsole.rich_jupyter_widget import RichJupyterWidget
@@ -667,6 +667,7 @@ class FlowchartCtrlWidget(QtWidgets.QWidget):
     def __init__(self, chart, graphmgr_addr, configure):
         super().__init__()
 
+        self.graphmgr_addr = graphmgr_addr
         self.graphCommHandler = AsyncGraphCommHandler(graphmgr_addr.name, graphmgr_addr.comm, ctx=chart.ctx)
         self.graph_name = graphmgr_addr.name
         self.metadata = None
@@ -938,6 +939,14 @@ class FlowchartCtrlWidget(QtWidgets.QWidget):
 
     if HAS_QTCONSOLE:
         def consoleClicked(self):
+            class AmiCli():
+
+                def __init__(self, ctrl, chartWidget, chart, graph, graphCommHandler):
+                    self.ctrl = ctrl
+                    self.chartWidget = chartWidget
+                    self.chart = chart
+                    self.graphCommHandler = graphCommHandler
+
             if self.ipython_widget is None:
                 kernel_manager = QtInProcessKernelManager()
                 kernel_manager.start_kernel(show_banner=False)
@@ -952,12 +961,12 @@ class FlowchartCtrlWidget(QtWidgets.QWidget):
                 self.ipython_widget.kernel_manager = kernel_manager
                 self.ipython_widget.kernel_client = kernel_client
 
-            self.ipython_widget.kernel_manager.kernel.shell.push({'ctrl': self,
-                                                                  'chartWidget': self.chartWidget,
-                                                                  'chart': self.chart,
-                                                                  'graph': self.chart._graph,
-                                                                  'graphCommHandler': self.graphCommHandler})
-            self.ipython_widget.show()
+            graphCommHandler = GraphCommHandler(self.graphmgr_addr.name, self.graphmgr_addr.comm)
+            self.amicli = AmiCli(self, self.chartWidget, self.chart, self.chart._graph, graphCommHandler)
+            self.ipython_widget.kernel_manager.kernel.shell.push({'amicli': self.amicli})
+            win = QtWidgets.QMainWindow(parent=self)
+            win.setCentralWidget(self.ipython_widget)
+            win.show()
 
     @asyncSlot(object)
     async def configureApply(self, src_cfg):
