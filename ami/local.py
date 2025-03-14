@@ -383,7 +383,7 @@ def run_ami(args, queue=None):
             client_proc = mp.Process(
                 name='client',
                 target=run_client,
-                args=(args.graph_name, comm_addr, info_addr, view_addr, args.load, args.gui_mode,
+                args=(args.graph_name, comm_addr, info_addr, view_addr, export_addr, args.load, args.gui_mode,
                       args.prometheus_dir, args.prometheus_port, args.hutch,
                       args.use_opengl, args.use_numba,
                       src_cfg is None,
