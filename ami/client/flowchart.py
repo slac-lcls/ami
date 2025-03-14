@@ -82,7 +82,7 @@ def run_editor_window(broker_addr, graphmgr_addr, checkpoint_addr, load=None, pr
         title = 'AMI Client'
         if hutch:
             title += f' hutch: {hutch}'
-        if filename:
+        if filename is not None:
             title += ' - ' + filename.split('/')[-1]
 
         win.setWindowTitle(title)
@@ -121,17 +121,17 @@ class NodeWindow(QtWidgets.QMainWindow):
     def moveEvent(self, event):
         super().moveEvent(event)
         self.proc.node.geometry = self.saveGeometry()
-        self.proc.send_checkpoint(self.proc.node)
+        self.proc.send_checkpoint(self.proc.node, 'moveEvent')
 
     def resizeEvent(self, event):
         super().resizeEvent(event)
         self.proc.node.geometry = self.saveGeometry()
-        self.proc.send_checkpoint(self.proc.node)
+        self.proc.send_checkpoint(self.proc.node, 'resizeEvent')
 
     def closeEvent(self, event):
         self.proc.node.viewed = False
         self.proc.node.geometry = self.saveGeometry()
-        self.proc.send_checkpoint(self.proc.node)
+        self.proc.send_checkpoint(self.proc.node, 'closeEvent')
         self.proc.node.close()
         self.proc.widget = None
         self.destroy()
@@ -190,6 +190,7 @@ class NodeProcess(QtCore.QObject):
 
         self.ctrlWidget = self.node.ctrlWidget(self.win)
         self.widget = None
+        self.connected = False
 
         title = msg.name
         if hutch:
@@ -256,9 +257,13 @@ class NodeProcess(QtCore.QObject):
                 self.win.setCentralWidget(scrollarea)
 
             if msg.state and hasattr(self.widget, 'restoreState'):
+                self.widget.blockSignals(True)
                 self.widget.restoreState(msg.state)
+                self.widget.blockSignals(False)
 
-            self.node.sigStateChanged.connect(self.send_checkpoint)
+            if not self.connected:
+                self.node.sigStateChanged.connect(self.send_checkpoint)
+                self.connected = True
 
         self.win.show()
         if self.node.viewed:
@@ -271,11 +276,10 @@ class NodeProcess(QtCore.QObject):
             pg.reload.reload(mod)
 
     @asyncSlot(object)
-    async def send_checkpoint(self, node):
+    async def send_checkpoint(self, node, event='sigStateChanged'):
         state = node.saveState()
 
-        msg = fcMsgs.NodeCheckpoint(node.name(),
-                                    state=state)
+        msg = fcMsgs.NodeCheckpoint(node.name(), state=state, event=event)
         await self.checkpoint.send_string(node.name() + ZMQ_TOPIC_DELIM, zmq.SNDMORE)
         await self.checkpoint.send_pyobj(msg)
 
