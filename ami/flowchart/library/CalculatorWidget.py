@@ -206,8 +206,9 @@ class FilterWidget(QtWidgets.QWidget):
 
     sigStateChanged = QtCore.Signal(object, object, object)
 
-    def __init__(self, inputs={}, outputs=[], parent=None):
+    def __init__(self, inputs={}, outputs=[], node=None, parent=None):
         super().__init__(parent)
+        self.node = node
         self.inputs = inputs or {}
         self.outputs = outputs or []
         self.layout = QtWidgets.QFormLayout()
@@ -320,8 +321,9 @@ class FilterWidget(QtWidgets.QWidget):
 
         return ui, stateGroup, ctrls, attrs
 
-    def remove_condition(self):
-        name = self.sender().name
+    def remove_condition(self, name=''):
+        if self.sender():
+            name = self.sender().name
         if name == "Else":
             ui, stateGroup, ctrls, attrs = self.else_condition
         else:
@@ -330,8 +332,12 @@ class FilterWidget(QtWidgets.QWidget):
         ctrls[name]['groupbox'].deleteLater()
         if name == "Else":
             del self.else_condition
+            self.else_condition = None
         else:
             del self.condition_groups[name]
+
+        self.sigStateChanged.emit("remove", name, None)
+        self.node.sigStateChanged.emit(self.node)
 
     def state_changed(self, *args, **kwargs):
         attr, group, val = args
@@ -391,6 +397,13 @@ class FilterWidget(QtWidgets.QWidget):
             values[name] = state[name]
             stateGroup.setState({name: state[name]})
 
+        deletions = []
+        for name, group in self.condition_groups.items():
+            if name not in state:
+                deletions.append(name)
+
+        for name in deletions:
+            self.remove_condition(name)
 
 def gen_filter_func(values, inputs, outputs):
     assert (len(values) >= 1)

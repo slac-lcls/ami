@@ -633,10 +633,17 @@ class EventProcessor():
 
         def display(self, topics, terms, addr, win, **kwargs):
             if self.widget is None:
-                self.widget = FilterWidget(terms or self.input_vars(), self.output_vars(), win)
+                self.widget = FilterWidget(terms or self.input_vars(), self.output_vars(), self, win)
                 self.widget.sigStateChanged.connect(self.state_changed)
 
             return self.widget
+
+        def update(self, *args, **kwargs):
+            name, group, val = args
+            if name == "remove":
+                self.values.pop(group, None)
+            else:
+                super().update(*args, **kwargs)
 
         def to_operation(self, **kwargs):
             values = self.values
