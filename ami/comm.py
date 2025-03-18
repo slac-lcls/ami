@@ -352,12 +352,11 @@ class Store:
         if data is not None:
             datatype = self.get_type(data)
             if name in self._store:
-                if datatype == self._store[name].dtype or self._store[name].dtype is None:
-                    self._store[name].dtype = datatype
-                    self._store[name].data = data
-                else:
-                    raise TypeError("type of new result (%s) differs from existing"
+                if not datatype == self._store[name].dtype:
+                    logger.warning("type of new result (%s) differs from existing."
                                     " (%s)" % (datatype, self._store[name].dtype))
+                self._store[name].dtype = datatype
+                self._store[name].data = data
             else:
                 self._store[name] = Datagram(name, datatype, data)
 
