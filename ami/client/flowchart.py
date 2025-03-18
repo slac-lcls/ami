@@ -217,6 +217,14 @@ class NodeProcess(QtCore.QObject):
                 self.display(msg)
             elif isinstance(msg, fcMsgs.ReloadLibrary):
                 self.reloadLibrary(msg)
+            elif isinstance(msg, fcMsgs.NodeTermAdded):
+                self.node.terminalAdded(msg.term)
+            elif isinstance(msg, fcMsgs.NodeTermRemoved):
+                self.node.terminalRemoved(msg.term)
+            elif isinstance(msg, fcMsgs.NodeTermConnected):
+                self.node.terminalConnected(msg.localNode, msg.localTerm, msg.remoteNode, msg.remoteTerm)
+            elif isinstance(msg, fcMsgs.NodeTermDisconnected):
+                self.node.terminalDisconnected(msg.localNode, msg.localTerm, msg.remoteNode, msg.remoteTerm)
             elif isinstance(msg, fcMsgs.CloseNode):
                 return
 
@@ -501,6 +509,18 @@ class MessageBroker(object):
                 await self.forward_message_to_node(topic, msg)
 
             elif isinstance(msg, fcMsgs.ReloadLibrary):
+                await self.forward_message_to_node(topic, msg)
+
+            elif isinstance(msg, fcMsgs.NodeTermAdded):
+                await self.forward_message_to_node(topic, msg)
+
+            elif isinstance(msg, fcMsgs.NodeTermRemoved):
+                await self.forward_message_to_node(topic, msg)
+
+            elif isinstance(msg, fcMsgs.NodeTermConnected):
+                await self.forward_message_to_node(topic, msg)
+
+            elif isinstance(msg, fcMsgs.NodeTermDisconnected):
                 await self.forward_message_to_node(topic, msg)
 
             elif isinstance(msg, fcMsgs.CloseNode):

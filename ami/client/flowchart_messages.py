@@ -85,8 +85,47 @@ class NodeCheckpoint(NodeMsg):
         self.event = event
 
 
-class Profiler(Msg):
+class NodeTermAdded(NodeMsg):
 
-    def __init__(self, name, command):
+    def __init__(self, name, term, isInput, isOutput):
         super().__init__(name)
-        self.command = ""
+        self.term = term
+        self.isInput = isInput
+        self.isOutput = isOutput
+
+
+class NodeTermRemoved(NodeMsg):
+
+    def __init__(self, name, term, isInput, isOutput):
+        super().__init__(name)
+        self.term = term
+        self.isInput = isInput
+        self.isOutput = isOutput
+
+
+class NodeTermConnected(NodeMsg):
+
+    def __init__(self, localNode, localTerm, remoteNode, remoteTerm):
+        """
+        Always goes from localNode.localTerm -> remoteNode.remoteTerm
+        ie. localTerm is output and remoteTerm is input
+        """
+        super().__init__(localNode, localTerm, remoteNode, remoteTerm)
+        self.localNode = localNode
+        self.localTerm = localTerm
+        self.remoteNode = remoteNode
+        self.remoteTerm = remoteTerm
+
+
+class NodeTermDisconnected(NodeMsg):
+
+    def __init__(self, localNode, localTerm, remoteNode, remoteTerm):
+        """
+        Always goes from localNode.localTerm -> remoteNode.remoteTerm
+        ie. localTerm is output and remoteTerm is input
+        """
+        super().__init__(localNode)
+        self.localNode = localNode
+        self.localTerm = localTerm
+        self.remoteNode = remoteNode
+        self.remoteTerm = remoteTerm
