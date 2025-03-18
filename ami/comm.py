@@ -345,7 +345,7 @@ class Store:
             name (str): the name of the entry
             data (object): the data to associate with the entry
 
-        Raises:
+        Warning:
             TypeError: if the type of data doesn't match the type of the
                 existing entry in the store with that name.
         """
