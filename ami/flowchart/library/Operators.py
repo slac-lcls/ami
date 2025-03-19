@@ -109,7 +109,7 @@ class MeanVsScan(CtrlNode):
                     pass
             keys, values = zip(*sorted(res.items()))
             return np.array(keys), np.array(values)
-        
+
         def distribute_outputs(args):
             """
             Distribute the binned array elements to the corresponding outputs.
@@ -637,6 +637,18 @@ class EventProcessor():
                 self.widget.sigStateChanged.connect(self.state_changed)
 
             return self.widget
+
+        def terminalAdded(self, term, *args, **kwargs):
+            if self.widget is None:
+                return
+
+            self.widget.terminalAdded(term, *args, **kwargs)
+
+        def terminalRemoved(self, term, *args, **kwargs):
+            if self.widget is None:
+                return
+
+            self.widget.terminalRemoved(term, *args, **kwargs)
 
         def update(self, *args, **kwargs):
             name, group, val = args

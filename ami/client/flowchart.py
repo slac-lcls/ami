@@ -218,9 +218,9 @@ class NodeProcess(QtCore.QObject):
             elif isinstance(msg, fcMsgs.ReloadLibrary):
                 self.reloadLibrary(msg)
             elif isinstance(msg, fcMsgs.NodeTermAdded):
-                self.node.terminalAdded(msg.term)
+                self.node.terminalAdded(msg.term, **msg.state)
             elif isinstance(msg, fcMsgs.NodeTermRemoved):
-                self.node.terminalRemoved(msg.term)
+                self.node.terminalRemoved(msg.term, **msg.state)
             elif isinstance(msg, fcMsgs.NodeTermConnected):
                 self.node.terminalConnected(msg.localNode, msg.localTerm, msg.remoteNode, msg.remoteTerm)
             elif isinstance(msg, fcMsgs.NodeTermDisconnected):

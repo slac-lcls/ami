@@ -234,14 +234,16 @@ class Flowchart(Node):
     @asyncSlot(object, object)
     async def nodeTermAdded(self, node, term):
         name = node.name()
-        msg = fcMsgs.NodeTermAdded(name, term.name(), term.isInput(), term.isOutput())
+        state = term.saveState()
+        msg = fcMsgs.NodeTermAdded(name, term.name(), state)
         await self.broker.send_string(name, zmq.SNDMORE)
         await self.broker.send_pyobj(msg)
 
     @asyncSlot(object, object)
     async def nodeTermRemoved(self, node, term):
         name = node.name()
-        msg = fcMsgs.NodeTermRemoved(name, term.name(), term.isInput(), term.isOutput())
+        state = term.saveState()
+        msg = fcMsgs.NodeTermRemoved(name, term.name(), state)
         await self.broker.send_string(name, zmq.SNDMORE)
         await self.broker.send_pyobj(msg)
 

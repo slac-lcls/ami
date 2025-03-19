@@ -339,6 +339,32 @@ class FilterWidget(QtWidgets.QWidget):
         self.sigStateChanged.emit("remove", name, None)
         self.node.sigStateChanged.emit(self.node)
 
+    def terminalAdded(self, term, *args, **kwargs):
+        if kwargs.get('io', None) == 'in':
+            return
+
+        # output terminal
+        node_name = self.node.name()
+        inputs = list(self.inputs.values())
+        inputs.append("None")
+        for name, group in self.condition_groups.items():
+            ui, stateGroup, ctrls, attrs = group
+            groupbox = ctrls[name]["groupbox"]
+            widget = QtWidgets.QComboBox(parent=groupbox)
+            for input in inputs:
+                widget.addItem(input, input)
+            widget.setCurrentIndex(len(inputs)-1)
+            widget_name = f"{node_name}.{term}"
+            ctrls[name][widget_name] = widget
+            stateGroup.addWidget(widget, name=widget_name, group=name)
+            layout = groupbox.layout()
+            layout.addRow(widget_name, widget)
+            attrs[name][widget_name] = "None"
+            stateGroup.widgetChanged(widget)
+
+    def terminalRemoved(self, term, *args, **kwargs):
+        print(term, kwargs)
+
     def state_changed(self, *args, **kwargs):
         attr, group, val = args
 
