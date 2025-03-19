@@ -16,14 +16,41 @@ class Constant(CtrlNode):
     """
 
     nodeName = "Constant"
-    uiTemplate = [('constant', 'doubleSpin')]
+    uiTemplate = [
+        ('function', 'combo', {'values': ['float',
+                                          'np.arange',
+                                          'np.linspace',
+                                          'np.zeros',
+                                          'np.ones',
+                                          'np.full'
+                                          ]}),
+        ('arguments', 'text', {'value': '0'}),
+        ]
 
     def __init__(self, name):
-        super().__init__(name, terminals={"Out": {'io': 'out', 'ttype': float}})
+        super().__init__(name, terminals={"Out": {'io': 'out', 'ttype': Any}})
 
     def to_operation(self, **kwargs):
-        constant = self.values['constant']
-        return gn.Map(name=self.name()+"_operation", **kwargs, func=lambda: constant)
+        #constant = self.values['constant']
+        args = eval(self.values['arguments'])
+        output = 0
+        if not isinstance(args, tuple):
+            args = (args,)
+
+        if self.values['function'] == 'float':
+            output = float(*args)
+        elif self.values['function'] == 'np.arange':
+            output = np.arange(*args)
+        elif self.values['function'] == 'np.linspace':
+            output = np.linspace(*args)
+        elif self.values['function'] == 'np.zeros':
+            output = np.zeros(args)
+        elif self.values['function'] == 'np.ones':
+            output = np.ones(args)
+        elif self.values['function'] == 'np.full':
+            output = np.full(*args)
+
+        return gn.Map(name=self.name()+"_operation", **kwargs, func=lambda: output)
 
 
 class Identity(GroupedNode):
