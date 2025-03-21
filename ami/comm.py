@@ -340,24 +340,21 @@ class Store:
         Sets the data associated with an entry in the store. If there is an
         existing entry in the store with that name, the type of the data is
         checked to see that it matches with what is already in the store.
+        Logs a warning if the type of data doesn't match the type of the
+        existing entry in the store with that name.
 
         Args:
             name (str): the name of the entry
             data (object): the data to associate with the entry
-
-        Raises:
-            TypeError: if the type of data doesn't match the type of the
-                existing entry in the store with that name.
         """
         if data is not None:
             datatype = self.get_type(data)
             if name in self._store:
-                if datatype == self._store[name].dtype or self._store[name].dtype is None:
-                    self._store[name].dtype = datatype
-                    self._store[name].data = data
-                else:
-                    raise TypeError("type of new result (%s) differs from existing"
+                if not datatype == self._store[name].dtype:
+                    logger.warning("type of new result (%s) differs from existing."
                                     " (%s)" % (datatype, self._store[name].dtype))
+                self._store[name].dtype = datatype
+                self._store[name].data = data
             else:
                 self._store[name] = Datagram(name, datatype, data)
 
