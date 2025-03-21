@@ -651,22 +651,25 @@ class EventProcessor():
             self.widget.terminalRemoved(term, *args, **kwargs)
 
         def update(self, *args, **kwargs):
-            name, group, val = args
-            if name == "remove":
-                self.values.pop(group, None)
+            group, values, _, = args
+
+            if group == "remove":
+                self.values.pop(values, None)
             else:
-                super().update(*args, **kwargs)
+                self.values[group] = values[group]
 
-        def to_operation(self, **kwargs):
+        def to_operation(self, inputs, outputs, **kwargs):
             values = self.values
-            inputs = list(self.input_vars().values())
-            outputs = list(self.output_vars())
 
-            for idx, inp in enumerate(inputs):
-                inputs[idx] = sanitize_name(inp)
+            for term, inp in inputs.items():
+                inputs[term] = sanitize_name(inp)
 
             func = gen_filter_func(values, inputs, outputs)
-            return gn.Map(name=self.name()+"_operation", **kwargs, func=PythonEditorProc(func))
+
+            return gn.Map(name=self.name()+"_operation",
+                          inputs=inputs, outputs=outputs,
+                          **kwargs,
+                          func=PythonEditorProc(func))
 
 except ImportError as e:
     print(e)

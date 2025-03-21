@@ -231,15 +231,15 @@ class FilterWidget(QtWidgets.QWidget):
         if self.inputs:
             self.variable_widget = QtWidgets.QWidget(parent=self)
             self.variable_layout = QtWidgets.QGridLayout()
-            self.variables = []
+            self.variables = {}
 
-            for _, term in self.inputs.items():
-                self.variables.append(self.createButton(term, self.operatorClicked))
+            for term, input_name in self.inputs.items():
+                self.variables[input_name] = self.createButton(input_name, self.operatorClicked)
 
             row = 0
             col = 0
-            for i in range(0, len(self.inputs)):
-                self.variable_layout.addWidget(self.variables[i], row, col)
+            for name, widget in self.variables.items():
+                self.variable_layout.addWidget(widget, row, col)
                 if col < 3:
                     col += 1
                 else:
@@ -324,12 +324,15 @@ class FilterWidget(QtWidgets.QWidget):
     def remove_condition(self, name=''):
         if self.sender():
             name = self.sender().name
+
         if name == "Else":
             ui, stateGroup, ctrls, attrs = self.else_condition
         else:
             ui, stateGroup, ctrls, attrs = self.condition_groups[name]
+
         self.layout.removeWidget(ui)
         ctrls[name]['groupbox'].deleteLater()
+
         if name == "Else":
             del self.else_condition
             self.else_condition = None
@@ -343,8 +346,9 @@ class FilterWidget(QtWidgets.QWidget):
         if kwargs.get('io', None) == 'in':
             return
 
-        # output terminal
+        # new output terminal add to combo boxes
         node_name = self.node.name()
+        self.outputs.append(f"{node_name}.{term}")
         inputs = list(self.inputs.values())
         inputs.append("None")
         for name, group in self.condition_groups.items():
@@ -363,7 +367,43 @@ class FilterWidget(QtWidgets.QWidget):
             stateGroup.widgetChanged(widget)
 
     def terminalRemoved(self, term, *args, **kwargs):
-        print(term, kwargs)
+        io = kwargs.get('io', None)
+        node_name = self.node.name()
+        widget_name = f"{node_name}.{term}"
+
+        if io == 'in':
+            # go through comboboxes and remove entry
+            idx = list(self.inputs.keys()).index(widget_name)
+            input_name = self.inputs.pop(widget_name)
+            widget = self.variables.pop(input_name)
+            self.variable_layout.removeWidget(widget)
+            widget.deleteLater()
+            for name, group in self.condition_groups.items():
+                ui, stateGroup, ctrls, attrs = group
+                for output in self.outputs:
+                    widget = ctrls[name][output]
+                    if stateGroup.readWidget(widget) == input_name:
+                        stateGroup.setWidget(widget, 'None')
+                    widget.removeItem(idx)
+
+        elif io == 'out':
+            # remove comboboxes
+            self.outputs.remove(widget_name)
+            for name, group in self.condition_groups.items():
+                ui, stateGroup, ctrls, attrs = group
+                groupbox = ctrls[name]["groupbox"]
+                layout = groupbox.layout()
+                widget = ctrls[name].pop(widget_name)
+                stateGroup.removeWidget(widget)
+                layout.removeRow(widget)
+                attrs[name].pop(widget_name, None)
+                self.sigStateChanged.emit("remove", name, None)
+
+    def terminalConnected(self):
+        pass
+
+    def terminalDisconnected(self):
+        pass
 
     def state_changed(self, *args, **kwargs):
         attr, group, val = args
@@ -378,7 +418,7 @@ class FilterWidget(QtWidgets.QWidget):
         else:
             values[attr] = val
 
-        self.sigStateChanged.emit(attr, group, val)
+        self.sigStateChanged.emit(group, values, None)
 
     def saveState(self):
         state = {'conditions': len(self.condition_groups),
@@ -441,7 +481,7 @@ def func(*args, **kwargs):
 \t(%s,) = args
 \tif %s:
 \t\treturn %s
-""" % (', '.join(inputs), cond,
+""" % (', '.join(inputs.values()), cond,
        ', '.join(map(lambda x: sanitize_name(values['If'].get(x)),
                      outputs)))
 
