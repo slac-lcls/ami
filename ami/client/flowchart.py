@@ -256,7 +256,9 @@ class NodeProcess(QtCore.QObject):
                 self.win.setCentralWidget(scrollarea)
 
             if msg.state and hasattr(self.widget, 'restoreState'):
+                self.widget.blockSignals(True)
                 self.widget.restoreState(msg.state)
+                self.widget.blockSignals(False)
 
             self.node.sigStateChanged.connect(self.send_checkpoint)
 
