@@ -22,17 +22,16 @@ class ConstantWidget(QtWidgets.QWidget):
         self.layout = QtWidgets.QFormLayout()
         self.setLayout(self.layout)
 
-        combo_fct = [
-            ['function', 'combo', {'values': [
-                'float',
-                'np.arange',
-                'np.linspace',
-                'np.zeros',
-                'np.ones',
-                'np.full'
-                ]
-            }]
+        functions = [
+            'float',
+            'np.arange',
+            'np.linspace',
+            'np.zeros',
+            'np.ones',
+            'np.full'
         ]
+
+        combo_fct = [['function', 'combo', {'values': functions }]]
         self.func_group = generateUi(combo_fct)
         self.layout.addRow(self.func_group[0])
 
@@ -47,47 +46,41 @@ class ConstantWidget(QtWidgets.QWidget):
         if self.args_group is not None:
             self.clear_args_ui()
 
-        def set_value(key):
-            if values:
-                return values[key]
-            else:
-                return 0
-
         if fct_name == 'float':
-            args_group = [['float', 'doubleSpin', {'value': set_value('float'), 'group': 'args'}]]
+            args_group = [['float', 'doubleSpin', {'value': 0, 'group': 'args'}]]
         elif fct_name == 'np.arange':
             args_group = [
-                    ['start', 'doubleSpin', {'value': set_value('start'), 'group': 'args'}],
-                    ['end', 'doubleSpin', {'value': set_value('end'), 'group': 'args'}],
-                    ['step', 'doubleSpin', {'value': set_value('step'), 'group': 'args'}]
+                    ['start', 'doubleSpin', {'value': 0, 'group': 'args'}],
+                    ['end', 'doubleSpin', {'value': 0, 'group': 'args'}],
+                    ['step', 'doubleSpin', {'value': 0, 'group': 'args'}]
                 ]
         elif fct_name == 'np.linspace':
             args_group = [
-                    ['start', 'doubleSpin', {'value': set_value('start'), 'group': 'args'}],
-                    ['end', 'doubleSpin', {'value': set_value('end'), 'group': 'args'}],
-                    ['n_step', 'intSpin', {'value': set_value('n_step'), 'group': 'args'}]
+                    ['start', 'doubleSpin', {'value': 0, 'group': 'args'}],
+                    ['end', 'doubleSpin', {'value': 0, 'group': 'args'}],
+                    ['n_step', 'intSpin', {'value': 0, 'group': 'args'}]
                 ]
         elif fct_name == 'np.zeros' or fct_name == 'np.ones':
             args_group = [
-                    ['m', 'intSpin', {'value': set_value('m'), 'group': 'args'}],
-                    ['n', 'intSpin', {'value': set_value('n'), 'group': 'args'}],
+                    ['m', 'intSpin', {'value': 0, 'group': 'args'}],
+                    ['n', 'intSpin', {'value': 0, 'group': 'args'}],
                 ]
         elif fct_name == 'np.full':
             args_group = [
-                    ['m', 'intSpin', {'value': set_value('m'), 'group': 'args'}],
-                    ['n', 'intSpin', {'value': set_value('n'), 'group': 'args'}],
-                    ['value', 'doubleSpin', {'value': set_value('value'), 'group': 'args'}],
+                    ['m', 'intSpin', {'value': 0, 'group': 'args'}],
+                    ['n', 'intSpin', {'value': 0, 'group': 'args'}],
+                    ['value', 'doubleSpin', {'value': 0, 'group': 'args'}],
                 ]
 
         self.args_group = generateUi(args_group)
-        args_ui, stateGroup, ctrls, values = self.args_group
-        self.layout.addWidget(args_ui)
+        self.args_ui, self.args_stateGroup, args_ctrls, args_values = self.args_group
+        self.layout.addWidget(self.args_ui)
 
-        stateGroup.sigChanged.connect(self.state_changed)
-        return args_ui, stateGroup, ctrls, values
+        self.args_stateGroup.sigChanged.connect(self.state_changed)
+        return self.args_ui, self.args_stateGroup, args_ctrls, args_values
 
     def clear_args_ui(self):
-        self.layout.removeWidget(self.args_group[0])
+        self.layout.removeWidget(self.args_ui)
         return
 
     def state_changed(self, *args, **kwargs):
@@ -101,11 +94,11 @@ class ConstantWidget(QtWidgets.QWidget):
     def restoreState(self, state):
         self.w_combo.setCurrentText(state['function'])
         self.update_args_ui(self.w_combo.currentText(), values=state['args'])
-        self.state_changed()
+        self.args_stateGroup.setState(state['args'])
         return
 
     def get_state(self):
-        state = self.args_group[1].state()
+        state = self.args_stateGroup.state()
         state['function'] = self.w_combo.currentText()
         return state
 
@@ -139,11 +132,11 @@ class Constant(CtrlNode):
         elif fct == 'np.linspace':
            output = np.linspace(args['start'], args['end'], args['n_step'])
         elif fct == 'np.zeros':
-           output = np.zeros(args['m'], args['n'])
+           output = np.zeros((args['m'], args['n']))
         elif fct == 'np.ones':
-           output = np.ones(args['m'], args['n'])
+           output = np.ones((args['m'], args['n']))
         elif fct == 'np.full':
-           output = np.full(args['m'], args['n'], args['value'])
+           output = np.full((args['m'], args['n']), args['value'])
         return gn.Map(name=self.name()+"_operation", **kwargs, func=lambda: output)
 
 
