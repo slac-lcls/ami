@@ -42,7 +42,7 @@ class ConstantWidget(QtWidgets.QWidget):
         self.update_args_ui(self.w_combo.currentText())
         return
 
-    def update_args_ui(self, fct_name, values=None):
+    def update_args_ui(self, fct_name):
         if self.args_group is not None:
             self.clear_args_ui()
 
@@ -93,7 +93,7 @@ class ConstantWidget(QtWidgets.QWidget):
 
     def restoreState(self, state):
         self.w_combo.setCurrentText(state['function'])
-        self.update_args_ui(self.w_combo.currentText(), values=state['args'])
+        self.update_args_ui(self.w_combo.currentText())
         self.args_stateGroup.setState(state['args'])
         return
 
