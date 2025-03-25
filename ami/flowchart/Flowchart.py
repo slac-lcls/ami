@@ -257,12 +257,25 @@ class Flowchart(Node):
         localNode = localTerm.node().name()
         remoteNode = remoteTerm.node().name()
         key = localNode + '.' + localTerm.name() + '->' + remoteNode + '.' + remoteTerm.name()
+
         if not self._graph.has_edge(localNode, remoteNode, key=key):
             self._graph.add_edge(localNode, remoteNode, key=key,
                                  from_term=localTerm.name(), to_term=remoteTerm.name())
-            msg = fcMsgs.NodeTermConnected(localNode, localTerm.name(), remoteNode, remoteTerm.name())
+
+            msg = fcMsgs.NodeTermConnected(localNode, isinstance(localTerm.node(), SourceNode),
+                                           localTerm.name(), localTerm.saveState(),
+                                           remoteNode, isinstance(remoteTerm.node(), SourceNode),
+                                           remoteTerm.name(), remoteTerm.saveState())
             await self.broker.send_string(localNode, zmq.SNDMORE)
             await self.broker.send_pyobj(msg)
+
+            msg = fcMsgs.NodeTermConnected(remoteNode, isinstance(remoteTerm.node(), SourceNode),
+                                           remoteTerm.name(), remoteTerm.saveState(),
+                                           localNode, isinstance(localTerm.node(), SourceNode),
+                                           localTerm.name(), localTerm.saveState())
+            await self.broker.send_string(remoteNode, zmq.SNDMORE)
+            await self.broker.send_pyobj(msg)
+
         self.sigNodeChanged.emit(localTerm.node())
 
     @asyncSlot(object, object)
@@ -275,11 +288,24 @@ class Flowchart(Node):
         localNode = localTerm.node().name()
         remoteNode = remoteTerm.node().name()
         key = localNode + '.' + localTerm.name() + '->' + remoteNode + '.' + remoteTerm.name()
+
         if self._graph.has_edge(localNode, remoteNode, key=key):
             self._graph.remove_edge(localNode, remoteNode, key=key)
-            msg = fcMsgs.NodeTermDisconnected(localNode, localTerm.name(), remoteNode, remoteTerm.name())
+
+            msg = fcMsgs.NodeTermDisconnected(localNode, isinstance(localTerm.node(), SourceNode),
+                                              localTerm.name(), localTerm.saveState(),
+                                              remoteNode, isinstance(remoteTerm.node(), SourceNode),
+                                              remoteTerm.name(), remoteTerm.saveState())
             await self.broker.send_string(localNode, zmq.SNDMORE)
             await self.broker.send_pyobj(msg)
+
+            msg = fcMsgs.NodeTermDisconnected(remoteNode, isinstance(remoteTerm.node(), SourceNode),
+                                              remoteTerm.name(), remoteTerm.saveState(),
+                                              localNode, isinstance(localTerm.node(), SourceNode),
+                                              localTerm.name(), localTerm.saveState())
+            await self.broker.send_string(remoteNode, zmq.SNDMORE)
+            await self.broker.send_pyobj(msg)
+
         self.sigNodeChanged.emit(localTerm.node())
 
     def nodeTermOptional(self, node, term):

@@ -650,6 +650,18 @@ class EventProcessor():
 
             self.widget.terminalRemoved(term, *args, **kwargs)
 
+        def terminalConnected(self, nodeTermConnected):
+            if self.widget is None:
+                return
+
+            self.widget.terminalConnected(nodeTermConnected)
+
+        def terminalDisconnected(self, nodeTermDisconnected):
+            if self.widget is None:
+                return
+
+            self.widget.terminalDisconnected(nodeTermDisconnected)
+
         def update(self, *args, **kwargs):
             group, values, _, = args
 

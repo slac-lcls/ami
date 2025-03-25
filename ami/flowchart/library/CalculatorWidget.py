@@ -228,6 +228,9 @@ class FilterWidget(QtWidgets.QWidget):
         self.condition_groups = {}
         self.else_condition = None
 
+        self.row = 0
+        self.col = 0
+
         if self.inputs:
             self.variable_widget = QtWidgets.QWidget(parent=self)
             self.variable_layout = QtWidgets.QGridLayout()
@@ -246,6 +249,8 @@ class FilterWidget(QtWidgets.QWidget):
                     col = 0
                     row += 1
 
+            self.row = row
+            self.col = col
             self.variable_widget.setLayout(self.variable_layout)
             self.layout.addRow(self.variable_widget)
 
@@ -368,26 +373,14 @@ class FilterWidget(QtWidgets.QWidget):
 
     def terminalRemoved(self, term, *args, **kwargs):
         io = kwargs.get('io', None)
-        node_name = self.node.name()
-        widget_name = f"{node_name}.{term}"
 
         if io == 'in':
-            # go through comboboxes and remove entry
-            idx = list(self.inputs.keys()).index(widget_name)
-            input_name = self.inputs.pop(widget_name)
-            widget = self.variables.pop(input_name)
-            self.variable_layout.removeWidget(widget)
-            widget.deleteLater()
-            for name, group in self.condition_groups.items():
-                ui, stateGroup, ctrls, attrs = group
-                for output in self.outputs:
-                    widget = ctrls[name][output]
-                    if stateGroup.readWidget(widget) == input_name:
-                        stateGroup.setWidget(widget, 'None')
-                    widget.removeItem(idx)
-
+            # Disconnect sent before remove, just return
+            return
         elif io == 'out':
             # remove comboboxes
+            node_name = self.node.name()
+            widget_name = f"{node_name}.{term}"
             self.outputs.remove(widget_name)
             for name, group in self.condition_groups.items():
                 ui, stateGroup, ctrls, attrs = group
@@ -399,11 +392,55 @@ class FilterWidget(QtWidgets.QWidget):
                 attrs[name].pop(widget_name, None)
                 self.sigStateChanged.emit("remove", name, None)
 
-    def terminalConnected(self):
-        pass
+    def terminalConnected(self, nodeTermConnected):
+        if nodeTermConnected.localTermState['io'] == 'out':
+            return
 
-    def terminalDisconnected(self):
-        pass
+        new_input = ""
+        if nodeTermConnected.remoteNodeIsSource:
+            new_input = nodeTermConnected.remoteNode
+        else:
+            new_input = f"{nodeTermConnected.remoteNode}.{nodeTermConnected.remoteTerm}"
+
+        self.inputs[nodeTermConnected.localTerm] = new_input
+
+        self.variables[new_input] = self.createButton(new_input, self.operatorClicked)
+        self.variable_layout.addWidget(self.variables[new_input], self.row, self.col)
+        idx = len(self.inputs)-1
+
+        if self.col < 3:
+            self.col += 1
+        else:
+            self.col = 0
+            self.row += 1
+
+        # go through comboboxes and add entry
+        for name, group in self.condition_groups.items():
+            ui, stateGroup, ctrls, attrs = group
+            for output in self.outputs:
+                widget = ctrls[name][output]
+                widget.insertItem(idx, new_input, new_input)
+                stateGroup.widgetChanged(widget)
+
+    def terminalDisconnected(self, nodeTermDisconnected):
+        if nodeTermDisconnected.localTermState['io'] == 'out':
+            return
+
+        term = nodeTermDisconnected.localTerm
+
+        # go through comboboxes and remove entry
+        idx = list(self.inputs.keys()).index(term)
+        input_name = self.inputs.pop(term)
+        widget = self.variables.pop(input_name)
+        self.variable_layout.removeWidget(widget)
+        widget.deleteLater()
+        for name, group in self.condition_groups.items():
+            ui, stateGroup, ctrls, attrs = group
+            for output in self.outputs:
+                widget = ctrls[name][output]
+                if stateGroup.readWidget(widget) == input_name:
+                    stateGroup.setWidget(widget, 'None')
+                widget.removeItem(idx)
 
     def state_changed(self, *args, **kwargs):
         attr, group, val = args

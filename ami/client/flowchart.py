@@ -222,9 +222,9 @@ class NodeProcess(QtCore.QObject):
             elif isinstance(msg, fcMsgs.NodeTermRemoved):
                 self.node.terminalRemoved(msg.term, **msg.state)
             elif isinstance(msg, fcMsgs.NodeTermConnected):
-                self.node.terminalConnected(msg.localNode, msg.localTerm, msg.remoteNode, msg.remoteTerm)
+                self.node.terminalConnected(msg)
             elif isinstance(msg, fcMsgs.NodeTermDisconnected):
-                self.node.terminalDisconnected(msg.localNode, msg.localTerm, msg.remoteNode, msg.remoteTerm)
+                self.node.terminalDisconnected(msg)
             elif isinstance(msg, fcMsgs.CloseNode):
                 return
 

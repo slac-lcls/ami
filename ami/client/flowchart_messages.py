@@ -103,27 +103,35 @@ class NodeTermRemoved(NodeMsg):
 
 class NodeTermConnected(NodeMsg):
 
-    def __init__(self, localNode, localTerm, remoteNode, remoteTerm):
-        """
-        Always goes from localNode.localTerm -> remoteNode.remoteTerm
-        ie. localTerm is output and remoteTerm is input
-        """
+    def __init__(self,
+                 localNode, localNodeIsSource,
+                 localTerm, localTermState,
+                 remoteNode, remoteNodeIsSource,
+                 remoteTerm, remoteTermState):
         super().__init__(localNode)
         self.localNode = localNode
+        self.localNodeIsSource = localNodeIsSource
         self.localTerm = localTerm
+        self.localTermState = localTermState
         self.remoteNode = remoteNode
+        self.remoteNodeIsSource = remoteNodeIsSource
         self.remoteTerm = remoteTerm
+        self.remoteTermState = remoteTermState
 
 
 class NodeTermDisconnected(NodeMsg):
 
-    def __init__(self, localNode, localTerm, remoteNode, remoteTerm):
-        """
-        Always goes from localNode.localTerm -> remoteNode.remoteTerm
-        ie. localTerm is output and remoteTerm is input
-        """
+    def __init__(self,
+                 localNode, localNodeIsSource,
+                 localTerm, localTermState,
+                 remoteNode, remoteNodeIsSource,
+                 remoteTerm, remoteTermState):
         super().__init__(localNode)
         self.localNode = localNode
+        self.localNodeIsSource = localNodeIsSource
         self.localTerm = localTerm
+        self.localTermState = localTermState
         self.remoteNode = remoteNode
+        self.remoteNodeIsSource = remoteNodeIsSource
         self.remoteTerm = remoteTerm
+        self.remoteTermState = remoteTermState

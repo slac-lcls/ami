@@ -510,13 +510,13 @@ class Node(QtCore.QObject):
         """
         pass
 
-    def terminalConnected(self, localTerm, remoteNode, remoteTerm, *args, **kwargs):
+    def terminalConnected(self, nodeTermConnected):
         """
         Can be used to trigger updates in widget.
         """
         pass
 
-    def terminalDisconnected(self, localTerm, remoteNode, remoteTerm, *args, **kwargs):
+    def terminalDisconnected(self, nodeTermDisconnected):
         """
         Can be used to trigger updates in widget.
         """
