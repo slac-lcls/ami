@@ -5,9 +5,12 @@ from ami.comm import GraphCommHandler
 from ami.data import TimestampConverter
 from ami.flowchart.library.common import CtrlNode
 import ami.graph_nodes as gn
+import os
+import shutil
 import socket
 import struct
 import ipaddress
+import zmq
 
 
 class ExportToWorker(CtrlNode):
@@ -276,3 +279,55 @@ try:
 
 except ImportError as e:
     print(e)
+
+
+class ZmqProc():
+    def __init__(self, **kwargs):
+        self.path = kwargs['ipc dir']
+        self._socket = None
+
+    def __del__(self):
+        if self._socket is not None:
+            self._socket.close()
+            self._socket = None
+
+    def __call__(self, *args, **kwargs):
+        if self._socket is None:
+            ctx = zmq.Context()
+            self._socket = ctx.socket(zmq.PUSH)
+            self._socket.setsockopt(zmq.SNDHWM, len(args)+1)
+            if not os.path.exists(self.path):
+                os.makedirs(self.path)
+            self._socket.bind(f"ipc://{self.path}/om_export")
+
+        inputs = len(args)
+        try:
+            self._socket.send_pyobj(inputs, copy=False, flags=zmq.SNDMORE | zmq.NOBLOCK)
+            for arg in args:
+                self._socket.send_pyobj(arg, copy=False, flags=zmq.SNDMORE | zmq.NOBLOCK)
+            self._socket.send_pyobj(None, copy=False, flags=zmq.NOBLOCK)
+        except zmq.error.Again:
+            return
+
+class OMExport(CtrlNode):
+
+    """
+    Export data to OM.
+    """
+
+    nodeName = "OMExport"
+    uiTemplate = [('ipc dir', 'text')]
+
+    def __init__(self, name):
+        super().__init__(name,
+                         terminals={"In": {'io': 'in', 'ttype': Array2d},
+                                    "eventid": {'io': 'in', 'ttype': int},
+                                    "eventCodes": {'io': 'in', 'ttype': list}},
+                         allowAddInput=True)
+
+    def to_operation(self, inputs, outputs, **kwargs):
+        values = self.values
+
+        return gn.Map(name=self.name()+"_operation",
+                      inputs=inputs, outputs=outputs,
+                      func=ZmqProc(**values), **kwargs)
