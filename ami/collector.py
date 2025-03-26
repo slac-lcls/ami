@@ -350,6 +350,11 @@ def main(color, upstream_port, downstream_port):
         default=[],
         help='extra flags as key=value pairs that are passed to the data source'
     )
+    worker_subparser.add_argument(
+        '--use_supervisor',
+        action='store_true',
+        help='Use the psana "supervisor" model to load calib constants on one core only.'
+    )
 
     args = parser.parse_args()
 
@@ -379,7 +384,12 @@ def main(color, upstream_port, downstream_port):
                 local_collector_addr = "tcp://localhost:%d" % (args.port + upstream_port)
                 export_addr = "tcp://%s:%d" % (args.host, args.port + Ports.Export)
                 flags, src_cfg = parse_args(args)
+                src_cfg = list(src_cfg) # Make mutable
+                if args.use_supervisor and "supervisor=" not in src_cfg[1]:
+                    src_cfg[1] = f"{src_cfg[1]},supervisor=1"
                 for n in range(0, args.num_contribs):
+                    if args.use_supervisor and n != 0:
+                        src_cfg[1] = src_cfg[1].replace("supervisor=1", "supervisor=0")
                     worker = mp.Process(name='worker', target=run_worker,
                                         args=(args.node_num*args.num_contribs+n,
                                               args.num_contribs,
