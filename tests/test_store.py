@@ -63,7 +63,7 @@ def test_store_clear(store):
                             (('test', None), ('test', 5, False), None),
                             (('test', None), ('test', 5, None), None),
                             (('test', str), ('test', "cat", False), None),
-                            (('test', int), ('test', "cat", True), None),
+                            (('test', int), ('test', "cat", False), None),
                          ],
                          indirect=['store'])
 def test_store_create(obj, expected, store):
