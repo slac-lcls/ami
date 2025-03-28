@@ -433,6 +433,7 @@ class Source(abc.ABC):
             'init_time': float,
             'bound': int,
             'repeat': lambda s: s if isinstance(s, bool) else s.lower() == 'true',
+            'pregen': lambda s: s if isinstance(s, bool) else s.lower() == 'true',
             'counting': lambda s: s if isinstance(s, bool) else s.lower() == 'true',
             'files': lambda n: n if isinstance(n, list) else [os.path.expanduser(f) for f in n.split(',')],
             'config': lambda c: c if isinstance(c, dict) else os.path.expanduser(c),
@@ -1449,39 +1450,93 @@ class RandomSource(SimSource):
         super().__init__(idnum, num_workers, heartbeat_period, src_cfg, flags)
         np.random.seed([idnum])
         self.rng = np.random.default_rng(idnum)
+        self.pregen = self.config.get('pregen', False)
+        self.bound = self.config.get('bound', np.inf)
+        self.generated_events = {}
+
+        if self.pregen:
+            if self.bound is np.inf:
+                logger.error("Can only pregenerate bounded number of events! Set bound in config.")
+                exit()
+
+            for name, config in self.config['config'].items():
+                if config['dtype'] == 'Scalar':
+                    value = config['range'][0] + (config['range'][1] - config['range'][0]) * np.random.rand(self.bound)
+                    if config.get('integer', False):
+                        self.generated_events[name] = value.astype(int)
+                    else:
+                        self.generated_events[name] = value
+                elif config['dtype'] == 'Waveform' or config['dtype'] == 'Image':
+                    self.generated_events[name] = np.random.normal(config['pedestal'], config['width'],
+                                                                   [self.bound, *config['shape']])
+                elif config['dtype'] == 'List':
+                    if config.get('type', "integer") == "integer":
+                        events = []
+                        for i in range(0, self.bound):
+                            events.append(list(self.rng.integers(low=config['range'][0],
+                                                                 high=config['range'][1],
+                                                                 size=config['shape'])))
+                        self.generated_events[name] = events
 
     def events(self):
         time.sleep(self.init_time)
         yield self.configure()
+
         while True:
-            event = {}
-            # get the timestamp and check heartbeat
-            eventid, timestamp = self.timestamp
-            if not self.prompt_mode and self.check_heartbeat_boundary(eventid):
-                yield self.heartbeat_msg()
-            for name, config in self.simulated.items():
-                if name in self.requested_data.names:
-                    if config['dtype'] == 'Scalar':
-                        value = config['range'][0] + (config['range'][1] - config['range'][0]) * np.random.rand(1)[0]
-                        if config.get('integer', False):
-                            event[name] = int(value)
-                        else:
-                            event[name] = value
-                    elif config['dtype'] == 'Waveform' or config['dtype'] == 'Image':
-                        event[name] = np.random.normal(config['pedestal'], config['width'], config['shape'])
-                    elif config['dtype'] == 'List':
-                        if config.get('type', "integer") == "integer":
-                            event[name] = list(self.rng.integers(low=config['range'][0],
-                                                                 high=config['range'][1],
-                                                                 size=config['shape']))
-                    else:
-                        logger.warn("DataSrc: %s has unknown type %s", name, config['dtype'])
-            yield from self.event(eventid, timestamp, event)
-            if self.prompt_mode and self.check_heartbeat_boundary(eventid):
-                yield self.heartbeat_msg()
-            time.sleep(self.interval)
+            if self.pregen:
+                yield from self._pregened_events()
+            else:
+                yield from self._random_events()
+
         # signal source has finished
         yield self.unconfigure()
+
+    def _pregened_events(self):
+        event = {}
+
+        eventid, timestamp = self.timestamp
+
+        if not self.prompt_mode and self.check_heartbeat_boundary(eventid):
+            yield self.heartbeat_msg()
+
+        event_num = eventid % self.bound
+
+        for name in self.requested_data.names:
+            event[name] = self.generated_events[name][event_num]
+
+        yield from self.event(eventid, timestamp, event)
+        if self.prompt_mode and self.check_heartbeat_boundary(eventid):
+            yield self.heartbeat_msg()
+        time.sleep(self.interval)
+
+    def _random_events(self):
+        event = {}
+        # get the timestamp and check heartbeat
+        eventid, timestamp = self.timestamp
+
+        if not self.prompt_mode and self.check_heartbeat_boundary(eventid):
+            yield self.heartbeat_msg()
+        for name, config in self.simulated.items():
+            if name in self.requested_data.names:
+                if config['dtype'] == 'Scalar':
+                    value = config['range'][0] + (config['range'][1] - config['range'][0]) * np.random.rand(1)[0]
+                    if config.get('integer', False):
+                        event[name] = int(value)
+                    else:
+                        event[name] = value
+                elif config['dtype'] == 'Waveform' or config['dtype'] == 'Image':
+                    event[name] = np.random.normal(config['pedestal'], config['width'], config['shape'])
+                elif config['dtype'] == 'List':
+                    if config.get('type', "integer") == "integer":
+                        event[name] = list(self.rng.integers(low=config['range'][0],
+                                                             high=config['range'][1],
+                                                             size=config['shape']))
+                else:
+                    logger.warn("DataSrc: %s has unknown type %s", name, config['dtype'])
+        yield from self.event(eventid, timestamp, event)
+        if self.prompt_mode and self.check_heartbeat_boundary(eventid):
+            yield self.heartbeat_msg()
+        time.sleep(self.interval)
 
 
 class StaticSource(SimSource):
