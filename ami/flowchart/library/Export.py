@@ -281,7 +281,7 @@ except ImportError as e:
     print(e)
 
 
-class ZmqProc():
+class OMProc():
     def __init__(self, **kwargs):
         self.path = kwargs['ipc dir']
         self._socket = None
@@ -312,7 +312,7 @@ class ZmqProc():
 class OMExport(CtrlNode):
 
     """
-    Export data to OM.
+    Multicast export data for OM.
     """
 
     nodeName = "OMExport"
@@ -325,9 +325,12 @@ class OMExport(CtrlNode):
                                     "eventCodes": {'io': 'in', 'ttype': list}},
                          allowAddInput=True)
 
+    def addInput(self, **args):
+        self.addTerminal(name="PV", io='in', ttype=float, **args)
+
     def to_operation(self, inputs, outputs, **kwargs):
         values = self.values
 
         return gn.Map(name=self.name()+"_operation",
                       inputs=inputs, outputs=outputs,
-                      func=ZmqProc(**values), **kwargs)
+                      func=OMProc(**values), **kwargs)
