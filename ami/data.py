@@ -19,6 +19,8 @@ try:
     import warnings
     warnings.simplefilter(action='ignore', category=FutureWarning)
     import pyarrow as pa
+    if not hasattr(pa, 'SerializationContext'):
+        pa = None
 except ImportError:
     pa = None
 import numpy as np
