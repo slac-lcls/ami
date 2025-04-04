@@ -31,7 +31,7 @@ class ConstantWidget(QtWidgets.QWidget):
             'np.full'
         ]
 
-        combo_fct = [['function', 'combo', {'values': functions }]]
+        combo_fct = [['function', 'combo', {'values': functions}]]
         self.func_group = generateUi(combo_fct)
         self.layout.addRow(self.func_group[0])
 
@@ -77,16 +77,17 @@ class ConstantWidget(QtWidgets.QWidget):
         self.layout.addWidget(self.args_ui)
 
         self.args_stateGroup.sigChanged.connect(self.state_changed)
+        self.state_changed()
         return self.args_ui, self.args_stateGroup, args_ctrls, args_values
 
     def clear_args_ui(self):
         self.layout.removeWidget(self.args_ui)
-        return
+        self.args_group[2]['args']['groupbox'].deleteLater()
 
     def state_changed(self, *args, **kwargs):
         state = self.get_state()
         self.sigStateChanged.emit('widget_state', '', state)
-    
+
     def saveState(self, *args, **kwargs):
         state = self.get_state()
         return state
