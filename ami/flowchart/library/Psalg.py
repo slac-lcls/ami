@@ -1,8 +1,8 @@
-from qtpy import QtWidgets
+from qtpy import QtCore, QtWidgets
 from amitypes import DataSource, Detector, Array1d, Array2d, Array3d
 from ami.flowchart.Node import Node, NodeGraphicsItem
 from ami.flowchart.Units import ureg
-from ami.flowchart.library.common import CtrlNode
+from ami.flowchart.library.common import CtrlNode, generateUi
 from ami.flowchart.library.Editors import ChannelEditor
 import ami.graph_nodes as gn
 import numpy as np
@@ -923,33 +923,118 @@ except ImportError as e:
 
 # =========
 
+class ThresholdingHitFinderWidget(QtWidgets.QWidget):
+
+    sigStateChanged = QtCore.Signal(object, object, object)
+
+    def __init__(self, inputs={}, outputs=[], parent=None):
+        super().__init__(parent)
+        self.inputs = inputs
+        self.outputs = outputs
+        self.layout = QtWidgets.QFormLayout()
+        self.setLayout(self.layout)
+
+        functions = ['Finite', 'Infinite', 'SumN', 'RollingBuffer']
+        combo_fct = [['Function', 'combo', {'values': functions}]]
+        self.func_group = generateUi(combo_fct)
+        self.layout.addRow(self.func_group[0])
+
+        self.w_combo = self.func_group[1].findWidget('Function')
+        self.w_combo.currentTextChanged.connect(self.update_args_ui)
+
+        self.args_group = None
+        self.update_args_ui(self.w_combo.currentText())
+
+    def update_args_ui(self, fct_name):
+        if self.args_group is not None:
+            self.clear_args_ui()
+
+        args_group = [('Threshold', 'doubleSpin', {'value': 1.0, 'group': 'args'})]
+        if fct_name == 'Finite':
+            args_group.append(('Fraction', 'doubleSpin', {'value': 1, 'min': 0, 'group': 'args'}))
+        elif fct_name == "SumN" or fct_name == "RollingBuffer":
+            args_group.append(('N', 'intSpin', {'value': 1, 'min': 1, 'group': 'args'}))
+
+        self.args_group = generateUi(args_group)
+        self.args_ui, self.args_stateGroup, args_ctrls, args_values = self.args_group
+        self.layout.addWidget(self.args_ui)
+
+        self.args_stateGroup.sigChanged.connect(self.state_changed)
+        self.state_changed()
+        return self.args_ui, self.args_stateGroup, args_ctrls, args_values
+
+    def clear_args_ui(self):
+        self.layout.removeWidget(self.args_ui)
+        self.args_group[2]['args']['groupbox'].deleteLater()
+
+    def state_changed(self, *args, **kwargs):
+        state = self.get_state()
+        self.sigStateChanged.emit('widget_state', '', state)
+
+    def saveState(self, *args, **kwargs):
+        state = self.get_state()
+        return state
+
+    def restoreState(self, state):
+        self.w_combo.setCurrentText(state['Function'])
+        self.update_args_ui(self.w_combo.currentText())
+        self.args_stateGroup.setState(state['args'])
+        return
+
+    def get_state(self):
+        state = self.args_stateGroup.state()
+        state['Function'] = self.w_combo.currentText()
+        return state
+
+
 class ThresholdingHitFinder(CtrlNode):
 
     """
-    Apply a threshold to an image and infinitely sum.
+    Apply a threshold to an image and sum.
     """
 
     nodeName = "ThresholdingHitFinder"
-    uiTemplate = [('Threshold', 'doubleSpin', {'value': 1.0}),
-                  ('N', 'intSpin', {'value': 1, 'min': 1}),
-                  ('infinite', 'check')]
 
     def __init__(self, name):
         super().__init__(name, terminals={'In': {'io': 'in', 'ttype': Array2d},
                                           'Out': {'io': 'out', 'ttype': Array2d}},
                          global_op=True)
 
+        self.values = {'widget_state' : {'args': {'Threshold': 1, 'N': 1, 'Fraction': 1}, 'Function': 'Finite'}}
+
+    def display(self, topics, terms, addr, win, **kwargs):
+        if self.widget is None:
+            self.widget = ThresholdingHitFinderWidget(terms, self.output_vars(), win)
+            self.widget.sigStateChanged.connect(self.state_changed)
+        return self.widget
+
     def to_operation(self, inputs, outputs, **kwargs):
         mapped_outputs = [self.name()+'_threshold']
         summed_outputs = [self.name()+"_count", self.name()+"_sum"]
 
-        threshold = self.values['Threshold']
+        threshold = self.values['widget_state']['args']['Threshold']
+        fct = self.values['widget_state']['Function']
 
         def threshold_img(img):
             return np.where(img >= threshold, 1, 0)
 
-        if self.values['infinite']:
+        if fct == "Finite":
+            fraction = self.values['widget_state']['args']['Fraction']
 
+            def reduction(res, *rest):
+                res = fraction*res+(1-fraction)*np.sum(rest, axis=0)
+                return res
+
+            nodes = [gn.Map(name=self.name()+"_map",
+                            inputs=inputs, outputs=mapped_outputs,
+                            func=threshold_img, **kwargs),
+                     gn.Accumulator(name=self.name()+"_accumulated",
+                                    inputs=mapped_outputs, outputs=summed_outputs,
+                                    reduction=reduction, **kwargs),
+                     gn.Map(name=self.name()+"_unzip",
+                            inputs=summed_outputs, outputs=outputs,
+                            func=lambda count, s: s/count, **kwargs)]
+        elif fct == "Infinite":
             def reduction(res, *rest):
                 res += np.sum(rest, axis=0)
                 return res
@@ -963,13 +1048,25 @@ class ThresholdingHitFinder(CtrlNode):
                      gn.Map(name=self.name()+"_unzip",
                             inputs=summed_outputs, outputs=outputs,
                             func=lambda count, s: s, **kwargs)]
-        else:
+        elif fct == "SumN":
+            N = self.values['widget_state']['args']['N']
             nodes = [gn.Map(name=self.name()+"_map",
                             inputs=inputs, outputs=mapped_outputs,
                             func=threshold_img, **kwargs),
                      gn.SumN(name=self.name()+"_accumulated",
                              inputs=mapped_outputs, outputs=summed_outputs,
-                             N=self.values['N'], **kwargs),
+                             N=N, **kwargs),
+                     gn.Map(name=self.name()+"_unzip",
+                            inputs=summed_outputs, outputs=outputs,
+                            func=lambda count, s: s, **kwargs)]
+        elif fct == "RollingBuffer":
+            N = self.values['widget_state']['args']['N']
+            nodes = [gn.Map(name=self.name()+"_map",
+                            inputs=inputs, outputs=mapped_outputs,
+                            func=threshold_img, **kwargs),
+                     gn.RollingBuffer(name=self.name()+"_accumulated",
+                                      inputs=mapped_outputs, outputs=summed_outputs,
+                                      N=N, **kwargs),
                      gn.Map(name=self.name()+"_unzip",
                             inputs=summed_outputs, outputs=outputs,
                             func=lambda count, s: s, **kwargs)]
