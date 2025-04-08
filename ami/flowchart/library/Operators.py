@@ -787,10 +787,11 @@ class EventProcessor():
         def to_operation(self, inputs, outputs, **kwargs):
             values = self.values
 
+            inputs_for_func = {}
             for term, inp in inputs.items():
-                inputs[term] = sanitize_name(inp)
+                inputs_for_func[term] = sanitize_name(inp)
 
-            func = gen_filter_func(values, inputs, outputs)
+            func = gen_filter_func(values, inputs_for_func, outputs)
 
             return gn.Map(name=self.name()+"_operation",
                           inputs=inputs, outputs=outputs,
