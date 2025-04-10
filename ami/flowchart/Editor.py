@@ -237,11 +237,6 @@ class Ui_Toolbar(object):
             self.actionConfigure.setIconText("Configure")
             self.actionConfigure.setObjectName("actionConfigure")
 
-        # profile
-        # self.actionProfiler = QtWidgets.QAction(parent)
-        # self.actionProfiler.setIconText("Profiler")
-        # self.actionProfiler.setObjectName("actionProfiler")
-
         # reset
         self.actionReset = QtWidgets.QAction(parent)
         self.actionReset.setIconText("Reset")
@@ -298,7 +293,7 @@ class Ui_Toolbar(object):
         self.toolBar.addAction(self.actionReset)
         if HAS_QTCONSOLE:
             self.toolBar.addAction(self.actionConsole)
-        # self.toolBar.addAction(self.actionProfiler)
+
         if configure:
             self.toolBar.insertSeparator(self.actionConfigure)
         else:

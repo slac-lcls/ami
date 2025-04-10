@@ -174,6 +174,19 @@ class WidgetGroup(QtCore.QObject):
         else:
             self.uncachedWidgets[w] = None
 
+    def removeWidget(self, w):
+        n = self.widgetList.pop(w, None)
+
+        if type(n) is tuple:
+            n, g = n
+            if g in self.cache:
+                self.cache[g].pop(n, None)
+        else:
+            self.cache.pop(n, None)
+
+        self.scales.pop(w, None)
+        self.uncachedWidgets.pop(w, None)
+
     def findWidget(self, name, group=None):
         for w in self.widgetList:
             n = self.widgetList[w]
