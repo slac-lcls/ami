@@ -231,11 +231,12 @@ class FilterWidget(QtWidgets.QWidget):
         self.row = 0
         self.col = 0
 
+        self.variables = {}
+        self.variable_widget = QtWidgets.QWidget(parent=self)
+        self.variable_layout = QtWidgets.QGridLayout()
+        self.variable_widget.setLayout(self.variable_layout)
+        self.layout.addRow(self.variable_widget)
         if self.inputs:
-            self.variable_widget = QtWidgets.QWidget(parent=self)
-            self.variable_layout = QtWidgets.QGridLayout()
-            self.variables = {}
-
             for term, input_name in self.inputs.items():
                 self.variables[input_name] = self.createButton(input_name, self.operatorClicked)
 
@@ -251,8 +252,6 @@ class FilterWidget(QtWidgets.QWidget):
 
             self.row = row
             self.col = col
-            self.variable_widget.setLayout(self.variable_layout)
-            self.layout.addRow(self.variable_widget)
 
             self.add_elif_condition(name="If")
 
@@ -408,19 +407,23 @@ class FilterWidget(QtWidgets.QWidget):
         self.variable_layout.addWidget(self.variables[new_input], self.row, self.col)
         idx = len(self.inputs)-1
 
+        if self.col ==0 and self.row ==0:  # if the connection is the first connection
+            self.add_elif_condition(name="If")
+        else:
+            # go through comboboxes and add entry
+            for name, group in self.condition_groups.items():
+                ui, stateGroup, ctrls, attrs = group
+                for output in self.outputs:
+                    widget = ctrls[name][output]
+                    widget.insertItem(idx, new_input, new_input)
+                    stateGroup.widgetChanged(widget)
+
         if self.col < 3:
             self.col += 1
         else:
             self.col = 0
             self.row += 1
 
-        # go through comboboxes and add entry
-        for name, group in self.condition_groups.items():
-            ui, stateGroup, ctrls, attrs = group
-            for output in self.outputs:
-                widget = ctrls[name][output]
-                widget.insertItem(idx, new_input, new_input)
-                stateGroup.widgetChanged(widget)
 
     def terminalDisconnected(self, nodeTermDisconnected):
         if nodeTermDisconnected.localTermState['io'] == 'out':
