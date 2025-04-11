@@ -934,7 +934,7 @@ class ThresholdingHitFinderWidget(QtWidgets.QWidget):
         self.layout = QtWidgets.QFormLayout()
         self.setLayout(self.layout)
 
-        functions = ['Finite', 'Infinite', 'SumN', 'RollingBuffer']
+        functions = ['Exponential Moving Average', 'Infinite', 'SumN', 'RollingBuffer']
         combo_fct = [['Function', 'combo', {'values': functions}]]
         self.func_group = generateUi(combo_fct)
         self.layout.addRow(self.func_group[0])
@@ -950,7 +950,7 @@ class ThresholdingHitFinderWidget(QtWidgets.QWidget):
             self.clear_args_ui()
 
         args_group = [('Threshold', 'doubleSpin', {'value': 1.0, 'group': 'args'})]
-        if fct_name == 'Finite':
+        if fct_name == 'Exponential Moving Average':
             args_group.append(('Fraction', 'doubleSpin', {'value': 1, 'min': 0, 'group': 'args'}))
         elif fct_name == "SumN" or fct_name == "RollingBuffer":
             args_group.append(('N', 'intSpin', {'value': 1, 'min': 1, 'group': 'args'}))
@@ -1018,7 +1018,7 @@ class ThresholdingHitFinder(CtrlNode):
         def threshold_img(img):
             return np.where(img >= threshold, 1, 0)
 
-        if fct == "Finite":
+        if fct == "Exponential Moving Average":
             fraction = self.values['widget_state']['args']['Fraction']
 
             def reduction(res, *rest):
@@ -1033,7 +1033,7 @@ class ThresholdingHitFinder(CtrlNode):
                                     reduction=reduction, **kwargs),
                      gn.Map(name=self.name()+"_unzip",
                             inputs=summed_outputs, outputs=outputs,
-                            func=lambda count, s: s/count, **kwargs)]
+                            func=lambda count, s: s, **kwargs)]
         elif fct == "Infinite":
             def reduction(res, *rest):
                 res += np.sum(rest, axis=0)
@@ -1069,6 +1069,6 @@ class ThresholdingHitFinder(CtrlNode):
                                       N=N, **kwargs),
                      gn.Map(name=self.name()+"_unzip",
                             inputs=summed_outputs, outputs=outputs,
-                            func=lambda count, s: s, **kwargs)]
+                            func=lambda count, buffer: sum(buffer), **kwargs)]
 
         return nodes
