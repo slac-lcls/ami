@@ -1060,15 +1060,16 @@ class ThresholdingHitFinder(CtrlNode):
                             inputs=summed_outputs, outputs=outputs,
                             func=lambda count, s: s, **kwargs)]
         elif fct == "RollingBuffer":
+            buffer_outputs = [self.name()+"_buffer"]
             N = self.values['widget_state']['args']['N']
             nodes = [gn.Map(name=self.name()+"_map",
                             inputs=inputs, outputs=mapped_outputs,
                             func=threshold_img, **kwargs),
                      gn.RollingBuffer(name=self.name()+"_accumulated",
-                                      inputs=mapped_outputs, outputs=summed_outputs,
+                                      inputs=mapped_outputs, outputs=buffer_outputs,
                                       N=N, **kwargs),
                      gn.Map(name=self.name()+"_unzip",
-                            inputs=summed_outputs, outputs=outputs,
-                            func=lambda count, buffer: sum(buffer), **kwargs)]
+                            inputs=buffer_outputs, outputs=outputs,
+                            func=lambda buffer: sum(buffer), **kwargs)]
 
         return nodes
