@@ -951,7 +951,7 @@ class ThresholdingHitFinderWidget(QtWidgets.QWidget):
 
         args_group = [('Threshold', 'doubleSpin', {'value': 1.0, 'group': 'args'})]
         if fct_name == 'Exponential Moving Average':
-            args_group.append(('Fraction', 'doubleSpin', {'value': 1, 'min': 0, 'group': 'args'}))
+            args_group.append(('Fraction', 'doubleSpin', {'value': 1, 'min': 0, 'max': 1, 'group': 'args'}))
         elif fct_name == "SumN" or fct_name == "RollingBuffer":
             args_group.append(('N', 'intSpin', {'value': 1, 'min': 1, 'group': 'args'}))
 
