@@ -375,7 +375,7 @@ class RollingBuffer(GlobalTransformation):
                     remove = len(self.res) + len(args) - self.N
                     self.res[:remove] = []
                     self.res.extend(args)
-                self.idx = min(len(self.res), self.N)
+                self.idx = min(self.idx + len(args), self.N)
             else: # this case is for workers:  args = data
                 if not self.unique:
                     self.res.append(args)
@@ -388,7 +388,7 @@ class RollingBuffer(GlobalTransformation):
                         self.res.append(args)
                         self.idx = min(self.idx + 1, self.N)
             self.res = self.res[-self.idx:]
-        return self.res
+        return self.res[-self.idx:]  # returning like this ensure that a copy of self.res is returned, not the same object
 
     def on_expand(self):
         return {'parent': self.parent, 'use_numpy': self.use_numpy, 'unique': self.unique}
