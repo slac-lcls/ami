@@ -1011,6 +1011,7 @@ class ThresholdingHitFinder(CtrlNode):
     def to_operation(self, inputs, outputs, **kwargs):
         mapped_outputs = [self.name()+'_threshold']
         summed_outputs = [self.name()+"_count", self.name()+"_sum"]
+        nodes = []
 
         threshold = self.values['widget_state']['args']['Threshold']
         fct = self.values['widget_state']['Function']
