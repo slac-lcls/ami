@@ -366,10 +366,17 @@ class RollingBuffer(GlobalTransformation):
             self.res = np.roll(self.res, -nelem)
             self.res[..., -nelem:] = [args] if dims else args
         else:
-            if self.is_expanded:
-                self.res.extend(args)
+            if self.is_expanded: # this case is for collectors: args = buffer
+                # Logic to prevent self.res have a memory footprint > N
+                if len(args) + len(self.res) < self.N:
+                    self.res.extend(args)
+                else:
+                    # remove exactly enough to have a list of size N after addition of the new data
+                    remove = len(self.res) + len(args) - self.N
+                    self.res[:remove] = []
+                    self.res.extend(args)
                 self.idx = min(self.idx + len(args), self.N)
-            else:
+            else: # this case is for workers:  args = data
                 if not self.unique:
                     self.res.append(args)
                     self.idx = min(self.idx + 1, self.N)
@@ -381,8 +388,7 @@ class RollingBuffer(GlobalTransformation):
                         self.res.append(args)
                         self.idx = min(self.idx + 1, self.N)
             self.res = self.res[-self.idx:]
-
-        return self.res[-self.idx:]
+        return self.res[-self.idx:]  # returning like this ensure that a copy of self.res is returned, not the same object
 
     def on_expand(self):
         return {'parent': self.parent, 'use_numpy': self.use_numpy, 'unique': self.unique}
