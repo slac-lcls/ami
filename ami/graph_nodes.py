@@ -337,65 +337,48 @@ class RollingBuffer(GlobalTransformation):
         self.res = None if use_numpy else []
 
     def __call__(self, *args, **kwargs):
-        if len(args) == 1:
-            dims = 0
-            args = args[0]
-        elif args:
-            dims = len(args)
-        elif kwargs:
-            args = [kwargs.get(arg, np.nan) for arg in self.inputs]
-            dims = len(args)
+        if self.is_expanded:
+            count = args[0]
+            args = args[1]
+        else:
+            count = 1
             if len(args) == 1:
-                dims = 0
                 args = args[0]
 
-        if self.use_numpy:
-            if self.is_expanded:
-                dtype = args.dtype
-                if len(args) > self.N:
-                    nelem = self.N
-                    args = args[..., -self.N:]
-                else:
-                    nelem = len(args)
+        self.count += count
+
+        if self.is_expanded: # this case is for collectors: args = buffer
+            # Logic to prevent self.res have a memory footprint > N
+            if len(args) + len(self.res) < self.N:
+                self.res.extend(args)
             else:
-                dtype = type(args)
-                nelem = 1
-            if self.res is None:
-                self.res = np.zeros(self.N, dtype=dtype)
-            self.idx += nelem
-            self.res = np.roll(self.res, -nelem)
-            self.res[..., -nelem:] = [args] if dims else args
-        else:
-            if self.is_expanded: # this case is for collectors: args = buffer
-                # Logic to prevent self.res have a memory footprint > N
-                if len(args) + len(self.res) < self.N:
-                    self.res.extend(args)
-                else:
-                    # remove exactly enough to have a list of size N after addition of the new data
-                    remove = len(self.res) + len(args) - self.N
-                    self.res[:remove] = []
-                    self.res.extend(args)
-                self.idx = min(self.idx + len(args), self.N)
-            else: # this case is for workers:  args = data
-                if not self.unique:
+                # remove exactly enough to have a list of size N after addition of the new data
+                remove = len(self.res) + len(args) - self.N
+                self.res[:remove] = []
+                self.res.extend(args)
+            self.idx = min(self.idx + len(args), self.N)
+        else: # this case is for workers:  args = data
+            if not self.unique:
+                self.res.append(args)
+                self.idx = min(self.idx + 1, self.N)
+            elif self.unique:
+                if len(self.res) == 0:
                     self.res.append(args)
                     self.idx = min(self.idx + 1, self.N)
-                elif self.unique:
-                    if len(self.res) == 0:
-                        self.res.append(args)
-                        self.idx = min(self.idx + 1, self.N)
-                    elif self.res[self.idx-1] != args:
-                        self.res.append(args)
-                        self.idx = min(self.idx + 1, self.N)
-            self.res = self.res[-self.idx:]
-        return self.res[-self.idx:]  # returning like this ensure that a copy of self.res is returned, not the same object
+                elif self.res[self.idx-1] != args:
+                    self.res.append(args)
+                    self.idx = min(self.idx + 1, self.N)
+        self.res = self.res[-self.idx:]
+
+        # returning like this ensure that a copy of self.res is returned, not the same object
+        return self.count, self.res[-self.idx:]
 
     def on_expand(self):
         return {'parent': self.parent, 'use_numpy': self.use_numpy, 'unique': self.unique}
 
     def reset(self):
         self.idx = 0
-
+        self.count = 0
 
 class AMIWarning(GraphWarning):
     pass

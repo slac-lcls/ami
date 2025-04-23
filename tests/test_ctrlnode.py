@@ -125,7 +125,7 @@ def test_scalarplot(qtbot):
     assert node.values['Num Points'] == 98
 
     inputs = {"Y": "Y"}
-    op = node.to_operation(inputs=inputs, outputs=['y'])
+    op = node.to_operation(inputs=inputs, outputs=['y'])[0]
     assert type(op) == gn.RollingBuffer
     assert op.N == 98
 
