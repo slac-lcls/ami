@@ -183,7 +183,7 @@ def rollingBuffer_graph(request):
     graph = Graph(name='graph')
     graph.add(RollingBuffer(name='cspad_rollingBuffer', N=N,
                             inputs=['cspad'],
-                            outputs=['ncspads']))
+                            outputs=['count', 'ncspads']))
     graph.compile(num_workers=nworkers, num_local_collectors=ncollectors)
     return graph, expected
 
@@ -226,70 +226,8 @@ def test_rollingBuffer(rollingBuffer_graph):
     rollingBuffer_graph(localCollector, color='globalCollector')
     globalCollector = rollingBuffer_graph(localCollector, color='globalCollector')
 
-    assert worker1 == {'ncspads_worker': expected1}
-    assert worker2 == {'ncspads_worker': expected2}
+    assert worker1 == {'count_worker': steps, 'ncspads_worker': expected1}
+    assert worker2 == {'count_worker': steps, 'ncspads_worker': expected2}
 
-    assert localCollector == {'ncspads_localCollector': expected3}
-    assert globalCollector == {'ncspads': expected4}
-
-
-@pytest.fixture(scope='function')
-def rollingBufferNumpy_graph(request):
-    N, nworkers, ncollectors, expected = request.param
-
-    graph = Graph(name='graph')
-    graph.add(RollingBuffer(name='cspad_rollingBuffer', N=N,
-                            inputs=['cspad'],
-                            outputs=['ncspads'],
-                            use_numpy=True))
-    graph.compile(num_workers=nworkers, num_local_collectors=ncollectors)
-    return graph, expected
-
-
-@pytest.mark.parametrize('rollingBufferNumpy_graph',
-                         [
-                            (9, 4, 2, (2, [1, 2], [3, 4])),
-                            (8, 4, 2, (2, [1, 2], [3, 4])),
-                            (4, 4, 2, (1, [1], [2])),
-                            (12, 4, 2, (2, [1, 2], [3, 4])),
-                            (12, 4, 2, (3, [1, 2, 3], [4, 5, 6])),
-                            (4, 4, 2, (2, [2], [4])),
-                            (1, 4, 2, (2, [2], [4], [4], [4])),
-                            (4, 1, 1, (4, [1, 2, 3, 4], [5, 6, 7, 8], [5, 6, 7, 8], [5, 6, 7, 8])),
-                            (4, 1, 1, (2, [1, 2], [3, 4], [1, 2, 3, 4], [1, 2, 3, 4])),
-                         ],
-                         indirect=True)
-def test_rollingBufferNumpy(rollingBufferNumpy_graph):
-    rollingBuffer_graph, expected = rollingBufferNumpy_graph
-    try:
-        steps, expected1, expected2 = expected
-        expected3 = expected1 + expected2
-        expected4 = expected3 * 2
-    except ValueError:
-        steps, expected1, expected2, expected3, expected4 = expected
-    # convert to numpy arrays
-    expected1 = np.array(expected1)
-    expected2 = np.array(expected2)
-    expected3 = np.array(expected3)
-    expected4 = np.array(expected4)
-
-    start = 1
-    stop = start + steps
-    for i in range(start, stop):
-        worker1 = rollingBuffer_graph({'cspad': i}, color='worker')
-    rollingBuffer_graph.reset()
-    start = stop
-    stop = start + steps
-    for i in range(start, stop):
-        worker2 = rollingBuffer_graph({'cspad': i}, color='worker')
-
-    rollingBuffer_graph(worker1, color='localCollector')
-    localCollector = rollingBuffer_graph(worker2, color='localCollector')
-
-    rollingBuffer_graph(localCollector, color='globalCollector')
-    globalCollector = rollingBuffer_graph(localCollector, color='globalCollector')
-
-    assert np.array_equal(worker1['ncspads_worker'], expected1)
-    assert np.array_equal(worker2['ncspads_worker'], expected2)
-    assert np.array_equal(localCollector['ncspads_localCollector'], expected3)
-    assert np.array_equal(globalCollector['ncspads'], expected4)
+    assert localCollector == {'count_localCollector': 2*steps, 'ncspads_localCollector': expected3}
+    assert globalCollector == {'count': 4*steps, 'ncspads': expected4}

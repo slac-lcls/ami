@@ -106,6 +106,7 @@ class RollingBuffer(CtrlNode):
     def __init__(self, name):
         super().__init__(name,
                          terminals={'In': {'io': 'in', 'ttype': T},
+                                    'Count': {'io': 'out', 'ttype': int},
                                     'Out': {'io': 'out', 'ttype': Array1d}},
                          allowAddInput=True,
                          global_op=True)
