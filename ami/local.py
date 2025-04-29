@@ -197,7 +197,7 @@ def build_parser():
         '--hwm',
         help='zmq HWM for push/pull sockets.',
         type=int,
-        default=None
+        default=5
     )
 
     parser.add_argument(

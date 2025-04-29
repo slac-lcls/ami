@@ -322,7 +322,7 @@ def main(color, upstream_port, downstream_port):
         '--hwm',
         help='zmq HWM for push/pull sockets.',
         type=int,
-        default=None
+        default=5
     )
 
     subparsers = parser.add_subparsers(help='spawn workers', dest='worker')

@@ -809,7 +809,7 @@ def main():
         '--hwm',
         help='zmq HWM for push/pull sockets.',
         type=int,
-        default=None
+        default=5
     )
 
     args = parser.parse_args()

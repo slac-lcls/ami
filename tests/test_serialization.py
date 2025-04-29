@@ -1,7 +1,7 @@
 import pytest
 import numpy as np
 from conftest import pyarrowtest
-from ami.data import MsgTypes, CollectorMessage, Serializer, Deserializer
+from ami.data import MsgTypes, CollectorMessage, Serializer, Deserializer, pa
 
 
 @pytest.fixture(scope='module')
@@ -15,8 +15,12 @@ def collector_msg():
                             name="fake", version=1, payload={'foo': 5, 'baz': 'bat', 'bar': [1, 2, 4]})
 
 
+serializers = [None, 'dill', 'pickle']
+if pa:
+    serializers.append(pytest.param('arrow', marks=pyarrowtest))
+
 @pytest.mark.parametrize("serializer",
-                         [None, pytest.param('arrow', marks=pyarrowtest), 'dill', 'pickle'],
+                         serializers,
                          indirect=True)
 @pytest.mark.parametrize("obj", [5, "test", np.arange(10)])
 def test_default_serializer(serializer, obj):
@@ -28,7 +32,7 @@ def test_default_serializer(serializer, obj):
 
 
 @pytest.mark.parametrize("serializer",
-                         [None, pytest.param('arrow', marks=pyarrowtest), 'dill', 'pickle'],
+                         serializers,
                          indirect=True)
 def test_default_serializer_message(serializer, collector_msg):
     serializer, deserializer = serializer
