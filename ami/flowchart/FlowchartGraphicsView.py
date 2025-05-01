@@ -115,7 +115,7 @@ class CommentRect(GraphicsWidget):
                     child.moveBy(*diff)
 
     def mouseClickEvent(self, ev):
-        if int(ev.button()) == int(QtCore.Qt.RightButton):
+        if ev.button() == QtCore.Qt.RightButton:
             ev.accept()
             self.raiseContextMenu(ev)
 
