@@ -8,6 +8,8 @@ import logging
 import argparse
 import time
 import datetime as dt
+import cProfile
+import signal
 import prometheus_client as pc
 from ami import LogConfig, Defaults
 from ami.comm import Ports, PlatformAction, Colors, ResultStore, Node, AutoExport
@@ -307,9 +309,20 @@ class Worker(Node):
 
 
 def run_worker(num, num_workers, hb_period, source, collector_addr, graph_addr, msg_addr, export_addr,
-               flags=None, prometheus_dir=None, prometheus_port=None, hutch=None, hwm=None):
+               flags=None, prometheus_dir=None, prometheus_port=None, hutch=None, hwm=None, cprofile=False):
 
     logger.info('Starting worker # %d, sending to collector at %s PID: %d', num, collector_addr, os.getpid())
+
+    if cprofile:
+        profiler = cProfile.Profile()
+        profiler.enable()
+
+        def handler(*args, **kwargs):
+            profiler.disable()
+            profiler.dump_stats(f"ami_worker{num}.cprof")
+            sys.exit()
+
+        signal.signal(signal.SIGTERM, handler)
 
     src = None
     if source is not None:
@@ -343,6 +356,7 @@ def run_worker(num, num_workers, hb_period, source, collector_addr, graph_addr, 
         else:
             logger.critical("worker%03d: unknown data source type: %s", num, source[0])
             return 1
+
 
     with Worker(num, src, collector_addr, graph_addr, msg_addr, export_addr, prometheus_dir, prometheus_port,
                 hutch, hwm) as worker:
@@ -460,6 +474,12 @@ def main():
     )
 
     parser.add_argument(
+        '--cprofile',
+        help="profile with cprofile",
+        action='store_true'
+    )
+
+    parser.add_argument(
         'source',
         nargs='?',
         metavar='SOURCE',
@@ -493,7 +513,8 @@ def main():
                           args.prometheus_dir,
                           args.prometheus_port,
                           args.hutch,
-                          args.hwm)
+                          args.hwm,
+                          args.cprofile)
     except KeyboardInterrupt:
         logger.info("Worker killed by user...")
         return 0

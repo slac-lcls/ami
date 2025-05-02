@@ -11,6 +11,8 @@ import json
 import socket
 import time
 import datetime as dt
+import cProfile
+import signal
 import prometheus_client as pc
 from ami import LogConfig
 from ami.comm import Ports, PlatformAction, AutoExport, Collector, Store, ZMQ_TOPIC_DELIM
@@ -719,9 +721,22 @@ def run_manager(num_workers,
                 prometheus_dir,
                 prometheus_port,
                 hutch,
-                hwm):
+                hwm,
+                cprofile):
     logger.info('Starting manager, controlling %d workers on %d nodes PID: %d',
                 num_workers, num_nodes, os.getpid())
+
+    if cprofile:
+        profiler = cProfile.Profile()
+        profiler.enable()
+
+        def handler(*args, **kwargs):
+            profiler.disable()
+            profiler.dump_stats("ami_manager.cprof")
+            sys.exit()
+
+        signal.signal(signal.SIGTERM, handler)
+
     with Manager(
             num_workers,
             num_nodes,
@@ -737,6 +752,7 @@ def run_manager(num_workers,
             hwm) as manager:
         if prometheus_port:
             manager.start_prometheus(prometheus_port)
+
         return manager.run()
 
 
@@ -812,6 +828,12 @@ def main():
         default=5
     )
 
+    parser.add_argument(
+        '--cprofile',
+        help="profile with cprofile",
+        action='store_true'
+    )
+
     args = parser.parse_args()
 
     results_addr = "tcp://%s:%d" % (args.host, args.port + Ports.Results)
@@ -843,7 +865,8 @@ def main():
                            args.prometheus_dir,
                            args.prometheus_port,
                            args.hutch,
-                           args.hwm)
+                           args.hwm,
+                           args.cprofile)
     except KeyboardInterrupt:
         logger.info("Manager killed by user...")
         return 0
