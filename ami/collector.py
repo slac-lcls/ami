@@ -6,6 +6,8 @@ import argparse
 import time
 import collections
 import datetime as dt
+import cProfile
+import signal
 import ami.multiproc as mp
 from ami.worker import run_worker, parse_args
 from ami import LogConfig, Defaults
@@ -204,7 +206,18 @@ def run_collector(node_num, base_name, num_contribs, eb_depth, color,
 
 def run_node_collector(node_num, num_contribs, eb_depth,
                        collector_addr, upstream_addr, graph_addr, msg_addr,
-                       prometheus_dir, prometheus_port, hutch, hwm):
+                       prometheus_dir, prometheus_port, hutch, hwm, cprofile):
+    if cprofile:
+        profiler = cProfile.Profile()
+        profiler.enable()
+
+        def handler(*args, **kwargs):
+            profiler.disable()
+            profiler.dump_stats(f"ami_localCollector{node_num}.cprof")
+            sys.exit()
+
+        signal.signal(signal.SIGTERM, handler)
+
     return run_collector(node_num,
                          "localCollector%03d",
                          num_contribs,
@@ -222,7 +235,18 @@ def run_node_collector(node_num, num_contribs, eb_depth,
 
 def run_global_collector(node_num, num_contribs, eb_depth,
                          collector_addr, upstream_addr, graph_addr, msg_addr,
-                         prometheus_dir, prometheus_port, hutch, hwm):
+                         prometheus_dir, prometheus_port, hutch, hwm, cprofile):
+    if cprofile:
+        profiler = cProfile.Profile()
+        profiler.enable()
+
+        def handler(*args, **kwargs):
+            profiler.disable()
+            profiler.dump_stats(f"ami_globalCollector{node_num}.cprof")
+            sys.exit()
+
+        signal.signal(signal.SIGTERM, handler)
+
     return run_collector(node_num,
                          "globalCollector%03d",
                          num_contribs,
@@ -325,6 +349,12 @@ def main(color, upstream_port, downstream_port):
         default=5
     )
 
+    parser.add_argument(
+        '--cprofile',
+        help="profile with cprofile",
+        action='store_true'
+    )
+
     subparsers = parser.add_subparsers(help='spawn workers', dest='worker')
     worker_subparser = subparsers.add_parser('worker', help='worker arguments')
 
@@ -403,7 +433,8 @@ def main(color, upstream_port, downstream_port):
                                               args.prometheus_dir,
                                               args.prometheus_port,
                                               args.hutch,
-                                              args.hwm),
+                                              args.hwm,
+                                              args.cprofile),
                                         daemon=True)
                     worker.start()
 
@@ -417,7 +448,8 @@ def main(color, upstream_port, downstream_port):
                                       args.prometheus_dir,
                                       args.prometheus_port,
                                       args.hutch,
-                                      args.hwm)
+                                      args.hwm,
+                                      args.cprofile)
         elif color == Colors.GlobalCollector:
             return run_global_collector(args.node_num,
                                         args.num_contribs,
@@ -429,7 +461,8 @@ def main(color, upstream_port, downstream_port):
                                         args.prometheus_dir,
                                         args.prometheus_port,
                                         args.hutch,
-                                        args.hwm)
+                                        args.hwm,
+                                        args.cprofile)
         else:
             logger.critical("Invalid option collector color '%s' chosen!", color)
             return 1
