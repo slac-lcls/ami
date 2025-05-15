@@ -40,6 +40,7 @@
 #
 #############################################################################
 
+import re
 from qtpy import QtWidgets, QtCore
 from ami.flowchart.library.common import generateUi
 
@@ -511,8 +512,63 @@ class FilterWidget(QtWidgets.QWidget):
         for name in deletions:
             self.remove_condition(name)
 
+
+def extract_variables_from_condition(condition):
+    """Extract variable names from a condition string, excluding numbers and operators."""
+    # List of Python keywords to exclude
+    python_keywords = ['and', 'or', 'not', 'if', 'else', 'elif', 'for', 'while', 'in',
+                      'True', 'False', 'None', 'is', 'as', 'assert', 'break', 'class',
+                      'continue', 'def', 'del', 'except', 'finally', 'from', 'global',
+                      'import', 'lambda', 'nonlocal', 'pass', 'raise', 'return', 'try',
+                      'with', 'yield']
+
+    # This pattern finds variable names but excludes:
+    # 1. Python keywords
+    # 2. Numeric literals (integers, floats)
+    # 3. Operators and symbols
+    # Allow for names that can include -, :, and . in them
+    pattern = r'\b(?!(?:' + '|'.join(python_keywords) + r')\b)([a-zA-Z_][-a-zA-Z0-9_:.]*)\b'
+
+    # Extract all matches
+    potential_vars = re.findall(pattern, condition)
+
+    # Further filter to exclude anything that might be a number
+    variables = [var for var in potential_vars if not var.isdigit()]
+    sanitized_variables = [sanitize_name(var) for var in variables]
+    return set(sanitized_variables)
+
+
+def check_conditions(conditions_dict, inputs):
+    """
+    Check that the variables used in the condition map to inputs
+    """
+    cond_variables = set()
+    missing_variables = set()
+
+    # Extract all variables from all conditions
+    for key, value in conditions_dict.items():
+        if 'condition' in value:
+            #sanitized_condition = sanitize_name(value['condition'])
+            condition_vars = extract_variables_from_condition(value['condition'])
+            cond_variables.update(condition_vars)
+
+    # Get all variables from inputs
+    input_variables = set(inputs.values())
+
+    # Find missing variables
+    for var in cond_variables:
+        if var not in input_variables:
+            missing_variables.add(var)
+
+    return len(missing_variables) == 0
+
+
 def gen_filter_func(values, inputs, outputs):
     assert (len(values) >= 1)
+
+    cond_ok = check_conditions(values, inputs)
+    if not cond_ok:
+        raise ValueError("Condition variables not found in the input variables.")
 
     cond = sanitize_name(values['If']['condition'], space=False)
 
