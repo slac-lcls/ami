@@ -118,7 +118,16 @@ class GraphCollector(Node, Collector):
 
     def poll_timeout(self):
         for name in self.store.builders.keys():
-            self.store.prune(name, self.node)
+
+            pruned_times, pruned_size, pruned_heartbeats_contribs = \
+                self.store.prune(name, self.node)
+
+            if pruned_size:
+                self.event_counter.labels(self.hutch, 'Pruned Heartbeat', self.name).inc()
+                self.event_size.labels(self.hutch, self.name).set(pruned_size)
+                for heartbeat, contribs in pruned_heartbeats_contribs:
+                    self.prune_contributors.labels(self.hutch, self.name).info({'heartbeat': str(heartbeat),
+                                                                                'contribs': contribs})
 
     def process_msg(self, msg):
         if msg.mtype == MsgTypes.Transition:
@@ -147,11 +156,14 @@ class GraphCollector(Node, Collector):
                 times, size = (None, None)
                 try:
                     # prune entries older than the current heartbeat
-                    pruned_times, pruned_size = self.store.prune(msg.name, self.node, msg.heartbeat, drop=True)
+                    pruned_times, pruned_size, pruned_heartbeats_contribs = \
+                        self.store.prune(msg.name, self.node, msg.heartbeat, drop=True)
 
                     if pruned_size:
                         self.event_counter.labels(self.hutch, 'Pruned Heartbeat', self.name).inc()
                         self.event_size.labels(self.hutch, self.name).set(pruned_size)
+                        for heartbeat, contribs in pruned_heartbeats_contribs:
+                            self.prune_contributors.labels(self.hutch, self.name).info({'heartbeat': str(heartbeat), 'contribs': contribs})
 
                     # complete the current heartbeat
                     times, size = self.store.complete(msg.name, msg.heartbeat, self.node)
@@ -179,11 +191,15 @@ class GraphCollector(Node, Collector):
                     self.report("purge", msg.name)
             else:
                 # prune older entries from the event builder
-                pruned_times, pruned_size = self.store.prune(msg.name, self.node)
+                pruned_times, pruned_size, pruned_heartbeats_contribs = self.store.prune(msg.name, self.node)
+
                 if pruned_size:
                     self.event_counter.labels(self.hutch, 'Pruned Heartbeat', self.name).inc()
                     self.event_size.labels(self.hutch, self.name).set(pruned_size)
                     self.heartbeat_time.pop(msg.heartbeat.identity, 0)
+                    for heartbeat, contribs in pruned_heartbeats_contribs:
+                        self.prune_contributors.labels(self.hutch, self.name).info({'heartbeat': str(heartbeat),
+                                                                                    'contribs': contribs})
 
             self.heartbeat_time[msg.heartbeat.identity] += time.time() - datagram_start
 

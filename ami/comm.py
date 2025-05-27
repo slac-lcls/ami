@@ -526,6 +526,7 @@ class GraphBuilder(ContributionBuilder):
     def prune(self, identity, prune_key=None, drop=False):
         times = {}
         size = 0
+        heartbeats_contribs = []
         if prune_key is None:
             depth = self.depth
         elif prune_key < self.latest:
@@ -537,10 +538,12 @@ class GraphBuilder(ContributionBuilder):
 
         if len(self.pending) > depth:
             for eb_key in reversed(sorted(self.pending.keys(), reverse=True)[depth:]):
-                logger.debug("Pruned uncompleted key %s", eb_key)
+                heartbeats_contribs.append((eb_key.identity, bin(self.contribs[eb_key])))
+                logger.debug("Pruned incomplete heartbeat: %s contributors received: %s",
+                             eb_key, bin(self.contribs[eb_key]))
                 times, size = self.complete(eb_key, identity, drop)
 
-        return times, size
+        return times, size, heartbeats_contribs
 
     def flush(self, identity, drop=False):
         size = self.prune(identity, self.latest.identity + 1, drop)
@@ -997,6 +1000,7 @@ class Collector(abc.ABC):
         self.event_time = pc.Gauge('ami_event_time_secs', 'Event Time', ['hutch', 'type', 'process'])
         self.event_size = pc.Gauge('ami_event_size_bytes', 'Event Size', ['hutch', 'process'])
         self.event_latency = pc.Gauge('ami_event_latency_secs', 'Event Latency', ['hutch', 'sender', 'process'])
+        self.prune_contributors = pc.Info('ami_prune_contributors', 'Contributors', ['hutch', 'process'])
 
     def register(self, sock, handler):
         """
