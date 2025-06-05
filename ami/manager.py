@@ -685,6 +685,9 @@ class Manager(Collector):
         self.export.send_string(name, zmq.SNDMORE)
         self.export.send_pyobj(self.heartbeats[name])
 
+    def poll_timeout(self):
+        pass
+
     def start_prometheus(self, port):
         while True:
             try:

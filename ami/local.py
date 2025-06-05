@@ -201,6 +201,13 @@ def build_parser():
     )
 
     parser.add_argument(
+        '--timeout',
+        help='timeout in ms for zmq polling',
+        type=int,
+        default=None
+    )
+
+    parser.add_argument(
         '--cprofile',
         help="profile with cprofile",
         action='store_true'
@@ -346,7 +353,8 @@ def run_ami(args, queue=None):
             name='nodecol-n0',
             target=functools.partial(_sys_exit, run_node_collector),
             args=(0, args.num_workers, args.eb_depth, collector_addr, globalcol_addr, graph_addr,
-                  msg_addr, args.prometheus_dir, args.prometheus_port, args.hutch, args.hwm, args.cprofile)
+                  msg_addr, args.prometheus_dir, args.prometheus_port, args.hutch,
+                  args.hwm, args.timeout, args.cprofile)
         )
         collector_proc.daemon = True
         collector_proc.start()
@@ -356,7 +364,7 @@ def run_ami(args, queue=None):
             name='globalcol',
             target=functools.partial(_sys_exit, run_global_collector),
             args=(0, 1, args.eb_depth, globalcol_addr, results_addr, graph_addr, msg_addr,
-                  args.prometheus_dir, args.prometheus_port, args.hutch, args.hwm, args.cprofile)
+                  args.prometheus_dir, args.prometheus_port, args.hutch, args.hwm, args.timeout, args.cprofile)
         )
         globalcol_proc.daemon = True
         globalcol_proc.start()

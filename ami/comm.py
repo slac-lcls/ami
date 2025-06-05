@@ -975,7 +975,7 @@ class Collector(abc.ABC):
             passed it creates one.
     """
 
-    def __init__(self, addr, ctx=None, hutch=None, hwm=None):
+    def __init__(self, addr, ctx=None, hutch=None, hwm=None, timeout=None):
         if ctx is None:
             self.ctx = zmq.Context(io_threads=2)
         else:
@@ -990,6 +990,7 @@ class Collector(abc.ABC):
         self.running = True
         self.exitcode = 0
         self.deserializer = Deserializer()
+        self.timeout = timeout
         self.hutch = hutch
 
         self.event_counter = pc.Counter('ami_event_count', 'Event Counter', ['hutch', 'type', 'process'])
@@ -1035,6 +1036,10 @@ class Collector(abc.ABC):
         """
         pass
 
+    @abc.abstractmethod
+    def poll_timeout(self):
+        pass
+
     def run(self):
         """
         The main collector loop runs forever polling the collector socket
@@ -1048,7 +1053,9 @@ class Collector(abc.ABC):
         idle_start = time.time()
         reset_idle = False
         while self.running:
-            for sock, flag in self.poller.poll():
+            received = False
+
+            for sock, flag in self.poller.poll(timeout=self.timeout):
                 if flag != zmq.POLLIN:
                     continue
 
@@ -1058,8 +1065,13 @@ class Collector(abc.ABC):
                 if sock is self.collector:
                     msg = self.collector.recv_serialized(self.deserializer, copy=False)
                     self.process_msg(msg)
+                    received = True
                 elif sock in self.handlers:
                     self.handlers[sock]()
+                    received = True
+
+            if not received and self.timeout:
+                self.poll_timeout()
 
             if reset_idle:
                 reset_idle = False

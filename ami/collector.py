@@ -20,10 +20,10 @@ logger = logging.getLogger(__name__)
 
 class GraphCollector(Node, Collector):
     def __init__(self, node, base_name, num_workers, eb_depth, color, collector_addr, downstream_addr,
-                 graph_addr, msg_addr, prometheus_dir, prometheus_port, hutch, hwm):
+                 graph_addr, msg_addr, prometheus_dir, prometheus_port, hutch, hwm, timeout):
         Node.__init__(self, node, graph_addr, msg_addr, prometheus_dir=prometheus_dir,
                       prometheus_port=prometheus_port, hutch=hutch)
-        Collector.__init__(self, collector_addr, ctx=self.ctx, hutch=hutch, hwm=hwm)
+        Collector.__init__(self, collector_addr, ctx=self.ctx, hutch=hutch, hwm=hwm, timeout=timeout)
         self.base_name = base_name
         self.num_workers = num_workers
         self.transitions = TransitionBuilder(self.num_workers, downstream_addr, self.ctx, hwm)
@@ -116,6 +116,10 @@ class GraphCollector(Node, Collector):
         self.store.destroy(name)
         self.report("purge", name)
 
+    def poll_timeout(self):
+        for name in self.store.builders.keys():
+            self.store.prune(name, self.node)
+
     def process_msg(self, msg):
         if msg.mtype == MsgTypes.Transition:
             self.transitions.update(msg.payload.ttype, self.eb_id(msg.identity), msg.payload.payload)
@@ -186,7 +190,7 @@ class GraphCollector(Node, Collector):
 
 def run_collector(node_num, base_name, num_contribs, eb_depth, color,
                   collector_addr, upstream_addr, graph_addr, msg_addr,
-                  prometheus_dir, prometheus_port, hutch, hwm):
+                  prometheus_dir, prometheus_port, hutch, hwm, timeout):
     logger.info('Starting collector on node # %d PID: %d', node_num, os.getpid())
     with GraphCollector(
             node_num,
@@ -199,14 +203,15 @@ def run_collector(node_num, base_name, num_contribs, eb_depth, color,
             graph_addr,
             msg_addr,
             prometheus_dir,
-            prometheus_port, hutch, hwm) as collector:
+            prometheus_port, hutch,
+            hwm, timeout) as collector:
         collector.start_prometheus()
         return collector.run()
 
 
 def run_node_collector(node_num, num_contribs, eb_depth,
                        collector_addr, upstream_addr, graph_addr, msg_addr,
-                       prometheus_dir, prometheus_port, hutch, hwm, cprofile):
+                       prometheus_dir, prometheus_port, hutch, hwm, timeout, cprofile):
     if cprofile:
         profiler = cProfile.Profile()
         profiler.enable()
@@ -230,12 +235,13 @@ def run_node_collector(node_num, num_contribs, eb_depth,
                          prometheus_dir,
                          prometheus_port,
                          hutch,
-                         hwm)
+                         hwm,
+                         timeout)
 
 
 def run_global_collector(node_num, num_contribs, eb_depth,
                          collector_addr, upstream_addr, graph_addr, msg_addr,
-                         prometheus_dir, prometheus_port, hutch, hwm, cprofile):
+                         prometheus_dir, prometheus_port, hutch, hwm, timeout, cprofile):
     if cprofile:
         profiler = cProfile.Profile()
         profiler.enable()
@@ -259,7 +265,8 @@ def run_global_collector(node_num, num_contribs, eb_depth,
                          prometheus_dir,
                          prometheus_port,
                          hutch,
-                         hwm)
+                         hwm,
+                         timeout)
 
 
 def main(color, upstream_port, downstream_port):
@@ -347,6 +354,13 @@ def main(color, upstream_port, downstream_port):
         help='zmq HWM for push/pull sockets.',
         type=int,
         default=5
+    )
+
+    parser.add_argument(
+        '--timeout',
+        help='timeout in ms for zmq polling',
+        type=int,
+        default=None
     )
 
     parser.add_argument(
@@ -449,6 +463,7 @@ def main(color, upstream_port, downstream_port):
                                       args.prometheus_port,
                                       args.hutch,
                                       args.hwm,
+                                      args.timeout,
                                       args.cprofile)
         elif color == Colors.GlobalCollector:
             return run_global_collector(args.node_num,
@@ -462,6 +477,7 @@ def main(color, upstream_port, downstream_port):
                                         args.prometheus_port,
                                         args.hutch,
                                         args.hwm,
+                                        args.timeout,
                                         args.cprofile)
         else:
             logger.critical("Invalid option collector color '%s' chosen!", color)
