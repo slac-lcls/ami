@@ -349,7 +349,7 @@ class Node(QtCore.QObject):
         when they are constructing their Node list."""
         return None
 
-    def connected(self, localTerm, remoteTerm, pos=None):
+    def connected(self, localTerm, remoteTerm):
         """Called whenever one of this node's terminals is connected elsewhere."""
         node = remoteTerm.node()
 

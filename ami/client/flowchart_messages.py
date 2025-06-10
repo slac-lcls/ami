@@ -95,10 +95,9 @@ class NodeTermAdded(NodeMsg):
 
 class NodeTermRemoved(NodeMsg):
 
-    def __init__(self, name, term, state):
+    def __init__(self, name, term):
         super().__init__(name)
         self.term = term
-        self.state = state
 
 
 class NodeTermConnected(NodeMsg):

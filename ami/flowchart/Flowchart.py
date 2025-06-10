@@ -242,8 +242,7 @@ class Flowchart(Node):
     @asyncSlot(object, object)
     async def nodeTermRemoved(self, node, term):
         name = node.name()
-        state = term.saveState()
-        msg = fcMsgs.NodeTermRemoved(name, term.name(), state)
+        msg = fcMsgs.NodeTermRemoved(name, term.name())
         await self.broker.send_string(name, zmq.SNDMORE)
         await self.broker.send_pyobj(msg)
 
@@ -595,16 +594,11 @@ class Flowchart(Node):
                 node.blockSignals(True)
                 node.restoreState(current_node_state)
                 node.blockSignals(False)
-
                 node.changed = node.isChanged(restore_ctrl, restore_widget)
                 if node.changed:
                     self.sigNodeChanged.emit(node)
 
             node.viewed = new_node_state['viewed']
-
-            if not node.viewed and hasattr(node.widget, 'saveState'):
-                node.widget_state = node.widget.saveState()
-                node.widget = None
 
     async def updateSources(self, init=False):
         num_workers = None
@@ -1203,16 +1197,12 @@ class FlowchartWidget(dockarea.DockArea):
 
         for node in nodes:
             name = node.name()
-            state = {}
 
             node.display(topics=None, terms=None, addr=None, win=None)
 
-            if not node.viewed and node.widget_state:
-                node.widget.restoreState(node.widget_state)
-                state = node.widget_state
-            else:
-                if hasattr(node.widget, 'saveState'):
-                    state = node.widget.saveState()
+            state = {}
+            if hasattr(node.widget, 'saveState'):
+                state = node.widget.saveState()
 
             args = {'name': name,
                     'state': state,

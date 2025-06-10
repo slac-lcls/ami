@@ -14,10 +14,11 @@ class CtrlNode(Node):
     sigStateChanged = QtCore.Signal(object)
 
     def __init__(self, name, ui=None, terminals={}, **kwargs):
-        super().__init__(name=name, terminals=terminals, **kwargs)
         self.widget = None
         self.widget_state = None
         self.geometry = None
+
+        super().__init__(name=name, terminals=terminals, **kwargs)
 
         if ui is None:
             if hasattr(self, 'uiTemplate'):
@@ -100,6 +101,36 @@ class CtrlNode(Node):
             self.widget = widget(topics, terms, addr, parent=win, node=self, **kwargs)
 
         return self.widget
+
+    def addTerminal(self, *args, **kwargs):
+        term = super().addTerminal(*args, **kwargs)
+
+        if self.widget is None:
+            return term
+
+        self.widget.terminalAdded(term)
+        return term
+
+    def removeTerminal(self, term):
+        if isinstance(term, str):
+            term = self.terminals[term]
+
+        if self.widget:
+            self.widget.terminalRemoved(term)
+
+        super().removeTerminal(term)
+
+    def terminalConnected(self, nodeTermConnected):
+        if self.widget is None:
+            return
+
+        self.widget.terminalConnected(nodeTermConnected)
+
+    def terminalDisconnected(self, nodeTermDisconnected):
+        if self.widget is None:
+            return
+
+        self.widget.terminalDisconnected(nodeTermDisconnected)
 
 
 class SourceNode(CtrlNode):

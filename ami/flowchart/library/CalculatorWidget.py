@@ -347,12 +347,13 @@ class FilterWidget(QtWidgets.QWidget):
         self.sigStateChanged.emit("remove", name, None)
         self.node.sigStateChanged.emit(self.node)
 
-    def terminalAdded(self, term, *args, **kwargs):
-        if kwargs.get('io', None) == 'in':
+    def terminalAdded(self, term):
+        if term.isInput():
             return
 
         # new output terminal add to combo boxes
         node_name = self.node.name()
+        term = term.name()
         self.outputs.append(f"{node_name}.{term}")
         inputs = list(self.inputs.values())
         inputs.append("None")
@@ -371,16 +372,14 @@ class FilterWidget(QtWidgets.QWidget):
             attrs[name][widget_name] = "None"
             stateGroup.widgetChanged(widget)
 
-    def terminalRemoved(self, term, *args, **kwargs):
-        io = kwargs.get('io', None)
-
-        if io == 'in':
+    def terminalRemoved(self, term):
+        if term.isInput():
             # Disconnect sent before remove, just return
             return
-        elif io == 'out':
+        elif term.isOutput():
             # remove comboboxes
             node_name = self.node.name()
-            widget_name = f"{node_name}.{term}"
+            widget_name = f"{node_name}.{term.name()}"
             self.outputs.remove(widget_name)
             for name, group in self.condition_groups.items():
                 ui, stateGroup, ctrls, attrs = group
@@ -408,7 +407,7 @@ class FilterWidget(QtWidgets.QWidget):
         self.variable_layout.addWidget(self.variables[new_input], self.row, self.col)
         idx = len(self.inputs)-1
 
-        if self.col ==0 and self.row ==0:  # if the connection is the first connection
+        if self.col == 0 and self.row == 0:  # if the connection is the first connection
             self.add_elif_condition(name="If")
         else:
             # go through comboboxes and add entry
@@ -424,7 +423,6 @@ class FilterWidget(QtWidgets.QWidget):
         else:
             self.col = 0
             self.row += 1
-
 
     def terminalDisconnected(self, nodeTermDisconnected):
         if nodeTermDisconnected.localTermState['io'] == 'out':
