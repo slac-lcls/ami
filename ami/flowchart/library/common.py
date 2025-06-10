@@ -113,6 +113,8 @@ class CtrlNode(Node):
 
     def removeTerminal(self, term):
         if isinstance(term, str):
+            if term not in self.terminals:
+                return
             term = self.terminals[term]
 
         if self.widget:

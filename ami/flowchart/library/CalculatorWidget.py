@@ -281,7 +281,7 @@ class FilterWidget(QtWidgets.QWidget):
 
         inputs = list(self.inputs.values())
         inputs.append("None")
-        for output in self.outputs:
+        for output in sorted(self.outputs):
             condition_group.append((output, 'combo', {'values': inputs, 'value': 'None', 'group': name}))
 
         self.condition_groups[name] = generateUi(condition_group)

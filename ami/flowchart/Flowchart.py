@@ -265,6 +265,7 @@ class Flowchart(Node):
                                            localTerm.name(), localTerm.saveState(),
                                            remoteNode, isinstance(remoteTerm.node(), SourceNode),
                                            remoteTerm.name(), remoteTerm.saveState())
+            localTerm.node().terminalConnected(msg)
             await self.broker.send_string(localNode, zmq.SNDMORE)
             await self.broker.send_pyobj(msg)
 
@@ -272,6 +273,7 @@ class Flowchart(Node):
                                            remoteTerm.name(), remoteTerm.saveState(),
                                            localNode, isinstance(localTerm.node(), SourceNode),
                                            localTerm.name(), localTerm.saveState())
+            remoteTerm.node().terminalConnected(msg)
             await self.broker.send_string(remoteNode, zmq.SNDMORE)
             await self.broker.send_pyobj(msg)
 
@@ -295,6 +297,7 @@ class Flowchart(Node):
                                               localTerm.name(), localTerm.saveState(),
                                               remoteNode, isinstance(remoteTerm.node(), SourceNode),
                                               remoteTerm.name(), remoteTerm.saveState())
+            localTerm.node().terminalDisconnected(msg)
             await self.broker.send_string(localNode, zmq.SNDMORE)
             await self.broker.send_pyobj(msg)
 
@@ -302,6 +305,7 @@ class Flowchart(Node):
                                               remoteTerm.name(), remoteTerm.saveState(),
                                               localNode, isinstance(localTerm.node(), SourceNode),
                                               localTerm.name(), localTerm.saveState())
+            remoteTerm.node().terminalDisconnected(msg)
             await self.broker.send_string(remoteNode, zmq.SNDMORE)
             await self.broker.send_pyobj(msg)
 
