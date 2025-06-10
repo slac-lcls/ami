@@ -224,7 +224,7 @@ class MeanVsScan(CtrlNode):
                     pass
             keys, values = zip(*sorted(res.items()))
             return np.array(keys), np.array(values)
-        
+
         def distribute_outputs(args):
             """
             Distribute the binned array elements to the corresponding outputs.
@@ -748,21 +748,32 @@ class EventProcessor():
 
         def display(self, topics, terms, addr, win, **kwargs):
             if self.widget is None:
-                self.widget = FilterWidget(terms, self.output_vars(), win)
+                self.widget = FilterWidget(terms or self.input_vars(), self.output_vars(), self, win)
                 self.widget.sigStateChanged.connect(self.state_changed)
 
             return self.widget
 
-        def to_operation(self, **kwargs):
+        def update(self, *args, **kwargs):
+            group, values, _, = args
+
+            if group == "remove":
+                self.values.pop(values, None)
+            else:
+                self.values[group] = values[group]
+
+        def to_operation(self, inputs, outputs, **kwargs):
             values = self.values
-            inputs = list(self.input_vars().values())
-            outputs = list(self.output_vars())
 
-            for idx, inp in enumerate(inputs):
-                inputs[idx] = sanitize_name(inp)
+            inputs_for_func = {}
+            for term, inp in inputs.items():
+                inputs_for_func[term] = sanitize_name(inp)
 
-            func = gen_filter_func(values, inputs, outputs)
-            return gn.Map(name=self.name()+"_operation", **kwargs, func=PythonEditorProc(func))
+            func = gen_filter_func(values, inputs_for_func, outputs)
+
+            return gn.Map(name=self.name()+"_operation",
+                          inputs=inputs, outputs=outputs,
+                          **kwargs,
+                          func=PythonEditorProc(func))
 
 except ImportError as e:
     print(e)
