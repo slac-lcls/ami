@@ -108,7 +108,9 @@ class CtrlNode(Node):
         if self.widget is None:
             return term
 
-        self.widget.terminalAdded(term)
+        if hasattr(self.widget, 'terminalAdded'):
+            self.widget.terminalAdded(term)
+
         return term
 
     def removeTerminal(self, term):
@@ -117,19 +119,19 @@ class CtrlNode(Node):
                 return
             term = self.terminals[term]
 
-        if self.widget:
+        if self.widget and hasattr(self.widget, 'terminalRemoved'):
             self.widget.terminalRemoved(term)
 
         super().removeTerminal(term)
 
     def terminalConnected(self, nodeTermConnected):
-        if self.widget is None:
+        if self.widget is None or not hasattr(self.widget, 'nodeTermConnected'):
             return
 
         self.widget.terminalConnected(nodeTermConnected)
 
     def terminalDisconnected(self, nodeTermDisconnected):
-        if self.widget is None:
+        if self.widget is None or not hasattr(self.widget, 'nodeTermDisconnected'):
             return
 
         self.widget.terminalDisconnected(nodeTermDisconnected)
