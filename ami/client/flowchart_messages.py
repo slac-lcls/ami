@@ -79,13 +79,58 @@ class DisplayNode(NodeMsg):
 
 class NodeCheckpoint(NodeMsg):
 
-    def __init__(self, name, state={}):
+    def __init__(self, name, state={}, event=None):
         super().__init__(name)
+        self.state = state
+        self.event = event
+
+
+class NodeTermAdded(NodeMsg):
+
+    def __init__(self, name, term, state):
+        super().__init__(name)
+        self.term = term
         self.state = state
 
 
-class Profiler(Msg):
+class NodeTermRemoved(NodeMsg):
 
-    def __init__(self, name, command):
+    def __init__(self, name, term):
         super().__init__(name)
-        self.command = ""
+        self.term = term
+
+
+class NodeTermConnected(NodeMsg):
+
+    def __init__(self,
+                 localNode, localNodeIsSource,
+                 localTerm, localTermState,
+                 remoteNode, remoteNodeIsSource,
+                 remoteTerm, remoteTermState):
+        super().__init__(localNode)
+        self.localNode = localNode
+        self.localNodeIsSource = localNodeIsSource
+        self.localTerm = localTerm
+        self.localTermState = localTermState
+        self.remoteNode = remoteNode
+        self.remoteNodeIsSource = remoteNodeIsSource
+        self.remoteTerm = remoteTerm
+        self.remoteTermState = remoteTermState
+
+
+class NodeTermDisconnected(NodeMsg):
+
+    def __init__(self,
+                 localNode, localNodeIsSource,
+                 localTerm, localTermState,
+                 remoteNode, remoteNodeIsSource,
+                 remoteTerm, remoteTermState):
+        super().__init__(localNode)
+        self.localNode = localNode
+        self.localNodeIsSource = localNodeIsSource
+        self.localTerm = localTerm
+        self.localTermState = localTermState
+        self.remoteNode = remoteNode
+        self.remoteNodeIsSource = remoteNodeIsSource
+        self.remoteTerm = remoteTerm
+        self.remoteTermState = remoteTermState

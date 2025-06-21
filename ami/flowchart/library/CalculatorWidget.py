@@ -40,6 +40,7 @@
 #
 #############################################################################
 
+import re
 from qtpy import QtWidgets, QtCore
 from ami.flowchart.library.common import generateUi
 
@@ -206,10 +207,11 @@ class FilterWidget(QtWidgets.QWidget):
 
     sigStateChanged = QtCore.Signal(object, object, object)
 
-    def __init__(self, inputs={}, outputs=[], parent=None):
+    def __init__(self, inputs={}, outputs=[], node=None, parent=None):
         super().__init__(parent)
-        self.inputs = inputs
-        self.outputs = outputs
+        self.node = node
+        self.inputs = inputs or {}
+        self.outputs = outputs or []
         self.layout = QtWidgets.QFormLayout()
         self.setLayout(self.layout)
 
@@ -227,26 +229,30 @@ class FilterWidget(QtWidgets.QWidget):
         self.condition_groups = {}
         self.else_condition = None
 
-        if self.inputs:
-            self.variable_widget = QtWidgets.QWidget(parent=self)
-            self.variable_layout = QtWidgets.QGridLayout()
-            self.variables = []
+        self.row = 0
+        self.col = 0
 
-            for _, term in self.inputs.items():
-                self.variables.append(self.createButton(term, self.operatorClicked))
+        self.variables = {}
+        self.variable_widget = QtWidgets.QWidget(parent=self)
+        self.variable_layout = QtWidgets.QGridLayout()
+        self.variable_widget.setLayout(self.variable_layout)
+        self.layout.addRow(self.variable_widget)
+        if self.inputs:
+            for term, input_name in self.inputs.items():
+                self.variables[input_name] = self.createButton(input_name, self.operatorClicked)
 
             row = 0
             col = 0
-            for i in range(0, len(self.inputs)):
-                self.variable_layout.addWidget(self.variables[i], row, col)
+            for name, widget in self.variables.items():
+                self.variable_layout.addWidget(widget, row, col)
                 if col < 3:
                     col += 1
                 else:
                     col = 0
                     row += 1
 
-            self.variable_widget.setLayout(self.variable_layout)
-            self.layout.addRow(self.variable_widget)
+            self.row = row
+            self.col = col
 
             self.add_elif_condition(name="If")
 
@@ -275,7 +281,7 @@ class FilterWidget(QtWidgets.QWidget):
 
         inputs = list(self.inputs.values())
         inputs.append("None")
-        for output in self.outputs:
+        for output in sorted(self.outputs):
             condition_group.append((output, 'combo', {'values': inputs, 'value': 'None', 'group': name}))
 
         self.condition_groups[name] = generateUi(condition_group)
@@ -320,18 +326,123 @@ class FilterWidget(QtWidgets.QWidget):
 
         return ui, stateGroup, ctrls, attrs
 
-    def remove_condition(self):
-        name = self.sender().name
+    def remove_condition(self, name=''):
+        if self.sender():
+            name = self.sender().name
+
         if name == "Else":
             ui, stateGroup, ctrls, attrs = self.else_condition
         else:
             ui, stateGroup, ctrls, attrs = self.condition_groups[name]
+
         self.layout.removeWidget(ui)
         ctrls[name]['groupbox'].deleteLater()
+
         if name == "Else":
             del self.else_condition
+            self.else_condition = None
         else:
             del self.condition_groups[name]
+
+        self.sigStateChanged.emit("remove", name, None)
+        self.node.sigStateChanged.emit(self.node)
+
+    def terminalAdded(self, term):
+        if term.isInput():
+            return
+
+        # new output terminal add to combo boxes
+        node_name = self.node.name()
+        term = term.name()
+        self.outputs.append(f"{node_name}.{term}")
+        inputs = list(self.inputs.values())
+        inputs.append("None")
+        for name, group in self.condition_groups.items():
+            ui, stateGroup, ctrls, attrs = group
+            groupbox = ctrls[name]["groupbox"]
+            widget = QtWidgets.QComboBox(parent=groupbox)
+            for input in inputs:
+                widget.addItem(input, input)
+            widget.setCurrentIndex(len(inputs)-1)
+            widget_name = f"{node_name}.{term}"
+            ctrls[name][widget_name] = widget
+            stateGroup.addWidget(widget, name=widget_name, group=name)
+            layout = groupbox.layout()
+            layout.addRow(widget_name, widget)
+            attrs[name][widget_name] = "None"
+            stateGroup.widgetChanged(widget)
+
+    def terminalRemoved(self, term):
+        if term.isInput():
+            # Disconnect sent before remove, just return
+            return
+        elif term.isOutput():
+            # remove comboboxes
+            node_name = self.node.name()
+            widget_name = f"{node_name}.{term.name()}"
+            self.outputs.remove(widget_name)
+            for name, group in self.condition_groups.items():
+                ui, stateGroup, ctrls, attrs = group
+                groupbox = ctrls[name]["groupbox"]
+                layout = groupbox.layout()
+                widget = ctrls[name].pop(widget_name)
+                stateGroup.removeWidget(widget)
+                layout.removeRow(widget)
+                attrs[name].pop(widget_name, None)
+                self.sigStateChanged.emit("remove", name, None)
+
+    def terminalConnected(self, nodeTermConnected):
+        if nodeTermConnected.localTermState['io'] == 'out':
+            return
+
+        new_input = ""
+        if nodeTermConnected.remoteNodeIsSource:
+            new_input = nodeTermConnected.remoteNode
+        else:
+            new_input = f"{nodeTermConnected.remoteNode}.{nodeTermConnected.remoteTerm}"
+
+        self.inputs[nodeTermConnected.localTerm] = new_input
+
+        self.variables[new_input] = self.createButton(new_input, self.operatorClicked)
+        self.variable_layout.addWidget(self.variables[new_input], self.row, self.col)
+        idx = len(self.inputs)-1
+
+        if self.col == 0 and self.row == 0:  # if the connection is the first connection
+            self.add_elif_condition(name="If")
+        else:
+            # go through comboboxes and add entry
+            for name, group in self.condition_groups.items():
+                ui, stateGroup, ctrls, attrs = group
+                for output in self.outputs:
+                    widget = ctrls[name][output]
+                    widget.insertItem(idx, new_input, new_input)
+                    stateGroup.widgetChanged(widget)
+
+        if self.col < 3:
+            self.col += 1
+        else:
+            self.col = 0
+            self.row += 1
+
+    def terminalDisconnected(self, nodeTermDisconnected):
+        if nodeTermDisconnected.localTermState['io'] == 'out':
+            return
+
+        term = nodeTermDisconnected.localTerm
+
+        # go through comboboxes and remove entry
+        idx = list(self.inputs.keys()).index(term)
+        input_name = self.inputs.pop(term)
+        widget = self.variables.pop(input_name)
+        self.variable_layout.removeWidget(widget)
+        widget.deleteLater()
+        for name, group in self.condition_groups.items():
+            ui, stateGroup, ctrls, attrs = group
+            for output in self.outputs:
+                widget = ctrls[name][output]
+                if stateGroup.readWidget(widget) == input_name:
+                    stateGroup.setWidget(widget, 'None')
+                widget.removeItem(idx)
 
     def state_changed(self, *args, **kwargs):
         attr, group, val = args
@@ -346,7 +457,7 @@ class FilterWidget(QtWidgets.QWidget):
         else:
             values[attr] = val
 
-        self.sigStateChanged.emit(attr, group, val)
+        self.sigStateChanged.emit(group, values, None)
 
     def saveState(self):
         state = {'conditions': len(self.condition_groups),
@@ -366,14 +477,12 @@ class FilterWidget(QtWidgets.QWidget):
     def restoreState(self, state):
         conditions = state['conditions']
 
-        if not self.inputs:
-            self.inputs = state.get('inputs', {})
-        if not self.outputs:
-            self.outputs = state.get('outputs', [])
+        self.inputs = state.get('inputs', {})
+        self.outputs = state.get('outputs', [])
 
         for condition in range(0, conditions):
             if condition == 0:
-                name = f"If"
+                name = "If"
             else:
                 name = f"Elif {condition}"
 
@@ -393,8 +502,71 @@ class FilterWidget(QtWidgets.QWidget):
             values[name] = state[name]
             stateGroup.setState({name: state[name]})
 
+        deletions = []
+        for name, group in self.condition_groups.items():
+            if name not in state:
+                deletions.append(name)
+
+        for name in deletions:
+            self.remove_condition(name)
+
+
+def extract_variables_from_condition(condition):
+    """Extract variable names from a condition string, excluding numbers and operators."""
+    # List of Python keywords to exclude
+    python_keywords = ['and', 'or', 'not', 'if', 'else', 'elif', 'for', 'while', 'in',
+                      'True', 'False', 'None', 'is', 'as', 'assert', 'break', 'class',
+                      'continue', 'def', 'del', 'except', 'finally', 'from', 'global',
+                      'import', 'lambda', 'nonlocal', 'pass', 'raise', 'return', 'try',
+                      'with', 'yield']
+
+    # This pattern finds variable names but excludes:
+    # 1. Python keywords
+    # 2. Numeric literals (integers, floats)
+    # 3. Operators and symbols
+    # Allow for names that can include -, :, and . in them
+    pattern = r'\b(?!(?:' + '|'.join(python_keywords) + r')\b)([a-zA-Z_][-a-zA-Z0-9_:.]*)\b'
+
+    # Extract all matches
+    potential_vars = re.findall(pattern, condition)
+
+    # Further filter to exclude anything that might be a number
+    variables = [var for var in potential_vars if not var.isdigit()]
+    sanitized_variables = [sanitize_name(var) for var in variables]
+    return set(sanitized_variables)
+
+
+def check_conditions(conditions_dict, inputs):
+    """
+    Check that the variables used in the condition map to inputs
+    """
+    cond_variables = set()
+    missing_variables = set()
+
+    # Extract all variables from all conditions
+    for key, value in conditions_dict.items():
+        if 'condition' in value:
+            #sanitized_condition = sanitize_name(value['condition'])
+            condition_vars = extract_variables_from_condition(value['condition'])
+            cond_variables.update(condition_vars)
+
+    # Get all variables from inputs
+    input_variables = set(inputs.values())
+
+    # Find missing variables
+    for var in cond_variables:
+        if var not in input_variables:
+            missing_variables.add(var)
+
+    return len(missing_variables) == 0
+
+
 def gen_filter_func(values, inputs, outputs):
     assert (len(values) >= 1)
+
+    cond_ok = check_conditions(values, inputs)
+    if not cond_ok:
+        raise ValueError("Condition variables not found in the input variables.")
 
     cond = sanitize_name(values['If']['condition'], space=False)
 
@@ -403,7 +575,7 @@ def func(*args, **kwargs):
 \t(%s,) = args
 \tif %s:
 \t\treturn %s
-""" % (', '.join(inputs), cond,
+""" % (', '.join(inputs.values()), cond,
        ', '.join(map(lambda x: sanitize_name(values['If'].get(x)),
                      outputs)))
 

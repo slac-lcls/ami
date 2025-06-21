@@ -349,7 +349,7 @@ class Node(QtCore.QObject):
         when they are constructing their Node list."""
         return None
 
-    def connected(self, localTerm, remoteTerm, pos=None):
+    def connected(self, localTerm, remoteTerm):
         """Called whenever one of this node's terminals is connected elsewhere."""
         node = remoteTerm.node()
 
@@ -496,6 +496,30 @@ class Node(QtCore.QObject):
         return {}
 
     def onCreate(self):
+        pass
+
+    def terminalAdded(self, term, *args, **kwargs):
+        """
+        Can be used to trigger updates in widget.
+        """
+        pass
+
+    def terminalRemoved(self, term, *args, **kwargs):
+        """
+        Can be used to trigger updates in widget.
+        """
+        pass
+
+    def terminalConnected(self, nodeTermConnected):
+        """
+        Can be used to trigger updates in widget.
+        """
+        pass
+
+    def terminalDisconnected(self, nodeTermDisconnected):
+        """
+        Can be used to trigger updates in widget.
+        """
         pass
 
 
