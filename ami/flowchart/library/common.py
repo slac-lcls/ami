@@ -125,13 +125,13 @@ class CtrlNode(Node):
         super().removeTerminal(term)
 
     def terminalConnected(self, nodeTermConnected):
-        if self.widget is None or not hasattr(self.widget, 'nodeTermConnected'):
+        if self.widget is None:
             return
 
         self.widget.terminalConnected(nodeTermConnected)
 
     def terminalDisconnected(self, nodeTermDisconnected):
-        if self.widget is None or not hasattr(self.widget, 'nodeTermDisconnected'):
+        if self.widget is None:
             return
 
         self.widget.terminalDisconnected(nodeTermDisconnected)
