@@ -128,13 +128,15 @@ class CtrlNode(Node):
         if self.widget is None:
             return
 
-        self.widget.terminalConnected(nodeTermConnected)
+        if self.widget and hasattr(self.widget, "terminalConnected"):
+            self.widget.terminalConnected(nodeTermConnected)
 
     def terminalDisconnected(self, nodeTermDisconnected):
         if self.widget is None:
             return
 
-        self.widget.terminalDisconnected(nodeTermDisconnected)
+        if self.widget and hasattr(self.widget, "terminalDisconnected"):
+            self.widget.terminalDisconnected(nodeTermDisconnected)
 
 
 class SourceNode(CtrlNode):
