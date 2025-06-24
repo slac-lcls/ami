@@ -14,9 +14,11 @@ class CtrlNode(Node):
     sigStateChanged = QtCore.Signal(object)
 
     def __init__(self, name, ui=None, terminals={}, **kwargs):
-        super().__init__(name=name, terminals=terminals, **kwargs)
         self.widget = None
+        self.widget_state = None
         self.geometry = None
+
+        super().__init__(name=name, terminals=terminals, **kwargs)
 
         if ui is None:
             if hasattr(self, 'uiTemplate'):
@@ -99,6 +101,42 @@ class CtrlNode(Node):
             self.widget = widget(topics, terms, addr, parent=win, node=self, **kwargs)
 
         return self.widget
+
+    def addTerminal(self, *args, **kwargs):
+        term = super().addTerminal(*args, **kwargs)
+
+        if self.widget is None:
+            return term
+
+        if hasattr(self.widget, 'terminalAdded'):
+            self.widget.terminalAdded(term)
+
+        return term
+
+    def removeTerminal(self, term):
+        if isinstance(term, str):
+            if term not in self.terminals:
+                return
+            term = self.terminals[term]
+
+        if self.widget and hasattr(self.widget, 'terminalRemoved'):
+            self.widget.terminalRemoved(term)
+
+        super().removeTerminal(term)
+
+    def terminalConnected(self, nodeTermConnected):
+        if self.widget is None:
+            return
+
+        if self.widget and hasattr(self.widget, "terminalConnected"):
+            self.widget.terminalConnected(nodeTermConnected)
+
+    def terminalDisconnected(self, nodeTermDisconnected):
+        if self.widget is None:
+            return
+
+        if self.widget and hasattr(self.widget, "terminalDisconnected"):
+            self.widget.terminalDisconnected(nodeTermDisconnected)
 
 
 class SourceNode(CtrlNode):
