@@ -498,18 +498,6 @@ class Node(QtCore.QObject):
     def onCreate(self):
         pass
 
-    def terminalAdded(self, term, *args, **kwargs):
-        """
-        Can be used to trigger updates in widget.
-        """
-        pass
-
-    def terminalRemoved(self, term, *args, **kwargs):
-        """
-        Can be used to trigger updates in widget.
-        """
-        pass
-
     def terminalConnected(self, nodeTermConnected):
         """
         Can be used to trigger updates in widget.
