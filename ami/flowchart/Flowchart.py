@@ -430,11 +430,12 @@ class Flowchart(Node):
                     except Exception:
                         printExc("Error creating node %s: (continuing anyway)" % n['name'])
 
-                node.restoreState(n['state'])
+                node.blockSignals(True)
+
                 if hasattr(node, "display"):
                     node.display(topics=None, terms=None, addr=None, win=None)
-                    if hasattr(node.widget, 'restoreState') and 'widget' in n['state']:
-                        node.widget.restoreState(n['state']['widget'])
+
+                node.restoreState(n['state'])
 
             connections = {}
             with tempfile.NamedTemporaryFile(mode='w') as type_file:
@@ -521,6 +522,7 @@ class Flowchart(Node):
         for name, node in self.nodes(data='node'):
             if node.viewed or node.exportable():
                 nodes.append(node)
+            node.blockSignals(False)
 
         await ctrl.chartWidget.build_views(nodes, ctrl=True, export=True)
 
