@@ -439,6 +439,7 @@ class Flowchart(Node):
 
             connections = {}
             edges = {}
+            checked = []
 
             with tempfile.NamedTemporaryFile(mode='w') as type_file:
                 type_file.write("from typing import *\n")
@@ -457,7 +458,7 @@ class Flowchart(Node):
                         node2 = nodes[n2]
                         term2 = node2[t2]
 
-                        term1.connectTo(term2, type_file=type_file)
+                        term1.connectTo(term2, type_file=type_file, checked=checked)
                         if term1.isInput():
                             in_name = node1.name() + '_' + term1.name()
                             in_name = in_name.replace('.', '_')

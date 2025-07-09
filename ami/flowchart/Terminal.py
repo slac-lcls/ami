@@ -138,7 +138,7 @@ class Terminal(QtCore.QObject):
         """Return the list of terms which receive input from this terminal."""
         return set([t for t in self.connections() if t.isInput()])
 
-    def connectTo(self, term, connectionItem=None, type_file=None):
+    def connectTo(self, term, connectionItem=None, type_file=None, checked=[]):
         try:
             if self.connectedTo(term):
                 raise Exception('Already connected')
@@ -165,7 +165,7 @@ class Terminal(QtCore.QObject):
                 elif t.isOutput():
                     types["Output"] = t
 
-            if not checkType(types, type_file):
+            if not checkType(types, type_file, checked):
                 raise Exception(f"Invalid types. Expected: {term.type()} Got: {self.type()}")
         except Exception:
             if connectionItem is not None:
@@ -542,10 +542,7 @@ class ConnectionItem(GraphicsObject):
         p.drawPath(self.path)
 
 
-checked = []
-
-
-def checkType(terminals, type_file=None):
+def checkType(terminals, type_file=None, checked=[]):
 
     t_in = terminals["Input"]
     t_out = terminals["Output"]
