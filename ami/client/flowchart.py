@@ -47,6 +47,7 @@ def run_editor_window(broker_addr, graphmgr_addr, checkpoint_addr, load=None, pr
         f.write("from typing import *\n")
         f.write("from mypy_extensions import TypedDict\n")
         f.write("import numbers\n")
+        f.write("import builtins\n")
         f.write("import amitypes\n")
         f.write("T = TypeVar('T')\n")
         f.flush()

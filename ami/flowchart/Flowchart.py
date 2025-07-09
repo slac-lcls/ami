@@ -438,10 +438,13 @@ class Flowchart(Node):
                 node.restoreState(n['state'])
 
             connections = {}
+            edges = {}
+
             with tempfile.NamedTemporaryFile(mode='w') as type_file:
-                type_file.write("from mypy_extensions import TypedDict\n")
                 type_file.write("from typing import *\n")
+                type_file.write("from mypy_extensions import TypedDict\n")
                 type_file.write("import numbers\n")
+                type_file.write("import builtins\n")
                 type_file.write("import amitypes\n")
                 type_file.write("T = TypeVar('T')\n\n")
 
@@ -460,11 +463,19 @@ class Flowchart(Node):
                             in_name = in_name.replace('.', '_')
                             out_name = node2.name() + '_' + term2.name()
                             out_name = out_name.replace('.', '_')
+                            edge = ((node2.name(), node1.name()),
+                                    f"{node2.name()}.{term2.name()}->{node1.name()}.{term1.name()}",
+                                    term2.name(), term1.name())
+                            edges[(in_name, out_name)] = edge
                         else:
                             in_name = node2.name() + '_' + term2.name()
                             in_name = in_name.replace('.', '_')
                             out_name = node1.name() + '_' + term1.name()
                             out_name = out_name.replace('.', '_')
+                            edge = ((node1.name(), node2.name()),
+                                    f"{node1.name()}.{term1.name()}->{node2.name()}.{term2.name()}",
+                                    term1.name(), term2.name())
+                            edges[(in_name, out_name)] = edge
 
                         connections[(in_name, out_name)] = (term1, term2)
                     except Exception:
@@ -473,8 +484,10 @@ class Flowchart(Node):
                         printExc("Error connecting terminals %s.%s - %s.%s:" % (n1, t1, n2, t2))
 
                 type_file.flush()
-                status = subprocess.run(["dmypy", "--follow-imports", "silent", "check", type_file.name],
+                dmypy_status = os.environ['DMYPY_STATUS_FILE']
+                status = subprocess.run(["dmypy", "--status-file", dmypy_status, "check", type_file.name],
                                         capture_output=True, text=True)
+
                 if status.returncode != 0:
                     lines = status.stdout.split('\n')[:-1]
                     for line in lines:
@@ -485,11 +498,21 @@ class Flowchart(Node):
                                 if i[0] == m:
                                     term1, term2 = connections[i]
                                     term1.disconnectFrom(term2)
+                                    if i in edges:
+                                        del edges[i]
                                     break
                                 elif i[1] == m:
                                     term1, term2 = connections[i]
                                     term1.disconnectFrom(term2)
+                                    if i in edges:
+                                        del edges[i]
                                     break
+
+                for _, edge in edges.items():
+                    localNode_remoteNode, key, localTerm, remoteTerm = edge
+                    localNode, remoteNode = localNode_remoteNode
+                    self._graph.add_edge(localNode, remoteNode, key=key,
+                                         from_term=localTerm, to_term=remoteTerm)
 
         finally:
             self.blockSignals(False)
