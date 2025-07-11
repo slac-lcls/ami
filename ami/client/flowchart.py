@@ -47,6 +47,7 @@ def run_editor_window(broker_addr, graphmgr_addr, checkpoint_addr, load=None, pr
         f.write("from typing import *\n")
         f.write("from mypy_extensions import TypedDict\n")
         f.write("import numbers\n")
+        f.write("import builtins\n")
         f.write("import amitypes\n")
         f.write("T = TypeVar('T')\n")
         f.flush()
@@ -82,7 +83,7 @@ def run_editor_window(broker_addr, graphmgr_addr, checkpoint_addr, load=None, pr
         title = 'AMI Client'
         if hutch:
             title += f' hutch: {hutch}'
-        if filename:
+        if filename is not None:
             title += ' - ' + filename.split('/')[-1]
 
         win.setWindowTitle(title)
@@ -121,17 +122,17 @@ class NodeWindow(QtWidgets.QMainWindow):
     def moveEvent(self, event):
         super().moveEvent(event)
         self.proc.node.geometry = self.saveGeometry()
-        self.proc.send_checkpoint(self.proc.node)
+        self.proc.send_checkpoint(self.proc.node, 'moveEvent')
 
     def resizeEvent(self, event):
         super().resizeEvent(event)
         self.proc.node.geometry = self.saveGeometry()
-        self.proc.send_checkpoint(self.proc.node)
+        self.proc.send_checkpoint(self.proc.node, 'resizeEvent')
 
     def closeEvent(self, event):
         self.proc.node.viewed = False
         self.proc.node.geometry = self.saveGeometry()
-        self.proc.send_checkpoint(self.proc.node)
+        self.proc.send_checkpoint(self.proc.node, 'closeEvent')
         self.proc.node.close()
         self.proc.widget = None
         self.destroy()
@@ -190,6 +191,7 @@ class NodeProcess(QtCore.QObject):
 
         self.ctrlWidget = self.node.ctrlWidget(self.win)
         self.widget = None
+        self.connected = False
 
         title = msg.name
         if hutch:
@@ -216,6 +218,14 @@ class NodeProcess(QtCore.QObject):
                 self.display(msg)
             elif isinstance(msg, fcMsgs.ReloadLibrary):
                 self.reloadLibrary(msg)
+            elif isinstance(msg, fcMsgs.NodeTermAdded):
+                self.node.addTerminal(msg.term, **msg.state)
+            elif isinstance(msg, fcMsgs.NodeTermRemoved):
+                self.node.removeTerminal(msg.term)
+            elif isinstance(msg, fcMsgs.NodeTermConnected):
+                self.node.terminalConnected(msg)
+            elif isinstance(msg, fcMsgs.NodeTermDisconnected):
+                self.node.terminalDisconnected(msg)
             elif isinstance(msg, fcMsgs.CloseNode):
                 return
 
@@ -260,7 +270,9 @@ class NodeProcess(QtCore.QObject):
                 self.widget.restoreState(msg.state)
                 self.widget.blockSignals(False)
 
-            self.node.sigStateChanged.connect(self.send_checkpoint)
+            if not self.connected:
+                self.node.sigStateChanged.connect(self.send_checkpoint)
+                self.connected = True
 
         self.win.show()
         if self.node.viewed:
@@ -273,11 +285,10 @@ class NodeProcess(QtCore.QObject):
             pg.reload.reload(mod)
 
     @asyncSlot(object)
-    async def send_checkpoint(self, node):
+    async def send_checkpoint(self, node, event='sigStateChanged'):
         state = node.saveState()
 
-        msg = fcMsgs.NodeCheckpoint(node.name(),
-                                    state=state)
+        msg = fcMsgs.NodeCheckpoint(node.name(), state=state, event=event)
         await self.checkpoint.send_string(node.name() + ZMQ_TOPIC_DELIM, zmq.SNDMORE)
         await self.checkpoint.send_pyobj(msg)
 
@@ -499,6 +510,18 @@ class MessageBroker(object):
                 await self.forward_message_to_node(topic, msg)
 
             elif isinstance(msg, fcMsgs.ReloadLibrary):
+                await self.forward_message_to_node(topic, msg)
+
+            elif isinstance(msg, fcMsgs.NodeTermAdded):
+                await self.forward_message_to_node(topic, msg)
+
+            elif isinstance(msg, fcMsgs.NodeTermRemoved):
+                await self.forward_message_to_node(topic, msg)
+
+            elif isinstance(msg, fcMsgs.NodeTermConnected):
+                await self.forward_message_to_node(topic, msg)
+
+            elif isinstance(msg, fcMsgs.NodeTermDisconnected):
                 await self.forward_message_to_node(topic, msg)
 
             elif isinstance(msg, fcMsgs.CloseNode):
