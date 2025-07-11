@@ -77,7 +77,7 @@ class AsyncFetcher(QtCore.QThread):
         self.topics = topics
         self.terms = terms
         self.subs = set(topics.values())
-        self.optional = set([value for key, value in topics.items() if type(key) is modifiers.optional])
+        self.optional = set([key.name for key, value in topics.items() if type(key) is modifiers.optional])
 
         self.view_subs = {}
         self.sub_views = {}
