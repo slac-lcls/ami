@@ -193,7 +193,7 @@ def manager_proc(ipc_dir):
         target=run_manager,
         args=(1, 1, addrs['results'], addrs['graph'], addrs['comm'],
               addrs['msg'], addrs['info'], addrs['export'], addrs['view'],
-              None, None, None, None)
+              None, None, None, None, None)
     )
     proc.daemon = False
     proc.start()
