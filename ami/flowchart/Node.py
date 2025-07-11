@@ -251,6 +251,7 @@ class Node(QtCore.QObject):
             group.add(name)
 
         self.graphicsItem().updateTerminals()
+        self.graphicsItem().buildMenu(reset=True)
         self.sigTerminalAdded.emit(self, term)
         return term
 
