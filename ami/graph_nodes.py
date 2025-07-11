@@ -347,8 +347,9 @@ class RollingBuffer(GlobalTransformation):
             # all inputs are optional
             elif len(args) == 0 and len(kwargs) > 0:
                 args = list(kwargs.values())
-            else:
+            elif len(args) > 0 and len(kwargs) > 0:
                 raise Exception("RollingBuffer currently does not support mixing required and optional arguments.")
+
         self.count += count
 
         if self.is_expanded: # this case is for collectors: args = buffer
