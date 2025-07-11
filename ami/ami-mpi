@@ -14,7 +14,7 @@ fi
 
 workers=1
 # workers_per_node=1
-heartbeat=10
+heartbeat=100
 port=5555
 worker_args=""
 
