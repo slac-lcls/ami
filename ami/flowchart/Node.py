@@ -274,13 +274,26 @@ class Node(QtCore.QObject):
         """
         Buffered nodes can override their topics/terms.
         """
-        return {in_var: self.name()+'.'+term for term, in_var in self.input_vars().items()}
+        topics = {}
+        for term, in_var in self.input_vars().items():
+            if isinstance(in_var, modifiers.optional):
+                topics[in_var.name] = self.name()+'.'+term
+            else:
+                topics[in_var] = self.name()+'.'+term
+        return topics
 
     def buffered_terms(self):
         """
         Buffered nodes can override their topics/terms.
         """
-        return self.input_vars()
+        terms = {}
+        for term, in_var in self.input_vars().items():
+            if isinstance(in_var, modifiers.optional):
+                terms[term] = in_var.name
+            else:
+                terms[term] = in_var
+
+        return terms
 
     def exportable(self):
         return self._exportable
@@ -294,7 +307,7 @@ class Node(QtCore.QObject):
         for name, term in self.terminals.items():
             if name in self._input_vars:
                 if term.optional():
-                    input_vars[name] = modifiers.optional(self._input_vars[name])
+                    input_vars[name] = modifiers.optional(self._input_vars[name], mapped_name=name)
                 else:
                     input_vars[name] = self._input_vars[name]
         return input_vars
