@@ -1505,7 +1505,7 @@ class RandomSource(SimSource):
         if not self.prompt_mode and self.check_heartbeat_boundary(eventid):
             yield self.heartbeat_msg()
 
-        event_num = eventid % self.bound
+        event_num = (eventid + int(10*np.random.rand(1)[0])) % self.bound
 
         for name in self.requested_data.names:
             event[name] = self.generated_events[name][event_num]
