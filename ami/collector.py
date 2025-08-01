@@ -118,7 +118,10 @@ class GraphCollector(Node, Collector):
 
     def poll_timeout(self):
         for name in self.store.builders.keys():
-            self.store.prune(name, self.node)
+            pruned_times, pruned_size = self.store.prune(name, self.node)
+            if pruned_size:
+                self.event_counter.labels(self.hutch, 'Pruned Heartbeat', self.name).inc()
+                self.event_size.labels(self.hutch, self.name).set(pruned_size)
 
     def process_msg(self, msg):
         if msg.mtype == MsgTypes.Transition:
