@@ -995,14 +995,34 @@ class HierarchicalDataSource(Source):
                 # emit the beginstep message
                 yield self.begin_step()
 
+                prev_timestamp = None
+
                 # loop over the events in the step
-                for evt in self._events(step):
+                if self.timeout:
+                    it = TimeoutIterator(self._events(step), timeout=self.timeout)
+                else:
+                    it = self._events(step)
+
+                for evt in it:
+                    if isinstance(evt, Timeout):
+                        # havent seen a new event yet and we timed out
+                        if prev_timestamp is None:
+                            continue
+                        eventid, heartbeat, unix_ts = prev_timestamp
+                        # set heartbeat
+                        self.check_heartbeat_boundary(heartbeat, timestamp=unix_ts)
+                        prev_timestamp = None
+                        yield self.heartbeat_msg()
+                        continue
+
                     self.source.evt = evt
                     # get the subclasses timestamp implementation
-                    eventid, heartbeat, unix_ts = self.timestamp(evt)
+                    prev_timestamp = self.timestamp(evt)
+                    eventid, heartbeat, unix_ts = prev_timestamp
                     # check the heartbeat
                     if self.check_heartbeat_boundary(heartbeat, timestamp=unix_ts):
                         yield self.heartbeat_msg()
+
                     # emit the processed event data
                     yield from self.event(eventid, unix_ts, self._process(evt))
                     # sleep for the requested event interval
