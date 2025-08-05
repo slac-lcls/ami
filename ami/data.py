@@ -1010,8 +1010,7 @@ class HierarchicalDataSource(Source):
                             continue
                         eventid, heartbeat, unix_ts = prev_timestamp
                         # set heartbeat
-                        self.check_heartbeat_boundary(heartbeat, timestamp=unix_ts)
-                        self.old_heartbeat = Heartbeat(self.old_heartbeat.identity, timestamp=unix_ts)
+                        self.old_heartbeat = Heartbeat(heartbeat // self.heart_period, timestamp=unix_ts)
                         prev_timestamp = None
                         yield self.heartbeat_msg()
                         continue
