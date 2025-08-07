@@ -145,15 +145,6 @@ class Worker(Node):
         # send the data from the store to collector
         size = self.store.collect(self.node, heartbeat)
 
-        # update the profiler data
-        # if self.times:
-        #     for name, exec_times in self.times.items():
-        #         self.report("profile", {'graph': name,
-        #                                 'heartbeat': heartbeat,
-        #                                 'times': exec_times,
-        #                                 'version': self.store.version(name)})
-        #     self.times = {}
-
         if self.event_rate:
             self.event_rate['num_events'] = self.num_events
             self.report("event_rate", self.event_rate)
