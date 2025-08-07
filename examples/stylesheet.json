@@ -1,4 +1,12 @@
 {
+    "SourceTree":
+    {
+        "expand" : false
+    },
+    "OperationTree":
+    {
+        "expand" : false
+    },
     "WaveformWidget":
     {
         "Point": {
