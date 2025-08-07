@@ -251,6 +251,7 @@ class Node(QtCore.QObject):
             group.add(name)
 
         self.graphicsItem().updateTerminals()
+        self.graphicsItem().buildMenu(reset=True)
         self.sigTerminalAdded.emit(self, term)
         return term
 
@@ -349,7 +350,7 @@ class Node(QtCore.QObject):
         when they are constructing their Node list."""
         return None
 
-    def connected(self, localTerm, remoteTerm, pos=None):
+    def connected(self, localTerm, remoteTerm):
         """Called whenever one of this node's terminals is connected elsewhere."""
         node = remoteTerm.node()
 
@@ -496,6 +497,18 @@ class Node(QtCore.QObject):
         return {}
 
     def onCreate(self):
+        pass
+
+    def terminalConnected(self, nodeTermConnected):
+        """
+        Can be used to trigger updates in widget.
+        """
+        pass
+
+    def terminalDisconnected(self, nodeTermDisconnected):
+        """
+        Can be used to trigger updates in widget.
+        """
         pass
 
 

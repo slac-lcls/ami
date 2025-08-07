@@ -342,6 +342,7 @@ async def test_editor(qtbot, flowchart, tmp_path):
     roi_in = roi_node._inputs['In']
 
     cspad_out().connectTo(roi_in())
+    await asyncio.sleep(0.1) # need to wait for nodeTermConnected slot to execute before we can check edges
     assert len(flowchart._graph.edges()) == 1
 
     widget = flowchart.widget()
@@ -350,11 +351,11 @@ async def test_editor(qtbot, flowchart, tmp_path):
     widget.setCurrentFile(pth)
     widget.saveClicked()
 
-    # await widget.clear()
-    # assert len(flowchart._graph.edges()) == 0
+    await widget.clear()
+    assert len(flowchart._graph.edges()) == 0
 
-    # await flowchart.loadFile(pth)
-    # assert len(flowchart._graph.edges()) == 1
+    await flowchart.loadFile(pth)
+    assert len(flowchart._graph.edges()) == 1
 
 
 # @pytest.mark.asyncio
