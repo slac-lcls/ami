@@ -391,7 +391,7 @@ class TimeoutIterator:
 
         self._interrupt = False
         self._done = False
-        self._buffer = queue.Queue()
+        self._buffer = queue.Queue(maxsize=1)
         self._thread = threading.Thread(target=self.__lookahead)
         self._thread.start()
 
