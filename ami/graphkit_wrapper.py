@@ -332,7 +332,8 @@ class Graph():
 
                     worker_node = NewNode(name=node.name+'_worker',
                                           inputs=inputs, outputs=worker_outputs,
-                                          reduction=node.reduction, N=worker_N,
+                                          reduction=node._worker_reduction,
+                                          N=worker_N,
                                           **extras)
                     worker_node.color = color
                     worker_node.is_global_operation = False
@@ -353,8 +354,9 @@ class Graph():
                         local_collector_N = max(node.N // num_local_collectors, 1)
                         workers_per_local_collector = max(num_workers // num_local_collectors, 1)
 
-                    local_collector_node = NewNode(name=node.name+'_localCollector', inputs=worker_outputs,
-                                                   outputs=local_collector_outputs, reduction=node.reduction,
+                    local_collector_node = NewNode(name=node.name+'_localCollector',
+                                                   inputs=worker_outputs,  outputs=local_collector_outputs,
+                                                   reduction=node._local_reduction,
                                                    N=local_collector_N, is_expanded=True,
                                                    num_contributors=workers_per_local_collector, **extras)
                     local_collector_node.color = color
@@ -373,9 +375,9 @@ class Graph():
                     N = max((N // num_workers)*num_workers, 1)
 
                     global_collector_node = NewNode(name=node.name+'_globalCollector',
-                                                    inputs=local_collector_outputs,
-                                                    outputs=outputs, reduction=node.reduction, N=N,
-                                                    is_expanded=True,
+                                                    inputs=local_collector_outputs, outputs=outputs,
+                                                    reduction=node._global_reduction,
+                                                    N=N, is_expanded=True,
                                                     num_contributors=num_local_collectors, **extras)
                     global_collector_node.color = color
                     self.children_of_global_operations[node.parent].add(global_collector_node)

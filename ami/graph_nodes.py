@@ -103,16 +103,29 @@ class StatefulTransformation(Transformation):
             inputs (list): List of inputs
             outputs (list): List of outputs
             reduction (function): Reduction function
+            reduction (function): Reduction function
         """
-
         reduction = kwargs.pop('reduction', None)
+        worker_reduction = kwargs.pop('worker_reduction', None)
+        local_reduction = kwargs.pop('local_reduction', None)
+        global_reduction = kwargs.pop('global_reduction', None)
 
         kwargs.setdefault('func', None)
         super().__init__(**kwargs)
 
-        if reduction:
+        if worker_reduction and local_reduction and global_reduction:
+            assert hasattr(worker_reduction, '__call__'), 'worker_reduction is not callable'
+            assert hasattr(local_reduction, '__call__'), 'local_reduction is not callable'
+            assert hasattr(global_reduction, '__call__'), 'global_reduction is not callable'
+        elif reduction:
             assert hasattr(reduction, '__call__'), 'reduction is not callable'
-        self.reduction = reduction
+            worker_reduction = reduction
+            local_reduction = reduction
+            global_reduction = reduction
+
+        self._worker_reduction = worker_reduction
+        self._local_reduction = local_reduction
+        self._global_reduction = global_reduction
 
     @abc.abstractmethod
     def __call__(self, *args, **kwargs):
@@ -130,6 +143,14 @@ class StatefulTransformation(Transformation):
         Execute at the end of a heartbeat.
         """
         return
+
+    def reduction(self, *args, **kwargs):
+        if self.color == 'worker':
+            return self._worker_reduction(*args, **kwargs)
+        elif self.color == 'localCollector':
+            return self._local_reduction(*args, **kwargs)
+        elif self.color == 'globalCollector':
+            return self._global_reduction(*args, **kwargs)
 
     def to_operation(self):
         return operation(name=self.name, needs=self.inputs, provides=self.outputs,
@@ -222,7 +243,7 @@ class Accumulator(GlobalTransformation):
             count = 1
             values = args
 
-        self.res = self.reduction(self.res, *values)
+        self.res = self.reduction(self.res, *values, count=count)
         self.count += count
 
         return self.count, self.res
