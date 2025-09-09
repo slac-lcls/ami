@@ -503,6 +503,80 @@ class StatsVsScan(CtrlNode):
         return nodes
 
 
+class ExponentialMovingAverage1D(CtrlNode):
+
+    """
+    Exponential Moving Average for Waveforms.
+    """
+
+    nodeName = "ExponentialMovingAverage1D"
+    uiTemplate = [('Fraction', 'doubleSpin', {'value': 1, 'min': 0, 'max': 1})]
+
+    def __init__(self, name):
+        super().__init__(name, terminals={'In': {'io': 'in', 'ttype': Array1d},
+                                          'Out': {'io': 'out', 'ttype': Array1d}},
+                         global_op=True)
+
+    def to_operation(self, inputs, outputs, **kwargs):
+        summed_outputs = [self.name()+"_count", self.name()+"_sum"]
+
+        fraction = self.values['Fraction']
+
+        def worker_reduction(res, *rest, **kwargs):
+            return fraction*res+(1-fraction)*np.sum(rest, axis=0)
+
+        def collector_reduction(res, *rest, **kwargs):
+            count = kwargs['count']
+            return (res*(count-1) + rest[0])/count
+
+        return [gn.Accumulator(name=self.name()+"_accumulated",
+                               inputs=inputs, outputs=summed_outputs,
+                               worker_reduction=worker_reduction,
+                               local_reduction=collector_reduction,
+                               global_reduction=collector_reduction,
+                               **kwargs),
+                gn.Map(name=self.name()+"_unzip",
+                       inputs=summed_outputs, outputs=outputs,
+                       func=lambda count, s: s, **kwargs)]
+
+
+class ExponentialMovingAverage2D(CtrlNode):
+
+    """
+    Exponential Moving Average for Images.
+    """
+
+    nodeName = "ExponentialMovingAverage2D"
+    uiTemplate = [('Fraction', 'doubleSpin', {'value': 1, 'min': 0, 'max': 1})]
+
+    def __init__(self, name):
+        super().__init__(name, terminals={'In': {'io': 'in', 'ttype': Array2d},
+                                          'Out': {'io': 'out', 'ttype': Array2d}},
+                         global_op=True)
+
+    def to_operation(self, inputs, outputs, **kwargs):
+        summed_outputs = [self.name()+"_count", self.name()+"_sum"]
+
+        fraction = self.values['Fraction']
+
+        def worker_reduction(res, *rest, **kwargs):
+            return fraction*res+(1-fraction)*np.sum(rest, axis=0)
+
+        def collector_reduction(res, *rest, **kwargs):
+            count = kwargs['count']
+            return (res*(count-1) + rest[0])/count
+
+        return [gn.Accumulator(name=self.name()+"_accumulated",
+                               inputs=inputs, outputs=summed_outputs,
+                               worker_reduction=worker_reduction,
+                               local_reduction=collector_reduction,
+                               global_reduction=collector_reduction,
+                               **kwargs),
+                gn.Map(name=self.name()+"_unzip",
+                       inputs=summed_outputs, outputs=outputs,
+                       func=lambda count, s: s, **kwargs)]
+
+
 class Combinations(CtrlNode):
 
     """

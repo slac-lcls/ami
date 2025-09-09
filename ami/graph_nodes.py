@@ -103,7 +103,6 @@ class StatefulTransformation(Transformation):
             inputs (list): List of inputs
             outputs (list): List of outputs
             reduction (function): Reduction function
-            reduction (function): Reduction function
         """
         reduction = kwargs.pop('reduction', None)
         worker_reduction = kwargs.pop('worker_reduction', None)

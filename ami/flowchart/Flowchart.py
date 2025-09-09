@@ -907,6 +907,12 @@ class FlowchartCtrlWidget(QtWidgets.QWidget):
         version = str(await self.graphCommHandler.graphVersion)
         state = self.chart.saveState()
         state = json.dumps(state, indent=2, separators=(',', ': '), sort_keys=False, cls=TypeEncoder)
+
+        ts = datetime.now().strftime("%d%m%Y_%H%M%S")
+        with open(os.path.expanduser(f"~/.cache/ami/autosave_{ts}.fc"), "w") as f:
+            f.write(state)
+            f.write('\n')
+
         self.graph_info.labels(self.chart.hutch, self.graph_name).info({'graph': state, 'version': version})
         self.graph_version.labels(self.chart.hutch, self.graph_name).set(version)
 
