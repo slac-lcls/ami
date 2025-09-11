@@ -202,7 +202,7 @@ def build_parser():
 
     parser.add_argument(
         '--timeout',
-        help='timeout in ms for zmq polling',
+        help='heartbeat timeout in ms',
         type=int,
         default=None
     )
@@ -343,7 +343,7 @@ def run_ami(args, queue=None):
                 target=functools.partial(_sys_exit, run_worker),
                 args=(i, args.num_workers, args.heartbeat, src_cfg,
                       collector_addr, graph_addr, msg_addr, export_addr, flags, args.prometheus_dir,
-                      args.prometheus_port, args.hutch, args.hwm, args.cprofile)
+                      args.prometheus_port, args.hutch, args.hwm, args.timeout, args.cprofile)
             )
             proc.daemon = True
             proc.start()

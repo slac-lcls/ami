@@ -23,7 +23,7 @@ logger = logging.getLogger(__name__)
 
 class Worker(Node):
     def __init__(self, node, src, collector_addr, graph_addr, msg_addr, export_addr, prometheus_dir,
-                 prometheus_port, hutch, hwm):
+                 prometheus_port, hutch, hwm, timeout):
         """
         node : int
             a unique integer identifying this worker
@@ -144,15 +144,6 @@ class Worker(Node):
     def collect(self, heartbeat):
         # send the data from the store to collector
         size = self.store.collect(self.node, heartbeat)
-
-        # update the profiler data
-        # if self.times:
-        #     for name, exec_times in self.times.items():
-        #         self.report("profile", {'graph': name,
-        #                                 'heartbeat': heartbeat,
-        #                                 'times': exec_times,
-        #                                 'version': self.store.version(name)})
-        #     self.times = {}
 
         if self.event_rate:
             self.event_rate['num_events'] = self.num_events
@@ -278,11 +269,11 @@ class Worker(Node):
                                 graph.reset()
                                 graph.begin_run(color=Colors.Worker)
                     elif msg.payload.ttype == Transitions.Unconfigure:
-                        if self.src.heartbeat is not None:
-                            self.collect(self.src.heartbeat)
                         for name, graph in self.graphs.items():
                             if graph:
                                 graph.end_run(color=Colors.Worker)
+                        if self.src.heartbeat is not None:
+                            self.collect(self.src.heartbeat)
                     elif msg.payload.ttype == Transitions.BeginStep:
                         for name, graph in self.graphs.items():
                             if graph:
@@ -309,7 +300,8 @@ class Worker(Node):
 
 
 def run_worker(num, num_workers, hb_period, source, collector_addr, graph_addr, msg_addr, export_addr,
-               flags=None, prometheus_dir=None, prometheus_port=None, hutch=None, hwm=None, cprofile=False):
+               flags=None, prometheus_dir=None, prometheus_port=None, hutch=None, hwm=None, timeout=None,
+               cprofile=False):
 
     logger.info('Starting worker # %d, sending to collector at %s PID: %d', num, collector_addr, os.getpid())
 
@@ -352,14 +344,15 @@ def run_worker(num, num_workers, hb_period, source, collector_addr, graph_addr, 
                           num_workers,
                           hb_period,
                           src_cfg,
-                          flags)
+                          flags,
+                          timeout=timeout)
         else:
             logger.critical("worker%03d: unknown data source type: %s", num, source[0])
             return 1
 
 
     with Worker(num, src, collector_addr, graph_addr, msg_addr, export_addr, prometheus_dir, prometheus_port,
-                hutch, hwm) as worker:
+                hutch, hwm, timeout) as worker:
         return worker.run()
 
 
@@ -474,6 +467,13 @@ def main():
     )
 
     parser.add_argument(
+        '--timeout',
+        help='heartbeat timeout in ms',
+        type=int,
+        default=None
+    )
+
+    parser.add_argument(
         '--cprofile',
         help="profile with cprofile",
         action='store_true'
@@ -514,6 +514,7 @@ def main():
                           args.prometheus_port,
                           args.hutch,
                           args.hwm,
+                          args.timeout,
                           args.cprofile)
     except KeyboardInterrupt:
         logger.info("Worker killed by user...")

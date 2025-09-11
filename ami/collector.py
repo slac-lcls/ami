@@ -118,7 +118,10 @@ class GraphCollector(Node, Collector):
 
     def poll_timeout(self):
         for name in self.store.builders.keys():
-            self.store.prune(name, self.node)
+            pruned_times, pruned_size = self.store.prune(name, self.node)
+            if pruned_size:
+                self.event_counter.labels(self.hutch, 'Pruned Heartbeat', self.name).inc()
+                self.event_size.labels(self.hutch, self.name).set(pruned_size)
 
     def process_msg(self, msg):
         if msg.mtype == MsgTypes.Transition:
@@ -143,7 +146,7 @@ class GraphCollector(Node, Collector):
                                       self.name).set(latency.total_seconds())
             datagram_start = time.time()
             self.store.update(msg.name, msg.heartbeat, self.eb_id(msg.identity), msg.version, msg.payload)
-            if msg.heartbeat.prompt or self.store.ready(msg.name, msg.heartbeat):
+            if self.store.ready(msg.name, msg.heartbeat):
                 times, size = (None, None)
                 try:
                     # prune entries older than the current heartbeat
@@ -358,7 +361,7 @@ def main(color, upstream_port, downstream_port):
 
     parser.add_argument(
         '--timeout',
-        help='timeout in ms for zmq polling',
+        help='heartbeat timeout in ms',
         type=int,
         default=None
     )
@@ -448,6 +451,7 @@ def main(color, upstream_port, downstream_port):
                                               args.prometheus_port,
                                               args.hutch,
                                               args.hwm,
+                                              args.timeout,
                                               args.cprofile),
                                         daemon=True)
                     worker.start()
