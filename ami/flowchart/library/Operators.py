@@ -633,7 +633,12 @@ try:
                 if type(arg) is np.ndarray:
                     args[idx] = arg.astype(np.float64, copy=False)
 
-            return self.func(*args, **kwargs)
+            try:
+                return self.func(*args, **kwargs)
+            except Exception as e:
+                raise gn.AMIWarning(e)
+
+            return np.nan
 
     class Calculator(CtrlNode):
         """
