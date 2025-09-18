@@ -134,27 +134,30 @@ class CalculatorWidget(QtWidgets.QWidget):
 
         self.setWindowTitle("Calculator")
 
+        self.row = 0
+        self.col = 0
+
+        self.variables = {}
+        self.variable_widget = QtWidgets.QWidget(parent=self)
+        self.variable_layout = QtWidgets.QGridLayout()
+        self.variable_widget.setLayout(self.variable_layout)
+        self.layout.addWidget(self.variable_widget, 6, 0, 1, 7)
+
         if terms:
-            self.variable_widget = QtWidgets.QWidget(parent=self)
-            self.variable_layout = QtWidgets.QGridLayout()
-
-            self.variables = []
-
-            for _, term in terms.items():
-                self.variables.append(self.createButton(term, self.operatorClicked))
-
             row = 0
             col = 0
-            for i in range(0, len(terms)):
-                self.variable_layout.addWidget(self.variables[i], row, col)
+
+            for term, variable in terms.items():
+                self.variables[term] = self.createButton(variable, self.operatorClicked)
+                self.variable_layout.addWidget(self.variables[term], row, col)
                 if col < 3:
                     col += 1
                 else:
                     col = 0
                     row += 1
 
-            self.variable_widget.setLayout(self.variable_layout)
-            self.layout.addWidget(self.variable_widget, 6, 0, 1, 7)
+            self.row = row
+            self.col = col
 
     def stateChanged(self, text):
         self.sigStateChanged.emit("operation", None, text)
@@ -195,6 +198,33 @@ class CalculatorWidget(QtWidgets.QWidget):
         button.op = op
         button.clicked.connect(member)
         return button
+
+    def terminalConnected(self, nodeTermConnected):
+        if nodeTermConnected.localTermState['io'] == 'out':
+            return
+
+        term = nodeTermConnected.localTerm
+        if nodeTermConnected.remoteNodeIsSource:
+            variable = nodeTermConnected.remoteNode
+        else:
+            variable = nodeTermConnected.remoteNode + "." + nodeTermConnected.remoteTerm
+
+        self.variables[term] = self.createButton(variable, self.operatorClicked)
+        self.variable_layout.addWidget(self.variables[term], self.row, self.col)
+        if self.col < 3:
+            self.col += 1
+        else:
+            self.col = 0
+            self.row += 1
+
+    def terminalDisconnected(self, nodeTermDisconnected):
+        if nodeTermDisconnected.localTermState['io'] == 'out':
+            return
+
+        term = nodeTermDisconnected.localTerm
+        widget = self.variables.pop(term)
+        self.variable_layout.removeWidget(widget)
+        widget.deleteLater()
 
     def saveState(self):
         return {'operation': self.display.text()}

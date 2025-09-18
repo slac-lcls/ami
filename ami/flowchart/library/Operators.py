@@ -582,7 +582,7 @@ try:
 
         def display(self, topics, terms, addr, win, **kwargs):
             if self.widget is None:
-                self.widget = CalculatorWidget(terms, win, self.values['operation'])
+                self.widget = CalculatorWidget(terms or self.input_vars(), win, self.values['operation'])
                 self.widget.sigStateChanged.connect(self.state_changed)
 
             return self.widget
