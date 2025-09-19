@@ -510,7 +510,7 @@ class ExponentialMovingAverage1D(CtrlNode):
     """
 
     nodeName = "ExponentialMovingAverage1D"
-    uiTemplate = [('Fraction', 'doubleSpin', {'value': 1, 'min': 0, 'max': 1})]
+    uiTemplate = [('Fraction of old', 'doubleSpin', {'value': 1, 'min': 0, 'max': 1})]
 
     def __init__(self, name):
         super().__init__(name, terminals={'In': {'io': 'in', 'ttype': Array1d},
@@ -520,14 +520,14 @@ class ExponentialMovingAverage1D(CtrlNode):
     def to_operation(self, inputs, outputs, **kwargs):
         summed_outputs = [self.name()+"_count", self.name()+"_sum"]
 
-        fraction = self.values['Fraction']
+        fraction = self.values['Fraction of old']
 
-        def worker_reduction(res, *rest, **kwargs):
-            return fraction*res+(1-fraction)*np.sum(rest, axis=0)
+        def worker_reduction(old, *new, **kwargs):
+            return fraction*old+(1-fraction)*np.sum(new, axis=0)
 
-        def collector_reduction(res, *rest, **kwargs):
+        def collector_reduction(old_avg, *new_1worker, **kwargs):
             count = kwargs['count']
-            return (res*(count-1) + rest[0])/count
+            return old_avg + new_1worker[0]*count
 
         return [gn.Accumulator(name=self.name()+"_accumulated",
                                inputs=inputs, outputs=summed_outputs,
@@ -537,7 +537,7 @@ class ExponentialMovingAverage1D(CtrlNode):
                                **kwargs),
                 gn.Map(name=self.name()+"_unzip",
                        inputs=summed_outputs, outputs=outputs,
-                       func=lambda count, s: s, **kwargs)]
+                       func=lambda count, s: s/count, **kwargs)]
 
 
 class ExponentialMovingAverage2D(CtrlNode):
@@ -547,7 +547,7 @@ class ExponentialMovingAverage2D(CtrlNode):
     """
 
     nodeName = "ExponentialMovingAverage2D"
-    uiTemplate = [('Fraction', 'doubleSpin', {'value': 1, 'min': 0, 'max': 1})]
+    uiTemplate = [('Fraction of old', 'doubleSpin', {'value': 1, 'min': 0, 'max': 1})]
 
     def __init__(self, name):
         super().__init__(name, terminals={'In': {'io': 'in', 'ttype': Array2d},
@@ -557,14 +557,14 @@ class ExponentialMovingAverage2D(CtrlNode):
     def to_operation(self, inputs, outputs, **kwargs):
         summed_outputs = [self.name()+"_count", self.name()+"_sum"]
 
-        fraction = self.values['Fraction']
+        fraction = self.values['Fraction of old']
 
         def worker_reduction(res, *rest, **kwargs):
             return fraction*res+(1-fraction)*np.sum(rest, axis=0)
 
-        def collector_reduction(res, *rest, **kwargs):
+        def collector_reduction(old_avg, *new_1worker, **kwargs):
             count = kwargs['count']
-            return (res*(count-1) + rest[0])/count
+            return old_avg + new_1worker[0]*count
 
         return [gn.Accumulator(name=self.name()+"_accumulated",
                                inputs=inputs, outputs=summed_outputs,
@@ -574,7 +574,7 @@ class ExponentialMovingAverage2D(CtrlNode):
                                **kwargs),
                 gn.Map(name=self.name()+"_unzip",
                        inputs=summed_outputs, outputs=outputs,
-                       func=lambda count, s: s, **kwargs)]
+                       func=lambda count, s: s/count, **kwargs)]
 
 
 class Combinations(CtrlNode):

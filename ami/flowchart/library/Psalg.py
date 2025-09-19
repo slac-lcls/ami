@@ -1025,9 +1025,9 @@ class ThresholdingHitFinder(CtrlNode):
             def worker_reduction(res, *rest, **kwargs):
                 return fraction*res+(1-fraction)*np.sum(rest, axis=0)
 
-            def collector_reduction(res, *rest, **kwargs):
+            def collector_reduction(old_avg, *new_1worker, **kwargs):
                 count = kwargs['count']
-                return (res*(count-1) + rest[0])/count
+                return old_avg + new_1worker[0]*count
 
             nodes = [gn.Map(name=self.name()+"_map",
                             inputs=inputs, outputs=mapped_outputs,
@@ -1040,7 +1040,7 @@ class ThresholdingHitFinder(CtrlNode):
                                     **kwargs),
                      gn.Map(name=self.name()+"_unzip",
                             inputs=summed_outputs, outputs=outputs,
-                            func=lambda count, s: s, **kwargs)]
+                            func=lambda count, s: s/count, **kwargs)]
         elif fct == "Infinite":
             def reduction(res, *rest, **kwargs):
                 res += np.sum(rest, axis=0)
