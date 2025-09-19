@@ -700,7 +700,8 @@ class Flowchart(Node):
                         node = self.nodes(data='node')[node_name]
                         if node.exception is None:
                             node.setException(msg, "warning")
-                            ctrl.chartWidget.updateStatus(f"WARNING: {source} {node.name()}: {msg}", color='red')
+                            ctrl.chartWidget.updateStatus(f"WARNING: {source} {node.name()}: {msg}", color='orange')
+                            logger.warning(f"{source} {node.name()}: {msg}")
             elif topic == 'error':
                 ctrl = self.widget()
                 if hasattr(msg, 'node_name'):
@@ -710,8 +711,10 @@ class Flowchart(Node):
                     node = self.nodes(data='node')[node_name]
                     node.setException(msg)
                     ctrl.chartWidget.updateStatus(f"ERROR: {source} {node.name()}: {msg}", color='red')
+                    logger.error(f"{source} {node.name()}: {msg}")
                 else:
                     ctrl.chartWidget.updateStatus(f"ERROR: {source}: {msg}", color='red')
+                    logger.error(f"{source}: {msg}")
 
     async def run(self, load=None):
         tasks = [asyncio.create_task(self.updateState()),
