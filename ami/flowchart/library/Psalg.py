@@ -1022,21 +1022,27 @@ class ThresholdingHitFinder(CtrlNode):
         if fct == "Exponential Moving Average":
             fraction = self.values['widget_state']['args']['Fraction']
 
-            def reduction(res, *rest):
-                res = fraction*res+(1-fraction)*np.sum(rest, axis=0)
-                return res
+            def worker_reduction(res, *rest, **kwargs):
+                return fraction*res+(1-fraction)*np.sum(rest, axis=0)
+
+            def collector_reduction(old_avg, *new_1worker, **kwargs):
+                count = kwargs['count']
+                return old_avg + new_1worker[0]*count
 
             nodes = [gn.Map(name=self.name()+"_map",
                             inputs=inputs, outputs=mapped_outputs,
                             func=threshold_img, **kwargs),
                      gn.Accumulator(name=self.name()+"_accumulated",
                                     inputs=mapped_outputs, outputs=summed_outputs,
-                                    reduction=reduction, **kwargs),
+                                    worker_reduction=worker_reduction,
+                                    local_reduction=collector_reduction,
+                                    global_reduction=collector_reduction,
+                                    **kwargs),
                      gn.Map(name=self.name()+"_unzip",
                             inputs=summed_outputs, outputs=outputs,
-                            func=lambda count, s: s, **kwargs)]
+                            func=lambda count, s: s/count, **kwargs)]
         elif fct == "Infinite":
-            def reduction(res, *rest):
+            def reduction(res, *rest, **kwargs):
                 res += np.sum(rest, axis=0)
                 return res
 

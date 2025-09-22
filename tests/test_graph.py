@@ -130,7 +130,7 @@ def test_global_replace():
     def threshold_img(img):
         return np.where(img >= threshold, 1, 0)
 
-    def reduction(res, *rest):
+    def reduction(res, *rest, **kwargs):
         res += np.sum(rest, axis=0)
         return res
 

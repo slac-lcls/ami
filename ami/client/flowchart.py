@@ -69,6 +69,8 @@ def run_editor_window(broker_addr, graphmgr_addr, checkpoint_addr, load=None, pr
         title += f' hutch: {hutch}'
     win.setWindowTitle(title)
 
+    os.makedirs(os.path.expanduser("~/.cache/ami/"), exist_ok=True)
+
     # Create flowchart, define input/output terminals
     fc = Flowchart(broker_addr=broker_addr,
                    graphmgr_addr=graphmgr_addr,
