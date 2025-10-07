@@ -1,4 +1,5 @@
 import dill
+import importlib
 import networkx as nx
 import collections
 import ami.graph_nodes as gn
@@ -314,7 +315,7 @@ class Graph():
                 self.children_of_global_operations[node.parent] = set()
 
             self.graph.remove_node(node)
-            NewNode = getattr(gn, node.__class__.__name__)
+            NewNode = getattr(importlib.import_module(node.__module__), node.__class__.__name__)
 
             color_order = ['worker', 'localCollector', 'globalCollector']
             worker_outputs = None
