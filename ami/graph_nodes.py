@@ -308,6 +308,33 @@ class PickN(GlobalTransformation):
         self.res = [None]*self.N
 
 
+class Select1(GlobalTransformation):
+
+    def __init__(self, **kwargs):
+        exportable = kwargs.pop('exportable', False)
+        super().__init__(**kwargs)
+        self.exportable = exportable
+        self.res = set()
+
+    def __call__(self, *args, **kwargs):
+        if not args and kwargs:
+            args = list(kwargs.values())
+        elif self.is_expanded and len(args) == 1 and type(args[0]) is list:
+            args = args[0]
+
+        if self.color == "worker":
+            return args
+        elif self.color == "localCollector":
+            self.res.update(args)
+        elif self.color == "globalCollector":
+            self.res = self.res.union(*args)
+
+        return self.res
+
+    def reset(self):
+        self.res = set()
+
+
 class SumN(GlobalTransformation):
 
     def __init__(self, **kwargs):
