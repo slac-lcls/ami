@@ -408,9 +408,11 @@ class ResultStore(ZmqHandler):
     a Collector object.
     """
 
-    def __init__(self, addr, ctx=None, hwm=None):
+    def __init__(self, addr, ctx=None, hwm=None, name=""):
         super().__init__(addr, ctx, hwm)
         self.stores = {}
+        self.select_stores = {}
+        self.name = name
 
     def __bool__(self):
         if self.stores:
@@ -424,14 +426,27 @@ class ResultStore(ZmqHandler):
     def configure(self, name, version):
         if name not in self.stores:
             self.stores[name] = Store(version=version)
+            self.select_stores[name] = Store(version=version)
         else:
             self.stores[name].version = version
+            self.select_stores[name].version = version
 
     def remove(self, name):
         del self.stores[name]
+        del self.select_stores[name]
 
-    def update(self, name, updates):
-        self.stores[name].update(updates)
+    def update(self, graph, updates):
+        select = {}
+        for name, update in updates.items():
+            if name.startswith("_auto"):
+                select[name] = update
+
+        if select:
+            for name in select:
+                updates[name] = self.name
+
+        self.stores[graph].update(updates)
+        self.select_stores[graph].update(select)
 
     def collect(self, identity, heartbeat):
         size = 0
@@ -445,8 +460,12 @@ class ResultStore(ZmqHandler):
     def clear(self, name=None):
         if name is not None:
             self.stores[name].clear()
+            self.select_stores[name].clear()
         else:
             for store in self.stores.values():
+                store.clear()
+
+            for store in self.select_stores.values():
                 store.clear()
 
 
@@ -600,6 +619,11 @@ class GraphBuilder(ContributionBuilder):
             self.pending[eb_key].clear()
             if self.graph:
                 for data in contribs.values():
+                    if self.color == "globalCollector":
+                        for k in data:
+                            if k.startswith("_auto"):
+                                worker = data[k].pop()
+
                     start = time.time()
                     graph_result = self.graph(data, color=self.color)
                     stop = time.time()
@@ -1456,8 +1480,7 @@ class CommHandler(abc.ABC):
             The constructed graph view node.
         """
         node_name = '%s_view' % view_name
-
-        return self._make_node(gn.PickN, name=node_name, inputs=name, outputs=view_name, N=1, parent=parent)
+        return self._make_node(gn.Select1, name=node_name, inputs=name, outputs=view_name, parent=parent)
 
     def _make_export_node(self, name, export_name, N=1):
         """
