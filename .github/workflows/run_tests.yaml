@@ -5,7 +5,7 @@ on:
   workflow_dispatch:
 
 jobs:
-  build-lcls-ii:
+  run_tests:
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -31,7 +31,5 @@ jobs:
           cd ..
 
       - name: Build AMI
-        run: |
-          ls
-          cd lcls2
+        run: |      
           ./build_all.sh
