@@ -32,7 +32,7 @@ jobs:
 
       - name: Build AMI
         run: |      
-          ./build_all.sh
+          pip install .
 
       - name: Test AMI
         run: |
