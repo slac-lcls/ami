@@ -26,3 +26,7 @@ jobs:
           activate-environment: build-conda-env
           channels: lcls-ii, conda-forge
           environment-file: .daq_20250402.txt
+          
+      - name: Build
+        run:
+          ./build_all.sh
