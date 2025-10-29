@@ -33,3 +33,7 @@ jobs:
       - name: Build AMI
         run: |      
           ./build_all.sh
+
+      - name: Test AMI
+        run: |
+          xvfb-run pytest
