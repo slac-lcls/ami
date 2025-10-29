@@ -27,12 +27,7 @@ jobs:
         run: |
           git clone https://github.com/slac-lcls/lcls2.git
           cd lcls2
-          for config in Release Debug RelWithDebInfo; do
-            for phase in develop install; do
-              echo "Building $config ($phase)"
-              ./build_all.sh -c $config -p $phase
-            done
-          done
+          ./build_all.sh -d
           cd ..
 
       - name: Build AMI
