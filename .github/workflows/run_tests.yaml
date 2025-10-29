@@ -26,7 +26,15 @@ jobs:
           activate-environment: build-conda-env
           channels: lcls-ii, conda-forge
           environment-file: .daq_20250402.txt
-          
-      - name: Build
+
+      - name: Clone LCLS2
         run:
+          git clone https://github.com/slac-lcls/lcls2.git
+          cd lcls2
+          ./build_all.sh -c {Release, Debug, RelWithDebInfo} -p {develop, install}
+          cd ..
+      
+      - name: Build AMI
+        run:
+          ls
           ./build_all.sh
