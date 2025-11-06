@@ -36,4 +36,5 @@ jobs:
 
       - name: Test AMI
         run: |
+          export PYTEST_QT_API=pyside6
           xvfb-run pytest
