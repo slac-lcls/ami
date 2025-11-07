@@ -5,16 +5,12 @@ on:
   workflow_dispatch:
 
 jobs:
-  build-lcls-ii:
+  run_tests:
     runs-on: ubuntu-latest
     defaults:
-     run:
-       # Bash shells do not use ~/.profile (for env variables) or ~/.bashrc,
-       # so these shells need to be explicitly declared.
-       # This makes the shell a login shell, which typically
-       # sources said files. This is needed for conda.
-       # Refer: https://github.com/marketplace/actions/setup-miniconda
-       shell: bash -el {0}  
+      run:
+        shell: bash -el {0}  
+
     steps:
       - name: Checkout repo with submodules
         uses: actions/checkout@v4
@@ -26,3 +22,20 @@ jobs:
           activate-environment: build-conda-env
           channels: lcls-ii, conda-forge
           environment-file: .daq_20250402.txt
+
+      - name: Clone and Build LCLS2
+        run: |
+          git clone https://github.com/slac-lcls/lcls2.git
+          cd lcls2
+          ./build_all.sh -d
+          cd ..
+
+      - name: Build AMI
+        run: |      
+          pip install .
+
+      - name: Test AMI
+        run: |
+          export PYTEST_QT_API=pyside6
+          export QT_API=pyside6
+          xvfb-run pytest
