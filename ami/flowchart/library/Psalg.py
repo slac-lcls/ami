@@ -1025,9 +1025,12 @@ class ThresholdingHitFinder(CtrlNode):
             def worker_reduction(res, *rest, **kwargs):
                 return fraction*res+(1-fraction)*np.sum(rest, axis=0)
 
-            def collector_reduction(old_avg, *new_1worker, **kwargs):
+            def local_collector_reduction(old_avg, *new_1worker, **kwargs):
                 count = kwargs['count']
                 return old_avg + new_1worker[0]*count
+
+            def global_collector_reduction(old_avg, *new_1worker, **kwargs):
+                return old_avg + new_1worker[0]
 
             nodes = [gn.Map(name=self.name()+"_map",
                             inputs=inputs, outputs=mapped_outputs,
@@ -1035,8 +1038,8 @@ class ThresholdingHitFinder(CtrlNode):
                      gn.Accumulator(name=self.name()+"_accumulated",
                                     inputs=mapped_outputs, outputs=summed_outputs,
                                     worker_reduction=worker_reduction,
-                                    local_reduction=collector_reduction,
-                                    global_reduction=collector_reduction,
+                                    local_reduction=local_collector_reduction,
+                                    global_reduction=global_collector_reduction,
                                     **kwargs),
                      gn.Map(name=self.name()+"_unzip",
                             inputs=summed_outputs, outputs=outputs,
