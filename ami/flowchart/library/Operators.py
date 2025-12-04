@@ -524,7 +524,11 @@ class ExponentialMovingAverage1D(CtrlNode):
         fraction = self.values['Fraction of old']
 
         def worker_reduction(old, *new, **kwargs):
-            return fraction*old+(1-fraction)*new[0]
+            reset = kwargs['reset']
+            if reset:
+                return fraction*new[0]
+            else:
+                return fraction*old+(1-fraction)*new[0]
 
         def local_collector_reduction(old_avg, *new_1worker, **kwargs):
             count = kwargs['count']
@@ -564,8 +568,12 @@ class ExponentialMovingAverage2D(CtrlNode):
 
         fraction = self.values['Fraction of old']
 
-        def worker_reduction(res, *rest, **kwargs):
-            return fraction*res+(1-fraction)*np.sum(rest, axis=0)
+        def worker_reduction(old, *new, **kwargs):
+            reset = kwargs['reset']
+            if reset:
+                return fraction*new[0]
+            else:
+                return fraction*old+(1-fraction)*new[0]
 
         def local_collector_reduction(old_avg, *new_1worker, **kwargs):
             count = kwargs['count']
