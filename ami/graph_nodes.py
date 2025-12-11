@@ -39,6 +39,7 @@ class Transformation(abc.ABC):
         self.end_step_func = kwargs.get('end_step', None)
         self.exportable = False
         self.is_global_operation = False
+        self.latched = kwargs.get('latched', False)
 
     def __hash__(self):
         return hash(self.name)
@@ -126,8 +127,16 @@ class StatefulTransformation(Transformation):
         self._local_reduction = local_reduction
         self._global_reduction = global_reduction
 
+
     @abc.abstractmethod
     def __call__(self, *args, **kwargs):
+        return
+
+    @abc.abstractmethod
+    def latch(self):
+        """
+        Returns accumulated value with no input.
+        """
         return
 
     @abc.abstractmethod
@@ -176,6 +185,8 @@ class GlobalTransformation(StatefulTransformation):
         self.is_global_operation = True
         self.is_expanded = is_expanded
         self.num_contributors = num_contributors
+        self.res = None
+        self.count = 0
 
     def on_expand(self):
         """
@@ -188,7 +199,7 @@ class GlobalTransformation(StatefulTransformation):
             Dictionary of keyword arguments to pass when constructing the
             globally expanded version of this operation
         """
-        return {"parent": self.parent}
+        return {"parent": self.parent, "latched": self.latched}
 
 
 class ReduceByKey(GlobalTransformation):
@@ -214,6 +225,9 @@ class ReduceByKey(GlobalTransformation):
                         self.res[k] = self.reduction(self.res[k], v)
                     else:
                         self.res[k] = v
+        return self.res
+
+    def latch(self):
         return self.res
 
     def reset(self):
@@ -249,6 +263,9 @@ class Accumulator(GlobalTransformation):
 
         return self.count, self.res
 
+    def latch(self):
+        return self.count, self.res
+
     def reset(self):
         self.res = self.res_factory()
         self.count = 0
@@ -259,7 +276,9 @@ class Accumulator(GlobalTransformation):
             self.reset()
 
     def on_expand(self):
-        return {'parent': self.parent, 'res_factory': self.res_factory}
+        res = super().on_expand()
+        res['res_factor'] = self.res_factory
+        return res
 
 
 class PickN(GlobalTransformation):
@@ -292,6 +311,13 @@ class PickN(GlobalTransformation):
 
         if not any(x is None for x in self.res):
             self.clear = True
+            if self.N > 1:
+                return self.res
+            elif self.N == 1:
+                return self.res[0]
+
+    def latch(self):
+        if not any(x is None for x in self.res):
             if self.N > 1:
                 return self.res
             elif self.N == 1:
@@ -336,6 +362,12 @@ class SumN(GlobalTransformation):
 
         if self.count >= self.N:
             self.clear = True
+            return self.count, self.res
+        else:
+            return None, None
+
+    def latch(self):
+        if self.count >= self.N:
             return self.count, self.res
         else:
             return None, None
@@ -401,12 +433,20 @@ class RollingBuffer(GlobalTransformation):
         # returning like this ensure that a copy of self.res is returned, not the same object
         return self.count, self.res[-self.idx:]
 
-    def on_expand(self):
-        return {'parent': self.parent, 'use_numpy': self.use_numpy, 'unique': self.unique}
+    def latch(self):
+        # returning like this ensure that a copy of self.res is returned, not the same object
+        return self.count, self.res[-self.idx:]
 
     def reset(self):
         self.idx = 0
         self.count = 0
+
+    def on_expand(self):
+        res = super().on_expand()
+        res['use_numpy'] = self.use_numpy
+        res['unique'] = self.unique
+        return res
+
 
 class AMIWarning(GraphWarning):
     pass

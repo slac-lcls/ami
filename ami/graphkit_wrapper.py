@@ -26,6 +26,7 @@ class Graph():
         self.children_of_global_operations = {}
         self.inputs = collections.defaultdict(set)
         self.outputs = collections.defaultdict(set)
+        self.latched_operations = collections.defaultdict(set)
 
     def __bool__(self):
         return self.graph.size() != 0
@@ -322,7 +323,6 @@ class Graph():
             extras = node.on_expand()
 
             for color in color_order:
-
                 if color == 'worker':
                     worker_outputs = list(map(lambda o: o+'_worker', node.outputs))
 
@@ -343,6 +343,8 @@ class Graph():
                         self.graph.add_edge(i, worker_node)
                     for o in worker_outputs:
                         self.graph.add_edge(worker_node, o)
+                    if worker_node.latched:
+                        self.latched_operations[color].add(worker_node)
 
                 elif color == 'localCollector':
                     self.inputs[color].update(worker_outputs)
@@ -367,6 +369,8 @@ class Graph():
                         self.graph.add_edge(i, local_collector_node)
                     for o in local_collector_outputs:
                         self.graph.add_edge(local_collector_node, o)
+                    if local_collector_node.latched:
+                        self.latched_operations[color].add(local_collector_node)
 
                 elif color == 'globalCollector':
                     self.inputs[color].update(local_collector_outputs)
@@ -386,6 +390,8 @@ class Graph():
                         self.graph.add_edge(i, global_collector_node)
                     for o in outputs:
                         self.graph.add_edge(global_collector_node, o)
+                    if global_collector_node.latched:
+                        self.latched_operations[color].add(global_collector_node)
 
     def _collect_global_inputs(self):
         """
@@ -428,6 +434,7 @@ class Graph():
             num_local_collectors (int): Total number of local collectors.
         """
         self.inputs = collections.defaultdict(set)
+        self.latched_operations = collections.defaultdict(set)
         self._color_nodes()
         self._collect_global_inputs()
         self._expand_global_operations(num_workers, num_local_collectors)
@@ -485,7 +492,16 @@ class Graph():
         assert color is not None
         result = self.graphkit(*args, **kwargs)
         outputs = self.outputs[color]
-        return {k: result[k] for k in outputs if k in result}
+        res = {k: result[k] for k in outputs if k in result}
+        self.latch(res, color)
+        return res
+
+    def latch(self, res, color):
+        """
+        Find nodes with latched values and add them to output.
+        """
+        for node in self.latched_operations[color]:
+            res.update(dict(zip(node.outputs, node.latch())))
 
     def times(self):
         """

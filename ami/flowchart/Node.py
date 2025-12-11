@@ -308,7 +308,8 @@ class Node(QtCore.QObject):
         for name, term in self.terminals.items():
             if name in self._input_vars:
                 if term.optional():
-                    input_vars[name] = modifiers.optional(self._input_vars[name], mapped_name=name)
+                    input_vars[name] = modifiers.optional(self._input_vars[name],
+                                                          mapped_name=name.replace(".", "_"))
                 else:
                     input_vars[name] = self._input_vars[name]
         return input_vars
