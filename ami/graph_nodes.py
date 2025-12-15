@@ -133,13 +133,6 @@ class StatefulTransformation(Transformation):
         return
 
     @abc.abstractmethod
-    def latch(self):
-        """
-        Returns accumulated value with no input.
-        """
-        return
-
-    @abc.abstractmethod
     def reset(self):
         """
         Reset nodes state.
@@ -227,9 +220,6 @@ class ReduceByKey(GlobalTransformation):
                         self.res[k] = v
         return self.res
 
-    def latch(self):
-        return self.res
-
     def reset(self):
         self.res = {}
 
@@ -261,9 +251,6 @@ class Accumulator(GlobalTransformation):
         self.count += count
         self.was_reset = False
 
-        return self.count, self.res
-
-    def latch(self):
         return self.count, self.res
 
     def reset(self):
@@ -316,13 +303,6 @@ class PickN(GlobalTransformation):
             elif self.N == 1:
                 return self.res[0]
 
-    def latch(self):
-        if not any(x is None for x in self.res):
-            if self.N > 1:
-                return self.res
-            elif self.N == 1:
-                return self.res[0]
-
     def reset(self):
         self.res = [None]*self.N
 
@@ -362,12 +342,6 @@ class SumN(GlobalTransformation):
 
         if self.count >= self.N:
             self.clear = True
-            return self.count, self.res
-        else:
-            return None, None
-
-    def latch(self):
-        if self.count >= self.N:
             return self.count, self.res
         else:
             return None, None
@@ -430,10 +404,6 @@ class RollingBuffer(GlobalTransformation):
                     self.idx = min(self.idx + 1, self.N)
         self.res = self.res[-self.idx:]
 
-        # returning like this ensure that a copy of self.res is returned, not the same object
-        return self.count, self.res[-self.idx:]
-
-    def latch(self):
         # returning like this ensure that a copy of self.res is returned, not the same object
         return self.count, self.res[-self.idx:]
 
