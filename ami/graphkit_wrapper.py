@@ -26,7 +26,7 @@ class Graph():
         self.children_of_global_operations = {}
         self.inputs = collections.defaultdict(set)
         self.outputs = collections.defaultdict(set)
-        self.latched_names = set()
+        self.latched_names = {}
         self.latch_cache = {}
 
     def __bool__(self):
@@ -389,7 +389,8 @@ class Graph():
                     for o in outputs:
                         self.graph.add_edge(global_collector_node, o)
                     if global_collector_node.latched:
-                        self.latched_names.update(global_collector_node.outputs)
+                        self.latched_names[global_collector_node.name] = (set(global_collector_node.inputs),
+                                                                          global_collector_node.outputs)
 
     def _collect_global_inputs(self):
         """
@@ -432,7 +433,6 @@ class Graph():
             num_local_collectors (int): Total number of local collectors.
         """
         self.inputs = collections.defaultdict(set)
-        self.latched_names = set()
         self._color_nodes()
         self._collect_global_inputs()
         self._expand_global_operations(num_workers, num_local_collectors)
@@ -489,16 +489,24 @@ class Graph():
         color = kwargs.get('color', None)
         assert color is not None
         if color == 'globalCollector':
-            for output in self.latched_names:
-                if output in self.latch_cache and output not in args:
-                    args[output] = self.latch_cache[output]
+            for node, names in self.latched_names.items():
+                inputs, outputs = names
+                if inputs.issubset(args[0].keys()):
+                    # print("RECOMPUTING:", outputs)
+                    continue
+                for output in outputs:
+                    if output in self.latch_cache:
+                        # print("LATCHING:", output)
+                        args[0][output] = self.latch_cache[output]
         result = self.graphkit(*args, **kwargs)
         if color == 'globalCollector':
-            for output in self.latched_names:
-                if output in result:
-                    self.latch_cache[output] = result[output]
-        outputs = self.outputs[color]
-        return {k: result[k] for k in outputs if k in result}
+            for node, names in self.latched_names.items():
+                inputs, outputs = names
+                for output in outputs:
+                    if output in result:
+                        # print("UPDATING LATCH:", output)
+                        self.latch_cache[output] = result[output]
+        return {k: result[k] for k in self.outputs[color] if k in result}
 
 
     def times(self):
