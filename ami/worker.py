@@ -10,6 +10,7 @@ import time
 import datetime as dt
 import cProfile
 import signal
+import collections
 import prometheus_client as pc
 from ami import LogConfig, Defaults
 from ami.comm import Ports, PlatformAction, Colors, ResultStore, Node, AutoExport
@@ -172,6 +173,9 @@ class Worker(Node):
         idle_start = time.time()
         idle_stop = time.time()
         heartbeat_time = 0
+        heartbeat = 0
+        event = 0
+        src_counter = collections.defaultdict(list)
 
         while True:
             for msg in self.src.events():
@@ -215,6 +219,9 @@ class Worker(Node):
                     event_time.labels(self.hutch, 'Heartbeat', self.name).set(heartbeat_time)
                     event_size.labels(self.hutch, self.name).set(size)
                     heartbeat_time = 0
+                    self.report("src_counter", src_counter)
+                    heartbeat += 1
+                    src_counter = collections.defaultdict(list)
 
                 elif msg.mtype == MsgTypes.Datagram:
                     datagram_start = time.time()
@@ -224,6 +231,9 @@ class Worker(Node):
 
                     if any(v is None for k, v in msg.payload.items()):
                         event_counter.labels(self.hutch, 'Partial', self.name).inc()
+
+                    for src in msg.payload.keys():
+                        src_counter[src].append(event)
 
                     for name, graph in self.graphs.items():
                         graph_result = None
@@ -261,6 +271,7 @@ class Worker(Node):
                     datagram_duration = time.time() - datagram_start
                     event_time.labels(self.hutch, 'Datagram', self.name).set(datagram_duration)
                     heartbeat_time += datagram_duration
+                    event += 1
 
                 elif msg.mtype == MsgTypes.Transition:
                     if msg.payload.ttype == Transitions.Configure:
@@ -274,6 +285,8 @@ class Worker(Node):
                                 graph.end_run(color=Colors.Worker)
                         if self.src.heartbeat is not None:
                             self.collect(self.src.heartbeat)
+                        event = 0
+                        heartbeat = 0
                     elif msg.payload.ttype == Transitions.BeginStep:
                         for name, graph in self.graphs.items():
                             if graph:

@@ -709,7 +709,8 @@ class Flowchart(Node):
                 else:
                     ctrl.chartWidget.updateStatus(f"ERROR: {source}: {msg}", color='red')
                     logger.error(f"{source}: {msg}")
-
+            elif topic == 'src_counter':
+                print(msg)
     async def run(self, load=None):
         tasks = [asyncio.create_task(self.updateState()),
                  asyncio.create_task(self.updateSources())]
