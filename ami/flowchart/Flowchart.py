@@ -178,6 +178,7 @@ class Flowchart(Node):
         node.sigTerminalConnected.connect(self.nodeTermConnected)
         node.sigTerminalDisconnected.connect(self.nodeTermDisconnected)
         node.sigNodeEnabled.connect(self.nodeEnabled)
+        node.sigNodeLatched.connect(self.nodeLatched)
         node.sigTerminalOptional.connect(self.nodeTermOptional)
         node.sigTerminalAdded.connect(self.nodeTermAdded)
         node.sigTerminalRemoved.connect(self.nodeTermRemoved)
@@ -312,6 +313,10 @@ class Flowchart(Node):
         self.sigNodeChanged.emit(localTerm.node())
 
     def nodeTermOptional(self, node, term):
+        node.changed = True
+        self.sigNodeChanged.emit(node)
+
+    def nodeLatched(self, node):
         node.changed = True
         self.sigNodeChanged.emit(node)
 
@@ -856,7 +861,8 @@ class FlowchartCtrlWidget(QtWidgets.QWidget):
                         try:
                             nodes = node.to_operation(inputs=node.input_vars(),
                                                       outputs=node.output_vars(),
-                                                      parent=node.name())
+                                                      parent=node.name(),
+                                                      latched=node.latched)
                         except Exception as e:
                             self.chartWidget.updateStatus(f"{node.name()} {e}!", color='red')
                             printExc(f"{node.name()} raised exception! See console for stacktrace.")

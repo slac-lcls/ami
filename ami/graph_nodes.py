@@ -39,7 +39,7 @@ class Transformation(abc.ABC):
         self.end_step_func = kwargs.get('end_step', None)
         self.exportable = False
         self.is_global_operation = False
-        self.latched = kwargs.get('latched', False)
+        self.latched = False
 
     def __hash__(self):
         return hash(self.name)
@@ -109,6 +109,7 @@ class StatefulTransformation(Transformation):
         worker_reduction = kwargs.pop('worker_reduction', None)
         local_reduction = kwargs.pop('local_reduction', None)
         global_reduction = kwargs.pop('global_reduction', None)
+        latched = kwargs.pop('latched', False)
 
         kwargs.setdefault('func', None)
         super().__init__(**kwargs)
@@ -126,7 +127,7 @@ class StatefulTransformation(Transformation):
         self._worker_reduction = worker_reduction
         self._local_reduction = local_reduction
         self._global_reduction = global_reduction
-
+        self.latched = latched
 
     @abc.abstractmethod
     def __call__(self, *args, **kwargs):
