@@ -510,14 +510,14 @@ try:
             if self.calibconsts.keys() != calib.keys():
                 self.calibconsts = calib
 
-                logger.info('MaskProd.__call__: calibconsts.keys(): %s' % str(self.calibconsts.keys()))
+                logger.debug('MaskProd.__call__: calibconsts.keys(): %s' % str(self.calibconsts.keys()))
                 data_and_meta = self.calibconsts.get('pixel_status', None)
                 self.data, self.meta = (np.nan, None) if data_and_meta is None else data_and_meta
                 logger.debug('pixel_status meta: %s' % str(self.meta))
                 logger.debug('pixel_status data: %s' % str(self.data))
 
                 o = MaskAlgos(self.calibconsts)
-                logger.info('MaskProd.__call__: create mask_comb with pars: %s' % str(self.kwa))
+                logger.debug('MaskProd.__call__: create mask_comb with pars: %s' % str(self.kwa))
                 self.mask = o.mask_comb(**self.kwa)
                 logger.debug(info_ndarr(self.mask, 'mask_comb:'))
 
@@ -596,7 +596,7 @@ try:
 
             k = 'umask'
             fname = self.umask_from_ctrls()
-            logger.info('umask file name: %s' % str(fname))
+            logger.debug('umask file name: %s' % str(fname))
             ext = fname.split('.')[-1]
 
             try:
@@ -609,7 +609,7 @@ try:
                 logger.warning('can not load umask file: %s' % str(fname))
                 d[k] = None
 
-            logger.info(info_ndarr(d[k], k))
+            logger.debug(info_ndarr(d[k], k))
 
             return d
 
@@ -648,18 +648,18 @@ try:
                 self.geofname = geofname
                 if os.path.exists(geofname):
                     self.do_load_geo = 1
-                    logger.info('GeometryProd.__call__ load geometry from file "%s"' % geofname)
+                    logger.debug('GeometryProd.__call__ load geometry from file "%s"' % geofname)
 
             elif self.calibconsts.keys() != calib.keys():
                 self.calibconsts = calib
                 self.do_load_geo = 2
 
-                logger.info('GeometryProd.__call__: calibconsts.keys(): %s' % str(self.calibconsts.keys()))
+                logger.debug('GeometryProd.__call__: calibconsts.keys(): %s' % str(self.calibconsts.keys()))
                 data_and_meta = self.calibconsts.get('geometry', None)
                 self.data, self.meta = (None, None) if data_and_meta is None else data_and_meta
-                logger.info('geometry meta: %s' % str(self.meta))
-                logger.info('geometry data: %s' % str(self.data))
-                logger.info('GeometryProd.kwa: %s' % str(self.kwa))
+                logger.debug('geometry meta: %s' % str(self.meta))
+                logger.debug('geometry data: %s' % str(self.data))
+                logger.debug('GeometryProd.kwa: %s' % str(self.kwa))
 
             if self.do_load_geo > 0:  # =0 - do not load, =1 - from file, =2 - from DB
                 o = GeometryAccess()
@@ -677,7 +677,7 @@ try:
                 ix.shape = shape3d
                 iy.shape = shape3d
 
-                logger.info('\n  %s\n  %s\n  %s\n  %s' %
+                logger.debug('\n  %s\n  %s\n  %s\n  %s' %
                             (info_ndarr(ix, 'ix:'),
                              info_ndarr(iy, 'iy:'),
                              info_ndarr(x,  ' x:'),
@@ -1022,12 +1022,19 @@ class ThresholdingHitFinder(CtrlNode):
         if fct == "Exponential Moving Average":
             fraction = self.values['widget_state']['args']['Fraction']
 
-            def worker_reduction(res, *rest, **kwargs):
-                return fraction*res+(1-fraction)*np.sum(rest, axis=0)
+            def worker_reduction(old, *new, **kwargs):
+                reset = kwargs['reset']
+                if reset:
+                    return fraction*new[0]
+                else:
+                    return fraction*old+(1-fraction)*new[0]
 
-            def collector_reduction(old_avg, *new_1worker, **kwargs):
+            def local_collector_reduction(old_avg, *new_1worker, **kwargs):
                 count = kwargs['count']
                 return old_avg + new_1worker[0]*count
+
+            def global_collector_reduction(old_avg, *new_1worker, **kwargs):
+                return old_avg + new_1worker[0]
 
             nodes = [gn.Map(name=self.name()+"_map",
                             inputs=inputs, outputs=mapped_outputs,
@@ -1035,8 +1042,8 @@ class ThresholdingHitFinder(CtrlNode):
                      gn.Accumulator(name=self.name()+"_accumulated",
                                     inputs=mapped_outputs, outputs=summed_outputs,
                                     worker_reduction=worker_reduction,
-                                    local_reduction=collector_reduction,
-                                    global_reduction=collector_reduction,
+                                    local_reduction=local_collector_reduction,
+                                    global_reduction=global_collector_reduction,
                                     **kwargs),
                      gn.Map(name=self.name()+"_unzip",
                             inputs=summed_outputs, outputs=outputs,

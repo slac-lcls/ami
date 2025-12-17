@@ -397,129 +397,123 @@ class Flowchart(Node):
         """
         Restore the state of this flowchart from a previous call to `saveState()`.
         """
-        self.blockSignals(True)
-        try:
-            if 'source_configuration' in state:
-                src_cfg = state['source_configuration']
-                self.widget().sourceConfigure.restoreState(src_cfg)
-                if src_cfg['files']:
-                    self.widget().sourceConfigure.applyClicked()
+        if 'source_configuration' in state:
+            src_cfg = state['source_configuration']
+            self.widget().sourceConfigure.restoreState(src_cfg)
+            if src_cfg['files']:
+                self.widget().sourceConfigure.applyClicked()
 
-            if 'library' in state:
-                lib_cfg = state['library']
-                self.widget().libraryEditor.restoreState(lib_cfg)
-                self.widget().libraryEditor.applyClicked()
+        if 'library' in state:
+            lib_cfg = state['library']
+            self.widget().libraryEditor.restoreState(lib_cfg)
+            self.widget().libraryEditor.applyClicked()
 
-            if 'viewbox' in state:
-                self.viewBox.restoreState(state['viewbox'])
+        if 'viewbox' in state:
+            self.viewBox.restoreState(state['viewbox'])
 
-            nodes = state['nodes']
-            nodes.sort(key=lambda a: a['state']['pos'][0])
-            for n in nodes:
-                if n['class'] == 'SourceNode':
-                    try:
-                        ttype = eval(n['state']['terminals']['Out']['ttype'])
-                        n['state']['terminals']['Out']['ttype'] = ttype
-                        node = SourceNode(name=n['name'], terminals=n['state']['terminals'])
-                        self.addNode(node=node)
-                    except Exception:
-                        printExc("Error creating node %s: (continuing anyway)" % n['name'])
-                else:
-                    try:
-                        node = self.createNode(n['class'], name=n['name'], prompt=False)
-                    except Exception:
-                        printExc("Error creating node %s: (continuing anyway)" % n['name'])
+        nodes = state['nodes']
+        nodes.sort(key=lambda a: a['state']['pos'][0])
+        for n in nodes:
+            if n['class'] == 'SourceNode':
+                try:
+                    ttype = eval(n['state']['terminals']['Out']['ttype'])
+                    n['state']['terminals']['Out']['ttype'] = ttype
+                    node = SourceNode(name=n['name'], terminals=n['state']['terminals'])
+                    self.addNode(node=node)
+                except Exception:
+                    printExc("Error creating node %s: (continuing anyway)" % n['name'])
+            else:
+                try:
+                    node = self.createNode(n['class'], name=n['name'], prompt=False)
+                except Exception:
+                    printExc("Error creating node %s: (continuing anyway)" % n['name'])
 
-                node.blockSignals(True)
+            node.blockSignals(True)
 
-                if hasattr(node, "display"):
-                    node.display(topics=None, terms=None, addr=None, win=None)
+            if hasattr(node, "display"):
+                node.display(topics=None, terms=None, addr=None, win=None)
 
-                node.restoreState(n['state'])
+            node.restoreState(n['state'])
 
-            connections = {}
-            edges = {}
-            checked = []
+            node.blockSignals(False)
 
-            with tempfile.NamedTemporaryFile(mode='w') as type_file:
-                type_file.write("from typing import *\n")
-                type_file.write("from mypy_extensions import TypedDict\n")
-                type_file.write("import numbers\n")
-                type_file.write("import builtins\n")
-                type_file.write("import amitypes\n")
-                type_file.write("T = TypeVar('T')\n\n")
+        connections = {}
+        edges = {}
+        checked = []
 
-                nodes = self.nodes(data='node')
+        with tempfile.NamedTemporaryFile(mode='w') as type_file:
+            type_file.write("from typing import *\n")
+            type_file.write("from mypy_extensions import TypedDict\n")
+            type_file.write("import numbers\n")
+            type_file.write("import builtins\n")
+            type_file.write("import amitypes\n")
+            type_file.write("T = TypeVar('T')\n\n")
 
-                for n1, t1, n2, t2 in state['connects']:
-                    try:
-                        node1 = nodes[n1]
-                        term1 = node1[t1]
-                        node2 = nodes[n2]
-                        term2 = node2[t2]
+            nodes = self.nodes(data='node')
 
-                        term1.connectTo(term2, type_file=type_file, checked=checked)
-                        if term1.isInput():
-                            in_name = node1.name() + '_' + term1.name()
-                            in_name = in_name.replace('.', '_')
-                            out_name = node2.name() + '_' + term2.name()
-                            out_name = out_name.replace('.', '_')
-                            edge = ((node2.name(), node1.name()),
-                                    f"{node2.name()}.{term2.name()}->{node1.name()}.{term1.name()}",
-                                    term2.name(), term1.name())
-                            edges[(in_name, out_name)] = edge
-                        else:
-                            in_name = node2.name() + '_' + term2.name()
-                            in_name = in_name.replace('.', '_')
-                            out_name = node1.name() + '_' + term1.name()
-                            out_name = out_name.replace('.', '_')
-                            edge = ((node1.name(), node2.name()),
-                                    f"{node1.name()}.{term1.name()}->{node2.name()}.{term2.name()}",
-                                    term1.name(), term2.name())
-                            edges[(in_name, out_name)] = edge
+            for n1, t1, n2, t2 in state['connects']:
+                try:
+                    node1 = nodes[n1]
+                    term1 = node1[t1]
+                    node2 = nodes[n2]
+                    term2 = node2[t2]
 
-                        connections[(in_name, out_name)] = (term1, term2)
-                    except Exception:
-                        print(node1.terminals)
-                        print(node2.terminals)
-                        printExc("Error connecting terminals %s.%s - %s.%s:" % (n1, t1, n2, t2))
+                    term1.connectTo(term2, type_file=type_file, checked=checked)
+                    if term1.isInput():
+                        in_name = node1.name() + '_' + term1.name()
+                        in_name = in_name.replace('.', '_')
+                        out_name = node2.name() + '_' + term2.name()
+                        out_name = out_name.replace('.', '_')
+                        edge = ((node2.name(), node1.name()),
+                                f"{node2.name()}.{term2.name()}->{node1.name()}.{term1.name()}",
+                                term2.name(), term1.name())
+                        edges[(in_name, out_name)] = edge
+                    else:
+                        in_name = node2.name() + '_' + term2.name()
+                        in_name = in_name.replace('.', '_')
+                        out_name = node1.name() + '_' + term1.name()
+                        out_name = out_name.replace('.', '_')
+                        edge = ((node1.name(), node2.name()),
+                                f"{node1.name()}.{term1.name()}->{node2.name()}.{term2.name()}",
+                                term1.name(), term2.name())
+                        edges[(in_name, out_name)] = edge
 
-                type_file.flush()
-                dmypy_status = os.environ['DMYPY_STATUS_FILE']
-                status = subprocess.run(["dmypy", "--status-file", dmypy_status, "check", type_file.name],
-                                        capture_output=True, text=True)
+                    connections[(in_name, out_name)] = (term1, term2)
+                except Exception:
+                    print(node1.terminals)
+                    print(node2.terminals)
+                    printExc("Error connecting terminals %s.%s - %s.%s:" % (n1, t1, n2, t2))
 
-                if status.returncode != 0:
-                    lines = status.stdout.split('\n')[:-1]
-                    for line in lines:
-                        m = re.search(r"\"+(\w+)\"+", line)
-                        if m:
-                            m = m.group().replace('"', '')
-                            for i in connections:
-                                if i[0] == m:
-                                    term1, term2 = connections[i]
-                                    term1.disconnectFrom(term2)
-                                    if i in edges:
-                                        del edges[i]
-                                    break
-                                elif i[1] == m:
-                                    term1, term2 = connections[i]
-                                    term1.disconnectFrom(term2)
-                                    if i in edges:
-                                        del edges[i]
-                                    break
+            type_file.flush()
+            dmypy_status = os.environ['DMYPY_STATUS_FILE']
+            status = subprocess.run(["dmypy", "--status-file", dmypy_status, "check", type_file.name],
+                                    capture_output=True, text=True)
 
-                for _, edge in edges.items():
-                    localNode_remoteNode, key, localTerm, remoteTerm = edge
-                    localNode, remoteNode = localNode_remoteNode
-                    self._graph.add_edge(localNode, remoteNode, key=key,
-                                         from_term=localTerm, to_term=remoteTerm)
+            if status.returncode != 0:
+                lines = status.stdout.split('\n')[:-1]
+                for line in lines:
+                    m = re.search(r"\"+(\w+)\"+", line)
+                    if m:
+                        m = m.group().replace('"', '')
+                        for i in connections:
+                            if i[0] == m:
+                                term1, term2 = connections[i]
+                                term1.disconnectFrom(term2)
+                                if i in edges:
+                                    del edges[i]
+                                break
+                            elif i[1] == m:
+                                term1, term2 = connections[i]
+                                term1.disconnectFrom(term2)
+                                if i in edges:
+                                    del edges[i]
+                                break
 
-        finally:
-            self.blockSignals(False)
-
-        for name, node in self.nodes(data='node'):
-            self.sigNodeChanged.emit(node)
+            for _, edge in edges.items():
+                localNode_remoteNode, key, localTerm, remoteTerm = edge
+                localNode, remoteNode = localNode_remoteNode
+                self._graph.add_edge(localNode, remoteNode, key=key,
+                                     from_term=localTerm, to_term=remoteTerm)
 
     @asyncSlot(str)
     async def loadFile(self, fileName=None):

@@ -514,7 +514,8 @@ class ExponentialMovingAverage1D(CtrlNode):
 
     def __init__(self, name):
         super().__init__(name, terminals={'In': {'io': 'in', 'ttype': Array1d},
-                                          'Out': {'io': 'out', 'ttype': Array1d}},
+                                          'Out': {'io': 'out', 'ttype': Array1d},
+                                          'Count': {'io': 'out', 'ttype': int}},
                          global_op=True)
 
     def to_operation(self, inputs, outputs, **kwargs):
@@ -523,21 +524,28 @@ class ExponentialMovingAverage1D(CtrlNode):
         fraction = self.values['Fraction of old']
 
         def worker_reduction(old, *new, **kwargs):
-            return fraction*old+(1-fraction)*np.sum(new, axis=0)
+            reset = kwargs['reset']
+            if reset:
+                return fraction*new[0]
+            else:
+                return fraction*old+(1-fraction)*new[0]
 
-        def collector_reduction(old_avg, *new_1worker, **kwargs):
+        def local_collector_reduction(old_avg, *new_1worker, **kwargs):
             count = kwargs['count']
             return old_avg + new_1worker[0]*count
+
+        def global_collector_reduction(old_avg, *new_1worker, **kwargs):
+            return old_avg + new_1worker[0]
 
         return [gn.Accumulator(name=self.name()+"_accumulated",
                                inputs=inputs, outputs=summed_outputs,
                                worker_reduction=worker_reduction,
-                               local_reduction=collector_reduction,
-                               global_reduction=collector_reduction,
+                               local_reduction=local_collector_reduction,
+                               global_reduction=global_collector_reduction,
                                **kwargs),
                 gn.Map(name=self.name()+"_unzip",
                        inputs=summed_outputs, outputs=outputs,
-                       func=lambda count, s: s/count, **kwargs)]
+                       func=lambda count, s: (s/count, count), **kwargs)]
 
 
 class ExponentialMovingAverage2D(CtrlNode):
@@ -551,7 +559,8 @@ class ExponentialMovingAverage2D(CtrlNode):
 
     def __init__(self, name):
         super().__init__(name, terminals={'In': {'io': 'in', 'ttype': Array2d},
-                                          'Out': {'io': 'out', 'ttype': Array2d}},
+                                          'Out': {'io': 'out', 'ttype': Array2d},
+                                          'Count': {'io': 'out', 'ttype': int}},
                          global_op=True)
 
     def to_operation(self, inputs, outputs, **kwargs):
@@ -559,22 +568,29 @@ class ExponentialMovingAverage2D(CtrlNode):
 
         fraction = self.values['Fraction of old']
 
-        def worker_reduction(res, *rest, **kwargs):
-            return fraction*res+(1-fraction)*np.sum(rest, axis=0)
+        def worker_reduction(old, *new, **kwargs):
+            reset = kwargs['reset']
+            if reset:
+                return fraction*new[0]
+            else:
+                return fraction*old+(1-fraction)*new[0]
 
-        def collector_reduction(old_avg, *new_1worker, **kwargs):
+        def local_collector_reduction(old_avg, *new_1worker, **kwargs):
             count = kwargs['count']
             return old_avg + new_1worker[0]*count
+
+        def global_collector_reduction(old_avg, *new_1worker, **kwargs):
+            return old_avg + new_1worker[0]
 
         return [gn.Accumulator(name=self.name()+"_accumulated",
                                inputs=inputs, outputs=summed_outputs,
                                worker_reduction=worker_reduction,
-                               local_reduction=collector_reduction,
-                               global_reduction=collector_reduction,
+                               local_reduction=local_collector_reduction,
+                               global_reduction=global_collector_reduction,
                                **kwargs),
                 gn.Map(name=self.name()+"_unzip",
                        inputs=summed_outputs, outputs=outputs,
-                       func=lambda count, s: s/count, **kwargs)]
+                       func=lambda count, s: (s/count, count), **kwargs)]
 
 
 class Combinations(CtrlNode):

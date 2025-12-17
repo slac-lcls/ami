@@ -31,7 +31,7 @@ if [ -n "${PS1_BACKUP}" ]; then
 fi
 unset CONDA_ENV_NAME
 
-RELDIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+RELDIR="$( cd "$( dirname $(readlink -f "${BASH_SOURCE[0]:-${(%):-%x}}") )" && pwd )"
 export PATH=$RELDIR/install-lcls1/bin:${PATH}
 pyver=$(python -c "import sys; print(str(sys.version_info.major)+'.'+str(sys.version_info.minor))")
 export PYTHONPATH=$RELDIR/install-lcls1/lib/python$pyver/site-packages

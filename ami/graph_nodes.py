@@ -232,6 +232,7 @@ class Accumulator(GlobalTransformation):
         assert hasattr(self.res_factory, '__call__'), 'res_factory is not callable'
         self.res = self.res_factory()
         self.count = 0
+        self.was_reset = True
 
     def __call__(self, *args, **kwargs):
         if self.is_expanded:
@@ -242,14 +243,16 @@ class Accumulator(GlobalTransformation):
             count = 1
             values = args
 
-        self.res = self.reduction(self.res, *values, count=count)
+        self.res = self.reduction(self.res, *values, count=count, reset=self.was_reset)
         self.count += count
+        self.was_reset = False
 
         return self.count, self.res
 
     def reset(self):
         self.res = self.res_factory()
         self.count = 0
+        self.was_reset = True
 
     def heartbeat_finished(self):
         if self.color != 'globalCollector':

@@ -163,6 +163,8 @@ def flowchart(request, workerjson, broker, ipc_dir, graphmgr_addr, qevent_loop, 
             while not comm.sources:
                 time.sleep(0.1)
 
+        os.makedirs(os.path.expanduser("~/.cache/ami/"), exist_ok=True)
+
         with Flowchart(broker_addr=broker.broker_sub_addr,
                        graphmgr_addr=graphmgr_addr,
                        checkpoint_addr=broker.checkpoint_pub_addr) as fc:
