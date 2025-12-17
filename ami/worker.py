@@ -35,7 +35,7 @@ class Worker(Node):
 
         self.src = src
         self.pending_src = False
-        self.store = ResultStore(collector_addr, self.ctx, hwm)
+        self.store = ResultStore(collector_addr, self.ctx, hwm, self.name)
 
         self.graph_comm.add_handler("update_sources", self.update_sources)
         self.graph_comm.add_handler("update_requested_data", self.update_requests_kwargs)
