@@ -314,25 +314,22 @@ class Select1(GlobalTransformation):
         exportable = kwargs.pop('exportable', False)
         super().__init__(**kwargs)
         self.exportable = exportable
-        self.res = set()
+        self.res = None
 
     def __call__(self, *args, **kwargs):
         if not args and kwargs:
             args = list(kwargs.values())
-        elif self.is_expanded and len(args) == 1 and type(args[0]) is list:
+
+        if len(args) > 1:
+            args = [args]
+        elif self.is_expanded and len(args) == 1:
             args = args[0]
 
-        if self.color == "worker":
-            return args
-        elif self.color == "localCollector":
-            self.res.update(args)
-        elif self.color == "globalCollector":
-            self.res = self.res.union(*args)
-
+        self.res = args
         return self.res
 
     def reset(self):
-        self.res = set()
+        self.res = None
 
 
 class SumN(GlobalTransformation):
