@@ -183,6 +183,58 @@ class CollectorMessage(Message):
         return cls(**data)
 
 
+@dataclass
+class SelectRequestMessage(Message):
+    """
+    Select message
+
+    Args:
+        heartbeat (int): heartbeat
+
+        graph_name (str): name
+
+        data_name (str): data_name
+
+        version (int): version
+    """
+    heartbeat: Heartbeat = Heartbeat()
+    graph_name: str = ""
+    data_name: str = ""
+    version: int = 0
+
+    def _serialize(self):
+        return self.__dict__
+
+    @classmethod
+    def _deserialize(cls, data):
+        return cls(**data)
+
+@dataclass
+class SelectResponseMessage(Message):
+    """
+    Select message
+
+    Args:
+        heartbeat (int): heartbeat
+
+        graph_name (str): name
+
+        data_name (str): data_name
+
+        version (int): version
+    """
+    heartbeat: Heartbeat = Heartbeat()
+    graph_name: str = ""
+    version: int = 0
+
+    def _serialize(self):
+        return self.__dict__
+
+    @classmethod
+    def _deserialize(cls, data):
+        return cls(**data)
+
+
 def build_serialization_context():
     def register(ctx, cls):
         ctx.register_type(cls, cls.__name__,

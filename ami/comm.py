@@ -16,8 +16,8 @@ import prometheus_client as pc
 import amitypes as at
 import ami.graph_nodes as gn
 from ami.graphkit_wrapper import Graph
-from ami.data import MsgTypes, Message, Transition, CollectorMessage, Datagram, Serializer, Deserializer, \
-    Heartbeat
+from ami.data import MsgTypes, Message, Transition, \
+    CollectorMessage, SelectRequestMessage, SelectResponseMessage, Datagram, Serializer, Deserializer, Heartbeat
 from enum import IntEnum
 
 
@@ -41,8 +41,10 @@ class Ports(IntEnum):
     Message = 6
     Info = 7
     View = 8
-    Sync = 9
-    NumPorts = 10
+    SelectRequest = 9
+    SelectResponse = 10
+    Sync = 11
+    NumPorts = 11
     PortsPerPlatform = 50
     PlatformMax = 1023
     BasePort = 5555
@@ -374,16 +376,30 @@ class Store:
 
 
 class ZmqHandler:
-    def __init__(self, addr, ctx=None, hwm=None):
+    def __init__(self, addr, select_request_addr=None, select_response_addr=None,
+                 name="", ctx=None, hwm=None, color=None):
         if ctx is None:
             self.ctx = zmq.Context()
         else:
             self.ctx = ctx
-        self.collector = self.ctx.socket(zmq.PUSH)
+        self.collector = self.ctx.socket(zmq.PUSH)  # sending to collector
         if hwm:
             self.collector.setsockopt(zmq.SNDHWM, hwm)
+
         self.collector.connect(addr)
         self.serializer = Serializer()
+
+        if color == "worker":
+            self.select_request = self.ctx.socket(zmq.SUB)  # receive from globalCollector
+            self.select_response = self.ctx.socket(zmq.PUSH)  # sending to globalCollector
+            self.select_request.connect(select_request_addr)
+            self.select_response.connect(select_response_addr)
+            self.select_request.setsockopt_string(zmq.SUBSCRIBE, name)
+        elif color == "globalCollector":
+            self.select_request = self.ctx.socket(zmq.PUB)  # globalCollector send to worker
+            self.select_response = self.ctx.socket(zmq.PULL)  # globalCollector receive from worker
+            self.select_request.bind(select_request_addr)
+            self.select_response.bind(select_response_addr)
 
     def send(self, msg):
         msg = self.serializer(msg)
@@ -399,6 +415,11 @@ class ZmqHandler:
                                name=name, version=version, payload=payload)
         return self.send(msg)
 
+    def select_request_message(self, dest, heartbeat, graph, data, version):
+        msg = SelectRequestMessage(mtype=MsgTypes.Datagram, identity=0, heartbeat=heartbeat,
+                                   graph_name=graph, data_name=data, version=version, payload=None)
+        self.select_request.send_string(dest, zmq.SNDMORE)
+        self.select_request.send_pyobj(msg)
 
 class ResultStore(ZmqHandler):
     """
@@ -408,8 +429,8 @@ class ResultStore(ZmqHandler):
     a Collector object.
     """
 
-    def __init__(self, addr, ctx=None, hwm=None, name=""):
-        super().__init__(addr, ctx, hwm)
+    def __init__(self, addr, select_request_addr, select_response_addr, ctx=None, hwm=None, name="", color=""):
+        super().__init__(addr, select_request_addr, select_response_addr, name, ctx, hwm, color)
         self.stores = {}
         self.select_stores = {}
         self.name = name
@@ -437,21 +458,27 @@ class ResultStore(ZmqHandler):
 
     def update(self, graph, updates):
         select = {}
+        selections = {}
         for name, update in updates.items():
             if name.startswith("_auto"):
                 select[name] = update
 
-        if select:
-            for name in select:
-                updates[name] = self.name
+        for name in select:
+            updates[name] = self.name
+            selections[name.replace("_worker", "_localCollector")] = select[name]
 
         self.stores[graph].update(updates)
-        self.select_stores[graph].update(select)
+        self.select_stores[graph].update(selections)
 
     def collect(self, identity, heartbeat):
         size = 0
         for name, store in self.stores.items():
             size += self.collector_message(identity, heartbeat, name, store.version, store.namespace)
+            self.select_request.recv_string()
+            select_request = self.select_request.recv_pyobj()
+            data = self.select_stores[select_request.graph_name].get(select_request.data_name)
+            self.select_response.send_pyobj((select_request.data_name, data))
+
         return size
 
     def version(self, name):
@@ -619,11 +646,6 @@ class GraphBuilder(ContributionBuilder):
             self.pending[eb_key].clear()
             if self.graph:
                 for data in contribs.values():
-                    if self.color == "globalCollector":
-                        for k in data:
-                            if k.startswith("_auto"):
-                                worker = data[k].pop()
-
                     start = time.time()
                     graph_result = self.graph(data, color=self.color)
                     stop = time.time()
@@ -657,7 +679,7 @@ class GraphBuilder(ContributionBuilder):
 class TransitionBuilder(ContributionBuilder, ZmqHandler):
     def __init__(self, num_contribs, addr, ctx=None, hwm=None):
         ContributionBuilder.__init__(self, num_contribs)
-        ZmqHandler.__init__(self, addr, ctx, hwm)
+        ZmqHandler.__init__(self, addr, ctx=ctx, hwm=hwm)
 
     def _complete(self, eb_key, identity, drop):
         if not drop:
@@ -679,8 +701,9 @@ class TransitionBuilder(ContributionBuilder, ZmqHandler):
 
 class EventBuilder(ZmqHandler):
 
-    def __init__(self, num_contribs, depth, color, addr, ctx=None, hwm=None):
-        super().__init__(addr, ctx, hwm)
+    def __init__(self, num_contribs, depth, color, addr, select_request_addr=None, select_response_addr=None,
+                 ctx=None, hwm=None):
+        super().__init__(addr, select_request_addr, select_response_addr, ctx=ctx, hwm=hwm, color=color)
         self.num_contribs = num_contribs
         self.depth = depth
         self.color = color
@@ -740,6 +763,18 @@ class EventBuilder(ZmqHandler):
             self.destroy(name)
 
     def complete(self, name, eb_key, identity, drop=False):
+        if self.color == "globalCollector":
+            builder = self.builders[name]
+            contribs = builder.pending[eb_key].namespace
+            for data in contribs.values():
+                for data_name in data:
+                    if not data_name.startswith("_auto"):
+                        continue
+
+                    self.select_request_message(data[data_name], eb_key, name, data_name, builder.version)
+                    data_name, selected_data = self.select_response.recv_pyobj()
+                    data[data_name] = selected_data[0]
+
         return self.builders[name].complete(eb_key, identity, drop)
 
     def completion(self, name, eb_key, identity, payload, drop):
@@ -820,7 +855,7 @@ class Node(abc.ABC):
         else:
             self.export_comm = ExportReceiver(export_addr, ctx)
 
-        self.node_msg_comm = self.ctx.socket(zmq.PUSH)
+        self.node_msg_comm = self.ctx.socket(zmq.PUSH)  # send report messages from node to manager
         self.node_msg_comm.connect(msg_addr)
         self.serializer = Serializer()
 

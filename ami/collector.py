@@ -19,7 +19,8 @@ logger = logging.getLogger(__name__)
 
 
 class GraphCollector(Node, Collector):
-    def __init__(self, node, base_name, num_workers, eb_depth, color, collector_addr, downstream_addr,
+    def __init__(self, node, base_name, num_workers, eb_depth, color,
+                 collector_addr, downstream_addr, select_request_addr, select_response_addr,
                  graph_addr, msg_addr, prometheus_dir, prometheus_port, hutch, hwm, timeout):
         Node.__init__(self, node, graph_addr, msg_addr, prometheus_dir=prometheus_dir,
                       prometheus_port=prometheus_port, hutch=hutch)
@@ -27,7 +28,9 @@ class GraphCollector(Node, Collector):
         self.base_name = base_name
         self.num_workers = num_workers
         self.transitions = TransitionBuilder(self.num_workers, downstream_addr, self.ctx, hwm)
-        self.store = EventBuilder(self.num_workers, eb_depth, color, downstream_addr, self.ctx, hwm)
+        self.store = EventBuilder(self.num_workers, eb_depth, color,
+                                  downstream_addr, select_request_addr, select_response_addr,
+                                  self.ctx, hwm)
         self.sender = 'worker%03d' if color == 'localCollector' else 'localCollector%03d'
         self.pickers = {}
         self.strategies = {}
@@ -158,10 +161,6 @@ class GraphCollector(Node, Collector):
 
                     # complete the current heartbeat
                     times, size = self.store.complete(msg.name, msg.heartbeat, self.node)
-
-                    # times = self.store.complete(msg.name, msg.heartbeat, self.node)
-                    # self.report_times(times, msg.name, msg.heartbeat)
-
                     self.event_counter.labels(self.hutch, 'Heartbeat', self.name).inc()
                     self.heartbeat_time[msg.heartbeat.identity] += time.time() - datagram_start
                     heartbeat_time = self.heartbeat_time.pop(msg.heartbeat.identity, 0)
@@ -192,7 +191,9 @@ class GraphCollector(Node, Collector):
 
 
 def run_collector(node_num, base_name, num_contribs, eb_depth, color,
-                  collector_addr, upstream_addr, graph_addr, msg_addr,
+                  collector_addr, upstream_addr,
+                  select_request_addr, select_response_addr,
+                  graph_addr, msg_addr,
                   prometheus_dir, prometheus_port, hutch, hwm, timeout):
     logger.info('Starting collector on node # %d PID: %d', node_num, os.getpid())
     with GraphCollector(
@@ -203,6 +204,8 @@ def run_collector(node_num, base_name, num_contribs, eb_depth, color,
             color,
             collector_addr,
             upstream_addr,
+            select_request_addr,
+            select_response_addr,
             graph_addr,
             msg_addr,
             prometheus_dir,
@@ -213,7 +216,9 @@ def run_collector(node_num, base_name, num_contribs, eb_depth, color,
 
 
 def run_node_collector(node_num, num_contribs, eb_depth,
-                       collector_addr, upstream_addr, graph_addr, msg_addr,
+                       collector_addr, upstream_addr,
+                       select_request_addr, select_response_addr,
+                       graph_addr, msg_addr,
                        prometheus_dir, prometheus_port, hutch, hwm, timeout, cprofile):
     if cprofile:
         profiler = cProfile.Profile()
@@ -233,6 +238,8 @@ def run_node_collector(node_num, num_contribs, eb_depth,
                          Colors.LocalCollector,
                          collector_addr,
                          upstream_addr,
+                         select_request_addr,
+                         select_response_addr,
                          graph_addr,
                          msg_addr,
                          prometheus_dir,
@@ -243,7 +250,9 @@ def run_node_collector(node_num, num_contribs, eb_depth,
 
 
 def run_global_collector(node_num, num_contribs, eb_depth,
-                         collector_addr, upstream_addr, graph_addr, msg_addr,
+                         collector_addr, upstream_addr,
+                         select_request_addr, select_response_addr,
+                         graph_addr, msg_addr,
                          prometheus_dir, prometheus_port, hutch, hwm, timeout, cprofile):
     if cprofile:
         profiler = cProfile.Profile()
@@ -263,6 +272,8 @@ def run_global_collector(node_num, num_contribs, eb_depth,
                          Colors.GlobalCollector,
                          collector_addr,
                          upstream_addr,
+                         select_request_addr,
+                         select_response_addr,
                          graph_addr,
                          msg_addr,
                          prometheus_dir,
@@ -413,6 +424,8 @@ def main(color, upstream_port, downstream_port):
 
     collector_addr = "tcp://*:%d" % (args.port + upstream_port)
     downstream_addr = "tcp://%s:%d" % (downstream_host, args.port + downstream_port)
+    select_request_addr = "tcp://%s:%d" % (downstream_host, args.port + Ports.SelectRequest)
+    select_response_addr = "tcp://%s:%d" % (downstream_host, args.port + Ports.SelectResponse)
     graph_addr = "tcp://%s:%d" % (args.host, args.port + Ports.Graph)
     msg_addr = "tcp://%s:%d" % (args.host, args.port + Ports.Message)
 
@@ -443,6 +456,8 @@ def main(color, upstream_port, downstream_port):
                                               args.heartbeat,
                                               src_cfg,
                                               local_collector_addr,
+                                              select_request_addr,
+                                              select_response_addr,
                                               graph_addr,
                                               msg_addr,
                                               export_addr,
@@ -461,6 +476,8 @@ def main(color, upstream_port, downstream_port):
                                       args.eb_depth,
                                       collector_addr,
                                       downstream_addr,
+                                      select_request_addr,
+                                      select_response_addr,
                                       graph_addr,
                                       msg_addr,
                                       args.prometheus_dir,
@@ -475,6 +492,8 @@ def main(color, upstream_port, downstream_port):
                                         args.eb_depth,
                                         collector_addr,
                                         downstream_addr,
+                                        select_request_addr,
+                                        select_response_addr,
                                         graph_addr,
                                         msg_addr,
                                         args.prometheus_dir,
