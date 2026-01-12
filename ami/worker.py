@@ -22,8 +22,9 @@ logger = logging.getLogger(__name__)
 
 
 class Worker(Node):
-    def __init__(self, node, src, collector_addr, graph_addr, msg_addr, export_addr, prometheus_dir,
-                 prometheus_port, hutch, hwm, timeout):
+    def __init__(self, node, src,
+                 collector_addr, select_request_addr, select_response_addr, graph_addr, msg_addr, export_addr,
+                 prometheus_dir, prometheus_port, hutch, hwm, timeout):
         """
         node : int
             a unique integer identifying this worker
@@ -35,7 +36,8 @@ class Worker(Node):
 
         self.src = src
         self.pending_src = False
-        self.store = ResultStore(collector_addr, self.ctx, hwm)
+        self.store = ResultStore(collector_addr, select_request_addr, select_response_addr,
+                                 self.ctx, hwm, self.name, Colors.Worker)
 
         self.graph_comm.add_handler("update_sources", self.update_sources)
         self.graph_comm.add_handler("update_requested_data", self.update_requests_kwargs)
@@ -64,8 +66,6 @@ class Worker(Node):
             self.graphs[name] = None
         if name in self.store:
             self.store.clear(name)
-        # if name in self.times:
-        #     del self.times[name]
         self.update_requests()
 
     def update_requests(self):
@@ -109,8 +109,6 @@ class Worker(Node):
             del self.graphs[name]
         if name in self.store:
             self.store.remove(name)
-        # if name is self.times:
-        #     del self.times[name]
         self.update_requests()
 
     def recv_graph_exception(self, name, version, exception):
@@ -155,7 +153,6 @@ class Worker(Node):
         return size
 
     def run(self):
-        # self.times = {}
         self.event_rate = {}
         self.num_events = 1
         self.start_prometheus()
@@ -243,10 +240,6 @@ class Worker(Node):
 
                                 self.event_rate[name].append((start, stop))
 
-                                # if name not in self.times:
-                                #     self.times[name] = []
-                                # self.times[name].append((start, stop, graph.times()))
-
                         except Exception as e:
                             e.graph_name = name
                             logger.exception("%s: Failure encountered while executing graph (%s, v%d):",
@@ -299,7 +292,8 @@ class Worker(Node):
                 self.update_sources(**self.source_args)
 
 
-def run_worker(num, num_workers, hb_period, source, collector_addr, graph_addr, msg_addr, export_addr,
+def run_worker(num, num_workers, hb_period, source,
+               collector_addr, select_request_addr, select_response_addr, graph_addr, msg_addr, export_addr,
                flags=None, prometheus_dir=None, prometheus_port=None, hutch=None, hwm=None, timeout=None,
                cprofile=False):
 
@@ -351,7 +345,9 @@ def run_worker(num, num_workers, hb_period, source, collector_addr, graph_addr, 
             return 1
 
 
-    with Worker(num, src, collector_addr, graph_addr, msg_addr, export_addr, prometheus_dir, prometheus_port,
+    with Worker(num, src,
+                collector_addr, select_request_addr, select_response_addr, graph_addr, msg_addr, export_addr,
+                prometheus_dir, prometheus_port,
                 hutch, hwm, timeout) as worker:
         return worker.run()
 
@@ -488,6 +484,8 @@ def main():
 
     args = parser.parse_args()
     collector_addr = "tcp://localhost:%d" % (args.port + Ports.NodeCollector)
+    select_request_addr = "tcp://%s:%d" % (args.host, args.port + Ports.SelectRequest)
+    select_response_addr = "tcp://%s:%d" % (args.host, args.port + Ports.SelectResponse)
     graph_addr = "tcp://%s:%d" % (args.host, args.port + Ports.Graph)
     msg_addr = "tcp://%s:%d" % (args.host, args.port + Ports.Message)
     export_addr = "tcp://%s:%d" % (args.host, args.port + Ports.Export)
@@ -506,6 +504,8 @@ def main():
                           args.heartbeat,
                           src_cfg,
                           collector_addr,
+                          select_request_addr,
+                          select_response_addr,
                           graph_addr,
                           msg_addr,
                           export_addr,

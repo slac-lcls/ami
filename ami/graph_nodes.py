@@ -308,6 +308,30 @@ class PickN(GlobalTransformation):
         self.res = [None]*self.N
 
 
+class Select1(GlobalTransformation):
+
+    def __init__(self, **kwargs):
+        exportable = kwargs.pop('exportable', False)
+        super().__init__(**kwargs)
+        self.exportable = exportable
+        self.res = None
+
+    def __call__(self, *args, **kwargs):
+        if not args and kwargs:
+            args = list(kwargs.values())
+
+        if len(args) > 1:
+            args = [args]
+        elif self.is_expanded and len(args) == 1:
+            args = args[0]
+
+        self.res = args
+        return self.res
+
+    def reset(self):
+        self.res = None
+
+
 class SumN(GlobalTransformation):
 
     def __init__(self, **kwargs):

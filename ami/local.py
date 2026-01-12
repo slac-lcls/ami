@@ -294,6 +294,8 @@ def run_ami(args, queue=None):
         msg_addr = "tcp://%s:%d" % (host, port + Ports.Message)
         info_addr = "tcp://%s:%d" % (host, port + Ports.Info)
         view_addr = "tcp://%s:%d" % (host, port + Ports.View)
+        select_request_addr = "tcp://%s:%d" % (host, port + Ports.SelectRequest)
+        select_response_addr = "tcp://%s:%d" % (host, port + Ports.SelectResponse)
     else:
         collector_addr = "ipc://%s/node_collector" % ipcdir
         globalcol_addr = "ipc://%s/collector" % ipcdir
@@ -304,6 +306,8 @@ def run_ami(args, queue=None):
         msg_addr = "ipc://%s/message" % ipcdir
         info_addr = "ipc://%s/info" % ipcdir
         view_addr = "ipc://%s/view" % ipcdir
+        select_request_addr = "ipc://%s/select_request" % ipcdir
+        select_response_addr = "ipc://%s/select_response" % ipcdir
 
     procs = []
     client_proc = None
@@ -342,8 +346,10 @@ def run_ami(args, queue=None):
                 name='worker%03d-n0' % i,
                 target=functools.partial(_sys_exit, run_worker),
                 args=(i, args.num_workers, args.heartbeat, src_cfg,
-                      collector_addr, graph_addr, msg_addr, export_addr, flags, args.prometheus_dir,
-                      args.prometheus_port, args.hutch, args.hwm, args.timeout, args.cprofile)
+                      collector_addr, select_request_addr, select_response_addr,
+                      graph_addr, msg_addr, export_addr, flags,
+                      args.prometheus_dir, args.prometheus_port,
+                      args.hutch, args.hwm, args.timeout, args.cprofile)
             )
             proc.daemon = True
             proc.start()
@@ -352,8 +358,9 @@ def run_ami(args, queue=None):
         collector_proc = mp.Process(
             name='nodecol-n0',
             target=functools.partial(_sys_exit, run_node_collector),
-            args=(0, args.num_workers, args.eb_depth, collector_addr, globalcol_addr, graph_addr,
-                  msg_addr, args.prometheus_dir, args.prometheus_port, args.hutch,
+            args=(0, args.num_workers, args.eb_depth, collector_addr, globalcol_addr,
+                  select_request_addr, select_response_addr, graph_addr, msg_addr,
+                  args.prometheus_dir, args.prometheus_port, args.hutch,
                   args.hwm, args.timeout, args.cprofile)
         )
         collector_proc.daemon = True
@@ -363,7 +370,8 @@ def run_ami(args, queue=None):
         globalcol_proc = mp.Process(
             name='globalcol',
             target=functools.partial(_sys_exit, run_global_collector),
-            args=(0, 1, args.eb_depth, globalcol_addr, results_addr, graph_addr, msg_addr,
+            args=(0, 1, args.eb_depth, globalcol_addr, results_addr,
+                  select_request_addr, select_response_addr, graph_addr, msg_addr,
                   args.prometheus_dir, args.prometheus_port, args.hutch, args.hwm, args.timeout, args.cprofile)
         )
         globalcol_proc.daemon = True
