@@ -459,7 +459,7 @@ def main():
         '--hwm',
         help='zmq HWM for push/pull sockets.',
         type=int,
-        default=5
+        default=1
     )
 
     parser.add_argument(

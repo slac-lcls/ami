@@ -329,8 +329,8 @@ def main(color, upstream_port, downstream_port):
         '-d',
         '--eb-depth',
         type=int,
-        default=10,
-        help='the depth of contribution builder buffer in units of heartbeats (default: 10)'
+        default=1,
+        help='the depth of contribution builder buffer in units of heartbeats (default: 1)'
     )
 
     parser.add_argument(
@@ -367,7 +367,7 @@ def main(color, upstream_port, downstream_port):
         '--hwm',
         help='zmq HWM for push/pull sockets.',
         type=int,
-        default=5
+        default=1
     )
 
     parser.add_argument(

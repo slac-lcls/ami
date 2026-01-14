@@ -474,10 +474,10 @@ class ResultStore(ZmqHandler):
         size = 0
         for name, store in self.stores.items():
             size += self.collector_message(identity, heartbeat, name, store.version, store.namespace)
-            print(self.name, heartbeat, "WAITING FOR REQUEST")
+            # print(self.name, heartbeat, "WAITING FOR REQUEST")
             topic = self.select_request.recv_string()
             select_request = self.select_request.recv_pyobj()
-            print(self.name, "RECEIVED REQUEST", topic, select_request)
+            # print(self.name, "RECEIVED REQUEST", topic, select_request)
             if topic == self.name:
                 data = self.select_stores[select_request.graph_name].get(select_request.data_name)
                 self.select_response.send_pyobj((select_request.data_name, data))
@@ -772,10 +772,10 @@ class EventBuilder(ZmqHandler):
                 for data_name in data:
                     if not data_name.startswith("_auto"):
                         continue
-                    print("globalCollector REQUESTING:", data[data_name], data_name, eb_key)
+                    # print("globalCollector REQUESTING:", data[data_name], data_name, eb_key)
                     self.select_request_message(data[data_name], eb_key, name, data_name, builder.version)
                     data_name, selected_data = self.select_response.recv_pyobj()
-                    print("globalCollector RECEIVED:", data[data_name], data_name, eb_key)
+                    # print("globalCollector RECEIVED:", data[data_name], data_name, eb_key)
                     data[data_name] = selected_data[0]
 
         return self.builders[name].complete(eb_key, identity, drop)
