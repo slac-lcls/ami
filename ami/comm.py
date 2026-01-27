@@ -10,6 +10,7 @@ import asyncio
 import logging
 import argparse
 import functools
+import threading
 import numpy as np
 import zmq.asyncio
 import prometheus_client as pc
@@ -390,13 +391,9 @@ class ZmqHandler:
         self.serializer = Serializer()
 
         if color == "worker":
-            self.select_request = self.ctx.socket(zmq.SUB)  # receive from globalCollector
-            self.select_response = self.ctx.socket(zmq.PUSH)  # sending to globalCollector
-            if hwm:
-                self.select_response.setsockopt(zmq.SNDHWM, hwm)
-            self.select_request.connect(select_request_addr)
-            self.select_response.connect(select_response_addr)
-            self.select_request.setsockopt_string(zmq.SUBSCRIBE, name)
+            self.select_thread = threading.Thread(target=self.worker_select,
+                                                  args=(hwm, select_request_addr, select_response_addr, name))
+            self.select_thread.start()
         elif color == "globalCollector":
             self.deserializer = Deserializer()
             self.select_request = self.ctx.socket(zmq.PUB)  # globalCollector send to worker
@@ -425,6 +422,29 @@ class ZmqHandler:
                                    graph_name=graph, data_name=data, version=version, payload=None)
         self.select_request.send_string(dest, zmq.SNDMORE)
         self.select_request.send_pyobj(msg)
+
+    def worker_select(self, hwm, select_request_addr, select_response_addr, name):
+        self.select_request = self.ctx.socket(zmq.SUB)  # receive from globalCollector
+        self.select_response = self.ctx.socket(zmq.PUSH)  # sending to globalCollector
+        if hwm:
+            self.select_response.setsockopt(zmq.SNDHWM, hwm)
+        self.select_request.connect(select_request_addr)
+        self.select_response.connect(select_response_addr)
+        self.select_request.setsockopt_string(zmq.SUBSCRIBE, name)
+
+        while True:
+            # if self.select_request.poll(timeout=0.01) == zmq.POLLIN:
+            topic = self.select_request.recv_string()
+            select_request = self.select_request.recv_pyobj()
+            data = self.select_stores[select_request.graph_name].get(select_request.data_name)
+            # msg = SelectResponseMessage(mtype=MsgTypes.Datagram, identity=identity,
+            #                             heartbeat=heartbeat, graph_name=name, version=store.version,
+            #                             payload={select_request.data_name: data[0]})
+            msg = SelectResponseMessage(mtype=MsgTypes.Datagram, identity=0,
+                                        heartbeat=0, graph_name="", version=0,
+                                        payload={select_request.data_name: data[0]})
+            msg = self.serializer(msg)
+            self.select_response.send_multipart(msg, copy=False)
 
 
 class ResultStore(ZmqHandler):
@@ -480,21 +500,6 @@ class ResultStore(ZmqHandler):
         size = 0
         for name, store in self.stores.items():
             size += self.collector_message(identity, heartbeat, name, store.version, store.namespace)
-            # print(self.name, heartbeat, "WAITING FOR REQUEST")
-            if self.select_request.poll(timeout=0.01) == zmq.POLLIN:
-                start = time.time()
-                topic = self.select_request.recv_string()
-                select_request = self.select_request.recv_pyobj()
-                stop = time.time()
-                print(self.name, heartbeat, stop - start)
-
-            # print(self.name, "RECEIVED REQUEST", topic, select_request, stop - start)
-                data = self.select_stores[select_request.graph_name].get(select_request.data_name)
-                msg = SelectResponseMessage(mtype=MsgTypes.Datagram, identity=identity,
-                                            heartbeat=heartbeat, graph_name=name, version=store.version,
-                                            payload={select_request.data_name: data[0]})
-                msg = self.serializer(msg)
-                self.select_response.send_multipart(msg, copy=False)
 
         return size
 
