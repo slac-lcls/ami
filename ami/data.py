@@ -219,8 +219,6 @@ class SelectResponseMessage(Message):
 
         graph_name (str): name
 
-        data_name (str): data_name
-
         version (int): version
     """
     heartbeat: Heartbeat = Heartbeat()

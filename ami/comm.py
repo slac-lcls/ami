@@ -392,12 +392,17 @@ class ZmqHandler:
         if color == "worker":
             self.select_request = self.ctx.socket(zmq.SUB)  # receive from globalCollector
             self.select_response = self.ctx.socket(zmq.PUSH)  # sending to globalCollector
+            if hwm:
+                self.select_response.setsockopt(zmq.SNDHWM, hwm)
             self.select_request.connect(select_request_addr)
             self.select_response.connect(select_response_addr)
-            self.select_request.setsockopt_string(zmq.SUBSCRIBE, "")
+            self.select_request.setsockopt_string(zmq.SUBSCRIBE, name)
         elif color == "globalCollector":
+            self.deserializer = Deserializer()
             self.select_request = self.ctx.socket(zmq.PUB)  # globalCollector send to worker
             self.select_response = self.ctx.socket(zmq.PULL)  # globalCollector receive from worker
+            if hwm:
+                self.select_response.setsockopt(zmq.RCVHWM, hwm)
             self.select_request.bind(select_request_addr)
             self.select_response.bind(select_response_addr)
 
@@ -420,6 +425,7 @@ class ZmqHandler:
                                    graph_name=graph, data_name=data, version=version, payload=None)
         self.select_request.send_string(dest, zmq.SNDMORE)
         self.select_request.send_pyobj(msg)
+
 
 class ResultStore(ZmqHandler):
     """
@@ -475,12 +481,21 @@ class ResultStore(ZmqHandler):
         for name, store in self.stores.items():
             size += self.collector_message(identity, heartbeat, name, store.version, store.namespace)
             # print(self.name, heartbeat, "WAITING FOR REQUEST")
-            topic = self.select_request.recv_string()
-            select_request = self.select_request.recv_pyobj()
-            # print(self.name, "RECEIVED REQUEST", topic, select_request)
-            if topic == self.name:
+            if self.select_request.poll(timeout=0.01) == zmq.POLLIN:
+                start = time.time()
+                topic = self.select_request.recv_string()
+                select_request = self.select_request.recv_pyobj()
+                stop = time.time()
+                print(self.name, heartbeat, stop - start)
+
+            # print(self.name, "RECEIVED REQUEST", topic, select_request, stop - start)
                 data = self.select_stores[select_request.graph_name].get(select_request.data_name)
-                self.select_response.send_pyobj((select_request.data_name, data))
+                msg = SelectResponseMessage(mtype=MsgTypes.Datagram, identity=identity,
+                                            heartbeat=heartbeat, graph_name=name, version=store.version,
+                                            payload={select_request.data_name: data[0]})
+                msg = self.serializer(msg)
+                self.select_response.send_multipart(msg, copy=False)
+
         return size
 
     def version(self, name):
@@ -773,10 +788,14 @@ class EventBuilder(ZmqHandler):
                     if not data_name.startswith("_auto"):
                         continue
                     # print("globalCollector REQUESTING:", data[data_name], data_name, eb_key)
+                    start = time.time()
                     self.select_request_message(data[data_name], eb_key, name, data_name, builder.version)
-                    data_name, selected_data = self.select_response.recv_pyobj()
+                    msg = self.select_response.recv_serialized(self.deserializer, copy=False)
+                    stop = time.time()
+                    print("globalCollector:", eb_key, stop - start)
+                    data.update(msg.payload)
                     # print("globalCollector RECEIVED:", data[data_name], data_name, eb_key)
-                    data[data_name] = selected_data[0]
+                    # data[data_name] = selected_data[0]
 
         return self.builders[name].complete(eb_key, identity, drop)
 
