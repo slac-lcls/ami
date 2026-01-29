@@ -265,7 +265,7 @@ class Accumulator(GlobalTransformation):
 
     def on_expand(self):
         res = super().on_expand()
-        res['res_factor'] = self.res_factory
+        res['res_factory'] = self.res_factory
         return res
 
 
