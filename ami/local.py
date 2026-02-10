@@ -337,13 +337,18 @@ def run_ami(args, queue=None):
 
         logger.info("Starting ami-local using comm address: %s", comm_addr)
 
+        select_manager = mp.Manager()
+        select_dict = select_manager.dict()
+        select_lock = select_manager.Lock()
+
         for i in range(args.num_workers):
             proc = mp.Process(
                 name='worker%03d-n0' % i,
                 target=functools.partial(_sys_exit, run_worker),
                 args=(i, args.num_workers, args.heartbeat, src_cfg,
                       collector_addr, graph_addr, msg_addr, export_addr, flags, args.prometheus_dir,
-                      args.prometheus_port, args.hutch, args.hwm, args.timeout, args.cprofile)
+                      args.prometheus_port, args.hutch, args.hwm, args.timeout, args.cprofile,
+                      (select_lock, select_dict, select_manager))
             )
             proc.daemon = True
             proc.start()

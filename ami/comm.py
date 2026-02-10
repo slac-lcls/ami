@@ -408,8 +408,9 @@ class ResultStore(ZmqHandler):
     a Collector object.
     """
 
-    def __init__(self, addr, ctx=None, hwm=None):
+    def __init__(self, addr, ctx=None, hwm=None, select_manager=None):
         super().__init__(addr, ctx, hwm)
+        self.select_lock, self.select_dict, self.select_manager = select_manager
         self.stores = {}
 
     def __bool__(self):
@@ -436,7 +437,25 @@ class ResultStore(ZmqHandler):
     def collect(self, identity, heartbeat):
         size = 0
         for name, store in self.stores.items():
-            size += self.collector_message(identity, heartbeat, name, store.version, store.namespace)
+            ns = store.namespace
+            deletions = []
+            for val in ns:
+                if not val.startswith("_auto"):
+                    continue
+
+                with self.select_lock:
+                    select_id, select_hb = self.select_dict.get(val, (0, Heartbeat(0, 0)))
+                    if select_hb < heartbeat:
+                        self.select_dict[val] = (identity, heartbeat)
+                        # print(heartbeat, val, identity, "SELECTED")
+                    else:
+                        deletions.append(val)
+                        # print(heartbeat, val, identity, "DELETE")
+
+            for delete in deletions:
+                del ns[delete]
+
+            size += self.collector_message(identity, heartbeat, name, store.version, ns)
         return size
 
     def version(self, name):

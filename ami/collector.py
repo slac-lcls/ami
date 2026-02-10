@@ -159,9 +159,6 @@ class GraphCollector(Node, Collector):
                     # complete the current heartbeat
                     times, size = self.store.complete(msg.name, msg.heartbeat, self.node)
 
-                    # times = self.store.complete(msg.name, msg.heartbeat, self.node)
-                    # self.report_times(times, msg.name, msg.heartbeat)
-
                     self.event_counter.labels(self.hutch, 'Heartbeat', self.name).inc()
                     self.heartbeat_time[msg.heartbeat.identity] += time.time() - datagram_start
                     heartbeat_time = self.heartbeat_time.pop(msg.heartbeat.identity, 0)
