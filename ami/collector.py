@@ -425,6 +425,10 @@ def main(color, upstream_port, downstream_port):
     try:
         if color == Colors.LocalCollector:
             if args.worker:
+                select_manager = mp.Manager()
+                select_dict = select_manager.dict()
+                select_lock = select_manager.Lock()
+
                 local_collector_addr = "tcp://localhost:%d" % (args.port + upstream_port)
                 export_addr = "tcp://%s:%d" % (args.host, args.port + Ports.Export)
                 flags, src_cfg = parse_args(args)
@@ -449,7 +453,8 @@ def main(color, upstream_port, downstream_port):
                                               args.hutch,
                                               args.hwm,
                                               args.timeout,
-                                              args.cprofile),
+                                              args.cprofile,
+                                              (select_lock, select_dict, select_manager)),
                                         daemon=True)
                     worker.start()
 
