@@ -660,8 +660,8 @@ def func(*args, **kwargs):
 
 
 def sanitize_name(name, space=True):
-    """ 
-    Sanitize a variable name by replacing spaces and special characters with 
+    """
+    Sanitize a variable name by replacing spaces and special characters with
     underscores.
     """
     if name:
@@ -675,21 +675,19 @@ sanitizer = str.maketrans(".:|-", "____")
 
 def sanitize_condition(condition_str):
     """
-    Clean up a condition string by replacing variable names with their sanitized 
+    Clean up a condition string by replacing variable names with their sanitized
     versions while ensuring that numeric literals are preserved.
-    Challenge: variables can contain dots, colons and dashes, which are 
-    sanitized to underscores. At the same time, we want to preserve numeric 
+    Challenge: variables can contain dots, colons and dashes, which are
+    sanitized to underscores. At the same time, we want to preserve numeric
     literals (like 1.11) and not accidentally sanitize them.
-    
+
     :param condition_str: The raw condition string to be cleaned.
     """
     if condition_str is None or condition_str == 'None':
         return "None"
 
-    safe_str = condition_str
-    
     raw_vars = extract_variables_from_condition(condition_str, return_sanitized=False)
-    
+
     cleaned_condition = condition_str
     for raw in sorted(raw_vars, key=len, reverse=True):
         sanitized = sanitize_name(raw, space=False)
@@ -697,7 +695,7 @@ def sanitize_condition(condition_str):
         # Use \b to ensure we match the exact variable name
         pattern = r'\b' + re.escape(raw) + r'\b'
         cleaned_condition = re.sub(pattern, sanitized, cleaned_condition)
-            
+
     return cleaned_condition
 
 
