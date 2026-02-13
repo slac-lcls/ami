@@ -408,7 +408,7 @@ class ResultStore(ZmqHandler):
     a Collector object.
     """
 
-    def __init__(self, addr, ctx=None, hwm=None, select_manager=None):
+    def __init__(self, addr, ctx=None, hwm=None, select_manager=(None, None, None)):
         super().__init__(addr, ctx, hwm)
         self.select_lock, self.select_dict, self.select_manager = select_manager
         self.stores = {}
@@ -437,34 +437,37 @@ class ResultStore(ZmqHandler):
     def collect(self, identity, heartbeat):
         size = 0
 
-        # for name, store in self.stores.items():
-        #     size += self.collector_message(identity, heartbeat, name, store.version, store.namespace)
+        if self.select_manager:
+            for name, store in self.stores.items():
+                ns = store.namespace
+                deletions = []
+                for val in ns:
+                    # Pick1 that are automatically inserted start with "_auto"
+                    if not val.startswith("_auto"):
+                        continue
 
-        for name, store in self.stores.items():
-            ns = store.namespace
-            deletions = []
-            for val in ns:
-                # Pick1 that are automatically inserted start with "_auto"
-                if not val.startswith("_auto"):
-                    continue
+                    # this lock protects the select1 dict which stores the detector and heartbeat
+                    # it was done this way because workers can independently iterate through the store values
+                    # until they hit the lock at which point they will block, also we can avoid grabbing the lock
+                    # for values that arent select1
+                    with self.select_lock:
+                        select_id, select_hb = self.select_dict.get(val, (0, Heartbeat(0, 0)))
+                        if select_hb < heartbeat:
+                            self.select_dict[val] = (identity, heartbeat)  # { det_name : (worker, heartbeat)}
+                            # print(heartbeat, val, identity, "SELECTED")
+                        else:
+                            deletions.append(val)
+                            # print(heartbeat, val, identity, "DELETE")
 
-                # this lock protects the select1 dict which stores the detector and heartbeat
-                # it was done this way because workers can independently iterate through the store values
-                # until they hit the lock at which point they will block, also we can avoid grabbing the lock
-                # for values that arent select1
-                with self.select_lock:
-                    select_id, select_hb = self.select_dict.get(val, (0, Heartbeat(0, 0)))
-                    if select_hb < heartbeat:
-                        self.select_dict[val] = (identity, heartbeat)  # { det_name : (worker, heartbeat)}
-                        # print(heartbeat, val, identity, "SELECTED")
-                    else:
-                        deletions.append(val)
-                        # print(heartbeat, val, identity, "DELETE")
+                for delete in deletions:
+                    del ns[delete]
 
-            for delete in deletions:
-                del ns[delete]
+                size += self.collector_message(identity, heartbeat, name, store.version, ns)
 
-            size += self.collector_message(identity, heartbeat, name, store.version, ns)
+        else:
+            for name, store in self.stores.items():
+                size += self.collector_message(identity, heartbeat, name, store.version, store.namespace)
+
         return size
 
     def version(self, name):
