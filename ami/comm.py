@@ -450,14 +450,14 @@ class ResultStore(ZmqHandler):
                     # it was done this way because workers can independently iterate through the store values
                     # until they hit the lock at which point they will block, also we can avoid grabbing the lock
                     # for values that arent select1
+                    # start = time.time()
                     with self.select_lock:
-                        select_id, select_hb = self.select_dict.get(val, (0, Heartbeat(0, 0)))
-                        if select_hb < heartbeat:
-                            self.select_dict[val] = (identity, heartbeat)  # { det_name : (worker, heartbeat)}
-                            # print(heartbeat, val, identity, "SELECTED")
+                        if self.select_dict.get(val, Heartbeat(0, 0)) < heartbeat:
+                            self.select_dict[val] = heartbeat  # { det_name : heartbeat}
+                            # print(heartbeat, val, identity, "SELECTED", time.time() - start)
                         else:
                             deletions.append(val)
-                            # print(heartbeat, val, identity, "DELETE")
+                            # print(heartbeat, val, identity, "DELETE", time.time() - start)
 
                 for delete in deletions:
                     del ns[delete]
