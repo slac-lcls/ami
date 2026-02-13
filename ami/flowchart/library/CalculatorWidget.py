@@ -496,6 +496,13 @@ class FilterWidget(QtWidgets.QWidget):
                 if stateGroup.readWidget(widget) == input_name:
                     stateGroup.setWidget(widget, 'None')
                 widget.removeItem(idx)
+        if self.else_condition:
+            ui, stateGroup, ctrls, attrs = self.else_condition
+            for output in self.outputs:
+                widget = ctrls["Else"][output]
+                if stateGroup.readWidget(widget) == input_name:
+                    stateGroup.setWidget(widget, 'None')
+                widget.removeItem(idx)
 
     def state_changed(self, *args, **kwargs):
         attr, group, val = args
