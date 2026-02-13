@@ -342,6 +342,7 @@ class FilterWidget(QtWidgets.QWidget):
         inputs.append("None")
         for output in self.outputs:
             condition_group.append((output, 'combo', {'values': inputs, 'value': 'None', 'group': name}))
+        
         self.else_condition = generateUi(condition_group)
         ui, stateGroup, ctrls, attrs = self.else_condition
 
