@@ -461,9 +461,9 @@ def main():
 
     parser.add_argument(
         '--hwm',
-        help='zmq HWM for push/pull sockets.',
+        help='zmq HWM for push/pull sockets (default: 1)',
         type=int,
-        default=5
+        default=1
     )
 
     parser.add_argument(
