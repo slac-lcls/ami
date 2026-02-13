@@ -387,7 +387,6 @@ class FilterWidget(QtWidgets.QWidget):
         inputs = list(self.inputs.values())
         inputs.append("None")
         for name, group in self.condition_groups.items():
-            print(f"Name: {name}, Group: {group}")
             ui, stateGroup, ctrls, attrs = group
             groupbox = ctrls[name]["groupbox"]
             widget = QtWidgets.QComboBox(parent=groupbox)
