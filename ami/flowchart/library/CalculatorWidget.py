@@ -342,7 +342,6 @@ class FilterWidget(QtWidgets.QWidget):
         inputs.append("None")
         for output in self.outputs:
             condition_group.append((output, 'combo', {'values': inputs, 'value': 'None', 'group': name}))
-
         self.else_condition = generateUi(condition_group)
         ui, stateGroup, ctrls, attrs = self.else_condition
 
@@ -388,6 +387,7 @@ class FilterWidget(QtWidgets.QWidget):
         inputs = list(self.inputs.values())
         inputs.append("None")
         for name, group in self.condition_groups.items():
+            print(f"Name: {name}, Group: {group}")
             ui, stateGroup, ctrls, attrs = group
             groupbox = ctrls[name]["groupbox"]
             widget = QtWidgets.QComboBox(parent=groupbox)
@@ -400,6 +400,20 @@ class FilterWidget(QtWidgets.QWidget):
             layout = groupbox.layout()
             layout.addRow(widget_name, widget)
             attrs[name][widget_name] = "None"
+            stateGroup.widgetChanged(widget)
+        if self.else_condition:
+            ui, stateGroup, ctrls, attrs = self.else_condition
+            groupbox = ctrls["Else"]["groupbox"]
+            widget = QtWidgets.QComboBox(parent=groupbox)
+            for input in inputs:
+                widget.addItem(input, input)
+            widget.setCurrentIndex(len(inputs)-1)
+            widget_name = f"{node_name}.{term}"
+            ctrls["Else"][widget_name] = widget
+            stateGroup.addWidget(widget, name=widget_name, group="Else")
+            layout = groupbox.layout()
+            layout.addRow(widget_name, widget)
+            attrs["Else"][widget_name] = "None"
             stateGroup.widgetChanged(widget)
 
     def terminalRemoved(self, term):
@@ -420,6 +434,15 @@ class FilterWidget(QtWidgets.QWidget):
                 layout.removeRow(widget)
                 attrs[name].pop(widget_name, None)
                 self.sigStateChanged.emit("remove", name, None)
+            if self.else_condition:
+                ui, stateGroup, ctrls, attrs = self.else_condition
+                groupbox = ctrls["Else"]["groupbox"]
+                layout = groupbox.layout()
+                widget = ctrls["Else"].pop(widget_name)
+                stateGroup.removeWidget(widget)
+                layout.removeRow(widget)
+                attrs["Else"].pop(widget_name, None)
+                self.sigStateChanged.emit("remove", "Else", None)
 
     def terminalConnected(self, nodeTermConnected):
         if nodeTermConnected.localTermState['io'] == 'out':
@@ -541,7 +564,7 @@ class FilterWidget(QtWidgets.QWidget):
             self.remove_condition(name)
 
 
-def extract_variables_from_condition(condition):
+def extract_variables_from_condition(condition, return_sanitized=True):
     """Extract variable names from a condition string, excluding numbers and operators."""
     # List of Python keywords to exclude
     python_keywords = ['and', 'or', 'not', 'if', 'else', 'elif', 'for', 'while', 'in',
@@ -562,8 +585,9 @@ def extract_variables_from_condition(condition):
 
     # Further filter to exclude anything that might be a number
     variables = [var for var in potential_vars if not var.isdigit()]
-    sanitized_variables = [sanitize_name(var) for var in variables]
-    return set(sanitized_variables)
+    if return_sanitized:
+        variables = [sanitize_name(var) for var in variables]
+    return set(variables)
 
 
 def check_conditions(conditions_dict, inputs):
@@ -597,8 +621,7 @@ def gen_filter_func(values, inputs, outputs):
     cond_ok = check_conditions(values, inputs)
     if not cond_ok:
         raise ValueError("Condition variables not found in the input variables.")
-
-    cond = sanitize_name(values['If']['condition'], space=False)
+    cond = sanitize_condition(values['If']['condition'])
 
     filter_func = """
 def func(*args, **kwargs):
@@ -606,20 +629,20 @@ def func(*args, **kwargs):
 \tif %s:
 \t\treturn %s
 """ % (', '.join(inputs.values()), cond,
-       ', '.join(map(lambda x: sanitize_name(values['If'].get(x)),
+       ', '.join(map(lambda x: sanitize_condition(values['If'].get(x)),
                      outputs)))
 
     for k, condition in values.items():
         if not k.startswith("Elif"):
             continue
 
-        cond = sanitize_name(condition['condition'], space=False)
+        cond = sanitize_condition(condition['condition'])
 
         elif_condition = """
 \telif %s:
 \t\treturn %s
         """ % (cond,
-               ', '.join(map(lambda x: sanitize_name(condition.get(x)),
+               ', '.join(map(lambda x: sanitize_condition(condition.get(x)),
                              outputs)))
 
         filter_func += elif_condition
@@ -628,7 +651,7 @@ def func(*args, **kwargs):
         else_condition = """
 \telse:
 \t\treturn %s
-        """ % ', '.join(map(lambda x: sanitize_name(values['Else'].get(x)),
+        """ % ', '.join(map(lambda x: sanitize_condition(values['Else'].get(x)),
                             outputs))
         filter_func += else_condition
 
@@ -637,16 +660,45 @@ def func(*args, **kwargs):
 
 
 def sanitize_name(name, space=True):
+    """ 
+    Sanitize a variable name by replacing spaces and special characters with 
+    underscores.
+    """
     if name:
         return name.translate(sanitizer_space if space else sanitizer)
     else:
         return str(name)
 
-
 sanitizer_space = str.maketrans(" .:|-", "_____")
-
-
 sanitizer = str.maketrans(".:|-", "____")
+
+
+def sanitize_condition(condition_str):
+    """
+    Clean up a condition string by replacing variable names with their sanitized 
+    versions while ensuring that numeric literals are preserved.
+    Challenge: variables can contain dots, colons and dashes, which are 
+    sanitized to underscores. At the same time, we want to preserve numeric 
+    literals (like 1.11) and not accidentally sanitize them.
+    
+    :param condition_str: The raw condition string to be cleaned.
+    """
+    if condition_str is None or condition_str == 'None':
+        return "None"
+
+    safe_str = condition_str
+    
+    raw_vars = extract_variables_from_condition(condition_str, return_sanitized=False)
+    
+    cleaned_condition = condition_str
+    for raw in sorted(raw_vars, key=len, reverse=True):
+        sanitized = sanitize_name(raw, space=False)
+        # Use re.escape so dots/colons are treated as literal text in the regex
+        # Use \b to ensure we match the exact variable name
+        pattern = r'\b' + re.escape(raw) + r'\b'
+        cleaned_condition = re.sub(pattern, sanitized, cleaned_condition)
+            
+    return cleaned_condition
 
 
 if __name__ == '__main__':
