@@ -23,7 +23,7 @@ logger = logging.getLogger(__name__)
 
 class Worker(Node):
     def __init__(self, node, src, collector_addr, graph_addr, msg_addr, export_addr, prometheus_dir,
-                 prometheus_port, hutch, hwm, timeout):
+                 prometheus_port, hutch, hwm, timeout, select_manager):
         """
         node : int
             a unique integer identifying this worker
@@ -35,7 +35,7 @@ class Worker(Node):
 
         self.src = src
         self.pending_src = False
-        self.store = ResultStore(collector_addr, self.ctx, hwm)
+        self.store = ResultStore(collector_addr, self.ctx, hwm, select_manager)
 
         self.graph_comm.add_handler("update_sources", self.update_sources)
         self.graph_comm.add_handler("update_requested_data", self.update_requests_kwargs)
@@ -301,7 +301,7 @@ class Worker(Node):
 
 def run_worker(num, num_workers, hb_period, source, collector_addr, graph_addr, msg_addr, export_addr,
                flags=None, prometheus_dir=None, prometheus_port=None, hutch=None, hwm=None, timeout=None,
-               cprofile=False):
+               cprofile=False, select_manager=None):
 
     logger.info('Starting worker # %d, sending to collector at %s PID: %d', num, collector_addr, os.getpid())
 
@@ -352,7 +352,7 @@ def run_worker(num, num_workers, hb_period, source, collector_addr, graph_addr, 
 
 
     with Worker(num, src, collector_addr, graph_addr, msg_addr, export_addr, prometheus_dir, prometheus_port,
-                hutch, hwm, timeout) as worker:
+                hutch, hwm, timeout, select_manager) as worker:
         return worker.run()
 
 
@@ -461,9 +461,9 @@ def main():
 
     parser.add_argument(
         '--hwm',
-        help='zmq HWM for push/pull sockets.',
+        help='zmq HWM for push/pull sockets (default: 1)',
         type=int,
-        default=5
+        default=1
     )
 
     parser.add_argument(

@@ -52,8 +52,8 @@ def build_parser():
         '-d',
         '--eb-depth',
         type=int,
-        default=10,
-        help='the depth of contribution builder buffer in units of heartbeats (default: 10)'
+        default=1,
+        help='the depth of contribution builder buffer in units of heartbeats (default: 1)'
     )
 
     parser.add_argument(
