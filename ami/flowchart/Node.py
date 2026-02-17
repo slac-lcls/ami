@@ -51,6 +51,7 @@ class Node(QtCore.QObject):
     sigTerminalEdited = QtCore.Signal(object, object)
     sigTerminalOptional = QtCore.Signal(object, object)  # self, term
     sigNodeEnabled = QtCore.Signal(object)  # self
+    sigNodeLatched = QtCore.Signal(object)  # self
 
     def __init__(self, name, **kwargs):
         """
@@ -81,7 +82,6 @@ class Node(QtCore.QObject):
         buffered        bool; whether a node has a to_operation which returns a rolling
                         buffer
         exportable      bool; whether export should be called
-        filter          bool; whether a node is a filter
         ==============  ============================================================
 
         """
@@ -99,7 +99,6 @@ class Node(QtCore.QObject):
         self._viewable = kwargs.get("viewable", False)
         self._buffered = kwargs.get("buffered", False)
         self._exportable = kwargs.get("exportable", False)
-        self._filter = kwargs.get("filter", False)
         self._editor = None
         self._enabled = True
 
@@ -113,6 +112,7 @@ class Node(QtCore.QObject):
         self.isSubgraphOutput = False
 
         self.global_op = kwargs.get("global_op", False)
+        self.latched = False
 
         self._input_vars = {}  # term:var
 
@@ -173,6 +173,14 @@ class Node(QtCore.QObject):
                 self.graphicsItem().setBrush(fn.mkBrush(255, 255, 255, 255))
         else:
             self.graphicsItem().setBrush(fn.mkBrush(255, 255, 0, 255))
+
+    def nodeLatched(self, latched):
+        self.latched = latched
+
+        # block signals so that flowchart.nodeEnabled doesn't get called recursively
+        self.graphicsItem().latch.blockSignals(True)
+        self.graphicsItem().latch.setChecked(latched)
+        self.graphicsItem().latch.blockSignals(False)
 
     def addInput(self, name="In", **kwargs):
         """Add a new input terminal to this Node with the given name. Extra
@@ -258,6 +266,7 @@ class Node(QtCore.QObject):
             group.add(name)
 
         self.graphicsItem().updateTerminals()
+        self.graphicsItem().buildMenu(reset=True)
         self.sigTerminalAdded.emit(self, term)
         return term
 
@@ -281,19 +290,29 @@ class Node(QtCore.QObject):
         """
         Buffered nodes can override their topics/terms.
         """
-        return {in_var: self.name()+'.'+term for term, in_var in self.input_vars().items()}
+        topics = {}
+        for term, in_var in self.input_vars().items():
+            if isinstance(in_var, modifiers.optional):
+                topics[in_var.name] = self.name()+'.'+term
+            else:
+                topics[in_var] = self.name()+'.'+term
+        return topics
 
     def buffered_terms(self):
         """
         Buffered nodes can override their topics/terms.
         """
-        return self.input_vars()
+        terms = {}
+        for term, in_var in self.input_vars().items():
+            if isinstance(in_var, modifiers.optional):
+                terms[term] = in_var.name
+            else:
+                terms[term] = in_var
+
+        return terms
 
     def exportable(self):
         return self._exportable
-
-    def filter(self):
-        return self._filter
 
     def enabled(self):
         return self._enabled
@@ -304,7 +323,8 @@ class Node(QtCore.QObject):
         for name, term in self.terminals.items():
             if name in self._input_vars:
                 if term.optional():
-                    input_vars[name] = modifiers.optional(self._input_vars[name])
+                    input_vars[name] = modifiers.optional(self._input_vars[name],
+                                                          mapped_name=name.replace(".", "_"))
                 else:
                     input_vars[name] = self._input_vars[name]
         return input_vars
@@ -359,7 +379,7 @@ class Node(QtCore.QObject):
         when they are constructing their Node list."""
         return None
 
-    def connected(self, localTerm, remoteTerm, pos=None):
+    def connected(self, localTerm, remoteTerm):
         """Called whenever one of this node's terminals is connected elsewhere."""
         node = remoteTerm.node()
 
@@ -426,7 +446,8 @@ class Node(QtCore.QObject):
         Subclasses may want to extend this method, adding extra keys to the returned
         dict."""
         pos = self.graphicsItem().pos()
-        state = {'pos': (pos.x(), pos.y()), 'enabled': self._enabled, 'viewed': self.viewed}
+        state = {'pos': (pos.x(), pos.y()), 'enabled': self._enabled,
+                 'viewed': self.viewed, 'latched': self.latched}
         state['terminals'] = self.saveTerminals()
         return state
 
@@ -437,6 +458,7 @@ class Node(QtCore.QObject):
         self.graphicsItem().setPos(*pos)
         self._enabled = state.get('enabled')
         self.viewed = state.get('viewed', False)
+        self.nodeLatched(state.get('latched', False))
         if 'terminals' in state:
             self.restoreTerminals(state['terminals'])
 
@@ -511,6 +533,18 @@ class Node(QtCore.QObject):
     def onCreate(self):
         pass
 
+    def terminalConnected(self, nodeTermConnected):
+        """
+        Can be used to trigger updates in widget.
+        """
+        pass
+
+    def terminalDisconnected(self, nodeTermDisconnected):
+        """
+        Can be used to trigger updates in widget.
+        """
+        pass
+
 
 class NodeGraphicsItem(GraphicsObject):
 
@@ -530,7 +564,9 @@ class NodeGraphicsItem(GraphicsObject):
         self.hovered = False
 
         self.node = node
-        flags = self.ItemIsMovable | self.ItemIsSelectable | self.ItemSendsGeometryChanges
+        flags = QtWidgets.QGraphicsItem.ItemIsMovable | \
+            QtWidgets.QGraphicsItem.ItemIsSelectable | \
+            QtWidgets.QGraphicsItem.ItemSendsGeometryChanges
 
         self.setFlags(flags)
         self.bounds = QtCore.QRectF(0, 0, 100, 100)
@@ -545,6 +581,7 @@ class NodeGraphicsItem(GraphicsObject):
         self.connectedTo = None
         self.enabled = QtWidgets.QAction("Enabled", self.menu, checkable=True, checked=True)
         self.optional = QtWidgets.QAction("Optional Inputs", self.menu, checkable=True, checked=False)
+        self.latch = QtWidgets.QAction("Latch Outputs", self.menu, checkable=True, checked=False)
         self.buildMenu()
 
     def setPen(self, *args, **kwargs):
@@ -611,14 +648,16 @@ class NodeGraphicsItem(GraphicsObject):
         ev.ignore()
 
     def mouseClickEvent(self, ev):
-        if int(ev.button()) == int(QtCore.Qt.LeftButton):
+        # if int(ev.button()) == int(QtCore.Qt.LeftButton):
+        if ev.button() == QtCore.Qt.LeftButton:
             ev.accept()
             sel = self.isSelected()
             self.setSelected(True)
             if not sel and self.isSelected():
                 self.update()
 
-        elif int(ev.button()) == int(QtCore.Qt.RightButton):
+        # elif int(ev.button()) == int(QtCore.Qt.RightButton):
+        elif ev.button() == QtCore.Qt.RightButton:
             ev.accept()
             self.raiseContextMenu(ev)
 
@@ -667,7 +706,7 @@ class NodeGraphicsItem(GraphicsObject):
             ev.ignore()
 
     def itemChange(self, change, val):
-        if change == self.ItemPositionHasChanged:
+        if change == QtWidgets.QGraphicsItem.ItemPositionHasChanged:
             for k, t in self.terminals.items():
                 t[1].nodeMoved()
 
@@ -773,6 +812,9 @@ class NodeGraphicsItem(GraphicsObject):
             if self.node._allowOptional:
                 self.optional.toggled.connect(self.optionalFromMenu)
                 self.menu.addAction(self.optional)
+            if self.node.global_op:
+                self.latch.toggled.connect(self.latchedFromMenu)
+                self.menu.addAction(self.latch)
             if self.node._allowAddInput:
                 self.menu.addAction("Add input", self.addInputFromMenu)
             if self.node._allowAddOutput:
@@ -793,6 +835,10 @@ class NodeGraphicsItem(GraphicsObject):
                 graphicsItem.menu.optionalAct.setChecked(checked)
             term.setOptional(checked, emit=False)
             self.node.sigTerminalOptional.emit(self.node, term)
+
+    def latchedFromMenu(self, checked):
+        self.node.nodeLatched(checked)
+        self.node.sigNodeLatched.emit(self.node)
 
     def addInputFromMenu(self):
         # called when add input is clicked in context menu

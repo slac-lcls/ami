@@ -10,6 +10,8 @@ import inspect
 import logging
 import datetime
 import pickle
+import queue
+import threading
 try:
     import h5py
 except ImportError:
@@ -18,12 +20,15 @@ try:
     import warnings
     warnings.simplefilter(action='ignore', category=FutureWarning)
     import pyarrow as pa
+    if not hasattr(pa, 'SerializationContext'):
+        pa = None
 except ImportError:
     pa = None
 import numpy as np
 import amitypes as at
 from enum import Enum
 from dataclasses import dataclass, asdict, field
+import prometheus_client as pc
 from ami import psana, psana_uses_epics_epoch
 
 
@@ -83,11 +88,9 @@ class Heartbeat:
     Args:
         identity (int): Heartbeat integer id number
         timestamp (float): Unix timestamp associated with heartbeat
-        prompt (bool): Flag to indicate the heartbeat prompt (not to be built)
     """
     identity: int = 0
     timestamp: float = 0.0
-    prompt: bool = False
 
     def __hash__(self):
         return hash(self.identity)
@@ -144,7 +147,8 @@ class Message:
     mtype: MsgTypes
     identity: int
     payload: dict
-    timestamp: int = 0
+    timestamp: int = 0  # typically raw data source (LCLS) timestamp
+    unix_ts: float = 0  # timestamp converted to unix_ts
 
     def _serialize(self):
         return asdict(self)
@@ -340,6 +344,120 @@ class TimestampConverter:
         return raw_ts, int(timestamp * self.heartbeat), unix_ts
 
 
+class Timeout:
+    pass
+
+
+class TimeoutIterator:
+    """
+    Wrapper class to add timeout feature to synchronous iterators
+    - timeout: timeout for next(). Default=ZERO_TIMEOUT i.e. no timeout or blocking calls to next. Updated using set_timeout()
+    - sentinel: the object returned by iterator when timeout happens
+    - reset_on_next: if set to True, timeout is reset to the value of ZERO_TIMEOUT on each iteration
+
+    TimeoutIterator uses a thread internally.
+    The thread stops once the iterator exhausts or raises an exception during iteration.
+
+    Any excptions raised within the wrapped iterator are popagated as it is.
+    Exception is raised when all elements geenerated by the actual iterator before exception have been consumed
+    Timeout can be set dynamically before going for iteration
+
+    TAKEN FROM: https://github.com/leangaurav/pypi_iterator/blob/main/iterators/timeout_iterator.py#L5
+    MIT LICENSE
+
+    Copyright 2020 leangaurav
+    Permission is hereby granted, free of charge, to any person obtaining a copy of this software and
+    associated documentation files (the “Software”), to deal in the Software without restriction, including
+    without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+    copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the
+    following conditions:
+
+    The above copyright notice and this permission notice shall be included in all copies or substantial
+    portions of the Software.
+
+    THE SOFTWARE IS PROVIDED “AS IS”, WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT
+    LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO
+    EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER
+    IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR
+    THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+    """
+    ZERO_TIMEOUT = 0.0
+
+    def __init__(self, iterator, timeout=0.0, sentinel=Timeout(), reset_on_next=False):
+        self._iterator = iterator
+        self._timeout = timeout
+        self._sentinel= sentinel
+        self._reset_on_next = reset_on_next
+
+        self._interrupt = False
+        self._done = False
+        self._buffer = queue.Queue(maxsize=1)
+        self._thread = threading.Thread(target=self.__lookahead)
+        self._thread.start()
+
+    def get_sentinel(self):
+        return self._sentinel
+
+    def set_reset_on_next(self, reset_on_next):
+        self._reset_on_next = reset_on_next
+
+    def set_timeout(self, timeout: float):
+        """
+        Set timeout for next iteration
+        """
+        self._timeout = timeout
+
+    def interrupt(self):
+        """
+        interrupt and stop the underlying thread.
+        the thread acutally dies only after interrupt has been set and
+        the underlying iterator yields a value after that.
+        """
+        self._interrupt = True
+
+    def __iter__(self):
+        return self
+
+    def __next__(self):
+        """
+        yield the result from iterator
+        if timeout > 0:
+            yield data if available.
+            otherwise yield sentinal
+        """
+        if self._done:
+            raise StopIteration
+
+        data = self._sentinel
+        try:
+            if self._timeout > self.ZERO_TIMEOUT:
+                data = self._buffer.get(timeout=self._timeout)
+            else:
+                data = self._buffer.get()
+        except queue.Empty:
+            pass
+        finally:
+            # see if timeout needs to be reset
+            if self._reset_on_next:
+                self._timeout = self.ZERO_TIMEOUT
+
+        # propagate any exceptions including StopIteration
+        if isinstance(data, BaseException):
+            self._done = True
+            raise data
+
+        return data
+
+    def __lookahead(self):
+        try:
+            while True:
+                self._buffer.put(next(self._iterator))
+                if self._interrupt:
+                    raise StopIteration()
+        except BaseException as e:
+            self._buffer.put(e)
+
+
 @dataclass
 class RequestedData:
     def __init__(self, names=None, kws={}):
@@ -396,7 +514,7 @@ class RequestedData:
         return name in self.names
 
 class Source(abc.ABC):
-    def __init__(self, idnum, num_workers, heartbeat_period, src_cfg, flags=None, evtid_type=None):
+    def __init__(self, idnum, num_workers, heartbeat_period, src_cfg, flags=None, evtid_type=None, timeout=None):
         """
         Args:
             idnum (int): Id number
@@ -417,6 +535,7 @@ class Source(abc.ABC):
         self.requested_special = {}
         self.config = src_cfg
         self.flags = flags or {}
+        self.timeout = timeout*1e-3 if timeout else None
         self.source = at.DataSource(self.config)
         self._base_types = {
             'eventid': int if evtid_type is None else evtid_type,
@@ -430,6 +549,7 @@ class Source(abc.ABC):
             'init_time': float,
             'bound': int,
             'repeat': lambda s: s if isinstance(s, bool) else s.lower() == 'true',
+            'pregen': lambda s: s if isinstance(s, bool) else s.lower() == 'true',
             'counting': lambda s: s if isinstance(s, bool) else s.lower() == 'true',
             'files': lambda n: n if isinstance(n, list) else [os.path.expanduser(f) for f in n.split(',')],
             'config': lambda c: c if isinstance(c, dict) else os.path.expanduser(c),
@@ -490,17 +610,6 @@ class Source(abc.ABC):
         """
         return self.config.get('type', 'generic')
 
-    @property
-    def prompt_mode(self):
-        """
-        Getter for the prompt mode state. This is based on the heartbeat period.
-        A heartbeat period of 0 will yield True otherwise False.
-
-        Returns:
-            Boolean value of whether prompt mode is active
-        """
-        return self.heartbeat_period == 0
-
     def reset_heartbeat(self):
         """
         Resets the heartbeat to its initial state.
@@ -524,10 +633,7 @@ class Source(abc.ABC):
         """
         if timestamp is None:
             timestamp = time.time()
-        if self.prompt_mode:
-            self.old_heartbeat = Heartbeat(value, timestamp, True)
-            return True
-        elif self.heartbeat is None:
+        if self.heartbeat is None:
             self.heartbeat = Heartbeat(value // self.heartbeat_period, timestamp)
             return False
         elif (value // self.heartbeat_period) > self.heartbeat:
@@ -699,7 +805,7 @@ class Source(abc.ABC):
             ('source', self.source)
         ]
         data.update({k: v for k, v in base if k in self.requested_names.names})
-        msg = Message(mtype=MsgTypes.Datagram, identity=self.idnum, payload=data, timestamp=eventid)
+        msg = Message(mtype=MsgTypes.Datagram, identity=self.idnum, payload=data, timestamp=eventid, unix_ts=timestamp)
         yield msg
 
     def request(self, requested_data, is_kws_update=False):
@@ -742,8 +848,8 @@ class Source(abc.ABC):
 
 
 class HierarchicalDataSource(Source):
-    def __init__(self, idnum, num_workers, heartbeat_period, src_cfg, flags=None, evtid_type=None):
-        super().__init__(idnum, num_workers, heartbeat_period, src_cfg, flags, evtid_type)
+    def __init__(self, idnum, num_workers, heartbeat_period, src_cfg, flags=None, evtid_type=None, timeout=None):
+        super().__init__(idnum, num_workers, heartbeat_period, src_cfg, flags, evtid_type, timeout)
         self._counter = None
         self.loop_count = 0
         self.step_count = 0
@@ -889,19 +995,36 @@ class HierarchicalDataSource(Source):
                 # emit the beginstep message
                 yield self.begin_step()
 
+                prev_timestamp = None
+
                 # loop over the events in the step
-                for evt in self._events(step):
+                if self.timeout:
+                    it = TimeoutIterator(self._events(step), timeout=self.timeout)
+                else:
+                    it = self._events(step)
+
+                for evt in it:
+                    if isinstance(evt, Timeout):
+                        # havent seen a new event yet and we timed out
+                        if prev_timestamp is None:
+                            continue
+                        eventid, heartbeat, unix_ts = prev_timestamp
+                        # set heartbeat
+                        self.old_heartbeat = Heartbeat(heartbeat // self.heartbeat_period, timestamp=unix_ts)
+                        prev_timestamp = None
+                        yield self.heartbeat_msg()
+                        continue
+
                     self.source.evt = evt
                     # get the subclasses timestamp implementation
-                    eventid, heartbeat, unix_ts = self.timestamp(evt)
-                    # check the heartbeat if not in prompt mode
-                    if not self.prompt_mode and self.check_heartbeat_boundary(heartbeat, timestamp=unix_ts):
+                    prev_timestamp = self.timestamp(evt)
+                    eventid, heartbeat, unix_ts = prev_timestamp
+                    # check the heartbeat
+                    if self.check_heartbeat_boundary(heartbeat, timestamp=unix_ts):
                         yield self.heartbeat_msg()
+
                     # emit the processed event data
                     yield from self.event(eventid, unix_ts, self._process(evt))
-                    # check the heartbeat if in prompt mode
-                    if self.prompt_mode and self.check_heartbeat_boundary(heartbeat, timestamp=unix_ts):
-                        yield self.heartbeat_msg()
                     # sleep for the requested event interval
                     time.sleep(self.interval)
                     # remove reference to evt object
@@ -923,8 +1046,8 @@ class HierarchicalDataSource(Source):
 
 
 class PsanaSource(HierarchicalDataSource):
-    def __init__(self, idnum, num_workers, heartbeat_period, src_cfg, flags=None):
-        super().__init__(idnum, num_workers, heartbeat_period, src_cfg, flags)
+    def __init__(self, idnum, num_workers, heartbeat_period, src_cfg, flags=None, timeout=None):
+        super().__init__(idnum, num_workers, heartbeat_period, src_cfg, flags, timeout=timeout)
         self.ts_converter = TimestampConverter()
         self.epics_epoch = psana_uses_epics_epoch()
         self.ds_keys = {
@@ -941,6 +1064,13 @@ class PsanaSource(HierarchicalDataSource):
             'live',
             'smd',
             'calibdir',
+            'monitor',
+            'detectors',
+            'supervisor',
+            'supervisor_ip_addr',
+            'skip_calib_load',
+            'use_calib_cache',
+            'cached_detectors',
         }
         # special attributes that are per run instead of per event from a detectors interface, e.g. calib constants
         self.special_attrs = {
@@ -963,6 +1093,11 @@ class PsanaSource(HierarchicalDataSource):
             'run': lambda s: s if isinstance(s, int) else int(s),
             'live': lambda s: s if isinstance(s, bool) else s.lower() == 'true',
             'smd': lambda s: s if isinstance(s, bool) else s.lower() == 'true',
+            'monitor': lambda s: s if isinstance(s, bool) else s.lower() == 'true',
+            'detectors': lambda s: s.split(';'),
+            'supervisor': lambda s: int(s),
+            'use_calib_cache': lambda s: s if isinstance(s, bool) else s.lower() == 'true',
+            'cached_detectors': lambda s: s.split(';'),
         }
         for key, func in convert_kwargs.items():
             if key in ps_kwargs:
@@ -1111,8 +1246,11 @@ class PsanaSource(HierarchicalDataSource):
                             attr_type = typing.Any
                         else:
                             attr_type = attr_sig.return_annotation
+                            if type(attr_type) is str:
+                                attr_type = getattr(at, attr_type, attr_type)
                 except ValueError:
                     attr_type = typing.Any
+
                 if attr_type in at.HSDTypes:
                     # ignore things which are not derived from dict
                     if str(attr_type).startswith('dict'):
@@ -1238,8 +1376,8 @@ class PsanaSource(HierarchicalDataSource):
 
 
 class Hdf5Source(HierarchicalDataSource):
-    def __init__(self, idnum, num_workers, heartbeat_period, src_cfg, flags=None):
-        super().__init__(idnum, num_workers, heartbeat_period, src_cfg, flags)
+    def __init__(self, idnum, num_workers, heartbeat_period, src_cfg, flags=None, timeout=None):
+        super().__init__(idnum, num_workers, heartbeat_period, src_cfg, flags, timeout=timeout)
         self.hdf5_delim = "/"
         self.files = self.config.get('files', [])
         self.hdf5_ts = self.config.get('timestamp')
@@ -1372,8 +1510,8 @@ class Hdf5Source(HierarchicalDataSource):
 
 
 class SimSource(Source):
-    def __init__(self, idnum, num_workers, heartbeat_period, src_cfg, flags=None):
-        super().__init__(idnum, num_workers, heartbeat_period, src_cfg, flags)
+    def __init__(self, idnum, num_workers, heartbeat_period, src_cfg, flags=None, timeout=None):
+        super().__init__(idnum, num_workers, heartbeat_period, src_cfg, flags, timeout=timeout)
         self.count = 0
         self.synced = False
         # load the simulation configuration if not already done
@@ -1431,20 +1569,81 @@ class SimSource(Source):
 
 
 class RandomSource(SimSource):
-    def __init__(self, idnum, num_workers, heartbeat_period, src_cfg, flags=None):
-        super().__init__(idnum, num_workers, heartbeat_period, src_cfg, flags)
+    def __init__(self, idnum, num_workers, heartbeat_period, src_cfg, flags=None, timeout=None):
+        super().__init__(idnum, num_workers, heartbeat_period, src_cfg, flags, timeout=timeout)
         np.random.seed([idnum])
         self.rng = np.random.default_rng(idnum)
+        self.pregen = self.config.get('pregen', False)
+        self.bound = self.config.get('bound', np.inf)
+        self.generated_events = {}
+
+        if self.pregen:
+            if self.bound is np.inf:
+                logger.error("Can only pregenerate bounded number of events! Set bound in config.")
+                exit()
+
+            for name, config in self.config['config'].items():
+                if config['dtype'] == 'Scalar':
+                    value = config['range'][0] + (config['range'][1] - config['range'][0]) * np.random.rand(self.bound)
+                    if config.get('integer', False):
+                        self.generated_events[name] = value.astype(int)
+                    else:
+                        self.generated_events[name] = value
+                elif config['dtype'] == 'Waveform' or config['dtype'] == 'Image':
+                    self.generated_events[name] = np.random.normal(config['pedestal'], config['width'],
+                                                                   [self.bound, *config['shape']])
+                elif config['dtype'] == 'List':
+                    if config.get('type', "integer") == "integer":
+                        events = []
+                        for i in range(0, self.bound):
+                            events.append(list(self.rng.integers(low=config['range'][0],
+                                                                 high=config['range'][1],
+                                                                 size=config['shape'])))
+                        self.generated_events[name] = events
 
     def events(self):
         time.sleep(self.init_time)
         yield self.configure()
+        if self.pregen:
+            it = self._pregened_events()
+        else:
+            it = self._random_events()
+
+        if self.timeout:
+            it = TimeoutIterator(it, self.timeout)
+
+        for evt in it:
+            eventid, timestamp = self.timestamp
+            if self.check_heartbeat_boundary(eventid):
+                yield self.heartbeat_msg()
+
+            if isinstance(evt, Timeout):
+                yield self.heartbeat_msg()
+                continue
+
+            yield from self.event(eventid, timestamp, evt)
+
+        # signal source has finished
+        yield self.unconfigure()
+
+    def _pregened_events(self):
+        while True:
+            event = {}
+            eventid, timestamp = self.timestamp
+            event_num = (eventid + int(10*np.random.rand(1)[0])) % self.bound
+
+            for name in self.requested_data.names:
+                event[name] = self.generated_events[name][event_num]
+
+            yield event
+
+            time.sleep(self.interval)
+
+    def _random_events(self):
         while True:
             event = {}
             # get the timestamp and check heartbeat
-            eventid, timestamp = self.timestamp
-            if not self.prompt_mode and self.check_heartbeat_boundary(eventid):
-                yield self.heartbeat_msg()
+
             for name, config in self.simulated.items():
                 if name in self.requested_data.names:
                     if config['dtype'] == 'Scalar':
@@ -1462,17 +1661,15 @@ class RandomSource(SimSource):
                                                                  size=config['shape']))
                     else:
                         logger.warn("DataSrc: %s has unknown type %s", name, config['dtype'])
-            yield from self.event(eventid, timestamp, event)
-            if self.prompt_mode and self.check_heartbeat_boundary(eventid):
-                yield self.heartbeat_msg()
+
+            yield event
+
             time.sleep(self.interval)
-        # signal source has finished
-        yield self.unconfigure()
 
 
 class StaticSource(SimSource):
-    def __init__(self, idnum, num_workers, heartbeat_period, src_cfg, flags=None):
-        super().__init__(idnum, num_workers, heartbeat_period, src_cfg, flags)
+    def __init__(self, idnum, num_workers, heartbeat_period, src_cfg, flags=None, timeout=None):
+        super().__init__(idnum, num_workers, heartbeat_period, src_cfg, flags, timeout=timeout)
         self.bound = self.config.get('bound', np.inf)
 
     def events(self):
@@ -1483,7 +1680,7 @@ class StaticSource(SimSource):
             event = {}
             # get the timestamp and check heartbeat
             eventid, timestamp = self.timestamp
-            if not self.prompt_mode and self.check_heartbeat_boundary(eventid):
+            if self.check_heartbeat_boundary(eventid):
                 yield self.heartbeat_msg()
             for name, config in self.simulated.items():
                 if name in self.requested_data.names:
@@ -1495,8 +1692,6 @@ class StaticSource(SimSource):
                         logger.warn("DataSrc: %s has unknown type %s", name, config['dtype'])
             count += 1
             yield from self.event(eventid, timestamp, event)
-            if self.prompt_mode and self.check_heartbeat_boundary(eventid):
-                yield self.heartbeat_msg()
             if count >= self.bound:
                 break
             time.sleep(self.interval)

@@ -22,6 +22,7 @@ try:
             logger.info('in PolarHistogram.__init__')
             self.args = args
             self.hpolar = None
+            self.mask_arc = None
 
         def __call__(self, img, mask=None):
             logger.debug('in PolarHistogram.__call__ %s' % info_ndarr(img, 'image'))
@@ -30,6 +31,7 @@ try:
                 logger.info('update hpolar with cx:%.1f, cy:%.1f, ro:%d, ri:%d, ao:%.1f, ai:%.1f, nr:%d, na:%d' %
                             (cx, cy, ro, ri, ao, ai, nr, na))
                 hp = self.hpolar = ur.polar_histogram(img.shape, mask, cx, cy, ro, ri, ao, ao+ai, nr, na)
+                self.mask_arc = ur.um.mask_arc(img.shape, cx, cy, ro, ri, ao, ai, dtype=np.uint8)
                 logger.info(info_ndarr(hp.obj_radbins().bincenters(), '\n  rad bin centers')
                           + info_ndarr(hp.obj_phibins().bincenters(), '\n  ang bin centers'))
                             #hp.info_attrs()
@@ -52,8 +54,6 @@ try:
                          + info_ndarr(rproj, '\n  radial  projection')
                          + info_ndarr(aproj, '\n  angular projection'))
 
-            mask_arc = ur.um.mask_arc(img.shape, cx, cy, ro, ri, ao, ai, dtype=np.uint8)
-
             return orbins.bincenters(),\
                 oabins.bincenters(),\
                 orbins.binedges(),\
@@ -64,7 +64,7 @@ try:
                 aproj,\
                 (cx, cy, ro, ri, ao, ai, nr, na),\
                 (ri, ro-ri, ao, ai-ao),\
-                mask_arc
+                self.mask_arc
 
     class RoiArch(CtrlNode):
         """
@@ -96,7 +96,6 @@ try:
                                         'ROIPars': {'io': 'out', 'ttype': Array1d},
                                         'BBox': {'io': 'out', 'ttype': Array1d},
                                         'Mask': {'io': 'out', 'ttype': Array2d}},
-                             global_op=True,
                              viewable=True)
 
         def isChanged(self, restore_ctrl, restore_widget):

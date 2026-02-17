@@ -340,24 +340,21 @@ class Store:
         Sets the data associated with an entry in the store. If there is an
         existing entry in the store with that name, the type of the data is
         checked to see that it matches with what is already in the store.
+        Logs a warning if the type of data doesn't match the type of the
+        existing entry in the store with that name.
 
         Args:
             name (str): the name of the entry
             data (object): the data to associate with the entry
-
-        Raises:
-            TypeError: if the type of data doesn't match the type of the
-                existing entry in the store with that name.
         """
         if data is not None:
             datatype = self.get_type(data)
             if name in self._store:
-                if datatype == self._store[name].dtype or self._store[name].dtype is None:
-                    self._store[name].dtype = datatype
-                    self._store[name].data = data
-                else:
-                    raise TypeError("type of new result (%s) differs from existing"
+                if not datatype == self._store[name].dtype:
+                    logger.warning("type of new result (%s) differs from existing."
                                     " (%s)" % (datatype, self._store[name].dtype))
+                self._store[name].dtype = datatype
+                self._store[name].data = data
             else:
                 self._store[name] = Datagram(name, datatype, data)
 
@@ -377,18 +374,20 @@ class Store:
 
 
 class ZmqHandler:
-    def __init__(self, addr, ctx=None):
+    def __init__(self, addr, ctx=None, hwm=None):
         if ctx is None:
             self.ctx = zmq.Context()
         else:
             self.ctx = ctx
         self.collector = self.ctx.socket(zmq.PUSH)
+        if hwm:
+            self.collector.setsockopt(zmq.SNDHWM, hwm)
         self.collector.connect(addr)
         self.serializer = Serializer()
 
     def send(self, msg):
         msg = self.serializer(msg)
-        self.collector.send_multipart(msg, flags=zmq.NOBLOCK, copy=False)
+        self.collector.send_multipart(msg, copy=False)
         return self.serializer.sizeof(msg)
 
     def message(self, mtype, identity, payload):
@@ -409,8 +408,8 @@ class ResultStore(ZmqHandler):
     a Collector object.
     """
 
-    def __init__(self, addr, ctx=None):
-        super().__init__(addr, ctx)
+    def __init__(self, addr, ctx=None, hwm=None):
+        super().__init__(addr, ctx, hwm)
         self.stores = {}
 
     def __bool__(self):
@@ -454,7 +453,7 @@ class ResultStore(ZmqHandler):
 class ContributionBuilder(abc.ABC):
     def __init__(self, num_contribs):
         self.num_contribs = num_contribs
-        self.pending = {}
+        self.pending = {}  # {eb_key : payload}
         self.contribs = {}
 
     @abc.abstractmethod
@@ -632,9 +631,9 @@ class GraphBuilder(ContributionBuilder):
 
 
 class TransitionBuilder(ContributionBuilder, ZmqHandler):
-    def __init__(self, num_contribs, addr, ctx=None):
+    def __init__(self, num_contribs, addr, ctx=None, hwm=None):
         ContributionBuilder.__init__(self, num_contribs)
-        ZmqHandler.__init__(self, addr, ctx)
+        ZmqHandler.__init__(self, addr, ctx, hwm)
 
     def _complete(self, eb_key, identity, drop):
         if not drop:
@@ -642,17 +641,22 @@ class TransitionBuilder(ContributionBuilder, ZmqHandler):
         return [], 0
 
     def _update(self, eb_key, eb_id, payload):
+        """
+        eb_key transition type (Configure, Unconfigure, BeginStep, EndStep)
+        eb_id worker
+        payload transition number
+        """
         if eb_key not in self.pending:
             self.pending[eb_key] = payload
         elif payload != self.pending[eb_key]:
-            logger.error("Transition mismatch: %s payload from id %s does not match the other contributers",
-                         eb_key, eb_id)
+            logger.error("Transition mismatch: %s payload %s from id %s does not match the other contributers: %s",
+                         eb_key, payload, eb_id, self.pending)
 
 
 class EventBuilder(ZmqHandler):
 
-    def __init__(self, num_contribs, depth, color, addr, ctx=None):
-        super().__init__(addr, ctx)
+    def __init__(self, num_contribs, depth, color, addr, ctx=None, hwm=None):
+        super().__init__(addr, ctx, hwm)
         self.num_contribs = num_contribs
         self.depth = depth
         self.color = color
@@ -909,13 +913,13 @@ class Node(abc.ABC):
             payload (obj): the payload of the report. This can be any arbitrary
                 object that can be serialized using dill.
         """
-        self.node_msg_comm.send_string(topic, zmq.NOBLOCK | zmq.SNDMORE)
-        self.node_msg_comm.send_string(self.name, zmq.NOBLOCK | zmq.SNDMORE)
+        self.node_msg_comm.send_string(topic, zmq.SNDMORE)
+        self.node_msg_comm.send_string(self.name, zmq.SNDMORE)
         if topic == "profile":
-            self.node_msg_comm.send_string(payload['graph'], zmq.NOBLOCK | zmq.SNDMORE)
-            self.node_msg_comm.send_serialized(payload, self.serializer, zmq.NOBLOCK, copy=False)
+            self.node_msg_comm.send_string(payload['graph'], zmq.SNDMORE)
+            self.node_msg_comm.send_serialized(payload, self.serializer, copy=False)
         else:
-            self.node_msg_comm.send(dill.dumps(payload), zmq.NOBLOCK, copy=False)
+            self.node_msg_comm.send(dill.dumps(payload), copy=False)
 
     def update_path(self, name, version, args, paths):
         exists = True
@@ -971,19 +975,22 @@ class Collector(abc.ABC):
             passed it creates one.
     """
 
-    def __init__(self, addr, ctx=None, hutch=None):
+    def __init__(self, addr, ctx=None, hutch=None, hwm=None, timeout=None):
         if ctx is None:
             self.ctx = zmq.Context(io_threads=2)
         else:
             self.ctx = ctx
         self.poller = zmq.Poller()
         self.collector = self.ctx.socket(zmq.PULL)
+        if hwm:
+            self.collector.setsockopt(zmq.RCVHWM, hwm)
         self.collector.bind(addr)
         self.poller.register(self.collector, zmq.POLLIN)
         self.handlers = {}
         self.running = True
         self.exitcode = 0
         self.deserializer = Deserializer()
+        self.timeout = timeout
         self.hutch = hutch
 
         self.event_counter = pc.Counter('ami_event_count', 'Event Counter', ['hutch', 'type', 'process'])
@@ -1029,6 +1036,10 @@ class Collector(abc.ABC):
         """
         pass
 
+    @abc.abstractmethod
+    def poll_timeout(self):
+        pass
+
     def run(self):
         """
         The main collector loop runs forever polling the collector socket
@@ -1042,7 +1053,9 @@ class Collector(abc.ABC):
         idle_start = time.time()
         reset_idle = False
         while self.running:
-            for sock, flag in self.poller.poll():
+            received = False
+
+            for sock, flag in self.poller.poll(timeout=self.timeout):
                 if flag != zmq.POLLIN:
                     continue
 
@@ -1052,8 +1065,13 @@ class Collector(abc.ABC):
                 if sock is self.collector:
                     msg = self.collector.recv_serialized(self.deserializer, copy=False)
                     self.process_msg(msg)
+                    received = True
                 elif sock in self.handlers:
                     self.handlers[sock]()
+                    received = True
+
+            if not received and self.timeout:
+                self.poll_timeout()
 
             if reset_idle:
                 reset_idle = False
@@ -1441,7 +1459,7 @@ class CommHandler(abc.ABC):
 
         return self._make_node(gn.PickN, name=node_name, inputs=name, outputs=view_name, N=1, parent=parent)
 
-    def _make_export_node(self, name, export_name):
+    def _make_export_node(self, name, export_name, N=1):
         """
         Constructs a special graph export node of the requested type.
 
@@ -1454,7 +1472,7 @@ class CommHandler(abc.ABC):
         """
         node_name = '%s_export' % export_name
 
-        return self._make_node(gn.PickN, name=node_name, inputs=name, outputs=export_name, N=1, exportable=True)
+        return self._make_node(gn.PickN, name=node_name, inputs=name, outputs=export_name, N=N, exportable=True)
 
     def alias(self, name, alias=None):
         """
@@ -1743,7 +1761,17 @@ class CommHandler(abc.ABC):
     def plot(self, item):
         pass
 
-    def export(self, names, aliases=None):
+    @property
+    def epics_prefix(self):
+        """
+        Epics export prefix.
+
+        Returns:
+            Returns string of epics export prefix.
+        """
+        return self._request('get_epics_prefix')
+
+    def export(self, names, aliases=None, N=1):
         """
         Adds a Pick1 graph node for the requested graph output so that is can
         be exported. The format of output name of the Pick1 node is determined
@@ -1767,7 +1795,7 @@ class CommHandler(abc.ABC):
         if len(names) != len(aliases):
             raise ValueError("The number of names and aliases passed must be equal")
 
-        return self._export(names, aliases)
+        return self._export(names, aliases, N=N)
 
     def unexport(self, names, aliases=None):
         """
@@ -2012,7 +2040,7 @@ class CommHandler(abc.ABC):
         pass
 
     @abc.abstractmethod
-    def _export(self, names, aliases):
+    def _export(self, names, aliases, N=1):
         pass
 
     @abc.abstractmethod
@@ -2152,10 +2180,10 @@ class AsyncGraphCommHandler(ZmqCommHandler):
 
         return await self.add(nodes)
 
-    async def _export(self, names, aliases):
+    async def _export(self, names, aliases, N=1):
         nodes = []
         for name, alias in zip(names, aliases):
-            nodes.append(self._make_export_node(name, self.alias(name, alias)))
+            nodes.append(self._make_export_node(name, self.alias(name, alias), N=N))
 
         return await self.add(nodes)
 
@@ -2267,10 +2295,10 @@ class GraphCommHandler(ZmqCommHandler):
 
         return self.add(nodes)
 
-    def _export(self, names, aliases):
+    def _export(self, names, aliases, N=1):
         nodes = []
         for name, alias in zip(names, aliases):
-            nodes.append(self._make_export_node(name, self.alias(name, alias)))
+            nodes.append(self._make_export_node(name, self.alias(name, alias), N=N))
 
         return self.add(nodes)
 
@@ -2291,7 +2319,3 @@ class GraphCommHandler(ZmqCommHandler):
     def _save(self, filename):
         with open(filename, 'wb') as cnf:
             dill.dump(self.graph, cnf)
-
-
-class AMIWarning(Exception):
-    pass

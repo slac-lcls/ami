@@ -77,7 +77,7 @@ def test_binning(qtbot):
     assert node.values['range max'] == 110
 
     op = node.to_operation(inputs={"In": node.name()}, outputs=['binning.out'])
-    assert len(op) == 2
+    assert len(op) == 3
     assert type(op[0]) == gn.Map
     assert type(op[1]) == gn.Accumulator
 
@@ -125,7 +125,7 @@ def test_scalarplot(qtbot):
     assert node.values['Num Points'] == 98
 
     inputs = {"Y": "Y"}
-    op = node.to_operation(inputs=inputs, outputs=['y'])
+    op = node.to_operation(inputs=inputs, outputs=['y'])[0]
     assert type(op) == gn.RollingBuffer
     assert op.N == 98
 

@@ -206,14 +206,13 @@ class ScatterPlot(CtrlNode):
 
     def to_operation(self, inputs, outputs, **kwargs):
         outputs = [self.name()+'.'+i for i in inputs.keys()]
-        buffer_output = [self.name()]
+        buffer_output = [self.name()+"_count", self.name()+"_buffered"]
         nodes = [gn.RollingBuffer(name=self.name()+"_buffer",
                                   N=self.values['Num Points'], unique=self.values['Unique'],
                                   inputs=inputs, outputs=buffer_output, **kwargs),
                  gn.Map(name=self.name()+"_operation",
                         inputs=buffer_output, outputs=outputs,
-                        func=lambda a: zip(*a),
-                        **kwargs)]
+                        func=lambda count, a: zip(*a), **kwargs)]
         return nodes
 
     def plotMetadata(self, topics, terms, **kwargs):
@@ -245,17 +244,21 @@ class ScalarPlot(CtrlNode):
 
     def to_operation(self, inputs, outputs, **kwargs):
         outputs = [self.name()+'.'+i for i in inputs.keys()]
-        buffer_output = [self.name()]
-        if len(inputs.values()) > 1:
-            node = [gn.RollingBuffer(name=self.name()+"_buffer", N=self.values['Num Points'],
-                                     inputs=inputs, outputs=buffer_output, **kwargs),
-                    gn.Map(name=self.name()+"_operation", inputs=buffer_output, outputs=outputs,
-                           func=lambda a: zip(*a), **kwargs)]
-        else:
-            node = gn.RollingBuffer(name=self.name(), N=self.values['Num Points'],
-                                    inputs=inputs, outputs=outputs, **kwargs)
+        buffer_output = [self.name()+"_count", self.name()+"_buffered"]
 
-        return node
+        if len(inputs.values()) > 1:
+            def map_unzip(count, a):
+                return zip(*a)
+        else:
+            def map_unzip(count, a):
+                return a
+
+        nodes = [gn.RollingBuffer(name=self.name()+"_buffer", N=self.values['Num Points'],
+                                  inputs=inputs, outputs=buffer_output, **kwargs),
+                 gn.Map(name=self.name()+"_operation", inputs=buffer_output, outputs=outputs,
+                        func=map_unzip, **kwargs)]
+
+        return nodes
 
     def plotMetadata(self, topics, terms, **kwargs):
         return {'type': 'WaveformWidget', 'terms': terms, 'topics': topics}
@@ -318,7 +321,7 @@ class TimePlot(CtrlNode):
 
     def to_operation(self, inputs, outputs, **kwargs):
         outputs = [self.name()+'.'+i for i in inputs.keys()]
-        buffer_output = [self.name()]
+        buffer_output = [self.name()+"_count", self.name()+"_buffered"]
         nodes = [gn.RollingBuffer(name=self.name()+"_buffer", N=self.values['Num Points'],
                                   inputs=inputs, outputs=buffer_output, **kwargs),
                  gn.Map(name=self.name()+"_operation", inputs=buffer_output, outputs=outputs,

@@ -1,8 +1,8 @@
-from qtpy import QtWidgets
+from qtpy import QtCore, QtWidgets
 from amitypes import DataSource, Detector, Array1d, Array2d, Array3d
 from ami.flowchart.Node import Node, NodeGraphicsItem
 from ami.flowchart.Units import ureg
-from ami.flowchart.library.common import CtrlNode
+from ami.flowchart.library.common import CtrlNode, generateUi
 from ami.flowchart.library.Editors import ChannelEditor
 import ami.graph_nodes as gn
 import numpy as np
@@ -510,14 +510,14 @@ try:
             if self.calibconsts.keys() != calib.keys():
                 self.calibconsts = calib
 
-                logger.info('MaskProd.__call__: calibconsts.keys(): %s' % str(self.calibconsts.keys()))
+                logger.debug('MaskProd.__call__: calibconsts.keys(): %s' % str(self.calibconsts.keys()))
                 data_and_meta = self.calibconsts.get('pixel_status', None)
                 self.data, self.meta = (np.nan, None) if data_and_meta is None else data_and_meta
                 logger.debug('pixel_status meta: %s' % str(self.meta))
                 logger.debug('pixel_status data: %s' % str(self.data))
 
                 o = MaskAlgos(self.calibconsts)
-                logger.info('MaskProd.__call__: create mask_comb with pars: %s' % str(self.kwa))
+                logger.debug('MaskProd.__call__: create mask_comb with pars: %s' % str(self.kwa))
                 self.mask = o.mask_comb(**self.kwa)
                 logger.debug(info_ndarr(self.mask, 'mask_comb:'))
 
@@ -596,7 +596,7 @@ try:
 
             k = 'umask'
             fname = self.umask_from_ctrls()
-            logger.info('umask file name: %s' % str(fname))
+            logger.debug('umask file name: %s' % str(fname))
             ext = fname.split('.')[-1]
 
             try:
@@ -609,7 +609,7 @@ try:
                 logger.warning('can not load umask file: %s' % str(fname))
                 d[k] = None
 
-            logger.info(info_ndarr(d[k], k))
+            logger.debug(info_ndarr(d[k], k))
 
             return d
 
@@ -648,18 +648,18 @@ try:
                 self.geofname = geofname
                 if os.path.exists(geofname):
                     self.do_load_geo = 1
-                    logger.info('GeometryProd.__call__ load geometry from file "%s"' % geofname)
+                    logger.debug('GeometryProd.__call__ load geometry from file "%s"' % geofname)
 
             elif self.calibconsts.keys() != calib.keys():
                 self.calibconsts = calib
                 self.do_load_geo = 2
 
-                logger.info('GeometryProd.__call__: calibconsts.keys(): %s' % str(self.calibconsts.keys()))
+                logger.debug('GeometryProd.__call__: calibconsts.keys(): %s' % str(self.calibconsts.keys()))
                 data_and_meta = self.calibconsts.get('geometry', None)
                 self.data, self.meta = (None, None) if data_and_meta is None else data_and_meta
-                logger.info('geometry meta: %s' % str(self.meta))
-                logger.info('geometry data: %s' % str(self.data))
-                logger.info('GeometryProd.kwa: %s' % str(self.kwa))
+                logger.debug('geometry meta: %s' % str(self.meta))
+                logger.debug('geometry data: %s' % str(self.data))
+                logger.debug('GeometryProd.kwa: %s' % str(self.kwa))
 
             if self.do_load_geo > 0:  # =0 - do not load, =1 - from file, =2 - from DB
                 o = GeometryAccess()
@@ -677,7 +677,7 @@ try:
                 ix.shape = shape3d
                 iy.shape = shape3d
 
-                logger.info('\n  %s\n  %s\n  %s\n  %s' %
+                logger.debug('\n  %s\n  %s\n  %s\n  %s' %
                             (info_ndarr(ix, 'ix:'),
                              info_ndarr(iy, 'iy:'),
                              info_ndarr(x,  ' x:'),
@@ -923,34 +923,133 @@ except ImportError as e:
 
 # =========
 
+class ThresholdingHitFinderWidget(QtWidgets.QWidget):
+
+    sigStateChanged = QtCore.Signal(object, object, object)
+
+    def __init__(self, inputs={}, outputs=[], parent=None):
+        super().__init__(parent)
+        self.inputs = inputs
+        self.outputs = outputs
+        self.layout = QtWidgets.QFormLayout()
+        self.setLayout(self.layout)
+
+        functions = ['Exponential Moving Average', 'Infinite', 'SumN', 'RollingBuffer']
+        combo_fct = [['Function', 'combo', {'values': functions}]]
+        self.func_group = generateUi(combo_fct)
+        self.layout.addRow(self.func_group[0])
+
+        self.w_combo = self.func_group[1].findWidget('Function')
+        self.w_combo.currentTextChanged.connect(self.update_args_ui)
+
+        self.args_group = None
+        self.update_args_ui(self.w_combo.currentText())
+
+    def update_args_ui(self, fct_name):
+        if self.args_group is not None:
+            self.clear_args_ui()
+
+        args_group = [('Threshold', 'doubleSpin', {'value': 1.0, 'group': 'args'})]
+        if fct_name == 'Exponential Moving Average':
+            args_group.append(('Fraction', 'doubleSpin', {'value': 1, 'min': 0, 'max': 1, 'group': 'args'}))
+        elif fct_name == "SumN" or fct_name == "RollingBuffer":
+            args_group.append(('N', 'intSpin', {'value': 1, 'min': 1, 'group': 'args'}))
+
+        self.args_group = generateUi(args_group)
+        self.args_ui, self.args_stateGroup, args_ctrls, args_values = self.args_group
+        self.layout.addWidget(self.args_ui)
+
+        self.args_stateGroup.sigChanged.connect(self.state_changed)
+        self.state_changed()
+        return self.args_ui, self.args_stateGroup, args_ctrls, args_values
+
+    def clear_args_ui(self):
+        self.layout.removeWidget(self.args_ui)
+        self.args_group[2]['args']['groupbox'].deleteLater()
+
+    def state_changed(self, *args, **kwargs):
+        state = self.get_state()
+        self.sigStateChanged.emit('widget_state', '', state)
+
+    def saveState(self, *args, **kwargs):
+        state = self.get_state()
+        return state
+
+    def restoreState(self, state):
+        self.w_combo.setCurrentText(state['Function'])
+        self.update_args_ui(self.w_combo.currentText())
+        self.args_stateGroup.setState(state['args'])
+        return
+
+    def get_state(self):
+        state = self.args_stateGroup.state()
+        state['Function'] = self.w_combo.currentText()
+        return state
+
+
 class ThresholdingHitFinder(CtrlNode):
 
     """
-    Apply a threshold to an image and infinitely sum.
+    Apply a threshold to an image and sum.
     """
 
     nodeName = "ThresholdingHitFinder"
-    uiTemplate = [('Threshold', 'doubleSpin', {'value': 1.0}),
-                  ('N', 'intSpin', {'value': 2, 'min': 2}),
-                  ('infinite', 'check')]
 
     def __init__(self, name):
         super().__init__(name, terminals={'In': {'io': 'in', 'ttype': Array2d},
                                           'Out': {'io': 'out', 'ttype': Array2d}},
                          global_op=True)
 
+        self.values = {'widget_state' : {'args': {'Threshold': 1, 'N': 1, 'Fraction': 1}, 'Function': 'Finite'}}
+
+    def display(self, topics, terms, addr, win, **kwargs):
+        if self.widget is None:
+            self.widget = ThresholdingHitFinderWidget(terms, self.output_vars(), win)
+            self.widget.sigStateChanged.connect(self.state_changed)
+        return self.widget
+
     def to_operation(self, inputs, outputs, **kwargs):
         mapped_outputs = [self.name()+'_threshold']
         summed_outputs = [self.name()+"_count", self.name()+"_sum"]
+        nodes = []
 
-        threshold = self.values['Threshold']
+        threshold = self.values['widget_state']['args']['Threshold']
+        fct = self.values['widget_state']['Function']
 
         def threshold_img(img):
             return np.where(img >= threshold, 1, 0)
 
-        if self.values['infinite']:
+        if fct == "Exponential Moving Average":
+            fraction = self.values['widget_state']['args']['Fraction']
 
-            def reduction(res, *rest):
+            def worker_reduction(old, *new, **kwargs):
+                reset = kwargs['reset']
+                if reset:
+                    return fraction*new[0]
+                else:
+                    return fraction*old+(1-fraction)*new[0]
+
+            def local_collector_reduction(old_avg, *new_1worker, **kwargs):
+                count = kwargs['count']
+                return old_avg + new_1worker[0]*count
+
+            def global_collector_reduction(old_avg, *new_1worker, **kwargs):
+                return old_avg + new_1worker[0]
+
+            nodes = [gn.Map(name=self.name()+"_map",
+                            inputs=inputs, outputs=mapped_outputs,
+                            func=threshold_img, **kwargs),
+                     gn.Accumulator(name=self.name()+"_accumulated",
+                                    inputs=mapped_outputs, outputs=summed_outputs,
+                                    worker_reduction=worker_reduction,
+                                    local_reduction=local_collector_reduction,
+                                    global_reduction=global_collector_reduction,
+                                    **kwargs),
+                     gn.Map(name=self.name()+"_unzip",
+                            inputs=summed_outputs, outputs=outputs,
+                            func=lambda count, s: s/count, **kwargs)]
+        elif fct == "Infinite":
+            def reduction(res, *rest, **kwargs):
                 res += np.sum(rest, axis=0)
                 return res
 
@@ -963,15 +1062,27 @@ class ThresholdingHitFinder(CtrlNode):
                      gn.Map(name=self.name()+"_unzip",
                             inputs=summed_outputs, outputs=outputs,
                             func=lambda count, s: s, **kwargs)]
-        else:
+        elif fct == "SumN":
+            N = self.values['widget_state']['args']['N']
             nodes = [gn.Map(name=self.name()+"_map",
                             inputs=inputs, outputs=mapped_outputs,
                             func=threshold_img, **kwargs),
                      gn.SumN(name=self.name()+"_accumulated",
                              inputs=mapped_outputs, outputs=summed_outputs,
-                             N=self.values['N'], **kwargs),
+                             N=N, **kwargs),
                      gn.Map(name=self.name()+"_unzip",
                             inputs=summed_outputs, outputs=outputs,
                             func=lambda count, s: s, **kwargs)]
+        elif fct == "RollingBuffer":
+            N = self.values['widget_state']['args']['N']
+            nodes = [gn.Map(name=self.name()+"_map",
+                            inputs=inputs, outputs=mapped_outputs,
+                            func=threshold_img, **kwargs),
+                     gn.RollingBuffer(name=self.name()+"_accumulated",
+                                      inputs=mapped_outputs, outputs=summed_outputs,
+                                      N=N, **kwargs),
+                     gn.Map(name=self.name()+"_unzip",
+                            inputs=summed_outputs, outputs=outputs,
+                            func=lambda count, s: sum(s), **kwargs)]
 
         return nodes

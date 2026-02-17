@@ -1,3 +1,4 @@
+import dill
 import networkx as nx
 import collections
 import ami.graph_nodes as gn
@@ -25,6 +26,8 @@ class Graph():
         self.children_of_global_operations = {}
         self.inputs = collections.defaultdict(set)
         self.outputs = collections.defaultdict(set)
+        self.latched_names = {}
+        self.latch_cache = {}
 
     def __bool__(self):
         return self.graph.size() != 0
@@ -208,6 +211,7 @@ class Graph():
         """
         nodes = list(filter(lambda node: isinstance(node, gn.StatefulTransformation), self.graph.nodes))
         list(map(lambda node: node.reset(), nodes))
+        self.latch_cache = {}
 
     def heartbeat_finished(self):
         """
@@ -321,7 +325,6 @@ class Graph():
             extras = node.on_expand()
 
             for color in color_order:
-
                 if color == 'worker':
                     worker_outputs = list(map(lambda o: o+'_worker', node.outputs))
 
@@ -331,7 +334,8 @@ class Graph():
 
                     worker_node = NewNode(name=node.name+'_worker',
                                           inputs=inputs, outputs=worker_outputs,
-                                          reduction=node.reduction, N=worker_N,
+                                          reduction=node._worker_reduction,
+                                          N=worker_N,
                                           **extras)
                     worker_node.color = color
                     worker_node.is_global_operation = False
@@ -352,8 +356,9 @@ class Graph():
                         local_collector_N = max(node.N // num_local_collectors, 1)
                         workers_per_local_collector = max(num_workers // num_local_collectors, 1)
 
-                    local_collector_node = NewNode(name=node.name+'_localCollector', inputs=worker_outputs,
-                                                   outputs=local_collector_outputs, reduction=node.reduction,
+                    local_collector_node = NewNode(name=node.name+'_localCollector',
+                                                   inputs=worker_outputs,  outputs=local_collector_outputs,
+                                                   reduction=node._local_reduction,
                                                    N=local_collector_N, is_expanded=True,
                                                    num_contributors=workers_per_local_collector, **extras)
                     local_collector_node.color = color
@@ -372,9 +377,9 @@ class Graph():
                     N = max((N // num_workers)*num_workers, 1)
 
                     global_collector_node = NewNode(name=node.name+'_globalCollector',
-                                                    inputs=local_collector_outputs,
-                                                    outputs=outputs, reduction=node.reduction, N=N,
-                                                    is_expanded=True,
+                                                    inputs=local_collector_outputs, outputs=outputs,
+                                                    reduction=node._global_reduction,
+                                                    N=N, is_expanded=True,
                                                     num_contributors=num_local_collectors, **extras)
                     global_collector_node.color = color
                     self.children_of_global_operations[node.parent].add(global_collector_node)
@@ -383,6 +388,9 @@ class Graph():
                         self.graph.add_edge(i, global_collector_node)
                     for o in outputs:
                         self.graph.add_edge(global_collector_node, o)
+                    if global_collector_node.latched:
+                        self.latched_names[global_collector_node.name] = (set(global_collector_node.inputs),
+                                                                          global_collector_node.outputs)
 
     def _collect_global_inputs(self):
         """
@@ -480,9 +488,26 @@ class Graph():
         assert self.graphkit is not None, "call compile first"
         color = kwargs.get('color', None)
         assert color is not None
+        if color == 'globalCollector':
+            for node, names in self.latched_names.items():
+                inputs, outputs = names
+                if inputs.issubset(args[0].keys()):
+                    # print("RECOMPUTING:", outputs)
+                    continue
+                for output in outputs:
+                    if output in self.latch_cache:
+                        # print("LATCHING:", output)
+                        args[0][output] = self.latch_cache[output]
         result = self.graphkit(*args, **kwargs)
-        outputs = self.outputs[color]
-        return {k: result[k] for k in outputs if k in result}
+        if color == 'globalCollector':
+            for node, names in self.latched_names.items():
+                inputs, outputs = names
+                for output in outputs:
+                    if output in result:
+                        # print("UPDATING LATCH:", output)
+                        self.latch_cache[output] = result[output]
+        return {k: result[k] for k in self.outputs[color] if k in result}
+
 
     def times(self):
         """
@@ -491,9 +516,17 @@ class Graph():
         assert self.graphkit is not None, "call compile first"
         return self.graphkit.times()
 
+    def warnings(self):
+        assert self.graphkit is not None, "call compile first"
+        return self.graphkit.warnings()
+
     def metadata(self):
         """
         Return dictionary of node metadata.
         """
         assert self.graphkit is not None, "call compile first"
         return self.graphkit.node_metadata()
+
+    def dump(self, pth):
+        with open(pth, 'wb') as f:
+            dill.dump(self, f)

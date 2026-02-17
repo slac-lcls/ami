@@ -7,9 +7,12 @@ import json
 import logging
 import argparse
 import time
+import datetime as dt
+import cProfile
+import signal
 import prometheus_client as pc
 from ami import LogConfig, Defaults
-from ami.comm import Ports, PlatformAction, Colors, ResultStore, Node, AutoExport, AMIWarning
+from ami.comm import Ports, PlatformAction, Colors, ResultStore, Node, AutoExport
 from ami.data import MsgTypes, Source, Transitions
 from ami.graphkit_wrapper import Graph
 from ami.data import RequestedData
@@ -20,7 +23,7 @@ logger = logging.getLogger(__name__)
 
 class Worker(Node):
     def __init__(self, node, src, collector_addr, graph_addr, msg_addr, export_addr, prometheus_dir,
-                 prometheus_port, hutch):
+                 prometheus_port, hutch, hwm, timeout):
         """
         node : int
             a unique integer identifying this worker
@@ -32,7 +35,7 @@ class Worker(Node):
 
         self.src = src
         self.pending_src = False
-        self.store = ResultStore(collector_addr, self.ctx)
+        self.store = ResultStore(collector_addr, self.ctx, hwm)
 
         self.graph_comm.add_handler("update_sources", self.update_sources)
         self.graph_comm.add_handler("update_requested_data", self.update_requests_kwargs)
@@ -142,15 +145,6 @@ class Worker(Node):
         # send the data from the store to collector
         size = self.store.collect(self.node, heartbeat)
 
-        # update the profiler data
-        # if self.times:
-        #     for name, exec_times in self.times.items():
-        #         self.report("profile", {'graph': name,
-        #                                 'heartbeat': heartbeat,
-        #                                 'times': exec_times,
-        #                                 'version': self.store.version(name)})
-        #     self.times = {}
-
         if self.event_rate:
             self.event_rate['num_events'] = self.num_events
             self.report("event_rate", self.event_rate)
@@ -173,6 +167,7 @@ class Worker(Node):
         event_counter = pc.Counter('ami_event_count', 'Event Counter', ['hutch', 'type', 'process'])
         event_time = pc.Gauge('ami_event_time_secs', 'Event Time', ['hutch', 'type', 'process'])
         event_size = pc.Gauge('ami_event_size_bytes', 'Event Size', ['hutch', 'process'])
+        event_latency = pc.Gauge('ami_event_latency_secs', 'Event Latency', ['hutch', 'sender', 'process'])
 
         idle_start = time.time()
         idle_stop = time.time()
@@ -190,6 +185,10 @@ class Worker(Node):
                     for name, graph in self.graphs.items():
                         if graph:
                             graph.heartbeat_finished()
+
+                            for node_name, warning in graph.warnings().items():
+                                warning.graph_name = name
+                                self.report("warning", warning)
 
                     # check if there are graph updates
                     while True:
@@ -219,6 +218,9 @@ class Worker(Node):
 
                 elif msg.mtype == MsgTypes.Datagram:
                     datagram_start = time.time()
+                    input_latency = dt.datetime.now() - dt.datetime.fromtimestamp(msg.unix_ts)
+                    event_latency.labels(self.hutch, "Source",
+                                         self.name).set(input_latency.total_seconds())
 
                     if any(v is None for k, v in msg.payload.items()):
                         event_counter.labels(self.hutch, 'Partial', self.name).inc()
@@ -232,19 +234,6 @@ class Worker(Node):
 
                                 start = time.time()
                                 graph_result = graph(msg.payload, color=Colors.Worker)
-                        except AMIWarning as e:
-                            e.graph_name = name
-                            self.report("warning", e)
-                        except Exception as e:
-                            e.graph_name = name
-                            logger.exception("%s: Failure encountered while executing graph (%s, v%d):",
-                                             self.name, name, self.store.version(name))
-                            self.report("error", e)
-                            logger.error("%s: Purging graph (%s v%d)", self.name, name, self.store.version(name))
-                            self.clear_graph(name)
-                            self.report("purge", name)
-                        finally:
-                            if graph_result:
                                 stop = time.time()
 
                                 self.store.update(name, graph_result)
@@ -257,6 +246,16 @@ class Worker(Node):
                                 # if name not in self.times:
                                 #     self.times[name] = []
                                 # self.times[name].append((start, stop, graph.times()))
+
+                        except Exception as e:
+                            e.graph_name = name
+                            logger.exception("%s: Failure encountered while executing graph (%s, v%d):",
+                                             self.name, name, self.store.version(name))
+                            self.report("error", e)
+                            logger.error("%s: Purging graph (%s v%d)", self.name, name, self.store.version(name))
+                            self.clear_graph(name)
+                            self.report("purge", name)
+
                     self.num_events += 1
                     event_counter.labels(self.hutch, 'Datagram', self.name).inc()
                     datagram_duration = time.time() - datagram_start
@@ -270,11 +269,11 @@ class Worker(Node):
                                 graph.reset()
                                 graph.begin_run(color=Colors.Worker)
                     elif msg.payload.ttype == Transitions.Unconfigure:
-                        if self.src.heartbeat is not None:
-                            self.collect(self.src.heartbeat)
                         for name, graph in self.graphs.items():
                             if graph:
                                 graph.end_run(color=Colors.Worker)
+                        if self.src.heartbeat is not None:
+                            self.collect(self.src.heartbeat)
                     elif msg.payload.ttype == Transitions.BeginStep:
                         for name, graph in self.graphs.items():
                             if graph:
@@ -301,9 +300,21 @@ class Worker(Node):
 
 
 def run_worker(num, num_workers, hb_period, source, collector_addr, graph_addr, msg_addr, export_addr,
-               flags=None, prometheus_dir=None, prometheus_port=None, hutch=None):
+               flags=None, prometheus_dir=None, prometheus_port=None, hutch=None, hwm=None, timeout=None,
+               cprofile=False):
 
     logger.info('Starting worker # %d, sending to collector at %s PID: %d', num, collector_addr, os.getpid())
+
+    if cprofile:
+        profiler = cProfile.Profile()
+        profiler.enable()
+
+        def handler(*args, **kwargs):
+            profiler.disable()
+            profiler.dump_stats(f"ami_worker{num}.cprof")
+            sys.exit()
+
+        signal.signal(signal.SIGTERM, handler)
 
     src = None
     if source is not None:
@@ -333,13 +344,15 @@ def run_worker(num, num_workers, hb_period, source, collector_addr, graph_addr, 
                           num_workers,
                           hb_period,
                           src_cfg,
-                          flags)
+                          flags,
+                          timeout=timeout)
         else:
             logger.critical("worker%03d: unknown data source type: %s", num, source[0])
             return 1
 
+
     with Worker(num, src, collector_addr, graph_addr, msg_addr, export_addr, prometheus_dir, prometheus_port,
-                hutch) as worker:
+                hutch, hwm, timeout) as worker:
         return worker.run()
 
 
@@ -447,6 +460,26 @@ def main():
     )
 
     parser.add_argument(
+        '--hwm',
+        help='zmq HWM for push/pull sockets.',
+        type=int,
+        default=5
+    )
+
+    parser.add_argument(
+        '--timeout',
+        help='heartbeat timeout in ms',
+        type=int,
+        default=None
+    )
+
+    parser.add_argument(
+        '--cprofile',
+        help="profile with cprofile",
+        action='store_true'
+    )
+
+    parser.add_argument(
         'source',
         nargs='?',
         metavar='SOURCE',
@@ -454,7 +487,7 @@ def main():
     )
 
     args = parser.parse_args()
-    collector_addr = "tcp://localhost:%d" % args.port + Ports.NodeCollector
+    collector_addr = "tcp://localhost:%d" % (args.port + Ports.NodeCollector)
     graph_addr = "tcp://%s:%d" % (args.host, args.port + Ports.Graph)
     msg_addr = "tcp://%s:%d" % (args.host, args.port + Ports.Message)
     export_addr = "tcp://%s:%d" % (args.host, args.port + Ports.Export)
@@ -479,7 +512,10 @@ def main():
                           flags,
                           args.prometheus_dir,
                           args.prometheus_port,
-                          args.hutch)
+                          args.hutch,
+                          args.hwm,
+                          args.timeout,
+                          args.cprofile)
     except KeyboardInterrupt:
         logger.info("Worker killed by user...")
         return 0

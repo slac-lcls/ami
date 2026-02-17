@@ -103,7 +103,11 @@ class NTBytes:
     def wrap(self, value, timestamp=None):
         """Wrap dictionary as Value
         """
-        S, NS = divmod(float(timestamp or time.time()), 1.0)
+        if type(timestamp) is tuple:
+            S, NS = timestamp
+        else:
+            S, NS = divmod(float(timestamp or time.time()), 1.0)
+
         return Value(self.type, {
             'value': np.frombuffer(value, dtype=np.ubyte),
             'timeStamp': {

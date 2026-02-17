@@ -1,10 +1,10 @@
+import os
 import re
 import sys
 import signal
 import logging
 import argparse
 import functools
-import ami.multiproc as mp
 from mpi4py import MPI
 
 from ami import LogConfig
@@ -13,6 +13,11 @@ from ami.comm import Ports, PlatformAction
 from ami.worker import run_worker
 from ami.collector import run_node_collector
 
+try:
+    from psana.psexp.node import Communicators
+    HAS_PSANA=True
+except ImportError:
+    HAS_PSANA=False
 
 logger = logging.getLogger(__name__)
 
@@ -129,14 +134,13 @@ def cleanup(procs):
     return failed_proc
 
 
-def run_ami(args, queue=None):
+def run_ami(args):
     flags = {}
-    if queue is None:
-        queue = mp.Queue()
 
     host = args.host
     graph_addr = "tcp://%s:%d" % (host, args.port + Ports.Graph)
-    collector_addr = "tcp://127.0.0.1:%d" % (args.port + Ports.NodeCollector)
+    # collector_addr = "tcp://127.0.0.1:%d" % (args.port + Ports.NodeCollector)
+    collector_addr = "tcp://%s:%d" % (host, args.port + Ports.NodeCollector)
     globalcol_addr = "tcp://%s:%d" % (host, args.port + Ports.FinalCollector)
     export_addr = "tcp://%s:%d" % (host, args.port + Ports.Export)
     msg_addr = "tcp://%s:%d" % (host, args.port + Ports.Message)
@@ -167,33 +171,51 @@ def run_ami(args, queue=None):
         else:
             src_cfg = None
 
-        comm = MPI.COMM_WORLD
-        size = comm.Get_size() - 2
-        global_rank = comm.Get_rank()
+        # if local_rank == 0:
+        #     typ = "localCollector"
+        #     id_num = -1
+        # else:
+        #     typ = "worker"
+        #     id_num = (node_rank*local_rank_size)+local_rank-(node_rank+1)
 
-        local_comm = comm.Split_type(MPI.COMM_TYPE_SHARED, global_rank, MPI.INFO_NULL)
-        local_rank_size = local_comm.Get_size()
-        local_rank = local_comm.Get_rank()
-        node_rank = global_rank // local_rank_size
+        # name = MPI.Get_processor_name()
+        # print(f"NODE RANK: {node_rank} LOCAL RANK: {local_rank} GLOBAL_RANK: {global_rank} NAME: {name} {id_num} {typ}")
 
-        name = MPI.Get_processor_name()
-        # print(f"SIZE: {size}, RANK: {global_rank}, LOCAL RANK: {local_rank}, NODE RANK: {node_rank} NAME: {name}")
+        # if local_rank == 0:
+        #     run_node_collector(node_rank, local_rank_size-1, args.eb_depth, collector_addr, globalcol_addr,
+        #                        graph_addr, msg_addr, args.prometheus_dir, args.prometheus_port, args.hutch)
 
-        if local_rank == 0:
-            collector_proc = mp.Process(
-                name=f'nodecol-n{node_rank}',
-                target=functools.partial(_sys_exit, run_node_collector),
-                args=(node_rank, local_rank_size, args.eb_depth,
-                      collector_addr, globalcol_addr, graph_addr, msg_addr,
-                      args.prometheus_dir, args.prometheus_port, args.hutch)
-            )
-            collector_proc.daemon = True
-            collector_proc.start()
-            procs.append(collector_proc)
+        # run_worker(id_num, local_rank_size-1, args.heartbeat, src_cfg,
+        #            collector_addr, graph_addr, msg_addr, export_addr,
+        #            flags, args.prometheus_dir, args.prometheus_port, args.hutch)
 
-        run_worker(global_rank, size, args.heartbeat, src_cfg,
-                   collector_addr, graph_addr, msg_addr, export_addr,
-                   flags, args.prometheus_dir, args.prometheus_port, args.hutch)
+        if src_cfg[0] == "psana":
+            comm = Communicators()
+            psana_node_type = comm.node_type()
+            bd_size = comm.bd_size - 1
+            bd_rank = comm.bd_rank - comm.n_smd_nodes
+            if psana_node_type == "bd":
+                run_worker(bd_rank, bd_size, args.heartbeat, src_cfg,
+                           collector_addr, graph_addr, msg_addr, export_addr,
+                           flags, args.prometheus_dir, args.prometheus_port, args.hutch)
+            else:
+                null_addr = "tcp://0.0.0.0:1"
+                run_worker(1, 1, args.heartbeat, src_cfg,
+                           null_addr, graph_addr, null_addr, null_addr,
+                           flags, args.prometheus_dir, args.prometheus_port, args.hutch)
+        else:
+            comm = MPI.COMM_WORLD
+            global_rank_size = comm.Get_size()
+            global_rank = comm.Get_rank()
+            local_comm = comm.Split_type(MPI.COMM_TYPE_SHARED, global_rank, MPI.INFO_NULL)
+            local_rank_size = local_comm.Get_size()
+            local_rank = local_comm.Get_rank()
+            node_rank = global_rank // local_rank_size
+            num_nodes = global_rank_size // local_rank_size
+
+            run_worker(local_rank, local_rank_size, args.heartbeat, src_cfg,
+                       collector_addr, graph_addr, msg_addr, export_addr,
+                       flags, args.prometheus_dir, args.prometheus_port, args.hutch)
 
         # register a signal handler for cleanup on sigterm
         signal.signal(signal.SIGTERM, functools.partial(_sig_handler, procs))

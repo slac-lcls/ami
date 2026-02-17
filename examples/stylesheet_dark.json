@@ -1,12 +1,6 @@
 {
-    "SourceTree":
-    {
-        "expand" : false
-    },
-    "OperationTree":
-    {
-        "expand" : false
-    },
+    "Theme": "dark",
+    "Background": [32, 33, 36],
     "WaveformWidget":
     {
         "Point": {

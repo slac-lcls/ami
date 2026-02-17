@@ -2,6 +2,7 @@ import abc
 import operator
 import numpy as np
 from networkfox import operation
+from networkfox.modifiers import GraphWarning
 
 
 class Transformation(abc.ABC):
@@ -38,6 +39,7 @@ class Transformation(abc.ABC):
         self.end_step_func = kwargs.get('end_step', None)
         self.exportable = False
         self.is_global_operation = False
+        self.latched = False
 
     def __hash__(self):
         return hash(self.name)
@@ -103,15 +105,29 @@ class StatefulTransformation(Transformation):
             outputs (list): List of outputs
             reduction (function): Reduction function
         """
-
         reduction = kwargs.pop('reduction', None)
+        worker_reduction = kwargs.pop('worker_reduction', None)
+        local_reduction = kwargs.pop('local_reduction', None)
+        global_reduction = kwargs.pop('global_reduction', None)
+        latched = kwargs.pop('latched', False)
 
         kwargs.setdefault('func', None)
         super().__init__(**kwargs)
 
-        if reduction:
+        if worker_reduction and local_reduction and global_reduction:
+            assert hasattr(worker_reduction, '__call__'), 'worker_reduction is not callable'
+            assert hasattr(local_reduction, '__call__'), 'local_reduction is not callable'
+            assert hasattr(global_reduction, '__call__'), 'global_reduction is not callable'
+        elif reduction:
             assert hasattr(reduction, '__call__'), 'reduction is not callable'
-        self.reduction = reduction
+            worker_reduction = reduction
+            local_reduction = reduction
+            global_reduction = reduction
+
+        self._worker_reduction = worker_reduction
+        self._local_reduction = local_reduction
+        self._global_reduction = global_reduction
+        self.latched = latched
 
     @abc.abstractmethod
     def __call__(self, *args, **kwargs):
@@ -129,6 +145,14 @@ class StatefulTransformation(Transformation):
         Execute at the end of a heartbeat.
         """
         return
+
+    def reduction(self, *args, **kwargs):
+        if self.color == 'worker':
+            return self._worker_reduction(*args, **kwargs)
+        elif self.color == 'localCollector':
+            return self._local_reduction(*args, **kwargs)
+        elif self.color == 'globalCollector':
+            return self._global_reduction(*args, **kwargs)
 
     def to_operation(self):
         return operation(name=self.name, needs=self.inputs, provides=self.outputs,
@@ -155,6 +179,8 @@ class GlobalTransformation(StatefulTransformation):
         self.is_global_operation = True
         self.is_expanded = is_expanded
         self.num_contributors = num_contributors
+        self.res = None
+        self.count = 0
 
     def on_expand(self):
         """
@@ -167,7 +193,7 @@ class GlobalTransformation(StatefulTransformation):
             Dictionary of keyword arguments to pass when constructing the
             globally expanded version of this operation
         """
-        return {"parent": self.parent}
+        return {"parent": self.parent, "latched": self.latched}
 
 
 class ReduceByKey(GlobalTransformation):
@@ -204,50 +230,43 @@ class ReduceByKey(GlobalTransformation):
 
 
 class Accumulator(GlobalTransformation):
-    """
-    Accumulator is a GlobalTransformation that will infinitely acculumate events.
-    """
 
     def __init__(self, **kwargs):
-        """
-        Keyword Arguments:
-            reduction (function): Function is used to reduce arguments
-            res_factory (function): Function that is called at the end of a heartbeat to reset accumulator \
-                                    on workers and local collectors
-        """
         super().__init__(**kwargs)
-        self.res_factory = kwargs.pop('res_factory', lambda *args: (0, ()))
+        self.res_factory = kwargs.pop('res_factory', lambda: 0)
         assert hasattr(self.res_factory, '__call__'), 'res_factory is not callable'
-        self.res_args = ()
-        self.res = None
+        self.res = self.res_factory()
         self.count = 0
+        self.was_reset = True
 
     def __call__(self, *args, **kwargs):
         if self.is_expanded:
-            count, value = args
+            count, values = args
+            if not (isinstance(values, list) or isinstance(values, tuple)):
+                values = (values,)
         else:
             count = 1
-            value = args[0]
+            values = args
 
+        self.res = self.reduction(self.res, *values, count=count, reset=self.was_reset)
         self.count += count
-
-        if self.res is None:
-            self.res, self.res_args = self.res_factory(value)
-
-        self.res = self.reduction(self.res, value)
+        self.was_reset = False
 
         return self.count, self.res
 
     def reset(self):
-        self.res, _ = self.res_factory(self.res_args)
+        self.res = self.res_factory()
         self.count = 0
+        self.was_reset = True
 
     def heartbeat_finished(self):
         if self.color != 'globalCollector':
             self.reset()
 
     def on_expand(self):
-        return {'parent': self.parent, 'res_factory': self.res_factory}
+        res = super().on_expand()
+        res['res_factory'] = self.res_factory
+        return res
 
 
 class PickN(GlobalTransformation):
@@ -316,6 +335,8 @@ class SumN(GlobalTransformation):
         self.count += count
 
         if self.res is None:
+            if isinstance(value, np.ndarray):
+                value = value.astype(np.float32)
             self.res = value
         else:
             self.res = np.add(self.res, value)
@@ -346,55 +367,57 @@ class RollingBuffer(GlobalTransformation):
         self.res = None if use_numpy else []
 
     def __call__(self, *args, **kwargs):
-        if len(args) == 1:
-            dims = 0
-            args = args[0]
-        elif args:
-            dims = len(args)
-        elif kwargs:
-            args = [kwargs.get(arg, np.nan) for arg in self.inputs]
-            dims = len(args)
-            if len(args) == 1:
-                dims = 0
-                args = args[0]
-
-        if self.use_numpy:
-            if self.is_expanded:
-                dtype = args.dtype
-                if len(args) > self.N:
-                    nelem = self.N
-                    args = args[..., -self.N:]
-                else:
-                    nelem = len(args)
-            else:
-                dtype = type(args)
-                nelem = 1
-            if self.res is None:
-                self.res = np.zeros(self.N, dtype=dtype)
-            self.idx += nelem
-            self.res = np.roll(self.res, -nelem)
-            self.res[..., -nelem:] = [args] if dims else args
+        if self.is_expanded:
+            count = args[0]
+            args = args[1]
         else:
-            if self.is_expanded:
+            count = 1
+            if len(args) == 1:
+                args = args[0]
+            # all inputs are optional
+            elif len(args) == 0 and len(kwargs) > 0:
+                args = list(kwargs.values())
+            elif len(args) > 0 and len(kwargs) > 0:
+                raise Exception("RollingBuffer currently does not support mixing required and optional arguments.")
+
+        self.count += count
+
+        if self.is_expanded: # this case is for collectors: args = buffer
+            # Logic to prevent self.res have a memory footprint > N
+            if len(args) + len(self.res) < self.N:
                 self.res.extend(args)
-                self.idx = min(self.idx + len(args), self.N)
             else:
-                if not self.unique:
+                # remove exactly enough to have a list of size N after addition of the new data
+                remove = len(self.res) + len(args) - self.N
+                self.res[:remove] = []
+                self.res.extend(args)
+            self.idx = min(self.idx + len(args), self.N)
+        else: # this case is for workers:  args = data
+            if not self.unique:
+                self.res.append(args)
+                self.idx = min(self.idx + 1, self.N)
+            elif self.unique:
+                if len(self.res) == 0:
                     self.res.append(args)
                     self.idx = min(self.idx + 1, self.N)
-                elif self.unique:
-                    if len(self.res) == 0:
-                        self.res.append(args)
-                        self.idx = min(self.idx + 1, self.N)
-                    elif self.res[self.idx-1] != args:
-                        self.res.append(args)
-                        self.idx = min(self.idx + 1, self.N)
-            self.res = self.res[-self.idx:]
+                elif self.res[self.idx-1] != args:
+                    self.res.append(args)
+                    self.idx = min(self.idx + 1, self.N)
+        self.res = self.res[-self.idx:]
 
-        return self.res[-self.idx:]
-
-    def on_expand(self):
-        return {'parent': self.parent, 'use_numpy': self.use_numpy, 'unique': self.unique}
+        # returning like this ensure that a copy of self.res is returned, not the same object
+        return self.count, self.res[-self.idx:]
 
     def reset(self):
         self.idx = 0
+        self.count = 0
+
+    def on_expand(self):
+        res = super().on_expand()
+        res['use_numpy'] = self.use_numpy
+        res['unique'] = self.unique
+        return res
+
+
+class AMIWarning(GraphWarning):
+    pass

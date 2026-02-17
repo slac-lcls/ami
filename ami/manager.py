@@ -11,10 +11,12 @@ import json
 import socket
 import time
 import datetime as dt
+import cProfile
+import signal
 import prometheus_client as pc
 from ami import LogConfig
 from ami.comm import Ports, PlatformAction, AutoExport, Collector, Store, ZMQ_TOPIC_DELIM
-from ami.data import MsgTypes, Transitions, Serializer, Deserializer, RequestedData
+from ami.data import MsgTypes, Transitions, Serializer, Deserializer
 from ami.graphkit_wrapper import Graph
 
 
@@ -41,11 +43,12 @@ class Manager(Collector):
                  export_addr,
                  view_addr,
                  prometheus_dir,
-                 hutch):
+                 hutch,
+                 hwm):
         """
         protocol right now only tells you how to communicate with workers
         """
-        super().__init__(results_addr, hutch=hutch)
+        super().__init__(results_addr, hutch=hutch, hwm=hwm)
         self.name = "manager"
         self.num_workers = num_workers
         self.num_nodes = num_nodes
@@ -53,7 +56,7 @@ class Manager(Collector):
         self.partition = {}
         self.feature_stores = {}
         self.feature_req = re.compile(r"(?P<type>fetch):(?P<name>.*)")
-        self.view_req = re.compile(r"view:(?P<graph>.*):(?P<name>.*)")
+        self.view_req = re.compile(r"view:(?P<graph>[^:]+):(?P<name>.+)$")
         self.graphs = {}
         self.paths = collections.defaultdict(set)
         self.versions = {}  # { graph_name : version_number}
@@ -61,6 +64,7 @@ class Manager(Collector):
         self.purged_graphs = {}  # { graph_name : dill.dumps(graph) }
         self.global_cmds = {"list_graphs"}
         self.no_auto_create_cmds = {"create_graph", "destroy_graph"}
+        self.epics_prefix = ""
 
         self.export = self.ctx.socket(zmq.XPUB)
         self.export.setsockopt(zmq.XPUB_VERBOSE, True)
@@ -87,9 +91,17 @@ class Manager(Collector):
         self.node_msg_comm.bind(msg_addr)
         self.register(self.node_msg_comm, self.node_request)
 
-        self.view_comm = self.ctx.socket(zmq.XPUB)  # exports plot data to clients
-        self.view_comm.setsockopt(zmq.XPUB_VERBOSE, True)
-        self.view_comm.bind(view_addr)
+        self.view_comm_frontend = self.ctx.socket(zmq.ROUTER)  # exports plot data to clients
+        self.view_comm_frontend.bind(view_addr)
+        self.register(self.view_comm_frontend, self.view_front_forward)
+
+        self.view_comm_backend = self.ctx.socket(zmq.DEALER)
+        self.view_comm_backend.bind("inproc:///view_dealer")
+        self.register(self.view_comm_backend, self.view_back_forward)
+
+        self.view_comm = self.ctx.socket(zmq.REP)
+        self.view_comm.connect("inproc:///view_dealer")
+
         self.register(self.view_comm, self.view_request)
 
         self.prometheus_dir = prometheus_dir
@@ -140,7 +152,7 @@ class Manager(Collector):
                 # export the heartbeat to epics
                 self.export_heartbeat(msg.name)
                 # export data for viewing in the AMI GUI
-                self.export_view(msg.name, keys=msg.payload.keys())
+                # self.export_view(msg.name, keys=msg.payload.keys())
 
             self.event_counter.labels(self.hutch, 'Heartbeat', self.name).inc()
             self.event_time.labels(self.hutch, 'Heartbeat', self.name).set(time.time() - datagram_start)
@@ -276,6 +288,9 @@ class Manager(Collector):
 
     def cmd_get_exports(self, name):
         self.comm.send_pyobj(self.exports(name))
+
+    def cmd_get_epics_prefix(self, name=None):
+        self.comm.send_pyobj(self.epics_prefix)
 
     def cmd_get_sources(self, name):
         self.comm.send_pyobj(self.partition)
@@ -548,6 +563,9 @@ class Manager(Collector):
                 self.publish_purge(name, reply=False)
                 # delete the local graph information
                 self.delete(name)
+        elif topic == "epics":
+            payload = self.node_msg_comm.recv_string()
+            self.epics_prefix = payload
         else:
             payload = self.node_msg_comm.recv(copy=False)
             self.publish_message(topic, node, payload)
@@ -561,20 +579,32 @@ class Manager(Collector):
     def view_request(self):
         request = self.view_comm.recv_string()
 
-        if request.startswith("\x01"):
-            request = request.strip('\x01')
-            matched = self.view_req.match(request)
-            if matched:
-                graph = matched.group('graph')
-                name = matched.group('name')
-                if self.exists(graph) and name in self.feature_stores[graph]:
-                    self.publish_view("view:%s:%s" % (graph, name),
-                                      self.heartbeats[graph],
-                                      self.feature_stores[graph].get(name))
-                else:
-                    logger.debug("Received view request for unknown graph/feature: %s", request)
+        matched = self.view_req.match(request)
+
+        if matched:
+            graph = matched.group('graph')
+            name = matched.group('name')
+            size = 0
+            if self.exists(graph) and name in self.feature_stores[graph]:
+                size += self.publish_view("view:%s:%s" % (graph, name),
+                                          self.heartbeats[graph],
+                                          self.feature_stores[graph].get(name))
             else:
-                logger.warn("Received invalid view request: %s", request)
+                size += self.publish_view("view:%s:%s" % (graph, name),
+                                          None, None)
+                logger.debug("Received view request for unknown graph/feature: %s", request)
+
+            self.event_size.labels(self.hutch, self.name).set(size)
+        else:
+            logger.warn("Received invalid view request: %s", request)
+
+    def view_front_forward(self):
+        req = self.view_comm_frontend.recv_multipart()
+        self.view_comm_backend.send_multipart(req)
+
+    def view_back_forward(self):
+        rep = self.view_comm_backend.recv_multipart()
+        self.view_comm_frontend.send_multipart(rep)
 
     def export_view(self, name, keys=[]):
         size = 0
@@ -655,6 +685,9 @@ class Manager(Collector):
         self.export.send_string(name, zmq.SNDMORE)
         self.export.send_pyobj(self.heartbeats[name])
 
+    def poll_timeout(self):
+        pass
+
     def start_prometheus(self, port):
         while True:
             try:
@@ -690,9 +723,23 @@ def run_manager(num_workers,
                 view_addr,
                 prometheus_dir,
                 prometheus_port,
-                hutch):
+                hutch,
+                hwm,
+                cprofile):
     logger.info('Starting manager, controlling %d workers on %d nodes PID: %d',
                 num_workers, num_nodes, os.getpid())
+
+    if cprofile:
+        profiler = cProfile.Profile()
+        profiler.enable()
+
+        def handler(*args, **kwargs):
+            profiler.disable()
+            profiler.dump_stats("ami_manager.cprof")
+            sys.exit()
+
+        signal.signal(signal.SIGTERM, handler)
+
     with Manager(
             num_workers,
             num_nodes,
@@ -704,9 +751,11 @@ def run_manager(num_workers,
             export_addr,
             view_addr,
             prometheus_dir,
-            hutch) as manager:
+            hutch,
+            hwm) as manager:
         if prometheus_port:
             manager.start_prometheus(prometheus_port)
+
         return manager.run()
 
 
@@ -775,6 +824,19 @@ def main():
         default=None
     )
 
+    parser.add_argument(
+        '--hwm',
+        help='zmq HWM for push/pull sockets.',
+        type=int,
+        default=5
+    )
+
+    parser.add_argument(
+        '--cprofile',
+        help="profile with cprofile",
+        action='store_true'
+    )
+
     args = parser.parse_args()
 
     results_addr = "tcp://%s:%d" % (args.host, args.port + Ports.Results)
@@ -805,7 +867,9 @@ def main():
                            view_addr,
                            args.prometheus_dir,
                            args.prometheus_port,
-                           args.hutch)
+                           args.hutch,
+                           args.hwm,
+                           args.cprofile)
     except KeyboardInterrupt:
         logger.info("Manager killed by user...")
         return 0

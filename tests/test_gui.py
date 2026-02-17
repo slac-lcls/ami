@@ -3,8 +3,10 @@ import pytest
 import zmq
 import time
 import os
+import tempfile
 import signal
 import json
+import subprocess
 import amitypes as at
 import multiprocessing as mp
 import ami.client.flowchart_messages as fcMsgs
@@ -83,8 +85,9 @@ def graphmgr_addr(ipc_dir):
     comm_addr = "ipc://%s/comm" % ipc_dir
     view_addr = "ipc://%s/view" % ipc_dir
     graphinfo_addr = "ipc://%s/info" % ipc_dir
+    export_addr = "ipc://%s/export" % ipc_dir
 
-    graphmgr = GraphMgrAddress("graph", comm_addr, view_addr, graphinfo_addr)
+    graphmgr = GraphMgrAddress("graph", comm_addr, view_addr, graphinfo_addr, export_addr)
 
     yield graphmgr
 
@@ -120,8 +123,23 @@ def broker(ipc_dir, graphmgr_addr):
     return proc.exitcode
 
 
+@pytest.fixture(scope='module')
+def dmypy():
+    dmypy_file = tempfile.NamedTemporaryFile(mode='w', delete=False)
+    os.environ['DMYPY_STATUS_FILE'] = dmypy_file.name
+    subprocess.run(["dmypy", "--status-file", dmypy_file.name, "start"])
+
+    yield
+
+    try:
+        proc = subprocess.run(["dmypy", "--status-file", dmypy_file.name, "stop"])
+        proc.check_returncode()
+    except subprocess.CalledProcessError:
+        subprocess.run(["dmypy", "--status-file", dmypy_file.name, "kill"])
+
+
 @pytest.fixture(scope='function')
-def flowchart(request, workerjson, broker, ipc_dir, graphmgr_addr, qevent_loop):
+def flowchart(request, workerjson, broker, ipc_dir, graphmgr_addr, qevent_loop, dmypy):
     try:
         from pytest_cov.embed import cleanup_on_sigterm
         cleanup_on_sigterm()
@@ -144,6 +162,8 @@ def flowchart(request, workerjson, broker, ipc_dir, graphmgr_addr, qevent_loop):
         with GraphCommHandler(graphmgr_addr.name, graphmgr_addr.comm) as comm:
             while not comm.sources:
                 time.sleep(0.1)
+
+        os.makedirs(os.path.expanduser("~/.cache/ami/"), exist_ok=True)
 
         with Flowchart(broker_addr=broker.broker_sub_addr,
                        graphmgr_addr=graphmgr_addr,
@@ -281,10 +301,11 @@ def test_sources(qtbot, flowchart):
 
     source_tree = source_library.getSourceTree()
     sources = set(source_tree.keys())
-    assert sources == set(['delta_t', 'cspad', 'laser', 'eventid', 'timestamp', 'heartbeat', 'source'])
+    print(sources)
+    assert sources == set(['delta', 'cspad', 'laser', 'eventid', 'timestamp', 'heartbeat', 'source'])
 
     label_tree = OrderedDict([('cspad', "<class 'amitypes.array.Array2d'>"),
-                              ('delta_t', "<class 'int'>"),
+                              ('delta', {'delta_t': "<class 'int'>"}),
                               ('eventid', "<class 'int'>"),
                               ('heartbeat', "<class 'int'>"),
                               ('laser', "<class 'int'>"),
@@ -323,6 +344,7 @@ async def test_editor(qtbot, flowchart, tmp_path):
     roi_in = roi_node._inputs['In']
 
     cspad_out().connectTo(roi_in())
+    await asyncio.sleep(0.1) # need to wait for nodeTermConnected slot to execute before we can check edges
     assert len(flowchart._graph.edges()) == 1
 
     widget = flowchart.widget()
@@ -331,11 +353,11 @@ async def test_editor(qtbot, flowchart, tmp_path):
     widget.setCurrentFile(pth)
     widget.saveClicked()
 
-    # await widget.clear()
-    # assert len(flowchart._graph.edges()) == 0
+    await widget.clear()
+    assert len(flowchart._graph.edges()) == 0
 
-    # await flowchart.loadFile(pth)
-    # assert len(flowchart._graph.edges()) == 1
+    await flowchart.loadFile(pth)
+    assert len(flowchart._graph.edges()) == 1
 
 
 # @pytest.mark.asyncio

@@ -4,7 +4,7 @@ from pyqtgraph.graphicsItems.ViewBox import ViewBox
 from pyqtgraph import GridItem, GraphicsWidget
 from ami.flowchart.Node import NodeGraphicsItem, find_nearest
 from ami.flowchart.library.common import SourceNode
-
+from ami.flowchart.library.Editors import STYLE
 
 def clamp(pos):
     pos = [find_nearest(pos.x()), find_nearest(pos.y())]
@@ -115,7 +115,7 @@ class CommentRect(GraphicsWidget):
                     child.moveBy(*diff)
 
     def mouseClickEvent(self, ev):
-        if int(ev.button()) == int(QtCore.Qt.RightButton):
+        if ev.button() == QtCore.Qt.RightButton:
             ev.accept()
             self.raiseContextMenu(ev)
 
@@ -311,6 +311,9 @@ class FlowchartViewBox(ViewBox):
         self.manager = manager
         self.isRoot = isRoot
 
+        if "Background" in STYLE:
+            self.setBackgroundColor(STYLE["Background"])
+
         self.setLimits(minXRange=200, minYRange=200,
                        xMin=-1000, yMin=-1000, xMax=5.2e3, yMax=5.2e3)
         self.addItem(GridItem())
@@ -383,26 +386,31 @@ class FlowchartViewBox(ViewBox):
         return [sourceMenu, operationMenu, ViewBox.getMenu(self, ev)]
 
     def decode_data(self, arr):
-        data = []
-        item = {}
+        data = QtCore.QMimeData()
+        data.setData('application/x-qabstractitemmodeldatalist', arr)
+        source_item = QtGui.QStandardItemModel()
+        source_item.dropMimeData(data, QtCore.Qt.CopyAction, 0,0, QtCore.QModelIndex())
+        return source_item.item(0, 0).text()
+        # data = []
+        # item = {}
 
-        ds = QtCore.QDataStream(arr)
-        while not ds.atEnd():
-            ds.readInt32()
-            ds.readInt32()
+        # ds = QtCore.QDataStream(arr)
+        # while not ds.atEnd():
+        #     ds.readInt32()
+        #     ds.readInt32()
 
-            map_items = ds.readInt32()
-            for i in range(map_items):
+        #     map_items = ds.readInt32()
+        #     for i in range(map_items):
 
-                key = ds.readInt32()
+        #         key = ds.readInt32()
 
-                value = QtCore.QVariant()
-                ds >> value
-                item[QtCore.Qt.ItemDataRole(key)] = value
+        #         value = QtCore.QVariant()
+        #         ds >> value
+        #         item[QtCore.Qt.ItemDataRole(key)] = value
 
-                data.append(item)
+        #         data.append(item)
 
-        return data
+        # return data
 
     def mouseDragEvent(self, ev):
         ev.accept()
@@ -464,8 +472,10 @@ class FlowchartViewBox(ViewBox):
 
     def dropEvent(self, ev):
         if ev.mimeData().hasFormat('application/x-qabstractitemmodeldatalist'):
+            # arr = ev.mimeData().data('application/x-qabstractitemmodeldatalist')
+            # node = self.decode_data(arr)[0][0].value()
             arr = ev.mimeData().data('application/x-qabstractitemmodeldatalist')
-            node = self.decode_data(arr)[0][0].value()
+            node = self.decode_data(arr)
 
             try:
                 self.widget.chart.createNode(node, pos=self.mapToView(ev.pos()), prompt=True)

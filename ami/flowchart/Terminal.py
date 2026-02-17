@@ -1,4 +1,5 @@
 # -*- coding: utf-8 -*-
+import os
 from qtpy import QtCore, QtGui, QtWidgets
 from pyqtgraph.graphicsItems.GraphicsObject import GraphicsObject
 from pyqtgraph import functions as fn
@@ -137,7 +138,7 @@ class Terminal(QtCore.QObject):
         """Return the list of terms which receive input from this terminal."""
         return set([t for t in self.connections() if t.isInput()])
 
-    def connectTo(self, term, connectionItem=None, type_file=None, signal=True):
+    def connectTo(self, term, connectionItem=None, type_file=None, checked=[], signal=True):
         try:
             if self.connectedTo(term):
                 raise Exception('Already connected')
@@ -164,7 +165,7 @@ class Terminal(QtCore.QObject):
                 elif t.isOutput():
                     types["Output"] = t
 
-            if not checkType(types, type_file):
+            if not checkType(types, type_file, checked):
                 raise Exception(f"Invalid types. Expected: {term.type()} Got: {self.type()}")
         except Exception:
             if connectionItem is not None:
@@ -182,11 +183,6 @@ class Terminal(QtCore.QObject):
         if signal:
             self.connected(term)
             term.connected(self)
-
-        if self.isInput() and term.isOutput():
-            self.setUnit(term.unit())
-        elif self.isOutput() and term.isInput():
-            term.setUnit(self.unit())
 
         if self.isInput() and term.isOutput():
             self.setUnit(term.unit())
@@ -429,8 +425,8 @@ class ConnectionItem(GraphicsObject):
     def __init__(self, source, target=None):
         super().__init__(source)
         self.setFlags(
-            self.ItemIsSelectable |
-            self.ItemIsFocusable
+            QtWidgets.QGraphicsItem.ItemIsSelectable |
+            QtWidgets.QGraphicsItem.ItemIsFocusable
         )
         self.source = source
         self.target = target
@@ -553,10 +549,7 @@ class ConnectionItem(GraphicsObject):
         p.drawPath(self.path)
 
 
-checked = []
-
-
-def checkType(terminals, type_file=None):
+def checkType(terminals, type_file=None, checked=[]):
 
     t_in = terminals["Input"]
     t_out = terminals["Output"]
@@ -613,10 +606,11 @@ def checkType(terminals, type_file=None):
             f.write(f"def {f_out}:\n\t{f_out_return_string}")
             f.write(f"\n{f_in_name}({f_out_name}())")
             f.flush()
-            status = subprocess.call(["dmypy", "check", f.name])
+            dmypy_status = os.environ['DMYPY_STATUS_FILE']
+            status = subprocess.call(["dmypy", "--status-file", dmypy_status, "check", f.name])
             if status == 2:
-                subprocess.call(["dmypy", "start"])
-                status = subprocess.call(["dmypy", "check", f.name])
+                subprocess.call(["dmypy", "--status-file", dmypy_status, "start"])
+                status = subprocess.call(["dmypy", "--status-file", dmypy_status, "check", f.name])
             return status == 0
 
 
