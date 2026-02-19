@@ -229,7 +229,7 @@ class NodeProcess(QtCore.QObject):
             elif isinstance(msg, fcMsgs.NodeTermDisconnected):
                 self.node.terminalDisconnected(msg)
             elif isinstance(msg, fcMsgs.NodeLabelChanged):
-                self.updateWindowTitle(self.node, msg.label)
+                self.updateWindowTitle(msg.label)
             elif isinstance(msg, fcMsgs.CloseNode):
                 return
 
@@ -279,8 +279,8 @@ class NodeProcess(QtCore.QObject):
                 self.connected = True
 
         # Update window title with label if provided
-        if hasattr(msg, 'label') and msg.label:
-            self.updateWindowTitle(self.node, msg.label)
+        if msg.label:
+            self.updateWindowTitle(msg.label)
 
         self.win.show()
         if self.node.viewed:
@@ -292,7 +292,7 @@ class NodeProcess(QtCore.QObject):
             mod = sys.modules[mod]
             pg.reload.reload(mod)
 
-    def updateWindowTitle(self, node, label):
+    def updateWindowTitle(self, label):
         """Update the window title when the node label changes"""
         if label:
             title = f"{label} - {self.name}"
