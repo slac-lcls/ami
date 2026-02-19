@@ -52,6 +52,7 @@ class Node(QtCore.QObject):
     sigTerminalOptional = QtCore.Signal(object, object)  # self, term
     sigNodeEnabled = QtCore.Signal(object)  # self
     sigNodeLatched = QtCore.Signal(object)  # self
+    sigLabelChanged = QtCore.Signal(object, object)  # self, label
 
     def __init__(self, name, **kwargs):
         """
@@ -630,6 +631,7 @@ class NodeGraphicsItem(GraphicsObject):
             nameBottom
         )
         self.node._label = self.labelItem.toPlainText()
+        self.node.sigLabelChanged.emit(self.node, self.node._label)
 
     def updateTerminals(self):
         inp = self.node.inputs()

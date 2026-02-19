@@ -182,6 +182,7 @@ class Flowchart(Node):
         node.sigTerminalOptional.connect(self.nodeTermOptional)
         node.sigTerminalAdded.connect(self.nodeTermAdded)
         node.sigTerminalRemoved.connect(self.nodeTermRemoved)
+        node.sigLabelChanged.connect(self.nodeLabelChanged)
         node.setGraph(self._graph)
 
         # if the node is a source, connect the source kwargs interface to the manager
@@ -319,6 +320,14 @@ class Flowchart(Node):
     def nodeLatched(self, node):
         node.changed = True
         self.sigNodeChanged.emit(node)
+
+    @asyncSlot(object, object)
+    async def nodeLabelChanged(self, node, label):
+        """Handle label change events from nodes and forward to NodeProcess"""
+        name = node.name()
+        msg = fcMsgs.NodeLabelChanged(name, label)
+        await self.broker.send_string(name, zmq.SNDMORE)
+        await self.broker.send_pyobj(msg)
 
     @asyncSlot(object)
     async def nodeEnabled(self, root):
@@ -1248,7 +1257,8 @@ class FlowchartWidget(dockarea.DockArea):
                     'redisplay': redisplay,
                     'geometry': node.geometry,
                     'units': node.input_units(),
-                    'terminals': node.saveTerminals()}
+                    'terminals': node.saveTerminals(),
+                    'label': node._label}
 
             if node.buffered():
                 # buffered nodes are allowed to override their topics/terms
