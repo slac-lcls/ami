@@ -426,7 +426,7 @@ def main(color, upstream_port, downstream_port):
     try:
         if color == Colors.LocalCollector:
             if args.worker:
-                if args.worker > 1:
+                if int(args.worker) > 1:
                     select_manager = mp.Manager()
                     select_dict = select_manager.dict()
                     select_lock = select_manager.Lock()
