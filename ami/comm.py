@@ -428,14 +428,15 @@ class ResultStore(ZmqHandler):
         else:
             self.stores[name].version = version
 
-        for output in outputs:
-            if not output.startswith("_auto"):
-                continue
+        if self.select_lock:
+            for output in outputs:
+                if not output.startswith("_auto"):
+                    continue
 
-            with self.select_lock:
-                if output not in self.select_dict:
-                    self.select_dict[output] = (self.select_idx.value, self.select_manager.Lock())
-                    self.select_idx.value = (self.select_idx.value + 1) % len(self.select_hb)
+                with self.select_lock:
+                    if output not in self.select_dict:
+                        self.select_dict[output] = (self.select_idx.value, self.select_manager.Lock())
+                        self.select_idx.value = (self.select_idx.value + 1) % len(self.select_hb)
 
     def remove(self, name):
         del self.stores[name]
