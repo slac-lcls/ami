@@ -10,6 +10,7 @@ import argparse
 import functools
 import contextlib
 import ami.multiproc as mp
+import multiprocessing.sharedctypes
 
 from ami import LogConfig, Defaults
 from ami.multiproc import check_mp_start_method
@@ -337,9 +338,18 @@ def run_ami(args, queue=None):
 
         logger.info("Starting ami-local using comm address: %s", comm_addr)
 
-        select_manager = mp.Manager()
-        select_dict = select_manager.dict()
-        select_lock = select_manager.Lock()
+        if args.num_workers > 1:
+            select_manager = mp.Manager()
+            select_dict = select_manager.dict()
+            select_lock = select_manager.Lock()
+            select_hb = multiprocessing.sharedctypes.RawArray('Q', 128)
+            select_idx = multiprocessing.sharedctypes.RawValue('I', 0)
+        else:
+            select_manager = None
+            select_dict = None
+            select_lock = None
+            select_hb = None
+            select_idx = None
 
         for i in range(args.num_workers):
             proc = mp.Process(
@@ -348,7 +358,7 @@ def run_ami(args, queue=None):
                 args=(i, args.num_workers, args.heartbeat, src_cfg,
                       collector_addr, graph_addr, msg_addr, export_addr, flags, args.prometheus_dir,
                       args.prometheus_port, args.hutch, args.hwm, args.timeout, args.cprofile,
-                      (select_lock, select_dict, select_manager))
+                      (select_lock, select_dict, select_idx, select_hb, select_manager))
             )
             proc.daemon = True
             proc.start()
