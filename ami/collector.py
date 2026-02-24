@@ -159,9 +159,6 @@ class GraphCollector(Node, Collector):
                     # complete the current heartbeat
                     times, size = self.store.complete(msg.name, msg.heartbeat, self.node)
 
-                    # times = self.store.complete(msg.name, msg.heartbeat, self.node)
-                    # self.report_times(times, msg.name, msg.heartbeat)
-
                     self.event_counter.labels(self.hutch, 'Heartbeat', self.name).inc()
                     self.heartbeat_time[msg.heartbeat.identity] += time.time() - datagram_start
                     heartbeat_time = self.heartbeat_time.pop(msg.heartbeat.identity, 0)
@@ -318,8 +315,8 @@ def main(color, upstream_port, downstream_port):
         '-d',
         '--eb-depth',
         type=int,
-        default=10,
-        help='the depth of contribution builder buffer in units of heartbeats (default: 10)'
+        default=1,
+        help='the depth of contribution builder buffer in units of heartbeats (default: 1)'
     )
 
     parser.add_argument(
@@ -354,9 +351,9 @@ def main(color, upstream_port, downstream_port):
 
     parser.add_argument(
         '--hwm',
-        help='zmq HWM for push/pull sockets.',
+        help='zmq HWM for push/pull sockets (default: 1)',
         type=int,
-        default=5
+        default=1
     )
 
     parser.add_argument(
@@ -428,6 +425,10 @@ def main(color, upstream_port, downstream_port):
     try:
         if color == Colors.LocalCollector:
             if args.worker:
+                select_manager = mp.Manager()
+                select_dict = select_manager.dict()
+                select_lock = select_manager.Lock()
+
                 local_collector_addr = "tcp://localhost:%d" % (args.port + upstream_port)
                 export_addr = "tcp://%s:%d" % (args.host, args.port + Ports.Export)
                 flags, src_cfg = parse_args(args)
@@ -452,7 +453,8 @@ def main(color, upstream_port, downstream_port):
                                               args.hutch,
                                               args.hwm,
                                               args.timeout,
-                                              args.cprofile),
+                                              args.cprofile,
+                                              (select_lock, select_dict, select_manager)),
                                         daemon=True)
                     worker.start()
 

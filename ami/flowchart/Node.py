@@ -52,6 +52,7 @@ class Node(QtCore.QObject):
     sigTerminalOptional = QtCore.Signal(object, object)  # self, term
     sigNodeEnabled = QtCore.Signal(object)  # self
     sigNodeLatched = QtCore.Signal(object)  # self
+    sigLabelChanged = QtCore.Signal(object, object)  # self, label
 
     def __init__(self, name, **kwargs):
         """
@@ -87,6 +88,7 @@ class Node(QtCore.QObject):
         """
         super().__init__()
         self._name = name
+        self._label = ""
         self._graphicsItem = None
         self.terminals = OrderedDict()
         self._inputs = OrderedDict()
@@ -447,7 +449,8 @@ class Node(QtCore.QObject):
         dict."""
         pos = self.graphicsItem().pos()
         state = {'pos': (pos.x(), pos.y()), 'enabled': self._enabled,
-                 'viewed': self.viewed, 'latched': self.latched}
+                 'viewed': self.viewed, 'latched': self.latched,
+                 'label': self._label}
         state['terminals'] = self.saveTerminals()
         return state
 
@@ -456,9 +459,12 @@ class Node(QtCore.QObject):
         by saveState(). """
         pos = state.get('pos', (0, 0))
         self.graphicsItem().setPos(*pos)
+        self._label = state.get('label', "")
         self._enabled = state.get('enabled')
         self.viewed = state.get('viewed', False)
         self.nodeLatched(state.get('latched', False))
+        if self._label:
+            self.graphicsItem().setLabel(self._label)
         if 'terminals' in state:
             self.restoreTerminals(state['terminals'])
 
@@ -570,9 +576,24 @@ class NodeGraphicsItem(GraphicsObject):
 
         self.setFlags(flags)
         self.bounds = QtCore.QRectF(0, 0, 100, 100)
+        self.labelItem = QtWidgets.QGraphicsTextItem(self.node.name(), self)
+        self.labelItem.setDefaultTextColor(QtGui.QColor(50, 50, 50))
+        self.labelItem.mousePressEvent = self.nameEditingStarted
+        self.labelItem.focusOutEvent = self.nameEditingFinished
+        self.labelItem.moveBy(self.bounds.width()/2. - self.labelItem.boundingRect().width()/2., 0)
+
+        # Add class name item below the name
         self.nameItem = QtWidgets.QGraphicsTextItem(self.node.name(), self)
-        self.nameItem.setDefaultTextColor(QtGui.QColor(50, 50, 50))
-        self.nameItem.moveBy(self.bounds.width()/2. - self.nameItem.boundingRect().width()/2., 0)
+        self.nameItem.setDefaultTextColor(QtGui.QColor(120, 120, 120))
+        self.nameItem.setVisible(False)
+        font = self.nameItem.font()
+        font.setPointSize(8)
+        font.setItalic(True)
+        self.nameItem.setFont(font)
+        self.nameItem.setPos(
+            self.bounds.width()/2. - self.nameItem.boundingRect().width()/2.,
+            self.nameItem.boundingRect().height()
+        )
 
         self.terminals = {}
         self.updateTerminals()
@@ -591,6 +612,35 @@ class NodeGraphicsItem(GraphicsObject):
     def setBrush(self, brush):
         self.brush = brush
         self.update()
+
+    def setLabel(self, label):
+        self.labelItem.setPlainText(label)
+        self.labelItem.setPos(self.bounds.width()/2. - self.labelItem.boundingRect().width()/2., 0)
+        self.nameItem.setVisible(True)
+        nameBottom = self.nameItem.boundingRect().height()
+        self.nameItem.setPos(
+            self.bounds.width()/2. - self.nameItem.boundingRect().width()/2.,
+            nameBottom
+        )
+
+    def nameEditingStarted(self, event):
+        self.labelItem.setTextInteractionFlags(QtCore.Qt.TextEditorInteraction)
+        super().mousePressEvent(event)
+
+    def nameEditingFinished(self, event):
+        """Called when user finishes editing the name"""
+        # Call the original focusOutEvent
+        super().focusOutEvent(event)
+        self.labelItem.setTextInteractionFlags(QtCore.Qt.NoTextInteraction)
+        self.labelItem.setPos(self.bounds.width()/2. - self.labelItem.boundingRect().width()/2., 0)
+        self.nameItem.setVisible(True)
+        nameBottom = self.nameItem.boundingRect().height()
+        self.nameItem.setPos(
+            self.bounds.width()/2. - self.nameItem.boundingRect().width()/2.,
+            nameBottom
+        )
+        self.node._label = self.labelItem.toPlainText()
+        self.node.sigLabelChanged.emit(self.node, self.node._label)
 
     def updateTerminals(self):
         inp = self.node.inputs()

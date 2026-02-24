@@ -229,6 +229,8 @@ class NodeProcess(QtCore.QObject):
                 self.node.terminalConnected(msg)
             elif isinstance(msg, fcMsgs.NodeTermDisconnected):
                 self.node.terminalDisconnected(msg)
+            elif isinstance(msg, fcMsgs.NodeLabelChanged):
+                self.updateWindowTitle(msg.label)
             elif isinstance(msg, fcMsgs.CloseNode):
                 return
 
@@ -277,6 +279,10 @@ class NodeProcess(QtCore.QObject):
                 self.node.sigStateChanged.connect(self.send_checkpoint)
                 self.connected = True
 
+        # Update window title with label if provided
+        if msg.label:
+            self.updateWindowTitle(msg.label)
+
         self.win.show()
         if self.node.viewed:
             self.win.activateWindow()
@@ -286,6 +292,18 @@ class NodeProcess(QtCore.QObject):
         for mod in msg.mods:
             mod = sys.modules[mod]
             pg.reload.reload(mod)
+
+    def updateWindowTitle(self, label):
+        """Update the window title when the node label changes"""
+        if label:
+            title = f"{label} - {self.name}"
+        else:
+            title = self.name
+
+        if self.hutch:
+            title += f' hutch: {self.hutch}'
+
+        self.win.setWindowTitle(title)
 
     @asyncSlot(object)
     async def send_checkpoint(self, node, event='sigStateChanged'):
@@ -539,6 +557,9 @@ class MessageBroker(object):
                 await self.forward_message_to_node(topic, msg)
 
             elif isinstance(msg, fcMsgs.NodeTermDisconnected):
+                await self.forward_message_to_node(topic, msg)
+
+            elif isinstance(msg, fcMsgs.NodeLabelChanged):
                 await self.forward_message_to_node(topic, msg)
 
             elif isinstance(msg, fcMsgs.CloseNode):
