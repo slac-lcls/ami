@@ -1,5 +1,4 @@
 import zmq
-import time
 import resource
 import queue
 import logging
@@ -14,7 +13,6 @@ from qtpy import QtGui, QtWidgets, QtCore
 from networkfox import modifiers
 from ami import LogConfig
 from ami.data import Deserializer, Heartbeat
-from ami.comm import ZMQ_TOPIC_DELIM
 from ami.flowchart.library.WidgetGroup import generateUi
 from ami.flowchart.library.Editors import TraceEditor, HistEditor, \
     LineEditor, CircleEditor, RectEditor, camera, pixmapFromBase64, STYLE
@@ -923,3 +921,41 @@ class TimeWidget(LineWidget):
         self.graphics_layout.useOpenGL(False)
         ax = pg.DateAxisItem(orientation='bottom')
         self.plot_view.setAxisItems({'bottom': ax})
+
+
+class CategoryWidget(PlotWidget):
+
+    def __init__(self, topics=None, terms=None, addr=None, parent=None, **kwargs):
+        super().__init__(topics, terms, addr, parent=parent, **kwargs)
+        self.y = {}  # { name : height }
+
+    def data_updated(self, data):
+        i = len(self.plot)
+
+        for term, name in self.terms.items():
+            if name not in data:
+                continue
+
+            arr = np.array(data[name], dtype=bool)
+            data[name] = np.arange(0, len(arr))[arr]
+
+            if name not in self.plot:
+                self.y[name] = i
+                symbol, color = symbols_colors[i]
+                idx = f"trace.{i}"
+                i += 1
+                self.update_legend_layout(idx, name, symbol=symbol, style='None')
+                attrs = self.legend_editors[idx].attrs
+                self.trace_attrs[name] = attrs
+                y = np.ones(len(data[name])) * self.y[name]
+                self.plot[name] = self.plot_view.plot(x=data[name], y=y,
+                                                      pen=attrs['pen'],
+                                                      **attrs['point'])
+            else:
+                attrs = self.trace_attrs[name]
+                y = np.ones(len(data[name])) * self.y[name]
+                self.plot[name].setData(x=data[name], y=y, **attrs['point'])
+
+        left_axis = self.plot_view.getAxis('left')
+        left_axis.setTicks([list(enumerate(self.y.keys()))])
+        self.plot_view.setYRange(-0.5, len(self.y) - 0.5)
