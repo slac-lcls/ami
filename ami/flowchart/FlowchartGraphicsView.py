@@ -190,16 +190,102 @@ class SelectionRect(GraphicsWidget):
         self.view.removeItem(self)
 
 
+class ViewManager(QtWidgets.QWidget):
+
+    sigViewAdded = QtCore.Signal(object)
+    sigMakeSubgraphFromSelection = QtCore.Signal(object)
+
+    def __init__(self, widget, parent=None):
+        super().__init__(parent)
+        self.widget = widget  # FlowchartWidget
+        self.chart = widget.chart  # Flowchart
+        self.ctrl = widget.ctrl  # FlowchartCtrlWidget
+
+        self.layout = QtWidgets.QGridLayout()
+        self.setLayout(self.layout)
+
+        self.toolBar = QtWidgets.QToolBar(parent)
+        self.graphGroup = QtWidgets.QActionGroup(parent)
+        self.graphGroup.setExclusive(True)
+
+        self.actions = {}
+        self.actionRoot = QtWidgets.QAction("root", parent)
+        self.actionRoot.subgraph = "root"
+        self.actionRoot.triggered.connect(self.displayView)
+        self.actionRoot.setCheckable(True)
+        self.actionRoot.setChecked(True)
+        self.toolBar.addAction(self.actionRoot)
+        self.graphGroup.addAction(self.actionRoot)
+
+        self.layout.addWidget(self.toolBar, 0, 0, 1, -1)
+
+        self.views = {"root": FlowchartGraphicsView(widget, self, isRoot=True)}
+        self.currentView = self.views["root"]
+        self.previousView = None
+        self.layout.addWidget(self.currentView, 1, 0, -1, -1)
+
+    def addView(self, name):
+        view = FlowchartGraphicsView(self.widget, self)
+        self.views[name] = view
+        self.layout.addWidget(view, 1, 0, -1, -1)
+
+        actionSubgraph = QtWidgets.QAction(name, self.parentWidget())
+        actionSubgraph.subgraph = name
+        actionSubgraph.setCheckable(True)
+        actionSubgraph.triggered.connect(self.displayView)
+        self.toolBar.addAction(actionSubgraph)
+        self.graphGroup.addAction(actionSubgraph)
+        self.actions[name] = actionSubgraph
+
+        self.sigViewAdded.emit(view)
+
+        return view
+
+    def displayView(self, checked=False, name=None, autoRange=False):
+        if name is None:
+            sender = self.sender()
+            if sender is None:
+                return
+
+            name = sender.subgraph
+        else:
+            self.actions[name].setChecked(True)
+
+        self.previousView = self.currentView
+        self.currentView.hide()
+        self.currentView = self.views[name]
+        self.currentView.show()
+
+        self.ctrl.ui.actionPan.trigger()
+
+        if autoRange:
+            children = self.currentView.viewBox().allChildren()
+            self.currentView.viewBox().autoRange(items=children)
+
+    def removeView(self, name):
+        del self.views[name]
+        action = self.actions[name]
+        self.toolBar.removeAction(action)
+        del self.actions[name]
+
+    def scene(self):
+        return self.currentView.scene()
+
+    def viewBox(self):
+        return self.currentView.viewBox()
+
+
 class FlowchartGraphicsView(GraphicsView):
 
     sigHoverOver = QtCore.Signal(object)
     sigClicked = QtCore.Signal(object)
 
-    def __init__(self, widget, *args):
+    def __init__(self, widget, manager, isRoot=False, *args, **kwargs):
         super().__init__(*args, useOpenGL=False, background=0.75)
         self.widget = widget
+        self.isRoot = isRoot
         self.setAcceptDrops(True)
-        self._vb = FlowchartViewBox(widget, lockAspect=True, invertY=True)
+        self._vb = FlowchartViewBox(widget, manager, isRoot=isRoot, lockAspect=True, invertY=True, **kwargs)
         self.setCentralItem(self._vb)
         self.setRenderHint(QtGui.QPainter.Antialiasing, True)
 
@@ -218,10 +304,12 @@ class FlowchartGraphicsView(GraphicsView):
 
 class FlowchartViewBox(ViewBox):
 
-    def __init__(self, widget, *args, **kwargs):
+    def __init__(self, widget, manager, isRoot=False, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.widget = widget
         self.chart = widget.chart
+        self.manager = manager
+        self.isRoot = isRoot
 
         if "Background" in STYLE:
             self.setBackgroundColor(STYLE["Background"])
@@ -257,6 +345,8 @@ class FlowchartViewBox(ViewBox):
 
         if self.selected_nodes:
             self.selected_node_menu = QtWidgets.QMenu("Selection")
+            if self.isRoot:
+                self.selected_node_menu.addAction("Make Subgraph", self.makeSubgraphFromSelection)
             if not self.copy:
                 self.selected_node_menu.addAction("Copy", self.copySelectedNodes)
             else:
@@ -282,6 +372,10 @@ class FlowchartViewBox(ViewBox):
     def deleteSelectedNodes(self):
         for node in self.selected_nodes:
             node.close()
+
+    def makeSubgraphFromSelection(self):
+        nodes = self.selected_nodes
+        self.manager.sigMakeSubgraphFromSelection.emit(nodes)
 
     def getContextMenus(self, ev):
         # called by scene to add menus on to someone else's context menu

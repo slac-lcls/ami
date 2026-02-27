@@ -108,6 +108,11 @@ class Node(QtCore.QObject):
         self.changed = True
         self.viewed = False
         self.exception = None
+
+        self.isSubgraph = False
+        self.isSubgraphInput = False
+        self.isSubgraphOutput = False
+
         self.global_op = kwargs.get("global_op", False)
         self.latched = False
 
@@ -381,6 +386,10 @@ class Node(QtCore.QObject):
         node = remoteTerm.node()
 
         if localTerm.isInput() and remoteTerm.isOutput():
+            if node.isSubgraphInput:
+                remoteTerm = node.getInputTerm(remoteTerm)
+                node = remoteTerm.node()
+
             if node.exportable() and node.values['alias']:
                 self._input_vars[localTerm.name()] = node.values['alias']
             elif node.isSource():
@@ -396,8 +405,7 @@ class Node(QtCore.QObject):
     def disconnected(self, localTerm, remoteTerm):
         """Called whenever one of this node's terminals is disconnected from another."""
         if localTerm.isInput() and remoteTerm.isOutput():
-            del self._input_vars[localTerm.name()]
-
+            self._input_vars.pop(localTerm.name(), None)
         self.changed = localTerm.isInput()
         self.sigTerminalDisconnected.emit(localTerm, remoteTerm)
 
@@ -587,6 +595,7 @@ class NodeGraphicsItem(GraphicsObject):
             self.nameItem.boundingRect().height()
         )
 
+        self.terminals = {}
         self.updateTerminals()
 
         self.menu = None

@@ -202,6 +202,7 @@ def build_tree(model=None, parent=None):
 class Ui_Toolbar(object):
     def setupUi(self, parent=None, chart=None, configure=False):
         self.gridLayout = QtWidgets.QGridLayout(parent)
+        self.gridLayout.setSpacing(0)
 
         self.toolBar = QtWidgets.QToolBar(parent)
         self.toolBar.setObjectName("toolBar")
@@ -221,7 +222,7 @@ class Ui_Toolbar(object):
         self.actionSave.setIconText("Save")
         self.actionSave.setObjectName("actionSave")
 
-        # save
+        # save as
         self.actionSaveAs = QtWidgets.QAction(parent)
         self.actionSaveAs.setIconText("Save As")
         self.actionSaveAs.setObjectName("actionSaveAs")
@@ -321,7 +322,7 @@ class Ui_Toolbar(object):
 
         self.gridLayout.addWidget(self.toolBar, 0, 0, 1, -1)
 
-        self.node_dock = dockarea.Dock('nodes', size=(400, 1000))
+        self.node_dock = dockarea.Dock('nodes', size=(300, 1000))
         self.node_dock.hideTitleBar()
         self.node_dock.setOrientation('vertical')
         self.node_dock.addWidget(self.source_search, 1, 0, 1, 1)

@@ -96,8 +96,9 @@ def run_editor_window(broker_addr, graphmgr_addr, checkpoint_addr, load=None, pr
     with loop:
         loop.run_until_complete(fc.updateSources(init=True))
 
-        # # Add flowchart control panel to the main window
-        win.setCentralWidget(fc.widget())
+
+        # Add flowchart control panel to the main window
+        win.setCentralWidget(fc.widget(win))
         win.show()
 
         app.aboutToQuit.connect(fc.widget().clear)
@@ -525,6 +526,20 @@ class MessageBroker(object):
                 logger.info("creating process: %s pid: %d", msg.name, proc.pid)
                 async with self.lock:
                     self.widget_procs[msg.name] = (msg.node_type, proc)
+
+            # elif isinstance(msg, fcMsgs.Profiler):
+            #     if self.profiler is None:
+            #         self.profiler = mp.Process(target=Profiler,
+            #                                    args=(self.broker_pub_addr, self.graphmgr_addr.profile, msg.name),
+            #                                    daemon=True)
+            #         self.profiler.start()
+            #         logger.info("creating process: Profiler pid: %d", self.profiler.pid)
+
+            #     async with self.lock:
+            #         self.msgs[topic] = msg
+
+            #     await self.broker_pub_sock.send_string(topic, zmq.SNDMORE)
+            #     await self.broker_pub_sock.send_pyobj(msg)
 
             elif isinstance(msg, fcMsgs.DisplayNode):
                 await self.forward_message_to_node(topic, msg)
