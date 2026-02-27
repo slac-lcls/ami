@@ -408,9 +408,9 @@ class ResultStore(ZmqHandler):
     a Collector object.
     """
 
-    def __init__(self, addr, ctx=None, hwm=None, select_manager=(None, None, None)):
+    def __init__(self, addr, ctx=None, hwm=None, select_manager=(None, None, None, None, None)):
         super().__init__(addr, ctx, hwm)
-        self.select_lock, self.select_dict, self.select_manager = select_manager
+        self.select_lock, self.select_dict, self.select_idx, self.select_hb, self.select_manager = select_manager
         self.stores = {}
 
     def __bool__(self):
@@ -422,11 +422,21 @@ class ResultStore(ZmqHandler):
     def __contains__(self, name):
         return name in self.stores
 
-    def configure(self, name, version):
+    def configure(self, name, version, outputs):
         if name not in self.stores:
             self.stores[name] = Store(version=version)
         else:
             self.stores[name].version = version
+
+        if self.select_lock:
+            for output in outputs:
+                if not output.startswith("_auto"):
+                    continue
+
+                with self.select_lock:
+                    if output not in self.select_dict:
+                        self.select_dict[output] = (self.select_idx.value, self.select_manager.Lock())
+                        self.select_idx.value = (self.select_idx.value + 1) % len(self.select_hb)
 
     def remove(self, name):
         del self.stores[name]
@@ -446,18 +456,25 @@ class ResultStore(ZmqHandler):
                     if not val.startswith("_auto"):
                         continue
 
-                    # this lock protects the select1 dict which stores the detector and heartbeat
-                    # it was done this way because workers can independently iterate through the store values
-                    # until they hit the lock at which point they will block, also we can avoid grabbing the lock
-                    # for values that arent select1
+                    # select_dict stores a lock/detector and maps each detector to an index in select_hb
                     # start = time.time()
-                    with self.select_lock:
-                        if self.select_dict.get(val, Heartbeat(0, 0)) < heartbeat:
-                            self.select_dict[val] = heartbeat  # { det_name : heartbeat}
-                            # print(heartbeat, val, identity, "SELECTED", time.time() - start)
+                    idx, lock = self.select_dict[val]  # { detector : (index, lock) }
+                    if self.select_hb[idx] < heartbeat.identity:
+                        if lock.acquire(blocking=False):
+                            if self.select_hb[idx] < heartbeat.identity:
+                                # print(heartbeat, val, idx, identity, "SELECTED", time.time() - start)
+                                self.select_hb[idx] = heartbeat.identity
+
+                            else:
+                                # print(heartbeat, val, idx, identity, "FAILED UPDATE", time.time() - start)
+                                deletions.append(val)
+                            lock.release()
                         else:
+                            # print(heartbeat, val, idx, identity, "NO LOCK", time.time() - start)
                             deletions.append(val)
-                            # print(heartbeat, val, identity, "DELETE", time.time() - start)
+                    else:
+                        # print(heartbeat, val, idx, identity, "DELETE", time.time() - start)
+                        deletions.append(val)
 
                 for delete in deletions:
                     del ns[delete]

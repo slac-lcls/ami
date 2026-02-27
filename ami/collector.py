@@ -9,6 +9,7 @@ import datetime as dt
 import cProfile
 import signal
 import ami.multiproc as mp
+import multiprocessing.sharedctypes
 from ami.worker import run_worker, parse_args
 from ami import LogConfig, Defaults
 from ami.comm import Ports, PlatformAction, Colors, Node, Collector, TransitionBuilder, EventBuilder
@@ -425,9 +426,18 @@ def main(color, upstream_port, downstream_port):
     try:
         if color == Colors.LocalCollector:
             if args.worker:
-                select_manager = mp.Manager()
-                select_dict = select_manager.dict()
-                select_lock = select_manager.Lock()
+                if args.num_contribs > 1:
+                    select_manager = mp.Manager()
+                    select_dict = select_manager.dict()
+                    select_lock = select_manager.Lock()
+                    select_hb = multiprocessing.sharedctypes.RawArray('Q', 128)
+                    select_idx = multiprocessing.sharedctypes.RawValue('I', 0)
+                else:
+                    select_manager = None
+                    select_dict = None
+                    select_lock = None
+                    select_hb = None
+                    select_idx = None
 
                 local_collector_addr = "tcp://localhost:%d" % (args.port + upstream_port)
                 export_addr = "tcp://%s:%d" % (args.host, args.port + Ports.Export)
@@ -454,7 +464,7 @@ def main(color, upstream_port, downstream_port):
                                               args.hwm,
                                               args.timeout,
                                               args.cprofile,
-                                              (select_lock, select_dict, select_manager)),
+                                              (select_lock, select_dict, select_idx, select_hb, select_manager)),
                                         daemon=True)
                     worker.start()
 
