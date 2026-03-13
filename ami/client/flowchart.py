@@ -36,6 +36,57 @@ logger = logging.getLogger(LogConfig.get_package_name(__name__))
 pg.setConfigOption('imageAxisOrder', 'row-major')
 
 
+# Create main window with grid layout
+class EditorMainWindow(QtWidgets.QMainWindow):
+    """Main window for AMI flowchart editor with unsaved changes prompt."""
+
+    def __init__(self):
+        super().__init__()
+        self.fc = None
+
+    def closeEvent(self, event):
+        """Handle window close event and prompt for unsaved changes."""
+        if self.fc is not None:
+            ctrl = self.fc.widget()
+            if not ctrl.ui.pending:
+                return
+
+            # There are unsaved changes - prompt the user
+            msg = QtWidgets.QMessageBox(self)
+            msg.setWindowTitle("Unsaved Changes")
+            msg.setText("You have unsaved changes in the flowchart.")
+            msg.setInformativeText("Do you want to save your changes before closing?")
+            msg.setStandardButtons(QtWidgets.QMessageBox.Save |
+                                   QtWidgets.QMessageBox.Discard |
+                                   QtWidgets.QMessageBox.Cancel)
+            msg.setDefaultButton(QtWidgets.QMessageBox.Save)
+
+            result = msg.exec()
+
+            if result == QtWidgets.QMessageBox.Save:
+                # Save the flowchart
+                if ctrl.currentFileName is None:
+                    # Need to prompt for a filename
+                    ctrl.chart.saveFile()
+                    # Check if user cancelled the save dialog
+                    if ctrl.currentFileName is None:
+                        event.ignore()
+                        return
+                else:
+                    ctrl.chart.saveFile(ctrl.currentFileName)
+                event.accept()
+            elif result == QtWidgets.QMessageBox.Discard:
+                # Don't save, just close
+                event.accept()
+            else:
+                # Cancel - don't close
+                event.ignore()
+                return
+
+        # No pending changes or user chose to close - proceed with default close behavior
+        super().closeEvent(event)
+
+
 def run_editor_window(broker_addr, graphmgr_addr, checkpoint_addr, load=None, prometheus_dir=None,
                       prometheus_port=None, hutch=None, configure=False, save_dir=None):
     dmypy_file = tempfile.NamedTemporaryFile(mode='w', delete=False)
@@ -62,8 +113,7 @@ def run_editor_window(broker_addr, graphmgr_addr, checkpoint_addr, load=None, pr
     loop = QEventLoop(app)
     asyncio.set_event_loop(loop)
 
-    # Create main window with grid layout
-    win = QtWidgets.QMainWindow()
+    win = EditorMainWindow()
     title = 'AMI Client'
     if hutch:
         title += f' hutch: {hutch}'
@@ -98,6 +148,7 @@ def run_editor_window(broker_addr, graphmgr_addr, checkpoint_addr, load=None, pr
 
         # # Add flowchart control panel to the main window
         win.setCentralWidget(fc.widget())
+        win.fc = fc  # Store reference for closeEvent
         win.show()
 
         app.aboutToQuit.connect(fc.widget().clear)
