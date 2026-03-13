@@ -48,7 +48,7 @@ AMI follows a distributed tree architecture with three main components:
 - **Key files**:
   - `flowchart.py`: Contains the MessageBroker responsible for spawning GUI windows for Node instances
   - `flowchart_messages.py`: Defines message types that the Flowchart class in `ami/flowchart/Flowchart.py` sends to the MessageBroker over ZMQ
-- **Technology**: PyQt-based graphical interface
+- **Technology**: Qt-based graphical interface implemented using qtpy and pyqtgraph
 
 ## Key Supporting Components
 
@@ -63,7 +63,7 @@ AMI follows a distributed tree architecture with three main components:
 - **Node**: Base class for all network-connected components
 - **Collector**: Base class for result collection
 - **ResultStore**: Handles sending results to collectors
-- **AutoExport**: Manages automatic data export
+- **AutoName**: Manages automatic data export
 - Uses ZeroMQ for all network communication
 
 ### Graph Representations
@@ -83,7 +83,7 @@ AMI uses three different graph representations:
 3. **Execution Graph (`ami/graphkit_wrapper.py`)**:
    - Bottom layer using NetworkX nodes
    - Operation nodes are compiled down to NetworkX representation
-   - Wraps graphkit library for computation graph execution
+   - Wraps networkfox library for computation graph execution
    - Handles dependency resolution and execution
 
 ### Flowchart (`ami/flowchart/`)
@@ -172,7 +172,7 @@ ami/
 - Directed acyclic graph (DAG) of operations
 - Nodes perform computations
 - Edges represent data flow
-- Executed by graphkit
+- Executed by networkfox
 
 ### Transitions
 - State changes in the system (Allocate, Configure, Unconfigure, BeginStep, EndStep, Enable, Disable)
@@ -220,11 +220,16 @@ ami/
 ## Communication Patterns
 
 ### ZeroMQ Sockets
-- **PUB/SUB**: 
+- **XPUB/XSUB**: 
   - Manager → Workers/Collectors: Graph updates and configuration changes
   - Manager → Clients: Heartbeats and event notifications
 - **PUSH/PULL**: Workers → Collectors → Manager (result collection)
-- **REQ/REP**: Clients → Manager (on-demand requests for specific feature/plot data)
+- **REQ/REP**: Clients → Manager (command/control requests, e.g., get_graph, add_graph, set_graph)
+- **ROUTER/DEALER**: 
+  - Manager internal proxy for view requests (plot/feature data)
+  - ROUTER socket (frontend) receives view requests from multiple clients
+  - DEALER socket (backend) queues requests to REP socket for processing
+  - Enables concurrent handling of multiple client view requests
 
 ### Message Types
 - Results: Computed graph outputs (PUSH/PULL)
