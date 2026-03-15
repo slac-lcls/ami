@@ -590,7 +590,7 @@ class NodeGraphicsItem(GraphicsObject):
         self.updateTerminals()
 
         self.menu = None
-        self.connectedTo = None
+        self.connectTo = None
         self.enabled = QtWidgets.QAction("Enabled", self.menu, checkable=True, checked=True)
         self.optional = QtWidgets.QAction("Optional Inputs", self.menu, checkable=True, checked=False)
         self.latch = QtWidgets.QAction("Latch Outputs", self.menu, checkable=True, checked=False)
@@ -831,14 +831,14 @@ class NodeGraphicsItem(GraphicsObject):
         return self.menu
 
     def raiseContextMenu(self, ev):
+        if self.connectTo:
+            action = self.connectTo.menuAction()
+            self.menu.removeAction(action)
+            del self.connectTo
+
         menu = self.scene().addParentContextMenus(self, self.getMenu(), ev)
         pos = ev.screenPos()
         menu.popup(QtCore.QPoint(pos.x(), pos.y()))
-
-        if self.connectedTo:
-            action = self.connectedTo.menuAction()
-            self.menu.removeAction(action)
-            del self.connectTo
 
     def buildMenu(self, reset=False):
         if reset:
