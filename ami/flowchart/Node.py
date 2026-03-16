@@ -388,13 +388,17 @@ class Node(QtCore.QObject):
         if localTerm.isInput() and remoteTerm.isOutput():
             if node.isSubgraphInput:
                 remoteTerm = node.getInputTerm(remoteTerm)
-                node = remoteTerm.node()
+                if remoteTerm:
+                    node = remoteTerm.node()
+                else:
+                    # getInputTerm returned None, can't get the source node
+                    node = None
 
-            if node.exportable() and node.values['alias']:
+            if node and node.exportable() and node.values['alias']:
                 self._input_vars[localTerm.name()] = node.values['alias']
-            elif node.isSource():
+            elif node and node.isSource():
                 self._input_vars[localTerm.name()] = node.name()
-            else:
+            elif node and remoteTerm:
                 self._input_vars[localTerm.name()] = '.'.join([node.name(), remoteTerm.name()])
 
         if not self.changed:

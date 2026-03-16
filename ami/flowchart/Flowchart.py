@@ -538,6 +538,10 @@ class Flowchart(QtCore.QObject):
 
     @asyncSlot(object, object)
     async def nodeTermConnected(self, localTerm, remoteTerm):
+        # Handle case where remoteTerm is None (e.g., SubgraphInput without source)
+        if not remoteTerm or not localTerm:
+            return
+        
         if remoteTerm.isOutput():
             t = remoteTerm
             remoteTerm = localTerm

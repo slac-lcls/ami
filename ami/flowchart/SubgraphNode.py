@@ -217,7 +217,15 @@ class SubgraphNodeGraphicsItem(NodeGraphicsItem):
         root_view = flowchart.viewManager().views['root']
         subgraph_view = sg_data['view']
         
-        # Create visual connection in root view: external → placeholder
+        # Actually connect the terminals (this updates Terminal._connections)
+        term.connectTo(new_term, signal=False)
+        
+        # Hide the default connection item that was created
+        for conn in new_term.connections().values():
+            if conn.scene() is not None:
+                conn.scene().removeItem(conn)
+        
+        # Create visual-only connection in root view: external → placeholder
         root_visual = ConnectionItem(
             term.graphicsItem(),
             new_term.graphicsItem()
@@ -266,10 +274,21 @@ class SubgraphNodeInput(Node):
             return self.addTerminal(name, io='out', ttype=kwargs['ttype'])
 
     def getInputTerm(self, term):
-        rootTerm = self.rootNode.inputs()[term.name()]()
+        # Get the corresponding terminal on the root (placeholder) node
+        root_inputs = self.rootNode.inputs()
+        if term.name() not in root_inputs:
+            # Terminal doesn't exist on placeholder yet, return None
+            return None
+        
+        rootTerm = root_inputs[term.name()]()
+        if not rootTerm:
+            return None
+        
         inputTerms = rootTerm.inputTerminals()
         if inputTerms:
             return inputTerms[0]
+        
+        return None
 
 
 class SubgraphNodeOutput(Node):
