@@ -111,42 +111,139 @@ class SubgraphNodeGraphicsItem(NodeGraphicsItem):
                 autoRange=True
             )
 
-    def addInputFromMenu(self):
+    def buildMenu(self, reset=False):
+        """Override to add custom submenu for adding inputs"""
+        # Call parent to get base menu
+        menu = super().buildMenu(reset)
+        
+        # Check if node has _graph attribute (not set during initialization)
+        if not hasattr(self.node, '_graph') or self.node._graph is None:
+            return menu
+        
+        # Find and replace "Add input" action with submenu
+        if self.node._allowAddInput:
+            # Remove the default "Add input" action
+            for action in menu.actions():
+                if action.text() == "Add input":
+                    menu.removeAction(action)
+                    break
+            
+            # Always rebuild the submenu fresh each time (simpler, avoids Qt memory issues)
+            self.addInputMenu = QtWidgets.QMenu("Add input", menu)
+            self.rebuildAddInputMenu()
+            
+            # Insert the submenu where "Add input" was (before "Add output" or "Remove node")
+            actions = menu.actions()
+            insert_before = None
+            for action in actions:
+                if action.text() in ["Add output", "Remove node"]:
+                    insert_before = action
+                    break
+            
+            if insert_before:
+                menu.insertMenu(insert_before, self.addInputMenu)
+            else:
+                menu.addMenu(self.addInputMenu)
+        
+        return menu
+
+    def rebuildAddInputMenu(self):
+        """Rebuild the Add input submenu with current available inputs"""
+        if not hasattr(self, 'addInputMenu'):
+            return
+        
+        # Clear existing items
+        self.addInputMenu.clear()
+        
         graph = self.node._graph
-
-        self.addInputWidget = QtWidgets.QWidget(self.parentWidget().parentWidget())
-        self.addInputWidget.setWindowTitle(f"{self.node.name()} add input")
-
-        layout = QtWidgets.QGridLayout(self.addInputWidget)
-        self.addInputs = QtWidgets.QComboBox(self.addInputWidget)
-        add = QtWidgets.QPushButton("Add", parent=self.addInputWidget)
-        add.clicked.connect(self.addInput)
-        cancel = QtWidgets.QPushButton("Cancel", parent=self.addInputWidget)
-
-        layout.addWidget(self.addInputs, 0, 0, 1, -1)
-        layout.addWidget(cancel, 1, 0)
-        layout.addWidget(add, 1, 1)
-
+        available_inputs = []
+        
         for node_name, node in graph.nodes(data='node'):
             if node in self.node.children:
                 continue
-
-            for term_name, term in node.outputs().items():
-                term_name = '.'.join([node_name, term_name])
-                if term_name in self.node.inputs():
+            
+            for term_name, term_ref in node.outputs().items():
+                full_term_name = '.'.join([node_name, term_name])
+                if full_term_name in self.node.inputs():
                     continue
+                
+                # Dereference the weakref immediately to get the actual terminal
+                term = term_ref() if callable(term_ref) else term_ref
+                available_inputs.append((full_term_name, term))
+        
+        if available_inputs:
+            # Sort by name for easier finding
+            for term_name, term in sorted(available_inputs, key=lambda x: x[0]):
+                action = self.addInputMenu.addAction(term_name)
+                # Store the info in the action's data to avoid closure issues
+                action.setData((term_name, term))
+                action.triggered.connect(lambda checked, a=action: self.addInputFromAction(a))
+        else:
+            self.addInputMenu.addAction("(no available inputs)").setEnabled(False)
+    
+    def addInputFromAction(self, action):
+        """Add an input terminal from a QAction"""
+        term_name, term = action.data()
+        self.addInput(term_name, term)
 
-                self.addInputs.addItem(term_name, term)
-
-        self.addInputWidget.show()
-
-    def addInput(self):
-        name = self.addInputs.currentText()
-        term = self.addInputs.currentData()()
+    def addInput(self, name, term):
+        """Add an input terminal and connect it"""
+        from qtpy import QtGui
+        from ami.flowchart.Terminal import ConnectionItem
+        
         ttype = term.type()
+        
+        # Add terminal to placeholder (also adds to SubgraphInputs)
         new_term = self.node.addInput(name, ttype=ttype, removeable=True)
-        term.connectTo(new_term, signal=False)
-        self.addInputWidget.close()
+        
+        # Get the SubgraphInput terminal that was just created
+        sg_input_term = self.node.subgraphInputs.terminals.get(name)
+        
+        # Get the flowchart and subgraph data
+        if not hasattr(self.node, 'flowchart') or not self.node.flowchart:
+            # Fallback: just connect and return
+            term.connectTo(new_term, signal=False)
+            return
+        
+        flowchart = self.node.flowchart
+        subgraph_name = self.node.name()
+        
+        if subgraph_name not in flowchart._subgraphs:
+            # Fallback: just connect and return
+            term.connectTo(new_term, signal=False)
+            return
+        
+        sg_data = flowchart._subgraphs[subgraph_name]
+        root_view = flowchart.viewManager().views['root']
+        subgraph_view = sg_data['view']
+        
+        # Create visual connection in root view: external → placeholder
+        root_visual = ConnectionItem(
+            term.graphicsItem(),
+            new_term.graphicsItem()
+        )
+        root_view.viewBox().addItem(root_visual)
+        
+        # Recolor placeholder terminal to white (it's connected in root view)
+        new_term.recolor(QtGui.QColor(255, 255, 255))
+        
+        # SubgraphInput terminal should stay black (not connected yet)
+        # User needs to manually connect it to an internal node
+        
+        # Update graphics to properly position terminals
+        self.node.graphicsItem().updateTerminals()
+        self.node.subgraphInputs.graphicsItem().updateTerminals()
+        
+        # Update all existing visual connections in root view to realign with new terminal positions
+        for bc in sg_data.get('boundary_connections', []):
+            if hasattr(bc.get('root_visual'), 'updateLine'):
+                bc['root_visual'].updateLine()
+            # Also update subgraph view connections
+            if hasattr(bc.get('subgraph_visual'), 'updateLine'):
+                bc['subgraph_visual'].updateLine()
+        
+        # Also update the new connection we just created
+        root_visual.updateLine()
 
     def addOutputFromMenu(self):
         print("OUTPUT")
