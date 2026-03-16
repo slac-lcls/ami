@@ -101,7 +101,7 @@ class Node(QtCore.QObject):
         self._viewable = kwargs.get("viewable", False)
         self._buffered = kwargs.get("buffered", False)
         self._exportable = kwargs.get("exportable", False)
-        self._editor = None
+        self._flowchart = kwargs.get("flowchart", None)
         self._enabled = True
 
         self.created = False
@@ -590,7 +590,7 @@ class NodeGraphicsItem(GraphicsObject):
         self.updateTerminals()
 
         self.menu = None
-        self.connectedTo = None
+        self.connectTo = None
         self.enabled = QtWidgets.QAction("Enabled", self.menu, checkable=True, checked=True)
         self.optional = QtWidgets.QAction("Optional Inputs", self.menu, checkable=True, checked=False)
         self.latch = QtWidgets.QAction("Latch Outputs", self.menu, checkable=True, checked=False)
@@ -831,14 +831,14 @@ class NodeGraphicsItem(GraphicsObject):
         return self.menu
 
     def raiseContextMenu(self, ev):
+        if self.connectTo:
+            action = self.connectTo.menuAction()
+            self.menu.removeAction(action)
+            del self.connectTo
+
         menu = self.scene().addParentContextMenus(self, self.getMenu(), ev)
         pos = ev.screenPos()
         menu.popup(QtCore.QPoint(pos.x(), pos.y()))
-
-        if self.connectedTo:
-            action = self.connectedTo.menuAction()
-            self.menu.removeAction(action)
-            del self.connectTo
 
     def buildMenu(self, reset=False):
         if reset:
@@ -938,16 +938,72 @@ class SourceNodeGraphicsItem(NodeGraphicsItem):
             if self.node._allowOptional:
                 self.optional.toggled.connect(self.optionalFromMenu)
                 self.menu.addAction(self.optional)
-            if self.node._allowAddInput:
-                self.menu.addAction("Add input", self.addInputFromMenu)
-            if self.node._allowAddOutput:
-                self.menu.addAction("Add output", self.addOutputFromMenu)
             if self.node._allowRemove:
                 self.menu.addAction("Remove node", self.node.close)
-            if self.node.isSource():
-                self.menu.addAction("Source kwargs", self.editSourceKwargs)
+            self.menu.addAction("Source kwargs", self.editSourceKwargs)
             self.menu.addAction("View Source Code", self.viewSource)
+            # Add replace menu
+            replace_menu = self.buildReplaceMenu()
+            if replace_menu:
+                # Store references to prevent garbage collection!
+                self.replaceMenu = replace_menu
+                self.replaceMenuAction = self.menu.addMenu(replace_menu)
         return self.menu
+
+    def buildReplaceMenu(self):
+        """Build hierarchical menu of replacement sources with matching type."""
+        if not hasattr(self.node, '_flowchart'):
+            return None
+            
+        if self.node._flowchart is None:
+            return None
+        
+        if not hasattr(self.node._flowchart, 'source_library'):
+            return None
+            
+        if self.node._flowchart.source_library is None:
+            return None
+
+        # Check if 'Out' terminal exists yet (might be called before terminals are added)
+        if 'Out' not in self.node.terminals:
+            return None
+
+        # Get current source info
+        current_type = self.node.terminals['Out']._type
+        current_name = self.node.name()
+
+        # Get sources matching this type (excluding current)
+        matching_sources = self.node._flowchart.source_library.getSourcesByType(
+            current_type, exclude_name=current_name
+        )
+
+        if not matching_sources:
+            return None  # No alternatives available
+
+        # Build menu
+        replace_menu = QtWidgets.QMenu("Replace with...")
+        self._buildReplaceSubmenu(matching_sources, replace_menu)
+        replace_menu.triggered.connect(self.replaceTriggered)
+
+        return replace_menu
+
+    def _buildReplaceSubmenu(self, sources_dict, parent_menu):
+        """Recursively build hierarchical submenu from sources dict."""
+        for name, value in sources_dict.items():
+            if isinstance(value, OrderedDict):
+                # Create submenu for this branch
+                submenu = QtWidgets.QMenu(name, parent_menu)
+                parent_menu.addMenu(submenu)
+                self._buildReplaceSubmenu(value, submenu)
+            else:
+                # Leaf node - add action
+                action = parent_menu.addAction(name)
+                action.replacement_source = name
+
+    def replaceTriggered(self, action):
+        """Handle replace menu selection."""
+        replacement_name = action.replacement_source
+        self.node._flowchart.replaceSourceNode(self.node, replacement_name)
 
     def editSourceKwargs(self):
         self.kwargsEditorWindow = QtWidgets.QWidget()
