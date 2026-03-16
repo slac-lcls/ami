@@ -13,6 +13,8 @@ class SubgraphNode(Node):
         kwargs['allowAddOutput'] = True
         super().__init__(name, **kwargs)
         self.isSubgraph = True
+        self.is_visual_only = True  # Flag to skip adding to self._graph
+        self.flowchart = kwargs.get('flowchart', None)  # For cleanup
         self._subgraphInputs = SubgraphNodeInput('Inputs', allowAddOutput=True, rootNode=self)
         self._subgraphOutputs = SubgraphNodeOutput('Outputs', allowAddInput=True, rootNode=self)
         self.children = kwargs.get('children', [])
@@ -41,13 +43,54 @@ class SubgraphNode(Node):
         self._subgraphOutputs.setGraph(graph)
 
     def close(self, emit=True):
-        super().close(emit)
-
-        for node in self.children:
-            node.close(emit)
-
-        self._subgraphInputs.close(emit)
-        self._subgraphOutputs.close(emit)
+        """Close subgraph placeholder and delete all child nodes."""
+        # Validate we have flowchart reference
+        if not hasattr(self, 'flowchart') or not self.flowchart:
+            # Fallback to default Node.close if no flowchart
+            from ami.flowchart.Node import Node
+            Node.close(self, emit)
+            return
+        
+        # Get subgraph data
+        if self.name() not in self.flowchart._subgraphs:
+            # Subgraph not tracked, just clean up this node
+            from ami.flowchart.Node import Node
+            Node.close(self, emit)
+            return
+        
+        sg_data = self.flowchart._subgraphs[self.name()]
+        
+        # Step 1: Delete all child nodes
+        for node_name in sg_data['nodes']:
+            if node_name not in self.flowchart._graph.nodes:
+                continue
+            node = self.flowchart._graph.nodes[node_name]['node']
+            # This will trigger nodeClosed which removes it from the subgraph
+            node.close(emit=emit)
+        
+        # Step 2: Clean up boundary connections
+        for bc in sg_data.get('boundary_connections', []):
+            # Remove visual-only connections
+            if hasattr(bc['root_visual'], 'close'):
+                bc['root_visual'].close()
+            if hasattr(bc['subgraph_visual'], 'close'):
+                bc['subgraph_visual'].close()
+        
+        # Step 3: Remove tracking (if still exists - may have been removed by nodeClosed)
+        if self.name() in self.flowchart._subgraphs:
+            del self.flowchart._subgraphs[self.name()]
+        
+        # Step 4: Remove view
+        self.flowchart.viewManager().removeView(self.name())
+        
+        # Step 5: Clean up helper nodes
+        self._subgraphInputs.close(emit=False)
+        self._subgraphOutputs.close(emit=False)
+        
+        # Step 6: Clean up placeholder (THIS node)
+        # Use Node.close directly to avoid recursion
+        from ami.flowchart.Node import Node
+        Node.close(self, emit=False)
 
     def graphicsItem(self, brush=None):
         """Return the GraphicsItem for this node. Subclasses may re-implement
@@ -58,6 +101,15 @@ class SubgraphNode(Node):
 
 
 class SubgraphNodeGraphicsItem(NodeGraphicsItem):
+
+    def mouseDoubleClickEvent(self, ev):
+        """Switch to subgraph view on double-click"""
+        ev.accept()
+        if self.node.flowchart:
+            self.node.flowchart.viewManager().displayView(
+                name=self.node.name(),
+                autoRange=True
+            )
 
     def addInputFromMenu(self):
         graph = self.node._graph

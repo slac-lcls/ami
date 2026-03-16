@@ -249,7 +249,11 @@ class ViewManager(QtWidgets.QWidget):
 
             name = sender.subgraph
         else:
-            self.actions[name].setChecked(True)
+            # Set the appropriate action as checked
+            if name == 'root':
+                self.actionRoot.setChecked(True)
+            elif name in self.actions:
+                self.actions[name].setChecked(True)
 
         self.previousView = self.currentView
         self.currentView.hide()
@@ -375,6 +379,29 @@ class FlowchartViewBox(ViewBox):
 
     def makeSubgraphFromSelection(self):
         nodes = self.selected_nodes
+        
+        # Prevent empty subgraphs
+        if not nodes:
+            msg = QtWidgets.QMessageBox()
+            msg.setText("Cannot create empty subgraph. Select at least one node.")
+            msg.exec()
+            return
+        
+        # Prevent nested subgraphs
+        from ami.flowchart.SubgraphNode import SubgraphNode
+        for node in nodes:
+            if isinstance(node, SubgraphNode):
+                msg = QtWidgets.QMessageBox()
+                msg.setText("Cannot create nested subgraphs. SubgraphNode cannot be inside another subgraph.")
+                msg.exec()
+                return
+            # Also check the class name for safety
+            if node.__class__.__name__ == 'SubgraphNode':
+                msg = QtWidgets.QMessageBox()
+                msg.setText("Cannot create nested subgraphs.")
+                msg.exec()
+                return
+        
         self.manager.sigMakeSubgraphFromSelection.emit(nodes)
 
     def getContextMenus(self, ev):
