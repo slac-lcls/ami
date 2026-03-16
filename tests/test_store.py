@@ -239,7 +239,7 @@ def test_store_collect(obj, expected, store):
     # test that the namespace doesn't already exist
     assert name not in store
     # initialize the namespace
-    store.configure(name, 0)
+    store.configure(name, 0, [])
     # test the namespace exists
     assert name in store
     assert store.stores[name].version == 0
@@ -253,7 +253,7 @@ def test_store_collect(obj, expected, store):
 
     # call collect several times changing the version and heartbeat
     for i in range(5):
-        store.configure(name, i // 2)
+        store.configure(name, i // 2, [])
         store.collect(0, i)
 
         msg = collector.recv_serialized(deserializer)
@@ -291,7 +291,7 @@ def test_store_addremove(obj, expected, store):
     name = 'test_namespace'
     bad_name = 'bad_namespace'
     # add a namespace to the store
-    store.configure(name, 0)
+    store.configure(name, 0, [])
 
     # check the store is non-empty
     assert store
