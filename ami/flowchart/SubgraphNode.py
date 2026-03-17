@@ -15,8 +15,9 @@ class SubgraphNode(Node):
         self.isSubgraph = True
         self.is_visual_only = True  # Flag to skip adding to self._graph
         self.flowchart = kwargs.get('flowchart', None)  # For cleanup
-        self._subgraphInputs = SubgraphNodeInput('Inputs', allowAddOutput=True, rootNode=self)
-        self._subgraphOutputs = SubgraphNodeOutput('Outputs', allowAddInput=True, rootNode=self)
+        # Use unique names based on subgraph name to avoid conflicts
+        self._subgraphInputs = SubgraphNodeInput(f'{name}.Inputs', allowAddOutput=True, rootNode=self)
+        self._subgraphOutputs = SubgraphNodeOutput(f'{name}.Outputs', allowAddOutput=True, rootNode=self)
         self.children = kwargs.get('children', [])
 
     def addInput(self, name=None, **kwargs):
@@ -42,7 +43,51 @@ class SubgraphNode(Node):
         self._subgraphInputs.setGraph(graph)
         self._subgraphOutputs.setGraph(graph)
     
-
+    def connected(self, localTerm, remoteTerm):
+        """Override to handle connections to placeholder terminals.
+        
+        When an external node connects to a placeholder terminal on an imported subgraph,
+        we need to create the visual connection in the root view since the helper→internal
+        connection already exists from import.
+        """
+        from qtpy import QtGui
+        from ami.flowchart.Terminal import ConnectionItem
+        
+        # Call parent implementation first
+        super().connected(localTerm, remoteTerm)
+        
+        # Only handle connections made TO this subgraph placeholder
+        if remoteTerm.node() != self:
+            return
+        
+        # Only handle input connections (external → placeholder input)
+        if not remoteTerm.isInput():
+            return
+        
+        # Check if we have flowchart and subgraph data
+        if not hasattr(self, 'flowchart') or not self.flowchart:
+            return
+        
+        if self.name() not in self.flowchart._subgraphs:
+            return
+        
+        sg_data = self.flowchart._subgraphs[self.name()]
+        root_view = self.flowchart.viewManager().views['root']
+        
+        # Hide the default connection item that was created in root view
+        conn_item = localTerm.connections().get(remoteTerm)
+        if conn_item and conn_item.scene() is not None:
+            conn_item.scene().removeItem(conn_item)
+        
+        # Create visual-only connection in root view: external → placeholder
+        root_visual = ConnectionItem(
+            localTerm.graphicsItem(),
+            remoteTerm.graphicsItem()
+        )
+        root_view.viewBox().addItem(root_visual)
+        
+        # Recolor placeholder terminal to white (it's connected in root view)
+        remoteTerm.recolor(QtGui.QColor(255, 255, 255))
     
     def removeTerminal(self, term):
         """Override to also remove corresponding terminals from SubgraphInputs/Outputs"""
@@ -91,6 +136,22 @@ class SubgraphNode(Node):
             # This will trigger nodeClosed which removes it from the subgraph
             node.close(emit=emit)
         
+        # Step 1.5: Remove helper nodes from graph
+        helper_input_name = self._subgraphInputs.name()
+        helper_output_name = self._subgraphOutputs.name()
+
+        if helper_input_name in self.flowchart._graph.nodes:
+            # Disconnect all terminals before removing
+            for term in list(self._subgraphInputs.terminals.values()):
+                term.disconnectAll()
+            self.flowchart._graph.remove_node(helper_input_name)
+
+        if helper_output_name in self.flowchart._graph.nodes:
+            # Disconnect all terminals before removing
+            for term in list(self._subgraphOutputs.terminals.values()):
+                term.disconnectAll()
+            self.flowchart._graph.remove_node(helper_output_name)
+        
         # Step 2: Clean up boundary connections
         for bc in sg_data.get('boundary_connections', []):
             # Remove visual-only connections
@@ -133,6 +194,16 @@ class SubgraphNodeGraphicsItem(NodeGraphicsItem):
                 name=self.node.name(),
                 autoRange=True
             )
+    
+    def exportSubgraph(self):
+        """Export this subgraph to a .fc file"""
+        if self.node.flowchart:
+            self.node.flowchart.exportSubgraph(self.node.name())
+    
+    def updateLibraryTemplate(self):
+        """Update the library template with current subgraph state"""
+        if self.node.flowchart:
+            self.node.flowchart._addSubgraphToLibrary(self.node.name(), update=True)
 
     def buildMenu(self, reset=False):
         """Override to add custom submenus for adding inputs and outputs"""
@@ -142,6 +213,16 @@ class SubgraphNodeGraphicsItem(NodeGraphicsItem):
         # Check if node has _graph attribute (not set during initialization)
         if not hasattr(self.node, '_graph') or self.node._graph is None:
             return menu
+        
+        # Add "Export Subgraph..." action
+        export_action = menu.addAction("Export Subgraph...")
+        export_action.triggered.connect(self.exportSubgraph)
+        
+        # Add "Update Library Template" action
+        # Check if this subgraph is in the library
+        if self.node.flowchart and self.node.flowchart.subgraph_library.hasSubgraph(self.node.name()):
+            update_action = menu.addAction("Update Library Template")
+            update_action.triggered.connect(self.updateLibraryTemplate)
         
         # Find and replace "Add input" action with submenu
         if self.node._allowAddInput:
@@ -439,8 +520,8 @@ class SubgraphNodeInput(Node):
         rootNode = kwargs.pop('rootNode')
         super().__init__(*args, **kwargs)
         self.isSubgraphInput = True
-        self.is_visual_only = True  # Flag to skip adding to self._graph
         self.rootNode = rootNode
+        # Removed is_visual_only - this node should be in self._graph
 
     def addOutput(self, name=None, **kwargs):
         if name:
@@ -463,6 +544,17 @@ class SubgraphNodeInput(Node):
         
         return None
 
+    def to_operation(self, **kwargs):
+        """Identity operation - pass all outputs through unchanged.
+        
+        This helper node acts as a pass-through, forwarding data from
+        external sources (via placeholder) to internal subgraph nodes.
+        """
+        from ami import graph_nodes as gn
+        
+        # Use the Identity pattern: pass through all inputs as outputs unchanged
+        return gn.Map(name=self.name()+"_operation", **kwargs, func=lambda *args: args)
+
 
 class SubgraphNodeOutput(Node):
 
@@ -474,8 +566,8 @@ class SubgraphNodeOutput(Node):
         rootNode = kwargs.pop('rootNode')
         super().__init__(*args, **kwargs)
         self.isSubgraphOutput = True
-        self.is_visual_only = True  # Flag to skip adding to self._graph
         self.rootNode = rootNode
+        # Removed is_visual_only - this node should be in self._graph
 
     def addInput(self, name=None, **kwargs):
         if name:
@@ -502,3 +594,14 @@ class SubgraphNodeOutput(Node):
             return inputTerms[0]
         
         return None
+
+    def to_operation(self, **kwargs):
+        """Identity operation - pass all inputs through unchanged.
+        
+        This helper node acts as a pass-through, forwarding data from
+        internal subgraph nodes to external destinations (via placeholder).
+        """
+        from ami import graph_nodes as gn
+        
+        # Use the Identity pattern: pass through all inputs as outputs unchanged
+        return gn.Map(name=self.name()+"_operation", **kwargs, func=lambda *args: args)
