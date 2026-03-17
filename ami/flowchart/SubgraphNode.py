@@ -41,6 +41,29 @@ class SubgraphNode(Node):
         super().setGraph(graph)
         self._subgraphInputs.setGraph(graph)
         self._subgraphOutputs.setGraph(graph)
+    
+
+    
+    def removeTerminal(self, term):
+        """Override to also remove corresponding terminals from SubgraphInputs/Outputs"""
+        if isinstance(term, str):
+            term_name = term
+        else:
+            term_name = term.name()
+        
+        # Check if this is an input or output terminal
+        if term_name in self._inputs:
+            # Remove corresponding output terminal from SubgraphInputs
+            if term_name in self._subgraphInputs.terminals:
+                self._subgraphInputs.removeTerminal(term_name)
+        
+        if term_name in self._outputs:
+            # Remove corresponding input terminal from SubgraphOutputs
+            if term_name in self._subgraphOutputs.terminals:
+                self._subgraphOutputs.removeTerminal(term_name)
+        
+        # Call parent implementation to actually remove the terminal
+        super().removeTerminal(term)
 
     def close(self, emit=True):
         """Close subgraph placeholder and delete all child nodes."""
@@ -112,7 +135,7 @@ class SubgraphNodeGraphicsItem(NodeGraphicsItem):
             )
 
     def buildMenu(self, reset=False):
-        """Override to add custom submenu for adding inputs"""
+        """Override to add custom submenus for adding inputs and outputs"""
         # Call parent to get base menu
         menu = super().buildMenu(reset)
         
@@ -144,6 +167,31 @@ class SubgraphNodeGraphicsItem(NodeGraphicsItem):
                 menu.insertMenu(insert_before, self.addInputMenu)
             else:
                 menu.addMenu(self.addInputMenu)
+        
+        # Find and replace "Add output" action with submenu
+        if self.node._allowAddOutput:
+            # Remove the default "Add output" action
+            for action in menu.actions():
+                if action.text() == "Add output":
+                    menu.removeAction(action)
+                    break
+            
+            # Always rebuild the submenu fresh each time
+            self.addOutputMenu = QtWidgets.QMenu("Add output", menu)
+            self.rebuildAddOutputMenu()
+            
+            # Insert the submenu where "Add output" was (before "Remove node")
+            actions = menu.actions()
+            insert_before = None
+            for action in actions:
+                if action.text() == "Remove node":
+                    insert_before = action
+                    break
+            
+            if insert_before:
+                menu.insertMenu(insert_before, self.addOutputMenu)
+            else:
+                menu.addMenu(self.addOutputMenu)
         
         return menu
 
@@ -181,20 +229,59 @@ class SubgraphNodeGraphicsItem(NodeGraphicsItem):
         else:
             self.addInputMenu.addAction("(no available inputs)").setEnabled(False)
     
+    def rebuildAddOutputMenu(self):
+        """Rebuild the Add output submenu with current available outputs from child nodes"""
+        if not hasattr(self, 'addOutputMenu'):
+            return
+        
+        # Clear existing items
+        self.addOutputMenu.clear()
+        
+        available_outputs = []
+        
+        # Iterate through child nodes (nodes inside the subgraph)
+        for child_node in self.node.children:
+            node_name = child_node.name()
+            
+            for term_name, term_ref in child_node.outputs().items():
+                full_term_name = '.'.join([node_name, term_name])
+                
+                # Check if already exposed as subgraph output
+                if full_term_name in self.node.outputs():
+                    continue
+                
+                # Dereference weakref
+                term = term_ref() if callable(term_ref) else term_ref
+                available_outputs.append((full_term_name, term))
+        
+        if available_outputs:
+            # Sort by name for easier finding
+            for term_name, term in sorted(available_outputs, key=lambda x: x[0]):
+                action = self.addOutputMenu.addAction(term_name)
+                action.setData((term_name, term))
+                action.triggered.connect(lambda checked, a=action: self.addOutputFromAction(a))
+        else:
+            self.addOutputMenu.addAction("(no available outputs)").setEnabled(False)
+    
     def addInputFromAction(self, action):
         """Add an input terminal from a QAction"""
         term_name, term = action.data()
         self.addInput(term_name, term)
+    
+    def addOutputFromAction(self, action):
+        """Add an output terminal from a QAction"""
+        term_name, term = action.data()
+        self.addOutput(term_name, term)
 
     def addInput(self, name, term):
         """Add an input terminal and connect it"""
-        from qtpy import QtGui
+        from qtpy import QtGui, QtCore
         from ami.flowchart.Terminal import ConnectionItem
         
         ttype = term.type()
         
         # Add terminal to placeholder (also adds to SubgraphInputs)
-        new_term = self.node.addInput(name, ttype=ttype, removeable=True)
+        new_term = self.node.addInput(name, ttype=ttype, removable=True)
         
         # Get the SubgraphInput terminal that was just created
         sg_input_term = self.node.subgraphInputs.terminals.get(name)
@@ -238,6 +325,17 @@ class SubgraphNodeGraphicsItem(NodeGraphicsItem):
         # SubgraphInput terminal should stay black (not connected yet)
         # User needs to manually connect it to an internal node
         
+        # Check if SubgraphInputs node is in the scene, if not add it
+        if self.node.subgraphInputs.graphicsItem().scene() is None:
+            subgraph_view.viewBox().addItem(self.node.subgraphInputs.graphicsItem())
+            # Position it to the left of the leftmost child node
+            if self.node.children:
+                leftmost_x = min(child.graphicsItem().pos().x() for child in self.node.children)
+                first_y = self.node.children[0].graphicsItem().pos().y()
+                self.node.subgraphInputs.graphicsItem().moveBy(leftmost_x - 200, first_y)
+            else:
+                self.node.subgraphInputs.graphicsItem().moveBy(0, 0)
+        
         # Update graphics to properly position terminals
         self.node.graphicsItem().updateTerminals()
         self.node.subgraphInputs.graphicsItem().updateTerminals()
@@ -253,8 +351,82 @@ class SubgraphNodeGraphicsItem(NodeGraphicsItem):
         # Also update the new connection we just created
         root_visual.updateLine()
 
-    def addOutputFromMenu(self):
-        print("OUTPUT")
+    def addOutput(self, name, term):
+        """Add an output terminal and connect it from internal node"""
+        from qtpy import QtGui, QtCore
+        from ami.flowchart.Terminal import ConnectionItem
+        
+        ttype = term.type()
+        
+        # Add output terminal to placeholder (also adds input to SubgraphOutputs)
+        new_term = self.node.addOutput(name, ttype=ttype, removable=True)
+        
+        # Get the SubgraphOutput input terminal that was just created
+        sg_output_term = self.node.subgraphOutputs.terminals.get(name)
+        
+        # Get flowchart and subgraph data
+        if not hasattr(self.node, 'flowchart') or not self.node.flowchart:
+            # Fallback: just connect and return
+            term.connectTo(sg_output_term, signal=False)
+            return
+        
+        flowchart = self.node.flowchart
+        subgraph_name = self.node.name()
+        
+        if subgraph_name not in flowchart._subgraphs:
+            # Fallback: just connect and return
+            term.connectTo(sg_output_term, signal=False)
+            return
+        
+        sg_data = flowchart._subgraphs[subgraph_name]
+        root_view = flowchart.viewManager().views['root']
+        subgraph_view = sg_data['view']
+        
+        # Check if SubgraphOutputs node is in the scene, if not add it
+        if self.node.subgraphOutputs.graphicsItem().scene() is None:
+            subgraph_view.viewBox().addItem(self.node.subgraphOutputs.graphicsItem())
+            # Position it to the right of the rightmost child node
+            if self.node.children:
+                rightmost_x = max(child.graphicsItem().pos().x() for child in self.node.children)
+                first_y = self.node.children[0].graphicsItem().pos().y()
+                self.node.subgraphOutputs.graphicsItem().moveBy(rightmost_x + 200, first_y)
+            else:
+                self.node.subgraphOutputs.graphicsItem().moveBy(200, 0)
+        
+        # Actually connect: internal → SubgraphOutputs
+        term.connectTo(sg_output_term, signal=False)
+        
+        # Hide default connection item created by connectTo
+        for conn in sg_output_term.connections().values():
+            if conn.scene() is not None:
+                conn.scene().removeItem(conn)
+        
+        # Create visual-only connection in subgraph view: internal → SubgraphOutputs
+        subgraph_visual = ConnectionItem(
+            term.graphicsItem(),
+            sg_output_term.graphicsItem()
+        )
+        subgraph_view.viewBox().addItem(subgraph_visual)
+        
+        # Recolor SubgraphOutputs terminal to white (connected in subgraph view)
+        sg_output_term.recolor(QtGui.QColor(255, 255, 255))
+        
+        # Placeholder output terminal stays black (not connected externally yet)
+        # User can now connect it to external nodes in root view
+        
+        # Update terminal positions
+        self.node.graphicsItem().updateTerminals()
+        self.node.subgraphOutputs.graphicsItem().updateTerminals()
+        
+        # Update existing visual connections to realign
+        for bc in sg_data.get('boundary_connections', []):
+            if hasattr(bc.get('root_visual'), 'updateLine'):
+                bc['root_visual'].updateLine()
+            if hasattr(bc.get('subgraph_visual'), 'updateLine'):
+                bc['subgraph_visual'].updateLine()
+        
+        # Update the new connection
+        subgraph_visual.updateLine()
 
 
 class SubgraphNodeInput(Node):
@@ -267,6 +439,7 @@ class SubgraphNodeInput(Node):
         rootNode = kwargs.pop('rootNode')
         super().__init__(*args, **kwargs)
         self.isSubgraphInput = True
+        self.is_visual_only = True  # Flag to skip adding to self._graph
         self.rootNode = rootNode
 
     def addOutput(self, name=None, **kwargs):
@@ -301,8 +474,31 @@ class SubgraphNodeOutput(Node):
         rootNode = kwargs.pop('rootNode')
         super().__init__(*args, **kwargs)
         self.isSubgraphOutput = True
+        self.is_visual_only = True  # Flag to skip adding to self._graph
         self.rootNode = rootNode
 
-    def addOutput(self, name=None, **kwargs):
+    def addInput(self, name=None, **kwargs):
         if name:
             return self.addTerminal(name, io='in', ttype=kwargs['ttype'])
+    
+    def getOutputTerm(self, term):
+        """Get the source terminal that feeds this SubgraphOutput terminal
+        
+        Given a terminal on SubgraphOutputs (input terminal), find what's connected to it
+        and return that source terminal.
+        """
+        # Get corresponding terminal on the root (placeholder) node
+        root_outputs = self.rootNode.outputs()
+        if term.name() not in root_outputs:
+            return None
+        
+        rootTerm = root_outputs[term.name()]()
+        if not rootTerm:
+            return None
+        
+        # For SubgraphOutput input terminals, find what's connected TO them
+        inputTerms = term.inputTerminals()
+        if inputTerms:
+            return inputTerms[0]
+        
+        return None

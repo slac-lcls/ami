@@ -681,6 +681,9 @@ class Flowchart(QtCore.QObject):
 
         # Save regular nodes (skip visual-only nodes like SubgraphNode)
         for name, node in self.nodes(data='node'):
+            # Skip if node is None (shouldn't happen, but be defensive)
+            if node is None:
+                continue
             # Skip visual-only nodes
             if getattr(node, 'is_visual_only', False):
                 continue
@@ -928,8 +931,9 @@ class Flowchart(QtCore.QObject):
         """
         Remove all nodes from this flowchart except the original input/output nodes.
         """
-        for name, gnode in self._graph.nodes().items():
-            node = gnode['node']
+        for name, node in self._graph.nodes(data='node'):
+            if node is None:
+                continue
             await self.broker.send_string(name, zmq.SNDMORE)
             await self.broker.send_pyobj(fcMsgs.CloseNode())
             node.close(emit=False)
@@ -1149,9 +1153,10 @@ class FlowchartCtrlWidget(QtWidgets.QWidget):
         # detect if the manager has no graph (e.g. from a purge on failure)
         if await self.graphCommHandler.graphVersion == 0:
             # mark all the nodes as changed to force a resubmit of the whole graph
-            for name, gnode in self.chart._graph.nodes().items():
-                gnode = gnode['node']
-                gnode.changed = True
+            for name, node in self.chart._graph.nodes(data='node'):
+                if node is None:
+                    continue
+                node.changed = True
             # reset reference counting on views
             await self.features.reset()
 
@@ -1159,9 +1164,8 @@ class FlowchartCtrlWidget(QtWidgets.QWidget):
         failed_nodes = set()
         seen = set()
 
-        for name, gnode in self.chart._graph.nodes().items():
-            gnode = gnode['node']
-            if not gnode.enabled():
+        for name, gnode in self.chart._graph.nodes(data='node'):
+            if gnode is None or not gnode.enabled():
                 continue
 
             if not gnode.hasInput():
@@ -1300,15 +1304,15 @@ class FlowchartCtrlWidget(QtWidgets.QWidget):
     def arrangeClicked(self):
         sources = []
         displays = []
-        for name, gnode in self.chart._graph.nodes().items():
-            if gnode['subset'] == 0:
+        for name, data in self.chart._graph.nodes(data=True):
+            if data.get('subset') == 0:
                 sources.append(name)
-            elif gnode['subset'] == 2:
+            elif data.get('subset') == 2:
                 displays.append(name)
         fixed = sources + displays
         pos = nx.drawing.layout.multipartite_layout(self.chart._graph, scale=len(self.chart._graph.nodes())*75)
         pos = nx.drawing.layout.spring_layout(nx.Graph(self.chart._graph), pos=pos, fixed=fixed, k=200)
-        for name, gnode in self.chart._graph.nodes().items():
+        for name in self.chart._graph.nodes():
             if name not in pos:
                 continue
             px = pos[name][0]
@@ -1331,8 +1335,9 @@ class FlowchartCtrlWidget(QtWidgets.QWidget):
     async def resetClicked(self):
         await self.graphCommHandler.destroy()
 
-        for name, gnode in self.chart._graph.nodes().items():
-            gnode = gnode['node']
+        for name, gnode in self.chart._graph.nodes(data='node'):
+            if gnode is None:
+                continue
             gnode.changed = True
 
         await self.applyClicked()
@@ -1424,9 +1429,10 @@ class FlowchartCtrlWidget(QtWidgets.QWidget):
     async def libraryReloaded(self, mods):
         smods = set(map(lambda mod: mod.__name__, mods))
 
-        for name, gnode in self.chart._graph.nodes().items():
-            node = gnode['node']
-            if node.__module__ in smods:
+        for name, node in self.chart._graph.nodes(data='node'):
+            if node is None or node.__module__ not in smods:
+                continue
+            if True:
                 await self.chart.broker.send_string(node.name(), zmq.SNDMORE)
                 await self.chart.broker.send_pyobj(fcMsgs.ReloadLibrary(name=node.name(),
                                                                         mods=smods))

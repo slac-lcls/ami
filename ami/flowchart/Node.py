@@ -393,6 +393,21 @@ class Node(QtCore.QObject):
                 else:
                     # getInputTerm returned None, can't get the source node
                     node = None
+            elif node.isSubgraph:
+                # Connecting from a SubgraphNode placeholder output
+                # Need to trace through to the actual internal source
+                # placeholder output -> SubgraphOutputs input -> internal output
+                sg_output_term = node.subgraphOutputs.terminals.get(remoteTerm.name())
+                if sg_output_term:
+                    # Get what's connected to this SubgraphOutputs input terminal
+                    internal_term = node.subgraphOutputs.getOutputTerm(sg_output_term)
+                    if internal_term:
+                        remoteTerm = internal_term
+                        node = remoteTerm.node()
+                    else:
+                        node = None
+                else:
+                    node = None
 
             if node and node.exportable() and node.values['alias']:
                 self._input_vars[localTerm.name()] = node.values['alias']
