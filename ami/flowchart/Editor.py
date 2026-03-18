@@ -19,138 +19,228 @@ except ImportError:
 logger = logging.getLogger(__name__)
 
 
-class LibraryEditor(QtWidgets.QWidget):
-
+class UnifiedLibraryEditor(QtWidgets.QWidget):
+    """Unified editor for managing both node library (.py) and subgraph library (.fc)"""
+    
     sigApplyClicked = QtCore.Signal()
     sigReloadClicked = QtCore.Signal(object)
-
-    def __init__(self, ctrlWidget, library):
+    
+    def __init__(self, ctrlWidget, nodeLibrary, subgraphLibrary):
         super().__init__()
-
-        self.setWindowTitle("Manage Library")
-
+        
+        self.setWindowTitle("Manage Libraries")
+        
+        # Node library data
         self.modules = {}  # {mod : [nodes]}
-        self.loaded = {}
-        self.paths = set()
-
+        self.node_loaded = {}
+        self.node_paths = set()
+        
+        # Subgraph library data
+        self.subgraphs = {}  # {name: template}
+        self.subgraph_loaded = {}
+        self.subgraph_paths = set()
+        
         self.ctrl = ctrlWidget
-        self.library = library
-
+        self.nodeLibrary = nodeLibrary
+        self.subgraphLibrary = subgraphLibrary
+        
         self.layout = QtWidgets.QGridLayout(self)
-
+        
+        # Buttons
         self.loadBtn = QtWidgets.QPushButton("Load Files", parent=self)
         self.loadBtn.clicked.connect(self.loadFile)
-
+        
         self.loadDirBtn = QtWidgets.QPushButton("Load Directory", parent=self)
         self.loadDirBtn.clicked.connect(self.loadDirectory)
-
-        # self.reloadBtn = QtWidgets.QPushButton("Reload Selected Modules", parent=self)
-        # self.reloadBtn.clicked.connect(self.reloadFile)
-
-        self.tree = QtWidgets.QTreeWidget(parent=self)
-        self.tree.setHeaderHidden(True)
-
+        
+        # Trees
+        self.nodeTree = QtWidgets.QTreeWidget(parent=self)
+        self.nodeTree.setHeaderHidden(False)
+        self.nodeTree.setHeaderLabel("Nodes (.py)")
+        
+        self.subgraphTree = QtWidgets.QTreeWidget(parent=self)
+        self.subgraphTree.setHeaderHidden(False)
+        self.subgraphTree.setHeaderLabel("Subgraphs (.fc)")
+        
         self.applyBtn = QtWidgets.QPushButton("Apply", parent=self)
         self.applyBtn.clicked.connect(self.applyClicked)
-
-        self.layout.addWidget(self.loadBtn, 1, 1, 1, -1)
-        # self.layout.addWidget(self.reloadBtn, 1, 2, 1, 1)
-        self.layout.addWidget(self.loadDirBtn, 2, 1, 1, -1)
-        self.layout.addWidget(self.tree, 3, 1, 1, -1)
-        self.layout.addWidget(self.applyBtn, 4, 1, 1, -1)
+        
+        # Layout
+        self.layout.addWidget(self.loadBtn, 0, 0, 1, 2)
+        self.layout.addWidget(self.loadDirBtn, 1, 0, 1, 2)
+        self.layout.addWidget(self.nodeTree, 2, 0, 1, 1)
+        self.layout.addWidget(self.subgraphTree, 2, 1, 1, 1)
+        self.layout.addWidget(self.applyBtn, 3, 0, 1, 2)
 
     def loadFile(self):
-        file_filters = "*.py"
-        self.fileDialog = FileDialog(None, "Load Nodes", None, file_filters)
+        file_filters = "Python and Flowchart files (*.py *.fc);;Python files (*.py);;Flowchart files (*.fc)"
+        self.fileDialog = FileDialog(None, "Load Libraries", None, file_filters)
         self.fileDialog.setFileMode(FileDialog.ExistingFiles)
         self.fileDialog.filesSelected.connect(self.fileDialogFilesSelected)
         self.fileDialog.show()
-
+    
     def loadDirectory(self):
-        self.fileDialog = FileDialog(None, "Load Nodes", None, None)
+        self.fileDialog = FileDialog(None, "Load Libraries", None, None)
         self.fileDialog.setFileMode(FileDialog.Directory)
         self.fileDialog.filesSelected.connect(self.fileDialogDirectorySelected)
         self.fileDialog.show()
-
+    
     def fileDialogDirectorySelected(self, pths):
-        modules = []
+        py_files = []
+        fc_files = []
         for pth in pths:
             for root, dirs, filenames in os.walk(pth):
                 for filename in filenames:
+                    full_path = os.path.join(root, filename)
                     if filename.endswith((".py", ".PY")) and not filename.startswith("_"):
-                        modules.append(os.path.join(root, filename))
-        self.fileDialogFilesSelected(modules)
-
+                        py_files.append(full_path)
+                    elif filename.endswith((".fc", ".FC")):
+                        fc_files.append(full_path)
+        
+        # Process both types
+        self.loadPythonFiles(py_files)
+        self.loadFlowchartFiles(fc_files)
+    
     def fileDialogFilesSelected(self, pths):
+        # Separate by extension
+        py_files = [p for p in pths if p.endswith((".py", ".PY"))]
+        fc_files = [p for p in pths if p.endswith((".fc", ".FC"))]
+        
+        self.loadPythonFiles(py_files)
+        self.loadFlowchartFiles(fc_files)
+    
+    def loadPythonFiles(self, pths):
+        """Load .py files as node modules"""
+        if not pths:
+            return
+        
         dirs = set(map(os.path.dirname, pths))
-
+        
         for pth in dirs:
             if pth not in sys.path:
                 sys.path.append(pth)
-
-        self.paths.update(pths)
-
+        
+        self.node_paths.update(pths)
+        
         for mod in pths:
-            mod = os.path.basename(mod)
-            mod = os.path.splitext(mod)[0]
-            mod = importlib.import_module(mod)
-
+            mod_name = os.path.basename(mod)
+            mod_name = os.path.splitext(mod_name)[0]
+            mod = importlib.import_module(mod_name)
+            
             if mod in self.modules:
                 continue
-
+            
             nodes = [getattr(mod, name) for name in dir(mod) if isNodeClass(getattr(mod, name))]
-
+            
             if not nodes:
                 continue
-
+            
             self.modules[mod] = nodes
-            self.loaded[mod] = False
-
-            parent = QtWidgets.QTreeWidgetItem(self.tree, [mod.__name__])
+            self.node_loaded[mod] = False
+            
+            parent = QtWidgets.QTreeWidgetItem(self.nodeTree, [mod.__name__])
             parent.mod = mod
             for node in nodes:
                 child = QtWidgets.QTreeWidgetItem(parent, [node.__name__])
                 child.mod = mod
-
-            self.tree.expandAll()
-
-    def reloadFile(self):
-        mods = set()
-        for item in self.tree.selectedItems():
-            mods.add(item.mod)
-
-        for mod in mods:
-            pg.reload.reload(mod)
-
-        self.sigReloadClicked.emit(mods)
+            
+            self.nodeTree.expandAll()
+    
+    def loadFlowchartFiles(self, pths):
+        """Load .fc files as subgraph templates"""
+        if not pths:
+            return
+        
+        import json
+        from ami.flowchart.SubgraphLibrary import SubgraphTemplate
+        
+        self.subgraph_paths.update(pths)
+        
+        for pth in pths:
+            with open(pth, 'r') as f:
+                state = json.load(f)
+            
+            # Extract metadata
+            metadata = state.get('subgraph_metadata', {})
+            name = metadata.get('name', os.path.splitext(os.path.basename(pth))[0])
+            description = metadata.get('description', '')
+            
+            if name in self.subgraphs:
+                continue
+            
+            # Create template
+            template = SubgraphTemplate(name, description, state, source_file=pth)
+            
+            self.subgraphs[name] = template
+            self.subgraph_loaded[name] = False
+            
+            # Add to tree
+            item = QtWidgets.QTreeWidgetItem(self.subgraphTree, [name])
+            item.setToolTip(0, description or pth)
+            item.template = template
+        
+        self.subgraphTree.expandAll()
 
     def applyClicked(self):
-        loaded = False
-
+        node_loaded = False
+        subgraph_loaded = False
+        
+        # Load node modules
         for mod, nodes in self.modules.items():
-            if self.loaded[mod]:
+            if self.node_loaded[mod]:
                 continue
             for node in nodes:
                 try:
-                    self.library.addNodeType(node, [(mod.__name__, )])
-                    loaded = True
+                    self.nodeLibrary.addNodeType(node, [(mod.__name__, )])
+                    node_loaded = True
                 except Exception as e:
                     printExc(e)
-            self.loaded[mod] = True
-
-        if not loaded:
-            return
-
-        self.ctrl.ui.clear_model(self.ctrl.ui.node_tree)
-        self.ctrl.ui.create_model(self.ctrl.ui.node_tree, self.library.getLabelTree(rebuild=True))
-
+            self.node_loaded[mod] = True
+        
+        # Load subgraph templates
+        for name, template in self.subgraphs.items():
+            if self.subgraph_loaded[name]:
+                continue
+            try:
+                self.subgraphLibrary.addSubgraph(name, template, paths=[template.source_file])
+                subgraph_loaded = True
+            except Exception:
+                printExc(f"Error adding subgraph {name}: (continuing anyway)")
+            self.subgraph_loaded[name] = True
+        
+        # Update UI trees
+        if node_loaded:
+            self.ctrl.ui.clear_model(self.ctrl.ui.node_tree)
+            self.ctrl.ui.create_model(self.ctrl.ui.node_tree, self.nodeLibrary.getLabelTree(rebuild=True))
+        
+        if subgraph_loaded:
+            self.ctrl.ui.clear_model(self.ctrl.ui.subgraph_tree)
+            tree_data = {}
+            for name in self.subgraphLibrary.getNames():
+                template = self.subgraphLibrary.getSubgraph(name)
+                tree_data[name] = template.description or ""
+            self.ctrl.ui.create_model(self.ctrl.ui.subgraph_tree, tree_data, typ="SubgraphTree")
+        
         self.sigApplyClicked.emit()
-
+    
     def saveState(self):
-        return {'paths': list(self.paths)}
-
+        return {
+            'node_paths': list(self.node_paths),
+            'subgraph_paths': list(self.subgraph_paths)
+        }
+    
     def restoreState(self, state):
-        self.fileDialogFilesSelected(state['paths'])
+        if 'node_paths' in state:
+            self.loadPythonFiles(state['node_paths'])
+        if 'subgraph_paths' in state:
+            self.loadFlowchartFiles(state['subgraph_paths'])
+        # Backward compatibility
+        if 'paths' in state and 'node_paths' not in state:
+            self.loadPythonFiles(state['paths'])
+
+
+# Alias for backward compatibility
+LibraryEditor = UnifiedLibraryEditor
 
 
 class SearchProxyModel(QtCore.QSortFilterProxyModel):
@@ -320,6 +410,11 @@ class Ui_Toolbar(object):
         self.node_search.setPlaceholderText('Search Operations...')
         self.node_tree = build_tree(self.node_model, parent)
 
+        self.subgraph_model = build_model()
+        self.subgraph_search = QtWidgets.QLineEdit()
+        self.subgraph_search.setPlaceholderText('Search Subgraphs...')
+        self.subgraph_tree = build_tree(self.subgraph_model, parent)
+
         self.gridLayout.addWidget(self.toolBar, 0, 0, 1, -1)
 
         self.node_dock = dockarea.Dock('nodes', size=(300, 1000))
@@ -329,6 +424,8 @@ class Ui_Toolbar(object):
         self.node_dock.addWidget(self.source_tree, 2, 0, 1, 1)
         self.node_dock.addWidget(self.node_search, 3, 0, 1, 1)
         self.node_dock.addWidget(self.node_tree, 4, 0, 1, 1)
+        self.node_dock.addWidget(self.subgraph_search, 5, 0, 1, 1)
+        self.node_dock.addWidget(self.subgraph_tree, 6, 0, 1, 1)
         chart.addDock(self.node_dock, 'left')
 
         self.rateLbl = QtWidgets.QLabel("")
@@ -345,6 +442,7 @@ class Ui_Toolbar(object):
 
         self.node_search.textChanged.connect(self.node_search_text_changed)
         self.source_search.textChanged.connect(self.source_search_text_changed)
+        self.subgraph_search.textChanged.connect(self.subgraph_search_text_changed)
 
         self.pending = set()
 
@@ -379,6 +477,9 @@ class Ui_Toolbar(object):
 
     def source_search_text_changed(self):
         self.search_text_changed(self.source_tree, self.source_model, self.source_search.text())
+
+    def subgraph_search_text_changed(self):
+        self.search_text_changed(self.subgraph_tree, self.subgraph_model, self.subgraph_search.text())
 
     def search_text_changed(self, tree, model, text):
         model.setFilterRegularExpression(text)

@@ -193,6 +193,27 @@ class SubgraphNodeGraphicsItem(NodeGraphicsItem):
             else:
                 menu.addMenu(self.addOutputMenu)
         
+        # Add "Export Subgraph" menu item
+        if hasattr(self.node, 'flowchart') and self.node.flowchart:
+            export_action = menu.addAction("Export Subgraph...")
+            export_action.triggered.connect(self.exportSubgraph)
+        
+        return menu
+    
+    def exportSubgraph(self):
+        """Export this subgraph to a .fc file"""
+        if hasattr(self.node, 'flowchart') and self.node.flowchart:
+            self.node.flowchart.exportSubgraph(self.node.name())
+
+    def getMenu(self):
+        """Override to rebuild input/output submenus dynamically on every right-click"""
+        # Call parent to get the base menu and rebuild "Connect To" submenu
+        menu = super().getMenu()
+        
+        # Rebuild our custom submenus dynamically
+        self.rebuildAddInputMenu()
+        self.rebuildAddOutputMenu()
+        
         return menu
 
     def rebuildAddInputMenu(self):

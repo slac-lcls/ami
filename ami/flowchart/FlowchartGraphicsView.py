@@ -521,6 +521,21 @@ class FlowchartViewBox(ViewBox):
             except KeyError:
                 pass
 
+            # Try subgraph library
+            try:
+                if self.widget.chart.subgraph_library.hasSubgraph(node):
+                    template = self.widget.chart.subgraph_library.getSubgraph(node)
+                    if template:
+                        # Import subgraph at drop position
+                        pos = self.mapToView(ev.pos())
+                        self.widget.chart.importSubgraphFromFile(template.state, pos=(pos.x(), pos.y()))
+                        ev.accept()
+                        return
+            except Exception as e:
+                import traceback
+                traceback.print_exc()
+                pass
+
         else:
             ev.ignore()
 
