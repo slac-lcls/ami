@@ -156,6 +156,10 @@ class UnifiedLibraryEditor(QtWidgets.QWidget):
         
         self.subgraph_paths.update(pths)
         
+        # Group subgraphs by source file for hierarchical tree
+        from collections import defaultdict
+        by_file = defaultdict(list)
+        
         for pth in pths:
             with open(pth, 'r') as f:
                 state = json.load(f)
@@ -174,10 +178,22 @@ class UnifiedLibraryEditor(QtWidgets.QWidget):
             self.subgraphs[name] = template
             self.subgraph_loaded[name] = False
             
-            # Add to tree
-            item = QtWidgets.QTreeWidgetItem(self.subgraphTree, [name])
-            item.setToolTip(0, description or pth)
-            item.template = template
+            # Group by source file (without extension)
+            filename = os.path.basename(pth)
+            file_key = os.path.splitext(filename)[0]
+            by_file[file_key].append((name, template, pth))
+        
+        # Build hierarchical tree
+        for file_key in sorted(by_file.keys()):
+            # Create parent item for the file
+            file_item = QtWidgets.QTreeWidgetItem(self.subgraphTree, [file_key])
+            file_item.setToolTip(0, f"Subgraphs from {file_key}.fc")
+            
+            # Add child items for each subgraph in this file
+            for name, template, pth in sorted(by_file[file_key], key=lambda x: x[0]):
+                item = QtWidgets.QTreeWidgetItem(file_item, [name])
+                item.setToolTip(0, template.description or pth)
+                item.template = template
         
         self.subgraphTree.expandAll()
 
@@ -215,11 +231,25 @@ class UnifiedLibraryEditor(QtWidgets.QWidget):
         
         if subgraph_loaded:
             self.ctrl.ui.clear_model(self.ctrl.ui.subgraph_tree)
-            tree_data = {}
+            
+            # Group subgraphs by source file (hierarchical)
+            from collections import defaultdict
+            by_file = defaultdict(dict)
+            
             for name in self.subgraphLibrary.getNames():
                 template = self.subgraphLibrary.getSubgraph(name)
-                tree_data[name] = template.description or ""
-            self.ctrl.ui.create_model(self.ctrl.ui.subgraph_tree, tree_data, typ="SubgraphTree")
+                
+                # Determine file key
+                if template.source_file:
+                    filename = os.path.basename(template.source_file)
+                    file_key = os.path.splitext(filename)[0]
+                else:
+                    file_key = "Root"
+                
+                # Add to hierarchical structure
+                by_file[file_key][name] = template.description or ""
+            
+            self.ctrl.ui.create_model(self.ctrl.ui.subgraph_tree, dict(by_file), typ="SubgraphTree")
         
         self.sigApplyClicked.emit()
     

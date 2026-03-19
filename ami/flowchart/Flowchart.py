@@ -217,7 +217,7 @@ class Flowchart(QtCore.QObject):
         if name is None:
             n = 0
             while True:
-                default_name = f"combined.{n}"
+                default_name = f"subgraph.{n}"
                 if default_name not in self._graph.nodes():
                     break
                 n += 1
@@ -579,7 +579,7 @@ class Flowchart(QtCore.QObject):
             n += 1
 
     def _createSubgraphFromImport(self, name, nodes, boundary_inputs, boundary_outputs, 
-                                   node_mapping, pos=None, description=None):
+                                   node_mapping, pos=None, description=None, view=None):
         """Create a subgraph from imported nodes and boundary metadata.
         
         This creates a VISUAL-ONLY subgraph structure. Helper nodes are visual-only
@@ -594,32 +594,43 @@ class Flowchart(QtCore.QObject):
             node_mapping: Dict mapping old node names to new node names (for remapping)
             pos: Position for placeholder in root view (optional)
             description: Subgraph description (optional)
+            view: Pre-created subgraph view (if None, creates one)
         """
         from qtpy import QtGui, QtCore
         from ami.flowchart.Terminal import ConnectionItem
         
-        # Step 1: Create view and placeholder
-        view = self.viewManager().addView(name)
+        # Step 1: Use provided view or create new one
+        if view is None:
+            view = self.viewManager().addView(name)
         
         subgraphNode = SubgraphNode(name, children=nodes, flowchart=self)
         subgraphNode.sigClosed.connect(self.nodeClosed)
         subgraphNode.setGraph(self._graph)
+        
+        # Switch to root view to add placeholder there
+        self.viewManager().displayView(name='root')
         
         # Add placeholder to root view
         placeholder_item = subgraphNode.graphicsItem()
         self.viewBox().addItem(placeholder_item)
         if pos:
             if isinstance(pos, QtCore.QPointF):
-                placeholder_item.moveBy(pos.x(), pos.y())
+                # Snap to grid
+                snapped_pos = (find_nearest(pos.x()), find_nearest(pos.y()))
+                placeholder_item.moveBy(*snapped_pos)
             else:
-                placeholder_item.moveBy(*pos)
+                # Snap to grid
+                snapped_pos = (find_nearest(pos[0]), find_nearest(pos[1]))
+                placeholder_item.moveBy(*snapped_pos)
         else:
-            # Default position based on first node
+            # Default position based on first node (also snapped to grid)
             if nodes:
-                placeholder_item.moveBy(
-                    nodes[0].graphicsItem().pos().x(), 
-                    nodes[0].graphicsItem().pos().y()
-                )
+                first_pos = nodes[0].graphicsItem().pos()
+                snapped_pos = (find_nearest(first_pos.x()), find_nearest(first_pos.y()))
+                placeholder_item.moveBy(*snapped_pos)
+        
+        # Switch back to subgraph view for creating helper nodes
+        self.viewManager().displayView(name=name)
         
         # Step 2: Create placeholder terminals and track boundary connections
         boundary_connections = []
@@ -662,11 +673,7 @@ class Flowchart(QtCore.QObject):
                 
                 internal_term = internal_node.terminals[internal_term_name]
                 
-                # Create visual-only connection using Terminal._connections
-                # (Use signal=False so it doesn't create graph edges)
-                sg_input_term.connectTo(internal_term, signal=False)
-                
-                # Store boundary connection info
+                # Store boundary connection info (will create visual connection later)
                 boundary_connections.append({
                     'type': 'input',
                     'terminal_name': term_name,
@@ -707,9 +714,7 @@ class Flowchart(QtCore.QObject):
                 
                 internal_term = internal_node.terminals[internal_term_name]
                 
-                # Create visual-only connection: Internal → SubgraphOutput
-                internal_term.connectTo(sg_output_term, signal=False)
-                
+                # Store boundary connection info (will create visual connection later)
                 boundary_connections.append({
                     'type': 'output',
                     'terminal_name': term_name,
@@ -776,6 +781,7 @@ class Flowchart(QtCore.QObject):
         
         # Step 5: Create visual ConnectionItems for boundary connections
         # These are in the subgraph view connecting helpers to internal nodes
+        # NOW we can create connections since everything is in the view
         for bc in boundary_connections:
             internal_term = bc['internal_term']
             
@@ -783,28 +789,27 @@ class Flowchart(QtCore.QObject):
                 # SubgraphInput → Internal
                 sg_input_term = subgraphNode.subgraphInputs.terminals[bc['terminal_name']]
                 
-                # The connectTo() call already created a ConnectionItem, find it
+                # Create visual-only connection (now that nodes are in the view)
+                # Use signal=False so it doesn't create graph edges
+                sg_input_term.connectTo(internal_term, signal=False)
+                
+                # Get the ConnectionItem that was just created
                 conn_item = sg_input_term.connections().get(internal_term)
                 if conn_item:
-                    # Move to subgraph view
-                    if conn_item.scene() is not None:
-                        conn_item.scene().removeItem(conn_item)
-                    view.viewBox().addItem(conn_item)
                     bc['subgraph_visual'] = conn_item
-                    
                     # Recolor terminal to show it's connected
                     sg_input_term.recolor(QtGui.QColor(255, 255, 255))
             else:  # output
                 # Internal → SubgraphOutput
                 sg_output_term = subgraphNode.subgraphOutputs.terminals[bc['terminal_name']]
                 
+                # Create visual-only connection (now that nodes are in the view)
+                internal_term.connectTo(sg_output_term, signal=False)
+                
+                # Get the ConnectionItem that was just created
                 conn_item = internal_term.connections().get(sg_output_term)
                 if conn_item:
-                    if conn_item.scene() is not None:
-                        conn_item.scene().removeItem(conn_item)
-                    view.viewBox().addItem(conn_item)
                     bc['subgraph_visual'] = conn_item
-                    
                     sg_output_term.recolor(QtGui.QColor(255, 255, 255))
         
         # Step 6: Store subgraph metadata
@@ -819,8 +824,8 @@ class Flowchart(QtCore.QObject):
             'description': description or ''
         }
         
-        # Display the subgraph view
-        self.viewManager().displayView(name=subgraphNode.name(), autoRange=True)
+        # Switch back to root view - user sees placeholder and can connect it
+        self.viewManager().displayView(name='root')
         
         # Add to library
         self._addSubgraphToLibrary(name)
@@ -993,7 +998,11 @@ class Flowchart(QtCore.QObject):
             base_name = base_name or os.path.splitext(os.path.basename(fileName))[0]
         name = self._generateUniqueSubgraphName(base_name)
         
-        # Restore nodes with unique names
+        # Create subgraph view and switch to it
+        subgraph_view = self.viewManager().addView(name)
+        self.viewManager().displayView(name=name)
+        
+        # Restore nodes with unique names (will be created in subgraph view)
         node_mapping = {}  # old_name -> new_name
         restored_nodes = []
         
@@ -1045,7 +1054,10 @@ class Flowchart(QtCore.QObject):
                 
                 term1 = from_node_obj.terminals[from_term]
                 term2 = to_node_obj.terminals[to_term]
-                term1.connectTo(term2, signal=False)
+                # IMPORTANT: Use signal=True to populate _input_vars which is required
+                # for node compilation via to_operation(inputs=...). Only helper boundary
+                # connections should use signal=False.
+                term1.connectTo(term2, signal=True)
                 
                 # Add edge to graph
                 self._graph.add_edge(
@@ -1072,14 +1084,49 @@ class Flowchart(QtCore.QObject):
             boundary_outputs=metadata.get('boundary_outputs', []),
             node_mapping=node_mapping,
             pos=pos,
-            description=metadata.get('description', '')
+            description=metadata.get('description', ''),
+            view=subgraph_view
         )
+        
+        # Switch back to root view
+        self.viewManager().displayView(name='root')
         
         if self._widget:
             self.widget().chartWidget.updateStatus(f"Imported subgraph: {name}")
         logger.info(f"Imported subgraph {name} with {len(restored_nodes)} nodes")
         
         return name
+
+    def instantiateSubgraphFromLibrary(self, template_name, pos=None):
+        """Create a new instance of a subgraph from the library
+        
+        Args:
+            template_name: Name of template in library
+            pos: Position for placeholder (tuple or QPointF)
+            
+        Returns:
+            subgraph_name: Name of created subgraph, or None if error
+        """
+        # Get template
+        template = self.subgraph_library.getSubgraph(template_name)
+        if not template:
+            logger.error(f"Subgraph template {template_name} not found in library")
+            return None
+        
+        # Create state dict from template
+        state = {
+            'subgraph_metadata': {
+                'name': template.name,
+                'description': template.description,
+                'boundary_inputs': template.boundary_inputs,
+                'boundary_outputs': template.boundary_outputs
+            },
+            'nodes': template.nodes,
+            'connects': template.connects
+        }
+        
+        # Use import logic to create instance
+        return self.importSubgraphFromFile(state, pos=pos)
 
     def _addSubgraphToLibrary(self, subgraph_name, update=False):
         """Add a single subgraph to the library and update UI
@@ -1178,7 +1225,7 @@ class Flowchart(QtCore.QObject):
         logger.info(f"{action if update else 'Added'} subgraph {subgraph_name} to library")
 
     def _updateSubgraphLibraryUI(self):
-        """Update the subgraph library tree in the UI"""
+        """Update the subgraph library tree in the UI (hierarchical by source file)"""
         if not self._widget:
             return
         
@@ -1192,21 +1239,40 @@ class Flowchart(QtCore.QObject):
         # Clear the tree
         ctrl.ui.clear_model(ctrl.ui.subgraph_tree)
         
-        # Build tree data: just list all subgraph templates
-        tree_data = {}
+        # Group subgraphs by source file
+        from collections import defaultdict
+        import os
+        by_file = defaultdict(list)
         
         for sg_name in sorted(self.subgraph_library.getNames()):
             template = self.subgraph_library.getSubgraph(sg_name)
             if template:
-                # Show node count and description
+                # Group by source file
+                if template.source_file:
+                    # Use just the filename without extension as the key
+                    filename = os.path.basename(template.source_file)
+                    file_key = os.path.splitext(filename)[0]
+                else:
+                    file_key = "Root"
+                
+                by_file[file_key].append((sg_name, template))
+        
+        # Build hierarchical tree data
+        tree_data = {}
+        for file_key in sorted(by_file.keys()):
+            # Create file-level entry with children
+            children = {}
+            for sg_name, template in sorted(by_file[file_key], key=lambda x: x[0]):
                 node_count = len(template.nodes)
                 desc = template.description or "No description"
-                tree_data[sg_name] = f"{desc} ({node_count} nodes)"
+                children[sg_name] = f"{desc} ({node_count} nodes)"
+            
+            tree_data[file_key] = children
         
         if tree_data:
-            # Update tree model
+            # Update tree model with hierarchical data
             ctrl.ui.create_model(ctrl.ui.subgraph_tree, tree_data, typ="SubgraphTree")
-            logger.debug(f"Updated subgraph library UI with {len(tree_data)} templates")
+            logger.debug(f"Updated subgraph library UI with {sum(len(v) for v in tree_data.values())} templates")
 
     def _addRestoredSubgraphsToLibrary(self):
         """Add all subgraphs in the current flowchart to the library
@@ -1367,9 +1433,6 @@ class Flowchart(QtCore.QObject):
             placeholder = sg_input_node.rootNode
             terminal_name = remoteTerm.name()
             
-            print(f"[SUBGRAPH] Connecting FROM SubgraphInput: {remoteNode}.{remoteTerm.name()} -> {localNode}.{localTerm.name()}")
-            logger.info(f"🔗 Subgraph internal connection: SubgraphInput.{remoteTerm.name()} -> {localNode}.{localTerm.name()}")
-            
             # Find which external node is connected to this SubgraphInput terminal
             # by looking at the placeholder's corresponding input terminal
             placeholder_term = placeholder.terminals.get(terminal_name)
@@ -1383,8 +1446,6 @@ class Flowchart(QtCore.QObject):
                     # Create DIRECT graph edge: External -> Internal (localNode is the internal node)
                     edge_key = f"{external_node.name()}.{external_term.name()}->{localNode}.{localTerm.name()}"
                     
-                    logger.info(f"  ➡️  Direct edge: {external_node.name()}.{external_term.name()} -> {localNode}.{localTerm.name()}")
-                    
                     self._graph.add_edge(
                         external_node.name(),
                         localNode,
@@ -1394,17 +1455,13 @@ class Flowchart(QtCore.QObject):
                     )
                     
                     # CRITICAL: Update internal node's _input_vars
-                    logger.info(f"  📝 Updating _input_vars on {localNode}")
                     localTerm.node().connected(localTerm, external_term)
-                    logger.info(f"  ✅ {localNode}._input_vars = {localTerm.node()._input_vars}")
                     
                     self.sigNodeChanged.emit(localTerm.node())
                     return
                 else:
-                    logger.info(f"  ⚠️  No external node connected to placeholder terminal {terminal_name} yet")
                     # No external connection yet, just create normal edge for now
-            else:
-                logger.warning(f"  ⚠️  Placeholder terminal {terminal_name} not found")
+                    pass
 
         # Check if connecting to/from a subgraph placeholder
         if hasattr(remoteTerm.node(), 'isSubgraph') and remoteTerm.node().isSubgraph:
@@ -1413,10 +1470,6 @@ class Flowchart(QtCore.QObject):
             
             if remoteTerm.isInput():
                 # External -> Placeholder Input
-                print(f"[SUBGRAPH] Boundary connection (input): {localNode}.{localTerm.name()} -> {subgraph.name()}.{remoteTerm.name()}")
-                logger.info(f"🔗 Subgraph boundary connection (input): "
-                           f"{localNode}.{localTerm.name()} -> {subgraph.name()}.{remoteTerm.name()}")
-                
                 # Find matching boundary connection
                 for bc in sg_data['boundary_connections']:
                     if bc['terminal_name'] == remoteTerm.name() and bc['type'] == 'input':
@@ -1425,8 +1478,6 @@ class Flowchart(QtCore.QObject):
                         
                         # Create DIRECT graph edge: External -> Internal
                         edge_key = f"{localNode}.{localTerm.name()}->{internal_node.name()}.{internal_term.name()}"
-                        
-                        logger.info(f"  ➡️  Direct edge: {localNode} -> {internal_node.name()}.{internal_term.name()}")
                         
                         self._graph.add_edge(
                             localNode,
@@ -1437,18 +1488,13 @@ class Flowchart(QtCore.QObject):
                         )
                         
                         # CRITICAL: Update internal node's _input_vars
-                        logger.info(f"  📝 Updating _input_vars on {internal_node.name()}")
                         internal_node.connected(internal_term, localTerm)
-                        logger.info(f"  ✅ {internal_node.name()}._input_vars = {internal_node._input_vars}")
                         
                         self.sigNodeChanged.emit(localTerm.node())
                         return
             
             elif remoteTerm.isOutput():
                 # Placeholder Output -> External
-                logger.info(f"🔗 Subgraph boundary connection (output): "
-                           f"{subgraph.name()}.{remoteTerm.name()} -> {localNode}.{localTerm.name()}")
-                
                 # Find matching boundary connection
                 for bc in sg_data['boundary_connections']:
                     if bc['terminal_name'] == remoteTerm.name() and bc['type'] == 'output':
@@ -1457,8 +1503,6 @@ class Flowchart(QtCore.QObject):
                         
                         # Create DIRECT graph edge: Internal -> External
                         edge_key = f"{internal_node.name()}.{internal_term.name()}->{localNode}.{localTerm.name()}"
-                        
-                        logger.info(f"  ➡️  Direct edge: {internal_node.name()}.{internal_term.name()} -> {localNode}")
                         
                         self._graph.add_edge(
                             internal_node.name(),
@@ -1469,9 +1513,7 @@ class Flowchart(QtCore.QObject):
                         )
                         
                         # Update external node's _input_vars
-                        logger.info(f"  📝 Updating _input_vars on {localNode}")
                         localTerm.node().connected(localTerm, internal_term)
-                        logger.info(f"  ✅ {localNode}._input_vars = {localTerm.node()._input_vars}")
                         
                         self.sigNodeChanged.emit(internal_node)
                         return
@@ -1516,9 +1558,6 @@ class Flowchart(QtCore.QObject):
             
             if remoteTerm.isInput():
                 # Disconnecting External -> Placeholder Input
-                logger.info(f"❌ Subgraph boundary disconnection (input): "
-                           f"{localNode}.{localTerm.name()} -X-> {subgraph.name()}.{remoteTerm.name()}")
-                
                 # Find matching boundary connection
                 for bc in sg_data['boundary_connections']:
                     if bc['terminal_name'] == remoteTerm.name() and bc['type'] == 'input':
@@ -1527,24 +1566,17 @@ class Flowchart(QtCore.QObject):
                         
                         edge_key = f"{localNode}.{localTerm.name()}->{internal_node.name()}.{internal_term.name()}"
                         
-                        logger.info(f"  ➡️  Removing edge: {localNode} -> {internal_node.name()}.{internal_term.name()}")
-                        
                         if self._graph.has_edge(localNode, internal_node.name(), key=edge_key):
                             self._graph.remove_edge(localNode, internal_node.name(), key=edge_key)
                         
                         # Update internal node's _input_vars
-                        logger.info(f"  📝 Clearing _input_vars on {internal_node.name()}")
                         internal_node.disconnected(internal_term, localTerm)
-                        logger.info(f"  ✅ {internal_node.name()}._input_vars = {internal_node._input_vars}")
                         
                         self.sigNodeChanged.emit(localTerm.node())
                         return
             
             elif remoteTerm.isOutput():
                 # Disconnecting Placeholder Output -> External
-                logger.info(f"❌ Subgraph boundary disconnection (output): "
-                           f"{subgraph.name()}.{remoteTerm.name()} -X-> {localNode}.{localTerm.name()}")
-                
                 # Find matching boundary connection
                 for bc in sg_data['boundary_connections']:
                     if bc['terminal_name'] == remoteTerm.name() and bc['type'] == 'output':
@@ -1553,15 +1585,11 @@ class Flowchart(QtCore.QObject):
                         
                         edge_key = f"{internal_node.name()}.{internal_term.name()}->{localNode}.{localTerm.name()}"
                         
-                        logger.info(f"  ➡️  Removing edge: {internal_node.name()}.{internal_term.name()} -> {localNode}")
-                        
                         if self._graph.has_edge(internal_node.name(), localNode, key=edge_key):
                             self._graph.remove_edge(internal_node.name(), localNode, key=edge_key)
                         
                         # Update external node's _input_vars
-                        logger.info(f"  📝 Clearing _input_vars on {localNode}")
                         localTerm.node().disconnected(localTerm, internal_term)
-                        logger.info(f"  ✅ {localNode}._input_vars = {localTerm.node()._input_vars}")
                         
                         self.sigNodeChanged.emit(internal_node)
                         return

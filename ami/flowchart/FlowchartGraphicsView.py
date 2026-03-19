@@ -267,8 +267,21 @@ class ViewManager(QtWidgets.QWidget):
             self.currentView.viewBox().autoRange(items=children)
 
     def removeView(self, name):
+        # Get the view widget
+        view = self.views[name]
+        
+        # Remove from layout
+        self.layout.removeWidget(view)
+        
+        # Delete the widget
+        view.deleteLater()
+        
+        # Remove from tracking
         del self.views[name]
+        
+        # Remove action from toolbar and group
         action = self.actions[name]
+        self.graphGroup.removeAction(action)
         self.toolBar.removeAction(action)
         del self.actions[name]
 
@@ -524,14 +537,15 @@ class FlowchartViewBox(ViewBox):
             # Try subgraph library
             try:
                 if self.widget.chart.subgraph_library.hasSubgraph(node):
-                    template = self.widget.chart.subgraph_library.getSubgraph(node)
-                    if template:
-                        # Import subgraph at drop position
-                        pos = self.mapToView(ev.pos())
-                        self.widget.chart.importSubgraphFromFile(template.state, pos=(pos.x(), pos.y()))
+                    result = self.widget.chart.instantiateSubgraphFromLibrary(
+                        node, 
+                        pos=self.mapToView(ev.pos())
+                    )
+                    if result:
                         ev.accept()
                         return
             except Exception as e:
+                print(f"Error instantiating subgraph from library: {e}")
                 import traceback
                 traceback.print_exc()
                 pass
