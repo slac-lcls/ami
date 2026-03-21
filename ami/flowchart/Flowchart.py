@@ -1946,6 +1946,10 @@ class Flowchart(QtCore.QObject):
         """
         Remove all nodes from this flowchart except the original input/output nodes.
         """
+        # Switch to root view before clearing (in case we're on a subgraph view)
+        self.viewManager().displayView(name='root')
+        
+        # Step 1: Clean up regular nodes (including nodes inside subgraphs)
         for name, node in self._graph.nodes(data='node'):
             if node is None:
                 continue
@@ -1954,6 +1958,41 @@ class Flowchart(QtCore.QObject):
             node.close(emit=False)
 
         self._graph = nx.MultiDiGraph()
+
+        # Step 2: Clean up subgraph placeholders and views
+        # (Now that their children are already closed)
+        subgraph_names = list(self._subgraphs.keys())
+        for sg_name in subgraph_names:
+            if sg_name not in self._subgraphs:
+                continue  # Safety check (should not happen, but defensive)
+            
+            sg_data = self._subgraphs[sg_name]
+            placeholder = sg_data['placeholder']
+            
+            # Remove view and toolbar button
+            self.viewManager().removeView(sg_name)
+            
+            # Remove placeholder graphics from root view
+            item = placeholder.graphicsItem()
+            if item.scene() is not None:
+                item.scene().removeItem(item)
+            
+            # Clean up helper nodes (SubgraphInputs/Outputs)
+            placeholder._subgraphInputs.close(emit=False)
+            placeholder._subgraphOutputs.close(emit=False)
+            
+            # Clean up boundary connections (visual-only)
+            for bc in sg_data.get('boundary_connections', []):
+                if hasattr(bc.get('root_visual'), 'close'):
+                    bc['root_visual'].close()
+                if hasattr(bc.get('subgraph_visual'), 'close'):
+                    bc['subgraph_visual'].close()
+            
+            # Remove from tracking
+            del self._subgraphs[sg_name]
+        
+        # NOTE: self.subgraph_library intentionally NOT cleared
+        # Templates persist across flowcharts (like node library)
 
     async def updateState(self):
         while True:
