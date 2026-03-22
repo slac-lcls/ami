@@ -682,6 +682,9 @@ class NodeGraphicsItem(GraphicsObject):
             item.setParentItem(self)
             item.setAnchor(0, y)
             self.terminals[i] = (t, item)
+            # Update label based on current terminal count
+            if hasattr(item, 'updateLabel'):
+                item.updateLabel()
             y += dy
 
         dy = bounds.height() / (len(out)+1)
@@ -693,6 +696,9 @@ class NodeGraphicsItem(GraphicsObject):
             item.setZValue(self.zValue())
             item.setAnchor(bounds.width(), y)
             self.terminals[i] = (t, item)
+            # Update label based on current terminal count
+            if hasattr(item, 'updateLabel'):
+                item.updateLabel()
             y += dy
 
     def boundingRect(self):

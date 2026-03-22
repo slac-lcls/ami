@@ -11,6 +11,13 @@ import tempfile
 import typing
 
 
+# Terminal label truncation configuration
+LABEL_WIDTH_RATIO = 0.45      # 45% of node width per side
+MIN_LABEL_WIDTH = 30          # Minimum for readability (px)
+MAX_LABEL_WIDTH = 100         # Maximum even on huge nodes (px)
+TERMINAL_BOX_WIDTH = 10       # Terminal box width (px)
+
+
 class Terminal(QtCore.QObject):
 
     sigTerminalOptional = QtCore.Signal(object)  # self
@@ -259,12 +266,140 @@ class TerminalGraphicsItem(GraphicsObject):
         GraphicsObject.__init__(self, parent)
         self.brush = fn.mkBrush(0, 0, 0)
         self.box = QtWidgets.QGraphicsRectItem(0, 0, 10, 10, self)
-        self.label = QtWidgets.QGraphicsTextItem(self.term.name(), self)
+        
+        # Get appropriate max width based on terminal position and node size
+        max_width = self._getMaxLabelWidth()
+        
+        # Truncate label if needed (skip if max_width is None for nodes with few terminals)
+        full_name = self.term.name()
+        if max_width is not None:
+            display_name, was_truncated = self._truncateLabel(full_name, max_width)
+        else:
+            # No truncation needed - use full name
+            display_name = full_name
+            was_truncated = False
+        
+        # Create label with (possibly truncated) text
+        self.label = QtWidgets.QGraphicsTextItem(display_name, self)
         self.label.setTransform(self.label.transform().scale(0.7, 0.7))
+        
+        # Add tooltip with full terminal name (only if truncated or for consistency)
+        if was_truncated:
+            self.label.setToolTip(full_name)
+        
         self.newConnection = None
         self.setFiltersChildEvents(True)  # to pick up mouse events on the rectitem
         self.setZValue(1)
         self.menu = None
+
+    def _getMaxLabelWidth(self):
+        """Calculate maximum label width based on node size and terminal position.
+        
+        Returns:
+            float: Maximum width in pixels for this terminal's label, or None to skip truncation
+        """
+        # Get parent node and check terminal counts
+        parent = self.parentItem()
+        if parent and hasattr(parent, 'node'):
+            node = parent.node
+            
+            # Count terminals on each side
+            num_inputs = len(node.inputs()) if hasattr(node, 'inputs') else 0
+            num_outputs = len(node.outputs()) if hasattr(node, 'outputs') else 0
+            
+            # Skip truncation if node has terminals on only one side
+            # (no risk of horizontal overlap between input/output labels)
+            if num_inputs == 0 or num_outputs == 0:
+                return None  # No truncation needed - terminals only on one side
+        
+        # Get parent node bounds
+        if parent and hasattr(parent, 'bounds'):
+            node_width = parent.bounds.width()
+        else:
+            # Fallback if no parent or bounds not available yet
+            node_width = 100
+        
+        # Calculate max width: (node_width * ratio) - box_width
+        max_width = (node_width * LABEL_WIDTH_RATIO) - TERMINAL_BOX_WIDTH
+        
+        # Ensure within min/max constraints
+        max_width = max(max_width, MIN_LABEL_WIDTH)
+        max_width = min(max_width, MAX_LABEL_WIDTH)
+        
+        return max_width
+
+    def _truncateLabel(self, text, max_width_px):
+        """Truncate label text if it exceeds max_width_px, add ellipsis.
+        
+        Args:
+            text (str): Original terminal name
+            max_width_px (float): Maximum width in pixels
+            
+        Returns:
+            tuple: (display_text, was_truncated)
+        """
+        if not text:
+            return ("", False)
+        
+        # Create temporary text item to measure width (with 0.7 scale)
+        temp = QtWidgets.QGraphicsTextItem(text)
+        temp.setTransform(temp.transform().scale(0.7, 0.7))
+        
+        # Measure actual width after scaling
+        actual_width = temp.boundingRect().width() * 0.7
+        
+        if actual_width <= max_width_px:
+            return (text, False)  # No truncation needed
+        
+        # Binary search for optimal truncation point
+        left, right = 0, len(text)
+        best_truncated = text[:1] + "..."
+        
+        while left <= right:
+            mid = (left + right) // 2
+            
+            if mid == 0:
+                break
+                
+            test_text = text[:mid] + "..."
+            temp.setPlainText(test_text)
+            test_width = temp.boundingRect().width() * 0.7
+            
+            if test_width <= max_width_px:
+                best_truncated = test_text
+                left = mid + 1
+            else:
+                right = mid - 1
+        
+        return (best_truncated, True)
+
+    def updateLabel(self):
+        """Update label text based on current terminal count.
+        
+        Called when terminals are added/removed to re-evaluate truncation.
+        """
+        # Get appropriate max width based on current terminal counts
+        max_width = self._getMaxLabelWidth()
+        
+        # Get full terminal name
+        full_name = self.term.name()
+        
+        # Truncate if needed (skip if max_width is None for nodes with few terminals)
+        if max_width is not None:
+            display_name, was_truncated = self._truncateLabel(full_name, max_width)
+        else:
+            # No truncation needed - use full name
+            display_name = full_name
+            was_truncated = False
+        
+        # Update label text
+        self.label.setPlainText(display_name)
+        
+        # Update tooltip (only if truncated)
+        if was_truncated:
+            self.label.setToolTip(full_name)
+        else:
+            self.label.setToolTip("")  # Clear tooltip if not truncated
 
     def setBrush(self, brush):
         self.brush = brush
