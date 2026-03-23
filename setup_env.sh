@@ -30,7 +30,7 @@ else
     echo "$AUTH_FILE file is missing"
 fi
 
-RELDIR="$( cd "$( dirname $(readlink -f "${BASH_SOURCE[0]}") )" && pwd )"
+RELDIR="$( cd "$( dirname $(readlink -f "${BASH_SOURCE[0]:-${(%):-%x}}") )" && pwd )"
 export PATH=$RELDIR/install/bin:${PATH}
 pyver=$(python -c "import sys; print(str(sys.version_info.major)+'.'+str(sys.version_info.minor))")
 export PYTHONPATH=$RELDIR/install/lib/python$pyver/site-packages

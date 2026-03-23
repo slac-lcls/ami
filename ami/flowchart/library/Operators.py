@@ -1,12 +1,107 @@
 from typing import Union, Any
-from qtpy import QtWidgets
+from qtpy import QtCore, QtWidgets
 from amitypes import Array1d, Array2d, Array3d
-from ami.flowchart.library.common import CtrlNode, GroupedNode
+from ami.flowchart.library.common import CtrlNode, GroupedNode, generateUi
 from ami.flowchart.library.CalculatorWidget import CalculatorWidget, FilterWidget, gen_filter_func, sanitize_name
 import ami.graph_nodes as gn
 import numpy as np
 import itertools
 import collections
+
+
+
+class ConstantWidget(QtWidgets.QWidget):
+
+    sigStateChanged = QtCore.Signal(object, object, object)
+    DEFAULT = 0
+
+    def __init__(self, inputs={}, outputs=[], parent=None):
+        super().__init__(parent)
+        self.inputs = inputs
+        self.outputs = outputs
+        self.layout = QtWidgets.QFormLayout()
+        self.setLayout(self.layout)
+
+        functions = [
+            'float',
+            'np.arange',
+            'np.linspace',
+            'np.zeros',
+            'np.ones',
+            'np.full'
+        ]
+
+        combo_fct = [['function', 'combo', {'values': functions}]]
+        self.func_group = generateUi(combo_fct)
+        self.layout.addRow(self.func_group[0])
+
+        self.w_combo = self.func_group[1].findWidget('function')
+        self.w_combo.currentTextChanged.connect(self.update_args_ui)
+
+        self.args_group = None
+        self.update_args_ui(self.w_combo.currentText())
+        return
+
+    def update_args_ui(self, fct_name):
+        if self.args_group is not None:
+            self.clear_args_ui()
+
+        if fct_name == 'float':
+            args_group = [['float', 'doubleSpin', {'value': 0, 'group': 'args'}]]
+        elif fct_name == 'np.arange':
+            args_group = [
+                    ['start', 'doubleSpin', {'value': 0, 'group': 'args'}],
+                    ['end', 'doubleSpin', {'value': 0, 'group': 'args'}],
+                    ['step', 'doubleSpin', {'value': 0, 'group': 'args'}]
+                ]
+        elif fct_name == 'np.linspace':
+            args_group = [
+                    ['start', 'doubleSpin', {'value': 0, 'group': 'args'}],
+                    ['end', 'doubleSpin', {'value': 0, 'group': 'args'}],
+                    ['n_step', 'intSpin', {'value': 0, 'group': 'args'}]
+                ]
+        elif fct_name == 'np.zeros' or fct_name == 'np.ones':
+            args_group = [
+                    ['m', 'intSpin', {'value': 0, 'group': 'args'}],
+                    ['n', 'intSpin', {'value': 0, 'group': 'args'}],
+                ]
+        elif fct_name == 'np.full':
+            args_group = [
+                    ['m', 'intSpin', {'value': 0, 'group': 'args'}],
+                    ['n', 'intSpin', {'value': 0, 'group': 'args'}],
+                    ['value', 'doubleSpin', {'value': 0, 'group': 'args'}],
+                ]
+
+        self.args_group = generateUi(args_group)
+        self.args_ui, self.args_stateGroup, args_ctrls, args_values = self.args_group
+        self.layout.addWidget(self.args_ui)
+
+        self.args_stateGroup.sigChanged.connect(self.state_changed)
+        self.state_changed()
+        return self.args_ui, self.args_stateGroup, args_ctrls, args_values
+
+    def clear_args_ui(self):
+        self.layout.removeWidget(self.args_ui)
+        self.args_group[2]['args']['groupbox'].deleteLater()
+
+    def state_changed(self, *args, **kwargs):
+        state = self.get_state()
+        self.sigStateChanged.emit('widget_state', '', state)
+
+    def saveState(self, *args, **kwargs):
+        state = self.get_state()
+        return state
+
+    def restoreState(self, state):
+        self.w_combo.setCurrentText(state['function'])
+        self.update_args_ui(self.w_combo.currentText())
+        self.args_stateGroup.setState(state['args'])
+        return
+
+    def get_state(self):
+        state = self.args_stateGroup.state()
+        state['function'] = self.w_combo.currentText()
+        return state
 
 
 class Constant(CtrlNode):
@@ -16,14 +111,34 @@ class Constant(CtrlNode):
     """
 
     nodeName = "Constant"
-    uiTemplate = [('constant', 'doubleSpin')]
 
     def __init__(self, name):
-        super().__init__(name, terminals={"Out": {'io': 'out', 'ttype': float}})
+        super().__init__(name, terminals={"Out": {'io': 'out', 'ttype': Any}})
+        self.values = {'widget_state' : {'args': {'float': 0}, 'function': 'float'}}
+
+    def display(self, topics, terms, addr, win, **kwargs):
+        if self.widget is None:
+            self.widget = ConstantWidget(terms, self.output_vars(), win)
+            self.widget.sigStateChanged.connect(self.state_changed)
+        return self.widget
 
     def to_operation(self, **kwargs):
-        constant = self.values['constant']
-        return gn.Map(name=self.name()+"_operation", **kwargs, func=lambda: constant)
+        fct = self.values['widget_state']['function']
+        args = self.values['widget_state']['args']
+
+        if fct == 'float':
+           output = float(args['float'])
+        elif fct == 'np.arange':
+           output = np.arange(args['start'], args['end'], args['step'])
+        elif fct == 'np.linspace':
+           output = np.linspace(args['start'], args['end'], args['n_step'])
+        elif fct == 'np.zeros':
+           output = np.zeros((args['m'], args['n']))
+        elif fct == 'np.ones':
+           output = np.ones((args['m'], args['n']))
+        elif fct == 'np.full':
+           output = np.full((args['m'], args['n']), args['value'])
+        return gn.Map(name=self.name()+"_operation", **kwargs, func=lambda: output)
 
 
 class Identity(GroupedNode):
@@ -109,7 +224,7 @@ class MeanVsScan(CtrlNode):
                     pass
             keys, values = zip(*sorted(res.items()))
             return np.array(keys), np.array(values)
-        
+
         def distribute_outputs(args):
             """
             Distribute the binned array elements to the corresponding outputs.
@@ -388,6 +503,96 @@ class StatsVsScan(CtrlNode):
         return nodes
 
 
+class ExponentialMovingAverage1D(CtrlNode):
+
+    """
+    Exponential Moving Average for Waveforms.
+    """
+
+    nodeName = "ExponentialMovingAverage1D"
+    uiTemplate = [('Fraction of old', 'doubleSpin', {'value': 1, 'min': 0, 'max': 1})]
+
+    def __init__(self, name):
+        super().__init__(name, terminals={'In': {'io': 'in', 'ttype': Array1d},
+                                          'Out': {'io': 'out', 'ttype': Array1d},
+                                          'Count': {'io': 'out', 'ttype': int}},
+                         global_op=True)
+
+    def to_operation(self, inputs, outputs, **kwargs):
+        summed_outputs = [self.name()+"_count", self.name()+"_sum"]
+
+        fraction = self.values['Fraction of old']
+
+        def worker_reduction(old, *new, **kwargs):
+            reset = kwargs['reset']
+            if reset:
+                return fraction*new[0]
+            else:
+                return fraction*old+(1-fraction)*new[0]
+
+        def local_collector_reduction(old_avg, *new_1worker, **kwargs):
+            count = kwargs['count']
+            return old_avg + new_1worker[0]*count
+
+        def global_collector_reduction(old_avg, *new_1worker, **kwargs):
+            return old_avg + new_1worker[0]
+
+        return [gn.Accumulator(name=self.name()+"_accumulated",
+                               inputs=inputs, outputs=summed_outputs,
+                               worker_reduction=worker_reduction,
+                               local_reduction=local_collector_reduction,
+                               global_reduction=global_collector_reduction,
+                               **kwargs),
+                gn.Map(name=self.name()+"_unzip",
+                       inputs=summed_outputs, outputs=outputs,
+                       func=lambda count, s: (s/count, count), **kwargs)]
+
+
+class ExponentialMovingAverage2D(CtrlNode):
+
+    """
+    Exponential Moving Average for Images.
+    """
+
+    nodeName = "ExponentialMovingAverage2D"
+    uiTemplate = [('Fraction of old', 'doubleSpin', {'value': 1, 'min': 0, 'max': 1})]
+
+    def __init__(self, name):
+        super().__init__(name, terminals={'In': {'io': 'in', 'ttype': Array2d},
+                                          'Out': {'io': 'out', 'ttype': Array2d},
+                                          'Count': {'io': 'out', 'ttype': int}},
+                         global_op=True)
+
+    def to_operation(self, inputs, outputs, **kwargs):
+        summed_outputs = [self.name()+"_count", self.name()+"_sum"]
+
+        fraction = self.values['Fraction of old']
+
+        def worker_reduction(old, *new, **kwargs):
+            reset = kwargs['reset']
+            if reset:
+                return fraction*new[0]
+            else:
+                return fraction*old+(1-fraction)*new[0]
+
+        def local_collector_reduction(old_avg, *new_1worker, **kwargs):
+            count = kwargs['count']
+            return old_avg + new_1worker[0]*count
+
+        def global_collector_reduction(old_avg, *new_1worker, **kwargs):
+            return old_avg + new_1worker[0]
+
+        return [gn.Accumulator(name=self.name()+"_accumulated",
+                               inputs=inputs, outputs=summed_outputs,
+                               worker_reduction=worker_reduction,
+                               local_reduction=local_collector_reduction,
+                               global_reduction=global_collector_reduction,
+                               **kwargs),
+                gn.Map(name=self.name()+"_unzip",
+                       inputs=summed_outputs, outputs=outputs,
+                       func=lambda count, s: (s/count, count), **kwargs)]
+
+
 class Combinations(CtrlNode):
 
     """
@@ -444,7 +649,12 @@ try:
                 if type(arg) is np.ndarray:
                     args[idx] = arg.astype(np.float64, copy=False)
 
-            return self.func(*args, **kwargs)
+            try:
+                return self.func(*args, **kwargs)
+            except Exception as e:
+                raise gn.AMIWarning(e)
+
+            return np.nan
 
     class Calculator(CtrlNode):
         """
@@ -467,7 +677,7 @@ try:
 
         def display(self, topics, terms, addr, win, **kwargs):
             if self.widget is None:
-                self.widget = CalculatorWidget(terms, win, self.values['operation'])
+                self.widget = CalculatorWidget(terms or self.input_vars(), win, self.values['operation'])
                 self.widget.sigStateChanged.connect(self.state_changed)
 
             return self.widget
@@ -633,21 +843,32 @@ class EventProcessor():
 
         def display(self, topics, terms, addr, win, **kwargs):
             if self.widget is None:
-                self.widget = FilterWidget(terms, self.output_vars(), win)
+                self.widget = FilterWidget(terms or self.input_vars(), self.output_vars(), self, win)
                 self.widget.sigStateChanged.connect(self.state_changed)
 
             return self.widget
 
-        def to_operation(self, **kwargs):
+        def update(self, *args, **kwargs):
+            group, values, _, = args
+
+            if group == "remove":
+                self.values.pop(values, None)
+            else:
+                self.values[group] = values[group]
+
+        def to_operation(self, inputs, outputs, **kwargs):
             values = self.values
-            inputs = list(self.input_vars().values())
-            outputs = list(self.output_vars())
 
-            for idx, inp in enumerate(inputs):
-                inputs[idx] = sanitize_name(inp)
+            inputs_for_func = {}
+            for term, inp in inputs.items():
+                inputs_for_func[term] = sanitize_name(inp)
 
-            func = gen_filter_func(values, inputs, outputs)
-            return gn.Map(name=self.name()+"_operation", **kwargs, func=PythonEditorProc(func))
+            func = gen_filter_func(values, inputs_for_func, outputs)
+
+            return gn.Map(name=self.name()+"_operation",
+                          inputs=inputs, outputs=outputs,
+                          **kwargs,
+                          func=PythonEditorProc(func))
 
 except ImportError as e:
     print(e)

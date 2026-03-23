@@ -57,7 +57,7 @@ class CloseNode(NodeMsg):
 
 class DisplayNode(NodeMsg):
 
-    def __init__(self, name, topics, terms, state={}, units={}, redisplay=False, geometry=None, terminals=None):
+    def __init__(self, name, topics, terms, state={}, units={}, redisplay=False, geometry=None, terminals=None, label=None):
         super().__init__(name)
         self.topics = topics
         self.terms = terms
@@ -66,6 +66,7 @@ class DisplayNode(NodeMsg):
         self.redisplay = redisplay
         self.geometry = geometry
         self.terminals = terminals
+        self.label = label
 
     def __repr__(self):
         return f"""DisplayNode(name={self.name},
@@ -74,7 +75,8 @@ class DisplayNode(NodeMsg):
         units={self.units},
         redisplay={self.redisplay},
         geometry={self.geometry},
-        terminals={self.geometry})"""
+        terminals={self.geometry},
+        label={self.label})"""
 
 
 class NodeCheckpoint(NodeMsg):
@@ -86,8 +88,59 @@ class NodeCheckpoint(NodeMsg):
         self.stacktrace = stacktrace
 
 
-class Profiler(Msg):
+class NodeTermAdded(NodeMsg):
 
-    def __init__(self, name, command):
+    def __init__(self, name, term, state):
         super().__init__(name)
-        self.command = ""
+        self.term = term
+        self.state = state
+
+
+class NodeTermRemoved(NodeMsg):
+
+    def __init__(self, name, term):
+        super().__init__(name)
+        self.term = term
+
+
+class NodeTermConnected(NodeMsg):
+
+    def __init__(self,
+                 localNode, localNodeIsSource,
+                 localTerm, localTermState,
+                 remoteNode, remoteNodeIsSource,
+                 remoteTerm, remoteTermState):
+        super().__init__(localNode)
+        self.localNode = localNode
+        self.localNodeIsSource = localNodeIsSource
+        self.localTerm = localTerm
+        self.localTermState = localTermState
+        self.remoteNode = remoteNode
+        self.remoteNodeIsSource = remoteNodeIsSource
+        self.remoteTerm = remoteTerm
+        self.remoteTermState = remoteTermState
+
+
+class NodeTermDisconnected(NodeMsg):
+
+    def __init__(self,
+                 localNode, localNodeIsSource,
+                 localTerm, localTermState,
+                 remoteNode, remoteNodeIsSource,
+                 remoteTerm, remoteTermState):
+        super().__init__(localNode)
+        self.localNode = localNode
+        self.localNodeIsSource = localNodeIsSource
+        self.localTerm = localTerm
+        self.localTermState = localTermState
+        self.remoteNode = remoteNode
+        self.remoteNodeIsSource = remoteNodeIsSource
+        self.remoteTerm = remoteTerm
+        self.remoteTermState = remoteTermState
+
+
+class NodeLabelChanged(NodeMsg):
+
+    def __init__(self, name, label):
+        super().__init__(name)
+        self.label = label

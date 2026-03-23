@@ -6,7 +6,10 @@ import argparse
 import time
 import collections
 import datetime as dt
+import cProfile
+import signal
 import ami.multiproc as mp
+import multiprocessing.sharedctypes
 from ami.worker import run_worker, parse_args
 from ami import LogConfig, Defaults
 from ami.comm import Ports, PlatformAction, Colors, Node, Collector, TransitionBuilder, EventBuilder
@@ -18,14 +21,14 @@ logger = logging.getLogger(__name__)
 
 class GraphCollector(Node, Collector):
     def __init__(self, node, base_name, num_workers, eb_depth, color, collector_addr, downstream_addr,
-                 graph_addr, msg_addr, prometheus_dir, prometheus_port, hutch):
+                 graph_addr, msg_addr, prometheus_dir, prometheus_port, hutch, hwm, timeout):
         Node.__init__(self, node, graph_addr, msg_addr, prometheus_dir=prometheus_dir,
                       prometheus_port=prometheus_port, hutch=hutch)
-        Collector.__init__(self, collector_addr, ctx=self.ctx, hutch=hutch)
+        Collector.__init__(self, collector_addr, ctx=self.ctx, hutch=hutch, hwm=hwm, timeout=timeout)
         self.base_name = base_name
         self.num_workers = num_workers
-        self.transitions = TransitionBuilder(self.num_workers, downstream_addr, self.ctx)
-        self.store = EventBuilder(self.num_workers, eb_depth, color, downstream_addr, self.ctx)
+        self.transitions = TransitionBuilder(self.num_workers, downstream_addr, self.ctx, hwm)
+        self.store = EventBuilder(self.num_workers, eb_depth, color, downstream_addr, self.ctx, hwm)
         self.sender = 'worker%03d' if color == 'localCollector' else 'localCollector%03d'
         self.pickers = {}
         self.strategies = {}
@@ -114,6 +117,13 @@ class GraphCollector(Node, Collector):
         self.store.destroy(name)
         self.report("purge", name)
 
+    def poll_timeout(self):
+        for name in self.store.builders.keys():
+            pruned_times, pruned_size = self.store.prune(name, self.node)
+            if pruned_size:
+                self.event_counter.labels(self.hutch, 'Pruned Heartbeat', self.name).inc()
+                self.event_size.labels(self.hutch, self.name).set(pruned_size)
+
     def process_msg(self, msg):
         if msg.mtype == MsgTypes.Transition:
             self.transitions.update(msg.payload.ttype, self.eb_id(msg.identity), msg.payload.payload)
@@ -137,7 +147,7 @@ class GraphCollector(Node, Collector):
                                       self.name).set(latency.total_seconds())
             datagram_start = time.time()
             self.store.update(msg.name, msg.heartbeat, self.eb_id(msg.identity), msg.version, msg.payload)
-            if msg.heartbeat.prompt or self.store.ready(msg.name, msg.heartbeat):
+            if self.store.ready(msg.name, msg.heartbeat):
                 times, size = (None, None)
                 try:
                     # prune entries older than the current heartbeat
@@ -149,9 +159,6 @@ class GraphCollector(Node, Collector):
 
                     # complete the current heartbeat
                     times, size = self.store.complete(msg.name, msg.heartbeat, self.node)
-
-                    # times = self.store.complete(msg.name, msg.heartbeat, self.node)
-                    # self.report_times(times, msg.name, msg.heartbeat)
 
                     self.event_counter.labels(self.hutch, 'Heartbeat', self.name).inc()
                     self.heartbeat_time[msg.heartbeat.identity] += time.time() - datagram_start
@@ -184,7 +191,7 @@ class GraphCollector(Node, Collector):
 
 def run_collector(node_num, base_name, num_contribs, eb_depth, color,
                   collector_addr, upstream_addr, graph_addr, msg_addr,
-                  prometheus_dir, prometheus_port, hutch):
+                  prometheus_dir, prometheus_port, hutch, hwm, timeout):
     logger.info('Starting collector on node # %d PID: %d', node_num, os.getpid())
     with GraphCollector(
             node_num,
@@ -197,14 +204,26 @@ def run_collector(node_num, base_name, num_contribs, eb_depth, color,
             graph_addr,
             msg_addr,
             prometheus_dir,
-            prometheus_port, hutch) as collector:
+            prometheus_port, hutch,
+            hwm, timeout) as collector:
         collector.start_prometheus()
         return collector.run()
 
 
 def run_node_collector(node_num, num_contribs, eb_depth,
                        collector_addr, upstream_addr, graph_addr, msg_addr,
-                       prometheus_dir, prometheus_port, hutch):
+                       prometheus_dir, prometheus_port, hutch, hwm, timeout, cprofile):
+    if cprofile:
+        profiler = cProfile.Profile()
+        profiler.enable()
+
+        def handler(*args, **kwargs):
+            profiler.disable()
+            profiler.dump_stats(f"ami_localCollector{node_num}.cprof")
+            sys.exit()
+
+        signal.signal(signal.SIGTERM, handler)
+
     return run_collector(node_num,
                          "localCollector%03d",
                          num_contribs,
@@ -216,12 +235,25 @@ def run_node_collector(node_num, num_contribs, eb_depth,
                          msg_addr,
                          prometheus_dir,
                          prometheus_port,
-                         hutch)
+                         hutch,
+                         hwm,
+                         timeout)
 
 
 def run_global_collector(node_num, num_contribs, eb_depth,
                          collector_addr, upstream_addr, graph_addr, msg_addr,
-                         prometheus_dir, prometheus_port, hutch):
+                         prometheus_dir, prometheus_port, hutch, hwm, timeout, cprofile):
+    if cprofile:
+        profiler = cProfile.Profile()
+        profiler.enable()
+
+        def handler(*args, **kwargs):
+            profiler.disable()
+            profiler.dump_stats(f"ami_globalCollector{node_num}.cprof")
+            sys.exit()
+
+        signal.signal(signal.SIGTERM, handler)
+
     return run_collector(node_num,
                          "globalCollector%03d",
                          num_contribs,
@@ -233,7 +265,9 @@ def run_global_collector(node_num, num_contribs, eb_depth,
                          msg_addr,
                          prometheus_dir,
                          prometheus_port,
-                         hutch)
+                         hutch,
+                         hwm,
+                         timeout)
 
 
 def main(color, upstream_port, downstream_port):
@@ -282,8 +316,8 @@ def main(color, upstream_port, downstream_port):
         '-d',
         '--eb-depth',
         type=int,
-        default=10,
-        help='the depth of contribution builder buffer in units of heartbeats (default: 10)'
+        default=1,
+        help='the depth of contribution builder buffer in units of heartbeats (default: 1)'
     )
 
     parser.add_argument(
@@ -316,6 +350,26 @@ def main(color, upstream_port, downstream_port):
         default=None
     )
 
+    parser.add_argument(
+        '--hwm',
+        help='zmq HWM for push/pull sockets (default: 1)',
+        type=int,
+        default=1
+    )
+
+    parser.add_argument(
+        '--timeout',
+        help='heartbeat timeout in ms',
+        type=int,
+        default=None
+    )
+
+    parser.add_argument(
+        '--cprofile',
+        help="profile with cprofile",
+        action='store_true'
+    )
+
     subparsers = parser.add_subparsers(help='spawn workers', dest='worker')
     worker_subparser = subparsers.add_parser('worker', help='worker arguments')
 
@@ -340,6 +394,11 @@ def main(color, upstream_port, downstream_port):
         action='append',
         default=[],
         help='extra flags as key=value pairs that are passed to the data source'
+    )
+    worker_subparser.add_argument(
+        '--use_supervisor',
+        action='store_true',
+        help='Use the psana "supervisor" model to load calib constants on one core only.'
     )
 
     args = parser.parse_args()
@@ -367,10 +426,28 @@ def main(color, upstream_port, downstream_port):
     try:
         if color == Colors.LocalCollector:
             if args.worker:
+                if args.num_contribs > 1:
+                    select_manager = mp.Manager()
+                    select_dict = select_manager.dict()
+                    select_lock = select_manager.Lock()
+                    select_hb = multiprocessing.sharedctypes.RawArray('Q', 128)
+                    select_idx = multiprocessing.sharedctypes.RawValue('I', 0)
+                else:
+                    select_manager = None
+                    select_dict = None
+                    select_lock = None
+                    select_hb = None
+                    select_idx = None
+
                 local_collector_addr = "tcp://localhost:%d" % (args.port + upstream_port)
                 export_addr = "tcp://%s:%d" % (args.host, args.port + Ports.Export)
                 flags, src_cfg = parse_args(args)
+                src_cfg = list(src_cfg) # Make mutable
+                if args.use_supervisor and "supervisor=" not in src_cfg[1]:
+                    src_cfg[1] = f"{src_cfg[1]},supervisor=1"
                 for n in range(0, args.num_contribs):
+                    if args.use_supervisor and n != 0:
+                        src_cfg[1] = src_cfg[1].replace("supervisor=1", "supervisor=0")
                     worker = mp.Process(name='worker', target=run_worker,
                                         args=(args.node_num*args.num_contribs+n,
                                               args.num_contribs,
@@ -383,7 +460,11 @@ def main(color, upstream_port, downstream_port):
                                               flags,
                                               args.prometheus_dir,
                                               args.prometheus_port,
-                                              args.hutch),
+                                              args.hutch,
+                                              args.hwm,
+                                              args.timeout,
+                                              args.cprofile,
+                                              (select_lock, select_dict, select_idx, select_hb, select_manager)),
                                         daemon=True)
                     worker.start()
 
@@ -396,7 +477,10 @@ def main(color, upstream_port, downstream_port):
                                       msg_addr,
                                       args.prometheus_dir,
                                       args.prometheus_port,
-                                      args.hutch)
+                                      args.hutch,
+                                      args.hwm,
+                                      args.timeout,
+                                      args.cprofile)
         elif color == Colors.GlobalCollector:
             return run_global_collector(args.node_num,
                                         args.num_contribs,
@@ -407,7 +491,10 @@ def main(color, upstream_port, downstream_port):
                                         msg_addr,
                                         args.prometheus_dir,
                                         args.prometheus_port,
-                                        args.hutch)
+                                        args.hutch,
+                                        args.hwm,
+                                        args.timeout,
+                                        args.cprofile)
         else:
             logger.critical("Invalid option collector color '%s' chosen!", color)
             return 1

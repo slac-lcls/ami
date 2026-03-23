@@ -1,0 +1,41 @@
+name: Test AMI
+on:
+  schedule:
+    - cron: '0 5 * * *'  # once per day at midnight ET
+  workflow_dispatch:
+
+jobs:
+  run_tests:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        shell: bash -el {0}  
+
+    steps:
+      - name: Checkout repo with submodules
+        uses: actions/checkout@v4
+
+      - name: Set up Conda
+        uses: conda-incubator/setup-miniconda@v3
+        with:
+          auto-update-conda: true
+          activate-environment: build-conda-env
+          channels: lcls-ii, conda-forge
+          environment-file: .daq_20250402.txt
+
+      - name: Clone and Build LCLS2
+        run: |
+          git clone https://github.com/slac-lcls/lcls2.git
+          cd lcls2
+          ./build_all.sh -d
+          cd ..
+
+      - name: Build AMI
+        run: |      
+          pip install .
+
+      - name: Test AMI
+        run: |
+          export PYTEST_QT_API=pyside6
+          export QT_API=pyside6
+          xvfb-run pytest

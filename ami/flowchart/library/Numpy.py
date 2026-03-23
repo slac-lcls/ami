@@ -74,7 +74,7 @@ class Binning(CtrlNode):
             counts, bins = np.histogram(arr, bins=nbins, range=range, density=density, weights=weights)
             return bins, counts
 
-        def reduction(res, *rest):
+        def reduction(res, *rest, **kwargs):
             res[0] = rest[0]  # bins
             res[1] = res[1] + rest[1]  # counts
             return res
@@ -148,7 +148,7 @@ class Binning2D(CtrlNode):
                                                       range=[[xmin, xmax], [ymin, ymax]], density=density)
                 return xbins, ybins, counts
 
-        def reduction(res, *rest):
+        def reduction(res, *rest, **kwargs):
             res[0] = rest[0]  # xbins
             res[1] = rest[1]  # ybins
             res[2] = res[2] + rest[2]  # counts
@@ -541,7 +541,7 @@ class Average0D(CtrlNode):
             return value/count
 
         if self.values['infinite']:
-            def reduction(res, *rest):
+            def reduction(res, *rest, **kwargs):
                 res += np.sum(rest, axis=0)
                 return res
 
@@ -584,7 +584,7 @@ class Average1D(CtrlNode):
             return value/count
 
         if self.values['infinite']:
-            def reduction(res, *rest):
+            def reduction(res, *rest, **kwargs):
                 res += np.sum(rest, axis=0)
                 return res
 
@@ -628,7 +628,7 @@ class Average2D(CtrlNode):
             return value/count
 
         if self.values['infinite']:
-            def reduction(res, *rest):
+            def reduction(res, *rest, **kwargs):
                 res += np.sum(rest, axis=0)
                 return res
 

@@ -14,7 +14,7 @@ from ami.client import flowchart, legacy
 logger = logging.getLogger(__name__)
 
 
-GraphMgrAddress = collections.namedtuple('GraphMgrAddress', ['name', 'comm', 'view', 'info'])
+GraphMgrAddress = collections.namedtuple('GraphMgrAddress', ['name', 'comm', 'view', 'info', 'export'])
 
 
 def check_dir(pathname):
@@ -25,11 +25,11 @@ def check_dir(pathname):
         raise ValueError(f"specified path ({path}) is not a directory")
 
 
-def run_client(graph_name, comm_addr, info_addr, view_addr, load,
+def run_client(graph_name, comm_addr, info_addr, view_addr, export_addr, load,
                use_legacy=True, prometheus_dir=None, prometheus_port=None, hutch='',
                use_opengl=False, use_numba=False,
                configure=False, save_dir=None):
-    graphmgr_addr = GraphMgrAddress(graph_name, comm_addr, view_addr, info_addr)
+    graphmgr_addr = GraphMgrAddress(graph_name, comm_addr, view_addr, info_addr, export_addr)
     if use_legacy:
         return legacy.run_client(graphmgr_addr, load, save_dir)
     else:
@@ -167,6 +167,7 @@ def main():
                 comm_addr = "ipc://%s/comm" % ipc_list[0]
                 info_addr = "ipc://%s/info" % ipc_list[0]
                 view_addr = "ipc://%s/view" % ipc_list[0]
+                export_addr = "ipc://%s/export" % ipc_list[0]
             else:
                 prompt = "Found %d ipc file descriptors:\n" % len(ipc_list)
                 for i, ipc_name in enumerate(ipc_list):
@@ -177,6 +178,7 @@ def main():
                     comm_addr = "ipc://%s/comm" % ipc_list[int(choice)]
                     info_addr = "ipc://%s/info" % ipc_list[int(choice)]
                     view_addr = "ipc://%s/view" % ipc_list[int(choice)]
+                    export_addr = "ipc://%s/export" % ipc_list[int(choice)]
                 except ValueError:
                     logger.critical("Invalid option '%s' chosen!", choice)
                     return 1
@@ -190,13 +192,15 @@ def main():
         comm_addr = "ipc://%s/comm" % args.ipc_dir
         info_addr = "ipc://%s/info" % args.ipc_dir
         view_addr = "ipc://%s/view" % args.ipc_dir
+        export_addr = "ipc://%s/export" % args.ipc_dir
     else:
         comm_addr = "tcp://%s:%d" % (args.host, args.port + Ports.Comm)
         info_addr = "tcp://%s:%d" % (args.host, args.port + Ports.Info)
         view_addr = "tcp://%s:%d" % (args.host, args.port + Ports.View)
+        export_addr = "tcp://%s:%d" % (args.host, args.port + Ports.Export)
 
     try:
-        return run_client(args.graph_name, comm_addr, info_addr, view_addr, args.load,
+        return run_client(args.graph_name, comm_addr, info_addr, view_addr, export_addr, args.load,
                           args.gui_mode, args.prometheus_dir, args.prometheus_port, args.hutch,
                           args.use_opengl, args.use_numba,
                           False, args.save_dir)

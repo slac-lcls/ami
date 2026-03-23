@@ -51,6 +51,8 @@ class Node(QtCore.QObject):
     sigTerminalEdited = QtCore.Signal(object, object)
     sigTerminalOptional = QtCore.Signal(object, object)  # self, term
     sigNodeEnabled = QtCore.Signal(object)  # self
+    sigNodeLatched = QtCore.Signal(object)  # self
+    sigLabelChanged = QtCore.Signal(object, object)  # self, label
 
     def __init__(self, name, **kwargs):
         """
@@ -86,6 +88,7 @@ class Node(QtCore.QObject):
         """
         super().__init__()
         self._name = name
+        self._label = ""
         self._graphicsItem = None
         self.terminals = OrderedDict()
         self._inputs = OrderedDict()
@@ -106,6 +109,7 @@ class Node(QtCore.QObject):
         self.viewed = False
         self.exception = None
         self.global_op = kwargs.get("global_op", False)
+        self.latched = False
 
         self._input_vars = {}  # term:var
 
@@ -174,6 +178,14 @@ class Node(QtCore.QObject):
                 self.graphicsItem().setBrush(fn.mkBrush(255, 255, 255, 255))
         else:
             self.graphicsItem().setBrush(fn.mkBrush(255, 255, 0, 255))
+
+    def nodeLatched(self, latched):
+        self.latched = latched
+
+        # block signals so that flowchart.nodeEnabled doesn't get called recursively
+        self.graphicsItem().latch.blockSignals(True)
+        self.graphicsItem().latch.setChecked(latched)
+        self.graphicsItem().latch.blockSignals(False)
 
     def addInput(self, name="In", **kwargs):
         """Add a new input terminal to this Node with the given name. Extra
@@ -259,6 +271,7 @@ class Node(QtCore.QObject):
             group.add(name)
 
         self.graphicsItem().updateTerminals()
+        self.graphicsItem().buildMenu(reset=True)
         self.sigTerminalAdded.emit(self, term)
         return term
 
@@ -282,13 +295,26 @@ class Node(QtCore.QObject):
         """
         Buffered nodes can override their topics/terms.
         """
-        return {in_var: self.name()+'.'+term for term, in_var in self.input_vars().items()}
+        topics = {}
+        for term, in_var in self.input_vars().items():
+            if isinstance(in_var, modifiers.optional):
+                topics[in_var.name] = self.name()+'.'+term
+            else:
+                topics[in_var] = self.name()+'.'+term
+        return topics
 
     def buffered_terms(self):
         """
         Buffered nodes can override their topics/terms.
         """
-        return self.input_vars()
+        terms = {}
+        for term, in_var in self.input_vars().items():
+            if isinstance(in_var, modifiers.optional):
+                terms[term] = in_var.name
+            else:
+                terms[term] = in_var
+
+        return terms
 
     def exportable(self):
         return self._exportable
@@ -302,7 +328,8 @@ class Node(QtCore.QObject):
         for name, term in self.terminals.items():
             if name in self._input_vars:
                 if term.optional():
-                    input_vars[name] = modifiers.optional(self._input_vars[name])
+                    input_vars[name] = modifiers.optional(self._input_vars[name],
+                                                          mapped_name=name.replace(".", "_"))
                 else:
                     input_vars[name] = self._input_vars[name]
         return input_vars
@@ -357,7 +384,7 @@ class Node(QtCore.QObject):
         when they are constructing their Node list."""
         return None
 
-    def connected(self, localTerm, remoteTerm, pos=None):
+    def connected(self, localTerm, remoteTerm):
         """Called whenever one of this node's terminals is connected elsewhere."""
         node = remoteTerm.node()
 
@@ -421,7 +448,9 @@ class Node(QtCore.QObject):
         Subclasses may want to extend this method, adding extra keys to the returned
         dict."""
         pos = self.graphicsItem().pos()
-        state = {'pos': (pos.x(), pos.y()), 'enabled': self._enabled, 'viewed': self.viewed}
+        state = {'pos': (pos.x(), pos.y()), 'enabled': self._enabled,
+                 'viewed': self.viewed, 'latched': self.latched,
+                 'label': self._label}
         state['terminals'] = self.saveTerminals()
         return state
 
@@ -430,8 +459,12 @@ class Node(QtCore.QObject):
         by saveState(). """
         pos = state.get('pos', (0, 0))
         self.graphicsItem().setPos(*pos)
+        self._label = state.get('label', "")
         self._enabled = state.get('enabled')
         self.viewed = state.get('viewed', False)
+        self.nodeLatched(state.get('latched', False))
+        if self._label:
+            self.graphicsItem().setLabel(self._label)
         if 'terminals' in state:
             self.restoreTerminals(state['terminals'])
 
@@ -506,6 +539,18 @@ class Node(QtCore.QObject):
     def onCreate(self):
         pass
 
+    def terminalConnected(self, nodeTermConnected):
+        """
+        Can be used to trigger updates in widget.
+        """
+        pass
+
+    def terminalDisconnected(self, nodeTermDisconnected):
+        """
+        Can be used to trigger updates in widget.
+        """
+        pass
+
 
 class NodeGraphicsItem(GraphicsObject):
 
@@ -531,9 +576,24 @@ class NodeGraphicsItem(GraphicsObject):
 
         self.setFlags(flags)
         self.bounds = QtCore.QRectF(0, 0, 100, 100)
+        self.labelItem = QtWidgets.QGraphicsTextItem(self.node.name(), self)
+        self.labelItem.setDefaultTextColor(QtGui.QColor(50, 50, 50))
+        self.labelItem.mousePressEvent = self.nameEditingStarted
+        self.labelItem.focusOutEvent = self.nameEditingFinished
+        self.labelItem.moveBy(self.bounds.width()/2. - self.labelItem.boundingRect().width()/2., 0)
+
+        # Add class name item below the name
         self.nameItem = QtWidgets.QGraphicsTextItem(self.node.name(), self)
-        self.nameItem.setDefaultTextColor(QtGui.QColor(50, 50, 50))
-        self.nameItem.moveBy(self.bounds.width()/2. - self.nameItem.boundingRect().width()/2., 0)
+        self.nameItem.setDefaultTextColor(QtGui.QColor(120, 120, 120))
+        self.nameItem.setVisible(False)
+        font = self.nameItem.font()
+        font.setPointSize(8)
+        font.setItalic(True)
+        self.nameItem.setFont(font)
+        self.nameItem.setPos(
+            self.bounds.width()/2. - self.nameItem.boundingRect().width()/2.,
+            self.nameItem.boundingRect().height()
+        )
 
         self.updateTerminals()
 
@@ -541,6 +601,7 @@ class NodeGraphicsItem(GraphicsObject):
         self.connectedTo = None
         self.enabled = QtWidgets.QAction("Enabled", self.menu, checkable=True, checked=True)
         self.optional = QtWidgets.QAction("Optional Inputs", self.menu, checkable=True, checked=False)
+        self.latch = QtWidgets.QAction("Latch Outputs", self.menu, checkable=True, checked=False)
         self.buildMenu()
 
     def setPen(self, *args, **kwargs):
@@ -550,6 +611,35 @@ class NodeGraphicsItem(GraphicsObject):
     def setBrush(self, brush):
         self.brush = brush
         self.update()
+
+    def setLabel(self, label):
+        self.labelItem.setPlainText(label)
+        self.labelItem.setPos(self.bounds.width()/2. - self.labelItem.boundingRect().width()/2., 0)
+        self.nameItem.setVisible(True)
+        nameBottom = self.nameItem.boundingRect().height()
+        self.nameItem.setPos(
+            self.bounds.width()/2. - self.nameItem.boundingRect().width()/2.,
+            nameBottom
+        )
+
+    def nameEditingStarted(self, event):
+        self.labelItem.setTextInteractionFlags(QtCore.Qt.TextEditorInteraction)
+        super().mousePressEvent(event)
+
+    def nameEditingFinished(self, event):
+        """Called when user finishes editing the name"""
+        # Call the original focusOutEvent
+        super().focusOutEvent(event)
+        self.labelItem.setTextInteractionFlags(QtCore.Qt.NoTextInteraction)
+        self.labelItem.setPos(self.bounds.width()/2. - self.labelItem.boundingRect().width()/2., 0)
+        self.nameItem.setVisible(True)
+        nameBottom = self.nameItem.boundingRect().height()
+        self.nameItem.setPos(
+            self.bounds.width()/2. - self.nameItem.boundingRect().width()/2.,
+            nameBottom
+        )
+        self.node._label = self.labelItem.toPlainText()
+        self.node.sigLabelChanged.emit(self.node, self.node._label)
 
     def updateTerminals(self):
         inp = self.node.inputs()
@@ -771,6 +861,9 @@ class NodeGraphicsItem(GraphicsObject):
             if self.node._allowOptional:
                 self.optional.toggled.connect(self.optionalFromMenu)
                 self.menu.addAction(self.optional)
+            if self.node.global_op:
+                self.latch.toggled.connect(self.latchedFromMenu)
+                self.menu.addAction(self.latch)
             if self.node._allowAddInput:
                 self.menu.addAction("Add input", self.addInputFromMenu)
             if self.node._allowAddOutput:
@@ -791,6 +884,10 @@ class NodeGraphicsItem(GraphicsObject):
                 graphicsItem.menu.optionalAct.setChecked(checked)
             term.setOptional(checked, emit=False)
             self.node.sigTerminalOptional.emit(self.node, term)
+
+    def latchedFromMenu(self, checked):
+        self.node.nodeLatched(checked)
+        self.node.sigNodeLatched.emit(self.node)
 
     def addInputFromMenu(self):
         # called when add input is clicked in context menu

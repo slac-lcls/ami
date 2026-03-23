@@ -1,8 +1,10 @@
 from qtpy import QtWidgets, QtCore
+from typing import Any
 from amitypes import Array1d
 from ami.flowchart.library.common import CtrlNode
-from ami.flowchart.library.DisplayWidgets import AsyncFetcher
+from ami.flowchart.library.DisplayWidgets import AsyncFetcher, CategoryWidget
 import ami.graph_nodes as gn
+import collections
 
 
 class DialogWidget(QtWidgets.QWidget):
@@ -78,5 +80,62 @@ class ArrayThreshold(CtrlNode):
                         inputs=inputs, outputs=map_outputs, **kwargs,
                         func=lambda arr: len(arr[arr > threshold]) > count),
                  gn.PickN(name=self.name()+"_pickN", inputs=map_outputs, outputs=outputs, **kwargs)]
+
+        return nodes
+
+
+class Monitor(CtrlNode):
+
+    """
+    Debug box which plots which boxes have an event in a heartbeat
+    """
+
+    nodeName = "Monitor"
+    uiTemplate = [("Num Points", "intSpin", {'value': 100, 'min': 1})]
+
+    def __init__(self, name):
+        super().__init__(name,
+                         terminals={'In': {'io': 'in', 'ttype': Any, 'optional': True}},
+                         allowAddInput=True,
+                         buffered=True)
+
+    def addTerminal(self, *args, **opts):
+        opts['optional'] = True
+        return super().addTerminal(*args, **opts)
+
+    def isChanged(self, restore_ctrl, restore_widget):
+        return restore_ctrl
+
+    def display(self, topics, terms, addr, win, **kwargs):
+        return super().display(topics, terms, addr, win, CategoryWidget, **kwargs)
+
+    def to_operation(self, inputs, outputs, **kwargs):
+        outputs = [self.name()+'.'+i for i in inputs.keys()]
+        map_outputs = [self.name()+"_mapcounter"]
+        buffer_output = [self.name()+"_count", self.name()+"_buffered"]
+
+        def count(*args, **kwargs):
+            res = {}
+            for n, v in inputs.items():
+                res[v.name] = int(kwargs.get(v.mapped_name, None) is not None)
+            return res
+
+        def map_unzip(count, a):
+            res = collections.defaultdict(list)
+            for r in a:
+                for k, v in inputs.items():
+                    res[v.name].append(r[v.name])
+
+            res = tuple(res.values())
+            if len(res) == 1:
+                return res[0]
+            else:
+                return res
+
+        nodes = [gn.Map(name=self.name()+"_counter", inputs=inputs, outputs=map_outputs, func=count, **kwargs),
+                 gn.RollingBuffer(name=self.name()+"_buffer", N=self.values['Num Points'],
+                                  inputs=map_outputs, outputs=buffer_output, **kwargs),
+                 gn.Map(name=self.name()+"_operation", inputs=buffer_output, outputs=outputs,
+                        func=map_unzip, **kwargs)]
 
         return nodes

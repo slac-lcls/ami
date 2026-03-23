@@ -1,5 +1,7 @@
 #!/usr/bin/env python
 import os
+import socket
+import json
 import sys
 import logging
 import importlib
@@ -11,6 +13,7 @@ import subprocess
 import traceback
 import ami.multiproc as mp
 import pyqtgraph as pg
+import prometheus_client as pc
 
 from ami import LogConfig
 from ami.client import flowchart_messages as fcMsgs
@@ -33,6 +36,7 @@ logger = logging.getLogger(LogConfig.get_package_name(__name__))
 
 pg.setConfigOption('imageAxisOrder', 'row-major')
 
+
 def run_editor_window(broker_addr, graphmgr_addr, checkpoint_addr, load=None, prometheus_dir=None,
                       prometheus_port=None, hutch=None, configure=False, save_dir=None):
     dmypy_file = tempfile.NamedTemporaryFile(mode='w', delete=False)
@@ -44,6 +48,7 @@ def run_editor_window(broker_addr, graphmgr_addr, checkpoint_addr, load=None, pr
         f.write("from typing import *\n")
         f.write("from mypy_extensions import TypedDict\n")
         f.write("import numbers\n")
+        f.write("import builtins\n")
         f.write("import amitypes\n")
         f.write("T = TypeVar('T')\n")
         f.flush()
@@ -64,6 +69,8 @@ def run_editor_window(broker_addr, graphmgr_addr, checkpoint_addr, load=None, pr
     if hutch:
         title += f' hutch: {hutch}'
     win.setWindowTitle(title)
+
+    os.makedirs(os.path.expanduser("~/.cache/ami/"), exist_ok=True)
 
     # Create flowchart, define input/output terminals
     fc = Flowchart(broker_addr=broker_addr,
@@ -165,17 +172,19 @@ class BrokerFetcher(QtCore.QThread):
                 self.sig.emit(msg)
 
 def launch_node(msg, broker_addr="", graphmgr_addr="", checkpoint_addr="",
-                library_paths=None, hutch=''):
+                library_paths=None, prometheus_dir=None, prometheus_port=None, hutch=''):
 
     app = QtWidgets.QApplication([])
-    proc = NodeProcess(msg, broker_addr, graphmgr_addr, checkpoint_addr, library_paths, hutch)
+    proc = NodeProcess(msg, broker_addr, graphmgr_addr, checkpoint_addr, library_paths,
+                       prometheus_dir, prometheus_port, hutch)
     app.exec()
 
 
 class NodeProcess(QtCore.QObject):
 
     def __init__(self, msg, broker_addr="", graphmgr_addr="", checkpoint_addr="",
-                 library_paths=None, hutch=''):
+                 library_paths=None, prometheus_dir=None, prometheus_port=None, hutch=''):
+
         super().__init__()
 
         self.win = NodeWindow(self)
@@ -220,6 +229,14 @@ class NodeProcess(QtCore.QObject):
             title += f' hutch: {hutch}'
         self.win.setWindowTitle(title)
 
+        self.hutch = hutch
+        self.name = msg.name
+
+        self.prometheus_dir = prometheus_dir
+        self.prometheus_port = prometheus_port
+
+        self.start_prometheus()
+
     def display(self, msg):
         print(msg.name, "redisplay:", msg.redisplay, flush=True)
         if self.node.viewed and msg.redisplay:
@@ -234,7 +251,7 @@ class NodeProcess(QtCore.QObject):
 
         if self.widget is None:
             self.widget = self.node.display(msg.topics, msg.terms, self.graphmgr_addr, self.win,
-                                            units=msg.units)
+                                            units=msg.units, name=self.name, hutch=self.hutch)
 
             if self.ctrlWidget and self.widget:
                 splitter = QtWidgets.QSplitter(parent=self.win)
@@ -266,6 +283,10 @@ class NodeProcess(QtCore.QObject):
                 self.node.sigStateChanged.connect(self.send_checkpoint)
                 self.connected = True
 
+        # Update window title with label if provided
+        if msg.label:
+            self.updateWindowTitle(msg.label)
+
         self.win.show()
         if self.node.viewed:
             self.win.activateWindow()
@@ -277,11 +298,35 @@ class NodeProcess(QtCore.QObject):
             self.display(msg)
         elif isinstance(msg, fcMsgs.ReloadLibrary):
             self.reloadLibrary(msg)
+        elif isinstance(msg, fcMsgs.NodeTermAdded):
+            self.node.addTerminal(msg.term, **msg.state)
+        elif isinstance(msg, fcMsgs.NodeTermRemoved):
+            self.node.removeTerminal(msg.term)
+        elif isinstance(msg, fcMsgs.NodeTermConnected):
+            self.node.terminalConnected(msg)
+        elif isinstance(msg, fcMsgs.NodeTermDisconnected):
+            self.node.terminalDisconnected(msg)
+        elif isinstance(msg, fcMsgs.NodeLabelChanged):
+            self.updateWindowTitle(msg.label)
+        elif isinstance(msg, fcMsgs.CloseNode):
+            return
 
     def reloadLibrary(self, msg):
         for mod in msg.mods:
             mod = sys.modules[mod]
             pg.reload.reload(mod)
+
+    def updateWindowTitle(self, label):
+        """Update the window title when the node label changes"""
+        if label:
+            title = f"{label} - {self.name}"
+        else:
+            title = self.name
+
+        if self.hutch:
+            title += f' hutch: {self.hutch}'
+
+        self.win.setWindowTitle(title)
 
     @QtCore.Slot(object)
     def send_checkpoint(self, node, event=None):
@@ -290,6 +335,32 @@ class NodeProcess(QtCore.QObject):
         msg = fcMsgs.NodeCheckpoint(node.name(), state=state, event=event, stacktrace=traceback.format_stack())
         self.checkpoint.send_string(node.name() + ZMQ_TOPIC_DELIM, zmq.SNDMORE)
         self.checkpoint.send_pyobj(msg)
+
+    def start_prometheus(self):
+        port = self.prometheus_port
+
+        while True:
+            try:
+                pc.start_http_server(port)
+                break
+            except OSError:
+                port += 1
+
+        if self.prometheus_dir:
+            if not os.path.exists(self.prometheus_dir):
+                os.makedirs(self.prometheus_dir)
+            pth = f"drpami_{socket.gethostname()}_{self.hutch}_{self.name}.json"
+            pth = os.path.join(self.prometheus_dir, pth)
+            conf = [{"targets": [f"{socket.gethostname()}:{port}"]}]
+            try:
+                with open(pth, 'w') as f:
+                    json.dump(conf, f)
+            except PermissionError:
+                logging.error("Permission denied: %s", pth)
+                pass
+
+        logger.info("%s: Started Prometheus client on port: %d", self.name, port)
+        return port
 
 
 class MessageBroker(object):
@@ -443,18 +514,14 @@ class MessageBroker(object):
                         # don't resend last message
                         del self.msgs[msg.name]
 
-                    # proc = mp.Process(
-                    #     target=NodeProcess,
-                    #     name=msg.name,
-                    #     args=(msg, self.broker_pub_addr, self.graphmgr_addr, self.checkpoint_sub_addr),
-                    #     kwargs={'library_paths': self.library_paths},
-                    #     daemon=True
-                    # )
                     proc = mp.Process(
                         target=launch_node,
                         name=msg.name,
                         args=(msg, self.broker_pub_addr, self.graphmgr_addr, self.checkpoint_sub_addr),
-                        kwargs={'library_paths': self.library_paths},
+                        kwargs={'library_paths': self.library_paths,
+                                'prometheus_dir': self.prometheus_dir,
+                                'prometheus_port': self.prometheus_port,
+                                'hutch': self.hutch},
                         daemon=True
                     )
                     proc.start()
@@ -468,18 +535,14 @@ class MessageBroker(object):
             msg = await self.broker_sub_sock.recv_pyobj()
 
             if isinstance(msg, fcMsgs.CreateNode):
-                # proc = mp.Process(
-                #     target=NodeProcess,
-                #     name=msg.name,
-                #     args=(msg, self.broker_pub_addr, self.graphmgr_addr, self.checkpoint_sub_addr),
-                #     kwargs={'library_paths': self.library_paths, 'hutch': self.hutch},
-                #     daemon=True
-                # )
                 proc = mp.Process(
                     target=launch_node,
                     name=msg.name,
                     args=(msg, self.broker_pub_addr, self.graphmgr_addr, self.checkpoint_sub_addr),
-                    kwargs={'library_paths': self.library_paths},
+                    kwargs={'library_paths': self.library_paths,
+                            'prometheus_dir': self.prometheus_dir,
+                            'prometheus_port': self.prometheus_port,
+                            'hutch': self.hutch},
                     daemon=True
                 )
                 proc.start()
@@ -491,6 +554,21 @@ class MessageBroker(object):
                 await self.forward_message_to_node(topic, msg)
 
             elif isinstance(msg, fcMsgs.ReloadLibrary):
+                await self.forward_message_to_node(topic, msg)
+
+            elif isinstance(msg, fcMsgs.NodeTermAdded):
+                await self.forward_message_to_node(topic, msg)
+
+            elif isinstance(msg, fcMsgs.NodeTermRemoved):
+                await self.forward_message_to_node(topic, msg)
+
+            elif isinstance(msg, fcMsgs.NodeTermConnected):
+                await self.forward_message_to_node(topic, msg)
+
+            elif isinstance(msg, fcMsgs.NodeTermDisconnected):
+                await self.forward_message_to_node(topic, msg)
+
+            elif isinstance(msg, fcMsgs.NodeLabelChanged):
                 await self.forward_message_to_node(topic, msg)
 
             elif isinstance(msg, fcMsgs.CloseNode):

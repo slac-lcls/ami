@@ -6,12 +6,13 @@ import datetime as dt
 import itertools as it
 import numpy as np
 import pyqtgraph as pg
+import prometheus_client as pc
+
 from pyqtgraph.GraphicsScene.exportDialog import ExportDialog
 from qtpy import QtGui, QtWidgets, QtCore
 from networkfox import modifiers
 from ami import LogConfig
-from ami.data import Deserializer
-from ami.comm import ZMQ_TOPIC_DELIM
+from ami.data import Deserializer, Heartbeat
 from ami.flowchart.library.WidgetGroup import generateUi
 from ami.flowchart.library.Editors import TraceEditor, HistEditor, \
     LineEditor, CircleEditor, RectEditor, camera, pixmapFromBase64, STYLE
@@ -33,18 +34,24 @@ class AsyncFetcher(QtCore.QThread):
         self.running = True
         self.ctx = zmq.Context()
         self.poller = zmq.Poller()
-        self.sockets = {}
         self.data = {}
-        self.timestamps = {}
+        self.timestamps = {}  # Heartbeats for each view_sub
         self.reply_queue = queue.Queue()
-        self.heartbeat_timestamp = None
+        self.heartbeat_timestamp = 0
         self.deserializer = Deserializer()
         self.update_topics(topics, terms)
+
         self.recv_interrupt = self.ctx.socket(zmq.REP)
         self.recv_interrupt.bind("inproc://fetcher_interrupt")
         self.poller.register(self.recv_interrupt, zmq.POLLIN)
         self.send_interrupt = self.ctx.socket(zmq.REQ)
         self.send_interrupt.connect("inproc://fetcher_interrupt")
+        self.export = self.ctx.socket(zmq.SUB)
+        self.export.connect(addr.export)
+        self.export.setsockopt_string(zmq.SUBSCRIBE, "heartbeat")
+        self.view = self.ctx.socket(zmq.REQ)
+        self.view.connect(addr.view)
+
         if parent is not None:
             if ratelimit is None:
                 self.sig.connect(parent.update)
@@ -67,73 +74,52 @@ class AsyncFetcher(QtCore.QThread):
     def update_topics(self, topics, terms):
         self.topics = topics
         self.terms = terms
-        self.names = list(topics.keys())
         self.subs = set(topics.values())
-        self.optional = set([value for key, value in topics.items() if type(key) is modifiers.optional])
+        self.optional = set([key.name for key, value in topics.items() if type(key) is modifiers.optional])
 
-        for name, sock_count in self.sockets.items():
-            sock, count = sock_count
-            self.poller.unregister(sock)
-            sock.close()
-
-        self.sockets = {}
         self.view_subs = {}
+        self.sub_views = {}
 
         for term, name in terms.items():
-            if name not in self.sockets:
-                topic = topics[name]
-                sub_topic = "view:%s:%s" % (self.addr.name, topic)
-                self.view_subs[sub_topic] = topic
-                sock = self.ctx.socket(zmq.SUB)
-                sock.setsockopt_string(zmq.SUBSCRIBE, sub_topic + ZMQ_TOPIC_DELIM)
-                sock.connect(self.addr.view)
-                self.poller.register(sock, zmq.POLLIN)
-                self.sockets[name] = (sock, 1)  # reference count
-            else:
-                sock, count = self.sockets[name]
-                self.sockets[name] = (sock, count+1)
+            topic = topics[name]
+            sub_topic = "view:%s:%s" % (self.addr.name, topic)
+            self.view_subs[sub_topic] = topic
+            self.timestamps[topic] = Heartbeat()
+            self.sub_views[topic] = sub_topic
 
     def run(self):
 
         while self.running:
-            for sock, flag in self.poller.poll():
-                if flag != zmq.POLLIN:
+            topic = self.export.recv_string()
+            graph = self.export.recv_string()
+            heartbeat = self.export.recv_pyobj()
+
+            if graph != self.addr.name:
+                continue
+
+            if self.heartbeat_timestamp >= heartbeat.timestamp:
+                continue
+
+            self.heartbeat_timestamp = heartbeat.timestamp
+
+            for term, name in self.terms.items():
+                req = self.sub_views[self.topics[name]]
+                self.view.send_string(req, flags=zmq.NOBLOCK)
+
+                topic = self.view.recv_string()
+                topic = topic.rstrip('\0')
+                heartbeat = self.view.recv_pyobj()
+                reply = self.view.recv_serialized(self.deserializer, copy=False)
+
+                view_sub = self.view_subs[topic]
+
+                if heartbeat is None or self.timestamps[view_sub] >= heartbeat:
                     continue
-                if sock == self.recv_interrupt and sock.recv_pyobj():
-                    break
 
-                limit = 10
-
-                while True:
-                    count = -1  # So the good (last) message in the socket queue is not counted
-                    topic = None
-                    heartbeat = None
-                    reply = None
-                    while count < limit:
-                        try:
-                            topic = sock.recv_string(flags=zmq.NOBLOCK)
-                            topic = topic.rstrip('\0')
-                            heartbeat = sock.recv_pyobj(flags=zmq.NOBLOCK)
-                            reply = sock.recv_serialized(self.deserializer, copy=False, flags=zmq.NOBLOCK)
-                            count += 1
-                        except zmq.ZMQError as e:
-                            if e.errno == zmq.EAGAIN:
-                                if count > 0:
-                                    logger.info("%s: Number of queued messages discarded: %d", topic, count)
-                                break
-                            else:
-                                raise
-
-                    if count >= limit:
-                        logger.warn("%s: Number of queued messages exceeds limit: %d", topic, count)
-
-                    if topic is not None:
-                        break
-
-                self.data[self.view_subs[topic]] = reply
-                self.timestamps[self.view_subs[topic]] = heartbeat
+                self.data[view_sub] = reply
+                self.timestamps[view_sub] = heartbeat
                 # check if the data is ready
-                heartbeats = set(self.timestamps.values())
+                heartbeats = set(self.timestamps.values())  # this will remove duplicates. Happens for multi-inputs plots
                 num_heartbeats = len(heartbeats)
                 res = {}
 
@@ -148,11 +134,16 @@ class AsyncFetcher(QtCore.QThread):
 
                 if res:
                     heartbeat = heartbeats.pop()
-                    self.heartbeat_timestamp = heartbeat.timestamp
                     # put results on the reply queue
-                    self.reply_queue.put(res)
+                    self.reply_queue.put((heartbeat.timestamp, res))
                     # send a signal that data is ready
                     self.sig.emit()
+
+            try:
+                if self.recv_interrupt.recv_pyobj(flags=zmq.NOBLOCK):
+                    break
+            except zmq.error.Again:
+                continue
 
     def close(self):
         self.running = False
@@ -160,20 +151,22 @@ class AsyncFetcher(QtCore.QThread):
         self.send_interrupt.send_pyobj(True)
         self.wait()
         self.poller.unregister(self.recv_interrupt)
-        for name, sock_count in self.sockets.items():
-            sock, count = sock_count
-            self.poller.unregister(sock)
-            sock.close()
-
+        self.export.close()
+        self.view.close()
         self.ctx.destroy()
 
 
 class PlotWidget(QtWidgets.QWidget):
 
+    latency = pc.Gauge('ami_plot_latency_secs', 'Plot Latency', ['hutch', 'process'])
+    memory = pc.Gauge('ami_plot_memory_mb', 'Plot Memory', ['hutch', 'process'])
+
     def __init__(self, topics=None, terms=None, addr=None, uiTemplate=None, parent=None, **kwargs):
         super().__init__(parent)
         self.node = kwargs.get('node', None)
         self.units = kwargs.get('units', {})
+        self.hutch = kwargs.get('hutch', None)
+        self.name = kwargs.get('name', None)
 
         self.fetcher = None
         if addr:
@@ -491,12 +484,16 @@ class PlotWidget(QtWidgets.QWidget):
 
     def update(self):
         while self.fetcher.ready:
-            self.data_updated(self.fetcher.reply)
+            heartbeat_timestamp, reply = self.fetcher.reply
+            self.data_updated(reply)
             now = dt.datetime.now()
             now = now.strftime("%T")
             ru = resource.getrusage(resource.RUSAGE_SELF)
-            latency = dt.datetime.now() - dt.datetime.fromtimestamp(self.fetcher.heartbeat_timestamp)
-            self.last_updated.setText(f"Last Updated: {now} Latency: {latency} RSS: {ru.ru_maxrss/1024} MB")
+            rss = ru.ru_maxrss/1024
+            latency = dt.datetime.now() - dt.datetime.fromtimestamp(heartbeat_timestamp)
+            self.last_updated.setText(f"Last Updated: {now} Latency: {latency} RSS: {rss} MB")
+            self.latency.labels(self.hutch, self.name).set(latency.total_seconds())
+            self.memory.labels(self.hutch, self.name).set(rss)
 
     def close(self):
         if self.fetcher:
@@ -534,7 +531,8 @@ class ObjectWidget(pg.LayoutWidget):
 
     def update(self):
         while self.fetcher.ready:
-            for k, v in self.fetcher.reply.items():
+            heartbeat_timestamp, reply = self.fetcher.reply
+            for k, v in reply.items():
 
                 if type(v) is np.ndarray:
                     txt = "variable: %s\ntype: %s\nvalue: %s\nshape: %s\ndtype: %s" % (k, type(v), v, v.shape, v.dtype)
@@ -562,7 +560,8 @@ class ScalarWidget(QtWidgets.QLCDNumber):
 
     def update(self):
         while self.fetcher.ready:
-            for k, v in self.fetcher.reply.items():
+            heartbeat_timestamp, reply = self.fetcher.reply
+            for k, v in reply.items():
                 self.display(float(v))
 
     def close(self):
@@ -922,3 +921,41 @@ class TimeWidget(LineWidget):
         self.graphics_layout.useOpenGL(False)
         ax = pg.DateAxisItem(orientation='bottom')
         self.plot_view.setAxisItems({'bottom': ax})
+
+
+class CategoryWidget(PlotWidget):
+
+    def __init__(self, topics=None, terms=None, addr=None, parent=None, **kwargs):
+        super().__init__(topics, terms, addr, parent=parent, **kwargs)
+        self.y = {}  # { name : height }
+
+    def data_updated(self, data):
+        i = len(self.plot)
+
+        for term, name in self.terms.items():
+            if name not in data:
+                continue
+
+            arr = np.array(data[name], dtype=bool)
+            data[name] = np.arange(0, len(arr))[arr]
+
+            if name not in self.plot:
+                self.y[name] = i
+                symbol, color = symbols_colors[i]
+                idx = f"trace.{i}"
+                i += 1
+                self.update_legend_layout(idx, name, symbol=symbol, style='None')
+                attrs = self.legend_editors[idx].attrs
+                self.trace_attrs[name] = attrs
+                y = np.ones(len(data[name])) * self.y[name]
+                self.plot[name] = self.plot_view.plot(x=data[name], y=y,
+                                                      pen=attrs['pen'],
+                                                      **attrs['point'])
+            else:
+                attrs = self.trace_attrs[name]
+                y = np.ones(len(data[name])) * self.y[name]
+                self.plot[name].setData(x=data[name], y=y, **attrs['point'])
+
+        left_axis = self.plot_view.getAxis('left')
+        left_axis.setTicks([list(enumerate(self.y.keys()))])
+        self.plot_view.setYRange(-0.5, len(self.y) - 0.5)

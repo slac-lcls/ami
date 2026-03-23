@@ -340,24 +340,21 @@ class Store:
         Sets the data associated with an entry in the store. If there is an
         existing entry in the store with that name, the type of the data is
         checked to see that it matches with what is already in the store.
+        Logs a warning if the type of data doesn't match the type of the
+        existing entry in the store with that name.
 
         Args:
             name (str): the name of the entry
             data (object): the data to associate with the entry
-
-        Raises:
-            TypeError: if the type of data doesn't match the type of the
-                existing entry in the store with that name.
         """
         if data is not None:
             datatype = self.get_type(data)
             if name in self._store:
-                if datatype == self._store[name].dtype or self._store[name].dtype is None:
-                    self._store[name].dtype = datatype
-                    self._store[name].data = data
-                else:
-                    raise TypeError("type of new result (%s) differs from existing"
+                if not datatype == self._store[name].dtype:
+                    logger.warning("type of new result (%s) differs from existing."
                                     " (%s)" % (datatype, self._store[name].dtype))
+                self._store[name].dtype = datatype
+                self._store[name].data = data
             else:
                 self._store[name] = Datagram(name, datatype, data)
 
@@ -377,12 +374,14 @@ class Store:
 
 
 class ZmqHandler:
-    def __init__(self, addr, ctx=None):
+    def __init__(self, addr, ctx=None, hwm=None):
         if ctx is None:
             self.ctx = zmq.Context()
         else:
             self.ctx = ctx
         self.collector = self.ctx.socket(zmq.PUSH)
+        if hwm:
+            self.collector.setsockopt(zmq.SNDHWM, hwm)
         self.collector.connect(addr)
         self.serializer = Serializer()
 
@@ -409,8 +408,9 @@ class ResultStore(ZmqHandler):
     a Collector object.
     """
 
-    def __init__(self, addr, ctx=None):
-        super().__init__(addr, ctx)
+    def __init__(self, addr, ctx=None, hwm=None, select_manager=(None, None, None, None, None)):
+        super().__init__(addr, ctx, hwm)
+        self.select_lock, self.select_dict, self.select_idx, self.select_hb, self.select_manager = select_manager
         self.stores = {}
 
     def __bool__(self):
@@ -422,11 +422,21 @@ class ResultStore(ZmqHandler):
     def __contains__(self, name):
         return name in self.stores
 
-    def configure(self, name, version):
+    def configure(self, name, version, outputs):
         if name not in self.stores:
             self.stores[name] = Store(version=version)
         else:
             self.stores[name].version = version
+
+        if self.select_lock:
+            for output in outputs:
+                if not output.startswith("_auto"):
+                    continue
+
+                with self.select_lock:
+                    if output not in self.select_dict:
+                        self.select_dict[output] = (self.select_idx.value, self.select_manager.Lock())
+                        self.select_idx.value = (self.select_idx.value + 1) % len(self.select_hb)
 
     def remove(self, name):
         del self.stores[name]
@@ -436,8 +446,45 @@ class ResultStore(ZmqHandler):
 
     def collect(self, identity, heartbeat):
         size = 0
-        for name, store in self.stores.items():
-            size += self.collector_message(identity, heartbeat, name, store.version, store.namespace)
+
+        if self.select_manager:
+            for name, store in self.stores.items():
+                ns = store.namespace
+                deletions = []
+                for val in ns:
+                    # Pick1 that are automatically inserted start with "_auto"
+                    if not val.startswith("_auto"):
+                        continue
+
+                    # select_dict stores a lock/detector and maps each detector to an index in select_hb
+                    # start = time.time()
+                    idx, lock = self.select_dict[val]  # { detector : (index, lock) }
+                    if self.select_hb[idx] < heartbeat.identity:
+                        if lock.acquire(blocking=False):
+                            if self.select_hb[idx] < heartbeat.identity:
+                                # print(heartbeat, val, idx, identity, "SELECTED", time.time() - start)
+                                self.select_hb[idx] = heartbeat.identity
+
+                            else:
+                                # print(heartbeat, val, idx, identity, "FAILED UPDATE", time.time() - start)
+                                deletions.append(val)
+                            lock.release()
+                        else:
+                            # print(heartbeat, val, idx, identity, "NO LOCK", time.time() - start)
+                            deletions.append(val)
+                    else:
+                        # print(heartbeat, val, idx, identity, "DELETE", time.time() - start)
+                        deletions.append(val)
+
+                for delete in deletions:
+                    del ns[delete]
+
+                size += self.collector_message(identity, heartbeat, name, store.version, ns)
+
+        else:
+            for name, store in self.stores.items():
+                size += self.collector_message(identity, heartbeat, name, store.version, store.namespace)
+
         return size
 
     def version(self, name):
@@ -632,9 +679,9 @@ class GraphBuilder(ContributionBuilder):
 
 
 class TransitionBuilder(ContributionBuilder, ZmqHandler):
-    def __init__(self, num_contribs, addr, ctx=None):
+    def __init__(self, num_contribs, addr, ctx=None, hwm=None):
         ContributionBuilder.__init__(self, num_contribs)
-        ZmqHandler.__init__(self, addr, ctx)
+        ZmqHandler.__init__(self, addr, ctx, hwm)
 
     def _complete(self, eb_key, identity, drop):
         if not drop:
@@ -656,8 +703,8 @@ class TransitionBuilder(ContributionBuilder, ZmqHandler):
 
 class EventBuilder(ZmqHandler):
 
-    def __init__(self, num_contribs, depth, color, addr, ctx=None):
-        super().__init__(addr, ctx)
+    def __init__(self, num_contribs, depth, color, addr, ctx=None, hwm=None):
+        super().__init__(addr, ctx, hwm)
         self.num_contribs = num_contribs
         self.depth = depth
         self.color = color
@@ -976,19 +1023,22 @@ class Collector(abc.ABC):
             passed it creates one.
     """
 
-    def __init__(self, addr, ctx=None, hutch=None):
+    def __init__(self, addr, ctx=None, hutch=None, hwm=None, timeout=None):
         if ctx is None:
             self.ctx = zmq.Context(io_threads=2)
         else:
             self.ctx = ctx
         self.poller = zmq.Poller()
         self.collector = self.ctx.socket(zmq.PULL)
+        if hwm:
+            self.collector.setsockopt(zmq.RCVHWM, hwm)
         self.collector.bind(addr)
         self.poller.register(self.collector, zmq.POLLIN)
         self.handlers = {}
         self.running = True
         self.exitcode = 0
         self.deserializer = Deserializer()
+        self.timeout = timeout
         self.hutch = hutch
 
         self.event_counter = pc.Counter('ami_event_count', 'Event Counter', ['hutch', 'type', 'process'])
@@ -1034,6 +1084,10 @@ class Collector(abc.ABC):
         """
         pass
 
+    @abc.abstractmethod
+    def poll_timeout(self):
+        pass
+
     def run(self):
         """
         The main collector loop runs forever polling the collector socket
@@ -1047,7 +1101,9 @@ class Collector(abc.ABC):
         idle_start = time.time()
         reset_idle = False
         while self.running:
-            for sock, flag in self.poller.poll():
+            received = False
+
+            for sock, flag in self.poller.poll(timeout=self.timeout):
                 if flag != zmq.POLLIN:
                     continue
 
@@ -1057,8 +1113,13 @@ class Collector(abc.ABC):
                 if sock is self.collector:
                     msg = self.collector.recv_serialized(self.deserializer, copy=False)
                     self.process_msg(msg)
+                    received = True
                 elif sock in self.handlers:
                     self.handlers[sock]()
+                    received = True
+
+            if not received and self.timeout:
+                self.poll_timeout()
 
             if reset_idle:
                 reset_idle = False

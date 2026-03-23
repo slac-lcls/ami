@@ -24,3 +24,4 @@ htmlcov/
 .agignore
 .gdb_history
 examples/*
+*.cprof

@@ -1,2 +1,8 @@
 [run]
-omit = ami/forkedpdb.py,ami/asyncqt.py,ami/client/legacy.py
+omit =
+     ami/forkedpdb.py
+     ami/asyncqt.py
+     ami/client/legacy.py
+     */pyqtgraph/*
+     */amityping/*
+     */networkfox/*

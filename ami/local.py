@@ -10,6 +10,7 @@ import argparse
 import functools
 import contextlib
 import ami.multiproc as mp
+import multiprocessing.sharedctypes
 
 from ami import LogConfig, Defaults
 from ami.multiproc import check_mp_start_method
@@ -100,8 +101,8 @@ def build_parser():
         '-d',
         '--eb-depth',
         type=int,
-        default=10,
-        help='the depth of contribution builder buffer in units of heartbeats (default: 10)'
+        default=1,
+        help='the depth of contribution builder buffer in units of heartbeats (default: 1)'
     )
 
     parser.add_argument(
@@ -191,6 +192,26 @@ def build_parser():
         '--hutch',
         help='hutch for prometheus label',
         default=None
+    )
+
+    parser.add_argument(
+        '--hwm',
+        help='zmq HWM for push/pull sockets (default: 1)',
+        type=int,
+        default=1
+    )
+
+    parser.add_argument(
+        '--timeout',
+        help='heartbeat timeout in ms',
+        type=int,
+        default=None
+    )
+
+    parser.add_argument(
+        '--cprofile',
+        help="profile with cprofile",
+        action='store_true'
     )
 
     parser.add_argument(
@@ -317,13 +338,27 @@ def run_ami(args, queue=None):
 
         logger.info("Starting ami-local using comm address: %s", comm_addr)
 
+        if args.num_workers > 1:
+            select_manager = mp.Manager()
+            select_dict = select_manager.dict()
+            select_lock = select_manager.Lock()
+            select_hb = multiprocessing.sharedctypes.RawArray('Q', 128)
+            select_idx = multiprocessing.sharedctypes.RawValue('I', 0)
+        else:
+            select_manager = None
+            select_dict = None
+            select_lock = None
+            select_hb = None
+            select_idx = None
+
         for i in range(args.num_workers):
             proc = mp.Process(
                 name='worker%03d-n0' % i,
                 target=functools.partial(_sys_exit, run_worker),
                 args=(i, args.num_workers, args.heartbeat, src_cfg,
                       collector_addr, graph_addr, msg_addr, export_addr, flags, args.prometheus_dir,
-                      args.prometheus_port, args.hutch)
+                      args.prometheus_port, args.hutch, args.hwm, args.timeout, args.cprofile,
+                      (select_lock, select_dict, select_idx, select_hb, select_manager))
             )
             proc.daemon = True
             proc.start()
@@ -333,7 +368,8 @@ def run_ami(args, queue=None):
             name='nodecol-n0',
             target=functools.partial(_sys_exit, run_node_collector),
             args=(0, args.num_workers, args.eb_depth, collector_addr, globalcol_addr, graph_addr,
-                  msg_addr, args.prometheus_dir, args.prometheus_port, args.hutch)
+                  msg_addr, args.prometheus_dir, args.prometheus_port, args.hutch,
+                  args.hwm, args.timeout, args.cprofile)
         )
         collector_proc.daemon = True
         collector_proc.start()
@@ -343,7 +379,7 @@ def run_ami(args, queue=None):
             name='globalcol',
             target=functools.partial(_sys_exit, run_global_collector),
             args=(0, 1, args.eb_depth, globalcol_addr, results_addr, graph_addr, msg_addr,
-                  args.prometheus_dir, args.prometheus_port, args.hutch)
+                  args.prometheus_dir, args.prometheus_port, args.hutch, args.hwm, args.timeout, args.cprofile)
         )
         globalcol_proc.daemon = True
         globalcol_proc.start()
@@ -353,7 +389,7 @@ def run_ami(args, queue=None):
             name='manager',
             target=functools.partial(_sys_exit, run_manager),
             args=(args.num_workers, 1, results_addr, graph_addr, comm_addr, msg_addr, info_addr, export_addr,
-                  view_addr, args.prometheus_dir, args.prometheus_port, args.hutch)
+                  view_addr, args.prometheus_dir, args.prometheus_port, args.hutch, args.hwm, args.cprofile)
         )
         manager_proc.daemon = True
         manager_proc.start()
@@ -376,7 +412,7 @@ def run_ami(args, queue=None):
             client_proc = mp.Process(
                 name='client',
                 target=run_client,
-                args=(args.graph_name, comm_addr, info_addr, view_addr, args.load, args.gui_mode,
+                args=(args.graph_name, comm_addr, info_addr, view_addr, export_addr, args.load, args.gui_mode,
                       args.prometheus_dir, args.prometheus_port, args.hutch,
                       args.use_opengl, args.use_numba,
                       src_cfg is None,
