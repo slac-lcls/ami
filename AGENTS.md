@@ -114,22 +114,10 @@ AMI uses three different graph representations:
 
 ### Starting AMI
 
-1. **Workers**: `ami-worker -n 3 psana://exp=rix101331225,run=156`
-   - Starts 3 worker processes
-   - Connects to specified data source
-
-2. **Manager**: `ami-manager`
-   - Starts the manager process
-   - Waits for worker connections
-
-3. **Client**: `ami-client`
-   - Launches GUI
-   - Connects to manager
-
-4. **Local mode**: 
+1. **Local mode**: 
    - Random source: `ami-local -n 3 random://examples/worker.json`
    - Psana offline run (single worker): `ami-local -f interval=1 -b 1 psana://exp=rix101331225,run=156`
-   - Psana with multiple workers: `ami-mpi -n 4 psana://exp=rix101345725,run=67` (ami-local does not support multiple workers with psana)
+   - Note: cannot run psana with multiple workers using ami-local due to psana limitation. Need MPI to distribute events otherwise every worker sees all events
    - Runs all components on single node for testing
 
 ### Loading a Graph
