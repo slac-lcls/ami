@@ -6,7 +6,6 @@ from pyqtgraph.debug import printExc
 from pyqtgraph import dockarea as dockarea
 from collections import OrderedDict
 from ami import LogConfig
-from ami.asyncqt import asyncSlot
 from ami.flowchart.FlowchartGraphicsView import FlowchartGraphicsView
 from ami.flowchart.Terminal import Terminal, TerminalGraphicsItem, ConnectionItem
 from ami.flowchart.library import LIBRARY
@@ -16,7 +15,7 @@ from ami.flowchart.Node import Node, NodeGraphicsItem, find_nearest
 from ami.flowchart.NodeLibrary import SourceLibrary
 from ami.flowchart.SourceConfiguration import SourceConfiguration
 from ami.flowchart.TypeEncoder import TypeEncoder
-from ami.comm import AsyncGraphCommHandler, GraphCommHandler
+from ami.comm import GraphCommHandler
 from ami.client import flowchart_messages as fcMsgs
 try:
     from qtconsole.rich_jupyter_widget import RichJupyterWidget
@@ -27,8 +26,7 @@ except ImportError:
 
 import ami.flowchart.Editor as EditorTemplate
 import amitypes
-import asyncio
-import zmq.asyncio
+import zmq
 import json
 import subprocess
 import re
