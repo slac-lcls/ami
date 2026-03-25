@@ -194,9 +194,186 @@ ami/
 - Monitor Prometheus metrics if enabled
 
 ### Testing
-- Example configurations in `examples/`
-- Test files in `tests/`
-- `.fc` files are saved flowchart configurations
+
+#### Test Organization
+- **Unit tests**: `tests/test_*.py` - Test individual components
+- **GUI tests**: `tests/test_gui.py` - Test flowchart GUI functionality
+- **Integration tests**: Use `ami-local` with example configurations
+- **Example configurations**: `examples/` directory
+- **Test graphs**: `tests/graphs/*.fc` - Saved flowchart configurations for testing
+
+#### Regression Testing Strategy
+
+**When making changes to AMI, always run regression tests to ensure existing functionality still works.**
+
+##### Quick Regression Test (5 minutes)
+Run this before any commit to catch major breakages:
+
+```bash
+# 1. Run unit tests
+pytest tests/ -v
+
+# 2. Test ami-local with random source and example graph
+ami-local -n 3 -l examples/basic.ami
+
+# 3. Verify GUI loads and basic operations work
+# - Load a graph
+# - Add a node
+# - Connect nodes
+# - Save graph
+```
+
+##### Full Regression Test Suite (15-30 minutes)
+Run this before submitting a PR or merging to master:
+
+```bash
+# 1. Run all unit tests with coverage
+pytest tests/ -v --cov=ami --cov-report=term-missing
+
+# 2. Test all data source types
+ami-local -n 3 random://examples/worker.json -l examples/basic.ami
+ami-local -n 1 psana://exp=xcsdaq13:run=14 -l examples/basic.ami  # If psana available
+
+# 3. Test auto-generation feature (if applicable)
+ami-local -n 3 -l tests/graphs/ATM_crix_new.fc
+ami-local -n 3 -l tests/graphs/ATM_crix_new.fc --source-type static
+
+# 4. Test flowchart operations
+# - Load multiple .fc files from tests/graphs/
+# - Test save/load cycle
+# - Test node library (add various node types)
+# - Test subgraph operations (if available)
+
+# 5. Test multi-worker scenarios
+ami-local -n 1 random://examples/worker.json -l examples/basic.ami
+ami-local -n 3 random://examples/worker.json -l examples/basic.ami
+ami-local -n 8 random://examples/worker.json -l examples/basic.ami
+
+# 6. Test console mode (headless)
+ami-local -n 3 random://examples/worker.json -l examples/basic.ami --console
+ami-local -n 3 random://examples/worker.json -l examples/basic.ami --headless
+
+# 7. Check for resource leaks (run multiple times)
+for i in {1..5}; do
+  ami-local -n 3 random://examples/worker.json -l examples/basic.ami &
+  PID=$!
+  sleep 10
+  kill $PID
+  sleep 2
+done
+```
+
+##### Critical Areas to Test After Changes
+
+**If you modified `ami/flowchart/Flowchart.py`:**
+- Test loading and saving .fc files
+- Test adding/removing/connecting nodes
+- Test Qt event handling and cleanup
+- Run `pytest tests/test_gui.py -v`
+
+**If you modified `ami/worker.py` or `ami/data.py`:**
+- Test all data source types (static, random, psana)
+- Test event processing with various event counts
+- Test heartbeat handling and timeouts
+- Test transition states (Configure, Unconfigure, etc.)
+
+**If you modified `ami/collector.py` or `ami/manager.py`:**
+- Test with various worker counts (1, 3, 8)
+- Test result aggregation and event building
+- Test client connections and disconnections
+
+**If you modified `ami/local.py`:**
+- Test all command-line argument combinations
+- Test auto-generation of worker config (if applicable)
+- Test IPC vs TCP communication modes
+- Test Prometheus integration
+
+**If you modified graph nodes in `ami/flowchart/library/`:**
+- Test the specific node type in isolation
+- Test connections to/from the node
+- Test with real data flowing through
+- Check for memory leaks in display widgets
+
+##### Automated Testing with pytest
+
+```bash
+# Run all tests
+pytest tests/
+
+# Run specific test file
+pytest tests/test_gui.py -v
+
+# Run specific test function
+pytest tests/test_gui.py::test_flowchart_from_file -v
+
+# Run with coverage
+pytest tests/ --cov=ami --cov-report=html
+
+# Run tests in parallel (faster)
+pytest tests/ -n auto
+
+# Run tests with output capture disabled (see print statements)
+pytest tests/ -v -s
+```
+
+##### GUI Testing Considerations
+
+**Qt GUI tests require special handling:**
+- Must run in main thread (use `pytest-qt` fixtures)
+- Need proper cleanup of Qt resources (QSocketNotifiers, widgets)
+- Mock ZMQ sockets to avoid actual network communication
+- Use `qtbot.waitSignal()` for async operations
+
+**Common pitfalls:**
+- Forgetting to close/cleanup QSocketNotifiers before closing ZMQ sockets
+- Not calling `deleteLater()` on Qt objects
+- Resource leaks from Prometheus metrics (need to unregister)
+- File descriptor leaks from unclosed sockets
+
+**Best practices:**
+- Always use fixtures that properly clean up resources
+- Mock external dependencies (ZMQ, network)
+- Test cleanup explicitly (create/destroy multiple times)
+- Use `qtbot.wait()` to allow Qt event loop to process events
+
+##### Example Test Workflow
+
+```bash
+# Before starting work
+git checkout -b feature/my-feature
+pytest tests/ -v  # Ensure all tests pass before changes
+
+# During development
+# Make changes...
+pytest tests/test_gui.py::test_specific_feature -v  # Test specific feature
+
+# Before committing
+pytest tests/ -v  # Run all tests
+ami-local -n 3 -l examples/basic.ami  # Manual smoke test
+
+# Before PR
+pytest tests/ --cov=ami --cov-report=html  # Check coverage
+# Run full regression test suite
+# Review coverage report in htmlcov/index.html
+```
+
+##### Regression Test Checklist
+
+Before committing changes, verify:
+- [ ] All existing pytest tests pass
+- [ ] `ami-local` starts successfully with example configs
+- [ ] GUI loads and basic operations work (if GUI changes)
+- [ ] No new warnings or errors in logs
+- [ ] No resource leaks (file descriptors, memory)
+- [ ] Backward compatibility maintained (if applicable)
+- [ ] Documentation updated (if API changes)
+
+Before submitting PR:
+- [ ] Full regression test suite passes
+- [ ] Code coverage hasn't decreased significantly
+- [ ] All critical areas tested based on changes
+- [ ] Manual testing performed on real use cases
+- [ ] Performance hasn't degraded noticeably
 
 ## Important Configuration Files
 
