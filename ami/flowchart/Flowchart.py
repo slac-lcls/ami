@@ -271,10 +271,28 @@ class Flowchart(Node):
         self.close()
 
     def close(self):
+        # STEP 1: Disable and delete QSocketNotifiers BEFORE closing sockets
+        # This prevents Qt from trying to poll closed file descriptors
+        if self._graphinfo_notifier is not None:
+            self._graphinfo_notifier.setEnabled(False)
+            self._graphinfo_notifier.deleteLater()
+            self._graphinfo_notifier = None
+        
+        if self._checkpoint_notifier is not None:
+            self._checkpoint_notifier.setEnabled(False)
+            self._checkpoint_notifier.deleteLater()
+            self._checkpoint_notifier = None
+        
+        # STEP 2: Close ZMQ sockets (now safe - notifiers are disabled)
         for sock in self.socks:
             sock.close(linger=0)
+        
+        # STEP 3: Clean up widget resources (including Prometheus metrics)
         if self._widget is not None:
+            self._widget.close()  # Call new close() method
             self._widget.graphCommHandler.close()
+        
+        # STEP 4: Terminate ZMQ context
         self.ctx.term()
 
     def start_prometheus(self, port):
@@ -1076,6 +1094,20 @@ class FlowchartCtrlWidget(QtWidgets.QWidget):
         self.chart.sigFileLoaded.emit(None)
         self.features = Features(self.graphCommHandler)
         self.graphCommHandler.updatePlots(self.features.plots)
+
+    def close(self):
+        """Clean up resources including Prometheus metrics."""
+        # Unregister Prometheus metrics from global registry
+        # This allows new Flowchart instances to register metrics with the same name
+        try:
+            pc.REGISTRY.unregister(self.graph_info)
+        except Exception:
+            pass  # Already unregistered or never registered
+        
+        try:
+            pc.REGISTRY.unregister(self.graph_version)
+        except Exception:
+            pass  # Already unregistered or never registered
 
     def configureClicked(self):
         self.sourceConfigure.show()
