@@ -25,3 +25,5 @@ htmlcov/
 .gdb_history
 examples/*
 *.cprof
+.opencode/
+.code-index.db
