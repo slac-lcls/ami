@@ -94,6 +94,178 @@ class Flowchart(Node):
 
         self.configure = configure
 
+        # QSocketNotifiers for ZMQ sockets - initialized when Qt app is running
+        self._graphinfo_notifier = None
+        self._checkpoint_notifier = None
+        
+        # Event rate tracking (used in _process_source_update)
+        self._num_workers = None
+        self._events_per_second = None
+        self._total_events = None
+
+    def setup_socket_notifiers(self):
+        """Setup QSocketNotifiers for ZMQ sockets after Qt app is running."""
+        from qtpy.QtCore import QSocketNotifier
+        
+        # Graphinfo socket notifier (receives source updates)
+        fd = self.graphinfo.get(zmq.FD)
+        self._graphinfo_notifier = QSocketNotifier(fd, QSocketNotifier.Type.Read)
+        self._graphinfo_notifier.activated.connect(self._handle_graphinfo)
+        
+        # Checkpoint socket notifier (receives ctrlnode updates)
+        fd = self.checkpoint.get(zmq.FD)
+        self._checkpoint_notifier = QSocketNotifier(fd, QSocketNotifier.Type.Read)
+        self._checkpoint_notifier.activated.connect(self._handle_checkpoint)
+
+    def _handle_graphinfo(self):
+        """Handle readable graphinfo socket."""
+        # Check if socket is actually readable
+        events = self.graphinfo.get(zmq.EVENTS)
+        if events & zmq.POLLIN:
+            try:
+                topic = self.graphinfo.recv_string(zmq.NOBLOCK)
+                source = self.graphinfo.recv_string(zmq.NOBLOCK)
+                msg = self.graphinfo.recv_pyobj(zmq.NOBLOCK)
+                # Process message
+                self._process_source_update(topic, source, msg)
+            except zmq.Again:
+                pass  # No message available
+
+    def _handle_checkpoint(self):
+        """Handle readable checkpoint socket."""
+        events = self.checkpoint.get(zmq.EVENTS)
+        if events & zmq.POLLIN:
+            try:
+                topic = self.checkpoint.recv_string(zmq.NOBLOCK)
+                msg = self.checkpoint.recv_pyobj(zmq.NOBLOCK)
+                # Process message
+                self._process_checkpoint_update(msg)
+            except zmq.Again:
+                pass
+
+    def _process_checkpoint_update(self, msg):
+        """Process checkpoint update message (extracted from updateState)."""
+        node_name = msg.name
+        new_node_state = msg.state
+
+        if node_name not in self._graph.nodes:
+            return
+
+        node = self._graph.nodes[node_name]['node']
+        current_node_state = node.saveState()
+        restore_ctrl = False
+        restore_widget = False
+
+        if 'ctrl' in new_node_state:
+            if current_node_state['ctrl'] != new_node_state['ctrl']:
+                current_node_state['ctrl'] = new_node_state['ctrl']
+                restore_ctrl = True
+
+        if 'widget' in new_node_state:
+            if current_node_state['widget'] != new_node_state['widget']:
+                restore_widget = True
+                current_node_state['widget'] = new_node_state['widget']
+
+        if 'geometry' in new_node_state:
+            node.geometry = QtCore.QByteArray.fromHex(bytes(new_node_state['geometry'], 'ascii'))
+
+        if restore_ctrl or restore_widget:
+            node.blockSignals(True)
+            node.restoreState(current_node_state)
+            node.blockSignals(False)
+            node.changed = node.isChanged(restore_ctrl, restore_widget)
+            if node.changed:
+                self.sigNodeChanged.emit(node)
+
+        node.viewed = new_node_state['viewed']
+
+    def _process_source_update(self, topic, source, msg):
+        """Process source update message (extracted from updateSources)."""
+        if topic == 'sources':
+            source_library = SourceLibrary()
+            for source_name, node_type in msg.items():
+                pth = []
+                if ":" in source_name:
+                    for part in source_name.split(':')[:-1]:
+                        if pth:
+                            part = ":".join((pth[-1], part))
+                        pth.append(part)
+                elif "_" in source_name:
+                    for part in source_name.split('_')[:-1]:
+                        if pth:
+                            part = "_".join((pth[-1], part))
+                        pth.append(part)
+                source_library.addNodeType(source_name, amitypes.loads(node_type), [pth])
+
+            self.source_library = source_library
+
+            ctrl = self.widget()
+            if ctrl:
+                tree = ctrl.ui.source_tree
+                ctrl.ui.clear_model(tree)
+                ctrl.ui.create_model(ctrl.ui.source_tree, self.source_library.getLabelTree(), typ="SourceTree")
+                ctrl.chartWidget.updateStatus("Updated sources.")
+
+        elif topic == 'event_rate':
+            ctrl = self.widget()
+            if not ctrl or not hasattr(ctrl, 'graphCommHandler'):
+                return
+                
+            # Get num_workers if not already cached
+            if not hasattr(self, '_num_workers') or self._num_workers is None:
+                compiler_args = ctrl.graphCommHandler.compilerArgs
+                self._num_workers = compiler_args['num_workers']
+                self._events_per_second = [None] * self._num_workers
+                self._total_events = [None] * self._num_workers
+
+            if ctrl.graph_name not in msg:
+                return
+                
+            time_per_event = msg[ctrl.graph_name]
+            worker = int(re.search(r'(\d)+', source).group())
+            self._events_per_second[worker] = len(time_per_event)/(time_per_event[-1][1] - time_per_event[0][0])
+            self._total_events[worker] = msg['num_events']
+
+            if all(self._events_per_second):
+                events_per_second = int(np.average(self._events_per_second))
+                total_num_events = int(np.sum(self._total_events))
+                ctrl.ui.rateLbl.setText(f"Num Events: {total_num_events} Avg Events/Sec: {events_per_second}")
+                self._events_per_second = [None] * self._num_workers
+                self._total_events = [None] * self._num_workers
+                
+        elif topic == 'warning':
+            ctrl = self.widget()
+            if not ctrl:
+                return
+            if hasattr(msg, 'node_name'):
+                if msg.graph_name != ctrl.graph_name:
+                    return
+                node_name = ""
+                if msg.node_name in ctrl.metadata:
+                    node_name = ctrl.metadata[msg.node_name]['parent']
+                if node_name in self.nodes(data='node'):
+                    node = self.nodes(data='node')[node_name]
+                    if node.exception is None:
+                        node.setException(msg, "warning")
+                        ctrl.chartWidget.updateStatus(f"WARNING: {source} {node.name()}: {msg}", color='orange')
+                        logger.warning(f"{source} {node.name()}: {msg}")
+                        
+        elif topic == 'error':
+            ctrl = self.widget()
+            if not ctrl:
+                return
+            if hasattr(msg, 'node_name'):
+                if msg.graph_name != ctrl.graph_name:
+                    return
+                node_name = ctrl.metadata[msg.node_name]['parent']
+                node = self.nodes(data='node')[node_name]
+                node.setException(msg)
+                ctrl.chartWidget.updateStatus(f"ERROR: {source} {node.name()}: {msg}", color='red')
+                logger.error(f"{source} {node.name()}: {msg}")
+            else:
+                ctrl.chartWidget.updateStatus(f"ERROR: {source}: {msg}", color='red')
+                logger.error(f"{source}: {msg}")
+
     def __enter__(self):
         return self
 
@@ -592,138 +764,35 @@ class Flowchart(Node):
 
         self._graph = nx.MultiDiGraph()
 
-    async def updateState(self):
-        while True:
-            await self.checkpoint.recv_string()
-            msg = await self.checkpoint.recv_pyobj()
-            node_name = msg.name
-            new_node_state = msg.state
-
-            if node_name not in self._graph.nodes:
-                continue
-
-            node = self._graph.nodes[node_name]['node']
-            current_node_state = node.saveState()
-            restore_ctrl = False
-            restore_widget = False
-
-            if 'ctrl' in new_node_state:
-                if current_node_state['ctrl'] != new_node_state['ctrl']:
-                    current_node_state['ctrl'] = new_node_state['ctrl']
-                    restore_ctrl = True
-
-            if 'widget' in new_node_state:
-                if current_node_state['widget'] != new_node_state['widget']:
-                    restore_widget = True
-                    current_node_state['widget'] = new_node_state['widget']
-
-            if 'geometry' in new_node_state:
-                node.geometry = QtCore.QByteArray.fromHex(bytes(new_node_state['geometry'], 'ascii'))
-
-            if restore_ctrl or restore_widget:
-                node.blockSignals(True)
-                node.restoreState(current_node_state)
-                node.blockSignals(False)
-                node.changed = node.isChanged(restore_ctrl, restore_widget)
-                if node.changed:
-                    self.sigNodeChanged.emit(node)
-
-            node.viewed = new_node_state['viewed']
-
-    async def updateSources(self, init=False):
-        num_workers = None
-
-        while True:
-            topic = await self.graphinfo.recv_string()
-            source = await self.graphinfo.recv_string()
-            msg = await self.graphinfo.recv_pyobj()
-
-            if topic == 'sources':
-                source_library = SourceLibrary()
-                for source, node_type in msg.items():
-                    pth = []
-                    if ":" in source:
-                        for part in source.split(':')[:-1]:
-                            if pth:
-                                part = ":".join((pth[-1], part))
-                            pth.append(part)
-                    elif "_" in source:
-                        for part in source.split('_')[:-1]:
-                            if pth:
-                                part = "_".join((pth[-1], part))
-                            pth.append(part)
-                    source_library.addNodeType(source, amitypes.loads(node_type), [pth])
-
-                self.source_library = source_library
-
-                if init:
-                    break
-
-                ctrl = self.widget()
-                tree = ctrl.ui.source_tree
-                ctrl.ui.clear_model(tree)
-                ctrl.ui.create_model(ctrl.ui.source_tree, self.source_library.getLabelTree(), typ="SourceTree")
-
-                ctrl.chartWidget.updateStatus("Updated sources.")
-
-            elif topic == 'event_rate':
-                if num_workers is None:
-                    ctrl = self.widget()
-                    compiler_args = await ctrl.graphCommHandler.compilerArgs
-                    num_workers = compiler_args['num_workers']
-                    events_per_second = [None]*num_workers
-                    total_events = [None]*num_workers
-
-                if ctrl.graph_name not in msg:
-                    continue
-                time_per_event = msg[ctrl.graph_name]
-                worker = int(re.search(r'(\d)+', source).group())
-                events_per_second[worker] = len(time_per_event)/(time_per_event[-1][1] - time_per_event[0][0])
-                total_events[worker] = msg['num_events']
-
-                if all(events_per_second):
-                    events_per_second = int(np.average(events_per_second))
-                    total_num_events = int(np.sum(total_events))
-                    ctrl = self.widget()
-                    ctrl.ui.rateLbl.setText(f"Num Events: {total_num_events} Avg Events/Sec: {events_per_second}")
-                    events_per_second = [None]*num_workers
-                    total_events = [None]*num_workers
-            elif topic == 'warning':
-                ctrl = self.widget()
-                if hasattr(msg, 'node_name'):
-                    if msg.graph_name != ctrl.graph_name:
-                        continue
-                    node_name = ""
-                    if msg.node_name in ctrl.metadata:
-                        node_name = ctrl.metadata[msg.node_name]['parent']
-                    if node_name in self.nodes(data='node'):
-                        node = self.nodes(data='node')[node_name]
-                        if node.exception is None:
-                            node.setException(msg, "warning")
-                            ctrl.chartWidget.updateStatus(f"WARNING: {source} {node.name()}: {msg}", color='orange')
-                            logger.warning(f"{source} {node.name()}: {msg}")
-            elif topic == 'error':
-                ctrl = self.widget()
-                if hasattr(msg, 'node_name'):
-                    if msg.graph_name != ctrl.graph_name:
-                        continue
-                    node_name = ctrl.metadata[msg.node_name]['parent']
-                    node = self.nodes(data='node')[node_name]
-                    node.setException(msg)
-                    ctrl.chartWidget.updateStatus(f"ERROR: {source} {node.name()}: {msg}", color='red')
-                    logger.error(f"{source} {node.name()}: {msg}")
+    def updateSources(self, init=False):
+        """Blocking initial source update or called by notifier."""
+        if init:
+            # Blocking initial update - keep trying until we get source info
+            while True:
+                events = self.graphinfo.get(zmq.EVENTS)
+                if events & zmq.POLLIN:
+                    topic = self.graphinfo.recv_string()
+                    source = self.graphinfo.recv_string()
+                    msg = self.graphinfo.recv_pyobj()
+                    if topic == 'sources':
+                        self._process_source_update(topic, source, msg)
+                        break
                 else:
-                    ctrl.chartWidget.updateStatus(f"ERROR: {source}: {msg}", color='red')
-                    logger.error(f"{source}: {msg}")
+                    import time
+                    time.sleep(0.01)  # Brief sleep before retry
+        # else: called by notifier, _handle_graphinfo already processed the message
 
-    async def run(self, load=None):
-        tasks = [asyncio.create_task(self.updateState()),
-                 asyncio.create_task(self.updateSources())]
-
+    def initialize(self, load=None):
+        """Initialize flowchart, setup socket notifiers, optionally load file."""
+        # Setup socket notifiers to handle updates
+        self.setup_socket_notifiers()
+        
+        # Initial source update (blocking)
+        self.updateSources(init=True)
+        
+        # Load file if specified
         if load:
-            await self.loadFile(load)
-
-        await asyncio.gather(*tasks)
+            self.loadFile(load)
 
 
 class FlowchartCtrlWidget(QtWidgets.QWidget):

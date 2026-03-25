@@ -23,7 +23,8 @@ from ami.flowchart.library import LIBRARY
 from ami.flowchart.NodeLibrary import isNodeClass
 from ami.flowchart.library.common import SourceNode
 from ami.flowchart.library.Editors import STYLE
-from ami.asyncqt import QEventLoop, asyncSlot
+# QEventLoop and asyncSlot no longer needed for flowchart GUI
+# MessageBroker still uses asyncio but runs in separate process
 from qtpy import QtCore, QtWidgets
 
 try:
@@ -60,9 +61,6 @@ def run_editor_window(broker_addr, graphmgr_addr, checkpoint_addr, load=None, pr
     if THEME:
         qdarktheme.setup_theme(THEME)
 
-    loop = QEventLoop(app)
-    asyncio.set_event_loop(loop)
-
     # Create main window with grid layout
     win = QtWidgets.QMainWindow()
     title = 'AMI Client'
@@ -94,17 +92,17 @@ def run_editor_window(broker_addr, graphmgr_addr, checkpoint_addr, load=None, pr
     fc.sigFileLoaded.connect(update_title)
     fc.sigFileSaved.connect(update_title)
 
-    with loop:
-        loop.run_until_complete(fc.updateSources(init=True))
+    # Initialize flowchart (sets up socket notifiers and loads initial sources)
+    fc.initialize(load=load)
 
-        # # Add flowchart control panel to the main window
-        win.setCentralWidget(fc.widget())
-        win.show()
+    # Add flowchart control panel to the main window
+    win.setCentralWidget(fc.widget())
+    win.show()
 
-        app.aboutToQuit.connect(fc.widget().clear)
+    app.aboutToQuit.connect(fc.widget().clear)
 
-        loop.create_task(fc.run(load))
-        loop.run_forever()
+    # Start Qt event loop normally
+    app.exec_()
 
     try:
         proc = subprocess.run(["dmypy", "--status-file", dmypy_file.name, "stop"])
