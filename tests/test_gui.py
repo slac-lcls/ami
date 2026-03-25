@@ -63,15 +63,7 @@ class BrokerProxy:
         return self.comm.recv()
 
 
-@pytest.fixture(scope='function')
-def event_loop(qevent_loop):
-    """
-    Adding this overrides the event_loop fixture from pytest-asyncio. This lets
-    us use the qevent_loop when using the @pytest.mark.asyncio decorator
-    """
-    yield qevent_loop
-    # clean up the event loop after test
-    qevent_loop.close()
+# event_loop fixture removed - no longer needed after asyncio removal from flowchart
 
 
 @pytest.fixture(scope='function')
@@ -139,7 +131,7 @@ def dmypy():
 
 
 @pytest.fixture(scope='function')
-def flowchart(request, workerjson, broker, ipc_dir, graphmgr_addr, qevent_loop, dmypy):
+def flowchart(request, workerjson, broker, ipc_dir, graphmgr_addr, dmypy):
     try:
         from pytest_cov.embed import cleanup_on_sigterm
         cleanup_on_sigterm()
@@ -169,7 +161,7 @@ def flowchart(request, workerjson, broker, ipc_dir, graphmgr_addr, qevent_loop, 
                        graphmgr_addr=graphmgr_addr,
                        checkpoint_addr=broker.checkpoint_pub_addr) as fc:
 
-            qevent_loop.run_until_complete(fc.updateSources(init=True))
+            fc.initialize()  # Sync initialization
 
             yield (fc, broker)
 
@@ -193,7 +185,7 @@ def flowchart(request, workerjson, broker, ipc_dir, graphmgr_addr, qevent_loop, 
 
 
 @pytest.fixture(scope='function')
-def flowchart_hdf(request, tmp_path, qtbot, broker, ipc_dir, graphmgr_addr, qevent_loop):
+def flowchart_hdf(request, tmp_path, qtbot, broker, ipc_dir, graphmgr_addr):
     try:
         from pytest_cov.embed import cleanup_on_sigterm
         cleanup_on_sigterm()
@@ -232,7 +224,7 @@ def flowchart_hdf(request, tmp_path, qtbot, broker, ipc_dir, graphmgr_addr, qeve
                        graphmgr_addr=graphmgr_addr,
                        checkpoint_addr=broker.checkpoint_pub_addr) as fc:
 
-            qevent_loop.run_until_complete(fc.updateSources(init=True))
+            fc.initialize()  # Sync initialization
 
             qtbot.addWidget(fc.widget())
             fc.loadFile(os.path.join('tests/graphs', request.param[1]))
@@ -323,9 +315,8 @@ def test_sources(qtbot, flowchart):
         pass
 
 
-@pytest.mark.asyncio
 @pytest.mark.parametrize('flowchart', ['static'], indirect=True)
-async def test_editor(qtbot, flowchart, tmp_path):
+def test_editor(qtbot, flowchart, tmp_path):
     flowchart, broker = flowchart
 
     qtbot.addWidget(flowchart.widget())
@@ -344,7 +335,7 @@ async def test_editor(qtbot, flowchart, tmp_path):
     roi_in = roi_node._inputs['In']
 
     cspad_out().connectTo(roi_in())
-    await asyncio.sleep(0.1) # need to wait for nodeTermConnected slot to execute before we can check edges
+    qtbot.wait(100)  # Wait 100ms for nodeTermConnected slot to execute before we can check edges
     assert len(flowchart._graph.edges()) == 1
 
     widget = flowchart.widget()
@@ -353,10 +344,10 @@ async def test_editor(qtbot, flowchart, tmp_path):
     widget.setCurrentFile(pth)
     widget.saveClicked()
 
-    await widget.clear()
+    widget.clear()
     assert len(flowchart._graph.edges()) == 0
 
-    await flowchart.loadFile(pth)
+    flowchart.loadFile(pth)
     assert len(flowchart._graph.edges()) == 1
 
 
