@@ -41,6 +41,7 @@ import os
 import typing  # noqa
 import logging
 import socket
+import threading
 import prometheus_client as pc
 
 
@@ -63,7 +64,7 @@ class Flowchart(Node):
         self.graphmgr_addr = graphmgr_addr
         self.source_library = None
 
-        self.ctx = zmq.asyncio.Context()
+        self.ctx = zmq.Context()
         self.broker = self.ctx.socket(zmq.PUB)  # used to create new node processes
         self.broker.connect(broker_addr)
         self.socks.append(self.broker)
@@ -194,16 +195,14 @@ class Flowchart(Node):
         if node.isChanged(True, True):
             self.sigNodeChanged.emit(node)
 
-    @asyncSlot(object)
-    async def send_requested_data(self, requested_data):
+    def send_requested_data(self, requested_data):
         ctrl = self.widget()
-        await ctrl.graphCommHandler.update_requested_data(requested_data)
+        ctrl.graphCommHandler.update_requested_data(requested_data)
 
-    @asyncSlot(object, object)
-    async def nodeClosed(self, node, input_vars):
+    def nodeClosed(self, node, input_vars):
         self._graph.remove_node(node.name())
-        await self.broker.send_string(node.name(), zmq.SNDMORE)
-        await self.broker.send_pyobj(fcMsgs.CloseNode())
+        self.broker.send_string(node.name(), zmq.SNDMORE)
+        self.broker.send_pyobj(fcMsgs.CloseNode())
         ctrl = self.widget()
         name = node.name()
 
@@ -211,45 +210,42 @@ class Flowchart(Node):
             self.deleted_nodes.append(name)
             self.sigNodeChanged.emit(node)
             if ctrl.features.remove_plot(name):
-                await ctrl.graphCommHandler.updatePlots(ctrl.features.plots)
+                ctrl.graphCommHandler.updatePlots(ctrl.features.plots)
         elif isinstance(node, SourceNode):
-            await ctrl.features.discard(name, name)
-            await ctrl.graphCommHandler.unview(name)
-            await ctrl.graphCommHandler.updatePlots(ctrl.features.plots)
+            ctrl.features.discard(name, name)
+            ctrl.graphCommHandler.unview(name)
+            ctrl.graphCommHandler.updatePlots(ctrl.features.plots)
         elif node.viewable():
             views = []
             for term, in_var in input_vars.items():
-                discarded = await ctrl.features.discard(name, in_var)
+                discarded = ctrl.features.discard(name, in_var)
                 if discarded:
                     views.append(in_var)
             if views:
-                await ctrl.graphCommHandler.unview(views)
-                await ctrl.graphCommHandler.updatePlots(ctrl.features.plots)
+                ctrl.graphCommHandler.unview(views)
+                ctrl.graphCommHandler.updatePlots(ctrl.features.plots)
         elif node.exportable():
             if 'eventid' in input_vars:
-                await ctrl.graphCommHandler.unexport([input_vars['In'], input_vars['eventid']],
+                ctrl.graphCommHandler.unexport([input_vars['In'], input_vars['eventid']],
                                                      [node.values['alias'], "_timestamp"])
             elif 'Timestamp' in input_vars:
-                await ctrl.graphCommHandler.unexport([input_vars['In'], input_vars['Timestamp']],
+                ctrl.graphCommHandler.unexport([input_vars['In'], input_vars['Timestamp']],
                                                      [node.values['alias'], "_timestamp"])
 
-    @asyncSlot(object, object)
-    async def nodeTermAdded(self, node, term):
+    def nodeTermAdded(self, node, term):
         name = node.name()
         state = term.saveState()
         msg = fcMsgs.NodeTermAdded(name, term.name(), state)
-        await self.broker.send_string(name, zmq.SNDMORE)
-        await self.broker.send_pyobj(msg)
+        self.broker.send_string(name, zmq.SNDMORE)
+        self.broker.send_pyobj(msg)
 
-    @asyncSlot(object, object)
-    async def nodeTermRemoved(self, node, term):
+    def nodeTermRemoved(self, node, term):
         name = node.name()
         msg = fcMsgs.NodeTermRemoved(name, term.name())
-        await self.broker.send_string(name, zmq.SNDMORE)
-        await self.broker.send_pyobj(msg)
+        self.broker.send_string(name, zmq.SNDMORE)
+        self.broker.send_pyobj(msg)
 
-    @asyncSlot(object, object)
-    async def nodeTermConnected(self, localTerm, remoteTerm):
+    def nodeTermConnected(self, localTerm, remoteTerm):
         if remoteTerm.isOutput():
             t = remoteTerm
             remoteTerm = localTerm
@@ -268,21 +264,20 @@ class Flowchart(Node):
                                            remoteNode, isinstance(remoteTerm.node(), SourceNode),
                                            remoteTerm.name(), remoteTerm.saveState())
             localTerm.node().terminalConnected(msg)
-            await self.broker.send_string(localNode, zmq.SNDMORE)
-            await self.broker.send_pyobj(msg)
+            self.broker.send_string(localNode, zmq.SNDMORE)
+            self.broker.send_pyobj(msg)
 
             msg = fcMsgs.NodeTermConnected(remoteNode, isinstance(remoteTerm.node(), SourceNode),
                                            remoteTerm.name(), remoteTerm.saveState(),
                                            localNode, isinstance(localTerm.node(), SourceNode),
                                            localTerm.name(), localTerm.saveState())
             remoteTerm.node().terminalConnected(msg)
-            await self.broker.send_string(remoteNode, zmq.SNDMORE)
-            await self.broker.send_pyobj(msg)
+            self.broker.send_string(remoteNode, zmq.SNDMORE)
+            self.broker.send_pyobj(msg)
 
         self.sigNodeChanged.emit(localTerm.node())
 
-    @asyncSlot(object, object)
-    async def nodeTermDisconnected(self, localTerm, remoteTerm):
+    def nodeTermDisconnected(self, localTerm, remoteTerm):
         if remoteTerm.isOutput():
             t = remoteTerm
             remoteTerm = localTerm
@@ -300,16 +295,16 @@ class Flowchart(Node):
                                               remoteNode, isinstance(remoteTerm.node(), SourceNode),
                                               remoteTerm.name(), remoteTerm.saveState())
             localTerm.node().terminalDisconnected(msg)
-            await self.broker.send_string(localNode, zmq.SNDMORE)
-            await self.broker.send_pyobj(msg)
+            self.broker.send_string(localNode, zmq.SNDMORE)
+            self.broker.send_pyobj(msg)
 
             msg = fcMsgs.NodeTermDisconnected(remoteNode, isinstance(remoteTerm.node(), SourceNode),
                                               remoteTerm.name(), remoteTerm.saveState(),
                                               localNode, isinstance(localTerm.node(), SourceNode),
                                               localTerm.name(), localTerm.saveState())
             remoteTerm.node().terminalDisconnected(msg)
-            await self.broker.send_string(remoteNode, zmq.SNDMORE)
-            await self.broker.send_pyobj(msg)
+            self.broker.send_string(remoteNode, zmq.SNDMORE)
+            self.broker.send_pyobj(msg)
 
         self.sigNodeChanged.emit(localTerm.node())
 
@@ -321,16 +316,14 @@ class Flowchart(Node):
         node.changed = True
         self.sigNodeChanged.emit(node)
 
-    @asyncSlot(object, object)
-    async def nodeLabelChanged(self, node, label):
+    def nodeLabelChanged(self, node, label):
         """Handle label change events from nodes and forward to NodeProcess"""
         name = node.name()
         msg = fcMsgs.NodeLabelChanged(name, label)
-        await self.broker.send_string(name, zmq.SNDMORE)
-        await self.broker.send_pyobj(msg)
+        self.broker.send_string(name, zmq.SNDMORE)
+        self.broker.send_pyobj(msg)
 
-    @asyncSlot(object)
-    async def nodeEnabled(self, root):
+    def nodeEnabled(self, root):
         enabled = root._enabled
 
         outputs = [n for n, d in self._graph.out_degree() if d == 0]
@@ -351,15 +344,15 @@ class Flowchart(Node):
                             self.deleted_nodes.append(name)
                         elif node.viewable():
                             for term, in_var in node.input_vars().items():
-                                discarded = await ctrl.features.discard(name, in_var)
+                                discarded = ctrl.features.discard(name, in_var)
                                 if discarded:
                                     views.append(in_var)
                     else:
                         node.changed = True
 
         if views:
-            await ctrl.graphCommHandler.unview(views)
-        await ctrl.applyClicked()
+            ctrl.graphCommHandler.unview(views)
+        ctrl.applyClicked()
 
     def chartGraphicsItem(self):
         """
@@ -529,8 +522,7 @@ class Flowchart(Node):
                 self._graph.add_edge(localNode, remoteNode, key=key,
                                      from_term=localTerm, to_term=remoteTerm)
 
-    @asyncSlot(str)
-    async def loadFile(self, fileName=None):
+    def loadFile(self, fileName=None):
         """
         Load a flowchart (*.fc) file.
         """
@@ -544,11 +536,11 @@ class Flowchart(Node):
             state = json.load(f)
 
         ctrl = self.widget()
-        await ctrl.clear()
+        ctrl.clear()
         self.restoreState(state)
         self.viewBox.autoRange()
         self.sigFileLoaded.emit(fileName)
-        await ctrl.applyClicked(build_views=False)
+        ctrl.applyClicked(build_views=False)
 
         nodes = []
         for name, node in self.nodes(data='node'):
@@ -556,7 +548,7 @@ class Flowchart(Node):
                 nodes.append(node)
             node.blockSignals(False)
 
-        await ctrl.chartWidget.build_views(nodes, ctrl=True, export=True)
+        ctrl.chartWidget.build_views(nodes, ctrl=True, export=True)
 
     def saveFile(self, fileName=None, startDir=None, suggestedFileName='flowchart.fc'):
         """
@@ -588,14 +580,14 @@ class Flowchart(Node):
         ctrl.chartWidget.updateStatus(f"Saved graph to: {fileName}")
         self.sigFileSaved.emit(fileName)
 
-    async def clear(self):
+    def clear(self):
         """
         Remove all nodes from this flowchart except the original input/output nodes.
         """
         for name, gnode in self._graph.nodes().items():
             node = gnode['node']
-            await self.broker.send_string(name, zmq.SNDMORE)
-            await self.broker.send_pyobj(fcMsgs.CloseNode())
+            self.broker.send_string(name, zmq.SNDMORE)
+            self.broker.send_pyobj(fcMsgs.CloseNode())
             node.close(emit=False)
 
         self._graph = nx.MultiDiGraph()
@@ -749,7 +741,7 @@ class FlowchartCtrlWidget(QtWidgets.QWidget):
         super().__init__()
 
         self.graphmgr_addr = graphmgr_addr
-        self.graphCommHandler = AsyncGraphCommHandler(graphmgr_addr.name, graphmgr_addr.comm, ctx=chart.ctx)
+        self.graphCommHandler = GraphCommHandler(graphmgr_addr.name, graphmgr_addr.comm)
         self.graph_name = graphmgr_addr.name
         self.metadata = None
 
@@ -797,8 +789,7 @@ class FlowchartCtrlWidget(QtWidgets.QWidget):
         self.graph_info = pc.Info('ami_graph', 'AMI Client graph', ['hutch', 'name'])
         self.graph_version = pc.Gauge('ami_graph_version', 'AMI Client graph version', ['hutch', 'name'])
 
-    @asyncSlot()
-    async def applyClicked(self, build_views=True):
+    def applyClicked(self, build_views=True):
         graph_nodes = []
         disconnectedNodes = []
         displays = set()
@@ -807,17 +798,17 @@ class FlowchartCtrlWidget(QtWidgets.QWidget):
         msg.setText("Failed to submit graph! See status.")
 
         if self.chart.deleted_nodes:
-            await self.graphCommHandler.remove(self.chart.deleted_nodes)
+            self.graphCommHandler.remove(self.chart.deleted_nodes)
             self.chart.deleted_nodes = []
 
         # detect if the manager has no graph (e.g. from a purge on failure)
-        if await self.graphCommHandler.graphVersion == 0:
+        if self.graphCommHandler.graphVersion == 0:
             # mark all the nodes as changed to force a resubmit of the whole graph
             for name, gnode in self.chart._graph.nodes().items():
                 gnode = gnode['node']
                 gnode.changed = True
             # reset reference counting on views
-            await self.features.reset()
+            self.features.reset()
 
         changed_nodes = set()
         failed_nodes = set()
@@ -902,21 +893,21 @@ class FlowchartCtrlWidget(QtWidgets.QWidget):
             return
 
         if graph_nodes:
-            await self.graphCommHandler.add(graph_nodes)
+            self.graphCommHandler.add(graph_nodes)
             node_names = ', '.join(set(map(lambda node: node.parent, graph_nodes)))
             self.chartWidget.updateStatus(f"Submitted {node_names}")
 
         node_names = ', '.join(set(map(lambda node: node.name(), displays)))
         if displays and build_views:
             self.chartWidget.updateStatus(f"Redisplaying {node_names}")
-            await self.chartWidget.build_views(displays, export=True, redisplay=True)
+            self.chartWidget.build_views(displays, export=True, redisplay=True)
 
         for node in changed_nodes:
             node.changed = False
 
-        self.metadata = await self.graphCommHandler.metadata
+        self.metadata = self.graphCommHandler.metadata
         self.ui.setPendingClear()
-        version = str(await self.graphCommHandler.graphVersion)
+        version = str(self.graphCommHandler.graphVersion)
         state = self.chart.saveState()
         state = json.dumps(state, indent=2, separators=(',', ': '), sort_keys=False, cls=TypeEncoder)
 
@@ -991,15 +982,14 @@ class FlowchartCtrlWidget(QtWidgets.QWidget):
         elif action == self.ui.actionComment:
             self.viewBox().setMouseMode("Comment")
 
-    @asyncSlot()
-    async def resetClicked(self):
-        await self.graphCommHandler.destroy()
+    def resetClicked(self):
+        self.graphCommHandler.destroy()
 
         for name, gnode in self.chart._graph.nodes().items():
             gnode = gnode['node']
             gnode.changed = True
 
-        await self.applyClicked()
+        self.applyClicked()
 
     def scene(self):
         # returns the GraphicsScene object
@@ -1011,15 +1001,14 @@ class FlowchartCtrlWidget(QtWidgets.QWidget):
     def chartWidget(self):
         return self.chartWidget
 
-    @asyncSlot()
-    async def clear(self):
-        await self.graphCommHandler.destroy()
-        await self.chart.clear()
+    def clear(self):
+        self.graphCommHandler.destroy()
+        self.chart.clear()
         self.chartWidget.clear()
         self.setCurrentFile(None)
         self.chart.sigFileLoaded.emit(None)
         self.features = Features(self.graphCommHandler)
-        await self.graphCommHandler.updatePlots(self.features.plots)
+        self.graphCommHandler.updatePlots(self.features.plots)
 
     def configureClicked(self):
         self.sourceConfigure.show()
@@ -1055,8 +1044,7 @@ class FlowchartCtrlWidget(QtWidgets.QWidget):
             win.setCentralWidget(self.ipython_widget)
             win.show()
 
-    @asyncSlot(object)
-    async def configureApply(self, src_cfg):
+    def configureApply(self, src_cfg):
         missing = []
 
         if 'files' in src_cfg:
@@ -1065,31 +1053,29 @@ class FlowchartCtrlWidget(QtWidgets.QWidget):
                     missing.append(f)
 
         if not missing:
-            await self.graphCommHandler.updateSources(src_cfg)
+            self.graphCommHandler.updateSources(src_cfg)
         else:
             missing = ' '.join(missing)
             self.chartWidget.updateStatus(f"Missing {missing}!", color='red')
 
-    @asyncSlot()
-    async def libraryUpdated(self):
-        await self.chart.broker.send_string("library", zmq.SNDMORE)
-        await self.chart.broker.send_pyobj(fcMsgs.Library(name=self.graph_name,
+    def libraryUpdated(self):
+        self.chart.broker.send_string("library", zmq.SNDMORE)
+        self.chart.broker.send_pyobj(fcMsgs.Library(name=self.graph_name,
                                                           paths=self.libraryEditor.paths))
 
         dirs = set(map(os.path.dirname, self.libraryEditor.paths))
-        await self.graphCommHandler.updatePath(dirs)
+        self.graphCommHandler.updatePath(dirs)
 
         self.chartWidget.updateStatus("Loaded modules.")
 
-    @asyncSlot(object)
-    async def libraryReloaded(self, mods):
+    def libraryReloaded(self, mods):
         smods = set(map(lambda mod: mod.__name__, mods))
 
         for name, gnode in self.chart._graph.nodes().items():
             node = gnode['node']
             if node.__module__ in smods:
-                await self.chart.broker.send_string(node.name(), zmq.SNDMORE)
-                await self.chart.broker.send_pyobj(fcMsgs.ReloadLibrary(name=node.name(),
+                self.chart.broker.send_string(node.name(), zmq.SNDMORE)
+                self.chart.broker.send_pyobj(fcMsgs.ReloadLibrary(name=node.name(),
                                                                         mods=smods))
                 self.chartWidget.updateStatus(f"Reloaded {node.name()}.")
 
@@ -1191,8 +1177,7 @@ class FlowchartWidget(dockarea.DockArea):
             node = SourceNode(name=node, terminals={'Out': {'io': 'out', 'ttype': node_type}})
             self.chart.addNode(node=node, pos=pos)
 
-    @asyncSlot()
-    async def selectionChanged(self):
+    def selectionChanged(self):
         # print "FlowchartWidget.selectionChanged called."
         items = self._scene.selectedItems()
 
@@ -1236,10 +1221,10 @@ class FlowchartWidget(dockarea.DockArea):
                 msg.show()
                 return
 
-        await self.build_views([node], ctrl=True)
-        self.ctrl.metadata = await self.ctrl.graphCommHandler.metadata
+        self.build_views([node], ctrl=True)
+        self.ctrl.metadata = self.ctrl.graphCommHandler.metadata
 
-    async def build_views(self, nodes, ctrl=False, export=False, redisplay=False):
+    def build_views(self, nodes, ctrl=False, export=False, redisplay=False):
         views = {}
         display_args = []
 
@@ -1268,7 +1253,7 @@ class FlowchartWidget(dockarea.DockArea):
                 self.ctrl.features.add_plot(node, **args)
 
             elif isinstance(node, SourceNode) and node.viewable():
-                new, topic = await self.ctrl.features.get(name, name)
+                new, topic = self.ctrl.features.get(name, name)
 
                 args['terms'] = node.input_vars()
                 args['topics'] = {name: topic}
@@ -1284,11 +1269,11 @@ class FlowchartWidget(dockarea.DockArea):
                     continue
 
                 if node.changed:
-                    await self.ctrl.features.discard(name)
+                    self.ctrl.features.discard(name)
 
                 new_plot = False
                 for term, in_var in node.input_vars().items():
-                    new, topic = await self.ctrl.features.get(node.name(), in_var)
+                    new, topic = self.ctrl.features.get(node.name(), in_var)
                     topics[in_var] = topic
                     if new:
                         views[in_var] = node.name()
@@ -1310,12 +1295,12 @@ class FlowchartWidget(dockarea.DockArea):
                 input_vars = node.input_vars()
                 values = node.values
                 if 'eventid' in input_vars:
-                    await self.ctrl.graphCommHandler.export([input_vars['In'],
+                    self.ctrl.graphCommHandler.export([input_vars['In'],
                                                              input_vars['eventid']],
                                                             [values['alias'], "_timestamp"],
                                                             N=values['events'])
                 elif 'Timestamp' in input_vars:
-                    await self.ctrl.graphCommHandler.export([input_vars['In'], input_vars['Timestamp']],
+                    self.ctrl.graphCommHandler.export([input_vars['In'], input_vars['Timestamp']],
                                                             [values['alias'], "_timestamp"])
 
                 if not ctrl:
@@ -1324,19 +1309,19 @@ class FlowchartWidget(dockarea.DockArea):
             if not node.created:
                 state = node.saveState()
                 msg = fcMsgs.CreateNode(node.name(), node.__class__.__name__, state=state)
-                await self.chart.broker.send_string(node.name(), zmq.SNDMORE)
-                await self.chart.broker.send_pyobj(msg)
+                self.chart.broker.send_string(node.name(), zmq.SNDMORE)
+                self.chart.broker.send_pyobj(msg)
                 node.created = True
 
         if views:
-            await self.ctrl.graphCommHandler.view(views)
+            self.ctrl.graphCommHandler.view(views)
 
         for args in display_args:
             name = args['name']
-            await self.chart.broker.send_string(name, zmq.SNDMORE)
-            await self.chart.broker.send_pyobj(fcMsgs.DisplayNode(**args))
+            self.chart.broker.send_string(name, zmq.SNDMORE)
+            self.chart.broker.send_pyobj(fcMsgs.DisplayNode(**args))
 
-        await self.ctrl.graphCommHandler.updatePlots(self.ctrl.features.plots)
+        self.ctrl.graphCommHandler.updatePlots(self.ctrl.features.plots)
 
     def hoverOver(self, items):
         obj = None
@@ -1465,10 +1450,10 @@ class Features(object):
         self.features = {}
         self.plots = {}
         self.graphCommHandler = graphCommHandler
-        self.lock = asyncio.Lock()
+        self.lock = threading.Lock()
 
-    async def get(self, name, in_var):
-        async with self.lock:
+    def get(self, name, in_var):
+        with self.lock:
             if in_var in self.features:
                 topic = self.features[in_var]
                 new = False
@@ -1480,8 +1465,8 @@ class Features(object):
             self.features_count[in_var].add(name)
             return new, topic
 
-    async def discard(self, name, in_var=None):
-        async with self.lock:
+    def discard(self, name, in_var=None):
+        with self.lock:
             if in_var and in_var in self.features_count:
                 self.features_count[in_var].discard(name)
                 if not self.features_count[in_var]:
@@ -1505,8 +1490,8 @@ class Features(object):
     def remove_plot(self, name):
         return self.plots.pop(name, None)
 
-    async def reset(self):
-        async with self.lock:
+    def reset(self):
+        with self.lock:
             self.features = {}
             self.features_count = collections.defaultdict(set)
             self.plots = {}
