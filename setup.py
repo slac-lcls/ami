@@ -63,7 +63,8 @@ setup(
             'ami-remote = ami.remote:main',
             'ami-export = ami.export:main',
             'ami-syncer = ami.sync:main',
-            'ami-monitor = ami.monitor:main'
+            'ami-monitor = ami.monitor:main',
+            'ami-fc-to-source = ami.fc_to_worker:main'
         ]
     },
     scripts=['ami/ami-mpi'],
