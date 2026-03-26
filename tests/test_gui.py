@@ -16,7 +16,7 @@ from ami.flowchart.Flowchart import Flowchart
 from ami.flowchart.library.common import SourceNode
 from ami.local import build_parser, run_ami
 from ami.comm import GraphCommHandler
-from ami.fc_to_worker import extract_sources_from_fc, map_amitypes_to_config
+from ami.fc_to_worker import extract_sources_from_fc
 from collections import OrderedDict
 
 
@@ -26,13 +26,13 @@ from collections import OrderedDict
 def resolve_fc_path(fc_file):
     """
     Resolve .fc file path.
-    
+
     Args:
         fc_file: Filename or relative path
-        
+
     Returns:
         str: Path to .fc file
-        
+
     Examples:
         'my_graph.fc' → 'tests/graphs/my_graph.fc'
         'examples/complex.fc' → 'examples/complex.fc'
@@ -41,11 +41,11 @@ def resolve_fc_path(fc_file):
     # Already absolute
     if os.path.isabs(fc_file):
         return fc_file
-    
+
     # Has directory component - use as-is
     if os.path.dirname(fc_file):
         return fc_file
-    
+
     # Just filename - default to tests/graphs/
     return os.path.join('tests/graphs', fc_file)
 
@@ -53,15 +53,15 @@ def resolve_fc_path(fc_file):
 def wait_for_features(comm, qtbot, timeout_ms=5000):
     """
     Wait for features to be available (featuresVersion to update).
-    
+
     Args:
         comm: GraphCommHandler instance
         qtbot: pytest-qt qtbot fixture
         timeout_ms: Maximum time to wait in milliseconds (default: 5000)
-        
+
     Returns:
         bool: True if features available, False if timeout
-        
+
     Example:
         if wait_for_features(comm, qtbot):
             result = comm.fetch('Sum.0')
@@ -70,11 +70,11 @@ def wait_for_features(comm, qtbot, timeout_ms=5000):
     """
     initial_version = comm.featuresVersion
     elapsed = 0
-    
+
     while comm.featuresVersion == initial_version and elapsed < timeout_ms:
         qtbot.wait(100)
         elapsed += 100
-    
+
     return elapsed < timeout_ms
 
 
@@ -313,11 +313,11 @@ def flowchart_hdf(request, tmp_path, qtbot, broker, ipc_dir, graphmgr_addr):
 def flowchart_from_file(request, broker, ipc_dir, graphmgr_addr, dmypy, qtbot, tmp_path):
     """
     Create flowchart with auto-mocked sources from .fc file.
-    
+
     Automatically detects sources in the .fc file and creates matching
     mock static data sources. Supports limiting event count and retrieving
     computed results for verification.
-    
+
     Usage:
         # Simple: just load .fc file (default 10 events)
         @pytest.mark.parametrize('flowchart_from_file', [
@@ -326,7 +326,7 @@ def flowchart_from_file(request, broker, ipc_dir, graphmgr_addr, dmypy, qtbot, t
         def test_graph(flowchart_from_file):
             fc, broker, comm = flowchart_from_file
             # Graph already loaded, sources mocked
-        
+
         # With custom event limit
         @pytest.mark.parametrize('flowchart_from_file', [
             ('my_graph.fc', 5),  # Only 5 events
@@ -334,29 +334,29 @@ def flowchart_from_file(request, broker, ipc_dir, graphmgr_addr, dmypy, qtbot, t
         def test_graph_with_limit(flowchart_from_file):
             fc, broker, comm = flowchart_from_file
             # Only 5 events will be processed
-    
+
     Parameters (via request.param):
         - String: Path to .fc file (default: 10 events)
         - Tuple: (fc_file_path, num_events)
           - fc_file_path: Path to .fc file (relative to project root)
           - num_events: Number of events to generate (default: 10)
-    
+
     Returns:
         (fc, broker, comm): Tuple of:
             - fc: Flowchart instance with .fc file loaded
             - broker: MessageBroker instance
             - comm: GraphCommHandler for retrieving results
-    
+
     Example - Verify computation:
         @pytest.mark.parametrize('flowchart_from_file', [
             ('simple_sum.fc', 5),
         ], indirect=True)
         def test_sum_computation(flowchart_from_file, qtbot):
             fc, broker, comm = flowchart_from_file
-            
+
             ctrl = fc.widget()
             ctrl.applyClicked()
-            
+
             if wait_for_features(comm, qtbot):
                 result = comm.fetch('Sum.0')
                 assert result > 0
@@ -368,19 +368,19 @@ def flowchart_from_file(request, broker, ipc_dir, graphmgr_addr, dmypy, qtbot, t
         cleanup_on_sigterm()
     except ImportError:
         pass
-    
+
     # Parse parameters
     if isinstance(request.param, tuple):
         fc_file, num_events = request.param
     else:
         fc_file = request.param
         num_events = 10  # Default: 10 events
-    
+
     fc_path = resolve_fc_path(fc_file)
-    
+
     # Extract source configurations from .fc file
     source_config = extract_sources_from_fc(fc_path)
-    
+
     # Create worker.json with mocked sources
     cfg = {
         "interval": 0.01,
@@ -390,41 +390,41 @@ def flowchart_from_file(request, broker, ipc_dir, graphmgr_addr, dmypy, qtbot, t
         "files": "data.xtc2",
         "config": source_config,  # Auto-generated from .fc file
     }
-    
+
     workerjson_path = os.path.join(tmp_path, 'worker.json')
     with open(workerjson_path, 'w') as fd:
         json.dump(cfg, fd)
-    
+
     # Start AMI with static data source
     parser = build_parser()
     args = parser.parse_args(["-n", "1", '-i', str(ipc_dir), '--headless',
                               f'static://{workerjson_path}'])
-    
+
     queue = mp.Queue()
     ami = mp.Process(name='ami', target=run_ami, args=(args, queue))
     ami.start()
-    
+
     try:
         # Wait for AMI to be ready and create persistent comm handler
         comm = GraphCommHandler(graphmgr_addr.name, graphmgr_addr.comm)
         while not comm.sources:
             time.sleep(0.1)
-        
+
         os.makedirs(os.path.expanduser("~/.cache/ami/"), exist_ok=True)
-        
+
         # Create flowchart
         with Flowchart(broker_addr=broker.broker_sub_addr,
                        graphmgr_addr=graphmgr_addr,
                        checkpoint_addr=broker.checkpoint_pub_addr) as fc:
-            
+
             fc.initialize()
-            
+
             qtbot.addWidget(fc.widget())
-            
+
             fc.loadFile(fc_path)
-            
+
             yield (fc, broker, comm)
-    
+
     except Exception as e:
         print(f"error setting up flowchart_from_file fixture: {e}")
         import traceback
@@ -437,7 +437,7 @@ def flowchart_from_file(request, broker, ipc_dir, graphmgr_addr, dmypy, qtbot, t
         if ami.is_alive():
             ami.terminate()
             ami.join()
-        
+
         if ami.exitcode == 0 or ami.exitcode == -signal.SIGTERM:
             return 0
         else:
@@ -546,35 +546,6 @@ def test_editor(qtbot, flowchart, tmp_path):
     assert len(flowchart._graph.edges()) == 1
 
 
-# @pytest.mark.asyncio
-# @pytest.mark.parametrize('flowchart_hdf', [('run22.h5', 'run22.fc')], indirect=True)
-# async def test_run22(qtbot, flowchart_hdf, graphmgr_addr):
-#     flowchart, broker, comm = flowchart_hdf
-
-#     ctrl = flowchart.widget()
-#     viewbox = ctrl.viewBox()
-#     scene = ctrl.scene()
-#     chartWidget = ctrl.chartWidget
-#     await ctrl.applyClicked()
-
-#     outputs = [n for n, d in flowchart._graph.out_degree() if d == 0]
-
-#     for output in outputs:
-#         node = flowchart._graph.nodes[output]['node']
-#         graphicsItem = node.graphicsItem()
-#         graphicsItem.setSelected(True)
-#         graphicsItem.update()
-#         await chartWidget.selectionChanged()
-#         graphicsItem.setSelected(False)
-#         graphicsItem.update()
-#         break
-
-#     while not comm.features:
-#         time.sleep(0.1)
-
-#     print(comm.features)
-
-
 # Tests using flowchart_from_file fixture
 
 # Note: Create simple .fc test files in tests/graphs/ using the GUI, for example:
@@ -590,30 +561,24 @@ def test_editor(qtbot, flowchart, tmp_path):
 def test_load_atm_crix(flowchart_from_file):
     """
     Test loading ATM_crix_new.fc with auto-mocked sources.
-    
-    Note: This .fc file has Filter nodes that raise exceptions during apply,
-    which causes "Failed to submit graph" popup. This is expected - the fixture
-    works correctly, but the .fc file itself has issues. For clean tests,
-    create simpler .fc files without problematic nodes.
     """
     fc, broker, comm = flowchart_from_file
-    
+
     # Check sources were auto-detected and mocked
     assert 'timing:raw:eventcodes' in fc.nodes(data='node')
     assert 'c_piranha:raw:raw' in fc.nodes(data='node')
     assert 'c_atmopal:raw:image' in fc.nodes(data='node')
     assert 'c_piranha:ttfex:fltpos' in fc.nodes(data='node')
-    
+
     # Check graph has processing nodes
     nodes = fc.nodes(data='node')
     assert len(nodes) > 4  # More than just sources
-    
+
     # Check connections exist
     assert len(fc._graph.edges()) > 0
-    
-    # Note: Graph apply fails due to Filter nodes, but that's a bug in the .fc file,
-    # not in our fixture. The fixture successfully loaded the file and mocked sources.
 
+    ctrl = fc.widget()
+    ctrl.applyClicked()
 
 @pytest.mark.parametrize('flowchart_from_file', [
     ('ATM_crix_new.fc', 5),   # Test with 5 events
@@ -622,7 +587,7 @@ def test_load_atm_crix(flowchart_from_file):
 def test_atm_different_event_counts(flowchart_from_file):
     """Test fixture works with different event counts."""
     fc, broker, comm = flowchart_from_file
-    
+
     # Just verify fixture created flowchart successfully
     assert fc is not None
     assert comm is not None
@@ -636,19 +601,19 @@ def test_atm_different_event_counts(flowchart_from_file):
 # def test_roi_sum_computation(flowchart_from_file, qtbot):
 #     """Verify ROI + Sum computes correctly."""
 #     fc, broker, comm = flowchart_from_file
-#     
+#
 #     # Apply the graph
 #     ctrl = fc.widget()
 #     ctrl.applyClicked()
-#     
+#
 #     # Wait for results
 #     if not wait_for_features(comm, qtbot, timeout_ms=5000):
 #         pytest.fail("Timeout waiting for graph to process")
-#     
+#
 #     # Get computed values
 #     roi_output = comm.fetch('Roi2D.0')
 #     sum_output = comm.fetch('Sum.0')
-#     
+#
 #     # Verify correctness
 #     import numpy as np
 #     expected_sum = np.sum(roi_output)

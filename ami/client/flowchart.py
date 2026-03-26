@@ -246,7 +246,6 @@ class NodeProcess(QtCore.QObject):
         self.start_prometheus()
 
     def display(self, msg):
-        print(msg.name, "redisplay:", msg.redisplay, flush=True)
         if self.node.viewed and msg.redisplay:
             self.node.close()
             self.widget = None
