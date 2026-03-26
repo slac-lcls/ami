@@ -74,7 +74,7 @@ def map_amitypes_to_config(ttype):
     if 'Array2d' in ttype:
         return {"dtype": "Image", "pedestal": 5, "width": 1, "shape": [512, 512]}
     elif 'Array1d' in ttype:
-        return {"dtype": "Waveform", "length": 1024}
+        return {"dtype": "Waveform", "pedestal": 5, "width": 1, "shape": [1024]}
     elif 'Array3d' in ttype:
         return {"dtype": "Image", "pedestal": 5, "width": 1, "shape": [100, 512, 512]}
     elif 'int' in ttype.lower():
