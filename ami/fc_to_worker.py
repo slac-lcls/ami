@@ -49,17 +49,18 @@ def extract_sources_from_fc(fc_path):
             terminals = node.get('state', {}).get('terminals', {})
             if 'Out' in terminals:
                 ttype = terminals['Out'].get('ttype', '')
-                sources[name] = map_amitypes_to_config(ttype)
+                sources[name] = map_amitypes_to_config(ttype, source_name=name)
     
     return sources
 
 
-def map_amitypes_to_config(ttype):
+def map_amitypes_to_config(ttype, source_name=''):
     """
     Map amitypes type string to static source config.
     
     Args:
         ttype: String like "amitypes.Array2d" or "amitypes.array.Array2d"
+        source_name: Name of the source node (e.g., "timing:raw:eventcodes")
         
     Returns:
         dict: Config for static data source
@@ -74,7 +75,11 @@ def map_amitypes_to_config(ttype):
     if 'Array2d' in ttype:
         return {"dtype": "Image", "pedestal": 5, "width": 1, "shape": [512, 512]}
     elif 'Array1d' in ttype:
-        return {"dtype": "Waveform", "pedestal": 5, "width": 1, "shape": [1024]}
+        # Special handling for timing event codes
+        if source_name == "timing:raw:eventcodes":
+            return {"dtype": "Waveform", "pedestal": 0, "width": 0, "shape": [300], "binary": True}
+        else:
+            return {"dtype": "Waveform", "pedestal": 5, "width": 1, "shape": [1024]}
     elif 'Array3d' in ttype:
         return {"dtype": "Image", "pedestal": 5, "width": 1, "shape": [100, 512, 512]}
     elif 'int' in ttype.lower():
