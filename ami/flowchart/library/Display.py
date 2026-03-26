@@ -325,7 +325,7 @@ class TimePlot(CtrlNode):
         nodes = [gn.RollingBuffer(name=self.name()+"_buffer", N=self.values['Num Points'],
                                   inputs=inputs, outputs=buffer_output, **kwargs),
                  gn.Map(name=self.name()+"_operation", inputs=buffer_output, outputs=outputs,
-                        func=lambda a: zip(*a), **kwargs)]
+                        func=lambda count, data: zip(*data), **kwargs)]
         return nodes
 
     def plotMetadata(self, topics, terms, **kwargs):
