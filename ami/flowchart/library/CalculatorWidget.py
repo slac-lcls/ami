@@ -461,7 +461,8 @@ class FilterWidget(QtWidgets.QWidget):
         idx = len(self.inputs)-1
 
         if self.col == 0 and self.row == 0:  # if the connection is the first connection
-            self.add_elif_condition(name="If")
+            if "If" not in self.condition_groups:
+                self.add_elif_condition(name="If")
         else:
             # go through comboboxes and add entry
             for name, group in self.condition_groups.items():

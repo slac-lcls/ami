@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 from datetime import datetime
 from qtpy import QtCore, QtWidgets
+from qtpy.QtCore import QSocketNotifier
 from pyqtgraph import FileDialog
 from pyqtgraph.debug import printExc
 from pyqtgraph import dockarea as dockarea
@@ -40,6 +41,7 @@ import typing  # noqa
 import logging
 import socket
 import threading
+import time
 import prometheus_client as pc
 
 
@@ -103,23 +105,27 @@ class Flowchart(Node):
 
     def setup_socket_notifiers(self):
         """Setup QSocketNotifiers for ZMQ sockets after Qt app is running."""
-        from qtpy.QtCore import QSocketNotifier
-        
         # Graphinfo socket notifier (receives source updates)
         fd = self.graphinfo.get(zmq.FD)
         self._graphinfo_notifier = QSocketNotifier(fd, QSocketNotifier.Type.Read)
         self._graphinfo_notifier.activated.connect(self._handle_graphinfo)
-        
+
         # Checkpoint socket notifier (receives ctrlnode updates)
         fd = self.checkpoint.get(zmq.FD)
         self._checkpoint_notifier = QSocketNotifier(fd, QSocketNotifier.Type.Read)
         self._checkpoint_notifier.activated.connect(self._handle_checkpoint)
 
     def _handle_graphinfo(self):
-        """Handle readable graphinfo socket."""
-        # Check if socket is actually readable
-        events = self.graphinfo.get(zmq.EVENTS)
-        if events & zmq.POLLIN:
+        """Handle readable graphinfo socket.
+
+        Drain all available messages from the socket to match the behavior
+        of the original async while True: loop in master branch.
+        """
+        # Drain all available messages from the socket
+        while True:
+            events = self.graphinfo.get(zmq.EVENTS)
+            if not (events & zmq.POLLIN):
+                break
             try:
                 topic = self.graphinfo.recv_string(zmq.NOBLOCK)
                 source = self.graphinfo.recv_string(zmq.NOBLOCK)
@@ -127,19 +133,30 @@ class Flowchart(Node):
                 # Process message
                 self._process_source_update(topic, source, msg)
             except zmq.Again:
-                pass  # No message available
+                break  # No more messages available
 
     def _handle_checkpoint(self):
-        """Handle readable checkpoint socket."""
-        events = self.checkpoint.get(zmq.EVENTS)
-        if events & zmq.POLLIN:
+        """Handle readable checkpoint socket.
+
+        Drain all available messages from the socket to match the behavior
+        of the original async while True: loop in master branch. This ensures
+        that if multiple checkpoint updates arrive in quick succession (e.g.,
+        when a widget sends multiple state changes), they all get processed.
+        """
+        # Drain all available messages from the socket
+        msg_count = 0
+        while True:
+            events = self.checkpoint.get(zmq.EVENTS)
+            if not (events & zmq.POLLIN):
+                break
             try:
                 topic = self.checkpoint.recv_string(zmq.NOBLOCK)
                 msg = self.checkpoint.recv_pyobj(zmq.NOBLOCK)
+                msg_count += 1
                 # Process message
                 self._process_checkpoint_update(msg)
             except zmq.Again:
-                pass
+                break  # No more messages available
 
     def _process_checkpoint_update(self, msg):
         """Process checkpoint update message (extracted from updateState)."""
@@ -794,7 +811,6 @@ class Flowchart(Node):
                         self._process_source_update(topic, source, msg)
                         break
                 else:
-                    import time
                     time.sleep(0.01)  # Brief sleep before retry
         # else: called by notifier, _handle_graphinfo already processed the message
 

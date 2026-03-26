@@ -472,7 +472,7 @@ class MessageBroker(object):
             async with self.lock:
                 self.checkpoints[topic] = msg
 
-            await self.checkpoint_pub_sock.send_string(topic + ZMQ_TOPIC_DELIM)
+            await self.checkpoint_pub_sock.send_string(topic + ZMQ_TOPIC_DELIM, zmq.SNDMORE)
             await self.checkpoint_pub_sock.send_pyobj(msg)
 
     async def forward_message_to_node(self, topic, msg):
