@@ -31,3 +31,28 @@ class Process(_mp.Process):
             if self.procname is not None:
                 setproctitle.setproctitle("ami " + self.procname)
             self._target(*self._args, **self._kwargs)
+
+
+class SpawnProcess(_mp.get_context('spawn').Process):
+    """
+    Spawn-based Process that sets process title like ami.multiproc.Process.
+    
+    Uses 'spawn' start method to avoid ZMQ fork-safety issues while maintaining
+    the setproctitle functionality for process naming.
+    
+    Use this instead of Process when spawning from a process that has active
+    ZMQ contexts/sockets, as fork() is not safe with ZMQ.
+    """
+    def __init__(self, group=None, target=None, name=None, args=(), kwargs=None,
+                 *, daemon=None):
+        if kwargs is None:
+            kwargs = {}
+        super().__init__(group=group, target=target, name=name, args=args, kwargs=kwargs, daemon=daemon)
+        self.procname = name
+
+    def run(self):
+        if self._target:
+            # Set process title if setproctitle is available
+            if setproctitle is not None and self.procname is not None:
+                setproctitle.setproctitle("ami " + self.procname)
+            self._target(*self._args, **self._kwargs)

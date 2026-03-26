@@ -12,6 +12,7 @@ import zmq.asyncio
 import subprocess
 import traceback
 import ami.multiproc as mp
+from ami.multiproc import SpawnProcess
 import pyqtgraph as pg
 import prometheus_client as pc
 
@@ -144,10 +145,16 @@ class BrokerFetcher(QtCore.QThread):
 
     sig = QtCore.Signal(object)
 
-    def __init__(self, msg, broker_addr="", node=None):
+    def __init__(self, msg, broker_addr="", ctx=None, node=None):
         super(__class__, self).__init__(parent=node)
 
-        self.ctx = zmq.Context()
+        # Use shared context if provided, otherwise create own (for backward compatibility)
+        if ctx is None:
+            self.ctx = zmq.Context()
+            self.owns_context = True
+        else:
+            self.ctx = ctx
+            self.owns_context = False
 
         self.node = node
         self.broker = self.ctx.socket(zmq.SUB)
@@ -164,8 +171,11 @@ class BrokerFetcher(QtCore.QThread):
 
             if isinstance(msg, fcMsgs.CloseNode):
                 self.running = False
+                self.broker.close()
+                # Only destroy context if we own it
+                if self.owns_context:
+                    self.ctx.destroy()
                 self.wait()
-                self.ctx.destroy()
             else:
                 self.sig.emit(msg)
 
@@ -212,7 +222,7 @@ class NodeProcess(QtCore.QObject):
 
         self.ctx = zmq.Context()
 
-        self.broker_fetcher = BrokerFetcher(msg, broker_addr, self)
+        self.broker_fetcher = BrokerFetcher(msg, broker_addr, ctx=self.ctx, node=self)
         self.broker_fetcher.start()
 
         self.checkpoint = self.ctx.socket(zmq.PUB)
@@ -512,7 +522,8 @@ class MessageBroker(object):
                         # don't resend last message
                         del self.msgs[msg.name]
 
-                    proc = mp.Process(
+                    # Use SpawnProcess to avoid ZMQ fork-safety issues (same as in process_messages)
+                    proc = SpawnProcess(
                         target=launch_node,
                         name=msg.name,
                         args=(msg, self.broker_pub_addr, self.graphmgr_addr, self.checkpoint_sub_addr),
@@ -533,7 +544,10 @@ class MessageBroker(object):
             msg = await self.broker_sub_sock.recv_pyobj()
 
             if isinstance(msg, fcMsgs.CreateNode):
-                proc = mp.Process(
+                # Use SpawnProcess to avoid ZMQ fork-safety issues
+                # MessageBroker has active ZMQ sockets/tasks when spawning node processes
+                # Using 'spawn' creates fresh Python interpreter without inheriting ZMQ state
+                proc = SpawnProcess(
                     target=launch_node,
                     name=msg.name,
                     args=(msg, self.broker_pub_addr, self.graphmgr_addr, self.checkpoint_sub_addr),
