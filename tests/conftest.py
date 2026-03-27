@@ -364,3 +364,139 @@ def qevent_loop(qapp):
 
 # fix the mp start method for platforms that need it
 check_mp_start_method()
+
+
+@pytest.fixture(scope='function')
+def broker(ami_backend):
+    """
+    Create a MessageBroker that runs in a background thread.
+    This connects to the session-scoped AMI backend.
+    """
+    try:
+        from pytest_cov.embed import cleanup_on_sigterm
+        cleanup_on_sigterm()
+    except ImportError:
+        pass
+
+    import threading
+    from ami.client.flowchart import MessageBroker
+    
+    # Create a temporary directory for the broker's IPC sockets
+    ipcdir = tempfile.mkdtemp()
+    
+    # Create the MessageBroker instance
+    mb = MessageBroker(ami_backend, "", ipcdir=ipcdir)
+    
+    # Create a new event loop for the broker thread
+    broker_loop = asyncio.new_event_loop()
+    
+    # Variable to track if the broker is running
+    broker_running = threading.Event()
+    
+    # Run the broker in a background thread with its own event loop
+    def run_broker():
+        asyncio.set_event_loop(broker_loop)
+        broker_running.set()  # Signal that the broker has started
+        try:
+            broker_loop.run_until_complete(mb.run())
+        except (asyncio.CancelledError, RuntimeError):
+            pass  # Expected when we cancel the broker or stop the loop
+    
+    broker_thread = threading.Thread(target=run_broker, daemon=True)
+    broker_thread.start()
+    
+    # Wait for the broker to start
+    broker_running.wait(timeout=2)
+    time.sleep(0.1)  # Give it a moment to bind sockets
+    
+    yield mb
+    
+    # Cleanup: Stop the broker gracefully
+    try:
+        # Cancel all tasks in the broker's event loop
+        def cancel_tasks():
+            tasks = asyncio.all_tasks(broker_loop)
+            for task in tasks:
+                task.cancel()
+            # Stop the loop after cancelling tasks
+            broker_loop.stop()
+        
+        broker_loop.call_soon_threadsafe(cancel_tasks)
+        
+        # Wait for the thread to finish (with timeout)
+        broker_thread.join(timeout=2)
+    except Exception:
+        pass
+    finally:
+        # Close the broker and clean up ZMQ resources
+        mb.close()
+        
+        # Close the event loop if not already closed
+        if not broker_loop.is_closed():
+            broker_loop.close()
+        
+        # Clean up the temporary directory
+        try:
+            shutil.rmtree(ipcdir)
+        except Exception:
+            pass
+
+
+@pytest.fixture(scope='module')
+def dmypy():
+    dmypy_file = tempfile.NamedTemporaryFile(mode='w', delete=False)
+    os.environ['DMYPY_STATUS_FILE'] = dmypy_file.name
+    subprocess.run(["dmypy", "--status-file", dmypy_file.name, "start"])
+
+    yield
+
+    try:
+        proc = subprocess.run(["dmypy", "--status-file", dmypy_file.name, "stop"])
+        proc.check_returncode()
+    except subprocess.CalledProcessError:
+        subprocess.run(["dmypy", "--status-file", dmypy_file.name, "kill"])
+
+
+@pytest.fixture(scope='function')
+async def flowchart(request, ami_backend, broker, dmypy):
+    """
+    Creates a new Flowchart instance for each test, connected to the
+    session-scoped AMI backend.
+    """
+    try:
+        from pytest_cov.embed import cleanup_on_sigterm
+        cleanup_on_sigterm()
+    except ImportError:
+        pass
+
+    from ami.flowchart.Flowchart import Flowchart
+    
+    os.makedirs(os.path.expanduser("~/.cache/ami/"), exist_ok=True)
+
+    # Create a new flowchart instance connected to the persistent backend
+    fc = Flowchart(broker_addr=broker.broker_sub_addr,
+                   graphmgr_addr=ami_backend,
+                   checkpoint_addr=broker.checkpoint_pub_addr)
+
+    await fc.updateSources(init=True)
+
+    yield (fc, broker)
+    
+    # Cleanup: unregister Prometheus metrics if widget was created
+    try:
+        import prometheus_client as pc
+        if fc._widget is not None:
+            # Unregister prometheus metrics to avoid "Duplicated timeseries" errors
+            try:
+                pc.REGISTRY.unregister(fc._widget.graph_info)
+            except Exception:
+                pass
+            try:
+                pc.REGISTRY.unregister(fc._widget.graph_version)
+            except Exception:
+                pass
+    except Exception as e:
+        print(f"Warning: Failed to unregister prometheus metrics: {e}")
+    
+    # Close the flowchart after the test completes
+    fc.close()

@@ -12,137 +12,15 @@ from collections import OrderedDict
 import amitypes as at
 import pytest
 import zmq
-
+import time
+import os
+import amitypes as at
 import ami.client.flowchart_messages as fcMsgs
-from ami.client.flowchart import MessageBroker
-from ami.comm import GraphCommHandler
-from ami.flowchart.Flowchart import Flowchart
 from ami.flowchart.library.common import SourceNode
+from collections import OrderedDict
 
 
-# event_loop fixture is now provided by conftest.py and managed by pytest-asyncio
-
-
-@pytest.fixture(scope='function')
-def broker(ami_backend):
-    """
-    Create a MessageBroker that runs in a background thread.
-    This connects to the session-scoped AMI backend.
-    """
-    try:
-        from pytest_cov.embed import cleanup_on_sigterm
-
-        cleanup_on_sigterm()
-    except ImportError:
-        pass
-
-    # Create a temporary directory for the broker's IPC sockets
-    ipcdir = tempfile.mkdtemp()
-
-    # Create the MessageBroker instance
-    mb = MessageBroker(ami_backend, "", ipcdir=ipcdir)
-
-    # Create a new event loop for the broker thread
-    broker_loop = asyncio.new_event_loop()
-
-    # Variable to track if the broker is running
-    broker_running = threading.Event()
-
-    # Run the broker in a background thread with its own event loop
-    def run_broker():
-        asyncio.set_event_loop(broker_loop)
-        broker_running.set()  # Signal that the broker has started
-        try:
-            broker_loop.run_until_complete(mb.run())
-        except (asyncio.CancelledError, RuntimeError):
-            pass  # Expected when we cancel the broker or stop the loop
-
-    broker_thread = threading.Thread(target=run_broker, daemon=True)
-    broker_thread.start()
-
-    # Wait for the broker to start
-    broker_running.wait(timeout=2)
-    time.sleep(0.1)  # Give it a moment to bind sockets
-
-    yield mb
-
-    # Cleanup: Stop the broker gracefully
-    try:
-        # Cancel all tasks in the broker's event loop
-        def cancel_tasks():
-            tasks = asyncio.all_tasks(broker_loop)
-            for task in tasks:
-                task.cancel()
-            # Stop the loop after cancelling tasks
-            broker_loop.stop()
-
-        broker_loop.call_soon_threadsafe(cancel_tasks)
-
-        # Wait for the thread to finish (with timeout)
-        broker_thread.join(timeout=2)
-    except Exception:
-        pass
-    finally:
-        # Close the broker and clean up ZMQ resources
-        mb.close()
-
-        # Close the event loop if not already closed
-        if not broker_loop.is_closed():
-            broker_loop.close()
-
-        # Clean up the temporary directory
-        import shutil
-        try:
-            shutil.rmtree(ipcdir)
-        except Exception:
-            pass
-
-
-@pytest.fixture(scope="module")
-def dmypy():
-    dmypy_file = tempfile.NamedTemporaryFile(mode="w", delete=False)
-    os.environ["DMYPY_STATUS_FILE"] = dmypy_file.name
-    subprocess.run(["dmypy", "--status-file", dmypy_file.name, "start"])
-
-    yield
-
-    try:
-        proc = subprocess.run(["dmypy", "--status-file", dmypy_file.name, "stop"])
-        proc.check_returncode()
-    except subprocess.CalledProcessError:
-        subprocess.run(["dmypy", "--status-file", dmypy_file.name, "kill"])
-
-
-@pytest.fixture(scope='function')
-async def flowchart(request, ami_backend, broker, dmypy):
-    """
-    Creates a new Flowchart instance for each test, connected to the
-    session-scoped AMI backend. Clears the graph state between tests
-    to ensure test isolation.
-    """
-    try:
-        from pytest_cov.embed import cleanup_on_sigterm
-
-        cleanup_on_sigterm()
-    except ImportError:
-        pass
-
-    os.makedirs(os.path.expanduser("~/.cache/ami/"), exist_ok=True)
-
-    # Create a new flowchart instance connected to the persistent backend
-    # Don't use 'with' statement here to avoid premature socket closure
-    fc = Flowchart(broker_addr=broker.broker_sub_addr,
-                   graphmgr_addr=ami_backend,
-                   checkpoint_addr=broker.checkpoint_pub_addr)
-
-    await fc.updateSources(init=True)
-
-    yield (fc, broker)
-
-    # Cleanup: close the flowchart after the test completes
-    # Note: We don't clear the graph here because it can cause event loop issues
-    # The session-scoped backend will accumulate graphs, but this is acceptable for tests
-    fc.close()
+# Fixtures (broker, dmypy, flowchart) are now in conftest.py
 
 
 def test_broker_sub(broker):
@@ -235,26 +113,27 @@ async def test_connect_nodes(qtbot, flowchart):
     # Get initial edge count (might not be 0 if other tests ran)
     initial_edges = len(fc._graph.edges())
 
-    # Create a source node (use laser instead of cspad to avoid conflicts)
-    node_name = 'laser'
+    # Create a source node (cspad is an Array2d)
+    node_name = 'cspad'
     node_type = fc.source_library.getSourceType(node_name)
     source_node = SourceNode(name=node_name, terminals={'Out': {'io': 'out', 'ttype': node_type}})
     fc.addNode(node=source_node)
-
-    # Create a processing node
-    fc.createNode('Projection')
-
+    
+    # Create a processing node (Roi2D accepts Array2d)
+    fc.createNode('Roi2D')
+    
     # Get nodes
-    laser_node = fc.nodes(data='node')['laser']
-    # Find the projection node (might be Projection.0 or Projection.1 depending on previous tests)
-    proj_nodes = [n for n in fc.nodes(data='node').keys() if n.startswith('Projection.')]
-    proj_node = fc.nodes(data='node')[proj_nodes[-1]]  # Get the last one created
-
+    cspad_node = fc.nodes(data='node')['cspad']
+    # Find the Roi2D node (might be Roi2D.0 or Roi2D.1 depending on previous tests)
+    all_nodes = dict(fc.nodes(data='node'))
+    roi_nodes = [n for n in all_nodes.keys() if n.startswith('Roi2D.')]
+    roi_node = all_nodes[roi_nodes[-1]]  # Get the last one created
+    
     # Connect them
-    laser_out = laser_node._outputs['Out']
-    proj_in = proj_node._inputs['In']
-    laser_out().connectTo(proj_in())
-
+    cspad_out = cspad_node._outputs['Out']
+    roi_in = roi_node._inputs['In']
+    cspad_out().connectTo(roi_in())
+    
     # Wait for connection to register
     await asyncio.sleep(0.1)
 
