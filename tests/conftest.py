@@ -443,8 +443,9 @@ def broker(ami_backend):
     # Create a temporary directory for the broker's IPC sockets
     ipcdir = tempfile.mkdtemp()
     
-    # Create the MessageBroker instance
-    mb = MessageBroker(ami_backend, "", ipcdir=ipcdir)
+    # Create the MessageBroker instance in headless mode (no popup windows in tests)
+    # Disable prometheus metrics in tests by not passing prometheus_port
+    mb = MessageBroker(ami_backend, "", ipcdir=ipcdir, prometheus_port=None, headless=True)
     
     # Create a new event loop for the broker thread
     broker_loop = asyncio.new_event_loop()

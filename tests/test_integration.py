@@ -11,6 +11,7 @@ import pytest
 import os
 import json
 import time
+import numpy as np
 from ami.flowchart.library.common import SourceNode
 
 
@@ -69,13 +70,38 @@ async def test_create_in_gui_save_execute_on_backend(qtbot, flowchart, start_ami
         assert 'cspad' in node_names
         assert 'Roi2D.0' in node_names
     
-    # Step 3: Apply graph to backend (the integration point!)
+    # Step 3: Apply graph to backend (submits graph operations)
     await widget.applyClicked()
+    await asyncio.sleep(0.2)  # Let apply complete
     
-    # Step 4: Verify graph was submitted to backend successfully
-    comm_handler = widget.graphCommHandler
-    version = await comm_handler.graphVersion
+    # Step 4: Register Roi2D output for viewing on backend
+    # This adds a Pick1 node to make the output available in features
+    await widget.graphCommHandler.view({'Roi2D.0.Out': 'Roi2D.0'})
+    
+    # Step 5: Wait for graph to execute on backend
+    start = time.time()
+    while comm.graphVersion != comm.featuresVersion:
+        await asyncio.sleep(0.1)
+        if time.time() - start > 10:
+            pytest.fail("Timeout waiting for graph to execute on backend")
+    
+    # Step 6: Verify graph was submitted and executed
+    version = comm.graphVersion
     assert version > 0, "Graph should have been applied to backend"
+    assert comm.graphVersion == comm.featuresVersion, "Graph should have finished executing"
+    
+    # Step 7: Verify graph produced correct results
+    features = comm.features
+    # The view() method adds _auto_ prefix to the feature name
+    assert '_auto_Roi2D.0.Out' in features, "Roi2D output should be available in features"
+    
+    # Fetch the ROI'd image result
+    roi_image = comm.fetch('_auto_Roi2D.0.Out')
+    assert roi_image.shape == (10, 10), f"Expected 10x10 ROI, got {roi_image.shape}"
+    np.testing.assert_array_equal(roi_image, np.ones((10, 10)), 
+                                   "ROI should contain ones from static cspad source")
+    
+    print(f"✓ Graph executed successfully: Roi2D produced {roi_image.shape} output")
 
 
 @pytest.mark.asyncio
