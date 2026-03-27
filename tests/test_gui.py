@@ -59,16 +59,17 @@ def test_broker_sub(broker):
     ctx.destroy()
 
 
-@pytest.mark.parametrize("flowchart", ["static"], indirect=True)
-def test_sources(qtbot, flowchart):
-    flowchart = flowchart[0]
-    source_library = flowchart.source_library
+@pytest.mark.asyncio
+@pytest.mark.parametrize('flowchart', ['static'], indirect=True)
+async def test_sources(qtbot, flowchart):
+    fc, _ = flowchart
+    source_library = fc.source_library
 
     source_tree = source_library.getSourceTree()
     sources = set(source_tree.keys())
 
     # Check that core sources are present (not an exact match since config is auto-scanned)
-    core_sources = {'delta', 'cspad', 'laser', 'eventid', 'timestamp', 'heartbeat', 'source', 'xppcspad'}
+    core_sources = {"delta", "cspad", "laser", "eventid", "timestamp", "heartbeat", "source", "xppcspad"}
     assert core_sources.issubset(sources), f"Missing core sources: {core_sources - sources}"
     label_tree = source_library.getLabelTree()
     assert "cspad" in label_tree

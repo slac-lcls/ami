@@ -12,6 +12,7 @@ import tempfile
 import dill
 import numpy as np
 import pytest
+import pytest_asyncio
 
 import ami.multiproc as mp
 
@@ -33,7 +34,7 @@ except ImportError:
     h5py = None
 
 from ami.asyncqt import QEventLoop
-from ami.comm import GraphCommHandler, Ports
+from ami.comm import GraphCommHandler
 from ami.flowchart.library.Operators import MeanVsScan
 from ami.graph_nodes import Map, PickN
 from ami.graphkit_wrapper import Graph
@@ -525,7 +526,7 @@ def dmypy():
         subprocess.run(["dmypy", "--status-file", dmypy_file.name, "kill"])
 
 
-@pytest.fixture(scope='function')
+@pytest_asyncio.fixture(scope='function')
 async def flowchart(request, ami_backend, broker, dmypy):
     """
     Creates a new Flowchart instance for each test, connected to the
