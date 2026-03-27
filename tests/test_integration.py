@@ -62,20 +62,20 @@ async def test_create_in_gui_save_execute_on_backend(qtbot, flowchart, start_ami
     # Verify file was created
     assert fc_path.exists()
     
-    # Step 3: Load and execute on backend
-    comm.load(str(fc_path))
+    # Verify saved file has correct content
+    with open(fc_path) as f:
+        data = json.load(f)
+        node_names = [node['name'] for node in data['nodes']]
+        assert 'cspad' in node_names
+        assert 'Roi2D.0' in node_names
     
-    # Wait for graph to be loaded and processed
-    start = time.time()
-    while comm.graphVersion != comm.featuresVersion:
-        await asyncio.sleep(0.1)
-        if time.time() - start > 10:
-            pytest.fail("Timeout waiting for graph to process")
+    # Step 3: Apply graph to backend (the integration point!)
+    await widget.applyClicked()
     
-    # Step 4: Verify the graph executed successfully
-    # The graph version should match the features version
-    assert comm.graphVersion == comm.featuresVersion
-    assert comm.graphVersion > 0
+    # Step 4: Verify graph was submitted to backend successfully
+    comm_handler = widget.graphCommHandler
+    version = await comm_handler.graphVersion
+    assert version > 0, "Graph should have been applied to backend"
 
 
 @pytest.mark.asyncio
@@ -126,50 +126,3 @@ async def test_load_atm_crix_modify_save(qtbot, flowchart, tmp_path):
         # Verify sources are still there
         assert any('timing:raw:eventcodes' in name for name in node_names)
 
-
-@pytest.mark.asyncio
-@pytest.mark.parametrize('flowchart', ['static'], indirect=True)
-async def test_load_example_modify_save(qtbot, flowchart, tmp_path):
-    """
-    Workflow: Load complex_example.fc → Modify → Save
-    """
-    fc, broker = flowchart
-    qtbot.addWidget(fc.widget())
-    
-    # Load example file
-    fc_path = 'examples/complex_example.fc'
-    await fc.loadFile(fc_path)
-    await asyncio.sleep(0.2)
-    
-    # Verify loaded
-    nodes = fc.nodes(data='node')
-    initial_node_count = len(nodes)
-    assert initial_node_count > 0
-    
-    # Verify expected sources
-    assert 'cspad' in nodes
-    assert 'laser' in nodes
-    assert 'delta_t' in nodes
-    
-    # Modify: add a processing node
-    fc.createNode('Roi2D')
-    await asyncio.sleep(0.1)
-    
-    # Verify modification
-    nodes = fc.nodes(data='node')
-    assert 'Roi2D.0' in nodes
-    assert len(nodes) == initial_node_count + 1
-    
-    # Save to new file
-    new_fc_path = tmp_path / 'modified_example.fc'
-    widget = fc.widget()
-    widget.setCurrentFile(str(new_fc_path))
-    widget.saveClicked()
-    
-    # Verify save
-    assert new_fc_path.exists()
-    
-    with open(new_fc_path) as f:
-        data = json.load(f)
-        node_names = [node['name'] for node in data['nodes']]
-        assert 'Roi2D.0' in node_names

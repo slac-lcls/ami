@@ -67,9 +67,9 @@ def test_sources(qtbot, flowchart):
     source_tree = source_library.getSourceTree()
     sources = set(source_tree.keys())
 
-    assert sources == set(["delta", "cspad", "laser", "eventid", "timestamp", "heartbeat", "source", "xppcspad"])
-
     # Check that core sources are present (not an exact match since config is auto-scanned)
+    core_sources = {'delta', 'cspad', 'laser', 'eventid', 'timestamp', 'heartbeat', 'source', 'xppcspad'}
+    assert core_sources.issubset(sources), f"Missing core sources: {core_sources - sources}"
     label_tree = source_library.getLabelTree()
     assert "cspad" in label_tree
     assert "laser" in label_tree
