@@ -39,6 +39,9 @@ from ami.graph_nodes import Map, PickN
 from ami.graphkit_wrapper import Graph
 from ami.local import build_parser, run_ami
 from ami.multiproc import check_mp_start_method
+from ami.client import GraphMgrAddress
+import time
+
 
 psanatest = pytest.mark.skipif(psana is None or hasattr(psana, "_psana"), reason="psana not avaliable")
 
@@ -179,8 +182,14 @@ def complex_graph(complex_graph_file):
         return dill.load(fd)
 
 
-@pytest.fixture(scope="function")
-def start_ami(request, workerjson):
+@pytest.fixture(scope='session')
+def ami_backend(request, workerjson, ipc_dir):
+    """
+    Start a single, session-scoped AMI backend (worker, collector, manager)
+    for all GUI tests to share. This runs once at the beginning of the test
+    session and is torn down at the end.
+    """
+
     try:
         from pytest_cov.embed import cleanup_on_sigterm
 
@@ -189,53 +198,168 @@ def start_ami(request, workerjson):
         pass
 
     parser = build_parser()
-    args = parser.parse_args(["-n", "1", "--headless", "--tcp", "%s://%s" % (request.param, workerjson)])
+    args = parser.parse_args([
+        "-n", "1",
+        '-i', str(ipc_dir),
+        '--headless',
+        f'static://{workerjson}'
+    ])
 
     queue = mp.Queue()
-    ami = mp.Process(name="ami", target=run_ami, args=(args, queue))
-    ami.start()
+    ami_proc = mp.Process(name='ami_backend', target=run_ami, args=(args, queue))
+    ami_proc.start()
 
+    # Create the graphmgr address object
+    comm_addr = "ipc://%s/comm" % ipc_dir
+    view_addr = "ipc://%s/view" % ipc_dir
+    graphinfo_addr = "ipc://%s/info" % ipc_dir
+    export_addr = "ipc://%s/export" % ipc_dir
+    graphmgr = GraphMgrAddress("graph", comm_addr, view_addr, graphinfo_addr, export_addr)
+
+    # Wait for the backend to be ready
     try:
-        host = "127.0.0.1"
-        comm_addr = "tcp://%s:%d" % (host, Ports.BasePort + Ports.Comm)
-        with GraphCommHandler(args.graph_name, comm_addr) as comm_handler:
-            yield comm_handler
+        with GraphCommHandler(graphmgr.name, graphmgr.comm) as comm:
+            for _ in range(50):  # 5 second timeout
+                if comm.sources:
+                    break
+                time.sleep(0.1)
+            else:
+                pytest.fail("Timeout waiting for AMI backend to start.")
     except Exception as e:
-        # let the fixture exit 'gracefully' if it fails
-        print(e)
-        yield None
-    finally:
+        # Clean up if startup fails
         queue.put(None)
-        ami.join(1)
-        # if ami still hasn't exitted then kill it
-        if ami.is_alive():
-            ami.terminate()
-            ami.join(1)
+        ami_proc.join(2)
+        if ami_proc.is_alive():
+            ami_proc.terminate()
+            ami_proc.join()
+        pytest.fail(f"Failed to start AMI backend: {e}")
 
-        if ami.exitcode == 0 or ami.exitcode == -signal.SIGTERM:
-            return 0
-        else:
-            print("AMI exited with non-zero status code: %d" % ami.exitcode)
-            return 1
+    # Finalizer to clean up the process at the end of the session
+    def finalizer():
+        queue.put(None)
+        ami_proc.join(2)
+        if ami_proc.is_alive():
+            ami_proc.terminate()
+            ami_proc.join()
+
+    request.addfinalizer(finalizer)
+
+    yield graphmgr
 
 
-@pytest.fixture(scope="session")
-def qevent_loop_gbl(qapp):
-    with QEventLoop(qapp) as loop:
-        yield loop
+@pytest.fixture(scope='function')
+def start_ami(request, workerjson, ami_backend, ipc_dir):
+    """
+    Smart routing fixture for AMI backend.
+    - 'static' param: Uses session-scoped ami_backend (fast, shared)
+    - 'psana' param: Creates function-scoped backend (slower, isolated)
+    """
+    data_source = request.param if hasattr(request, 'param') else 'static'
+
+    if data_source == 'static':
+        # Use existing session-scoped backend (IPC)
+        with GraphCommHandler(ami_backend.name, ami_backend.comm) as comm_handler:
+            yield comm_handler
+        return
+
+    elif data_source == 'psana':
+        # Create function-scoped psana backend (IPC)
+        try:
+            from pytest_cov.embed import cleanup_on_sigterm
+            cleanup_on_sigterm()
+        except ImportError:
+            pass
+
+        # Create temporary IPC directory for this test
+        psana_ipc_dir = tempfile.mkdtemp(prefix='ami_psana_')
+
+        parser = build_parser()
+        args = parser.parse_args([
+            "-n", "1",
+            '-i', psana_ipc_dir,
+            '--headless',
+            f'psana://{workerjson}'
+        ])
+
+        queue = mp.Queue()
+        ami = mp.Process(name='ami_psana',
+                         target=run_ami,
+                         args=(args, queue))
+        ami.start()
+
+        try:
+            comm_addr = "ipc://%s/comm" % psana_ipc_dir
+            with GraphCommHandler(args.graph_name, comm_addr) as comm_handler:
+                # Wait for backend to be ready
+                for _ in range(50):  # 5 second timeout
+                    if comm_handler.sources:
+                        break
+                    time.sleep(0.1)
+                else:
+                    pytest.fail("Timeout waiting for psana backend to start.")
+
+                yield comm_handler
+        except Exception as e:
+            print(f"Psana backend failed: {e}")
+            yield None
+        finally:
+            queue.put(None)
+            ami.join(2)
+            if ami.is_alive():
+                ami.terminate()
+                ami.join(1)
+
+            # Clean up IPC directory
+            try:
+                shutil.rmtree(psana_ipc_dir)
+            except Exception:
+                pass
+
+            if ami.exitcode not in (0, -signal.SIGTERM, None):
+                print('AMI psana backend exited with non-zero status code: %d' % ami.exitcode)
+    else:
+        pytest.fail(f"Unknown data source: {data_source}")
 
 
-@pytest.fixture(scope="function")
-def qevent_loop(qevent_loop_gbl):
-    loop = qevent_loop_gbl
+class QEventLoopPolicy(asyncio.DefaultEventLoopPolicy):
+    """Custom event loop policy that creates QEventLoop instances."""
+
+    def __init__(self, qapp):
+        super().__init__()
+        self.qapp = qapp
+
+    def new_event_loop(self):
+        return QEventLoop(self.qapp)
+
+
+@pytest.fixture(scope='session')
+def event_loop_policy(qapp):
+    """
+    Provide a custom event loop policy that creates QEventLoop instances.
+    This is the recommended way to integrate qasync with pytest-asyncio.
+    """
+    return QEventLoopPolicy(qapp)
+
+
+@pytest.fixture(scope='function')
+def qevent_loop(qapp):
+    """
+    Create a fresh QEventLoop for each test function.
+    For backward compatibility with tests that explicitly request qevent_loop.
+    """
+    loop = QEventLoop(qapp)
     asyncio.set_event_loop(loop)
     yield loop
-    # clean out the old socket notifiers - not necessary if zmq sockets are explicitly closed
-    for notifier in itertools.chain(
-        loop._read_notifiers.values() if loop._read_notifiers is not None else [],
-        loop._write_notifiers.values() if loop._write_notifiers is not None else [],
-    ):
-        notifier.setEnabled(False)
+
+    # Clean up: disable socket notifiers
+    try:
+        for notifier in itertools.chain(
+            loop._read_notifiers.values() if loop._read_notifiers is not None else [],
+            loop._write_notifiers.values() if loop._write_notifiers is not None else []
+        ):
+            notifier.setEnabled(False)
+    except Exception:
+        pass
 
 
 # fix the mp start method for platforms that need it
