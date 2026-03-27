@@ -80,43 +80,96 @@ async def test_create_in_gui_save_execute_on_backend(qtbot, flowchart, start_ami
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize('flowchart', ['static'], indirect=True)
-async def test_load_fc_in_gui_modify_save(qtbot, flowchart, complex_graph_file, tmp_path):
+async def test_load_atm_crix_modify_save(qtbot, flowchart, tmp_path):
     """
-    Workflow: Load .fc → Modify in GUI → Save
+    Workflow: Load ATM_crix_new.fc → Modify in GUI → Save
     """
     fc, broker = flowchart
-    qtbot.addWidget(fc.widget())  # Ensure widget is created
+    qtbot.addWidget(fc.widget())
     
-    # Step 1: Load existing .fc file
-    await fc.loadFile(str(complex_graph_file))
-    
-    # Wait for graph to load
+    # Load the .fc file
+    fc_path = 'tests/graphs/ATM_crix_new.fc'
+    await fc.loadFile(fc_path)
     await asyncio.sleep(0.2)
     
-    # Verify nodes were loaded
-    initial_node_count = len(fc.nodes(data='node'))
-    assert initial_node_count > 0
+    # Verify loaded correctly
+    nodes = fc.nodes(data='node')
+    initial_node_count = len(nodes)
+    assert initial_node_count > 4  # At least 4 source nodes + processing nodes
     
-    # Step 2: Modify graph by adding a new node
+    # Verify sources were loaded
+    assert 'timing:raw:eventcodes' in nodes
+    assert 'c_atmopal:raw:image' in nodes
+    
+    # Modify: add a new node
     fc.createNode('Projection')
     await asyncio.sleep(0.1)
     
-    # Verify node was added
+    # Verify modification
     nodes = fc.nodes(data='node')
     assert 'Projection.0' in nodes
     assert len(nodes) == initial_node_count + 1
     
-    # Step 3: Save to new file
-    new_fc_path = tmp_path / 'modified_graph.fc'
+    # Save to new file
+    new_fc_path = tmp_path / 'modified_atm_crix.fc'
     widget = fc.widget()
     widget.setCurrentFile(str(new_fc_path))
     widget.saveClicked()
     
-    # Verify file exists
+    # Verify save
     assert new_fc_path.exists()
     
-    # Verify the saved file has the new node
     with open(new_fc_path) as f:
         data = json.load(f)
         node_names = [node['name'] for node in data['nodes']]
         assert 'Projection.0' in node_names
+        # Verify sources are still there
+        assert any('timing:raw:eventcodes' in name for name in node_names)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('flowchart', ['static'], indirect=True)
+async def test_load_example_modify_save(qtbot, flowchart, tmp_path):
+    """
+    Workflow: Load complex_example.fc → Modify → Save
+    """
+    fc, broker = flowchart
+    qtbot.addWidget(fc.widget())
+    
+    # Load example file
+    fc_path = 'examples/complex_example.fc'
+    await fc.loadFile(fc_path)
+    await asyncio.sleep(0.2)
+    
+    # Verify loaded
+    nodes = fc.nodes(data='node')
+    initial_node_count = len(nodes)
+    assert initial_node_count > 0
+    
+    # Verify expected sources
+    assert 'cspad' in nodes
+    assert 'laser' in nodes
+    assert 'delta_t' in nodes
+    
+    # Modify: add a processing node
+    fc.createNode('Roi2D')
+    await asyncio.sleep(0.1)
+    
+    # Verify modification
+    nodes = fc.nodes(data='node')
+    assert 'Roi2D.0' in nodes
+    assert len(nodes) == initial_node_count + 1
+    
+    # Save to new file
+    new_fc_path = tmp_path / 'modified_example.fc'
+    widget = fc.widget()
+    widget.setCurrentFile(str(new_fc_path))
+    widget.saveClicked()
+    
+    # Verify save
+    assert new_fc_path.exists()
+    
+    with open(new_fc_path) as f:
+        data = json.load(f)
+        node_names = [node['name'] for node in data['nodes']]
+        assert 'Roi2D.0' in node_names

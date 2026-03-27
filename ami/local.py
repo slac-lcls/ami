@@ -20,6 +20,7 @@ from ami.console import run_console
 from ami.manager import run_manager
 from ami.multiproc import check_mp_start_method
 from ami.worker import run_worker
+from ami.fc_to_worker import generate_worker_json
 
 try:
     from ami.export import run_export
@@ -140,7 +141,20 @@ def build_parser():
 
     parser.add_argument("--cprofile", help="profile with cprofile", action="store_true")
 
-    parser.add_argument("--use-opengl", help="Use opengl for plots.", action="store_true")
+    parser.add_argument(
+        '--source-type',
+        type=str,
+        choices=['static', 'random'],
+        default='random',
+        help='Type of auto-generated source when loading .fc without explicit source '
+             '(default: random). static: constant values, random: varied data'
+    )
+
+    parser.add_argument(
+        '--use-opengl',
+        help='Use opengl for plots.',
+        action='store_true'
+    )
 
     parser.add_argument("--use-numba", help="Use numba for plots.", action="store_true")
 
@@ -245,13 +259,50 @@ def run_ami(args, queue=None):
                 logger.exception("Problem parsing data source flag %s", flag)
 
         if args.source is not None:
+            # Explicit source provided - use it
             src_url_match = re.match("(?P<prot>.*)://(?P<body>.*)", args.source)
             if src_url_match:
                 src_cfg = src_url_match.groups()
             else:
                 logger.critical("Invalid data source config string: %s", args.source)
                 return 1
+
+        elif args.load is not None:
+            # No source specified, but loading .fc file - auto-generate
+            logger.info("No data source specified, auto-generating from %s", args.load)
+
+            try:
+                # Generate worker config directly (returns tuple: source_type, config)
+                source_type, worker_config = generate_worker_json(
+                    args.load,
+                    num_events=1000,
+                    repeat=True,
+                    interval=0.01,
+                    init_time=0.1,
+                    source_type=args.source_type
+                )
+
+                if not worker_config.get('config'):
+                    # No sources found in .fc file
+                    logger.warning("No source nodes found in %s", args.load)
+                    logger.info("Continuing without data source. You can add SourceNodes in the GUI.")
+                    src_cfg = None
+                else:
+                    # Pass the config dict directly to workers (no temp file needed!)
+                    src_cfg = (source_type, worker_config)
+                    num_sources = len(worker_config['config'])
+                    logger.info("Auto-generated %s source with %d sources", source_type, num_sources)
+
+            except FileNotFoundError:
+                logger.error("Flowchart file not found: %s", args.load)
+                return 1
+            except Exception as e:
+                logger.warning("Error during worker config auto-generation: %s", e)
+                logger.info("Continuing without data source")
+                src_cfg = None
+
         else:
+            # No source and no .fc file - continue without source
             src_cfg = None
 
         logger.info("Starting ami-local using comm address: %s", comm_addr)

@@ -156,6 +156,64 @@ def psana1_xtc(request, psana1_testdata):
 
 @pytest.fixture(scope="session")
 def workerjson(tmpdir_factory, xtcwriter):
+    """
+    Universal worker configuration with auto-scanned and default sources.
+    
+    Sources are merged from two places:
+    1. Default sources for core tests (baseline configuration)
+    2. Auto-scanned from all .fc files in tests/graphs/ and examples/
+    
+    Auto-scanned sources take precedence over defaults if names conflict.
+    
+    This ensures:
+    - Core tests always have required sources (explicit defaults)
+    - New .fc files automatically work (zero maintenance via auto-scan)
+    - Easy to see baseline configuration (default_sources dict)
+    """
+    from ami.fc_to_worker import extract_sources_from_fc
+    from pathlib import Path
+    
+    # Default/baseline sources for core tests
+    default_sources = {
+        # Sources for test_complex_graph (also in examples/complex_example.fc)
+        "cspad": {"dtype": "Image", "pedestal": 5, "width": 1, "shape": [512, 512]},
+        "laser": {"dtype": "Scalar", "range": [0, 2], "integer": True},
+        "delta_t": {"dtype": "Scalar", "range": [0, 10], "integer": True},
+        
+        # Sources for test_psana_graph (psana-specific, not in any .fc)
+        "xppcspad:raw:image": {"dtype": "Image", "pedestal": 5, "width": 1, "shape": [512, 512]},
+    }
+    
+    # Auto-scan all .fc files
+    fc_files = []
+    
+    tests_graphs = Path('tests/graphs')
+    if tests_graphs.exists():
+        fc_files.extend(tests_graphs.glob('*.fc'))
+    
+    examples_dir = Path('examples')
+    if examples_dir.exists():
+        fc_files.extend(examples_dir.glob('*.fc'))
+    
+    # Extract sources from .fc files
+    scanned_sources = {}
+    for fc_file in fc_files:
+        try:
+            sources = extract_sources_from_fc(str(fc_file))
+            scanned_sources.update(sources)
+        except Exception as e:
+            print(f"Warning: Could not scan {fc_file}: {e}")
+    
+    # Merge: defaults first, then overlay scanned sources
+    all_sources = {**default_sources, **scanned_sources}
+    
+    # Log summary
+    num_files = len(fc_files)
+    num_scanned = len(scanned_sources)
+    num_default = len(default_sources)
+    num_total = len(all_sources)
+    print(f"Universal worker config: {num_default} default + "
+          f"{num_scanned} scanned from {num_files} .fc files = {num_total} total")
 
     cfg = {
         "interval": 0.01,
@@ -163,11 +221,7 @@ def workerjson(tmpdir_factory, xtcwriter):
         "bound": 100,
         "repeat": True,
         "files": "data.xtc2" if xtcwriter is None else str(xtcwriter),
-        "config": {
-            "delta_t": {"dtype": "Scalar", "range": [0, 10], "integer": True},
-            "cspad": {"dtype": "Image", "pedestal": 5, "width": 1, "shape": [512, 512]},
-            "laser": {"dtype": "Scalar", "range": [0, 2], "integer": True},
-        },
+        "config": all_sources,
     }
 
     fname = tmpdir_factory.mktemp("worker_config", False).join("worker.json")
@@ -371,6 +425,11 @@ def broker(ami_backend):
     """
     Create a MessageBroker that runs in a background thread.
     This connects to the session-scoped AMI backend.
+    
+    Cleanup:
+    - Properly cancels and awaits all async tasks to suppress warnings
+    - Uses asyncio.gather with return_exceptions=True for graceful shutdown
+    - See: https://docs.python.org/3/library/asyncio-task.html#asyncio.Task.cancel
     """
     try:
         from pytest_cov.embed import cleanup_on_sigterm
@@ -412,16 +471,24 @@ def broker(ami_backend):
     yield mb
     
     # Cleanup: Stop the broker gracefully
+    # IMPORTANT: Must properly cancel and await tasks to suppress Python warnings
+    # about "Task was destroyed but it is pending!"
     try:
-        # Cancel all tasks in the broker's event loop
-        def cancel_tasks():
-            tasks = asyncio.all_tasks(broker_loop)
+        # Cancel and await all broker tasks
+        def cancel_all_tasks():
+            tasks = list(asyncio.all_tasks(broker_loop))
             for task in tasks:
                 task.cancel()
-            # Stop the loop after cancelling tasks
-            broker_loop.stop()
         
-        broker_loop.call_soon_threadsafe(cancel_tasks)
+        # First cancel all tasks
+        broker_loop.call_soon_threadsafe(cancel_all_tasks)
+        
+        # Give the event loop time to process the cancellations
+        # This allows CancelledError to propagate through the gather()
+        time.sleep(0.02)
+        
+        # Now stop the loop
+        broker_loop.call_soon_threadsafe(broker_loop.stop)
         
         # Wait for the thread to finish (with timeout)
         broker_thread.join(timeout=2)
