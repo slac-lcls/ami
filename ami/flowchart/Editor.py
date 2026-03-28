@@ -8,6 +8,7 @@ from pyqtgraph import dockarea, FileDialog
 from qtpy import QtGui, QtWidgets, QtCore
 from ami.flowchart.NodeLibrary import isNodeClass
 from ami.flowchart.library.Editors import STYLE
+from ami.flowchart.NodeStateWidget import NodeStateWidget
 try:
     from qtconsole.rich_jupyter_widget import RichJupyterWidget
     from qtconsole.inprocess import QtInProcessKernelManager
@@ -282,6 +283,13 @@ class Ui_Toolbar(object):
         self.actionComment.setCheckable(True)
         self.navGroup.addAction(self.actionComment)
 
+        # inspector
+        self.actionInspector = QtWidgets.QAction(parent)
+        self.actionInspector.setIconText("Inspector")
+        self.actionInspector.setObjectName("actionInspector")
+        self.actionInspector.setCheckable(True)
+        self.actionInspector.setChecked(False)  # Hidden by default
+
         self.toolBar.addAction(self.actionNew)
         self.toolBar.addAction(self.actionOpen)
         self.toolBar.addAction(self.actionSave)
@@ -303,6 +311,7 @@ class Ui_Toolbar(object):
         self.toolBar.addAction(self.actionPan)
         self.toolBar.addAction(self.actionSelect)
         self.toolBar.addAction(self.actionComment)
+        self.toolBar.addAction(self.actionInspector)
         # self.toolBar.insertSeparator(self.actionArrange)
         self.toolBar.insertSeparator(self.actionHome)
 
@@ -329,6 +338,16 @@ class Ui_Toolbar(object):
         self.node_dock.addWidget(self.node_search, 3, 0, 1, 1)
         self.node_dock.addWidget(self.node_tree, 4, 0, 1, 1)
         chart.addDock(self.node_dock, 'left')
+
+        # Create state inspector dock on the right
+        self.state_dock = dockarea.Dock('Node State', size=(400, 1000))
+        self.state_widget = NodeStateWidget()
+        self.state_dock.addWidget(self.state_widget)
+        chart.addDock(self.state_dock, 'right')
+        self.state_dock.setVisible(False)  # Hidden by default
+        
+        # Connect inspector action to dock visibility
+        self.actionInspector.toggled.connect(self.state_dock.setVisible)
 
         self.rateLbl = QtWidgets.QLabel("")
         self.rateLbl.setAlignment(QtCore.Qt.AlignRight | QtCore.Qt.AlignBottom)
