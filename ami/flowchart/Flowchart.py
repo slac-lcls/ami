@@ -24,7 +24,6 @@ from ami.flowchart.TypeEncoder import TypeEncoder
 try:
     from qtconsole.inprocess import QtInProcessKernelManager
     from qtconsole.rich_jupyter_widget import RichJupyterWidget
-
     HAS_QTCONSOLE = True
 except ImportError:
     HAS_QTCONSOLE = False
@@ -540,7 +539,9 @@ class Flowchart(Node):
                 except Exception:
                     print(node1.terminals)
                     print(node2.terminals)
-                    printExc("Error connecting terminals %s.%s - %s.%s:" % (n1, t1, n2, t2))
+                    printExc(
+                        "Error connecting terminals %s.%s - %s.%s:" % (n1, t1, n2, t2)
+                    )
 
             type_file.flush()
             dmypy_status = os.environ["DMYPY_STATUS_FILE"]
@@ -634,6 +635,110 @@ class Flowchart(Node):
         ctrl.chartWidget.updateStatus(f"Saved graph to: {fileName}")
         self.sigFileSaved.emit(fileName)
 
+    def generateSourceCode(self):
+        """
+        Generate Python code that recreates the current graph.
+
+        Returns a string containing executable Python code.
+        """
+        from datetime import datetime
+
+        def sanitize_name(name):
+            """Convert node/source name to valid Python variable name"""
+            sanitized = name.replace(":", "_").replace(".", "_").replace("-", "_")
+            sanitized = (
+                sanitized.replace("/", "_")
+                .replace(" ", "_")
+                .replace("[", "_")
+                .replace("]", "_")
+            )
+            # Remove any other non-alphanumeric characters except underscore
+            sanitized = "".join(
+                c if c.isalnum() or c == "_" else "_" for c in sanitized
+            )
+            # Ensure it doesn't start with a digit
+            if sanitized and sanitized[0].isdigit():
+                sanitized = "node_" + sanitized
+            return sanitized
+
+        lines = []
+
+        # Header
+        lines.append("# AMI Graph Source Code")
+        lines.append(f"# Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+        lines.append("#")
+        lines.append("# This code recreates the current AMI analysis graph")
+        lines.append("")
+        lines.append("from ami.flowchart.library.common import SourceNode")
+        lines.append("")
+
+        # Create mapping of node names to variable names
+        var_names = {}
+        for name in self._graph.nodes():
+            var_names[name] = sanitize_name(name)
+
+        # Create source nodes first
+        source_nodes = []
+        processing_nodes = []
+
+        for name, gnode in self._graph.nodes(data="node"):
+            if gnode.__class__.__name__ == "SourceNode":
+                source_nodes.append((name, gnode))
+            else:
+                processing_nodes.append((name, gnode))
+
+        if source_nodes:
+            lines.append("# Create source nodes")
+            for name, node in source_nodes:
+                var_name = var_names[name]
+                # Get source name from node parameters
+                source_name = getattr(node, "source", name)
+                lines.append(f"{var_name} = SourceNode('{name}')")
+                lines.append(f"chart.addNode({var_name}, '{name}')")
+                lines.append(f"{var_name}.selectSource('{source_name}')")
+            lines.append("")
+
+        if processing_nodes:
+            lines.append("# Create processing/display nodes")
+            for name, node in processing_nodes:
+                var_name = var_names[name]
+                node_type = node.__class__.__name__
+                lines.append(f"{var_name} = chart.createNode('{node_type}', '{name}')")
+
+                # Configure node parameters if available
+                if hasattr(node, "values") and node.values:
+                    lines.append(f"# Configure {name}")
+                    for param, value in node.values.items():
+                        # Format value appropriately
+                        if isinstance(value, str):
+                            lines.append(f"{var_name}.values['{param}'] = '{value}'")
+                        else:
+                            lines.append(
+                                f"{var_name}.values['{param}'] = {repr(value)}"
+                            )
+            lines.append("")
+
+        # Create connections
+        connections = []
+        for src_name, dst_name, edge_data in self._graph.edges(data=True):
+            src_term = edge_data.get("fromTerm", "Out")
+            dst_term = edge_data.get("toTerm", "In")
+            connections.append((src_name, src_term, dst_name, dst_term))
+
+        if connections:
+            lines.append("# Connect nodes")
+            for src_name, src_term, dst_name, dst_term in connections:
+                src_var = var_names[src_name]
+                dst_var = var_names[dst_name]
+                lines.append(
+                    f"amicli.connect_nodes('{src_name}', '{src_term}', '{dst_name}', '{dst_term}')"
+                )
+            lines.append("")
+
+        lines.append("print('Graph recreated successfully!')")
+
+        return "\n".join(lines)
+
     async def clear(self):
         """
         Remove all nodes from this flowchart except the original input/output nodes.
@@ -683,7 +788,6 @@ class Flowchart(Node):
                     self.sigNodeChanged.emit(node)
 
             node.viewed = new_node_state["viewed"]
-
             # Update state panel if this node is currently displayed
             ctrl_widget = self.widget()
             if ctrl_widget.chartWidget.current_displayed_node == node:
@@ -721,7 +825,11 @@ class Flowchart(Node):
                 ctrl = self.widget()
                 tree = ctrl.ui.source_tree
                 ctrl.ui.clear_model(tree)
-                ctrl.ui.create_model(ctrl.ui.source_tree, self.source_library.getLabelTree(), typ="SourceTree")
+                ctrl.ui.create_model(
+                    ctrl.ui.source_tree,
+                    self.source_library.getLabelTree(),
+                    typ="SourceTree",
+                )
 
                 ctrl.chartWidget.updateStatus("Updated sources.")
 
@@ -799,7 +907,9 @@ class FlowchartCtrlWidget(QtWidgets.QWidget):
         super().__init__()
 
         self.graphmgr_addr = graphmgr_addr
-        self.graphCommHandler = AsyncGraphCommHandler(graphmgr_addr.name, graphmgr_addr.comm, ctx=chart.ctx)
+        self.graphCommHandler = AsyncGraphCommHandler(
+            graphmgr_addr.name, graphmgr_addr.comm, ctx=chart.ctx
+        )
         self.graph_name = graphmgr_addr.name
         self.metadata = None
 
@@ -810,7 +920,11 @@ class FlowchartCtrlWidget(QtWidgets.QWidget):
         self.ui = EditorTemplate.Ui_Toolbar()
         self.ui.setupUi(parent=self, chart=self.chartWidget, configure=configure)
         self.ui.create_model(self.ui.node_tree, self.chart.library.getLabelTree())
-        self.ui.create_model(self.ui.source_tree, self.chart.source_library.getLabelTree(), typ="SourceTree")
+        self.ui.create_model(
+            self.ui.source_tree,
+            self.chart.source_library.getLabelTree(),
+            typ="SourceTree",
+        )
 
         self.chart.sigNodeChanged.connect(self.ui.setPending)
 
@@ -827,6 +941,7 @@ class FlowchartCtrlWidget(QtWidgets.QWidget):
         self.ui.actionReset.triggered.connect(self.resetClicked)
         if HAS_QTCONSOLE:
             self.ui.actionConsole.triggered.connect(self.consoleClicked)
+        self.ui.actionViewSource.triggered.connect(self.viewSourceClicked)
 
         self.ui.actionHome.triggered.connect(self.homeClicked)
         self.ui.actionArrange.triggered.connect(self.arrangeClicked)
@@ -844,6 +959,7 @@ class FlowchartCtrlWidget(QtWidgets.QWidget):
         self.ui.libraryConfigure.clicked.connect(self.libraryEditor.show)
 
         self.ipython_widget = None
+        self.graph_builder = None  # Will be initialized when console is opened
         self.graph_info = pc.Info("ami_graph", "AMI Client graph", ["hutch", "name"])
         self.graph_version = pc.Gauge("ami_graph_version", "AMI Client graph version", ["hutch", "name"])
 
@@ -985,6 +1101,7 @@ class FlowchartCtrlWidget(QtWidgets.QWidget):
         startDir = self.chart.filePath
         if startDir is None:
             startDir = "."
+
         self.fileDialog = FileDialog(None, "Load Flowchart..", startDir, "Flowchart (*.fc)")
         self.fileDialog.show()
         self.fileDialog.fileSelected.connect(self.chart.loadFile)
@@ -1077,16 +1194,220 @@ class FlowchartCtrlWidget(QtWidgets.QWidget):
     def configureClicked(self):
         self.sourceConfigure.show()
 
-    if HAS_QTCONSOLE:
+    def viewSourceClicked(self):
+        """Display Python source code for current graph"""
+        source_code = self.chart.generateSourceCode()
 
+        # Create a window to display the source code
+        dialog = QtWidgets.QDialog(self)
+        dialog.setWindowTitle("Graph Source Code")
+        dialog.resize(800, 600)
+
+        layout = QtWidgets.QVBoxLayout(dialog)
+
+        # Text editor for code display
+        text_edit = QtWidgets.QTextEdit()
+        text_edit.setReadOnly(True)
+        text_edit.setPlainText(source_code)
+        text_edit.setStyleSheet("font-family: monospace; font-size: 10pt;")
+        layout.addWidget(text_edit)
+
+        # Button bar
+        button_layout = QtWidgets.QHBoxLayout()
+
+        # Copy to clipboard button
+        copy_btn = QtWidgets.QPushButton("Copy to Clipboard")
+
+        def copy_to_clipboard():
+            clipboard = QtWidgets.QApplication.clipboard()
+            clipboard.setText(source_code)
+            self.chartWidget.updateStatus("Source code copied to clipboard!")
+
+        copy_btn.clicked.connect(copy_to_clipboard)
+        button_layout.addWidget(copy_btn)
+
+        # Export as script button
+        export_script_btn = QtWidgets.QPushButton("Export as Script...")
+
+        def export_script():
+            file_dialog = FileDialog(
+                None, "Export Graph Script", ".", "Python Files (*.py)"
+            )
+            file_dialog.setAcceptMode(QtWidgets.QFileDialog.AcceptSave)
+
+            def save_script(fileName):
+                if not fileName.endswith(".py"):
+                    fileName += ".py"
+                with open(fileName, "w") as f:
+                    f.write(source_code)
+                self.chartWidget.updateStatus(f"Graph script exported to: {fileName}")
+
+            file_dialog.fileSelected.connect(save_script)
+            file_dialog.show()
+
+        export_script_btn.clicked.connect(export_script)
+        button_layout.addWidget(export_script_btn)
+
+        # Export as template button
+        export_template_btn = QtWidgets.QPushButton("Export as Template...")
+
+        def export_template():
+            # Get template name and description from user
+            name_dialog = QtWidgets.QInputDialog()
+            template_name, ok = name_dialog.getText(
+                self,
+                "Template Name",
+                "Enter template name (will be used as function name):",
+            )
+
+            if not ok or not template_name:
+                return
+
+            desc_dialog = QtWidgets.QInputDialog()
+            description, ok = desc_dialog.getText(
+                self, "Template Description", "Enter template description:"
+            )
+
+            if not ok:
+                description = "Auto-generated template from AMI graph"
+
+            # Generate template code
+            from datetime import datetime
+
+            template_code = f"""# AMI Graph Template: {template_name}
+\"\"\"
+{description}
+
+Auto-generated template from AMI graph
+Created: {datetime.now().strftime("%Y-%m-%d %H:%M:%S")}
+\"\"\"
+
+def {template_name}_template():
+    \"\"\"
+    {description}
+    
+    TODO: Add parameters for customization:
+    - Source names
+    - Node names
+    - ROI dimensions
+    - Plot parameters
+    - etc.
+    \"\"\"
+    
+{chr(10).join("    " + line for line in source_code.split(chr(10)))}
+
+# Example usage:
+# {template_name}_template()
+"""
+
+            # Save template
+            file_dialog = FileDialog(
+                None, "Export Graph Template", ".", "Python Files (*.py)"
+            )
+            file_dialog.setAcceptMode(QtWidgets.QFileDialog.AcceptSave)
+
+            def save_template(fileName):
+                if not fileName.endswith(".py"):
+                    fileName += ".py"
+                with open(fileName, "w") as f:
+                    f.write(template_code)
+                self.chartWidget.updateStatus(f"Graph template exported to: {fileName}")
+
+            file_dialog.fileSelected.connect(save_template)
+            file_dialog.show()
+
+        export_template_btn.clicked.connect(export_template)
+        button_layout.addWidget(export_template_btn)
+
+        # Close button
+        close_btn = QtWidgets.QPushButton("Close")
+        close_btn.clicked.connect(dialog.close)
+        button_layout.addWidget(close_btn)
+
+        layout.addLayout(button_layout)
+
+        dialog.exec_()
+
+    if HAS_QTCONSOLE:
         def consoleClicked(self):
             class AmiCli:
-
                 def __init__(self, ctrl, chartWidget, chart, graph, graphCommHandler):
                     self.ctrl = ctrl
                     self.chartWidget = chartWidget
                     self.chart = chart
+                    self.graph = graph
                     self.graphCommHandler = graphCommHandler
+
+                def connect_nodes(self, src, src_term, dst, dst_term):
+                    """Connect two nodes by name (string-based helper)"""
+                    if isinstance(src, str):
+                        src = self.graph.nodes[src]["node"]
+                    if isinstance(dst, str):
+                        dst = self.graph.nodes[dst]["node"]
+                    src.terminals[src_term].connectTo(dst.terminals[dst_term])
+
+                def disconnect_nodes(self, src, src_term, dst, dst_term):
+                    """Disconnect two nodes by name"""
+                    if isinstance(src, str):
+                        src = self.graph.nodes[src]["node"]
+                    if isinstance(dst, str):
+                        dst = self.graph.nodes[dst]["node"]
+                    src.terminals[src_term].disconnectFrom(dst.terminals[dst_term])
+
+                def build_from_spec(self, spec):
+                    """
+                    Build multiple nodes and connections from specification.
+
+                    spec = {
+                        'nodes': [(type, name), ...],
+                        'connections': [(src, src_term, dst, dst_term), ...],
+                        'config': {node_name: {param: value}, ...}
+                    }
+                    """
+                    created_nodes = {}
+
+                    for node_type, node_name in spec.get("nodes", []):
+                        node = self.chart.createNode(node_type, node_name)
+                        created_nodes[node_name] = node
+
+                    for src, src_term, dst, dst_term in spec.get("connections", []):
+                        self.connect_nodes(src, src_term, dst, dst_term)
+
+                    for node_name, params in spec.get("config", {}).items():
+                        node = self.graph.nodes[node_name]["node"]
+                        if hasattr(node, "values"):
+                            node.values.update(params)
+                            if hasattr(node, "sigStateChanged"):
+                                node.sigStateChanged.emit(node)
+
+                    return list(created_nodes.values())
+
+                def node_info(self, name):
+                    """Get node details including connections"""
+                    node = self.graph.nodes[name]["node"]
+                    connections_in = []
+                    connections_out = []
+
+                    for term_name, term in node.terminals.items():
+                        for conn in term.connections():
+                            if term._io == "in":
+                                connections_in.append(
+                                    (conn.node().name(), conn.name(), term_name)
+                                )
+                            else:
+                                connections_out.append(
+                                    (term_name, conn.node().name(), conn.name())
+                                )
+
+                    return {
+                        "type": node.__class__.__name__,
+                        "terminals": {
+                            name: t._io for name, t in node.terminals.items()
+                        },
+                        "values": getattr(node, "values", {}),
+                        "connections_in": connections_in,
+                        "connections_out": connections_out,
+                    }
 
             if self.ipython_widget is None:
                 kernel_manager = QtInProcessKernelManager()
@@ -1102,9 +1423,46 @@ class FlowchartCtrlWidget(QtWidgets.QWidget):
                 self.ipython_widget.kernel_manager = kernel_manager
                 self.ipython_widget.kernel_client = kernel_client
 
-            graphCommHandler = GraphCommHandler(self.graphmgr_addr.name, self.graphmgr_addr.comm)
-            self.amicli = AmiCli(self, self.chartWidget, self.chart, self.chart._graph, graphCommHandler)
-            self.ipython_widget.kernel_manager.kernel.shell.push({"amicli": self.amicli})
+            graphCommHandler = GraphCommHandler(
+                self.graphmgr_addr.name, self.graphmgr_addr.comm
+            )
+            self.amicli = AmiCli(
+                self, self.chartWidget, self.chart, self.chart._graph, graphCommHandler
+            )
+            self.ipython_widget.kernel_manager.kernel.shell.push(
+                {
+                    "amicli": self.amicli,
+                    "chart": self.chart,
+                    "graph": self.chart._graph,
+                    "LIBRARY": LIBRARY,
+                    "SourceNode": SourceNode,
+                    "np": np,
+                    "pg": pg,
+                }
+            )
+
+            # Initialize OpenCode graph builder and register magic commands
+            if self.graph_builder is None:
+                try:
+                    from ami.flowchart.graph_builder import (
+                        OpenCodeBridge,
+                        register_graph_builder_magic,
+                    )
+
+                    self.graph_builder = OpenCodeBridge()
+                    register_graph_builder_magic(
+                        self.ipython_widget.kernel_manager.kernel.shell,
+                        self.amicli,
+                        self.graph_builder,
+                    )
+                    # Register cleanup on exit
+                    import atexit
+
+                    atexit.register(self.graph_builder.close)
+                except Exception as e:
+                    print(f"Warning: Could not initialize graph builder: {e}")
+
+>>>>>>> ae673bf (Implement Phases 1, 2, and 2.5: AI-assisted graph building with View Source)
             win = QtWidgets.QMainWindow(parent=self)
             win.setCentralWidget(self.ipython_widget)
             win.show()
@@ -1203,7 +1561,12 @@ class FlowchartWidget(dockarea.DockArea):
 
         self.operationMenu = QtWidgets.QMenu()
         self.operationSubMenus = []
-        buildSubMenu(self.chart.library.getNodeTree(), self.operationMenu, self.operationSubMenus, pos=pos)
+        buildSubMenu(
+            self.chart.library.getNodeTree(),
+            self.operationMenu,
+            self.operationSubMenus,
+            pos=pos,
+        )
         self.operationMenu.triggered.connect(self.operationMenuTriggered)
         return self.operationMenu
 
@@ -1222,7 +1585,12 @@ class FlowchartWidget(dockarea.DockArea):
 
         self.sourceMenu = QtWidgets.QMenu()
         self.sourceSubMenus = []
-        buildSubMenu(self.chart.source_library.getSourceTree(), self.sourceMenu, self.sourceSubMenus, pos=pos)
+        buildSubMenu(
+            self.chart.source_library.getSourceTree(),
+            self.sourceMenu,
+            self.sourceSubMenus,
+            pos=pos,
+        )
         self.sourceMenu.triggered.connect(self.sourceMenuTriggered)
         return self.sourceMenu
 
@@ -1269,12 +1637,16 @@ class FlowchartWidget(dockarea.DockArea):
             return
 
         if node.viewable():
-            inputs = [n for n, d, in self.chart._graph.in_degree() if d == 0]
+            inputs = [n for n, d in self.chart._graph.in_degree() if d == 0]
             seen = set()
             pending = set()
 
             for in_node in inputs:
-                paths = list(nx.algorithms.all_simple_paths(self.chart._graph, in_node, node.name()))
+                paths = list(
+                    nx.algorithms.all_simple_paths(
+                        self.chart._graph, in_node, node.name()
+                    )
+                )
                 for path in paths:
                     for gnode in path:
                         gnode = self.chart._graph.nodes[gnode]
@@ -1290,7 +1662,9 @@ class FlowchartWidget(dockarea.DockArea):
             if pending:
                 pending = ", ".join(pending)
                 msg = QtWidgets.QMessageBox(parent=self)
-                msg.setText(f"Pending changes for {pending}. Please apply before trying to view.")
+                msg.setText(
+                    f"Pending changes for {pending}. Please apply before trying to view."
+                )
                 msg.show()
                 return
 
@@ -1383,7 +1757,9 @@ class FlowchartWidget(dockarea.DockArea):
 
             if not node.created:
                 state = node.saveState()
-                msg = fcMsgs.CreateNode(node.name(), node.__class__.__name__, state=state)
+                msg = fcMsgs.CreateNode(
+                    node.name(), node.__class__.__name__, state=state
+                )
                 await self.chart.broker.send_string(node.name(), zmq.SNDMORE)
                 await self.chart.broker.send_pyobj(msg)
                 node.created = True
@@ -1567,7 +1943,6 @@ class FlowchartWidget(dockarea.DockArea):
 
 
 class Features(object):
-
     def __init__(self, graphCommHandler):
         self.features_count = collections.defaultdict(set)
         self.features = {}

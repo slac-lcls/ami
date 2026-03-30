@@ -12,20 +12,11 @@ from ami.flowchart.library.Editors import STYLE
 from ami.flowchart.NodeLibrary import isNodeClass
 from ami.flowchart.NodeStateWidget import NodeStateWidget
 
-try:
-    from qtconsole.inprocess import QtInProcessKernelManager
-    from qtconsole.rich_jupyter_widget import RichJupyterWidget
-
-    HAS_QTCONSOLE = True
-except ImportError:
-    HAS_QTCONSOLE = False
-
 
 logger = logging.getLogger(__name__)
 
 
 class LibraryEditor(QtWidgets.QWidget):
-
     sigApplyClicked = QtCore.Signal()
     sigReloadClicked = QtCore.Signal(object)
 
@@ -82,7 +73,9 @@ class LibraryEditor(QtWidgets.QWidget):
         for pth in pths:
             for root, dirs, filenames in os.walk(pth):
                 for filename in filenames:
-                    if filename.endswith((".py", ".PY")) and not filename.startswith("_"):
+                    if filename.endswith((".py", ".PY")) and not filename.startswith(
+                        "_"
+                    ):
                         modules.append(os.path.join(root, filename))
         self.fileDialogFilesSelected(modules)
 
@@ -103,7 +96,11 @@ class LibraryEditor(QtWidgets.QWidget):
             if mod in self.modules:
                 continue
 
-            nodes = [getattr(mod, name) for name in dir(mod) if isNodeClass(getattr(mod, name))]
+            nodes = [
+                getattr(mod, name)
+                for name in dir(mod)
+                if isNodeClass(getattr(mod, name))
+            ]
 
             if not nodes:
                 continue
@@ -147,7 +144,9 @@ class LibraryEditor(QtWidgets.QWidget):
             return
 
         self.ctrl.ui.clear_model(self.ctrl.ui.node_tree)
-        self.ctrl.ui.create_model(self.ctrl.ui.node_tree, self.library.getLabelTree(rebuild=True))
+        self.ctrl.ui.create_model(
+            self.ctrl.ui.node_tree, self.library.getLabelTree(rebuild=True)
+        )
 
         self.sigApplyClicked.emit()
 
@@ -159,7 +158,6 @@ class LibraryEditor(QtWidgets.QWidget):
 
 
 class SearchProxyModel(QtCore.QSortFilterProxyModel):
-
     def setFilterRegularExpression(self, pattern):
         if isinstance(pattern, str):
             pattern = QtCore.QRegularExpression(pattern, QtCore.QRegularExpression.PatternOption.CaseInsensitiveOption)
@@ -252,6 +250,11 @@ class Ui_Toolbar(object):
             self.actionConsole.setIconText("Console")
             self.actionConsole.setObjectName("actionConsole")
 
+        # View Source
+        self.actionViewSource = QtWidgets.QAction(parent)
+        self.actionViewSource.setIconText("View Source")
+        self.actionViewSource.setObjectName("actionViewSource")
+
         # Arrange
         self.actionArrange = QtWidgets.QAction(parent)
         self.actionArrange.setIconText("Arrange")
@@ -304,6 +307,7 @@ class Ui_Toolbar(object):
         self.toolBar.addAction(self.actionReset)
         if HAS_QTCONSOLE:
             self.toolBar.addAction(self.actionConsole)
+        self.toolBar.addAction(self.actionViewSource)
 
         if configure:
             self.toolBar.insertSeparator(self.actionConfigure)
@@ -396,10 +400,14 @@ class Ui_Toolbar(object):
         model.clear()
 
     def node_search_text_changed(self):
-        self.search_text_changed(self.node_tree, self.node_model, self.node_search.text())
+        self.search_text_changed(
+            self.node_tree, self.node_model, self.node_search.text()
+        )
 
     def source_search_text_changed(self):
-        self.search_text_changed(self.source_tree, self.source_model, self.source_search.text())
+        self.search_text_changed(
+            self.source_tree, self.source_model, self.source_search.text()
+        )
 
     def search_text_changed(self, tree, model, text):
         model.setFilterRegularExpression(text)
