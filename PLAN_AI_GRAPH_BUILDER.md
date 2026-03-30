@@ -1,8 +1,12 @@
-# AI-Assisted Graph Building for AMI - Final Implementation Plan
+# AI-Assisted Graph Building for AMI - Implementation Status
 
-## Executive Summary
+## Current Status: ✅ PHASES 1-3 COMPLETE, IMPROVEMENTS NEEDED
 
 Build an AI-assisted graph building system for AMI that enables users to construct analysis graphs using natural language commands via an IPython magic command (`%build_graph`). The system includes a "View Source" feature to see Python code equivalent of graphs and export them as reusable templates.
+
+**Implementation Date:** March 30, 2026  
+**Branch:** `feature/ai-graph-builder`  
+**Status:** Functional but needs improvements (agent hallucinating nodes)
 
 **Key Design Principles:**
 - Use existing Flowchart API wherever possible
@@ -10,7 +14,7 @@ Build an AI-assisted graph building system for AMI that enables users to constru
 - User-generated templates from real graphs
 - Data-driven documentation based on actual usage
 
-**Total Estimated Effort:** 18-26 hours (2-3 days)
+**Total Effort:** ~20 hours (completed in 1 session)
 
 ---
 
@@ -1290,34 +1294,329 @@ Agent:
 
 ---
 
-## Document Status
+---
 
-**Version:** 2.3 (Updated)  
-**Date:** 2026-03-30  
-**Updates:**
-- Added PythonEditor (node #16), deferred custom node generation to Phase 6
-- **Phase 2 expanded:** Added OpenCode server architecture with lifecycle management
-- **Structured JSON response:** Agent returns code in JSON format for robust parsing
-- **Session continuity:** Maintains conversation history across `%build_graph` invocations
-- **Auto-restart:** Server auto-recovers from crashes
-- **Performance:** ~200ms per request after initial startup
-- **Phase 4 detailed:** Comprehensive "Why Can't I See Data?" diagnostics plan
-  - 10 diagnostic categories prioritized by tier
-  - Uses graphCommHandler.fetch() and info socket for live data
-  - Parses filter expressions to detect mutually exclusive conditions
-  - Integrates with Prometheus metrics for performance analysis
-  - Deferred to post-launch based on user feedback
+## IMPLEMENTATION STATUS (Updated March 30, 2026)
 
-**Author:** Planning Session  
-**Status:** ✅ Ready for Implementation (Phases 1-3)  
-**Approved By:** [Pending]
+### ✅ Completed (Phases 1-3)
+
+**Phase 1: GUI Console Enhancement** ✅ DONE
+- ✅ AmiCli helper methods (connect_nodes, disconnect_nodes, build_from_spec, node_info)
+- ✅ Updated IPython namespace (chart, graph, LIBRARY, SourceNode, np, pg)
+- ✅ Added graph attribute to AmiCli
+
+**Phase 2: Magic Command & Graph Builder** ✅ DONE
+- ✅ Created ami/flowchart/graph_builder.py
+- ✅ OpenCodeBridge class (simplified to connect to server)
+- ✅ Graph state extraction (get_graph_state)
+- ✅ Agent invocation with JSON parsing
+- ✅ Registered %build_graph and %bg magic commands
+- ✅ OpenCode server starts at AMI launch (like dmypy)
+- ✅ Server URL stored in OPENCODE_SERVER_URL environment variable
+
+**Phase 2.5: View Source Feature** ✅ DONE
+- ✅ generateSourceCode() method in Flowchart class
+- ✅ "View Source" toolbar button
+- ✅ Source viewer dialog with Copy/Export/Template options
+- ✅ Name sanitization for valid Python variables
+
+**Phase 3: AI Agent Skill** ✅ DONE
+- ✅ Created skills/ami-graph-builder/ directory structure
+- ✅ SKILL.md - Main agent instructions (~520 lines)
+- ✅ Node documentation (6 reference files covering 16 nodes)
+- ✅ Graph patterns documentation (5 common patterns)
+- ✅ User templates directory structure
+
+**Git Commits:** 6 commits on branch `feature/ai-graph-builder`
+- ae673bf - Phases 1, 2, 2.5 implementation
+- d2c1e73 - Phase 3 skill documentation
+- a22c6f0 - Fix magic function registration
+- e1e1af1 - Python 3.6 compatibility
+- f3aa774 - Simplify server startup
+- 8856d3c - Start server at AMI startup (final)
 
 ---
 
-## Next Steps
+## ⚠️ CURRENT ISSUES & NEEDED IMPROVEMENTS
 
-1. Review and approve this plan
-2. Create implementation branch
-3. Begin Phase 1 implementation
-4. Regular check-ins after each phase
-5. User testing before Phase 3 completion
+### Issue 1: Agent Hallucinating Non-Existent Nodes 🔥 HIGH PRIORITY
+
+**Problem:** Agent invents node type names that don't exist in AMI
+
+**Root Cause:**
+- Only 16 of 97+ nodes documented
+- No exhaustive list of valid node types
+- No explicit constraint to only use documented nodes
+- Agent guesses similar-sounding names
+
+**Impact:** Generated code fails with "unknown node type" errors
+
+**Solution Plan:** See Phase 3.5 below
+
+---
+
+## Phase 3.5: Fix Node Hallucination (NEW - CRITICAL)
+
+**Effort:** 2-4 hours  
+**Priority:** 🔥 HIGH - Fix before production use  
+**Status:** ❌ NOT STARTED
+
+### 3.5.1 Create Complete Node Type Reference
+
+**File:** `skills/ami-graph-builder/references/all_node_types.md` (NEW)
+
+Generate exhaustive list of all 97 valid node types:
+
+```markdown
+# Complete List of Valid AMI Node Types
+
+**CRITICAL:** Only use node types from this list. Never invent node names.
+
+## All Available Nodes (Alphabetical)
+
+**Display Nodes:**
+- Histogram - Distribution plot
+- Histogram2D - 2D histogram
+- ImageViewer - 2D image display
+- LinePlot - 1D line plot
+- MultiWaveformViewer - Multiple waveforms
+- ObjectViewer - Generic object viewer
+- ScalarPlot - Scalar vs time
+- ScalarViewer - Single value display
+- ScatterPlot - X vs Y correlation
+- TimePlot - Time series plot
+- WaveformViewer - 1D waveform display
+
+**Processing Nodes:**
+- Average, Average0D, Average1D, Average2D - Averaging operations
+- Binning, Binning2D - Azimuthal/radial binning
+- Calculator - Mathematical expressions
+- Combinations - Combine inputs
+- Constant - Constant value
+- ExponentialMovingAverage1D, ExponentialMovingAverage2D - EMA
+- Filter - Boolean event filtering
+- GaussianFilter1D - Gaussian smoothing
+- Identity - Pass-through
+- Polynomial - Polynomial operations
+- Projection - Dimensionality reduction
+- Rotate - Rotate arrays
+- Stack1d, Stack2d - Stack arrays
+- Sum - Array summation
+- Take - Extract elements
+
+**ROI Nodes:**
+- Roi0D, Roi1D, Roi2D - Region of interest extraction
+- ScatterRoi - ROI on scatter plot
+
+**Statistics Nodes:**
+- HistMeanRMS - Histogram with stats
+- Linregress0D, Linregress1D - Linear regression
+- MeanVsScan - Mean vs scan variable
+- MeanWaveformVsScan - Waveform mean vs scan
+- RMS - Root mean square
+- StatsVsScan - Full statistics vs scan
+- TimeMeanRMS0D, TimeMeanRMS1D, TimeMeanRMS2D - Time-averaged stats
+
+**Accumulator Nodes:**
+- Accumulator - Accumulate over events
+- Pick1 - Pick single event
+- PickN - Pick N events
+- RollingBuffer - Rolling event buffer
+- SumN - Sum N events
+
+**Analysis Nodes:**
+- BlobFinder1D, BlobFinder2D - Find blobs
+- CFD - Constant fraction discriminator
+- CurveFit - Curve fitting
+- EdgeFinder - Find edges
+- Geometry - Geometric operations
+- HitFinder - Hit detection
+- Mask, Mask3dFrom2d - Masking operations
+- PeakFinder1D, PeakFinderV4R3, PeakFit - Peak finding
+- ThresholdingHitFinder - Threshold-based hit finding
+
+**FFT Nodes:**
+- FFT, FFT2 - Forward FFT
+- IFFT, IFFT2 - Inverse FFT
+- RFFT, RFFT2 - Real FFT
+- IRFFT, IRFFT2 - Inverse real FFT
+
+**Export Nodes:**
+- ExportToWorker - Export to worker process
+- PvExport - EPICS PV export
+- ZMQ - ZMQ publisher
+- UDPMcast - UDP multicast
+
+**Special Nodes:**
+- ArrayThreshold - Threshold arrays
+- LoadReference1D - Load reference data
+- Monitor - Monitoring node
+- PythonEditor - Custom Python code
+- Split - Split data streams
+
+(Total: 97 node types)
+```
+
+### 3.5.2 Update SKILL.md - Add Critical Constraints
+
+**File:** `skills/ami-graph-builder/SKILL.md`
+
+Add at top (after "Your Role"):
+
+```markdown
+## ⚠️ CRITICAL CONSTRAINT: Valid Node Types Only
+
+**YOU MUST ONLY USE NODE TYPES FROM THE OFFICIAL LIST.**
+
+See `references/all_node_types.md` for the complete list of all 97 valid AMI node types.
+
+**RULES:**
+1. ✅ ONLY use node types from the official list
+2. ❌ NEVER invent or guess node type names
+3. ❌ NEVER use similar-sounding names (e.g., "DetectorViewer" doesn't exist, use "ImageViewer")
+4. ❌ NEVER assume a node exists based on its function
+
+**IF** the user requests functionality and no matching node exists:
+1. Say so explicitly in your response
+2. Suggest the closest available alternative
+3. Explain how to achieve the goal with existing nodes or PythonEditor
+
+**Common Mistakes to Avoid:**
+- ❌ `DetectorViewer` → Use `ImageViewer`
+- ❌ `PlotScalar` → Use `ScalarPlot`  
+- ❌ `ROI` → Use `Roi1D` or `Roi2D`
+- ❌ `Mean` → Use `Average` or `MeanVsScan`
+- ❌ `Threshold` → Use `Filter` with expression
+- ❌ `Correlate` → Use `ScatterPlot`
+```
+
+### 3.5.3 Enhance build_agent_prompt()
+
+**File:** `ami/flowchart/graph_builder.py` (line ~242)
+
+Update prompt to include common nodes:
+
+```python
+def build_agent_prompt(user_request, graph_state, amicli):
+    """Generate comprehensive prompt for AI agent."""
+    
+    prompt = f"""You are helping build an AMI analysis graph using Python.
+
+USER REQUEST: {user_request}
+
+CURRENT GRAPH STATE:
+- Nodes: {len(graph_state["nodes"])} nodes
+- Sources: {", ".join(graph_state["sources"]) if graph_state["sources"] else "None"}
+- Available sources: {", ".join(graph_state["available_sources"][:10]) if graph_state["available_sources"] else "None"}
+
+AVAILABLE API:
+1. Create nodes: chart.createNode(type, name)
+2. Connect nodes: amicli.connect_nodes(src, src_term, dst, dst_term)
+
+⚠️ CRITICAL: ONLY use these valid node types (most common):
+
+Display: ImageViewer, WaveformViewer, ScatterPlot, ScalarPlot, LinePlot, 
+         ScalarViewer, Histogram, Histogram2D, TimePlot
+
+Processing: Sum, Average, Projection, Binning, Calculator, Filter, 
+            GaussianFilter1D, Polynomial, Rotate
+
+ROI: Roi0D, Roi1D, Roi2D, ScatterRoi
+
+Statistics: MeanVsScan, StatsVsScan, HistMeanRMS, Linregress0D, Linregress1D
+
+Accumulators: Pick1, PickN, RollingBuffer, SumN
+
+Analysis: PeakFinder1D, BlobFinder1D, BlobFinder2D, HitFinder
+
+Export: PvExport, ZMQ, UDPMcast
+
+Special: PythonEditor (for custom code), Monitor
+
+NEVER invent node names. If unsure, use PythonEditor or ask for clarification.
+
+REQUIRED RESPONSE FORMAT (JSON):
+{{
+  "explanation": "Brief description",
+  "code": "executable Python code",
+  "warnings": ["optional warnings"],
+  "next_steps": ["optional suggestions"]
+}}
+"""
+    return prompt
+```
+
+### 3.5.4 Add Validation (Optional)
+
+**File:** `ami/flowchart/graph_builder.py`
+
+Add validation function:
+
+```python
+def validate_node_types(code):
+    """Warn if code uses potentially invalid node types"""
+    import re
+    
+    # Extract all createNode calls
+    node_types = re.findall(r"createNode\(['\"](\w+)['\"]", code)
+    
+    # Common valid types (subset for quick check)
+    known_types = {
+        'ScatterPlot', 'ScalarPlot', 'LinePlot', 'ImageViewer', 'WaveformViewer',
+        'Sum', 'Average', 'Projection', 'Binning', 'Calculator', 'Filter',
+        'Roi1D', 'Roi2D', 'MeanVsScan', 'StatsVsScan', 'PythonEditor',
+        'Histogram', 'Pick1', 'PickN', 'RollingBuffer', 'PvExport'
+    }
+    
+    unknown = [nt for nt in node_types if nt not in known_types]
+    
+    if unknown:
+        print(f"⚠️  Warning: Unknown node types detected: {', '.join(unknown)}")
+        print(f"⚠️  Code may fail if these aren't valid AMI nodes")
+```
+
+---
+
+## Phase 4: Diagnostics (Deferred)
+
+**Status:** ❌ DEFERRED - Not implemented  
+**Reason:** Focus on core functionality first
+
+See original plan above for "Why Can't I See Data?" diagnostics feature.
+
+---
+
+## Phase 5: Graph Optimization (Deferred)
+
+**Status:** ❌ DEFERRED - Not implemented
+
+---
+
+## Phase 6: Custom Node Generation (Deferred)
+
+**Status:** ❌ DEFERRED - Not implemented
+
+---
+
+## Document Version History
+
+**Version 3.0** - March 30, 2026 (Updated)
+- Phases 1-3 marked as complete
+- Added implementation status section
+- Added Phase 3.5 for fixing node hallucination issue
+- Updated with actual git commits and branch info
+- Changed from planning document to status/tracking document
+
+**Version 2.3** - March 30, 2026 (Original)
+- Initial comprehensive planning document
+
+---
+
+## Immediate Next Steps
+
+1. ✅ ~~Implement Phases 1-3~~ (COMPLETE)
+2. 🔥 **Implement Phase 3.5** - Fix node hallucination (HIGH PRIORITY)
+3. 📊 User testing and feedback collection
+4. 🔧 Iterate based on real usage patterns
+5. 📚 Expand documentation for more nodes as needed
+6. 🚀 Merge to main branch when stable
