@@ -11,7 +11,6 @@ import time
 import re
 import os
 import select
-from IPython.core.magic import register_line_magic
 
 
 class OpenCodeBridge:
@@ -33,15 +32,24 @@ class OpenCodeBridge:
 
     def start_server(self):
         """Start OpenCode server on random port"""
-        self.server = subprocess.Popen(
-            ["opencode", "serve", "--port", "0"],  # 0 = random port
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            text=True,
-        )
+        try:
+            self.server = subprocess.Popen(
+                ["opencode", "serve", "--port", "0"],  # 0 = random port
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+            )
 
-        # Wait for server URL (printed to stderr)
-        self.url = self._wait_for_url()
+            # Wait for server URL (printed to stderr)
+            self.url = self._wait_for_url()
+            print(f"[Graph Builder] OpenCode server started at {self.url}")
+        except Exception as e:
+            print(f"[Graph Builder] Warning: Could not start OpenCode server: {e}")
+            print(
+                "[Graph Builder] Magic commands will use basic prompts without AI agent"
+            )
+            self.server = None
+            self.url = None
 
     def _wait_for_url(self, timeout=10):
         """
@@ -69,6 +77,10 @@ class OpenCodeBridge:
 
         Returns: JSON output from agent (list of event objects)
         """
+        # Check if server was never started
+        if self.server is None:
+            raise RuntimeError("OpenCode server not available")
+
         # Check if server is still alive
         if self.server.poll() is not None:
             self.start_server()
@@ -149,8 +161,8 @@ def register_graph_builder_magic(ipython_shell, amicli, bridge):
     # Store references in the magic function's closure
     _amicli = amicli
     _bridge = bridge
+    _ipython_shell = ipython_shell
 
-    @register_line_magic
     def build_graph(line):
         """
         Build graph nodes using natural language.
@@ -178,19 +190,38 @@ def register_graph_builder_magic(ipython_shell, amicli, bridge):
             if code:
                 print("[Graph Builder] Executing generated code...")
                 # Execute the code in the IPython environment
-                ipython_shell.ex(code)
+                _ipython_shell.ex(code)
                 print("[Graph Builder] Done!")
             else:
                 print("[Graph Builder] No code generated.")
 
+        except RuntimeError as e:
+            if "OpenCode server not available" in str(e):
+                print(f"[Graph Builder] Error: {e}")
+                print(
+                    "[Graph Builder] The AI agent requires OpenCode to be installed and available."
+                )
+                print("[Graph Builder] You can still use the basic AMI API:")
+                print("  chart.createNode('NodeType', 'node_name')")
+                print("  amicli.connect_nodes('src', 'Out', 'dst', 'In')")
+            else:
+                print(f"[Graph Builder] Error: {e}")
+                import traceback
+
+                traceback.print_exc()
         except Exception as e:
             print(f"[Graph Builder] Error: {e}")
             import traceback
 
             traceback.print_exc()
 
-    # Register alias
-    ipython_shell.register_magic_function(build_graph, "line", "bg")
+    # Register the magic function with IPython
+    ipython_shell.register_magic_function(
+        build_graph, magic_kind="line", magic_name="build_graph"
+    )
+    ipython_shell.register_magic_function(
+        build_graph, magic_kind="line", magic_name="bg"
+    )
 
     print("Graph builder magic commands registered: %build_graph, %bg")
 
