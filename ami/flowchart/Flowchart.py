@@ -1455,10 +1455,6 @@ def {template_name}_template():
                         self.amicli,
                         self.graph_builder,
                     )
-                    # Register cleanup on exit
-                    import atexit
-
-                    atexit.register(self.graph_builder.close)
                 except Exception as e:
                     print(f"Warning: Could not initialize graph builder: {e}")
 

@@ -104,6 +104,23 @@ def run_editor_window(
     os.environ["DMYPY_STATUS_FILE"] = dmypy_file.name
     logger.debug(f"dmypy status file: {dmypy_file.name}")
     subprocess.run(["dmypy", "--status-file", dmypy_file.name, "start"])
+
+    # Start OpenCode server for AI graph builder
+    import random
+
+    opencode_port = random.randint(49152, 65535)
+    opencode_url = f"http://127.0.0.1:{opencode_port}"
+    os.environ["OPENCODE_SERVER_URL"] = opencode_url
+    logger.debug(f"Starting OpenCode server on port {opencode_port}")
+    try:
+        subprocess.Popen(
+            ["opencode", "serve", "--port", str(opencode_port)],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+        logger.info(f"OpenCode server started at {opencode_url}")
+    except Exception as e:
+        logger.warning(f"Could not start OpenCode server: {e}")
     check_file = None
     with tempfile.NamedTemporaryFile(mode="w", delete=False) as f:
         f.write("from typing import *\n")
@@ -181,7 +198,6 @@ def run_editor_window(
 
 
 class NodeWindow(QtWidgets.QMainWindow):
-
     def __init__(self, proc, parent=None):
         super().__init__(parent)
         self.proc = proc
@@ -220,7 +236,6 @@ class NodeProcess(QtCore.QObject):
         prometheus_port=None,
         hutch="",
     ):
-
         super().__init__()
 
         if loop is None:
@@ -248,7 +263,11 @@ class NodeProcess(QtCore.QObject):
                     mod = os.path.splitext(mod)[0]
                     mod = importlib.import_module(mod)
 
-                    nodes = [getattr(mod, name) for name in dir(mod) if isNodeClass(getattr(mod, name))]
+                    nodes = [
+                        getattr(mod, name)
+                        for name in dir(mod)
+                        if isNodeClass(getattr(mod, name))
+                    ]
 
                     for node in nodes:
                         LIBRARY.addNodeType(node, [(mod.__name__,)])
@@ -506,7 +525,6 @@ class MessageBroker(object):
         self.editor.join()
 
     async def handle_connect(self):
-
         while True:
             topic = await self.broker_pub_sock.recv_string()
             if topic.startswith("\x01"):
@@ -515,13 +533,14 @@ class MessageBroker(object):
                 async with self.lock:
                     if topic in self.msgs:
                         msg = self.msgs[topic]
-                        self.broker_pub_sock.send_string(topic + ZMQ_TOPIC_DELIM, zmq.SNDMORE)
+                        self.broker_pub_sock.send_string(
+                            topic + ZMQ_TOPIC_DELIM, zmq.SNDMORE
+                        )
                         self.broker_pub_sock.send_pyobj(msg)
                     else:
                         continue
 
     async def handle_checkpoint(self):
-
         while True:
             topic = await self.checkpoint_sub_sock.recv_string()
             topic = topic.rstrip(ZMQ_TOPIC_DELIM)
@@ -534,9 +553,7 @@ class MessageBroker(object):
             await self.checkpoint_pub_sock.send_pyobj(msg)
 
     async def forward_message_to_node(self, topic, msg):
-
         if isinstance(msg, fcMsgs.NodeMsg):
-
             async with self.lock:
                 self.msgs[topic] = msg
 
@@ -544,7 +561,6 @@ class MessageBroker(object):
             await self.broker_pub_sock.send_pyobj(msg)
 
     async def monitor_processes(self):
-
         while True:
             await asyncio.sleep(0.25)
 
@@ -587,7 +603,6 @@ class MessageBroker(object):
                     self.widget_procs[msg.name] = (msg.node_type, proc)
 
     async def process_messages(self):
-
         while True:
             topic = await self.broker_sub_sock.recv_string()
             msg = await self.broker_sub_sock.recv_pyobj()

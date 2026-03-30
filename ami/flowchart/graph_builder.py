@@ -14,72 +14,34 @@ import os
 
 class OpenCodeBridge:
     """
-    Manages long-running OpenCode server for AI-assisted graph building.
+    Connects to OpenCode server for AI-assisted graph building.
 
-    Lifecycle:
-    - Starts when AMI GUI opens
-    - Maintains session across requests
-    - Auto-restarts on failure
-    - Cleans up on AMI exit
+    The server is started at AMI startup (see ami/client/flowchart.py).
+    This class just connects to the existing server.
     """
 
     def __init__(self):
-        self.server = None
-        self.url = None
         self.session_id = None
-        self.start_server()
+        # Get server URL from environment variable
+        self.url = os.environ.get("OPENCODE_SERVER_URL", None)
 
-    def start_server(self):
-        """Start OpenCode server on a fixed port"""
-        import random
-
-        try:
-            # Use a random port in the ephemeral range
-            port = random.randint(49152, 65535)
-
-            self.server = subprocess.Popen(
-                ["opencode", "serve", "--port", str(port)],
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                universal_newlines=True,  # Python 3.6 compatible
-            )
-
-            # Give it a moment to start
-            time.sleep(0.5)
-
-            # Check if it's still running
-            if self.server.poll() is not None:
-                raise RuntimeError("OpenCode server process died immediately")
-
-            # Construct URL from the port we used
-            self.url = f"http://127.0.0.1:{port}"
-            print(f"[Graph Builder] OpenCode server started at {self.url}")
-
-        except Exception as e:
-            print(f"[Graph Builder] Warning: Could not start OpenCode server: {e}")
-            print(
-                "[Graph Builder] Magic commands will use basic prompts without AI agent"
-            )
-            self.server = None
-            self.url = None
+        if self.url:
+            print(f"[Graph Builder] Using OpenCode server at {self.url}")
+        else:
+            print("[Graph Builder] Warning: OpenCode server not available")
+            print("[Graph Builder] Set OPENCODE_SERVER_URL environment variable")
 
     def ask(self, prompt, timeout=120):
         """
         Send request to agent via server.
 
         Maintains session continuity - agent remembers previous interactions.
-        Auto-restarts server if it crashed.
 
         Returns: JSON output from agent (list of event objects)
         """
-        # Check if server was never started
-        if self.server is None:
+        # Check if server URL is available
+        if self.url is None:
             raise RuntimeError("OpenCode server not available")
-
-        # Check if server is still alive
-        if self.server.poll() is not None:
-            self.start_server()
-            self.session_id = None  # Reset session
 
         cmd = [
             "opencode",
@@ -135,16 +97,6 @@ class OpenCodeBridge:
             except json.JSONDecodeError:
                 pass
         return self.session_id  # Keep existing if not found
-
-    def close(self):
-        """Clean shutdown of server"""
-        if self.server and self.server.poll() is None:
-            self.server.terminate()
-            try:
-                self.server.wait(timeout=5)
-            except subprocess.TimeoutExpired:
-                self.server.kill()
-                self.server.wait()
 
 
 def register_graph_builder_magic(ipython_shell, amicli, bridge):
