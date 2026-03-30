@@ -10,7 +10,7 @@ import json
 import time
 import re
 import os
-import select
+import threading
 
 
 class OpenCodeBridge:
@@ -37,7 +37,7 @@ class OpenCodeBridge:
                 ["opencode", "serve", "--port", "0"],  # 0 = random port
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
-                text=True,
+                universal_newlines=True,  # Python 3.6 compatible
             )
 
             # Wait for server URL (printed to stderr)
@@ -54,17 +54,32 @@ class OpenCodeBridge:
     def _wait_for_url(self, timeout=10):
         """
         Extract server URL from startup output.
-        OpenCode prints "Server listening on http://localhost:XXXX" to stderr.
+        OpenCode prints "opencode server listening on http://..." to stderr.
         """
+        # Read lines from stderr with timeout
         start = time.time()
 
         while time.time() - start < timeout:
-            # Non-blocking read from stderr
-            if select.select([self.server.stderr], [], [], 0.1)[0]:
+            # Check if process has output ready (non-blocking check)
+            if self.server.poll() is not None:
+                # Process died
+                raise RuntimeError("OpenCode server process terminated during startup")
+
+            # Try to read a line with a short timeout
+            try:
+                # Set stderr to non-blocking mode would be complex,
+                # so we'll use a simple readline() which may block briefly
                 line = self.server.stderr.readline()
-                match = re.search(r"http://[^\s]+", line)
-                if match:
-                    return match.group(0)
+                if line:
+                    # Look for URL pattern in the line
+                    match = re.search(r"http://[^\s]+", line)
+                    if match:
+                        return match.group(0)
+                else:
+                    # EOF on stderr
+                    time.sleep(0.1)
+            except:
+                time.sleep(0.1)
 
         raise RuntimeError("OpenCode server failed to start within timeout")
 
@@ -107,7 +122,11 @@ class OpenCodeBridge:
 
         try:
             result = subprocess.run(
-                cmd, capture_output=True, text=True, timeout=timeout
+                cmd,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                universal_newlines=True,  # Python 3.6 compatible
+                timeout=timeout,
             )
 
             if result.returncode != 0:
