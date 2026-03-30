@@ -10,7 +10,6 @@ import json
 import time
 import re
 import os
-import threading
 
 
 class OpenCodeBridge:
@@ -31,18 +30,31 @@ class OpenCodeBridge:
         self.start_server()
 
     def start_server(self):
-        """Start OpenCode server on random port"""
+        """Start OpenCode server on a fixed port"""
+        import random
+
         try:
+            # Use a random port in the ephemeral range
+            port = random.randint(49152, 65535)
+
             self.server = subprocess.Popen(
-                ["opencode", "serve", "--port", "0"],  # 0 = random port
+                ["opencode", "serve", "--port", str(port)],
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
                 universal_newlines=True,  # Python 3.6 compatible
             )
 
-            # Wait for server URL (printed to stderr)
-            self.url = self._wait_for_url()
+            # Give it a moment to start
+            time.sleep(0.5)
+
+            # Check if it's still running
+            if self.server.poll() is not None:
+                raise RuntimeError("OpenCode server process died immediately")
+
+            # Construct URL from the port we used
+            self.url = f"http://127.0.0.1:{port}"
             print(f"[Graph Builder] OpenCode server started at {self.url}")
+
         except Exception as e:
             print(f"[Graph Builder] Warning: Could not start OpenCode server: {e}")
             print(
@@ -50,38 +62,6 @@ class OpenCodeBridge:
             )
             self.server = None
             self.url = None
-
-    def _wait_for_url(self, timeout=10):
-        """
-        Extract server URL from startup output.
-        OpenCode prints "opencode server listening on http://..." to stderr.
-        """
-        # Read lines from stderr with timeout
-        start = time.time()
-
-        while time.time() - start < timeout:
-            # Check if process has output ready (non-blocking check)
-            if self.server.poll() is not None:
-                # Process died
-                raise RuntimeError("OpenCode server process terminated during startup")
-
-            # Try to read a line with a short timeout
-            try:
-                # Set stderr to non-blocking mode would be complex,
-                # so we'll use a simple readline() which may block briefly
-                line = self.server.stderr.readline()
-                if line:
-                    # Look for URL pattern in the line
-                    match = re.search(r"http://[^\s]+", line)
-                    if match:
-                        return match.group(0)
-                else:
-                    # EOF on stderr
-                    time.sleep(0.1)
-            except:
-                time.sleep(0.1)
-
-        raise RuntimeError("OpenCode server failed to start within timeout")
 
     def ask(self, prompt, timeout=120):
         """
