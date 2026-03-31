@@ -345,7 +345,7 @@ class Ui_Toolbar(object):
         self.state_dock.addWidget(self.state_widget)
         chart.addDock(self.state_dock, 'right')
         self.state_dock.setVisible(False)  # Hidden by default
-        
+
         # Connect inspector action to dock visibility
         self.actionInspector.toggled.connect(self.state_dock.setVisible)
 

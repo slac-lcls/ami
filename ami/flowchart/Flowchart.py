@@ -637,10 +637,10 @@ class Flowchart(Node):
                     self.sigNodeChanged.emit(node)
 
             node.viewed = new_node_state['viewed']
-            
+
             # Update state panel if this node is currently displayed
             ctrl_widget = self.widget()
-            if ctrl_widget and ctrl_widget.chartWidget.current_displayed_node == node:
+            if ctrl_widget.chartWidget.current_displayed_node == node:
                 ctrl_widget.chartWidget.refreshStatePanel(node)
 
     async def updateSources(self, init=False):
@@ -1202,12 +1202,6 @@ class FlowchartWidget(dockarea.DockArea):
         # print "FlowchartWidget.selectionChanged called."
         items = self._scene.selectedItems()
 
-        # Update state panel with selected node
-        # Keep last displayed node when deselecting - only update on new selection
-        if len(items) == 1 and isinstance(items[0], NodeGraphicsItem):
-            self.updateNodeStatePanel(items[0].node)
-        # Note: Don't clear on deselection or multiple selection - keep current state
-
         if len(items) != 1:
             return
 
@@ -1216,6 +1210,8 @@ class FlowchartWidget(dockarea.DockArea):
             return
 
         node = item.node
+        self.updateNodeStatePanel(items[0].node)
+
         if not node.enabled():
             return
 
@@ -1458,7 +1454,7 @@ class FlowchartWidget(dockarea.DockArea):
 
         if text:
             self.hoverText.setPlainText(text)
-        
+
         # Update state panel when hovering over a node
         # Don't clear when hovering off - keep last displayed node
         if isinstance(obj, Node):
@@ -1469,13 +1465,13 @@ class FlowchartWidget(dockarea.DockArea):
 
     def updateNodeStatePanel(self, node):
         """Update the state panel to show the given node's state.
-        
+
         Args:
             node: Node instance to display, or None to clear
         """
         # Get reference to state widget
         state_widget = self.ctrl.ui.state_widget
-        
+
         # Disconnect from previous node's sigStateChanged signal
         if self.current_displayed_node:
             if hasattr(self.current_displayed_node, 'sigStateChanged'):
@@ -1483,25 +1479,25 @@ class FlowchartWidget(dockarea.DockArea):
                     self.current_displayed_node.sigStateChanged.disconnect(self.refreshStatePanel)
                 except (TypeError, RuntimeError):
                     pass  # Signal already disconnected or object deleted
-        
+
         # Update current node reference
         self.current_displayed_node = node
-        
+
         # Clear or display
         if node is None:
             state_widget.clear()
             return
-        
+
         # Display the node's state
         state_widget.displayNodeState(node)
-        
+
         # Connect to sigStateChanged for live updates (CtrlNodes only)
         if hasattr(node, 'sigStateChanged'):
             node.sigStateChanged.connect(self.refreshStatePanel)
 
     def refreshStatePanel(self, node=None):
         """Refresh the state panel for the currently displayed node.
-        
+
         Args:
             node: Optional node parameter (from signal), uses current_displayed_node if None
         """

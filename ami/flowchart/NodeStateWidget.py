@@ -17,46 +17,46 @@ class NodeStateWidget(QtWidgets.QWidget):
 
     def __init__(self, parent=None):
         super().__init__(parent)
-        
+
         # Main layout
         layout = QtWidgets.QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
-        
+
         # Create tree widget
         self.tree = QtWidgets.QTreeWidget()
         self.tree.setHeaderLabels(["Property", "Value"])
         self.tree.setAlternatingRowColors(True)
         self.tree.setColumnWidth(0, 200)
-        
+
         # Allow column resizing
         header = self.tree.header()
         header.setSectionResizeMode(QtWidgets.QHeaderView.Interactive)
         header.setStretchLastSection(True)
-        
+
         layout.addWidget(self.tree)
-        
+
         # Show initial placeholder
         self.clear()
 
     def displayNodeState(self, node):
         """Display the complete state of a node.
-        
+
         Args:
             node: Node instance to display
         """
         self.tree.clear()
-        
+
         if node is None:
             self.clear()
             return
-        
+
         # Get node state
         try:
             state = node.saveState()
         except Exception as e:
             self._addErrorItem(f"Error getting node state: {e}")
             return
-        
+
         # Add header with node info
         header = QtWidgets.QTreeWidgetItem(self.tree)
         header.setText(0, f"Node: {node.name()}")
@@ -67,37 +67,37 @@ class NodeStateWidget(QtWidgets.QWidget):
         font.setPointSize(font.pointSize() + 1)
         header.setFont(0, font)
         header.setFont(1, font)
-        
+
         # Add runtime state section
         self._addRuntimeState(node, header)
-        
+
         # Add position section
         if 'pos' in state:
             self._addPositionSection(state['pos'], header)
-        
+
         # Add control state section
         if 'ctrl' in state:
             self._addSection("Control State", state['ctrl'], header)
-        
+
         # Add terminals section
         if 'terminals' in state:
             self._addTerminalsSection(state['terminals'], node, header)
-        
+
         # Add widget state section
         if 'widget' in state:
             self._addSection("Widget State", state['widget'], header)
-        
+
         # Add other state keys
         other_state = {}
-        standard_keys = {'pos', 'ctrl', 'terminals', 'widget', 'enabled', 
+        standard_keys = {'pos', 'ctrl', 'terminals', 'widget', 'enabled',
                         'viewed', 'latched', 'label', 'geometry'}
         for key, value in state.items():
             if key not in standard_keys:
                 other_state[key] = value
-        
+
         if other_state:
             self._addSection("Other State", other_state, header)
-        
+
         # Expand all items by default
         self.tree.expandAll()
 
@@ -116,7 +116,7 @@ class NodeStateWidget(QtWidgets.QWidget):
         section = QtWidgets.QTreeWidgetItem(parent)
         section.setText(0, "Runtime State")
         self._makeSectionHeader(section)
-        
+
         # Add runtime attributes
         runtime_attrs = [
             ('created', getattr(node, 'created', None)),
@@ -126,10 +126,10 @@ class NodeStateWidget(QtWidgets.QWidget):
             ('latched', getattr(node, 'latched', None)),
             ('exception', getattr(node, 'exception', None)),
         ]
-        
+
         for attr_name, attr_value in runtime_attrs:
             self._addStateItem(section, attr_name, attr_value)
-        
+
         # Add label if present
         label = getattr(node, '_label', '')
         if label:
@@ -140,7 +140,7 @@ class NodeStateWidget(QtWidgets.QWidget):
         section = QtWidgets.QTreeWidgetItem(parent)
         section.setText(0, "Position")
         self._makeSectionHeader(section)
-        
+
         if isinstance(pos, (list, tuple)) and len(pos) >= 2:
             self._addStateItem(section, 'x', pos[0])
             self._addStateItem(section, 'y', pos[1])
@@ -152,37 +152,37 @@ class NodeStateWidget(QtWidgets.QWidget):
         section = QtWidgets.QTreeWidgetItem(parent)
         section.setText(0, "Terminals")
         self._makeSectionHeader(section)
-        
+
         # Separate inputs and outputs
         inputs = QtWidgets.QTreeWidgetItem(section)
         inputs.setText(0, "Inputs")
         self._makeSectionHeader(inputs)
-        
+
         outputs = QtWidgets.QTreeWidgetItem(section)
         outputs.setText(0, "Outputs")
         self._makeSectionHeader(outputs)
-        
+
         has_inputs = False
         has_outputs = False
-        
+
         # Add each terminal
         for term_name, term_state in terminals_state.items():
             if term_name not in node.terminals:
                 continue
-                
+
             terminal = node.terminals[term_name]
-            
+
             # Determine if input or output
             parent_item = inputs if terminal.isInput() else outputs
             if terminal.isInput():
                 has_inputs = True
             else:
                 has_outputs = True
-            
+
             # Format terminal info
             term_item = QtWidgets.QTreeWidgetItem(parent_item)
             term_item.setText(0, term_name)
-            
+
             # Build connection info
             connections = []
             if terminal.isInput():
@@ -197,14 +197,14 @@ class NodeStateWidget(QtWidgets.QWidget):
                     for dep_term in dep_terms:
                         conn_str = f"{dep_term.node().name()}.{dep_term.name()}"
                         connections.append(conn_str)
-            
+
             # Set value text
             term_type = term_state.get('ttype', 'Unknown')
             if hasattr(term_type, '__name__'):
                 term_type = term_type.__name__
             else:
                 term_type = str(term_type)
-            
+
             if connections:
                 conn_text = ", ".join(connections)
                 term_item.setText(1, f"→ {conn_text}")
@@ -213,7 +213,7 @@ class NodeStateWidget(QtWidgets.QWidget):
                 term_item.setText(1, "not connected")
                 term_item.setToolTip(1, f"Type: {term_type}")
                 term_item.setForeground(1, QtGui.QBrush(QtGui.QColor(150, 150, 150)))
-        
+
         # Remove empty sections
         if not has_inputs:
             section.removeChild(inputs)
@@ -225,7 +225,7 @@ class NodeStateWidget(QtWidgets.QWidget):
         section = QtWidgets.QTreeWidgetItem(parent)
         section.setText(0, title)
         self._makeSectionHeader(section)
-        
+
         if isinstance(data, dict):
             for key, value in data.items():
                 self._addStateItem(section, key, value)
@@ -234,7 +234,7 @@ class NodeStateWidget(QtWidgets.QWidget):
 
     def _addStateItem(self, parent, key, value, depth=0):
         """Recursively add state items to the tree.
-        
+
         Args:
             parent: Parent QTreeWidgetItem
             key: Property name
@@ -243,7 +243,7 @@ class NodeStateWidget(QtWidgets.QWidget):
         """
         item = QtWidgets.QTreeWidgetItem(parent)
         item.setText(0, str(key))
-        
+
         # Handle different value types
         if isinstance(value, dict):
             item.setText(1, f"{{...}} ({len(value)} items)")
@@ -263,20 +263,20 @@ class NodeStateWidget(QtWidgets.QWidget):
             # Simple value
             formatted_value = self._formatValue(value)
             item.setText(1, formatted_value)
-            
+
             # Add tooltip for long values
             if len(formatted_value) > 50:
                 item.setToolTip(1, str(value))
-            
+
             # Apply color coding
             self._setItemColor(item, value)
 
     def _formatValue(self, value):
         """Format a value for display.
-        
+
         Args:
             value: Value to format
-            
+
         Returns:
             Formatted string
         """
@@ -305,7 +305,7 @@ class NodeStateWidget(QtWidgets.QWidget):
 
     def _setItemColor(self, item, value):
         """Apply color coding to an item based on its value.
-        
+
         Args:
             item: QTreeWidgetItem
             value: The value to base coloring on
@@ -323,7 +323,7 @@ class NodeStateWidget(QtWidgets.QWidget):
 
     def _makeSectionHeader(self, item):
         """Make an item look like a section header.
-        
+
         Args:
             item: QTreeWidgetItem to style
         """
@@ -334,7 +334,7 @@ class NodeStateWidget(QtWidgets.QWidget):
 
     def _addErrorItem(self, message):
         """Add an error message item.
-        
+
         Args:
             message: Error message to display
         """
