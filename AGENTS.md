@@ -233,3 +233,288 @@ ami/
 - For node operations: Check `ami/graph_nodes.py`
 - For communication issues: Check `ami/comm.py`
 - For graph execution: Check `ami/graphkit_wrapper.py`
+
+---
+
+## Plan Organization Standards
+
+### CRITICAL: Plan File Organization Convention
+
+All OpenCode agents MUST follow this directory structure when creating or organizing plans in `.opencode/plans/`.
+
+### Directory Structure
+
+```
+.opencode/plans/
+├── README.md                          # Main index listing all feature areas
+├── [general-plans].md                 # Single-file plans (e.g., gui-test-refactoring.md)
+└── [feature-name]/                    # Feature-specific directory
+    ├── README.md                      # Feature overview, current status, blockers
+    ├── 00-PRIORITY-ORDER.md          # Execution order and dependencies
+    ├── active/                        # Plans ready to execute NOW
+    │   ├── 01-[plan-name].md         # Highest priority (execute first)
+    │   ├── 02-[plan-name].md         # Second priority
+    │   ├── 03-[plan-name].md         # Third priority
+    │   └── ...
+    ├── completed/                     # Successfully implemented plans
+    │   └── [plan-name].md            # Keep for reference/learning
+    └── research/                      # Analysis, investigation, failed approaches
+        └── [analysis-name].md        # Architecture decisions, performance analysis
+```
+
+### When to Create a Feature Directory
+
+Create a feature subdirectory when ANY of these conditions are met:
+
+1. **Multiple related plans** - 3+ plans for the same feature area
+2. **Complex feature** - Requires phased implementation with dependencies
+3. **Active development** - Feature has both active and completed plans
+4. **Long-term effort** - Feature will have ongoing work over multiple sessions
+
+**Examples:**
+- ✅ `ai-graph-builder/` - 4+ plans, complex feature, multiple phases
+- ✅ `worker-json-generation/` - Multiple iterations, research + active plans
+- ❌ `gui-test-refactoring.md` - Single plan, no subdirectory needed
+
+### Naming Conventions
+
+#### Active Plans (Numbered Priority)
+```
+01-implement-core-api.md           # Execute first (critical blocker)
+02-fix-display-issues.md           # Execute second (depends on 01)
+03-update-documentation.md         # Execute third (polish)
+04-add-advanced-features.md        # Execute fourth (nice-to-have)
+```
+
+**Rules:**
+- Use `01-`, `02-`, `03-` prefixes to indicate execution order
+- Use descriptive kebab-case names
+- Name describes WHAT gets done, not implementation details
+- Keep names under 40 characters
+
+#### Special Files
+```
+00-PRIORITY-ORDER.md               # Always numbered 00, describes execution strategy
+README.md                          # Feature overview and quick start guide
+```
+
+#### Completed/Research Plans (No Numbers)
+```
+completed/show-agent-text-plan.md     # Original name preserved
+research/qtconsole-failure-analysis.md # Descriptive analysis name
+```
+
+### Required Documentation
+
+Every feature directory MUST contain:
+
+#### 1. `README.md` - Feature Overview
+```markdown
+# [Feature Name]
+
+[1-2 sentence description of what this feature does]
+
+## Current Status: [BLOCKED/IN PROGRESS/READY TO TEST/etc.]
+
+[1-3 sentences describing current state and any blockers]
+
+## Quick Start
+
+**Start here**: `active/01-[plan-name].md`
+
+[Brief explanation of why this is the starting point]
+
+## Execution Order
+
+1. ✅/❌ `01-plan-name.md` - [Brief description] (~X hours)
+2. ❌ `02-plan-name.md` - [Brief description] (~X hours)
+3. ❌ `03-plan-name.md` - [Brief description] (~X hours)
+
+## Related Documentation
+
+- `[project-root]/STATUS_FILE.md` - Comprehensive status
+- `[project-root]/DESIGN_FILE.md` - Original design/proposal
+- `skills/[skill-name]/SKILL.md` - AI agent skill (if applicable)
+```
+
+#### 2. `00-PRIORITY-ORDER.md` - Execution Strategy
+```markdown
+# Execution Priority Order
+
+## Start Here: 01-[plan-name].md
+
+**WHY THIS FIRST**: [1-2 sentences explaining why this is the critical blocker]
+
+## Then Execute In Order:
+
+1. ✅ **01-[plan-name].md** (CRITICAL - BLOCKING)
+   - [What it does]
+   - ~X hours
+   - Unblocks: [what depends on this]
+
+2. **02-[plan-name].md** (High priority - [category])
+   - [What it does]
+   - ~X hours
+   - Depends on: 01
+
+3. **03-[plan-name].md** (Medium priority - [category])
+   - [What it does]
+   - ~X hours
+
+## Total Estimated Time: X-Y hours
+
+## Dependencies Graph
+[Optional: ASCII diagram showing dependencies if complex]
+```
+
+### Plan Lifecycle Management
+
+#### Creating New Plans
+
+1. **Assess scope**: Single file or feature directory?
+2. **If feature directory needed**:
+   - Create `[feature-name]/` directory
+   - Create `README.md` and `00-PRIORITY-ORDER.md`
+   - Create `active/`, `completed/`, `research/` subdirs
+3. **Place plan in `active/`** with numbered prefix
+4. **Update parent README.md** to reference the new feature
+
+#### Moving Plans Through Lifecycle
+
+```
+active/01-implement-api.md
+  ↓ (implementation complete)
+completed/implement-api.md
+
+active/02-try-async-approach.md
+  ↓ (approach failed, documented why)
+research/async-approach-failure-analysis.md
+```
+
+**Rules:**
+- Remove number prefix when moving to `completed/` or `research/`
+- Preserve original filename otherwise
+- Add date/status to plan header before moving
+- Update `README.md` and `00-PRIORITY-ORDER.md` to reflect completion
+
+#### Archiving Entire Features
+
+When a feature is 100% complete:
+```
+.opencode/plans/feature-name/
+  ↓ (all work done, no future plans)
+.opencode/archive/feature-name/
+```
+
+Update main plans `README.md` to reference the archive location.
+
+### Examples
+
+#### Example 1: AI Graph Builder (Complex Feature)
+```
+.opencode/plans/ai-graph-builder/
+├── README.md                                    # "Natural language graph building interface"
+├── 00-PRIORITY-ORDER.md                        # "Start with 01-api-mismatch (BLOCKING)"
+├── active/
+│   ├── 01-api-mismatch-analysis.md            # MUST FIX FIRST - no API methods
+│   ├── 02-fix-chat-widget-issues.md           # Fix UX after API works
+│   ├── 03-update-skill-for-chat-mode.md       # Remove dead code
+│   └── 04-add-code-toggle.md                  # Polish
+├── completed/
+│   ├── show-agent-text-plan.md                # Implemented in Phase 4
+│   └── create-node-with-labels.md             # Label feature added
+└── research/
+    ├── qtconsole-failure-analysis.md          # Why QtConsole approach failed
+    ├── performance-timing-guide.md            # OpenCode server warmup analysis
+    └── rest-api-vs-subprocess-analysis.md     # Architecture decision doc
+```
+
+#### Example 2: Worker JSON Generation (Simple Feature)
+```
+.opencode/plans/worker-json-generation/
+├── README.md
+├── 00-PRIORITY-ORDER.md
+├── active/
+│   └── 01-reimplement-worker-json.md
+└── completed/
+    └── auto-generate-worker-json-plan.md      # Original implementation
+```
+
+#### Example 3: Single Plan (No Directory)
+```
+.opencode/plans/
+└── gui-test-refactoring.md                     # Standalone plan
+```
+
+### Plan Content Standards
+
+Every plan file MUST have this header:
+```markdown
+# [Plan Title]
+
+**Date:** [YYYY-MM-DD]  
+**Status:** [Planning/Ready to Implement/In Progress/Completed/Abandoned]  
+**Priority:** [CRITICAL/High/Medium/Low]  
+**Estimated Time:** [X-Y hours]
+
+---
+
+## Executive Summary
+
+[2-3 sentences: What problem does this solve? What's the solution?]
+
+## [Rest of plan content...]
+```
+
+### Integration with Main Plans README
+
+The main `.opencode/plans/README.md` should list:
+- All standalone plans (with status)
+- All feature directories (with brief description + link to feature README)
+
+Example:
+```markdown
+## Active Plans
+
+### Standalone Plans
+- `gui-test-refactoring.md` - ✅ COMPLETED - 2.6x performance improvement
+
+### Feature Development
+- **AI Graph Builder** (`ai-graph-builder/`) - 🚧 IN PROGRESS - Natural language graph interface
+  - Status: BLOCKED - Missing API implementation
+  - Start: `ai-graph-builder/active/01-api-mismatch-analysis.md`
+  
+- **Worker JSON Generation** (`worker-json-generation/`) - 🔄 NEEDS WORK - Auto-generate configs
+  - Status: Needs reimplementation
+  - Start: `worker-json-generation/active/01-reimplement-worker-json.md`
+```
+
+### Why This Structure?
+
+1. **Discoverability**: New developers/agents know exactly where to start
+2. **Priority clarity**: Numbered prefixes show execution order
+3. **Context preservation**: Completed/research plans provide learning
+4. **Scalability**: Works for simple single plans AND complex multi-phase features
+5. **Maintenance**: Clear lifecycle prevents stale/abandoned plans
+6. **Team alignment**: Everyone sees current status and next steps
+
+### Agent Responsibilities
+
+When working with plans, OpenCode agents MUST:
+
+1. **Check for existing feature directory** before creating new plans
+2. **Follow numbering convention** for active plans (01-, 02-, etc.)
+3. **Update README.md files** when adding/completing plans
+4. **Move completed plans** to `completed/` directory
+5. **Document failed approaches** in `research/` with analysis
+6. **Create 00-PRIORITY-ORDER.md** for multi-plan features
+7. **Ask user** before reorganizing existing plans
+
+### Questions to Ask Users
+
+When organizing plans, agents should ask:
+
+- "This feature has 4+ related plans. Should I create a feature directory?"
+- "Which plan should be executed first? (This becomes 01-)"
+- "Are there any hard dependencies between these plans?"
+- "Should I move old completed plans to completed/ or archive them?"
