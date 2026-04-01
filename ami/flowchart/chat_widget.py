@@ -345,6 +345,20 @@ Please generate Python code to fulfill this request using the AMI graph building
                                 # Extract code from response
                                 if "code" in response:
                                     code = response["code"]
+
+                                    # Show explanation if provided
+                                    if "explanation" in response:
+                                        self._append_output(
+                                            f"Agent: {response['explanation']}"
+                                        )
+                                        self._append_output("")
+
+                                    # Show warnings if provided
+                                    if "warnings" in response:
+                                        for warning in response["warnings"]:
+                                            self._append_output(f"⚠️  {warning}")
+                                        self._append_output("")
+
                                     codes.append(code)
 
                                     # Only process the first (most recent) JSON block found
