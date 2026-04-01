@@ -1,706 +1,2074 @@
-# Complete AMI Node Type Reference
+# AMI Node Types Reference
 
-**CRITICAL**: Only use node types from this list. Never invent node names that aren't listed here.
+**Generated:** 2026-04-01 13:00:31
 
-This is the **exhaustive** list of all valid AMI node types. If a node type isn't on this list, it doesn't exist.
-
-**⚠️ TERMINAL NAMES MATTER!** Different nodes use different terminal names:
-- **ScatterPlot, LinePlot, TimePlot**: Use `X` and `Y` terminals
-- **ScalarPlot**: Uses `Y` terminal only (time is implicit)
-- **Histogram**: Uses `Bins` and `Counts` terminals
-- **Histogram2D**: Uses `XBins`, `YBins`, `Counts` terminals
-- **Most processing nodes** (Sum, Average, Filter, Calculator, etc.): Use `In` and `Out` terminals
-- Always check the terminal names for each node type below!
+**Organization:** By functional category (optimized for AI agent semantic search)
 
 ---
 
-## Quick Reference by Use Case
+## Table of Contents
 
-### Want to View Data?
-
-**Raw source data:**
-- ✅ Click SourceNode (built-in viewer) - **NO CODE NEEDED**
-
-**Scalar values:**
-- **ScalarViewer** - Display single scalar value
-- **ScalarPlot** - Time series of scalar (collects history)
-
-**1D data (waveforms, arrays):**
-- **WaveformViewer** - Display waveform
-- **LinePlot** - Plot 1D array (X vs Y)
-
-**2D data (images, detectors):**
-- **ImageViewer** - Display 2D array as image
-
-**Correlations:**
-- **ScatterPlot** - X vs Y correlation (self-displaying)
-
-**Distributions:**
-- **Histogram** - Display histogram from Binning node
-- **Histogram2D** - Display 2D histogram from Binning2D node
-
-**Time series:**
-- **TimePlot** - Plot values vs time of day
-
-**Multi-channel:**
-- **MultiWaveformViewer** - Display 2D array as series of waveforms
-
-**Generic:**
-- **ObjectViewer** - String representation of any object
+- [Display & Visualization](#display--visualization)
+- [Data Processing](#data-processing)
+- [ROI (Region Selection)](#roi-region-selection)
+- [Statistics & Analysis](#statistics--analysis)
+- [Filtering & Logic](#filtering--logic)
+- [Accumulators & Buffers](#accumulators--buffers)
+- [Export](#export)
+- [Advanced Processing](#advanced-processing)
 
 ---
 
-### Want to Process Data?
+## Display & Visualization
 
-**Array operations:**
-- **Sum** - Sum all elements in array
-- **Average**, **Average0D**, **Average1D**, **Average2D** - Compute averages
-- **RMS** - Root mean square
-- **Projection** - Project 2D → 1D along axis
-- **Split** - Split 2D array into 1D arrays
-- **Stack1d** - Stack scalars into 1D array
-- **Stack2d** - Stack 1D arrays into 2D array
-- **Take** - Index into array
+**Description:** Nodes that visualize and display data (all self-displaying)
 
-**Math operations:**
-- **Calculator** - Math expressions (e.g., `In * 2 + 5`)
-- **Polynomial** - Evaluate polynomial
-- **Identity** - Pass-through (no change)
-- **Constant** - Generate constant values
+### Binning
 
-**Region extraction:**
-- **Roi0D** - Single pixel from image
-- **Roi1D** - Region from 1D array
-- **Roi2D** - Rectangular region from image
-- **RoiArch** - Arch/donut region from image
-- **ScatterRoi** - Region from scatter plot
+**Module:** Numpy
 
-**Filtering & selection:**
-- **Filter** - Boolean event filtering (e.g., `In > 100`)
-- **PythonEditor** - Custom Python code
+**Description:**
 
-**Binning & histograms:**
-- **Binning** - 1D histogram with fixed bins
-- **Binning2D** - 2D histogram with fixed bins
+Binning creates a histogram with a fixed number of bins using numpy.histogram.
 
-**Combinations:**
-- **Combinations** - Generate combinations using itertools
+**Terminals:**
+
+*Inputs:*
+- `In`
+
+*Outputs:*
+- `Bins`
+- `Counts`
+
+**Parameters:**
+
+- `bins` (intSpin)
+- `auto range` (check)
+- `range min` (doubleSpin)
+- `range max` (doubleSpin)
+- `weighted` (check)
+- `density` (check)
 
 ---
 
-### Want to Analyze Scans?
+### Binning2D
 
-- **MeanVsScan** - Mean vs scan variable (most common)
-- **MeanWaveformVsScan** - Mean waveforms vs scan
-- **StatsVsScan** - Mean, stdev, error vs scan
+**Module:** Numpy
 
----
+**Description:**
 
-### Want Statistics & Fitting?
+Binning2D creates a 2d histogram with a fixed number of bins using numpy.histogram2d.
 
-**Statistics:**
-- **TimeMeanRMS0D**, **TimeMeanRMS1D**, **TimeMeanRMS2D** - Mean & RMS over time
-- **HistMeanRMS** - Mean & stdev from histogram
+**Terminals:**
 
-**Fitting (requires scipy/sympy):**
-- **Linregress0D**, **Linregress1D** - Linear regression
-- **CurveFit** - Fit custom function
-- **PeakFit** - Fit Gaussian/Lorentzian peaks
+*Inputs:*
+- `X`
+- `Y`
 
----
+*Outputs:*
+- `Counts`
+- `XBins`
+- `YBins`
 
-### Want Signal Processing?
+**Parameters:**
 
-**Filtering:**
-- **GaussianFilter1D** - Gaussian smoothing (requires scipy)
-
-**FFT (requires pyfftw):**
-- **FFT**, **IFFT** - 1D forward/inverse FFT
-- **FFT2**, **IFFT2** - 2D forward/inverse FFT
-- **RFFT**, **IRFFT** - 1D real FFT
-- **RFFT2**, **IRFFT2** - 2D real FFT
-
-**Averaging:**
-- **ExponentialMovingAverage1D** - EMA for waveforms
-- **ExponentialMovingAverage2D** - EMA for images
-
-**Image processing:**
-- **Rotate** - Rotate 2D arrays (requires scipy)
+- `x bins` (intSpin)
+- `y bins` (intSpin)
+- `range x min` (doubleSpin)
+- `range x max` (doubleSpin)
+- `range y min` (doubleSpin)
+- `range y max` (doubleSpin)
+- `density` (check)
 
 ---
 
-### Want Peak/Blob Finding?
+### Histogram
 
-**Peak finding:**
-- **PeakFinder1D** - 1D peak finder (requires numba)
-- **PeakFinderV4R3** - Psana peakfinder v4r3 (requires psalg_ext)
-- **WFPeaks** - Waveform peak finding (requires psana.hexanode)
+**Module:** Display
 
-**Blob finding:**
-- **BlobFinder1D** - Find blobs in waveforms (requires psana.peakFinder)
-- **BlobFinder2D** - Find blobs in images (requires psana.peakFinder)
+**Description:**
 
-**Hit finding:**
-- **HitFinder** - Hit finder for hexanode (requires psana.hexanode)
-- **ThresholdingHitFinder** - Threshold-based hit finding
+Histogram plots a histogram created from Binning.
 
-**Edge detection:**
-- **EdgeFinder** - Find edges (requires psana.pyalgos)
+**Terminals:**
+
+*Inputs:*
+- `Bins`
+- `Counts`
 
 ---
 
-### Want Specialized LCLS Detectors?
+### Histogram2D
 
-**Hexanode:**
-- **Hexanode** - Process hexanode detector (requires psana.hexanode)
-- **HitFinder** - Hit finding for hexanode
+**Module:** Display
 
-**XTCAV:**
-- **XTCAVLasingOn** - XTCAV lasing characterization (requires psana.xtcav)
+**Description:**
 
-**Calibration:**
-- **Mask**, **Mask3dFrom2d** - Generate detector masks
-- **Geometry** - Generate pixel coordinates from geometry
+Histogram2D plots a 2d histogram created from Binning2D.
 
-**Table conversion:**
-- **TableFromArr3d** - Convert 3D detector data to 2D table
+**Terminals:**
 
----
-
-### Want Waveform Analysis?
-
-**Discriminators:**
-- **CFD** - Constant fraction discriminator (requires constFracDiscrim)
-
-**Statistics:**
-- **Average1D** - Average N waveforms
-
-**References:**
-- **LoadReference1D** - Load 1D reference from CSV
+*Inputs:*
+- `Counts`
+- `XBins`
+- `YBins`
 
 ---
 
-### Want Accumulators?
+### ImageViewer
 
-- **Pick1** - Collect one input
-- **PickN** - Collect N inputs
-- **SumN** - Sum N inputs
-- **RollingBuffer** - Rolling buffer of N inputs
-- **Accumulator** - Custom accumulator with reduction (requires PythonEditor)
-- **ReduceByKey** - Reduce by key with custom function (requires PythonEditor)
+**Module:** Display
 
----
+**Description:**
 
-### Want Monitoring/Alerts?
+ImageViewer displays 2D arrays.
 
-- **ArrayThreshold** - Alert when array values exceed threshold
-- **Monitor** - Debug widget showing which nodes have events
-- **HSDPeakTest** - Test HSD peak validity
+**Terminals:**
+
+*Inputs:*
+- `In`
 
 ---
 
-### Want to Export Data?
+### LinePlot
 
-**To workers/collectors:**
-- **ExportToWorker** - Send data back to worker from global collector
+**Module:** Display
 
-**To external systems:**
-- **PvExport** - Export via AMI-hosted PV (PVA or CA)
-- **ZMQ** - Export over ZMQ PUB/SUB
-- **UDPMcast** - UDP multicast in BLD format
-- **Caput** - Send to external PV via CA (requires caproto)
-- **Pvput** - Send to external PV via PVA (requires p4p)
+**Description:**
 
----
+Line Plot plots arrays.
 
-## Complete Alphabetical List
+**Terminals:**
 
-### Display Nodes (11 types)
-
-1. **Histogram** - Plot histograms from Binning node
-   - Inputs: `Bins` (bin edges), `Counts` (bin values)
-   - Use: Visualizing distributions
-   - ⚠️ Use terminals `Bins` and `Counts`, NOT `In`!
-
-2. **Histogram2D** - Plot 2D histograms from Binning2D node
-   - Inputs: `XBins`, `YBins`, `Counts`
-   - Use: Visualizing 2D distributions
-   - ⚠️ Use terminals `XBins`, `YBins`, `Counts`, NOT `In`!
-
-3. **ImageViewer** - Display 2D arrays as images
-   - Input: 2D array
-   - Use: Viewing detector images, processed 2D data
-   - ⚠️ NOT for raw sources (sources are already viewable!)
-
-4. **LinePlot** - Plot 1D arrays (X vs Y)
-   - Inputs: `X` (X values), `Y` (Y values)
-   - Use: Profiles, projections, scan results
-   - ⚠️ CRITICAL: Use terminals `X` and `Y`, NOT `In` and `In.1`!
-
-5. **MultiWaveformViewer** - Display 2D arrays as series of waveforms
-   - Input: 2D array
-   - Use: Multi-channel waveforms
-
-6. **ObjectViewer** - Display string representation of objects
-   - Input: Any object
-   - Use: Debugging, viewing structured data
-
-7. **ScalarPlot** - Collect and plot scalars over time
-   - Input: `Y` (scalar value, time is implicit)
-   - Use: Time series monitoring, trending
-   - Self-displaying: Yes
-   - ⚠️ Use terminal `Y`, NOT `In`!
-
-8. **ScalarViewer** - Display single scalar values
-   - Input: Scalar value
-   - Use: Showing current value
-
-9. **ScatterPlot** - Correlate two scalars (X vs Y)
-   - Inputs: `X` (first value), `Y` (second value)
-   - Use: Correlations, pump-probe analysis
-   - Self-displaying: Yes
-   - ⚠️ CRITICAL: Use terminals `X` and `Y`, NOT `In` and `In.1`!
-
-10. **TimePlot** - Plot values against time of day
-    - Input: Scalar value
-    - Use: Long-term monitoring with timestamps
-
-11. **WaveformViewer** - Display 1D arrays
-    - Input: 1D array
-    - Use: Viewing waveforms
-    - ⚠️ NOT for raw sources (sources are already viewable!)
+*Inputs:*
+- `X`
+- `Y`
 
 ---
 
-### Processing Nodes (28 types)
+### MeanWaveformVsScan
 
-#### Basic Operations
+**Module:** Operators
 
-12. **Average** - Compute average
-    - Input: Array
-    - Output: Scalar or array (depends on input)
+**Description:**
 
-13. **Average0D** - Collect and average N scalars
-    - Input: Scalar
-    - Output: Averaged scalar
-    - Configure: N (number of events) in GUI
+MeanWaveformVsScan creates a 2d histogram using a variable number of bins.
 
-14. **Average1D** - Collect and average N 1D arrays
-    - Input: 1D array
-    - Output: Averaged 1D array
-    - Configure: N in GUI
+Returns a dict with keys Bins and values mean waveform of bins.
 
-15. **Average2D** - Collect and average N 2D arrays
-    - Input: 2D array
-    - Output: Averaged 2D array
-    - Configure: N in GUI
+**Terminals:**
 
-16. **Binning** - Create 1D histogram with fixed bins
-    - Input: Array
-    - Output: Histogram
-    - Configure: Number of bins, range in GUI
+*Inputs:*
+- `Bin`
+- `Value`
 
-17. **Binning2D** - Create 2D histogram with fixed bins
-    - Input: 2D array
-    - Output: 2D histogram
-    - Configure: Bins, center, range in GUI
+*Outputs:*
+- `Counts`
+- `X Bins`
+- `Y Bins`
 
-18. **Calculator** - Evaluate math expressions (requires sympy)
-    - Inputs: `In` (first input), `Out` (output)
-    - Can add more inputs via GUI: `In.1`, `In.2`, etc.
-    - Configure: Expression in GUI (e.g., `In * 2.5 + 10`)
-    - Use: Calibration, simple math
-    - Note: Calculator uses `In`/`Out` like most processing nodes
+**Parameters:**
 
-19. **Combinations** - Generate combinations using itertools
-    - Use: Creating combinations of inputs
-
-20. **Constant** - Generate constant values
-    - Output: Configured constant (float, array, etc.)
-    - Configure: Value in GUI
-
-21. **ExponentialMovingAverage1D** - EMA for 1D data
-    - Input: 1D array
-    - Output: Smoothed 1D array
-    - Configure: Alpha parameter in GUI
-
-22. **ExponentialMovingAverage2D** - EMA for 2D data
-    - Input: 2D array
-    - Output: Smoothed 2D array
-    - Configure: Alpha parameter in GUI
-
-23. **Filter** - Filter events based on boolean condition
-    - Input: Value to test
-    - Output: Filtered events
-    - Configure: Expression in GUI (e.g., `In > 100`)
-    - Use: Pump-probe, event selection
-
-24. **Identity** - Pass-through (no operation)
-    - Use: Debugging, graph organization
-
-25. **MeanVsScan** - Create histogram with mean of bins from scan variable
-    - Input: Value to bin
-    - Output: 1D array of means vs scan
-    - Configure: Scan variable name, bins in GUI
-    - Use: **Most common scan analysis node**
-
-26. **MeanWaveformVsScan** - Create 2D histogram with mean waveforms
-    - Input: Waveform
-    - Output: 2D array (waveforms vs scan)
-    - Configure: Scan variable, bins in GUI
-
-27. **Polynomial** - Evaluate polynomial
-    - Input: Value
-    - Output: Polynomial result
-    - Configure: Coefficients in GUI
-
-28. **Projection** - Project 2D array along axis
-    - Input: 2D array
-    - Output: 1D array (projection)
-    - Configure: Axis in GUI
-    - Use: Creating profiles from images
-
-29. **PythonEditor** - Write custom Python functions
-    - Input: Configurable
-    - Output: Configurable
-    - ⚠️ Requires manual coding in GUI
-    - Use: Custom logic that Calculator/Filter can't handle
-
-30. **RMS** - Root mean square
-    - Input: Array
-    - Output: RMS value
-
-31. **Split** - Split 2D array into 1D arrays
-    - Input: 2D array
-    - Output: Multiple 1D arrays
-
-32. **Stack1d** - Stack scalars into 1D array
-    - Inputs: Multiple scalars
-    - Output: 1D array
-
-33. **Stack2d** - Stack 1D arrays into 2D array
-    - Inputs: Multiple 1D arrays
-    - Output: 2D array
-
-34. **StatsVsScan** - Full statistics vs scan variable
-    - Input: Value to analyze
-    - Outputs: mean, std, min, max, count vs scan
-    - Configure: Scan variable, bins in GUI
-
-35. **Sum** - Sum all array elements
-    - Input: Array
-    - Output: Scalar sum
-    - Use: ROI sums, totals
-
-36. **Take** - Index into array using np.take
-    - Input: Array
-    - Output: Selected elements
-    - Configure: Indices in GUI
-
-#### Time Statistics
-
-37. **TimeMeanRMS0D** - Mean and RMS over time for scalars
-    - Input: Scalar
-    - Outputs: Mean, RMS over time window
-
-38. **TimeMeanRMS1D** - Mean and RMS over time for 1D arrays
-    - Input: 1D array
-    - Outputs: Mean, RMS arrays over time
-
-39. **TimeMeanRMS2D** - Mean and RMS over time for 2D arrays
-    - Input: 2D array
-    - Outputs: Mean, RMS images over time
+- `binned` (check)
+- `bins` (intSpin)
+- `min` (intSpin)
+- `max` (intSpin)
 
 ---
 
-### ROI Nodes (5 types)
+### Monitor
 
-40. **Roi0D** - Single pixel selection from image
-    - Input: 2D array
-    - Output: Scalar (pixel value)
-    - Configure: Pixel position in GUI
+**Module:** Alert
 
-41. **Roi1D** - Region of interest for 1D arrays
-    - Input: 1D array
-    - Output: Sliced 1D array
-    - Configure: Start, end in GUI
+**Description:**
 
-42. **Roi2D** - Rectangular region of interest for images
-    - Input: 2D array
-    - Output: 2D array (ROI region)
-    - ⚠️ **MUST draw ROI rectangle in GUI**
-    - Use: Most common ROI operation
+Debug box which plots which boxes have an event in a heartbeat
 
-43. **RoiArch** - Arch-shaped (cut-donut) ROI for images (requires UtilsROI)
-    - Input: 2D array
-    - Output: Arch-shaped region
-    - Configure: Parameters in GUI
+**Terminals:**
 
-44. **ScatterRoi** - Region of interest for scatter plots
-    - Input: Scatter plot data
-    - Output: Filtered scatter data
-    - Configure: Draw region in scatter plot
+*Inputs:*
+- `In`
+
+**Parameters:**
+
+- `Num Points` (intSpin)
 
 ---
 
-### Statistics & Fitting Nodes (6 types)
+### MultiWaveformViewer
 
-45. **HistMeanRMS** - Mean and stdev from histogram
-    - Input: Histogram
-    - Outputs: Mean, stdev
+**Module:** Display
 
-46. **Linregress0D** - Linear regression on collected scalars
-    - Input: Scalars over time
-    - Outputs: Slope, intercept, correlation
-    - Use: Trend analysis
+**Description:**
 
-47. **Linregress1D** - Linear regression on arrays
-    - Input: 1D array
-    - Outputs: Fit parameters
+MultiWaveformViewer displays 2D arrays as series of 1D arrays.
 
-48. **CurveFit** - Fit custom function (requires scipy, sympy)
-    - Input: 1D data
-    - Output: Fit parameters
-    - Configure: Function expression in GUI
+**Terminals:**
 
-49. **PeakFit** - Fit Gaussian/Lorentzian peaks (requires scipy, sympy)
-    - Input: 1D data
-    - Output: Peak parameters
-
-50. **LoadReference1D** - Load 1D reference array from CSV
-    - Output: Reference array
-    - Configure: File path in GUI
+*Inputs:*
+- `In`
 
 ---
 
-### Accumulator Nodes (6 types)
+### ObjectViewer
 
-51. **Accumulator** - Custom accumulator with user-defined reduction (requires PythonEditor)
-    - Use: Complex accumulation logic
+**Module:** Display
 
-52. **Pick1** - Collect one input
-    - Input: Any
-    - Output: Single collected value
+**Description:**
 
-53. **PickN** - Collect N inputs
-    - Input: Any
-    - Output: List of N values
-    - Configure: N in GUI
+ObjectViewer displays string representation of a python object.
 
-54. **ReduceByKey** - Reduce by key with user-defined reduction (requires PythonEditor)
-    - Use: Map-reduce style operations
+**Terminals:**
 
-55. **RollingBuffer** - Collect N inputs in rolling buffer
-    - Input: Any
-    - Output: Rolling buffer of N values
-    - Configure: N in GUI
-
-56. **SumN** - Sum N inputs
-    - Input: Numeric
-    - Output: Sum of N values
-    - Configure: N in GUI
+*Inputs:*
+- `In`
 
 ---
 
-### Signal Processing Nodes (11 types)
+### ScalarPlot
 
-#### FFT (requires pyfftw)
+**Module:** Display
 
-57. **FFT** - Forward FFT (1D)
-58. **IFFT** - Inverse FFT (1D)
-59. **FFT2** - Forward FFT (2D)
-60. **IFFT2** - Inverse FFT (2D)
-61. **RFFT** - Real FFT (1D)
-62. **IRFFT** - Inverse Real FFT (1D)
-63. **RFFT2** - Real FFT (2D)
-64. **IRFFT2** - Inverse Real FFT (2D)
+**Description:**
 
-#### Filtering
+Scalar Plot collects scalars and plots them.
 
-65. **GaussianFilter1D** - Gaussian smoothing for 1D (requires scipy)
-    - Input: 1D array
-    - Output: Smoothed array
-    - Configure: Sigma in GUI
+**Terminals:**
 
-66. **Rotate** - Rotate 2D arrays (requires scipy)
-    - Input: 2D array
-    - Output: Rotated array
-    - Configure: Angle in GUI
+*Inputs:*
+- `Y`
 
-67. **CFD** - Constant fraction discriminator (requires constFracDiscrim)
-    - Input: Waveform
-    - Output: Discriminated signal
-    - Use: Timing analysis
+**Parameters:**
+
+- `Num Points` (intSpin)
 
 ---
 
-### Peak/Blob/Hit Finding Nodes (9 types)
+### ScalarViewer
 
-68. **BlobFinder1D** - Find blobs in waveforms (requires psana.peakFinder)
-    - Input: 1D array
-    - Output: Blob positions
+**Module:** Display
 
-69. **BlobFinder2D** - Find blobs in images (requires psana.peakFinder)
-    - Input: 2D array
-    - Output: Blob positions
+**Description:**
 
-70. **EdgeFinder** - Find edges (requires psana.pyalgos)
-    - Input: Array
-    - Output: Edge positions
+ScalarViewer displays the value of a scalar.
 
-71. **HitFinder** - Hit finder for hexanode (requires psana.hexanode)
-    - Input: Hexanode data
-    - Output: Hits
+**Terminals:**
 
-72. **PeakFinder1D** - 1D peak finder (requires numba)
-    - Input: 1D array
-    - Output: Peak positions
-
-73. **PeakFinderV4R3** - Psana peakfinder v4r3d2 (requires psalg_ext)
-    - Input: 2D array
-    - Output: Peak positions
-    - Use: X-ray detector peak finding
-
-74. **ThresholdingHitFinder** - Threshold-based hit finding
-    - Input: Array
-    - Output: Hits above threshold
-    - Configure: Threshold in GUI
-
-75. **WFPeaks** - Waveform peak finding (requires psana.hexanode)
-    - Input: Waveform
-    - Output: Peak positions
-
-76. **Hexanode** - Hexanode detector processing (requires psana.hexanode)
-    - Input: Hexanode data
-    - Output: Processed hexanode data
+*Inputs:*
+- `In`
 
 ---
 
-### LCLS-Specific Nodes (6 types)
+### ScatterPlot
 
-77. **XTCAVLasingOn** - XTCAV lasing characterization (requires psana.xtcav)
-    - Input: XTCAV data
-    - Output: Lasing parameters
+**Module:** Display
 
-78. **Mask** - Generate detector masks from calibration (requires psana.detector)
-    - Output: Mask array
+**Description:**
 
-79. **Mask3dFrom2d** - Convert 2D mask to 3D array (requires psana.pscalib)
-    - Input: 2D mask
-    - Output: 3D mask array
+Scatter Plot collects two scalars and plots them against each other.
 
-80. **Geometry** - Generate pixel coordinates from geometry (requires psana.pscalib)
-    - Output: Coordinate arrays
+**Terminals:**
 
-81. **TableFromArr3d** - Convert 3D detector data to 2D table (requires ami.pyalgos)
-    - Input: 3D array
-    - Output: 2D table
+*Inputs:*
+- `X`
+- `Y`
 
-82. **TestQtPickle** - Test node for Qt pickle functionality (requires ami.pyalgos)
-    - Use: Testing only
+**Parameters:**
+
+- `Num Points` (intSpin)
+- `Unique` (check)
 
 ---
 
-### Alert & Monitoring Nodes (3 types)
+### ScatterRoi
 
-83. **ArrayThreshold** - Display alert when array values exceed threshold
-    - Input: Array
-    - Configure: Threshold in GUI
-    - Use: Monitoring, alerts
+**Module:** Roi
 
-84. **Monitor** - Debug widget showing which nodes have events
-    - Use: Debugging graph execution
+**Description:**
 
-85. **HSDPeakTest** - Test HSD peak validity
-    - Input: HSD peak data
-    - Output: Validation result
+Region of Interest of 1d array.
 
----
+**Terminals:**
 
-### Export Nodes (6 types)
+*Inputs:*
+- `X`
+- `Y`
 
-86. **ExportToWorker** - Send data back to worker from global collector
-    - Use: Feedback loops
+*Outputs:*
+- `Out.X`
+- `Out.Y`
 
-87. **PvExport** - Export through AMI-hosted PV (PVA or CA)
-    - Input: Data to export
-    - Configure: PV name, type in GUI
+**Parameters:**
 
-88. **ZMQ** - Export data over ZMQ PUB/SUB
-    - Input: Data to export
-    - Configure: Port, topic in GUI
-
-89. **UDPMcast** - UDP multicast in BLD format
-    - Input: Data to export
-    - Configure: Multicast address in GUI
-
-90. **Caput** - Send to external PV via Channel Access (requires caproto)
-    - Input: Value to send
-    - Configure: PV name in GUI
-
-91. **Pvput** - Send to external PV via PVAccess (requires p4p)
-    - Input: Value to send
-    - Configure: PV name in GUI
+- `origin` (intSpin)
+- `extent` (intSpin)
+- `Num Points` (intSpin)
 
 ---
 
-## Node Availability
+### TimePlot
 
-Some nodes require optional dependencies. If a dependency is missing, the node won't be available:
+**Module:** Display
 
-**Always available (core nodes):** Display, basic processing, ROI, accumulators, basic statistics
+**Description:**
 
-**Requires scipy:** GaussianFilter1D, Rotate, curve fitting nodes
+Plot a number against time of day.
 
-**Requires sympy:** Calculator, PythonEditor, Filter, CurveFit, PeakFit
+**Terminals:**
 
-**Requires pyfftw:** All FFT nodes
+*Inputs:*
+- `X`
+- `Y`
 
-**Requires psana/psalg:** Peak finders, blob finders, LCLS-specific nodes
+**Parameters:**
 
-**Requires caproto:** Caput node
-
-**Requires p4p:** Pvput node
-
-**Requires numba:** PeakFinder1D
+- `Num Points` (intSpin)
 
 ---
 
-## Common Node Combinations
+### WaveformViewer
 
-**ROI analysis:**
-```
-Source → Roi2D → Sum → ScalarPlot
-```
+**Module:** Display
 
-**Correlation:**
-```
-SourceA → ScatterPlot.In
-SourceB → ScatterPlot.In.1
-```
+**Description:**
 
-**Scan analysis:**
-```
-Source → MeanVsScan → LinePlot
-```
+WaveformViewer displays 1D arrays.
 
-**Pump-probe:**
-```
-Detector → Roi2D → Sum → Filter(pump) → MeanVsScan
-                        → Filter(probe) → MeanVsScan
-```
+**Terminals:**
 
-**Image processing:**
-```
-Source → Roi2D → Projection → LinePlot
-```
+*Inputs:*
+- `In`
 
 ---
 
-## Remember
+## Data Processing
 
-- **SourceNodes are viewable** - Don't add viewers for raw sources!
-- **Only use nodes from this list** - If it's not here, it doesn't exist
-- **Check dependencies** - Some nodes require optional packages
-- **Configure in GUI** - Node parameters (except name) set in GUI
-- **Self-displaying nodes** - ScatterPlot, ScalarPlot, LinePlot, Histogram show themselves
+**Description:** Transform, compute, and manipulate data
+
+### Average
+
+**Module:** Numpy
+
+**Description:**
+
+Compute average using np.average
+
+**Terminals:**
+
+*Inputs:*
+- `In`
+
+*Outputs:*
+- `Out`
+
+**Parameters:**
+
+- `axis` (intSpin)
+
+---
+
+### Average0D
+
+**Module:** Numpy
+
+**Description:**
+
+Collect N scalars and average them.
+
+**Terminals:**
+
+*Inputs:*
+- `In`
+
+*Outputs:*
+- `Out`
+
+**Parameters:**
+
+- `N` (intSpin)
+- `infinite` (check)
+
+---
+
+### Average1D
+
+**Module:** Numpy
+
+**Description:**
+
+Collect N 1d arrays and average them.
+
+**Terminals:**
+
+*Inputs:*
+- `In`
+
+*Outputs:*
+- `Out`
+
+**Parameters:**
+
+- `N` (intSpin)
+- `infinite` (check)
+
+---
+
+### Average2D
+
+**Module:** Numpy
+
+**Description:**
+
+Collect N 2d arrays and average them.
+
+**Terminals:**
+
+*Inputs:*
+- `In`
+
+*Outputs:*
+- `Out`
+
+**Parameters:**
+
+- `N` (intSpin)
+- `infinite` (check)
+
+---
+
+### Calculator
+
+**Module:** Operators
+
+**Description:**
+
+Calculator
+
+**Terminals:**
+
+*Inputs:*
+- `In`
+
+*Outputs:*
+- `Out`
+
+---
+
+### Combinations
+
+**Module:** Operators
+
+**Description:**
+
+Generate combinations using itertools.combinations.
+
+**Terminals:**
+
+*Inputs:*
+- `In`
+
+*Outputs:*
+- `Out`
+
+**Parameters:**
+
+- `length` (intSpin)
+
+---
+
+### Constant
+
+**Module:** Operators
+
+**Description:**
+
+Constant
+
+**Terminals:**
+
+*Outputs:*
+- `Out`
+
+---
+
+### ExponentialMovingAverage1D
+
+**Module:** Operators
+
+**Description:**
+
+Exponential Moving Average for Waveforms.
+
+**Terminals:**
+
+*Inputs:*
+- `In`
+
+*Outputs:*
+- `Count`
+- `Out`
+
+**Parameters:**
+
+- `Fraction of old` (doubleSpin)
+
+---
+
+### ExponentialMovingAverage2D
+
+**Module:** Operators
+
+**Description:**
+
+Exponential Moving Average for Images.
+
+**Terminals:**
+
+*Inputs:*
+- `In`
+
+*Outputs:*
+- `Count`
+- `Out`
+
+**Parameters:**
+
+- `Fraction of old` (doubleSpin)
+
+---
+
+### HistMeanRMS
+
+**Module:** Numpy
+
+**Description:**
+
+HistMeanRMS
+
+**Terminals:**
+
+*Inputs:*
+- `In`
+
+*Outputs:*
+- `Mean`
+- `Stdev`
+
+---
+
+### Identity
+
+**Module:** Operators
+
+**Description:**
+
+Identity
+
+**Terminals:**
+
+*Inputs:*
+- `In`
+
+*Outputs:*
+- `Out`
+
+---
+
+### LoadReference1D
+
+**Module:** Numpy
+
+**Description:**
+
+Load 1d reference array from csv.
+
+**Terminals:**
+
+*Outputs:*
+- `X`
+- `Y`
+
+**Parameters:**
+
+- `path` (text)
+
+---
+
+### MeanVsScan
+
+**Module:** Operators
+
+**Description:**
+
+MeanVsScan creates a histogram using a variable number of bins.
+
+Returns a dict with keys Bins and values mean of bins.
+
+**Terminals:**
+
+*Inputs:*
+- `Bin`
+- `Value`
+
+*Outputs:*
+- `Bins`
+- `Counts`
+
+**Parameters:**
+
+- `binned` (check)
+- `bins` (intSpin)
+- `min` (intSpin)
+- `max` (intSpin)
+
+---
+
+### Polynomial
+
+**Module:** Numpy
+
+**Description:**
+
+Evaluate a polynomial using np.polynomial.polynomial.polyval
+
+**Terminals:**
+
+*Inputs:*
+- `In`
+
+*Outputs:*
+- `Out`
+
+**Parameters:**
+
+- `c0` (doubleSpin)
+- `c1` (doubleSpin)
+- `c2` (doubleSpin)
+
+---
+
+### Projection
+
+**Module:** Numpy
+
+**Description:**
+
+Projection projects a 2d array along the selected axis.
+
+**Terminals:**
+
+*Inputs:*
+- `In`
+
+*Outputs:*
+- `Out`
+
+**Parameters:**
+
+- `axis` (intSpin)
+
+---
+
+### PythonEditor
+
+**Module:** Operators
+
+**Description:**
+
+Write a python function.
+
+---
+
+### Split
+
+**Module:** Numpy
+
+**Description:**
+
+Split a 2d array into 1d arrays using np.split.
+
+**Terminals:**
+
+*Inputs:*
+- `In`
+
+*Outputs:*
+- `Out`
+
+**Parameters:**
+
+- `axis` (intSpin)
+
+---
+
+### Stack1d
+
+**Module:** Numpy
+
+**Description:**
+
+Stacks scalars into 1d array using np.stack
+
+**Terminals:**
+
+*Inputs:*
+- `In`
+
+*Outputs:*
+- `Out`
+
+**Parameters:**
+
+- `axis` (intSpin)
+
+---
+
+### Stack2d
+
+**Module:** Numpy
+
+**Description:**
+
+Stacks 1d arrays into 2d array using np.stack
+
+**Terminals:**
+
+*Inputs:*
+- `In`
+
+*Outputs:*
+- `Out`
+
+**Parameters:**
+
+- `axis` (intSpin)
+
+---
+
+### Sum
+
+**Module:** Numpy
+
+**Description:**
+
+Returns the sum of an array.
+
+**Terminals:**
+
+*Inputs:*
+- `In`
+
+*Outputs:*
+- `Out`
+
+---
+
+### SumN
+
+**Module:** Accumulators
+
+**Description:**
+
+SumN sums N of its input.
+
+**Parameters:**
+
+- `N` (intSpin)
+
+---
+
+### Take
+
+**Module:** Numpy
+
+**Description:**
+
+Index into a list or array using np.take
+
+**Terminals:**
+
+*Inputs:*
+- `In`
+
+*Outputs:*
+- `Out`
+
+**Parameters:**
+
+- `axis` (intSpin)
+- `index` (intSpin)
+- `mode` (combo)
+
+---
+
+### TimeMeanRMS0D
+
+**Module:** Numpy
+
+**Description:**
+
+TimeMeanRMS0D
+
+**Terminals:**
+
+*Inputs:*
+- `In`
+
+*Outputs:*
+- `Mean`
+- `RMS`
+
+**Parameters:**
+
+- `N` (intSpin)
+
+---
+
+### TimeMeanRMS1D
+
+**Module:** Numpy
+
+**Description:**
+
+TimeMeanRMS1D
+
+**Terminals:**
+
+*Inputs:*
+- `In`
+
+*Outputs:*
+- `Mean`
+- `RMS`
+
+**Parameters:**
+
+- `N` (intSpin)
+
+---
+
+### TimeMeanRMS2D
+
+**Module:** Numpy
+
+**Description:**
+
+TimeMeanRMS2D
+
+**Terminals:**
+
+*Inputs:*
+- `In`
+
+*Outputs:*
+- `Mean`
+- `RMS`
+
+**Parameters:**
+
+- `N` (intSpin)
+
+---
+
+## ROI (Region Selection)
+
+**Description:** Extract regions of interest from data
+
+### Roi0D
+
+**Module:** Roi
+
+**Description:**
+
+Selects single pixel from image.
+
+**Terminals:**
+
+*Inputs:*
+- `In`
+
+*Outputs:*
+- `Out`
+
+**Parameters:**
+
+- `x` (intSpin)
+- `y` (intSpin)
+
+---
+
+### Roi1D
+
+**Module:** Roi
+
+**Description:**
+
+Region of Interest of 1d array.
+
+**Terminals:**
+
+*Inputs:*
+- `In`
+
+*Outputs:*
+- `Out`
+
+**Parameters:**
+
+- `origin` (intSpin)
+- `extent` (intSpin)
+
+---
+
+### Roi2D
+
+**Module:** Roi
+
+**Description:**
+
+Region of Interest of image.
+
+**Terminals:**
+
+*Inputs:*
+- `In`
+
+*Outputs:*
+- `Out`
+- `Roi_Coordinates`
+
+**Parameters:**
+
+- `origin x` (intSpin)
+- `origin y` (intSpin)
+- `extent x` (intSpin)
+- `extent y` (intSpin)
+
+---
+
+### RoiArch
+
+**Module:** Roi
+
+**Description:**
+
+Region of Interest of image shaped as arch (a.k.a. cut-donat).
+
+**Terminals:**
+
+*Inputs:*
+- `image`
+- `mask`
+
+*Outputs:*
+- `ABinCent`
+- `ABinEdges`
+- `AProj`
+- `BBox`
+- `Mask`
+- `RBinCent`
+- `RBinEdges`
+- `ROIPars`
+- `RProj`
+- `RadAngBinStatist`
+- `RadAngNormIntens`
+
+**Parameters:**
+
+- `center x` (intSpin)
+- `center y` (intSpin)
+- `radius o` (intSpin)
+- `radius i` (intSpin)
+- `angdeg o` (intSpin)
+- `angdeg i` (intSpin)
+- `nbins rad` (intSpin)
+- `nbins ang` (intSpin)
+
+---
+
+## Statistics & Analysis
+
+**Description:** Compute statistics and analyze data
+
+### RMS
+
+**Module:** Numpy
+
+**Description:**
+
+RMS
+
+**Terminals:**
+
+*Inputs:*
+- `In`
+
+*Outputs:*
+- `Out`
+
+---
+
+### StatsVsScan
+
+**Module:** Operators
+
+**Description:**
+
+StatsVsScan creates a histogram using a variable number of bins.
+
+Returns a dict with keys Bins and values mean, std, error of bins.
+
+**Terminals:**
+
+*Inputs:*
+- `Bin`
+- `Value`
+
+*Outputs:*
+- `Bins`
+- `Error`
+- `Mean`
+- `Stdev`
+
+**Parameters:**
+
+- `binned` (check)
+- `bins` (intSpin)
+- `min` (intSpin)
+- `max` (intSpin)
+
+---
+
+## Filtering & Logic
+
+**Description:** Filter and gate data based on conditions
+
+### ArrayThreshold
+
+**Module:** Alert
+
+**Description:**
+
+Display an alert when the values and number of values in an array are greater than a threshold and count.
+
+**Terminals:**
+
+*Inputs:*
+- `In`
+
+**Parameters:**
+
+- `Threshold` (intSpin)
+- `Count` (intSpin)
+
+---
+
+### Filter
+
+**Module:** Operators
+
+**Description:**
+
+Filter
+
+**Terminals:**
+
+*Inputs:*
+- `In`
+
+*Outputs:*
+- `Out`
+
+---
+
+### GaussianFilter1D
+
+**Module:** Scipy
+
+**Description:**
+
+Scipy Gaussian Filter 1D
+
+**Terminals:**
+
+*Inputs:*
+- `In`
+
+*Outputs:*
+- `Out`
+
+**Parameters:**
+
+- `sigma` (doubleSpin)
+- `axis` (intSpin)
+- `order` (intSpin)
+- `mode` (combo)
+- `cval` (doubleSpin)
+- `truncate` (doubleSpin)
+
+---
+
+### Pick1
+
+**Module:** Accumulators
+
+**Description:**
+
+Pick1 collects one of its input.
+
+**Terminals:**
+
+*Inputs:*
+- `In`
+
+*Outputs:*
+- `Out`
+
+---
+
+### PickN
+
+**Module:** Accumulators
+
+**Description:**
+
+PickN collects N of its input.
+
+**Terminals:**
+
+*Inputs:*
+- `In`
+
+*Outputs:*
+- `Out`
+
+**Parameters:**
+
+- `N` (intSpin)
+
+---
+
+### TestQtPickle
+
+**Module:** Psalg
+
+**Description:**
+
+psana TestQtPickle - converts n-d array (n>=3) for detector data to 2-d table of segments.
+
+**Terminals:**
+
+*Inputs:*
+- `arr3d`
+
+*Outputs:*
+- `arr2d`
+
+**Parameters:**
+
+- `transpose` (check)
+- `rot_n90` (combo)
+
+---
+
+### ThresholdingHitFinder
+
+**Module:** Psalg
+
+**Description:**
+
+Apply a threshold to an image and sum.
+
+**Terminals:**
+
+*Inputs:*
+- `In`
+
+*Outputs:*
+- `Out`
+
+---
+
+## Accumulators & Buffers
+
+**Description:** Accumulate or buffer data over time/events
+
+### Accumulator
+
+**Module:** Accumulators
+
+**Description:**
+
+Accumulator
+
+**Terminals:**
+
+*Inputs:*
+- `In`
+
+*Outputs:*
+- `Count`
+- `Sum`
+
+---
+
+### ReduceByKey
+
+**Module:** Accumulators
+
+**Description:**
+
+ReduceByKey
+
+**Terminals:**
+
+*Inputs:*
+- `Key`
+- `Value`
+
+*Outputs:*
+- `Out`
+
+---
+
+### RollingBuffer
+
+**Module:** Accumulators
+
+**Description:**
+
+RollingBuffer collects N of its input.
+
+**Terminals:**
+
+*Inputs:*
+- `In`
+
+*Outputs:*
+- `Count`
+- `Out`
+
+**Parameters:**
+
+- `N` (intSpin)
+
+---
+
+## Export
+
+**Description:** Export data to external systems (EPICS PVs, files, etc.)
+
+### Caput
+
+**Module:** Export
+
+**Description:**
+
+Send data to an existing externally hosted PV via Channel Access.
+
+**Terminals:**
+
+*Inputs:*
+- `In`
+- `eventid`
+
+**Parameters:**
+
+- `pvname` (text)
+- `events` (intSpin)
+- `wait` (check)
+- `timeout` (doubleSpin)
+
+---
+
+### ExportToWorker
+
+**Module:** Export
+
+**Description:**
+
+Send data back to worker from global collector.
+
+**Terminals:**
+
+*Inputs:*
+- `In`
+- `Timestamp`
+
+*Outputs:*
+- `Out`
+
+**Parameters:**
+
+- `alias` (text)
+
+---
+
+### PvExport
+
+**Module:** Export
+
+**Description:**
+
+Export data through an AMI hosted PV using either PV access or channel access.
+
+**Terminals:**
+
+*Inputs:*
+- `In`
+- `eventid`
+
+**Parameters:**
+
+- `alias` (text)
+- `events` (intSpin)
+
+---
+
+### Pvput
+
+**Module:** Export
+
+**Description:**
+
+Send data to an existing externally hosted PV via PVAccess.
+
+**Terminals:**
+
+*Inputs:*
+- `In`
+- `eventid`
+
+**Parameters:**
+
+- `pvname` (text)
+- `events` (intSpin)
+- `wait` (check)
+- `timeout` (doubleSpin)
+
+---
+
+### UDPMcast
+
+**Module:** Export
+
+**Description:**
+
+UDP multicast a reduced rate of input in BLD format.
+
+**Terminals:**
+
+*Inputs:*
+- `In`
+- `eventid`
+
+**Parameters:**
+
+- `Multicast Group` (text)
+- `Port` (text)
+- `events` (intSpin)
+
+---
+
+### ZMQ
+
+**Module:** Export
+
+**Description:**
+
+Export data over ZMQ PUB/SUB
+
+**Terminals:**
+
+*Inputs:*
+- `In`
+- `Timestamp`
+
+---
+
+## Advanced Processing
+
+**Description:** Advanced signal processing and transformations
+
+### BlobFinder1D
+
+**Module:** Scipy
+
+**Description:**
+
+Find blobs in a waveform.
+
+**Terminals:**
+
+*Inputs:*
+- `In`
+
+*Outputs:*
+- `NBlobs`
+- `Sum`
+- `X`
+
+**Parameters:**
+
+- `threshold` (doubleSpin)
+- `min sum` (doubleSpin)
+
+---
+
+### BlobFinder2D
+
+**Module:** Scipy
+
+**Description:**
+
+Find blobs in an image.
+
+**Terminals:**
+
+*Inputs:*
+- `In`
+
+*Outputs:*
+- `NBlobs`
+- `Sum`
+- `X`
+- `Y`
+
+**Parameters:**
+
+- `threshold` (doubleSpin)
+- `min sum` (doubleSpin)
+
+---
+
+### CFD
+
+**Module:** Psalg
+
+**Description:**
+
+Constant fraction descriminator
+
+**Terminals:**
+
+*Inputs:*
+- `In`
+
+*Outputs:*
+- `Out`
+
+**Parameters:**
+
+- `Sample Interval` (doubleSpin)
+- `horpos` (doubleSpin)
+- `gain` (doubleSpin)
+- `offset` (doubleSpin)
+- `delay` (intSpin)
+- `walk` (doubleSpin)
+- `threshold` (doubleSpin)
+- `fraction` (doubleSpin)
+
+---
+
+### CurveFit
+
+**Module:** Scipy
+
+**Description:**
+
+Calls scipy.optimize.curve_fit to fit a function to its inputs.
+
+**Terminals:**
+
+*Inputs:*
+- `Y`
+
+*Outputs:*
+- `fx`
+- `p0`
+- `pcov`
+
+**Parameters:**
+
+- `f` (text)
+- `variables` (text)
+- `p0` (text)
+
+---
+
+### EdgeFinder
+
+**Module:** Psalg
+
+**Description:**
+
+psana edgefinder
+
+**Terminals:**
+
+*Inputs:*
+- `Calib`
+- `IIR`
+- `Image`
+
+*Outputs:*
+- `amplitude`
+- `amplitude_next`
+- `edge`
+- `fwhm`
+- `ref_amplitude`
+
+---
+
+### FFT
+
+**Module:** FFTW
+
+**Description:**
+
+pyfftw.builders.fft
+
+**Terminals:**
+
+*Inputs:*
+- `In`
+
+*Outputs:*
+- `Out`
+
+---
+
+### FFT2
+
+**Module:** FFTW
+
+**Description:**
+
+pyfftw.builders.fft2
+
+**Terminals:**
+
+*Inputs:*
+- `In`
+
+*Outputs:*
+- `Out`
+
+---
+
+### Geometry
+
+**Module:** Psalg
+
+**Description:**
+
+psana Geometry - uses geometry constants to generate arrays of pixel coordinates etc.
+
+**Terminals:**
+
+*Inputs:*
+- `arr3d`
+- `calibcons`
+
+*Outputs:*
+- `coords_xyz`
+- `image`
+- `inds_xy`
+
+**Parameters:**
+
+- `geofname` (file_in)
+
+---
+
+### HSDPeakTest
+
+**Module:** Validators
+
+**Description:**
+
+HSDPeakTest
+
+**Terminals:**
+
+*Inputs:*
+- `Peaks`
+- `Waveform`
+
+*Outputs:*
+- `Fail`
+- `Pass`
+
+---
+
+### Hexanode
+
+**Module:** Psalg
+
+**Description:**
+
+Hexanode
+
+**Terminals:**
+
+*Inputs:*
+- `Calib`
+- `Event Number`
+- `Num of Hits`
+- `Peak Times`
+
+*Outputs:*
+- `R`
+- `T`
+- `X`
+- `Y`
+
+**Parameters:**
+
+- `num chans` (combo)
+- `num hits` (intSpin)
+- `verbose` (check)
+
+---
+
+### HitFinder
+
+**Module:** Psalg
+
+**Description:**
+
+HitFinder
+
+**Terminals:**
+
+*Inputs:*
+- `Num of Hits`
+- `Peak Times`
+
+*Outputs:*
+- `T`
+- `X`
+- `Y`
+
+**Parameters:**
+
+- `runtime_u` (doubleSpin)
+- `runtime_v` (doubleSpin)
+- `tsum_avg_u` (doubleSpin)
+- `tsum_hw_u` (doubleSpin)
+- `tsum_avg_v` (doubleSpin)
+- `tsum_hw_v` (doubleSpin)
+- `f_u` (doubleSpin)
+- `f_v` (doubleSpin)
+- `Rmax` (doubleSpin)
+
+---
+
+### IFFT
+
+**Module:** FFTW
+
+**Description:**
+
+pyfftw.builders.ifft
+
+**Terminals:**
+
+*Inputs:*
+- `In`
+
+*Outputs:*
+- `Out`
+
+---
+
+### IFFT2
+
+**Module:** FFTW
+
+**Description:**
+
+pyfftw.builders.ifft2
+
+**Terminals:**
+
+*Inputs:*
+- `In`
+
+*Outputs:*
+- `Out`
+
+---
+
+### IRFFT
+
+**Module:** FFTW
+
+**Description:**
+
+pyfftw.builders.irfft
+
+**Terminals:**
+
+*Inputs:*
+- `In`
+
+*Outputs:*
+- `Out`
+
+---
+
+### IRFFT2
+
+**Module:** FFTW
+
+**Description:**
+
+pyfftw.builders.irfft2
+
+**Terminals:**
+
+*Inputs:*
+- `In`
+
+*Outputs:*
+- `Out`
+
+---
+
+### Linregress0D
+
+**Module:** Scipy
+
+**Description:**
+
+Collect N scalars and apply Scipy.stats.linregress
+
+**Terminals:**
+
+*Inputs:*
+- `X.In`
+- `Y.In`
+
+*Outputs:*
+- `Fit`
+- `X`
+- `Y`
+- `rvalue`
+
+**Parameters:**
+
+- `N` (intSpin)
+
+---
+
+### Linregress1D
+
+**Module:** Scipy
+
+**Description:**
+
+Scipy.stats.linregress
+
+**Terminals:**
+
+*Inputs:*
+- `X`
+- `Y`
+
+*Outputs:*
+- `fit`
+- `intercept`
+- `pvalue`
+- `rvalue`
+- `slope`
+- `stderr`
+
+---
+
+### Mask
+
+**Module:** Psalg
+
+**Description:**
+
+psana Mask 
+
+**Terminals:**
+
+*Inputs:*
+- `calibconst`
+
+*Outputs:*
+- `Mask`
+- `Mask3D`
+
+**Parameters:**
+
+- `status` (check)
+- `status_bits` (intSpin)
+- `gain_range_inds` (text)
+- `neighbors` (check)
+- `rad` (intSpin)
+- `ptrn` (combo)
+- `edges` (check)
+- `width` (intSpin)
+- `edge_rows` (intSpin)
+- `edge_cols` (intSpin)
+- `center` (check)
+- `wcenter` (intSpin)
+- `center_rows` (intSpin)
+- `center_cols` (intSpin)
+- `calib` (check)
+- `umask` (file_in)
+
+---
+
+### Mask3dFrom2d
+
+**Module:** Psalg
+
+**Description:**
+
+psana Mask3dFrom2d - converts mask2d (as image) to mask3d array shaped as data
+
+**Terminals:**
+
+*Inputs:*
+- `inds_xy`
+- `mask2d`
+
+*Outputs:*
+- `mask3d`
+
+---
+
+### PeakFinder1D
+
+**Module:** Psalg
+
+**Description:**
+
+1D Peakfinder
+
+**Terminals:**
+
+*Inputs:*
+- `Waveform`
+
+*Outputs:*
+- `Centroid`
+- `Width`
+
+**Parameters:**
+
+- `threshold lo` (doubleSpin)
+- `threshold hi` (doubleSpin)
+
+---
+
+### PeakFinderV4R3
+
+**Module:** Psalg
+
+**Description:**
+
+psana peakfinder v4r3d2
+
+**Terminals:**
+
+*Inputs:*
+- `Image`
+
+*Outputs:*
+- `amp_tot`
+- `col_cgrav`
+- `npix`
+- `row_cgrav`
+- `son`
+
+**Parameters:**
+
+- `npix min` (doubleSpin)
+- `npix max` (doubleSpin)
+- `amax thr` (doubleSpin)
+- `atot thr` (doubleSpin)
+- `son min` (doubleSpin)
+- `thr low` (doubleSpin)
+- `thr high` (doubleSpin)
+- `rank` (doubleSpin)
+- `r0` (doubleSpin)
+- `dr` (doubleSpin)
+
+---
+
+### PeakFit
+
+**Module:** Scipy
+
+**Description:**
+
+Fit a peak to 1d data
+Models:
+    Gaussian
+    Lorentzian
+
+**Terminals:**
+
+*Inputs:*
+- `In`
+
+*Outputs:*
+- `ampl`
+- `center`
+- `fit`
+- `fwhm`
+- `offset`
+- `width`
+
+**Parameters:**
+
+- `Model` (combo)
+- `Use offset` (check)
+- `Initial amplitude` (doubleSpin)
+- `Initial x0` (doubleSpin)
+- `Initial FWHM` (doubleSpin)
+- `Initial offset` (doubleSpin)
+
+---
+
+### RFFT
+
+**Module:** FFTW
+
+**Description:**
+
+pyfftw.builders.rfft
+
+**Terminals:**
+
+*Inputs:*
+- `In`
+
+*Outputs:*
+- `Out`
+
+---
+
+### RFFT2
+
+**Module:** FFTW
+
+**Description:**
+
+pyfftw.builders.rfft2
+
+**Terminals:**
+
+*Inputs:*
+- `In`
+
+*Outputs:*
+- `Out`
+
+---
+
+### Rotate
+
+**Module:** Scipy
+
+**Description:**
+
+Scipy.ndimage.rotate
+
+**Terminals:**
+
+*Inputs:*
+- `In`
+
+*Outputs:*
+- `Out`
+
+**Parameters:**
+
+- `angle` (doubleSpin)
+
+---
+
+### TableFromArr3d
+
+**Module:** Psalg
+
+**Description:**
+
+psana TableFromArr3d - converts n-d array (n>=3) for detector data to 2-d table of segments.
+
+**Terminals:**
+
+*Inputs:*
+- `arr3d`
+
+*Outputs:*
+- `arr2d`
+
+**Parameters:**
+
+- `transpose` (check)
+- `rot_n90` (combo)
+
+---
+
+### WFPeaks
+
+**Module:** Psalg
+
+**Description:**
+
+WFPeaks
+
+**Terminals:**
+
+*Inputs:*
+- `Times`
+- `Waveform`
+
+*Outputs:*
+- `Index`
+- `Num of Hits`
+- `Peak Times`
+- `Values`
+
+---
+
+### XTCAVLasingOn
+
+**Module:** Psalg
+
+**Description:**
+
+XTCAVLasingOn
+
+**Terminals:**
+
+*Inputs:*
+- `cam`
+- `pars`
+- `src`
+
+*Outputs:*
+- `agreement`
+- `power`
+- `pulse`
+- `time`
+
+**Parameters:**
+
+- `num bunches` (intSpin)
+- `snr filter` (doubleSpin)
+- `roi expand` (doubleSpin)
+- `roi fraction` (doubleSpin)
+- `island split method` (combo)
+- `island split par1` (doubleSpin)
+- `island split par2` (doubleSpin)
+
+---

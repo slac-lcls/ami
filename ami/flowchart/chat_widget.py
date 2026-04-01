@@ -919,7 +919,6 @@ Please generate Python code to fulfill this request using the AMI graph building
 
             # Build execution namespace
             # self.ctrl is FlowchartCtrlWidget, which has .chart (Flowchart) and .amicli
-            from ami.flowchart.graph_builder import ensure_source
             import numpy as np
             import pyqtgraph as pg
 
@@ -927,9 +926,6 @@ Please generate Python code to fulfill this request using the AMI graph building
                 "chart": self.ctrl.chart,
                 "graph": self.ctrl.chart._graph,
                 "amicli": self.ctrl.amicli if hasattr(self.ctrl, "amicli") else None,
-                "ensure_source": lambda name: ensure_source(
-                    self.ctrl.amicli if hasattr(self.ctrl, "amicli") else None, name
-                ),
                 "np": np,
                 "pg": pg,
             }
