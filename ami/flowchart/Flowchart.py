@@ -106,6 +106,9 @@ class Flowchart(Node):
 
         self.configure = configure
 
+        # Chat widget for natural language graph building (lazy init)
+        self.chat_widget = None
+
     def __enter__(self):
         return self
 
@@ -635,110 +638,6 @@ class Flowchart(Node):
         ctrl.chartWidget.updateStatus(f"Saved graph to: {fileName}")
         self.sigFileSaved.emit(fileName)
 
-    def generateSourceCode(self):
-        """
-        Generate Python code that recreates the current graph.
-
-        Returns a string containing executable Python code.
-        """
-        from datetime import datetime
-
-        def sanitize_name(name):
-            """Convert node/source name to valid Python variable name"""
-            sanitized = name.replace(":", "_").replace(".", "_").replace("-", "_")
-            sanitized = (
-                sanitized.replace("/", "_")
-                .replace(" ", "_")
-                .replace("[", "_")
-                .replace("]", "_")
-            )
-            # Remove any other non-alphanumeric characters except underscore
-            sanitized = "".join(
-                c if c.isalnum() or c == "_" else "_" for c in sanitized
-            )
-            # Ensure it doesn't start with a digit
-            if sanitized and sanitized[0].isdigit():
-                sanitized = "node_" + sanitized
-            return sanitized
-
-        lines = []
-
-        # Header
-        lines.append("# AMI Graph Source Code")
-        lines.append(f"# Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
-        lines.append("#")
-        lines.append("# This code recreates the current AMI analysis graph")
-        lines.append("")
-        lines.append("from ami.flowchart.library.common import SourceNode")
-        lines.append("")
-
-        # Create mapping of node names to variable names
-        var_names = {}
-        for name in self._graph.nodes():
-            var_names[name] = sanitize_name(name)
-
-        # Create source nodes first
-        source_nodes = []
-        processing_nodes = []
-
-        for name, gnode in self._graph.nodes(data="node"):
-            if gnode.__class__.__name__ == "SourceNode":
-                source_nodes.append((name, gnode))
-            else:
-                processing_nodes.append((name, gnode))
-
-        if source_nodes:
-            lines.append("# Create source nodes")
-            for name, node in source_nodes:
-                var_name = var_names[name]
-                # Get source name from node parameters
-                source_name = getattr(node, "source", name)
-                lines.append(f"{var_name} = SourceNode('{name}')")
-                lines.append(f"chart.addNode({var_name}, '{name}')")
-                lines.append(f"{var_name}.selectSource('{source_name}')")
-            lines.append("")
-
-        if processing_nodes:
-            lines.append("# Create processing/display nodes")
-            for name, node in processing_nodes:
-                var_name = var_names[name]
-                node_type = node.__class__.__name__
-                lines.append(f"{var_name} = chart.createNode('{node_type}', '{name}')")
-
-                # Configure node parameters if available
-                if hasattr(node, "values") and node.values:
-                    lines.append(f"# Configure {name}")
-                    for param, value in node.values.items():
-                        # Format value appropriately
-                        if isinstance(value, str):
-                            lines.append(f"{var_name}.values['{param}'] = '{value}'")
-                        else:
-                            lines.append(
-                                f"{var_name}.values['{param}'] = {repr(value)}"
-                            )
-            lines.append("")
-
-        # Create connections
-        connections = []
-        for src_name, dst_name, edge_data in self._graph.edges(data=True):
-            src_term = edge_data.get("fromTerm", "Out")
-            dst_term = edge_data.get("toTerm", "In")
-            connections.append((src_name, src_term, dst_name, dst_term))
-
-        if connections:
-            lines.append("# Connect nodes")
-            for src_name, src_term, dst_name, dst_term in connections:
-                src_var = var_names[src_name]
-                dst_var = var_names[dst_name]
-                lines.append(
-                    f"amicli.connect_nodes('{src_name}', '{src_term}', '{dst_name}', '{dst_term}')"
-                )
-            lines.append("")
-
-        lines.append("print('Graph recreated successfully!')")
-
-        return "\n".join(lines)
-
     async def clear(self):
         """
         Remove all nodes from this flowchart except the original input/output nodes.
@@ -788,6 +687,11 @@ class Flowchart(Node):
                     self.sigNodeChanged.emit(node)
 
             node.viewed = new_node_state["viewed"]
+            # Update state panel if this node is currently displayed
+            ctrl_widget = self.widget()
+            if ctrl_widget.chartWidget.current_displayed_node == node:
+                ctrl_widget.chartWidget.refreshStatePanel(node)
+
             # Update state panel if this node is currently displayed
             ctrl_widget = self.widget()
             if ctrl_widget.chartWidget.current_displayed_node == node:
@@ -941,7 +845,7 @@ class FlowchartCtrlWidget(QtWidgets.QWidget):
         self.ui.actionReset.triggered.connect(self.resetClicked)
         if HAS_QTCONSOLE:
             self.ui.actionConsole.triggered.connect(self.consoleClicked)
-        self.ui.actionViewSource.triggered.connect(self.viewSourceClicked)
+        self.ui.actionChatMode.triggered.connect(self.chatModeClicked)
 
         self.ui.actionHome.triggered.connect(self.homeClicked)
         self.ui.actionArrange.triggered.connect(self.arrangeClicked)
@@ -959,7 +863,6 @@ class FlowchartCtrlWidget(QtWidgets.QWidget):
         self.ui.libraryConfigure.clicked.connect(self.libraryEditor.show)
 
         self.ipython_widget = None
-        self.graph_builder = None  # Will be initialized when console is opened
         self.graph_info = pc.Info("ami_graph", "AMI Client graph", ["hutch", "name"])
         self.graph_version = pc.Gauge("ami_graph_version", "AMI Client graph version", ["hutch", "name"])
 
@@ -1194,405 +1097,21 @@ class FlowchartCtrlWidget(QtWidgets.QWidget):
     def configureClicked(self):
         self.sourceConfigure.show()
 
-    def viewSourceClicked(self):
-        """Display Python source code for current graph"""
-        source_code = self.chart.generateSourceCode()
-
-        # Create a window to display the source code
-        dialog = QtWidgets.QDialog(self)
-        dialog.setWindowTitle("Graph Source Code")
-        dialog.resize(800, 600)
-
-        layout = QtWidgets.QVBoxLayout(dialog)
-
-        # Text editor for code display
-        text_edit = QtWidgets.QTextEdit()
-        text_edit.setReadOnly(True)
-        text_edit.setPlainText(source_code)
-        text_edit.setStyleSheet("font-family: monospace; font-size: 10pt;")
-        layout.addWidget(text_edit)
-
-        # Button bar
-        button_layout = QtWidgets.QHBoxLayout()
-
-        # Copy to clipboard button
-        copy_btn = QtWidgets.QPushButton("Copy to Clipboard")
-
-        def copy_to_clipboard():
-            clipboard = QtWidgets.QApplication.clipboard()
-            clipboard.setText(source_code)
-            self.chartWidget.updateStatus("Source code copied to clipboard!")
-
-        copy_btn.clicked.connect(copy_to_clipboard)
-        button_layout.addWidget(copy_btn)
-
-        # Export as script button
-        export_script_btn = QtWidgets.QPushButton("Export as Script...")
-
-        def export_script():
-            file_dialog = FileDialog(
-                None, "Export Graph Script", ".", "Python Files (*.py)"
-            )
-            file_dialog.setAcceptMode(QtWidgets.QFileDialog.AcceptSave)
-
-            def save_script(fileName):
-                if not fileName.endswith(".py"):
-                    fileName += ".py"
-                with open(fileName, "w") as f:
-                    f.write(source_code)
-                self.chartWidget.updateStatus(f"Graph script exported to: {fileName}")
-
-            file_dialog.fileSelected.connect(save_script)
-            file_dialog.show()
-
-        export_script_btn.clicked.connect(export_script)
-        button_layout.addWidget(export_script_btn)
-
-        # Export as template button
-        export_template_btn = QtWidgets.QPushButton("Export as Template...")
-
-        def export_template():
-            # Get template name and description from user
-            name_dialog = QtWidgets.QInputDialog()
-            template_name, ok = name_dialog.getText(
-                self,
-                "Template Name",
-                "Enter template name (will be used as function name):",
-            )
-
-            if not ok or not template_name:
-                return
-
-            desc_dialog = QtWidgets.QInputDialog()
-            description, ok = desc_dialog.getText(
-                self, "Template Description", "Enter template description:"
-            )
-
-            if not ok:
-                description = "Auto-generated template from AMI graph"
-
-            # Generate template code
-            from datetime import datetime
-
-            template_code = f"""# AMI Graph Template: {template_name}
-\"\"\"
-{description}
-
-Auto-generated template from AMI graph
-Created: {datetime.now().strftime("%Y-%m-%d %H:%M:%S")}
-\"\"\"
-
-def {template_name}_template():
-    \"\"\"
-    {description}
-    
-    TODO: Add parameters for customization:
-    - Source names
-    - Node names
-    - ROI dimensions
-    - Plot parameters
-    - etc.
-    \"\"\"
-    
-{chr(10).join("    " + line for line in source_code.split(chr(10)))}
-
-# Example usage:
-# {template_name}_template()
-"""
-
-            # Save template
-            file_dialog = FileDialog(
-                None, "Export Graph Template", ".", "Python Files (*.py)"
-            )
-            file_dialog.setAcceptMode(QtWidgets.QFileDialog.AcceptSave)
-
-            def save_template(fileName):
-                if not fileName.endswith(".py"):
-                    fileName += ".py"
-                with open(fileName, "w") as f:
-                    f.write(template_code)
-                self.chartWidget.updateStatus(f"Graph template exported to: {fileName}")
-
-            file_dialog.fileSelected.connect(save_template)
-            file_dialog.show()
-
-        export_template_btn.clicked.connect(export_template)
-        button_layout.addWidget(export_template_btn)
-
-        # Close button
-        close_btn = QtWidgets.QPushButton("Close")
-        close_btn.clicked.connect(dialog.close)
-        button_layout.addWidget(close_btn)
-
-        layout.addLayout(button_layout)
-
-        dialog.exec_()
-
     if HAS_QTCONSOLE:
-        def _get_graph_state(self):
-            """
-            Extract current graph state for kernel.
-
-            Returns dict with nodes, sources, connections, available_sources.
-            Used by chat() function to provide context to AI agent.
-            """
-            import json
-
-            # Extract nodes
-            nodes = []
-            for name, data in self.chart._graph.nodes(data=True):
-                node = data["node"]
-                nodes.append(
-                    {
-                        "name": name,
-                        "type": node.__class__.__name__,
-                        "terminals": list(node.terminals.keys()),
-                    }
-                )
-
-            # Extract sources (SourceNode types)
-            sources = []
-            for name, data in self.chart._graph.nodes(data=True):
-                node = data["node"]
-                if node.__class__.__name__ == "SourceNode":
-                    sources.append(name)
-
-            # Extract connections
-            connections = []
-            for src_name, dst_name in self.chart._graph.edges():
-                # Get nodes
-                src_node = self.chart._graph.nodes[src_name]["node"]
-                dst_node = self.chart._graph.nodes[dst_name]["node"]
-
-                # Find which terminals are connected
-                for src_term_name, src_term in src_node.terminals.items():
-                    if src_term._io == "out":
-                        for conn in src_term.connections():
-                            if conn.node() == dst_node:
-                                connections.append(
-                                    {
-                                        "src": src_name,
-                                        "src_term": src_term_name,
-                                        "dst": dst_name,
-                                        "dst_term": conn.name(),
-                                    }
-                                )
-
-            # Get available sources from experiment (if accessible)
-            available_sources = []
-            try:
-                if hasattr(self, "amicli") and hasattr(self.amicli, "graphCommHandler"):
-                    sources_dict = self.amicli.graphCommHandler.sources
-                    available_sources = (
-                        list(sources_dict.keys()) if sources_dict else []
-                    )
-            except:
-                pass
-
-            return {
-                "nodes": nodes,
-                "sources": sources,
-                "connections": connections,
-                "available_sources": available_sources,
-            }
-
-        @QtCore.Slot(str)
-        def _execute_graph_code(self, code):
-            """
-            Execute AI-generated code in GUI thread.
-
-            This slot receives code via signal from IPython kernel thread
-            and executes it safely in the GUI thread where Qt widgets can
-            be created/modified.
-
-            Args:
-                code: Python code string to execute
-            """
-            try:
-                # Build execution namespace with helper functions
-                from ami.flowchart.graph_builder import ensure_source
-
-                def ensure_source_helper(source_name):
-                    """Smart source creation with validation"""
-                    return ensure_source(self.amicli, source_name)
-
-                def connect_nodes_helper(src, src_term, dst, dst_term):
-                    """Connect nodes by name (string-based)"""
-                    if isinstance(src, str):
-                        src = self.chart._graph.nodes[src]["node"]
-                    if isinstance(dst, str):
-                        dst = self.chart._graph.nodes[dst]["node"]
-                    src.terminals[src_term].connectTo(dst.terminals[dst_term])
-
-                # Build namespace with available objects
-                namespace = {
-                    "chart": self.chart,
-                    "graph": self.chart._graph,
-                    "amicli": self.amicli,
-                    "ensure_source": ensure_source_helper,
-                    "connect_nodes": connect_nodes_helper,
-                    "np": np,
-                    "pg": pg,
-                }
-
-                # Execute code in GUI thread (safe for Qt operations)
-                exec(code, namespace)
-
-                print("[Graph Builder] ✅ Done!")
-
-            except Exception as e:
-                print(f"[Graph Builder] Execution error: {e}")
-                import traceback
-
-                traceback.print_exc()
 
         def consoleClicked(self):
-            # Create CodeExecutor for thread-safe code execution
-            class CodeExecutor(QtCore.QObject):
-                """Executes code strings in GUI thread via signal/slot"""
-
-                execute_code = QtCore.Signal(str)
-
             class AmiCli:
                 def __init__(self, ctrl, chartWidget, chart, graph, graphCommHandler):
                     self.ctrl = ctrl
                     self.chartWidget = chartWidget
                     self.chart = chart
-                    self.graph = graph
                     self.graphCommHandler = graphCommHandler
 
-                def connect_nodes(self, src, src_term, dst, dst_term):
-                    """Connect two nodes by name (string-based helper)"""
-                    if isinstance(src, str):
-                        src = self.graph.nodes[src]["node"]
-                    if isinstance(dst, str):
-                        dst = self.graph.nodes[dst]["node"]
-                    src.terminals[src_term].connectTo(dst.terminals[dst_term])
-
-                def disconnect_nodes(self, src, src_term, dst, dst_term):
-                    """Disconnect two nodes by name"""
-                    if isinstance(src, str):
-                        src = self.graph.nodes[src]["node"]
-                    if isinstance(dst, str):
-                        dst = self.graph.nodes[dst]["node"]
-                    src.terminals[src_term].disconnectFrom(dst.terminals[dst_term])
-
-                def build_from_spec(self, spec):
-                    """
-                    Build multiple nodes and connections from specification.
-
-                    spec = {
-                        'nodes': [(type, name), ...],
-                        'connections': [(src, src_term, dst, dst_term), ...],
-                        'config': {node_name: {param: value}, ...}
-                    }
-                    """
-                    created_nodes = {}
-
-                    for node_type, node_name in spec.get("nodes", []):
-                        node = self.chart.createNode(node_type, node_name)
-                        created_nodes[node_name] = node
-
-                    for src, src_term, dst, dst_term in spec.get("connections", []):
-                        self.connect_nodes(src, src_term, dst, dst_term)
-
-                    for node_name, params in spec.get("config", {}).items():
-                        node = self.graph.nodes[node_name]["node"]
-                        if hasattr(node, "values"):
-                            node.values.update(params)
-                            if hasattr(node, "sigStateChanged"):
-                                node.sigStateChanged.emit(node)
-
-                    return list(created_nodes.values())
-
-                def node_info(self, name):
-                    """Get node details including connections"""
-                    node = self.graph.nodes[name]["node"]
-                    connections_in = []
-                    connections_out = []
-
-                    for term_name, term in node.terminals.items():
-                        for conn in term.connections():
-                            if term._io == "in":
-                                connections_in.append(
-                                    (conn.node().name(), conn.name(), term_name)
-                                )
-                            else:
-                                connections_out.append(
-                                    (term_name, conn.node().name(), conn.name())
-                                )
-
-                    return {
-                        "type": node.__class__.__name__,
-                        "terminals": {
-                            name: t._io for name, t in node.terminals.items()
-                        },
-                        "values": getattr(node, "values", {}),
-                        "connections_in": connections_in,
-                        "connections_out": connections_out,
-                    }
-
-                def ensure_source(self, source_name):
-                    """
-                    Ensure a source node exists in the graph.
-
-                    Creates SourceNode if source exists in experiment data but not in graph.
-                    Returns immediately if source already in graph.
-                    Raises ValueError with suggestions if source doesn't exist.
-
-                    Args:
-                        source_name (str): Name of the source from experiment
-
-                    Returns:
-                        str: The source node name
-
-                    Example:
-                        >>> amicli.ensure_source('laser_power')
-                        'laser_power'
-                    """
-                    from ami.flowchart.graph_builder import ensure_source
-
-                    return ensure_source(self, source_name)
-
-                def create_node(self, node_type, label=None):
-                    """
-                    Create a node with auto-generated name and optional descriptive label.
-
-                    The name is auto-generated by AMI (e.g., "ScatterPlot.0", "Sum.1") to ensure
-                    uniqueness. The optional label provides a human-readable description shown
-                    in the GUI above the node name.
-
-                    Args:
-                        node_type (str): Type of node to create (e.g., 'ScatterPlot', 'Sum', 'Roi2D')
-                        label (str, optional): Descriptive label in Title Case (e.g., "Laser Vs Detector")
-
-                    Returns:
-                        Node: The created node instance
-
-                    Example:
-                        >>> roi = amicli.create_node('Roi2D', 'CSPAD Signal Region')
-                        >>> print(roi.name())  # "Roi2D.0" (auto-generated)
-                        >>> print(roi._label)  # "CSPAD Signal Region"
-
-                        >>> # Connections use the auto-generated name
-                        >>> amicli.connect_nodes(roi.name(), 'Out', sum_node.name(), 'In')
-                    """
-                    # Create node with auto-generated name
-                    node = self.chart.createNode(node_type)
-
-                    # Set label if provided
-                    if label:
-                        node._label = label
-                        node.graphicsItem().setLabel(label)
-
-                    return node
-
             if self.ipython_widget is None:
-                # TEST: Switch to separate process kernel to enable input()
-                from qtconsole.manager import QtKernelManager
-
-                kernel_manager = QtKernelManager(kernel_name="python3")
-                kernel_manager.start_kernel()
+                kernel_manager = QtInProcessKernelManager()
+                kernel_manager.start_kernel(show_banner=False)
+                kernel = kernel_manager.kernel
+                kernel.gui = "qt"
 
                 kernel_client = kernel_manager.client()
                 kernel_client.start_channels()
@@ -1602,560 +1121,61 @@ def {template_name}_template():
                 self.ipython_widget.kernel_manager = kernel_manager
                 self.ipython_widget.kernel_client = kernel_client
 
-                # Set custom banner for AMI Graph Builder
-                self.ipython_widget.banner = """
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-🤖 AMI Graph Builder Console
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-Build graphs using natural language:
-
-  >>> chat()
-
-Then type naturally to build graphs:
-  > correlate laser and detector
-  > add a filter where laser > 5
-  > create ROI on cspad detector
-  > exit
-
-The AI agent remembers your conversation and provides
-real-time assistance for building analysis graphs.
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-"""
-
             graphCommHandler = GraphCommHandler(
                 self.graphmgr_addr.name, self.graphmgr_addr.comm
             )
             self.amicli = AmiCli(
                 self, self.chartWidget, self.chart, self.chart._graph, graphCommHandler
             )
-
-            # Push variables to kernel namespace using %store magic or execute
-            # For now, use a simpler approach: store in kernel's user_ns via execution
-            import pickle
-            import base64
-
-            # Serialize objects that can be pickled
-            def inject_variable(name, obj):
-                """Inject a Python object into the separate process kernel"""
-                try:
-                    # Try to pickle the object
-                    pickled = pickle.dumps(obj)
-                    encoded = base64.b64encode(pickled).decode("ascii")
-                    code = f"""
-import pickle
-import base64
-{name} = pickle.loads(base64.b64decode('{encoded}'))
-"""
-                    kernel_client.execute(code, silent=True)
-                except Exception as e:
-                    print(f"Warning: Could not inject {name}: {e}")
-
-            # Inject simple objects
-            inject_variable("LIBRARY", LIBRARY)
-            inject_variable("SourceNode", SourceNode)
-
-            # For complex objects (amicli, chart, graph), we'll inject them differently
-            # Since they can't be pickled, we need to create code that defines functions
-            # that reference them through the widget
-
-            # Import necessary modules into kernel namespace
-            code = """
-import numpy as np
-try:
-    import pyqtgraph as pg
-except ImportError:
-    pg = None
-"""
-            kernel_client.execute(code, silent=True)
-
-            # ================================================================
-            # COMM API SETUP - Bidirectional communication kernel ↔ GUI
-            # ================================================================
-
-            # Store reference to self for use in comm handler
-            ctrl_widget = self
-
-            # Define comm handler that will process messages from kernel
-            def setup_comm_handler():
-                """
-                Set up Comm target for receiving messages from kernel.
-
-                The kernel will use: Comm(target_name='ami_graph_builder')
-                to send messages to this handler.
-                """
-
-                # This function will be called when kernel opens a Comm
-                def target_func(comm, open_msg):
-                    """Handle new Comm connection from kernel"""
-
-                    print("[GUI] Comm opened from kernel")
-
-                    # Send ready acknowledgment
-                    comm.send({"type": "ready", "status": "GUI comm handler ready"})
-
-                    # Define message handler
-                    def handle_comm_msg(msg):
-                        """Process messages from kernel"""
-                        try:
-                            data = msg["content"]["data"]
-                            msg_type = data.get("type", "")
-
-                            print(f"[GUI] Received message type: {msg_type}")
-
-                            if msg_type == "request_state":
-                                # Kernel requesting current graph state
-                                print("[GUI] Getting graph state...")
-                                state = ctrl_widget._get_graph_state()
-                                comm.send({"type": "state_response", "state": state})
-                                print("[GUI] Sent graph state to kernel")
-
-                            elif msg_type == "execute_code":
-                                # Kernel sending code to execute in GUI thread
-                                code = data.get("code", "")
-                                print(
-                                    f"[GUI] Executing code from kernel ({len(code)} chars)"
-                                )
-
-                                if code:
-                                    # Execute in GUI thread (safe for Qt)
-                                    ctrl_widget._execute_graph_code(code)
-
-                                    # Send acknowledgment
-                                    comm.send(
-                                        {
-                                            "type": "execution_complete",
-                                            "status": "success",
-                                        }
-                                    )
-                                    print("[GUI] Code execution complete")
-
-                        except Exception as e:
-                            print(f"[GUI] Error handling comm message: {e}")
-                            import traceback
-
-                            traceback.print_exc()
-
-                            # Send error response
-                            comm.send({"type": "error", "message": str(e)})
-
-                    # Register message handler
-                    comm.on_msg(handle_comm_msg)
-
-                return target_func
-
-            # Register the comm target with the kernel
-            # The exact API depends on jupyter_client version
-            # Try multiple approaches for compatibility
-
-            try:
-                # Approach 1: Via kernel client (newer jupyter_client)
-                if hasattr(kernel_client, "comm_manager"):
-                    kernel_client.comm_manager.register_target(
-                        "ami_graph_builder", setup_comm_handler()
-                    )
-                    print("[GUI] Registered Comm target via kernel_client.comm_manager")
-
-                # Approach 2: Via kernel manager
-                elif hasattr(kernel_manager, "comm_manager"):
-                    kernel_manager.comm_manager.register_target(
-                        "ami_graph_builder", setup_comm_handler()
-                    )
-                    print(
-                        "[GUI] Registered Comm target via kernel_manager.comm_manager"
-                    )
-
-                # Approach 3: Execute code in kernel to set up receiver
-                else:
-                    print(
-                        "[GUI] Warning: Could not find comm_manager, trying alternate approach"
-                    )
-                    # We'll inject a comm receiver directly into the kernel
-                    # This is handled in the chat() function code below
-
-            except Exception as e:
-                print(f"[GUI] Warning: Could not register Comm target: {e}")
-                print("[GUI] Will try alternate communication method")
-
-            # ================================================================
-            # INJECT CHAT() FUNCTION - Main graph builder interface
-            # ================================================================
-
-            chat_function_code = '''
-# AMI Graph Builder - Chat Mode
-# Uses Comm API for bidirectional communication with GUI
-
-def chat():
-    """
-    Interactive graph builder using natural language.
-    
-    Type naturally to build graphs. Type 'exit' to quit.
-    """
-    import subprocess
-    import json
-    import os
-    import re
-    import time
-    from ipykernel.comm import Comm
-    
-    # Get OpenCode server URL
-    server_url = os.environ.get('OPENCODE_SERVER_URL')
-    if not server_url:
-        print("❌ Error: OpenCode server not available")
-        print("   OPENCODE_SERVER_URL environment variable not set")
-        return
-    
-    # ============================================================
-    # COMM MESSAGE HANDLER - Async reception of GUI responses
-    # ============================================================
-    
-    # Shared state container for async message reception
-    received_data = {
-        'state': None,
-        'state_received': False,
-        'execution_complete': False,
-        'execution_status': None
-    }
-    
-    def handle_gui_message(msg):
-        """
-        Async callback for Comm messages from GUI.
-        
-        Note: In QtConsole, this callback is blocked by input() and won't
-        fire until after the user presses Enter. We handle this by using
-        a short fixed delay instead of waiting for callbacks.
-        """
-        try:
-            data = msg['content']['data']
-            msg_type = data.get('type', '')
-            
-            if msg_type == 'state_response':
-                # Received graph state from GUI
-                received_data['state'] = data.get('state', {})
-                received_data['state_received'] = True
-            
-            elif msg_type == 'execution_complete':
-                # Code execution finished
-                received_data['execution_complete'] = True
-                received_data['execution_status'] = data.get('status', 'unknown')
-            
-            elif msg_type == 'error':
-                # GUI reported an error
-                error_msg = data.get('message', 'Unknown error')
-                print(f"\\n[GUI Error] {error_msg}\\n")
-        
-        except Exception as e:
-            # Don't crash the handler - just log
-            pass  # Silent failure for now
-    
-    # Open Comm channel to GUI
-    print("🔗 Opening communication with GUI...")
-    comm = Comm(target_name='ami_graph_builder')
-    
-    # Register handler (though it won't fire until after input() returns)
-    comm.on_msg(handle_gui_message)
-    
-    # Wait briefly for Comm to be established
-    time.sleep(0.1)
-    
-    # Session ID for conversation continuity
-    session_id = None
-    
-    # Display welcome banner
-    print("\\n" + "━"*60)
-    print("🤖 AMI Graph Builder - Chat Mode")
-    print("━"*60)
-    print("\\nBuild graphs using natural language.")
-    print("Type 'exit' to quit, 'help' for examples.\\n")
-    print("━"*60 + "\\n")
-    
-    # Main chat loop
-    while True:
-        try:
-            # Get user input (blocks in QtConsole)
-            # Note: In QtConsole, input() blocks the kernel message loop,
-            # so Comm callbacks won't fire until input() returns.
-            # We handle this by using a short fixed delay instead of
-            # waiting for callbacks.
-            user_input = input("> ").strip()
-            
-            # Handle exit commands
-            if user_input.lower() in ['exit', 'quit', 'q']:
-                print("\\n👋 Exiting chat mode.\\n")
-                break
-            
-            # Handle help
-            if user_input.lower() == 'help':
-                print("\\nExamples:")
-                print("  > correlate laser and detector")
-                print("  > create ROI on cspad")
-                print("  > add a filter where laser > 5")
-                print("  > which sources are available?\\n")
-                continue
-            
-            if not user_input:
-                continue
-            
-            # ============================================================
-            # PERFORMANCE TIMING INSTRUMENTATION
-            # ============================================================
-            timing_start = time.time()
-            timing = {}
-            
-            # Request current graph state from GUI
-            print("🔍 Getting graph state...")
-            t0 = time.time()
-            
-            # Send request to GUI via Comm
-            comm.send({'type': 'request_state'})
-            
-            # Give GUI time to respond (it responds in ~10-50ms typically)
-            # We use a short fixed delay since callbacks don't work with input() blocking
-            time.sleep(0.1)  # 100ms - GUI usually responds in <50ms
-            
-            # Check if we received state via callback
-            if received_data['state_received'] and received_data['state'] is not None:
-                state = received_data['state']
-            else:
-                # Fallback to empty state if callback didn't fire
-                # (This happens because input() blocks callbacks in QtConsole)
-                state = {
-                    'nodes': [],
-                    'sources': [],
-                    'connections': [],
-                    'available_sources': []
-                }
-            
-            # Reset for next request
-            received_data['state_received'] = False
-            received_data['state'] = None
-            
-            timing['state_request'] = time.time() - t0
-            
-            # Build prompt for AI agent
-            t0 = time.time()
-            # Format available sources nicely (limit to first 20 for brevity)
-            avail_sources = state.get('available_sources', [])
-            sources_display = ', '.join(avail_sources[:20])
-            if len(avail_sources) > 20:
-                sources_display += f', ... ({len(avail_sources)} total)'
-            
-            prompt = f"""Using the ami-graph-builder skill, {user_input}
-
-Current graph state:
-- Nodes in graph: {len(state.get('nodes', []))} nodes
-- Sources in graph: {', '.join(state.get('sources', [])) if state.get('sources') else 'None'}
-- Available sources from experiment: {sources_display if avail_sources else 'None (check with graphCommHandler)'}
-
-Graph nodes: {[n['name'] + ' (' + n['type'] + ')' for n in state.get('nodes', [])[:10]]}
-
-Use these APIs to build the graph:
-- amicli.create_node(type, label) - Create processing/display nodes
-- amicli.connect_nodes(src, src_term, dst, dst_term) - Connect nodes
-- amicli.ensure_source(source_name) - Create source nodes from experiment data
-
-Respond with JSON containing:
-{{
-  "explanation": "what you're doing",
-  "code": "executable Python code",
-  "warnings": ["any assumptions"],
-  "next_steps": ["suggestions"]
-}}
-"""
-            timing['prompt_build'] = time.time() - t0
-            
-            # Show agent thinking
-            print("\\n🤖 ", end='', flush=True)
-            
-            # Call OpenCode agent
-            t0 = time.time()
-            cmd = [
-                'opencode', 'run',
-                '--attach', server_url,
-                '--format', 'json',
-                '--dir', os.getcwd()
-            ]
-            
-            # Only add session flag if we have a valid session ID
-            # First request will create a new session
-            if session_id:
-                cmd += ['--session', session_id]
-            
-            cmd.append(prompt)
-            timing['cmd_build'] = time.time() - t0
-            
-            # Stream agent response
-            t0 = time.time()
-            proc = subprocess.Popen(
-                cmd,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                text=True
+            self.ipython_widget.kernel_manager.kernel.shell.push(
+                {"amicli": self.amicli}
             )
-            timing['proc_spawn'] = time.time() - t0
-            
-            output_lines = []
-            code_blocks = []
-            first_byte = True
-            first_text = True
-            
-            # Stream and collect output
-            t0 = time.time()
-            line_count = 0
-            for line in proc.stdout:
-                output_lines.append(line)
-                line_count += 1
-                
-                # Record time to first byte
-                if first_byte:
-                    timing['first_byte'] = time.time() - t0
-                    first_byte = False
-                
-                try:
-                    event = json.loads(line)
-                    
-                    # Stream text in real-time
-                    if event.get('type') == 'text':
-                        # Record time to first text output
-                        if first_text:
-                            timing['first_text'] = time.time() - t0
-                            first_text = False
-                        
-                        text = event.get('part', {}).get('text', '')
-                        print(text, end='', flush=True)
-                    
-                    # Extract session ID
-                    if 'sessionID' in event:
-                        session_id = event['sessionID']
-                
-                except json.JSONDecodeError:
-                    pass  # Silently skip malformed JSON lines
-            
-            proc.wait()
-            return_code = proc.returncode
-            timing['response_complete'] = time.time() - t0
-            timing['total'] = time.time() - timing_start
-            
-            # Check stderr (silently)
-            stderr_output = proc.stderr.read()
-            
-            print()  # New line
-            
-            # Print timing breakdown
-            print("\\n⏱️  Performance Timing:")
-            print(f"  State request (timeout): {timing['state_request']:.2f}s")
-            print(f"  Prompt building:         {timing['prompt_build']:.3f}s")
-            print(f"  Command building:        {timing['cmd_build']:.3f}s")
-            print(f"  Process spawn:           {timing['proc_spawn']:.3f}s")
-            print(f"  Time to first byte:      {timing.get('first_byte', 0):.3f}s")
-            print(f"  Time to first text:      {timing.get('first_text', 0):.3f}s")
-            print(f"  Response streaming:      {timing['response_complete']:.2f}s")
-            print(f"  AI inference time:       {timing['response_complete'] - timing.get('first_byte', 0):.2f}s")
-            print(f"  ─────────────────────────────────────")
-            print(f"  TOTAL TIME:              {timing['total']:.2f}s")
-            print()
-            
-            # Extract code from response
-            full_output = ''.join(output_lines)
-            
-            # Look for JSON code block in response
-            code = None
-            for line in reversed(output_lines):
-                try:
-                    event = json.loads(line)
-                    if event.get('type') == 'text':
-                        text = event.get('part', {}).get('text', '')
-                        
-                        # Look for ```json block
-                        match = re.search(r'```json\\s*\\n(.*?)```', text, re.DOTALL)
-                        if match:
-                            response = json.loads(match.group(1))
-                            code = response.get('code', '')
-                            if code:
-                                break
-                except:
-                    pass
-            
-            if code:
-                print("\\n  💻 Sending code to GUI for execution...\\n")
-                
-                # Reset execution flags
-                received_data['execution_complete'] = False
-                received_data['execution_status'] = None
-                
-                # Send code to GUI via Comm
-                comm.send({
-                    'type': 'execute_code',
-                    'code': code
-                })
-                
-                # Wait for execution acknowledgment (with timeout)
-                timeout = 5.0  # seconds - longer for complex operations
-                poll_interval = 0.05  # 50ms
-                start_time = time.time()
-                
-                while not received_data['execution_complete']:
-                    time.sleep(poll_interval)
-                    
-                    if time.time() - start_time > timeout:
-                        print("  ⚠️  Execution acknowledgment timeout")
-                        break
-                
-                # Report result if received
-                if received_data['execution_complete']:
-                    if received_data['execution_status'] != 'success':
-                        print(f"  ⚠️  Execution status: {received_data['execution_status']}")
-                
-            else:
-                print("\\n  ℹ️  No code generated\\n")
-        
-        except KeyboardInterrupt:
-            print("\\n\\n👋 Exiting chat mode (Ctrl+C).\\n")
-            break
-        
-        except Exception as e:
-            print(f"\\n❌ Error: {e}")
-            import traceback
-            traceback.print_exc()
-            print()
-
-print("✅ chat() function loaded!")
-print("   Type: chat() to start building graphs interactively")
-'''
-
-            kernel_client.execute(chat_function_code, silent=True)
-
-            # Initialize OpenCode graph builder and register magic commands
-            # DISABLED FOR KERNEL TEST - separate process kernel needs different approach
-            # if self.graph_builder is None:
-            #     try:
-            #         from ami.flowchart.graph_builder import (
-            #             OpenCodeBridge,
-            #             register_graph_builder_magic,
-            #         )
-            #
-            #         self.graph_builder = OpenCodeBridge()
-            #
-            #         # Create executor and connect signal to slot
-            #         self.code_executor = CodeExecutor()
-            #         self.code_executor.execute_code.connect(self._execute_graph_code)
-            #
-            #         register_graph_builder_magic(
-            #             self.ipython_widget.kernel_manager.kernel.shell,
-            #             self.amicli,
-            #             self.graph_builder,
-            #             self.ipython_widget,  # Pass widget for banner display
-            #             self.code_executor,  # Pass executor for thread-safe execution
-            #         )
-            #     except Exception as e:
-            #         print(f"Warning: Could not initialize graph builder: {e}")
-
->>>>>>> ae673bf (Implement Phases 1, 2, and 2.5: AI-assisted graph building with View Source)
             win = QtWidgets.QMainWindow(parent=self)
             win.setCentralWidget(self.ipython_widget)
             win.show()
+
+        def chatModeClicked(self):
+            """Show the chat widget for natural language graph building."""
+            if self.chart.chat_widget is None:
+                from ami.flowchart.chat_widget import ChatWidget
+
+                # Create AmiCli if it doesn't exist
+                if not hasattr(self, "amicli"):
+
+                    class AmiCli:
+                        def __init__(
+                            self, ctrl, chartWidget, chart, graph, graphCommHandler
+                        ):
+                            self.ctrl = ctrl
+                            self.chartWidget = chartWidget
+                            self.chart = chart
+                            self.graph = graph
+                            self.graphCommHandler = graphCommHandler
+
+                    graphCommHandler = GraphCommHandler(
+                        self.graphmgr_addr.name, self.graphmgr_addr.comm
+                    )
+                    self.amicli = AmiCli(
+                        self,
+                        self.chartWidget,
+                        self.chart,
+                        self.chart._graph,
+                        graphCommHandler,
+                    )
+
+                # Create chat widget
+                self.chart.chat_widget = ChatWidget(ctrl=self)
+
+                # Position near main window
+                if self.chartWidget:
+                    pos = self.chartWidget.pos()
+                    self.chart.chat_widget.move(pos.x() + 50, pos.y() + 50)
+
+
+            # Show and raise the widget
+            self.chart.chat_widget.show()
+            self.chart.chat_widget.raise_()
+            self.chart.chat_widget.activateWindow()
 
     @asyncSlot(object)
     async def configureApply(self, src_cfg):
@@ -2192,29 +1212,6 @@ print("   Type: chat() to start building graphs interactively")
                 await self.chart.broker.send_string(node.name(), zmq.SNDMORE)
                 await self.chart.broker.send_pyobj(fcMsgs.ReloadLibrary(name=node.name(), mods=smods))
                 self.chartWidget.updateStatus(f"Reloaded {node.name()}.")
-
-    def closeEvent(self, event):
-        """Cleanup when widget closes - shutdown kernel if it's a separate process"""
-        if hasattr(self, "ipython_widget") and self.ipython_widget is not None:
-            try:
-                # Shutdown kernel client channels
-                if hasattr(self.ipython_widget, "kernel_client"):
-                    self.ipython_widget.kernel_client.stop_channels()
-
-                # Shutdown kernel manager (kills the kernel process)
-                if hasattr(self.ipython_widget, "kernel_manager"):
-                    kernel_mgr = self.ipython_widget.kernel_manager
-                    # Only shutdown if it's a separate process kernel
-                    from qtconsole.manager import QtKernelManager
-
-                    if isinstance(kernel_mgr, QtKernelManager):
-                        print("Shutting down kernel...")
-                        kernel_mgr.shutdown_kernel()
-            except Exception as e:
-                print(f"Error during kernel shutdown: {e}")
-
-        # Call parent closeEvent
-        super().closeEvent(event)
 
 
 class FlowchartWidget(dockarea.DockArea):

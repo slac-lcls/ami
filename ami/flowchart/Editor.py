@@ -255,6 +255,12 @@ class Ui_Toolbar(object):
         self.actionViewSource.setIconText("View Source")
         self.actionViewSource.setObjectName("actionViewSource")
 
+        # Chat Mode (AI-assisted graph building)
+        self.actionChatMode = QtWidgets.QAction(parent)
+        self.actionChatMode.setIconText("Chat Mode")
+        self.actionChatMode.setObjectName("actionChatMode")
+        self.actionChatMode.setShortcut("Ctrl+Shift+C")
+
         # Arrange
         self.actionArrange = QtWidgets.QAction(parent)
         self.actionArrange.setIconText("Arrange")
@@ -307,6 +313,7 @@ class Ui_Toolbar(object):
         self.toolBar.addAction(self.actionReset)
         if HAS_QTCONSOLE:
             self.toolBar.addAction(self.actionConsole)
+        self.toolBar.addAction(self.actionChatMode)
         self.toolBar.addAction(self.actionViewSource)
 
         if configure:

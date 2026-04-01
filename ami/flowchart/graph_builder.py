@@ -53,8 +53,8 @@ class OpenCodeBridge:
             "run",
             "--attach",
             self.url,
-            # NOTE: Not using --agent parameter. Instead, the prompt instructs
-            # the default agent to load the ami-graph-builder skill from
+            # NOTE: ami-graph-builder is a skill, not an agent
+            # The default agent will load the skill automatically from
             # .opencode/skills/ami-graph-builder/SKILL.md
             "--format",
             "json",
