@@ -116,6 +116,12 @@ class ChatWidget(QWidget):
         self._copy_flash_timers = {}  # {block_id: QTimer for flash effect}
         self._block_counter = 0  # Auto-incrementing ID
 
+        # Retry loop state
+        self._retry_iteration = 0  # Current retry iteration
+        self._max_retries = 3  # Maximum retry attempts
+        self._original_user_input = None  # Original user request
+        self._current_response_data = None  # Parsed response data for retry
+
         self._setup_ui()
         self._connect_signals()
         self._init_bridge()
@@ -628,6 +634,10 @@ class ChatWidget(QWidget):
         # Display user message
         self._append_message("user", user_input)
 
+        # Reset retry state for new user request
+        self._retry_iteration = 0
+        self._original_user_input = user_input
+
         # Check if bridge is available
         if self.bridge is None:
             self._append_message("system", "[Error] OpenCode bridge not available")
@@ -687,7 +697,7 @@ Please generate Python code to fulfill this request using the AMI graph building
     @Slot(str)
     def _on_response_received(self, response_str):
         """
-        Handle agent response (runs on Qt main thread).
+        Handle agent response with automatic retry on errors (runs on Qt main thread).
 
         Args:
             response_str: String with newline-separated JSON events from agent
@@ -697,21 +707,33 @@ Please generate Python code to fulfill this request using the AMI graph building
         # Show agent's conversational text first
         self._show_agent_text(response_str)
 
-        # Extract code from response
-        codes = self._extract_code(response_str)
+        # Extract code and response data from response
+        codes, response_data = self._extract_code_with_data(response_str)
 
         if codes:
             self._append_message("system", f"[System] Found {len(codes)} code block(s)")
 
-            # Display and execute each code block
+            # Display and execute each code block with retry logic
             for i, code in enumerate(codes, 1):
                 self._append_code_block(code, i)
 
-                # Auto-execute (emit signal for thread-safe execution)
-                self.execute_code_signal.emit(code)
+                # Execute code and get result
+                exec_result = self._execute_code(code)
+
+                # Handle execution result
+                if exec_result["status"] == "success":
+                    # Success - show next_steps if provided
+                    self._handle_success(response_data, exec_result)
+                    # Reset retry counter
+                    self._retry_iteration = 0
+                else:
+                    # Error - check if we should retry
+                    self._handle_error_with_retry(exec_result, response_data)
         else:
-            # No code found - agent might have just answered with text
+            # No code found - agent might have just answered with text or asked a question
             self._append_message("system", "[System] No code to execute")
+            # Reset retry counter
+            self._retry_iteration = 0
 
     @Slot(str)
     def _on_error_occurred(self, error_msg):
@@ -722,6 +744,107 @@ Please generate Python code to fulfill this request using the AMI graph building
             error_msg: Error message string
         """
         self._append_message("system", f"[Error] {error_msg}")
+
+    def _handle_success(self, response_data, exec_result):
+        """
+        Handle successful code execution.
+
+        Args:
+            response_data: Parsed agent response dict
+            exec_result: Execution result dict
+        """
+        # Show captured output if any
+        if exec_result.get("output"):
+            output = exec_result["output"].strip()
+            if output:
+                self._append_message("output", output)
+
+        # Show next_steps if provided
+        next_steps = response_data.get("next_steps", [])
+        if next_steps:
+            steps_text = "**Next steps:**\n" + "\n".join(
+                f"- {step}" for step in next_steps
+            )
+            self._append_message("agent", steps_text)
+
+    def _handle_error_with_retry(self, exec_result, response_data):
+        """
+        Handle execution error and potentially retry.
+
+        Args:
+            exec_result: Execution result dict with error info
+            response_data: Parsed agent response dict
+        """
+        # Increment retry counter
+        self._retry_iteration += 1
+
+        # Check if we should retry
+        if self._retry_iteration < self._max_retries:
+            # Build retry prompt
+            retry_prompt = self._build_retry_prompt(exec_result, response_data)
+
+            # Send retry request to agent
+            self._append_message(
+                "system",
+                f"[System] Retry attempt {self._retry_iteration + 1}/{self._max_retries}...",
+            )
+
+            # Get graph state for retry
+            try:
+                from ami.flowchart.graph_builder import get_graph_state
+
+                state = get_graph_state(self.ctrl.amicli)
+            except Exception as e:
+                self._append_message(
+                    "system", f"[Error] Could not get graph state: {e}"
+                )
+                self._retry_iteration = 0
+                return
+
+            # Build full prompt with context
+            full_prompt = self._build_prompt(retry_prompt, state)
+
+            # Launch background worker for retry (NON-BLOCKING)
+            self.current_worker = ChatWorker(self.bridge, full_prompt)
+            self.current_worker.response_received.connect(self._on_response_received)
+            self.current_worker.error_occurred.connect(self._on_error_occurred)
+            self.current_worker.start()
+        else:
+            # Max retries reached
+            self._append_message(
+                "system",
+                f"⚠️ Maximum retry attempts ({self._max_retries}) reached. "
+                f"Unable to resolve the error automatically.",
+            )
+            self._retry_iteration = 0
+
+    def _build_retry_prompt(self, exec_result, response_data):
+        """
+        Build retry prompt for agent with error details.
+
+        Args:
+            exec_result: Execution result dict with error info
+            response_data: Original agent response dict
+
+        Returns:
+            str: Retry prompt
+        """
+        prompt = (
+            f"Your code failed with the following error:\n\n"
+            f"**Error Type:** {exec_result['error_type']}\n"
+            f"**Error Message:** {exec_result['error']}\n\n"
+            f"**Traceback:**\n```\n{exec_result['traceback']}\n```\n\n"
+            f"Please analyze the error and generate corrected code. "
+            f"Common issues:\n"
+            f"- Wrong terminal names (ScatterPlot uses 'X'/'Y', not 'In'/'In.1')\n"
+            f"- Binning uses 'Bins' output, not 'XBins' (only Binning2D has XBins/YBins)\n"
+            f"- Source node doesn't exist (check available sources)\n"
+            f"- Missing .name() method when connecting nodes\n\n"
+            f"This is attempt {self._retry_iteration + 2} of {self._max_retries}. "
+            f"Generate corrected code in the same JSON format."
+        )
+
+        return prompt
 
     def _extract_code(self, response_str):
         """
@@ -816,6 +939,67 @@ Please generate Python code to fulfill this request using the AMI graph building
             self._append_output(f"[Warning] Code extraction error: {e}")
 
         return codes
+
+    def _extract_code_with_data(self, response_str):
+        """
+        Extract executable code AND response data from agent response.
+
+        Args:
+            response_str: String with newline-separated JSON events from agent
+
+        Returns:
+            tuple: (codes_list, response_data_dict)
+                codes_list: List of code strings
+                response_data_dict: Parsed response with explanation, warnings, next_steps
+        """
+        codes = []
+        response_data = {}
+
+        try:
+            # Parse events in reverse (agent's final response is at the end)
+            for line in reversed(response_str.split("\n")):
+                if not line.strip():
+                    continue
+
+                try:
+                    event = json.loads(line)
+
+                    # Look for text events (agent's responses)
+                    if event.get("type") == "text":
+                        text = event.get("part", {}).get("text", "")
+
+                        # Look for JSON code block (ami-graph-builder skill format)
+                        match = re.search(r"```json\n(.*?)```", text, re.DOTALL)
+                        if match:
+                            try:
+                                response = json.loads(match.group(1))
+
+                                # Check if it's a question (no code to execute)
+                                if response.get("type") == "question":
+                                    # Return empty - no code to execute
+                                    return ([], response)
+
+                                # Extract code and metadata
+                                if "code" in response:
+                                    codes.append(response["code"])
+                                    response_data = response
+
+                                    # Only process the first (most recent) JSON block found
+                                    if codes:
+                                        return (codes, response_data)
+
+                            except json.JSONDecodeError:
+                                # Not valid JSON, skip
+                                continue
+
+                except json.JSONDecodeError:
+                    # Skip lines that aren't valid JSON events
+                    continue
+
+        except Exception as e:
+            self._append_output(f"[Warning] Code extraction error: {e}")
+
+        return (codes, response_data)
 
     def _extract_text(self, response_str):
         """
@@ -913,7 +1097,22 @@ Please generate Python code to fulfill this request using the AMI graph building
 
         Args:
             code: Python code string to execute
+
+        Returns:
+            dict: Execution result with keys:
+                - status: 'success' or 'error'
+                - output: captured stdout (on success)
+                - error: error message (on error)
+                - error_type: exception class name (on error)
+                - traceback: full traceback string (on error)
         """
+        import sys
+        import io
+
+        # Capture stdout
+        old_stdout = sys.stdout
+        sys.stdout = captured_output = io.StringIO()
+
         try:
             self._append_message("system", "[System] Executing code...")
 
@@ -932,11 +1131,27 @@ Please generate Python code to fulfill this request using the AMI graph building
 
             exec(code, namespace)
 
+            # Success - get captured output
+            output = captured_output.getvalue()
+
             self._append_message("system", "[System] ✅ Execution successful!")
+
+            return {"status": "success", "output": output}
 
         except Exception as e:
             error_msg = f"[Execution Error] {e}\n{traceback.format_exc()}"
             self._append_message("system", error_msg)
+
+            return {
+                "status": "error",
+                "error": str(e),
+                "error_type": type(e).__name__,
+                "traceback": traceback.format_exc(),
+            }
+
+        finally:
+            # Restore stdout
+            sys.stdout = old_stdout
 
     def _append_output(self, text):
         """
