@@ -18,15 +18,24 @@ Architecture:
 import json
 import re
 import traceback
+from datetime import datetime
+from html import escape
 from qtpy.QtWidgets import (
     QWidget,
     QVBoxLayout,
     QHBoxLayout,
     QTextEdit,
+    QTextBrowser,
     QLineEdit,
     QPushButton,
+    QApplication,
 )
-from qtpy.QtCore import Qt, Signal, QThread, Slot
+from qtpy.QtCore import Qt, Signal, QThread, Slot, QTimer
+
+# Syntax highlighting
+from pygments import highlight
+from pygments.lexers import PythonLexer
+from pygments.formatters import HtmlFormatter
 
 
 class ChatWorker(QThread):
@@ -100,6 +109,13 @@ class ChatWidget(QWidget):
         self.history_index = -1  # Current position in history
         self.current_worker = None  # Current background worker
 
+        # Message storage system for HTML rendering
+        self._messages = []  # List of message dicts
+        self._code_blocks = {}  # {block_id: code_string}
+        self._code_visibility = {}  # {block_id: bool (visible?)}
+        self._copy_flash_timers = {}  # {block_id: QTimer for flash effect}
+        self._block_counter = 0  # Auto-incrementing ID
+
         self._setup_ui()
         self._connect_signals()
         self._init_bridge()
@@ -114,8 +130,9 @@ class ChatWidget(QWidget):
         layout = QVBoxLayout()
 
         # Output area (conversation history)
-        self.output_text = QTextEdit()
-        self.output_text.setReadOnly(True)
+        self.output_text = QTextBrowser()
+        self.output_text.setOpenLinks(False)
+        self.output_text.setOpenExternalLinks(False)
         self.output_text.setPlaceholderText(
             "Chat conversation will appear here...\n\n"
             "Try: 'create a scatter plot of source_0.raw vs source_1.raw'"
@@ -157,16 +174,442 @@ class ChatWidget(QWidget):
         # Code execution signal
         self.execute_code_signal.connect(self._execute_code_slot)
 
+        # Link clicks in QTextBrowser
+        self.output_text.anchorClicked.connect(self._handle_link_click)
+
+    def _handle_link_click(self, url):
+        """
+        Handle clicks on code block links (toggle show/hide, copy).
+
+        Args:
+            url: QUrl with fragment like "toggle:block_1" or "copy:block_1"
+        """
+        fragment = url.fragment()  # Get everything after #
+
+        if not fragment or ":" not in fragment:
+            return
+
+        action, block_id = fragment.split(":", 1)
+
+        if action == "toggle":
+            # Toggle code visibility
+            if block_id in self._code_visibility:
+                self._code_visibility[block_id] = not self._code_visibility[block_id]
+                self._render_messages()
+
+        elif action == "copy":
+            # Copy code to clipboard
+            code = self._code_blocks.get(block_id, "")
+            if code:
+                QApplication.clipboard().setText(code)
+                # Flash the copy button to show success
+                self._flash_copy_button(block_id)
+
+    def _flash_copy_button(self, block_id):
+        """
+        Temporarily show 'Copied!' on the copy button.
+
+        Args:
+            block_id: ID of the code block that was copied
+        """
+        # Cancel any existing timer for this block
+        if block_id in self._copy_flash_timers:
+            self._copy_flash_timers[block_id].stop()
+
+        # Mark as copied (special state)
+        self._code_blocks[f"{block_id}_copied"] = True
+        self._render_messages()
+
+        # Set timer to revert after 2 seconds
+        timer = QTimer()
+        timer.setSingleShot(True)
+        timer.timeout.connect(lambda: self._revert_copy_button(block_id))
+        timer.start(2000)  # 2 seconds
+
+        self._copy_flash_timers[block_id] = timer
+
+    def _revert_copy_button(self, block_id):
+        """Revert copy button back to normal state."""
+        if f"{block_id}_copied" in self._code_blocks:
+            del self._code_blocks[f"{block_id}_copied"]
+        self._render_messages()
+
+    def _append_message(self, msg_type, content, **kwargs):
+        """
+        Append a message to the chat.
+
+        Args:
+            msg_type: 'user', 'system', 'agent', 'warning', 'separator', 'code'
+            content: The message content
+            **kwargs: Additional properties (block_id, number, etc.)
+        """
+        timestamp = datetime.now().strftime("%H:%M:%S")
+
+        self._messages.append(
+            {"type": msg_type, "content": content, "timestamp": timestamp, **kwargs}
+        )
+        self._render_messages()
+
+    def _append_code_block(self, code, block_number):
+        """
+        Append a collapsible code block.
+
+        Args:
+            code: Python code string
+            block_number: Code block number (1, 2, 3...)
+        """
+        # Generate unique ID
+        self._block_counter += 1
+        block_id = f"block_{self._block_counter}"
+
+        # Store code and initial state
+        self._code_blocks[block_id] = code
+        self._code_visibility[block_id] = False  # Collapsed by default
+
+        # Add to messages
+        self._append_message("code", code, block_id=block_id, number=block_number)
+
+    def _highlight_python(self, code):
+        """
+        Syntax highlight Python code using Pygments.
+
+        Args:
+            code: Raw Python code string
+
+        Returns:
+            HTML string with inline-styled syntax highlighting
+        """
+        formatter = HtmlFormatter(
+            style="monokai",  # Dark theme
+            noclasses=True,  # Inline styles (no external CSS)
+            nowrap=True,  # Don't wrap in <div>
+            linenos=False,  # We handle line numbers separately
+        )
+        return highlight(code, PythonLexer(), formatter)
+
+    def _generate_line_numbers(self, code):
+        """
+        Generate HTML for line numbers column.
+
+        Args:
+            code: Code string
+
+        Returns:
+            HTML string with line numbers separated by <br>
+        """
+        line_count = len(code.splitlines())
+        return "<br>".join(str(i + 1) for i in range(line_count))
+
+    def _format_code_block(self, code, block_id, block_number):
+        """
+        Format a code block with all features.
+
+        Args:
+            code: Python code string
+            block_id: Unique block identifier
+            block_number: Display number (1, 2, 3...)
+
+        Returns:
+            HTML string for the complete code block
+        """
+        visible = self._code_visibility.get(block_id, False)
+        copied = f"{block_id}_copied" in self._code_blocks
+        line_count = len(code.splitlines())
+
+        # Toggle state
+        toggle_icon = "▼" if visible else "▶"
+        toggle_text = "Hide" if visible else "Show"
+
+        # Copy button state
+        if copied:
+            copy_btn_html = '<span class="copy-btn-success">[✓ Copied!]</span>'
+        else:
+            copy_btn_html = f'<a href="#copy:{block_id}" class="copy-btn">[📋 Copy]</a>'
+
+        # Always render header
+        html = f"""
+    <div class="code-container">
+        <div class="code-header">
+            <span class="code-title">Generated Code {block_number}</span>
+            <span class="code-info">({line_count} lines)</span>
+            <span class="code-actions">
+                <a href="#toggle:{block_id}" class="code-toggle">[{toggle_icon} {toggle_text}]</a>
+                {copy_btn_html}
+            </span>
+        </div>
+"""
+
+        # Only render code-body if visible
+        if visible:
+            line_numbers_html = self._generate_line_numbers(code)
+            highlighted_code = self._highlight_python(code)
+
+            html += f"""
+        <div class="code-body">
+            <table class="code-table">
+                <tr>
+                    <td class="line-numbers">{line_numbers_html}</td>
+                    <td class="code-content">
+                        <pre>{highlighted_code}</pre>
+                    </td>
+                </tr>
+            </table>
+        </div>
+"""
+
+        html += "    </div>\n    "
+        return html
+
+    def _render_messages(self):
+        """
+        Render all messages as HTML with Material Design styling.
+
+        Regenerates entire output from message storage.
+        Preserves scroll position intelligently.
+        """
+        # Build HTML with embedded CSS
+        html_parts = [
+            """
+    <html>
+    <head>
+    <style>
+        /* Base styles */
+        body {
+            font-family: 'Segoe UI', 'Roboto', Arial, sans-serif;
+            font-size: 13px;
+            line-height: 1.6;
+            color: #212121;
+            margin: 10px;
+            background-color: #FAFAFA;
+        }
+        
+        /* Message styles */
+        p {
+            margin: 6px 0;
+            padding: 4px 0;
+        }
+        
+        .timestamp {
+            color: #9E9E9E;
+            font-size: 11px;
+            font-family: 'Consolas', monospace;
+            margin-right: 8px;
+        }
+        
+        .user {
+            color: #1976D2;
+            font-weight: 600;
+        }
+        
+        .system {
+            color: #757575;
+            font-style: italic;
+        }
+        
+        .agent {
+            color: #388E3C;
+            font-weight: 600;
+        }
+        
+        .warning {
+            color: #F57C00;
+            padding-left: 20px;
+        }
+        
+        /* Separator */
+        .separator {
+            text-align: center;
+            color: #757575;
+            font-weight: 600;
+            margin: 20px 0 15px 0;
+            padding: 12px 0;
+            background: linear-gradient(to right, #E8F5E9, #C8E6C9, #E8F5E9);
+            border-radius: 4px;
+        }
+        
+        /* Code container */
+        .code-container {
+            margin: 15px 0;
+            background-color: #FFFFFF;
+            border-left: 4px solid #4CAF50;
+            border-radius: 4px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            overflow: hidden;
+        }
+        
+        .code-header {
+            background: linear-gradient(to bottom, #E8F5E9, #C8E6C9);
+            padding: 10px 15px;
+            border-bottom: 1px solid #A5D6A7;
+            display: flex;
+            align-items: center;
+        }
+        
+        .code-title {
+            font-weight: 600;
+            color: #2E7D32;
+        }
+        
+        .code-info {
+            color: #66BB6A;
+            margin-left: 8px;
+            font-size: 12px;
+        }
+        
+        .code-actions {
+            margin-left: auto;
+        }
+        
+        .code-toggle {
+            color: #2196F3;
+            text-decoration: none;
+            margin-left: 10px;
+            cursor: pointer;
+            font-size: 12px;
+        }
+        
+        .code-toggle:hover {
+            text-decoration: underline;
+            color: #1976D2;
+        }
+        
+        .copy-btn {
+            color: #2196F3;
+            text-decoration: none;
+            margin-left: 10px;
+            cursor: pointer;
+            font-size: 12px;
+        }
+        
+        .copy-btn:hover {
+            text-decoration: underline;
+            color: #1976D2;
+        }
+        
+        .copy-btn-success {
+            color: #4CAF50;
+            font-weight: 600;
+            margin-left: 10px;
+            font-size: 12px;
+        }
+        
+        .code-body {
+            background-color: #2b2b2b;
+        }
+        
+        /* Code table */
+        .code-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+            font-size: 12px;
+        }
+        
+        .line-numbers {
+            color: #75715e;
+            text-align: right;
+            padding: 12px 8px 12px 12px;
+            border-right: 1px solid #444;
+            vertical-align: top;
+            user-select: none;
+            background-color: #1e1e1e;
+            width: 40px;
+        }
+        
+        .code-content {
+            padding: 0;
+            vertical-align: top;
+            width: 100%;
+        }
+        
+        .code-content pre {
+            margin: 0;
+            padding: 12px;
+            background-color: #2b2b2b;
+            overflow-x: auto;
+            line-height: 1.5;
+        }
+    </style>
+    </head>
+    <body>
+    """
+        ]
+
+        # Render each message
+        for msg in self._messages:
+            msg_type = msg["type"]
+            content = msg["content"]
+            timestamp = msg.get("timestamp", "")
+
+            if msg_type == "user":
+                html_parts.append(
+                    f'<p><span class="timestamp">[{timestamp}]</span>'
+                    f'<span class="user">You: {escape(content)}</span></p>'
+                )
+
+            elif msg_type == "system":
+                html_parts.append(
+                    f'<p><span class="timestamp">[{timestamp}]</span>'
+                    f'<span class="system">{escape(content)}</span></p>'
+                )
+
+            elif msg_type == "agent":
+                html_parts.append(
+                    f'<p><span class="timestamp">[{timestamp}]</span>'
+                    f'<span class="agent">Agent: {escape(content)}</span></p>'
+                )
+
+            elif msg_type == "warning":
+                html_parts.append(
+                    f'<p><span class="timestamp">[{timestamp}]</span>'
+                    f'<span class="warning">⚠️  {escape(content)}</span></p>'
+                )
+
+            elif msg_type == "separator":
+                html_parts.append(
+                    f'<div class="separator">━━━ {escape(content)} ━━━</div>'
+                )
+
+            elif msg_type == "code":
+                block_id = msg["block_id"]
+                block_number = msg.get("number", "")
+                code_html = self._format_code_block(content, block_id, block_number)
+                html_parts.append(code_html)
+
+            elif msg_type == "text":
+                # Plain text fallback
+                html_parts.append(f"<p>{escape(content)}</p>")
+
+        html_parts.append("</body></html>")
+
+        # Save scroll position
+        scrollbar = self.output_text.verticalScrollBar()
+        old_scroll = scrollbar.value()
+        was_at_bottom = old_scroll >= scrollbar.maximum() - 10
+
+        # Update HTML
+        self.output_text.setHtml("".join(html_parts))
+
+        # Restore scroll position intelligently
+        if was_at_bottom:
+            # Stay at bottom for new messages
+            scrollbar.setValue(scrollbar.maximum())
+        else:
+            # Maintain scroll position when toggling
+            scrollbar.setValue(old_scroll)
+
     def _init_bridge(self):
         """Initialize OpenCodeBridge (lazy)."""
         try:
             from ami.flowchart.graph_builder import OpenCodeBridge
 
             self.bridge = OpenCodeBridge()
-            self._append_output("[System] OpenCode bridge initialized")
+            self._append_message("system", "[System] OpenCode bridge initialized")
         except Exception as e:
-            self._append_output(f"[System] Warning: Could not initialize OpenCode: {e}")
-            self._append_output("[System] AI features will not be available")
+            self._append_message(
+                "system", f"[System] Warning: Could not initialize OpenCode: {e}"
+            )
+            self._append_message("system", "[System] AI features will not be available")
 
     def _on_submit(self):
         """Handle user input submission."""
@@ -183,13 +626,11 @@ class ChatWidget(QWidget):
         self.history_index = len(self.command_history)
 
         # Display user message
-        self._append_output(f"You: {user_input}")
-        self._append_output("")
+        self._append_message("user", user_input)
 
         # Check if bridge is available
         if self.bridge is None:
-            self._append_output("[Error] OpenCode bridge not available")
-            self._append_output("")
+            self._append_message("system", "[Error] OpenCode bridge not available")
             return
 
         # Get graph state (INSTANT - direct access, same process)
@@ -198,15 +639,14 @@ class ChatWidget(QWidget):
 
             state = get_graph_state(self.ctrl.amicli)
         except Exception as e:
-            self._append_output(f"[Error] Could not get graph state: {e}")
-            self._append_output("")
+            self._append_message("system", f"[Error] Could not get graph state: {e}")
             return
 
         # Build full prompt with context
         prompt = self._build_prompt(user_input, state)
 
         # Display status
-        self._append_output("[System] Sending request to agent...")
+        self._append_message("system", "[System] Sending request to agent...")
 
         # Launch background worker (NON-BLOCKING)
         self.current_worker = ChatWorker(self.bridge, prompt)
@@ -252,8 +692,7 @@ Please generate Python code to fulfill this request using the AMI graph building
         Args:
             response_str: String with newline-separated JSON events from agent
         """
-        self._append_output("[System] Response received, processing...")
-        self._append_output("")
+        self._append_message("system", "[System] Response received, processing...")
 
         # Show agent's conversational text first
         self._show_agent_text(response_str)
@@ -262,23 +701,17 @@ Please generate Python code to fulfill this request using the AMI graph building
         codes = self._extract_code(response_str)
 
         if codes:
-            self._append_output(f"[System] Found {len(codes)} code block(s)")
-            self._append_output("")
+            self._append_message("system", f"[System] Found {len(codes)} code block(s)")
 
             # Display and execute each code block
             for i, code in enumerate(codes, 1):
-                self._append_output(f"--- Generated Code {i} ---")
-                self._append_output(code)
-                self._append_output("--- End Code ---")
-                self._append_output("")
+                self._append_code_block(code, i)
 
                 # Auto-execute (emit signal for thread-safe execution)
                 self.execute_code_signal.emit(code)
         else:
             # No code found - agent might have just answered with text
-            self._append_output("[System] No code to execute")
-
-        self._append_output("")
+            self._append_message("system", "[System] No code to execute")
 
     @Slot(str)
     def _on_error_occurred(self, error_msg):
@@ -288,8 +721,7 @@ Please generate Python code to fulfill this request using the AMI graph building
         Args:
             error_msg: Error message string
         """
-        self._append_output(f"[Error] {error_msg}")
-        self._append_output("")
+        self._append_message("system", f"[Error] {error_msg}")
 
     def _extract_code(self, response_str):
         """
@@ -346,18 +778,25 @@ Please generate Python code to fulfill this request using the AMI graph building
                                 if "code" in response:
                                     code = response["code"]
 
+                                    # Show separator only if there's content
+                                    if (
+                                        "explanation" in response
+                                        or "warnings" in response
+                                    ):
+                                        self._append_message(
+                                            "separator", "Agent's Response"
+                                        )
+
                                     # Show explanation if provided
                                     if "explanation" in response:
-                                        self._append_output(
-                                            f"Agent: {response['explanation']}"
+                                        self._append_message(
+                                            "agent", response["explanation"]
                                         )
-                                        self._append_output("")
 
                                     # Show warnings if provided
                                     if "warnings" in response:
                                         for warning in response["warnings"]:
-                                            self._append_output(f"⚠️  {warning}")
-                                        self._append_output("")
+                                            self._append_message("warning", warning)
 
                                     codes.append(code)
 
@@ -432,8 +871,8 @@ Please generate Python code to fulfill this request using the AMI graph building
                     if event.get("type") == "text":
                         text = event.get("part", {}).get("text", "")
 
-                        # Skip if this text contains a ```json block (that's code, shown separately)
-                        if "```json" in text:
+                        # Skip if this text contains any code block (shown separately via collapsible blocks)
+                        if "```" in text:
                             continue
 
                         # Skip empty text
@@ -476,7 +915,7 @@ Please generate Python code to fulfill this request using the AMI graph building
             code: Python code string to execute
         """
         try:
-            self._append_output("[System] Executing code...")
+            self._append_message("system", "[System] Executing code...")
 
             # Build execution namespace
             # self.ctrl is FlowchartCtrlWidget, which has .chart (Flowchart) and .amicli
@@ -497,26 +936,23 @@ Please generate Python code to fulfill this request using the AMI graph building
 
             exec(code, namespace)
 
-            self._append_output("[System] ✅ Execution successful!")
+            self._append_message("system", "[System] ✅ Execution successful!")
 
         except Exception as e:
             error_msg = f"[Execution Error] {e}\n{traceback.format_exc()}"
-            self._append_output(error_msg)
-
-        self._append_output("")
+            self._append_message("system", error_msg)
 
     def _append_output(self, text):
         """
-        Append text to output area.
+        Append plain text output (backward compatibility wrapper).
 
         Args:
             text: Text to append
         """
-        self.output_text.append(text)
+        self._append_message("text", text)
 
-        # Auto-scroll to bottom
-        scrollbar = self.output_text.verticalScrollBar()
-        scrollbar.setValue(scrollbar.maximum())
+        # Auto-scroll is now handled by _render_messages()
+        # Keeping this method for backward compatibility with any remaining calls
 
     def keyPressEvent(self, event):
         """

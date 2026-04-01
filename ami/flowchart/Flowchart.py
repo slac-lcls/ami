@@ -1168,7 +1168,7 @@ class FlowchartCtrlWidget(QtWidgets.QWidget):
                             """
                             node = self.chart.createNode(node_type)
                             if label:
-                                node.setLabel(label)
+                                node.graphicsItem().setLabel(label)
                             return node
 
                         def connect_nodes(self, src_name, src_term, dst_name, dst_term):
@@ -1295,8 +1295,11 @@ class FlowchartCtrlWidget(QtWidgets.QWidget):
                         graphCommHandler,
                     )
 
-                # Create chat widget
-                self.chart.chat_widget = ChatWidget(ctrl=self)
+                # Create chat widget with parent so it closes with main window
+                self.chart.chat_widget = ChatWidget(ctrl=self, parent=self.chartWidget)
+
+                # Set window flags to keep it as a separate window (can move independently)
+                self.chart.chat_widget.setWindowFlags(QtCore.Qt.Window)
 
                 # Position near main window
                 if self.chartWidget:
