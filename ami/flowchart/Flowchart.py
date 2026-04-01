@@ -1152,6 +1152,138 @@ class FlowchartCtrlWidget(QtWidgets.QWidget):
                             self.graph = graph
                             self.graphCommHandler = graphCommHandler
 
+                        def create_node(self, node_type, label=None):
+                            """
+                            Create a node in the flowchart.
+
+                            Args:
+                                node_type: Type of node (e.g., 'ScatterPlot', 'Sum')
+                                label: Optional descriptive label
+
+                            Returns:
+                                The created node
+
+                            Example:
+                                >>> node = amicli.create_node('Sum', 'My Sum')
+                            """
+                            node = self.chart.createNode(node_type)
+                            if label:
+                                node.setLabel(label)
+                            return node
+
+                        def connect_nodes(self, src_name, src_term, dst_name, dst_term):
+                            """
+                            Connect two nodes in the flowchart.
+
+                            Args:
+                                src_name: Source node name
+                                src_term: Source terminal name
+                                dst_name: Destination node name
+                                dst_term: Destination terminal name
+
+                            Example:
+                                >>> amicli.connect_nodes('source_0', 'Out', 'Sum.0', 'In')
+                            """
+                            # Get nodes from graph
+                            src_node = None
+                            dst_node = None
+
+                            for name, data in self.graph.nodes(data=True):
+                                if name == src_name:
+                                    src_node = data.get("node")
+                                if name == dst_name:
+                                    dst_node = data.get("node")
+
+                            if not src_node:
+                                raise ValueError(
+                                    f"Source node '{src_name}' not found in graph"
+                                )
+                            if not dst_node:
+                                raise ValueError(
+                                    f"Destination node '{dst_name}' not found in graph"
+                                )
+
+                            # Connect terminals using terminal.connectTo()
+                            src_terminal = src_node[src_term]
+                            dst_terminal = dst_node[dst_term]
+                            src_terminal.connectTo(dst_terminal)
+
+                        def ensure_source(self, source_name):
+                            """
+                            Ensure a source node exists in the graph.
+
+                            Args:
+                                source_name: Name of the source
+
+                            Returns:
+                                The source node name (existing or newly created)
+
+                            Example:
+                                >>> amicli.ensure_source('laser_power')
+                                'laser_power'
+                            """
+                            from ami.flowchart.graph_builder import ensure_source
+
+                            return ensure_source(self, source_name)
+
+                        def disconnect_nodes(
+                            self, src_name, src_term, dst_name, dst_term
+                        ):
+                            """
+                            Disconnect two nodes in the flowchart.
+
+                            Args:
+                                src_name: Source node name
+                                src_term: Source terminal name
+                                dst_name: Destination node name
+                                dst_term: Destination terminal name
+
+                            Example:
+                                >>> amicli.disconnect_nodes('source_0', 'Out', 'Sum.0', 'In')
+                            """
+                            # Get nodes from graph
+                            src_node = None
+                            dst_node = None
+
+                            for name, data in self.graph.nodes(data=True):
+                                if name == src_name:
+                                    src_node = data.get("node")
+                                if name == dst_name:
+                                    dst_node = data.get("node")
+
+                            if not src_node:
+                                raise ValueError(
+                                    f"Source node '{src_name}' not found in graph"
+                                )
+                            if not dst_node:
+                                raise ValueError(
+                                    f"Destination node '{dst_name}' not found in graph"
+                                )
+
+                            # Disconnect terminals
+                            src_terminal = src_node[src_term]
+                            dst_terminal = dst_node[dst_term]
+                            src_terminal.disconnectFrom(dst_terminal)
+
+                        def node_info(self, name):
+                            """
+                            Get information about a node.
+
+                            Args:
+                                name: Node name
+
+                            Returns:
+                                dict: Node data from the graph, or None if not found
+
+                            Example:
+                                >>> info = amicli.node_info('Sum.0')
+                                >>> print(info['node'].name())
+                            """
+                            for node_name, data in self.graph.nodes(data=True):
+                                if node_name == name:
+                                    return data
+                            return None
+
                     graphCommHandler = GraphCommHandler(
                         self.graphmgr_addr.name, self.graphmgr_addr.comm
                     )
