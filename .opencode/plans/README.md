@@ -2,58 +2,84 @@
 
 This directory contains active planning documents for the AMI (Analysis Monitoring Interface) project.
 
-**Last Updated:** March 27, 2026  
-**Active Branch:** `refactor-gui-tests`
+**Last Updated:** April 1, 2026  
+**Organization Standard:** See `AGENTS.md` - Plan Organization Standards section
 
 ---
 
-## 📋 Active Plans
+## 📋 Active Development
 
-### 1. GUI Test Refactoring
-- **File:** `gui-test-refactoring.md`
-- **Status:** ✅ COMPLETED (but still needs work)
-- **Date:** March 27, 2026
-- **Description:** GUI test refactoring with session-scoped backend for 2.6x performance improvement
-- **Commits:** a8d6442, 0c88336
-- **Results:**
-  - Tests run 2.6x faster (40+ sec → 15.5 sec)
-  - Session-scoped backend shared across tests
-  - Fixed Prometheus metrics duplication bug
-  - Smart routing for static vs psana backends
+### Feature: AI Graph Builder
+**Location:** `ai-graph-builder/`  
+**Status:** 🚧 BLOCKED - Missing API implementation  
+**Start Here:** `ai-graph-builder/active/01-api-mismatch-analysis.md`
 
-### 2. Auto-Generate Worker JSON
-- **File:** `auto-generate-worker-json-FINAL.md`
-- **Status:** 🔄 NEEDS REIMPLEMENTATION
-- **Date:** March 25, 2026
-- **Description:** Automatic worker configuration generation from .fc files
-- **Note:** Previously implemented (commit b80ad6e) but needs to be redone
-- **Reference:** `auto-generate-worker-json-plan.md` for original design
+Natural language interface for building AMI analysis graphs using OpenCode AI. Currently blocked because the AmiCli class has no methods implemented.
 
-### 3. Auto-Generate Worker JSON (Plan)
-- **File:** `auto-generate-worker-json-plan.md`
-- **Status:** 📖 REFERENCE
-- **Date:** March 25, 2026
-- **Description:** Original planning document for worker JSON auto-generation
-- **Use:** Reference for reimplementation work
+**Progress:** 0/4 plans complete  
+**Estimated Time Remaining:** 2.5-3.5 hours
+
+- ❌ 01-api-mismatch-analysis.md (CRITICAL BLOCKER) - ~1-2 hours
+- ❌ 02-fix-chat-widget-issues.md - ~20-30 min
+- ❌ 03-update-skill-for-chat-mode.md - ~45-55 min
+- ❌ 04-add-code-toggle-to-chat-widget.md - ~25-30 min
+
+**Documentation:**
+- Comprehensive status: `AMI_GRAPH_BUILDER_STATUS.md` (project root)
+- Original plan: `PLAN_AI_GRAPH_BUILDER.md` (project root)
+- Skill docs: `skills/ami-graph-builder/SKILL.md`
 
 ---
 
-## 📁 Directory Structure
+### Feature: Worker JSON Generation
+**Location:** `worker-json-generation/`  
+**Status:** 🔄 NEEDS REIMPLEMENTATION  
+**Start Here:** `worker-json-generation/active/01-reimplement-worker-json.md`
+
+Automatic worker configuration file generation from `.fc` (flowchart) files. Previously implemented (commit b80ad6e) but lost during refactoring.
+
+**Progress:** 0/1 plans complete  
+**Estimated Time Remaining:** 2-3 hours
+
+- ❌ 01-reimplement-worker-json.md - ~2-3 hours
+
+---
+
+## 📁 Standalone Plans
+
+### GUI Test Refactoring
+**File:** `gui-test-refactoring.md`  
+**Status:** ✅ COMPLETED  
+**Date:** March 27, 2026
+
+Session-scoped backend implementation for 2.6x performance improvement (40+ sec → 15.5 sec).
+
+**Results:**
+- Fixed Prometheus metrics duplication bug
+- Smart routing for static vs psana backends
+- Commits: a8d6442, 0c88336
+
+---
+
+## 📊 Directory Structure
 
 ```
-.opencode/
-├── plans/              # Active plans (this directory)
-│   ├── README.md       # This file
-│   ├── gui-test-refactoring.md
-│   ├── auto-generate-worker-json-FINAL.md
-│   └── auto-generate-worker-json-plan.md
+.opencode/plans/
+├── README.md                          # This file
+├── gui-test-refactoring.md           # Standalone completed plan
 │
-└── archive/            # Completed/abandoned plans
-    ├── asyncio-removal-plan.md (ABANDONED)
-    ├── subgraph-*.md (COMPLETED - commits c16ec5d, 7fadf3b, etc.)
-    ├── terminal-label-overlap-*.md (COMPLETED - commit 173401b)
-    ├── gui-test-*.md (various completed test work)
-    └── ... (45 total archived files)
+├── ai-graph-builder/                 # Natural language graph interface
+│   ├── README.md                     # Feature overview and quick start
+│   ├── 00-PRIORITY-ORDER.md         # Execution strategy
+│   ├── active/                       # 4 plans, 0 complete
+│   ├── completed/                    # 2 historical implementations
+│   └── research/                     # 6 analysis/failure docs
+│
+└── worker-json-generation/           # Auto-generate worker configs
+    ├── README.md                     # Feature overview
+    ├── 00-PRIORITY-ORDER.md         # Execution strategy
+    ├── active/                       # 1 plan, 0 complete
+    └── completed/                    # 1 original design doc
 ```
 
 ---
@@ -61,36 +87,14 @@ This directory contains active planning documents for the AMI (Analysis Monitori
 ## 🎯 Plan Status Legend
 
 - ✅ **COMPLETED** - Implementation finished and committed
-- 🔄 **NEEDS WORK** - Requires additional work or reimplementation
+- 🚧 **BLOCKED** - Critical issue preventing progress
+- 🔄 **NEEDS WORK** - Requires reimplementation or fixes
+- ❌ **NOT STARTED** - Planned but not yet begun
 - 📖 **REFERENCE** - Documentation/guide for active work
-- ❌ **ABANDONED** - Plan abandoned (archived for reference)
-- 🗄️ **ARCHIVED** - Completed work (in archive/ directory)
 
 ---
 
-## 📊 Recent Cleanup (March 27, 2026)
-
-Archived **28 files** to keep plans directory focused:
-
-**Completed Implementations (15 files):**
-- Asyncio removal (ABANDONED but archived)
-- Subgraph refactoring (commits 1008466 → c16ec5d)
-- Terminal label overlap fixes (commit 173401b)
-- GUI test fixes and improvements
-- Various auto-generation work
-
-**Summary/Status Documents (6 files):**
-- FINAL-SUMMARY.md, commit-summary.md, etc.
-
-**Not Implemented/Superseded (7 files):**
-- popup-handling-regression-tests.md (not needed)
-- add-dump-graph-button.md (not needed)
-- flowchart-from-file-*.md (never implemented)
-- Various superseded design docs
-
----
-
-## 🔍 Quick Reference
+## 📚 Quick Reference
 
 ### Key AMI Architecture
 ```
@@ -135,45 +139,45 @@ ami-local -f interval=1 -b 1 psana://exp=rix101331225,run=156
 
 ## 📝 Creating New Plans
 
-When creating a new plan document:
+When creating a new plan document, follow the standards in `AGENTS.md`:
 
-1. **Use descriptive filename:** `feature-name-plan.md`
-2. **Include header with:**
-   - Status (Planning/In Progress/Completed/Abandoned)
-   - Date
-   - Goal/Objective
-   - Estimated time
-3. **Structure:**
-   - Executive Summary
-   - Background/Problem
-   - Proposed Solution
-   - Implementation Plan (phases)
-   - Success Criteria
-   - Checklist
-4. **Update this README** when adding new plans
-5. **Archive when completed** - move to `../archive/`
+1. **Assess scope**: Single file or feature directory?
+2. **For complex features**: Create feature directory with README.md + 00-PRIORITY-ORDER.md
+3. **Use numbered prefixes**: `01-`, `02-`, `03-` for active plans to show execution order
+4. **Include standard header**:
+   ```markdown
+   # Plan Title
+   **Date:** YYYY-MM-DD
+   **Status:** Planning/Ready/In Progress/Completed
+   **Priority:** CRITICAL/High/Medium/Low
+   **Estimated Time:** X-Y hours
+   ```
+5. **Update this README** when adding new plans
+6. **Move to completed/** when done
+
+See `AGENTS.md` - "Plan Organization Standards" section for full details.
 
 ---
 
-## 🗃️ Archive Policy
+## 🗃️ Archive
 
-Plans are archived when:
-- ✅ Implementation is complete and committed
-- ❌ Plan is abandoned or superseded
-- 📝 Summary/status docs are no longer active
-
-Archived plans remain accessible in `../archive/` for historical reference.
+Completed/abandoned plans are in `../.opencode/archive/`:
+- Historical architecture plans (phase1/phase2 shared memory)
+- Week 3 issue tracking (qapplication-fork-issue)
+- Old status documents
 
 ---
 
 ## 📚 Additional Resources
 
-- **Architecture Guide:** `/sdf/home/s/seshu/dev/ami/AGENTS.md`
-- **Main README:** `/sdf/home/s/seshu/dev/ami/README.md`
-- **Test Documentation:** `/sdf/home/s/seshu/dev/ami/tests/` (TODO: create TEST_README.md)
-- **Archive:** `/sdf/home/s/seshu/dev/ami/.opencode/archive/`
+- **Architecture Guide:** `AGENTS.md` (project root)
+- **Main README:** `README.md` (project root)
+- **Test Documentation:** `tests/` (TODO: create TEST_README.md)
+- **Archive:** `.opencode/archive/`
+- **Skills:** `.opencode/skills/` (AI agent skills)
 
 ---
 
 **Maintained by:** AI agent (OpenCode)  
-**Contact:** For questions about plans, check git history or AGENTS.md
+**Contact:** For questions about plans, check git history or AGENTS.md  
+**Organization Standard:** See `AGENTS.md` - Plan Organization Standards
