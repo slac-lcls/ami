@@ -261,6 +261,13 @@ class Ui_Toolbar(object):
         self.actionChatMode.setObjectName("actionChatMode")
         self.actionChatMode.setShortcut("Ctrl+Shift+C")
 
+        # Inspector (Node State)
+        self.actionInspector = QtWidgets.QAction(parent)
+        self.actionInspector.setIconText("Inspector")
+        self.actionInspector.setObjectName("actionInspector")
+        self.actionInspector.setCheckable(True)
+        self.actionInspector.setChecked(False)  # Hidden by default
+
         # Arrange
         self.actionArrange = QtWidgets.QAction(parent)
         self.actionArrange.setIconText("Arrange")
@@ -314,6 +321,7 @@ class Ui_Toolbar(object):
         if HAS_QTCONSOLE:
             self.toolBar.addAction(self.actionConsole)
         self.toolBar.addAction(self.actionChatMode)
+        self.toolBar.addAction(self.actionInspector)
         self.toolBar.addAction(self.actionViewSource)
 
         if configure:
