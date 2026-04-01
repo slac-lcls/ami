@@ -8,8 +8,8 @@ This document describes the 5 most common graph patterns found in real AMI workf
 
 **Graph Structure:**
 ```
-SourceA → ScatterPlot.In
-SourceB → ScatterPlot.In.1
+SourceA → ScatterPlot.X
+SourceB → ScatterPlot.Y
 ```
 
 **Use Cases:**
@@ -21,9 +21,9 @@ SourceB → ScatterPlot.In.1
 **Example Code:**
 ```python
 # Create scatter plot for laser vs detector
-scatter = chart.createNode('ScatterPlot', 'laser_vs_detector')
-amicli.connect_nodes('laser_source', 'Out', 'laser_vs_detector', 'In')
-amicli.connect_nodes('detector_source', 'Out', 'laser_vs_detector', 'In.1')
+scatter = amicli.create_node('ScatterPlot', 'Laser Vs Detector')
+amicli.connect_nodes('laser_source', 'Out', scatter.name(), 'X')
+amicli.connect_nodes('detector_source', 'Out', scatter.name(), 'Y')
 print('Scatter plot created! Configure axis labels in GUI.')
 ```
 
@@ -49,23 +49,20 @@ Detector → ImageViewer (for visualization)
 
 **Example Code:**
 ```python
-# View the detector image
-image_viewer = chart.createNode('ImageViewer', 'detector_image')
-amicli.connect_nodes('detector_source', 'Out', 'detector_image', 'In')
-
 # Create ROI and sum
-roi = chart.createNode('Roi2D', 'signal_roi')
-amicli.connect_nodes('detector_source', 'Out', 'signal_roi', 'In')
+roi = amicli.create_node('Roi2D', 'Signal ROI')
+amicli.connect_nodes('detector_source', 'Out', roi.name(), 'In')
 
-sum_node = chart.createNode('Sum', 'roi_sum')
-amicli.connect_nodes('signal_roi', 'Out', 'roi_sum', 'In')
+sum_node = amicli.create_node('Sum', 'ROI Sum')
+amicli.connect_nodes(roi.name(), 'Out', sum_node.name(), 'In')
 
 # Plot intensity over time
-scalar_plot = chart.createNode('ScalarPlot', 'intensity_vs_time')
-amicli.connect_nodes('roi_sum', 'Out', 'intensity_vs_time', 'In')
+scalar_plot = amicli.create_node('ScalarPlot', 'Intensity Vs Time')
+amicli.connect_nodes(sum_node.name(), 'Out', scalar_plot.name(), 'In')
 
 print('')
-print('⚠️  Draw ROI rectangle in detector_image viewer!')
+print('⚠️  Draw ROI rectangle in detector source viewer!')
+print('⚠️  (Click detector_source node to view image)')
 print('')
 ```
 
@@ -95,36 +92,36 @@ LaserStatus → Filter inputs
 **Example Code:**
 ```python
 # Setup detector ROI and sum
-roi = chart.createNode('Roi2D', 'detector_roi')
-amicli.connect_nodes('detector_source', 'Out', 'detector_roi', 'In')
+roi = amicli.create_node('Roi2D', 'Detector ROI')
+amicli.connect_nodes('detector_source', 'Out', roi.name(), 'In')
 
-sum_node = chart.createNode('Sum', 'roi_sum')
-amicli.connect_nodes('detector_roi', 'Out', 'roi_sum', 'In')
+sum_node = amicli.create_node('Sum', 'ROI Sum')
+amicli.connect_nodes(roi.name(), 'Out', sum_node.name(), 'In')
 
 # Filter for pump events (laser on)
-filter_pump = chart.createNode('Filter', 'pump_filter')
-amicli.connect_nodes('laser_status', 'Out', 'pump_filter', 'In')
-print('Set pump_filter expression in GUI: In == 1')
+filter_pump = amicli.create_node('Filter', 'Pump Filter')
+amicli.connect_nodes('laser_status', 'Out', filter_pump.name(), 'In')
+print('Set Pump Filter expression in GUI: In == 1')
 
 # Pump signal vs scan
-pump_scan = chart.createNode('MeanVsScan', 'pump_vs_delay')
-amicli.connect_nodes('roi_sum', 'Out', 'pump_vs_delay', 'In')
-print('Set pump_vs_delay scan variable in GUI (e.g., delay_stage)')
+pump_scan = amicli.create_node('MeanVsScan', 'Pump Vs Delay')
+amicli.connect_nodes(sum_node.name(), 'Out', pump_scan.name(), 'In')
+print('Set Pump Vs Delay scan variable in GUI (e.g., delay_stage)')
 
-pump_plot = chart.createNode('LinePlot', 'pump_curve')
-amicli.connect_nodes('pump_vs_delay', 'Out', 'pump_curve', 'In')
+pump_plot = amicli.create_node('LinePlot', 'Pump Curve')
+amicli.connect_nodes(pump_scan.name(), 'Out', pump_plot.name(), 'In')
 
 # Filter for probe events (laser off)
-filter_probe = chart.createNode('Filter', 'probe_filter')
-amicli.connect_nodes('laser_status', 'Out', 'probe_filter', 'In')
-print('Set probe_filter expression in GUI: In == 0')
+filter_probe = amicli.create_node('Filter', 'Probe Filter')
+amicli.connect_nodes('laser_status', 'Out', filter_probe.name(), 'In')
+print('Set Probe Filter expression in GUI: In == 0')
 
 # Probe signal vs scan
-probe_scan = chart.createNode('MeanVsScan', 'probe_vs_delay')
-amicli.connect_nodes('roi_sum', 'Out', 'probe_vs_delay', 'In')
+probe_scan = amicli.create_node('MeanVsScan', 'Probe Vs Delay')
+amicli.connect_nodes(sum_node.name(), 'Out', probe_scan.name(), 'In')
 
-probe_plot = chart.createNode('LinePlot', 'probe_curve')
-amicli.connect_nodes('probe_vs_delay', 'Out', 'probe_curve', 'In')
+probe_plot = amicli.create_node('LinePlot', 'Probe Curve')
+amicli.connect_nodes(probe_scan.name(), 'Out', probe_plot.name(), 'In')
 
 print('')
 print('⚠️  Remember to:')
@@ -156,18 +153,16 @@ WaveformSource → PeakFinder → Stats → Viewer
 
 **Example Code:**
 ```python
-# Display raw waveform
-waveform_viewer = chart.createNode('WaveformViewer', 'raw_waveform')
-amicli.connect_nodes('digitizer_source', 'Out', 'raw_waveform', 'In')
-
 # Create projection for profile
-projection = chart.createNode('Projection', 'waveform_profile')
-amicli.connect_nodes('digitizer_source', 'Out', 'waveform_profile', 'In')
+projection = amicli.create_node('Projection', 'Waveform Profile')
+amicli.connect_nodes('digitizer_source', 'Out', projection.name(), 'In')
 print('Set projection axis in GUI')
 
 # Plot the profile
-line_plot = chart.createNode('LinePlot', 'profile_plot')
-amicli.connect_nodes('waveform_profile', 'Out', 'profile_plot', 'In')
+line_plot = amicli.create_node('LinePlot', 'Profile Plot')
+amicli.connect_nodes(projection.name(), 'Out', line_plot.name(), 'In')
+
+print('Note: Click digitizer_source to view raw waveform')
 ```
 
 **Template:** `templates/waveform_analysis.py`
@@ -195,20 +190,20 @@ SourceC → MeanVsScan → LinePlot(signal C)
 **Example Code:**
 ```python
 # Scan signal A
-scan_a = chart.createNode('MeanVsScan', 'detector_a_scan')
-amicli.connect_nodes('detector_a', 'Out', 'detector_a_scan', 'In')
-print('Set detector_a_scan scan variable in GUI (e.g., motor_pos)')
+scan_a = amicli.create_node('MeanVsScan', 'Detector A Scan')
+amicli.connect_nodes('detector_a', 'Out', scan_a.name(), 'In')
+print('Set Detector A Scan scan variable in GUI (e.g., motor_pos)')
 
-plot_a = chart.createNode('LinePlot', 'scan_a_plot')
-amicli.connect_nodes('detector_a_scan', 'Out', 'scan_a_plot', 'In')
+plot_a = amicli.create_node('LinePlot', 'Scan A Plot')
+amicli.connect_nodes(scan_a.name(), 'Out', plot_a.name(), 'In')
 
 # Scan signal B
-scan_b = chart.createNode('MeanVsScan', 'detector_b_scan')
-amicli.connect_nodes('detector_b', 'Out', 'detector_b_scan', 'In')
-print('Set detector_b_scan scan variable in GUI (same as above)')
+scan_b = amicli.create_node('MeanVsScan', 'Detector B Scan')
+amicli.connect_nodes('detector_b', 'Out', scan_b.name(), 'In')
+print('Set Detector B Scan scan variable in GUI (same as above)')
 
-plot_b = chart.createNode('LinePlot', 'scan_b_plot')
-amicli.connect_nodes('detector_b_scan', 'Out', 'scan_b_plot', 'In')
+plot_b = amicli.create_node('LinePlot', 'Scan B Plot')
+amicli.connect_nodes(scan_b.name(), 'Out', plot_b.name(), 'In')
 
 print('')
 print('⚠️  Configure MeanVsScan nodes with:')
@@ -250,8 +245,8 @@ Detector → ROI → Sum → Filter(pump) → Stats
 
 ### Correlation + Scan
 ```
-SignalA → MeanVsScan_A → ScatterPlot.In
-SignalB → MeanVsScan_B → ScatterPlot.In.1
+SignalA → MeanVsScan_A → ScatterPlot.X
+SignalB → MeanVsScan_B → ScatterPlot.Y
 ```
 
 ---

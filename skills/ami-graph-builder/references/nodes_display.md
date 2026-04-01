@@ -7,8 +7,8 @@ This document covers the 7 most commonly used display nodes for visualizing data
 **Purpose:** Create scatter plots to visualize correlations between two data streams.
 
 **Terminals:**
-- Input: `In` (X values) and `In.1` (Y values)
-- Output: None (terminal display node)
+- Input: `X` (X-axis values) and `Y` (Y-axis values)
+- Output: None (terminal display node, self-displaying)
 
 **Key Parameters:**
 - `title`: Plot title
@@ -27,9 +27,9 @@ This document covers the 7 most commonly used display nodes for visualizing data
 **Example:**
 ```python
 # Create scatter plot for laser vs detector correlation
-scatter = chart.createNode('ScatterPlot', 'laser_vs_detector')
-amicli.connect_nodes('laser_source', 'Out', 'laser_vs_detector', 'In')
-amicli.connect_nodes('detector_source', 'Out', 'laser_vs_detector', 'In.1')
+scatter = amicli.create_node('ScatterPlot', 'Laser Vs Detector')
+amicli.connect_nodes('laser_source', 'Out', scatter.name(), 'X')
+amicli.connect_nodes('detector_source', 'Out', scatter.name(), 'Y')
 print('Scatter plot created! Configure axis labels and colors in the GUI.')
 ```
 
@@ -226,7 +226,7 @@ amicli.connect_nodes('detector_histogram', 'Out', 'hist_display', 'In')
 
 1. **Always provide descriptive names** - Makes graphs easier to understand
 2. **Configure labels and titles** - Do this in the GUI after creation
-3. **Multiple inputs** - Some plots (ScatterPlot) have multiple input terminals (In, In.1, In.2, etc.)
+3. **Check terminal names** - ScatterPlot uses X/Y, LinePlot uses X/Y, ScalarPlot uses Y, most others use In
 4. **Color customization** - Most support pen/brush parameters for colors
 5. **Display is asynchronous** - Plots update when data arrives
 
@@ -242,10 +242,10 @@ Source → DisplayNode
 Source → ProcessingNode → DisplayNode
 ```
 
-### Multi-Input Display
+### Multi-Input Display (ScatterPlot)
 ```
-SourceA → ScatterPlot.In
-SourceB → ScatterPlot.In.1
+SourceA → ScatterPlot.X
+SourceB → ScatterPlot.Y
 ```
 
 ### Display with Passthrough

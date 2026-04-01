@@ -108,7 +108,7 @@ def run_editor_window(
     # Start OpenCode server for AI graph builder
     import random
 
-    opencode_port = random.randint(49152, 65535)
+    opencode_port = random.randint(49152, 65535)  # Ephemeral port range
     opencode_url = f"http://127.0.0.1:{opencode_port}"
     os.environ["OPENCODE_SERVER_URL"] = opencode_url
     logger.debug(f"Starting OpenCode server on port {opencode_port}")
@@ -119,6 +119,43 @@ def run_editor_window(
             stderr=subprocess.DEVNULL,
         )
         logger.info(f"OpenCode server started at {opencode_url}")
+
+        # Give server time to start
+        import time
+
+        time.sleep(2)
+
+        # Pre-warm OpenCode session with ami-graph-builder skill in background
+        # This loads the skill documentation (~6s) so the first user request
+        # is fast (~6s instead of ~19s). We use a timer to delay the warmup
+        # by 2 seconds to give the server time to initialize.
+        def send_warmup():
+            try:
+                # Send warmup request to pre-load ami-graph-builder skill
+                # Popen is non-blocking - it spawns the process and returns immediately
+                subprocess.Popen(
+                    [
+                        "opencode",
+                        "run",
+                        "--attach",
+                        opencode_url,
+                        "--format",
+                        "json",
+                        "Using the ami-graph-builder skill, this is a warmup request to pre-load the skill documentation.",
+                    ],
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
+                )
+                logger.debug("OpenCode warmup request sent")
+            except Exception as e:
+                logger.debug(f"OpenCode warmup failed: {e}")
+
+        # Schedule warmup to run after 2 seconds (give server time to start)
+        # This pre-loads the ami-graph-builder skill to make first request fast
+        import threading
+
+        threading.Timer(2.0, send_warmup).start()
+
     except Exception as e:
         logger.warning(f"Could not start OpenCode server: {e}")
     check_file = None
