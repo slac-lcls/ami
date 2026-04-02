@@ -323,6 +323,7 @@ class Ui_Toolbar(object):
         self.toolBar.addAction(self.actionChatMode)
         self.toolBar.addAction(self.actionInspector)
         self.toolBar.addAction(self.actionViewSource)
+        self.toolBar.addAction(self.actionArrange)
 
         if configure:
             self.toolBar.insertSeparator(self.actionConfigure)

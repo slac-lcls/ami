@@ -1035,16 +1035,40 @@ class FlowchartCtrlWidget(QtWidgets.QWidget):
         self.viewBox().autoRange(items=children)
 
     def arrangeClicked(self):
+        """Auto-arrange nodes using NetworkX layout algorithms."""
+        if not self.chart._graph.nodes():
+            return  # Empty graph, nothing to arrange
+
         sources = []
         displays = []
         for name, gnode in self.chart._graph.nodes().items():
-            if gnode["subset"] == 0:
+            subset = gnode.get("subset", 1)  # Default to 1 if missing
+            if subset == 0:
                 sources.append(name)
-            elif gnode["subset"] == 2:
+            elif subset == 2:
                 displays.append(name)
-        fixed = sources + displays
-        pos = nx.drawing.layout.multipartite_layout(self.chart._graph, scale=len(self.chart._graph.nodes()) * 75)
-        pos = nx.drawing.layout.spring_layout(nx.Graph(self.chart._graph), pos=pos, fixed=fixed, k=200)
+
+        # Get multipartite layout (arranges by subset)
+        pos = nx.drawing.layout.multipartite_layout(
+            self.chart._graph,
+            subset_key="subset",
+            scale=len(self.chart._graph.nodes()) * 100,
+            align="vertical",  # Align vertically (left-to-right flow)
+        )
+
+        # Build fixed dict for sources and displays (BUG FIX: was list, needs dict)
+        fixed = {name: pos[name] for name in sources + displays if name in pos}
+
+        # Refine with spring layout (improve spacing, reduce crossings)
+        pos = nx.drawing.layout.spring_layout(
+            nx.Graph(self.chart._graph),
+            pos=pos,
+            fixed=fixed,  # Now correctly a dict!
+            k=150,
+            iterations=50,
+        )
+
+        # Apply positions to graphics items
         for name, gnode in self.chart._graph.nodes().items():
             if name not in pos:
                 continue
@@ -1053,6 +1077,7 @@ class FlowchartCtrlWidget(QtWidgets.QWidget):
             p = (find_nearest(px), find_nearest(py))
             gnode["node"].graphicsItem().setPos(*p)
 
+        # Auto-range view to show all nodes
         children = self.viewBox().allChildren()
         self.viewBox().autoRange(items=children)
 
@@ -1283,6 +1308,205 @@ class FlowchartCtrlWidget(QtWidgets.QWidget):
                                 if node_name == name:
                                     return data
                             return None
+
+                        def save_graph(self, filename):
+                            """
+                            Save current flowchart to .fc file.
+
+                            Args:
+                                filename: Path to save file (auto-adds .fc extension)
+
+                            Returns:
+                                str: Full path to saved file
+
+                            Example:
+                                >>> amicli.save_graph('/tmp/test_graph.fc')
+                                '/tmp/test_graph.fc'
+                            """
+                            if not filename.endswith(".fc"):
+                                filename += ".fc"
+                            self.chart.saveFile(filename)
+                            return filename
+
+                        def load_graph(self, filename):
+                            """
+                            Load flowchart from .fc file.
+
+                            Args:
+                                filename: Path to .fc file
+
+                            Example:
+                                >>> amicli.load_graph('/tmp/test_graph.fc')
+                            """
+                            import asyncio
+
+                            asyncio.create_task(self.chart.loadFile(filename))
+
+                        def clear_graph(self):
+                            """
+                            Remove all nodes from flowchart.
+
+                            Clears the entire graph including sources.
+                            Agent will need to recreate sources on next graph generation.
+
+                            Example:
+                                >>> amicli.clear_graph()
+                            """
+                            import asyncio
+
+                            asyncio.create_task(self.chart.clear())
+
+                        def auto_layout(self):
+                            """
+                            Auto-arrange nodes in flowchart.
+
+                            Uses NetworkX layout algorithms to organize nodes
+                            from left (sources) to right (displays).
+
+                            Example:
+                                >>> amicli.auto_layout()
+                            """
+                            if hasattr(self.ctrl, "arrangeClicked"):
+                                self.ctrl.arrangeClicked()
+                            else:
+                                raise AttributeError(
+                                    "Flowchart widget does not have arrangeClicked method"
+                                )
+
+                        def get_node_count(self):
+                            """
+                            Get count of nodes in graph.
+
+                            Returns:
+                                dict: {'total': int}
+
+                            Example:
+                                >>> counts = amicli.get_node_count()
+                                >>> print(f"Graph has {counts['total']} nodes")
+                            """
+                            return {"total": len(self.graph.nodes())}
+
+                        def add_input_terminal(self, node_name, terminal_name=None):
+                            """
+                            Add an input terminal to a node that supports dynamic inputs.
+
+                            Args:
+                                node_name: Name of the node (e.g., 'WaveformViewer.0')
+                                terminal_name: Optional name for the terminal (auto-generated if None)
+
+                            Returns:
+                                The created terminal
+
+                            Raises:
+                                ValueError: If node doesn't exist or doesn't support adding inputs
+
+                            Example:
+                                >>> amicli.add_input_terminal('WaveformViewer.0')
+                                >>> amicli.add_input_terminal('Calculator.0', 'CustomInput')
+                            """
+                            # Find node in graph
+                            node = None
+                            for name, data in self.graph.nodes(data=True):
+                                if name == node_name:
+                                    node = data.get("node")
+                                    break
+
+                            if node is None:
+                                raise ValueError(f"Node '{node_name}' not found")
+
+                            if not node._allowAddInput:
+                                raise ValueError(
+                                    f"Node '{node_name}' does not support adding input terminals"
+                                )
+
+                            # Add input terminal (automatically sets removable=True)
+                            if terminal_name:
+                                return node.addInput(name=terminal_name, removable=True)
+                            else:
+                                return node.addInput(removable=True)
+
+                        def add_output_terminal(self, node_name, terminal_name=None):
+                            """
+                            Add an output terminal to a node that supports dynamic outputs.
+
+                            Args:
+                                node_name: Name of the node (e.g., 'Split.0')
+                                terminal_name: Optional name for the terminal (auto-generated if None)
+
+                            Returns:
+                                The created terminal
+
+                            Raises:
+                                ValueError: If node doesn't exist or doesn't support adding outputs
+
+                            Example:
+                                >>> amicli.add_output_terminal('Split.0')
+                                >>> amicli.add_output_terminal('PythonEditor.0', 'result2')
+                            """
+                            # Find node in graph
+                            node = None
+                            for name, data in self.graph.nodes(data=True):
+                                if name == node_name:
+                                    node = data.get("node")
+                                    break
+
+                            if node is None:
+                                raise ValueError(f"Node '{node_name}' not found")
+
+                            if not node._allowAddOutput:
+                                raise ValueError(
+                                    f"Node '{node_name}' does not support adding output terminals"
+                                )
+
+                            # Add output terminal (automatically sets removable=True)
+                            if terminal_name:
+                                return node.addOutput(
+                                    name=terminal_name, removable=True
+                                )
+                            else:
+                                return node.addOutput(removable=True)
+
+                        def remove_terminal(self, node_name, terminal_name):
+                            """
+                            Remove a terminal from a node.
+
+                            Args:
+                                node_name: Name of the node (e.g., 'WaveformViewer.0')
+                                terminal_name: Name of the terminal to remove (e.g., 'In.1')
+
+                            Raises:
+                                ValueError: If node or terminal doesn't exist, or terminal is not removable
+
+                            Example:
+                                >>> amicli.remove_terminal('WaveformViewer.0', 'In.1')
+                                >>> amicli.remove_terminal('RoiArch.0', 'mask')
+                            """
+                            # Find node in graph
+                            node = None
+                            for name, data in self.graph.nodes(data=True):
+                                if name == node_name:
+                                    node = data.get("node")
+                                    break
+
+                            if node is None:
+                                raise ValueError(f"Node '{node_name}' not found")
+
+                            if terminal_name not in node.terminals:
+                                raise ValueError(
+                                    f"Terminal '{terminal_name}' not found on node '{node_name}'"
+                                )
+
+                            terminal = node.terminals[terminal_name]
+                            if not terminal.isRemovable():
+                                raise ValueError(
+                                    f"Terminal '{terminal_name}' on node '{node_name}' is not removable"
+                                )
+
+                            # Disconnect all connections before removing
+                            terminal.disconnectAll()
+
+                            # Remove the terminal
+                            node.removeTerminal(terminal)
 
                     graphCommHandler = GraphCommHandler(
                         self.graphmgr_addr.name, self.graphmgr_addr.comm

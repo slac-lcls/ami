@@ -1,6 +1,6 @@
 # AMI Node Types Reference
 
-**Generated:** 2026-04-01 13:00:31
+**Generated:** 2026-04-01 21:01:08
 
 **Organization:** By functional category (optimized for AI agent semantic search)
 
@@ -34,11 +34,11 @@ Binning creates a histogram with a fixed number of bins using numpy.histogram.
 **Terminals:**
 
 *Inputs:*
-- `In`
+- `In` (float|Array1d|Array2d)
 
 *Outputs:*
-- `Bins`
-- `Counts`
+- `Bins` (Array1d)
+- `Counts` (Array1d)
 
 **Parameters:**
 
@@ -62,13 +62,13 @@ Binning2D creates a 2d histogram with a fixed number of bins using numpy.histogr
 **Terminals:**
 
 *Inputs:*
-- `X`
-- `Y`
+- `X` (float|Array1d)
+- `Y` (float|Array1d)
 
 *Outputs:*
-- `Counts`
-- `XBins`
-- `YBins`
+- `Counts` (Array2d)
+- `XBins` (Array1d)
+- `YBins` (Array1d)
 
 **Parameters:**
 
@@ -93,8 +93,12 @@ Histogram plots a histogram created from Binning.
 **Terminals:**
 
 *Inputs:*
-- `Bins`
-- `Counts`
+- `Bins` (Array1d)
+- `Counts` (Array1d)
+
+**Capabilities:**
+
+- ✓ Can add/remove input terminals
 
 ---
 
@@ -109,9 +113,9 @@ Histogram2D plots a 2d histogram created from Binning2D.
 **Terminals:**
 
 *Inputs:*
-- `Counts`
-- `XBins`
-- `YBins`
+- `Counts` (Array2d)
+- `XBins` (Array1d)
+- `YBins` (Array1d)
 
 ---
 
@@ -126,7 +130,7 @@ ImageViewer displays 2D arrays.
 **Terminals:**
 
 *Inputs:*
-- `In`
+- `In` (Array2d)
 
 ---
 
@@ -141,8 +145,12 @@ Line Plot plots arrays.
 **Terminals:**
 
 *Inputs:*
-- `X`
-- `Y`
+- `X` (Array1d)
+- `Y` (Array1d)
+
+**Capabilities:**
+
+- ✓ Can add/remove input terminals
 
 ---
 
@@ -159,13 +167,13 @@ Returns a dict with keys Bins and values mean waveform of bins.
 **Terminals:**
 
 *Inputs:*
-- `Bin`
-- `Value`
+- `Bin` (float)
+- `Value` (Array1d)
 
 *Outputs:*
-- `Counts`
-- `X Bins`
-- `Y Bins`
+- `Counts` (Array2d)
+- `X Bins` (Array1d)
+- `Y Bins` (Array1d)
 
 **Parameters:**
 
@@ -187,7 +195,11 @@ Debug box which plots which boxes have an event in a heartbeat
 **Terminals:**
 
 *Inputs:*
-- `In`
+- `In` (Any)
+
+**Capabilities:**
+
+- ✓ Can add/remove input terminals
 
 **Parameters:**
 
@@ -206,7 +218,7 @@ MultiWaveformViewer displays 2D arrays as series of 1D arrays.
 **Terminals:**
 
 *Inputs:*
-- `In`
+- `In` (MultiChannelWaveform)
 
 ---
 
@@ -221,7 +233,7 @@ ObjectViewer displays string representation of a python object.
 **Terminals:**
 
 *Inputs:*
-- `In`
+- `In` (Any)
 
 ---
 
@@ -236,7 +248,11 @@ Scalar Plot collects scalars and plots them.
 **Terminals:**
 
 *Inputs:*
-- `Y`
+- `Y` (float)
+
+**Capabilities:**
+
+- ✓ Can add/remove input terminals
 
 **Parameters:**
 
@@ -255,7 +271,7 @@ ScalarViewer displays the value of a scalar.
 **Terminals:**
 
 *Inputs:*
-- `In`
+- `In` (float)
 
 ---
 
@@ -270,8 +286,12 @@ Scatter Plot collects two scalars and plots them against each other.
 **Terminals:**
 
 *Inputs:*
-- `X`
-- `Y`
+- `X` (float)
+- `Y` (float)
+
+**Capabilities:**
+
+- ✓ Can add/remove input terminals
 
 **Parameters:**
 
@@ -291,12 +311,12 @@ Region of Interest of 1d array.
 **Terminals:**
 
 *Inputs:*
-- `X`
-- `Y`
+- `X` (float)
+- `Y` (float)
 
 *Outputs:*
-- `Out.X`
-- `Out.Y`
+- `Out.X` (Array1d)
+- `Out.Y` (Array1d)
 
 **Parameters:**
 
@@ -317,8 +337,12 @@ Plot a number against time of day.
 **Terminals:**
 
 *Inputs:*
-- `X`
-- `Y`
+- `X` (float)
+- `Y` (float)
+
+**Capabilities:**
+
+- ✓ Can add/remove input terminals
 
 **Parameters:**
 
@@ -337,7 +361,11 @@ WaveformViewer displays 1D arrays.
 **Terminals:**
 
 *Inputs:*
-- `In`
+- `In` (Array1d)
+
+**Capabilities:**
+
+- ✓ Can add/remove input terminals
 
 ---
 
@@ -356,10 +384,14 @@ Compute average using np.average
 **Terminals:**
 
 *Inputs:*
-- `In`
+- `In` (Array1d|Array2d)
 
 *Outputs:*
-- `Out`
+- `Out` (float)
+
+**Capabilities:**
+
+- ✓ Can add/remove input terminals
 
 **Parameters:**
 
@@ -378,10 +410,10 @@ Collect N scalars and average them.
 **Terminals:**
 
 *Inputs:*
-- `In`
+- `In` (float)
 
 *Outputs:*
-- `Out`
+- `Out` (float)
 
 **Parameters:**
 
@@ -401,10 +433,10 @@ Collect N 1d arrays and average them.
 **Terminals:**
 
 *Inputs:*
-- `In`
+- `In` (Array1d)
 
 *Outputs:*
-- `Out`
+- `Out` (Array1d)
 
 **Parameters:**
 
@@ -424,10 +456,10 @@ Collect N 2d arrays and average them.
 **Terminals:**
 
 *Inputs:*
-- `In`
+- `In` (Array2d)
 
 *Outputs:*
-- `Out`
+- `Out` (Array2d)
 
 **Parameters:**
 
@@ -447,10 +479,14 @@ Calculator
 **Terminals:**
 
 *Inputs:*
-- `In`
+- `In` (float|Array1d|Array2d|Array3d)
 
 *Outputs:*
-- `Out`
+- `Out` (Any)
+
+**Capabilities:**
+
+- ✓ Can add/remove input terminals
 
 ---
 
@@ -465,10 +501,10 @@ Generate combinations using itertools.combinations.
 **Terminals:**
 
 *Inputs:*
-- `In`
+- `In` (Array1d)
 
 *Outputs:*
-- `Out`
+- `Out` (Array1d)
 
 **Parameters:**
 
@@ -487,7 +523,7 @@ Constant
 **Terminals:**
 
 *Outputs:*
-- `Out`
+- `Out` (Any)
 
 ---
 
@@ -502,11 +538,11 @@ Exponential Moving Average for Waveforms.
 **Terminals:**
 
 *Inputs:*
-- `In`
+- `In` (Array1d)
 
 *Outputs:*
-- `Count`
-- `Out`
+- `Count` (int)
+- `Out` (Array1d)
 
 **Parameters:**
 
@@ -525,11 +561,11 @@ Exponential Moving Average for Images.
 **Terminals:**
 
 *Inputs:*
-- `In`
+- `In` (Array2d)
 
 *Outputs:*
-- `Count`
-- `Out`
+- `Count` (int)
+- `Out` (Array2d)
 
 **Parameters:**
 
@@ -548,11 +584,11 @@ HistMeanRMS
 **Terminals:**
 
 *Inputs:*
-- `In`
+- `In` (Array1d)
 
 *Outputs:*
-- `Mean`
-- `Stdev`
+- `Mean` (float)
+- `Stdev` (float)
 
 ---
 
@@ -567,10 +603,14 @@ Identity
 **Terminals:**
 
 *Inputs:*
-- `In`
+- `In` (Any)
 
 *Outputs:*
-- `Out`
+- `Out` (Any)
+
+**Capabilities:**
+
+- ✓ Can add/remove input terminals
 
 ---
 
@@ -585,8 +625,8 @@ Load 1d reference array from csv.
 **Terminals:**
 
 *Outputs:*
-- `X`
-- `Y`
+- `X` (Array1d)
+- `Y` (Array1d)
 
 **Parameters:**
 
@@ -607,12 +647,16 @@ Returns a dict with keys Bins and values mean of bins.
 **Terminals:**
 
 *Inputs:*
-- `Bin`
-- `Value`
+- `Bin` (float)
+- `Value` (float)
 
 *Outputs:*
-- `Bins`
-- `Counts`
+- `Bins` (Array1d)
+- `Counts` (Array1d)
+
+**Capabilities:**
+
+- ✓ Can add/remove input terminals
 
 **Parameters:**
 
@@ -634,10 +678,10 @@ Evaluate a polynomial using np.polynomial.polynomial.polyval
 **Terminals:**
 
 *Inputs:*
-- `In`
+- `In` (Array1d)
 
 *Outputs:*
-- `Out`
+- `Out` (Array1d)
 
 **Parameters:**
 
@@ -658,10 +702,14 @@ Projection projects a 2d array along the selected axis.
 **Terminals:**
 
 *Inputs:*
-- `In`
+- `In` (Array2d)
 
 *Outputs:*
-- `Out`
+- `Out` (Array1d)
+
+**Capabilities:**
+
+- ✓ Can add/remove input terminals
 
 **Parameters:**
 
@@ -677,6 +725,11 @@ Projection projects a 2d array along the selected axis.
 
 Write a python function.
 
+**Capabilities:**
+
+- ✓ Can add/remove input terminals
+- ✓ Can add/remove output terminals
+
 ---
 
 ### Split
@@ -690,10 +743,14 @@ Split a 2d array into 1d arrays using np.split.
 **Terminals:**
 
 *Inputs:*
-- `In`
+- `In` (Array2d)
 
 *Outputs:*
-- `Out`
+- `Out` (Array1d)
+
+**Capabilities:**
+
+- ✓ Can add/remove output terminals
 
 **Parameters:**
 
@@ -712,10 +769,14 @@ Stacks scalars into 1d array using np.stack
 **Terminals:**
 
 *Inputs:*
-- `In`
+- `In` (float|list[float])
 
 *Outputs:*
-- `Out`
+- `Out` (Array1d)
+
+**Capabilities:**
+
+- ✓ Can add/remove input terminals
 
 **Parameters:**
 
@@ -734,10 +795,14 @@ Stacks 1d arrays into 2d array using np.stack
 **Terminals:**
 
 *Inputs:*
-- `In`
+- `In` (Array1d|list[Array1d])
 
 *Outputs:*
-- `Out`
+- `Out` (Array2d)
+
+**Capabilities:**
+
+- ✓ Can add/remove input terminals
 
 **Parameters:**
 
@@ -756,10 +821,10 @@ Returns the sum of an array.
 **Terminals:**
 
 *Inputs:*
-- `In`
+- `In` (Array)
 
 *Outputs:*
-- `Out`
+- `Out` (float)
 
 ---
 
@@ -788,10 +853,14 @@ Index into a list or array using np.take
 **Terminals:**
 
 *Inputs:*
-- `In`
+- `In` (Array)
 
 *Outputs:*
-- `Out`
+- `Out` (float|Array1d|Array2d)
+
+**Capabilities:**
+
+- ✓ Can add/remove input terminals
 
 **Parameters:**
 
@@ -812,11 +881,11 @@ TimeMeanRMS0D
 **Terminals:**
 
 *Inputs:*
-- `In`
+- `In` (float)
 
 *Outputs:*
-- `Mean`
-- `RMS`
+- `Mean` (float)
+- `RMS` (float)
 
 **Parameters:**
 
@@ -835,11 +904,11 @@ TimeMeanRMS1D
 **Terminals:**
 
 *Inputs:*
-- `In`
+- `In` (Array1d)
 
 *Outputs:*
-- `Mean`
-- `RMS`
+- `Mean` (Array1d)
+- `RMS` (Array1d)
 
 **Parameters:**
 
@@ -858,11 +927,11 @@ TimeMeanRMS2D
 **Terminals:**
 
 *Inputs:*
-- `In`
+- `In` (Array2d)
 
 *Outputs:*
-- `Mean`
-- `RMS`
+- `Mean` (Array2d)
+- `RMS` (Array2d)
 
 **Parameters:**
 
@@ -885,10 +954,10 @@ Selects single pixel from image.
 **Terminals:**
 
 *Inputs:*
-- `In`
+- `In` (Array2d)
 
 *Outputs:*
-- `Out`
+- `Out` (float)
 
 **Parameters:**
 
@@ -908,10 +977,10 @@ Region of Interest of 1d array.
 **Terminals:**
 
 *Inputs:*
-- `In`
+- `In` (Array1d)
 
 *Outputs:*
-- `Out`
+- `Out` (Array1d)
 
 **Parameters:**
 
@@ -931,11 +1000,11 @@ Region of Interest of image.
 **Terminals:**
 
 *Inputs:*
-- `In`
+- `In` (Array2d)
 
 *Outputs:*
-- `Out`
-- `Roi_Coordinates`
+- `Out` (Array2d)
+- `Roi_Coordinates` (Array1d)
 
 **Parameters:**
 
@@ -957,21 +1026,21 @@ Region of Interest of image shaped as arch (a.k.a. cut-donat).
 **Terminals:**
 
 *Inputs:*
-- `image`
-- `mask`
+- `image` (Array2d)
+- `mask` (Array2d) *[optional, can remove]*
 
 *Outputs:*
-- `ABinCent`
-- `ABinEdges`
-- `AProj`
-- `BBox`
-- `Mask`
-- `RBinCent`
-- `RBinEdges`
-- `ROIPars`
-- `RProj`
-- `RadAngBinStatist`
-- `RadAngNormIntens`
+- `ABinCent` (Array1d)
+- `ABinEdges` (Array1d)
+- `AProj` (Array1d)
+- `BBox` (Array1d)
+- `Mask` (Array2d)
+- `RBinCent` (Array1d)
+- `RBinEdges` (Array1d)
+- `ROIPars` (Array1d)
+- `RProj` (Array1d)
+- `RadAngBinStatist` (Array2d)
+- `RadAngNormIntens` (Array2d)
 
 **Parameters:**
 
@@ -1001,10 +1070,14 @@ RMS
 **Terminals:**
 
 *Inputs:*
-- `In`
+- `In` (Array1d|Array2d)
 
 *Outputs:*
-- `Out`
+- `Out` (float)
+
+**Capabilities:**
+
+- ✓ Can add/remove input terminals
 
 ---
 
@@ -1021,14 +1094,14 @@ Returns a dict with keys Bins and values mean, std, error of bins.
 **Terminals:**
 
 *Inputs:*
-- `Bin`
-- `Value`
+- `Bin` (float)
+- `Value` (float)
 
 *Outputs:*
-- `Bins`
-- `Error`
-- `Mean`
-- `Stdev`
+- `Bins` (Array1d)
+- `Error` (Array1d)
+- `Mean` (Array1d)
+- `Stdev` (Array1d)
 
 **Parameters:**
 
@@ -1054,7 +1127,7 @@ Display an alert when the values and number of values in an array are greater th
 **Terminals:**
 
 *Inputs:*
-- `In`
+- `In` (Array1d)
 
 **Parameters:**
 
@@ -1074,10 +1147,15 @@ Filter
 **Terminals:**
 
 *Inputs:*
-- `In`
+- `In` (Any)
 
 *Outputs:*
-- `Out`
+- `Out` (Any)
+
+**Capabilities:**
+
+- ✓ Can add/remove input terminals
+- ✓ Can add/remove output terminals
 
 ---
 
@@ -1092,10 +1170,10 @@ Scipy Gaussian Filter 1D
 **Terminals:**
 
 *Inputs:*
-- `In`
+- `In` (Array1d)
 
 *Outputs:*
-- `Out`
+- `Out` (Array1d)
 
 **Parameters:**
 
@@ -1119,10 +1197,10 @@ Pick1 collects one of its input.
 **Terminals:**
 
 *Inputs:*
-- `In`
+- `In` (T)
 
 *Outputs:*
-- `Out`
+- `Out` (T)
 
 ---
 
@@ -1137,10 +1215,14 @@ PickN collects N of its input.
 **Terminals:**
 
 *Inputs:*
-- `In`
+- `In` (T)
 
 *Outputs:*
-- `Out`
+- `Out` (Array1d)
+
+**Capabilities:**
+
+- ✓ Can add/remove input terminals
 
 **Parameters:**
 
@@ -1159,10 +1241,10 @@ psana TestQtPickle - converts n-d array (n>=3) for detector data to 2-d table of
 **Terminals:**
 
 *Inputs:*
-- `arr3d`
+- `arr3d` (Array3d)
 
 *Outputs:*
-- `arr2d`
+- `arr2d` (Array2d)
 
 **Parameters:**
 
@@ -1182,10 +1264,10 @@ Apply a threshold to an image and sum.
 **Terminals:**
 
 *Inputs:*
-- `In`
+- `In` (Array2d)
 
 *Outputs:*
-- `Out`
+- `Out` (Array2d)
 
 ---
 
@@ -1204,11 +1286,15 @@ Accumulator
 **Terminals:**
 
 *Inputs:*
-- `In`
+- `In` (Any)
 
 *Outputs:*
-- `Count`
-- `Sum`
+- `Count` (int)
+- `Sum` (Any)
+
+**Capabilities:**
+
+- ✓ Can add/remove input terminals
 
 ---
 
@@ -1223,11 +1309,11 @@ ReduceByKey
 **Terminals:**
 
 *Inputs:*
-- `Key`
-- `Value`
+- `Key` (Any)
+- `Value` (Any)
 
 *Outputs:*
-- `Out`
+- `Out` (dict)
 
 ---
 
@@ -1242,11 +1328,15 @@ RollingBuffer collects N of its input.
 **Terminals:**
 
 *Inputs:*
-- `In`
+- `In` (T)
 
 *Outputs:*
-- `Count`
-- `Out`
+- `Count` (int)
+- `Out` (Array1d)
+
+**Capabilities:**
+
+- ✓ Can add/remove input terminals
 
 **Parameters:**
 
@@ -1269,8 +1359,8 @@ Send data to an existing externally hosted PV via Channel Access.
 **Terminals:**
 
 *Inputs:*
-- `In`
-- `eventid`
+- `In` (str|int|float|Array1d)
+- `eventid` (int)
 
 **Parameters:**
 
@@ -1292,11 +1382,11 @@ Send data back to worker from global collector.
 **Terminals:**
 
 *Inputs:*
-- `In`
-- `Timestamp`
+- `In` (Any)
+- `Timestamp` (float)
 
 *Outputs:*
-- `Out`
+- `Out` (Any)
 
 **Parameters:**
 
@@ -1315,8 +1405,8 @@ Export data through an AMI hosted PV using either PV access or channel access.
 **Terminals:**
 
 *Inputs:*
-- `In`
-- `eventid`
+- `In` (Any)
+- `eventid` (int)
 
 **Parameters:**
 
@@ -1336,8 +1426,8 @@ Send data to an existing externally hosted PV via PVAccess.
 **Terminals:**
 
 *Inputs:*
-- `In`
-- `eventid`
+- `In` (str|int|float|Array1d|Array2d)
+- `eventid` (int)
 
 **Parameters:**
 
@@ -1359,8 +1449,8 @@ UDP multicast a reduced rate of input in BLD format.
 **Terminals:**
 
 *Inputs:*
-- `In`
-- `eventid`
+- `In` (Any)
+- `eventid` (int)
 
 **Parameters:**
 
@@ -1381,8 +1471,12 @@ Export data over ZMQ PUB/SUB
 **Terminals:**
 
 *Inputs:*
-- `In`
-- `Timestamp`
+- `In` (Any)
+- `Timestamp` (float)
+
+**Capabilities:**
+
+- ✓ Can add/remove input terminals
 
 ---
 
@@ -1401,12 +1495,12 @@ Find blobs in a waveform.
 **Terminals:**
 
 *Inputs:*
-- `In`
+- `In` (Array1d)
 
 *Outputs:*
-- `NBlobs`
-- `Sum`
-- `X`
+- `NBlobs` (int)
+- `Sum` (Array1d)
+- `X` (Array1d)
 
 **Parameters:**
 
@@ -1426,13 +1520,13 @@ Find blobs in an image.
 **Terminals:**
 
 *Inputs:*
-- `In`
+- `In` (Array2d)
 
 *Outputs:*
-- `NBlobs`
-- `Sum`
-- `X`
-- `Y`
+- `NBlobs` (int)
+- `Sum` (Array1d)
+- `X` (Array1d)
+- `Y` (Array1d)
 
 **Parameters:**
 
@@ -1452,10 +1546,10 @@ Constant fraction descriminator
 **Terminals:**
 
 *Inputs:*
-- `In`
+- `In` (Array1d)
 
 *Outputs:*
-- `Out`
+- `Out` (float)
 
 **Parameters:**
 
@@ -1481,12 +1575,16 @@ Calls scipy.optimize.curve_fit to fit a function to its inputs.
 **Terminals:**
 
 *Inputs:*
-- `Y`
+- `Y` (Array1d)
 
 *Outputs:*
-- `fx`
-- `p0`
-- `pcov`
+- `fx` (Array1d)
+- `p0` (Array1d)
+- `pcov` (Array2d)
+
+**Capabilities:**
+
+- ✓ Can add/remove input terminals
 
 **Parameters:**
 
@@ -1507,16 +1605,16 @@ psana edgefinder
 **Terminals:**
 
 *Inputs:*
-- `Calib`
-- `IIR`
-- `Image`
+- `Calib` (dict)
+- `IIR` (Array1d)
+- `Image` (Array1d)
 
 *Outputs:*
-- `amplitude`
-- `amplitude_next`
-- `edge`
-- `fwhm`
-- `ref_amplitude`
+- `amplitude` (float)
+- `amplitude_next` (float)
+- `edge` (float)
+- `fwhm` (float)
+- `ref_amplitude` (float)
 
 ---
 
@@ -1531,10 +1629,10 @@ pyfftw.builders.fft
 **Terminals:**
 
 *Inputs:*
-- `In`
+- `In` (Array1d)
 
 *Outputs:*
-- `Out`
+- `Out` (Array1d)
 
 ---
 
@@ -1549,10 +1647,10 @@ pyfftw.builders.fft2
 **Terminals:**
 
 *Inputs:*
-- `In`
+- `In` (Array2d)
 
 *Outputs:*
-- `Out`
+- `Out` (Array2d)
 
 ---
 
@@ -1567,13 +1665,13 @@ psana Geometry - uses geometry constants to generate arrays of pixel coordinates
 **Terminals:**
 
 *Inputs:*
-- `arr3d`
-- `calibcons`
+- `arr3d` (Array3d) *[optional, can remove]*
+- `calibcons` (dict)
 
 *Outputs:*
-- `coords_xyz`
-- `image`
-- `inds_xy`
+- `coords_xyz` (list)
+- `image` (Array2d)
+- `inds_xy` (list)
 
 **Parameters:**
 
@@ -1592,12 +1690,12 @@ HSDPeakTest
 **Terminals:**
 
 *Inputs:*
-- `Peaks`
-- `Waveform`
+- `Peaks` (Peaks)
+- `Waveform` (Array1d)
 
 *Outputs:*
-- `Fail`
-- `Pass`
+- `Fail` (int)
+- `Pass` (int)
 
 ---
 
@@ -1612,16 +1710,16 @@ Hexanode
 **Terminals:**
 
 *Inputs:*
-- `Calib`
-- `Event Number`
-- `Num of Hits`
-- `Peak Times`
+- `Calib` (dict)
+- `Event Number` (float)
+- `Num of Hits` (Array1d)
+- `Peak Times` (Array2d)
 
 *Outputs:*
-- `R`
-- `T`
-- `X`
-- `Y`
+- `R` (Array1d)
+- `T` (Array1d)
+- `X` (Array1d)
+- `Y` (Array1d)
 
 **Parameters:**
 
@@ -1642,13 +1740,13 @@ HitFinder
 **Terminals:**
 
 *Inputs:*
-- `Num of Hits`
-- `Peak Times`
+- `Num of Hits` (Array1d)
+- `Peak Times` (Array2d)
 
 *Outputs:*
-- `T`
-- `X`
-- `Y`
+- `T` (Array1d)
+- `X` (Array1d)
+- `Y` (Array1d)
 
 **Parameters:**
 
@@ -1675,10 +1773,10 @@ pyfftw.builders.ifft
 **Terminals:**
 
 *Inputs:*
-- `In`
+- `In` (Array1d)
 
 *Outputs:*
-- `Out`
+- `Out` (Array1d)
 
 ---
 
@@ -1693,10 +1791,10 @@ pyfftw.builders.ifft2
 **Terminals:**
 
 *Inputs:*
-- `In`
+- `In` (Array2d)
 
 *Outputs:*
-- `Out`
+- `Out` (Array2d)
 
 ---
 
@@ -1711,10 +1809,10 @@ pyfftw.builders.irfft
 **Terminals:**
 
 *Inputs:*
-- `In`
+- `In` (Array1d)
 
 *Outputs:*
-- `Out`
+- `Out` (Array1d)
 
 ---
 
@@ -1729,10 +1827,10 @@ pyfftw.builders.irfft2
 **Terminals:**
 
 *Inputs:*
-- `In`
+- `In` (Array2d)
 
 *Outputs:*
-- `Out`
+- `Out` (Array2d)
 
 ---
 
@@ -1747,14 +1845,14 @@ Collect N scalars and apply Scipy.stats.linregress
 **Terminals:**
 
 *Inputs:*
-- `X.In`
-- `Y.In`
+- `X.In` (float)
+- `Y.In` (float)
 
 *Outputs:*
-- `Fit`
-- `X`
-- `Y`
-- `rvalue`
+- `Fit` (Array1d)
+- `X` (Array1d)
+- `Y` (Array1d)
+- `rvalue` (float)
 
 **Parameters:**
 
@@ -1773,16 +1871,16 @@ Scipy.stats.linregress
 **Terminals:**
 
 *Inputs:*
-- `X`
-- `Y`
+- `X` (Array1d)
+- `Y` (Array1d)
 
 *Outputs:*
-- `fit`
-- `intercept`
-- `pvalue`
-- `rvalue`
-- `slope`
-- `stderr`
+- `fit` (Array1d)
+- `intercept` (float)
+- `pvalue` (float)
+- `rvalue` (float)
+- `slope` (float)
+- `stderr` (float)
 
 ---
 
@@ -1797,11 +1895,11 @@ psana Mask
 **Terminals:**
 
 *Inputs:*
-- `calibconst`
+- `calibconst` (dict)
 
 *Outputs:*
-- `Mask`
-- `Mask3D`
+- `Mask` (Array2d)
+- `Mask3D` (Array3d)
 
 **Parameters:**
 
@@ -1835,11 +1933,11 @@ psana Mask3dFrom2d - converts mask2d (as image) to mask3d array shaped as data
 **Terminals:**
 
 *Inputs:*
-- `inds_xy`
-- `mask2d`
+- `inds_xy` (list)
+- `mask2d` (Array2d)
 
 *Outputs:*
-- `mask3d`
+- `mask3d` (Array3d)
 
 ---
 
@@ -1854,11 +1952,11 @@ psana Mask3dFrom2d - converts mask2d (as image) to mask3d array shaped as data
 **Terminals:**
 
 *Inputs:*
-- `Waveform`
+- `Waveform` (Array1d)
 
 *Outputs:*
-- `Centroid`
-- `Width`
+- `Centroid` (Array1d)
+- `Width` (Array1d)
 
 **Parameters:**
 
@@ -1878,14 +1976,14 @@ psana peakfinder v4r3d2
 **Terminals:**
 
 *Inputs:*
-- `Image`
+- `Image` (Array2d)
 
 *Outputs:*
-- `amp_tot`
-- `col_cgrav`
-- `npix`
-- `row_cgrav`
-- `son`
+- `amp_tot` (Array1d) *[optional, can remove]*
+- `col_cgrav` (Array1d) *[optional, can remove]*
+- `npix` (Array1d) *[optional, can remove]*
+- `row_cgrav` (Array1d) *[optional, can remove]*
+- `son` (Array1d) *[optional, can remove]*
 
 **Parameters:**
 
@@ -1916,15 +2014,15 @@ Models:
 **Terminals:**
 
 *Inputs:*
-- `In`
+- `In` (Array1d)
 
 *Outputs:*
-- `ampl`
-- `center`
-- `fit`
-- `fwhm`
-- `offset`
-- `width`
+- `ampl` (float)
+- `center` (float)
+- `fit` (Array1d)
+- `fwhm` (float)
+- `offset` (float)
+- `width` (float)
 
 **Parameters:**
 
@@ -1948,10 +2046,10 @@ pyfftw.builders.rfft
 **Terminals:**
 
 *Inputs:*
-- `In`
+- `In` (Array1d)
 
 *Outputs:*
-- `Out`
+- `Out` (Array1d)
 
 ---
 
@@ -1966,10 +2064,10 @@ pyfftw.builders.rfft2
 **Terminals:**
 
 *Inputs:*
-- `In`
+- `In` (Array2d)
 
 *Outputs:*
-- `Out`
+- `Out` (Array2d)
 
 ---
 
@@ -1984,10 +2082,10 @@ Scipy.ndimage.rotate
 **Terminals:**
 
 *Inputs:*
-- `In`
+- `In` (Array2d)
 
 *Outputs:*
-- `Out`
+- `Out` (Array2d)
 
 **Parameters:**
 
@@ -2006,10 +2104,10 @@ psana TableFromArr3d - converts n-d array (n>=3) for detector data to 2-d table 
 **Terminals:**
 
 *Inputs:*
-- `arr3d`
+- `arr3d` (Array3d)
 
 *Outputs:*
-- `arr2d`
+- `arr2d` (Array2d)
 
 **Parameters:**
 
@@ -2029,14 +2127,14 @@ WFPeaks
 **Terminals:**
 
 *Inputs:*
-- `Times`
-- `Waveform`
+- `Times` (Array2d)
+- `Waveform` (Array2d)
 
 *Outputs:*
-- `Index`
-- `Num of Hits`
-- `Peak Times`
-- `Values`
+- `Index` (Array2d)
+- `Num of Hits` (Array1d)
+- `Peak Times` (Array2d)
+- `Values` (Array2d)
 
 ---
 
@@ -2051,15 +2149,15 @@ XTCAVLasingOn
 **Terminals:**
 
 *Inputs:*
-- `cam`
-- `pars`
-- `src`
+- `cam` (Detector)
+- `pars` (Detector)
+- `src` (DataSource)
 
 *Outputs:*
-- `agreement`
-- `power`
-- `pulse`
-- `time`
+- `agreement` (float)
+- `power` (Array2d)
+- `pulse` (Array1d)
+- `time` (Array2d)
 
 **Parameters:**
 
