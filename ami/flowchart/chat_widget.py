@@ -16,10 +16,23 @@ Architecture:
 """
 
 import json
+import logging
 import re
 import traceback
 from datetime import datetime
 from html import escape
+
+# Setup logger for chat widget
+logger = logging.getLogger(__name__)
+
+# Try to import markdown library
+try:
+    import markdown
+
+    HAS_MARKDOWN = True
+except ImportError:
+    HAS_MARKDOWN = False
+    logger.warning("markdown library not available - agent text will be plain")
 from qtpy.QtWidgets import (
     QWidget,
     QVBoxLayout,
@@ -293,6 +306,43 @@ class ChatWidget(QWidget):
         )
         return highlight(code, PythonLexer(), formatter)
 
+    def _markdown_to_html(self, text):
+        """
+        Convert markdown text to HTML.
+
+        Supports:
+        - **bold**, *italic*
+        - `inline code`
+        - Lists (bullet and numbered)
+        - ## Headings
+        - Links [text](url)
+        - Tables
+
+        Args:
+            text: Markdown-formatted text
+
+        Returns:
+            HTML string
+        """
+        if not HAS_MARKDOWN:
+            # Fallback: escape HTML and preserve line breaks
+            html = escape(text)
+            html = html.replace("\n", "<br>")
+            return html
+
+        # Convert markdown to HTML
+        html = markdown.markdown(
+            text,
+            extensions=[
+                "fenced_code",  # Support ```code blocks```
+                "nl2br",  # Convert \n to <br>
+                "tables",  # Support | tables |
+                "sane_lists",  # Better list handling
+            ],
+        )
+
+        return html
+
     def _generate_line_numbers(self, code):
         """
         Generate HTML for line numbers column.
@@ -415,6 +465,88 @@ class ChatWidget(QWidget):
         .agent {
             color: #388E3C;
             font-weight: 600;
+        }
+        
+        /* Agent formatted text (markdown rendered) */
+        .agent_formatted {
+            color: #2E7D32;
+            margin: 8px 0;
+            line-height: 1.7;
+        }
+        
+        .agent_formatted strong {
+            color: #1B5E20;
+            font-weight: 700;
+        }
+        
+        .agent_formatted em {
+            font-style: italic;
+        }
+        
+        .agent_formatted code {
+            background-color: #E8F5E9;
+            padding: 2px 5px;
+            border-radius: 3px;
+            font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+            font-size: 12px;
+            color: #1B5E20;
+            border: 1px solid #C8E6C9;
+        }
+        
+        .agent_formatted ul, .agent_formatted ol {
+            margin: 6px 0;
+            padding-left: 24px;
+        }
+        
+        .agent_formatted li {
+            margin: 3px 0;
+        }
+        
+        .agent_formatted h1, .agent_formatted h2, .agent_formatted h3 {
+            color: #1B5E20;
+            font-weight: 600;
+            margin: 10px 0 6px 0;
+        }
+        
+        .agent_formatted h1 { font-size: 16px; }
+        .agent_formatted h2 { font-size: 15px; }
+        .agent_formatted h3 { font-size: 14px; }
+        
+        .agent_formatted p {
+            margin: 6px 0;
+        }
+        
+        .agent_formatted a {
+            color: #1976D2;
+            text-decoration: underline;
+        }
+        
+        .agent_formatted a:hover {
+            color: #1565C0;
+        }
+        
+        .agent_formatted table {
+            border-collapse: collapse;
+            margin: 8px 0;
+            font-size: 12px;
+        }
+        
+        .agent_formatted th {
+            background-color: #E8F5E9;
+            padding: 6px 10px;
+            border: 1px solid #C8E6C9;
+            font-weight: 600;
+        }
+        
+        .agent_formatted td {
+            padding: 6px 10px;
+            border: 1px solid #E0E0E0;
+        }
+        
+        .agent_formatted_label {
+            color: #388E3C;
+            font-weight: 600;
+            margin-right: 6px;
         }
         
         .warning {
@@ -565,6 +697,23 @@ class ChatWidget(QWidget):
                     f'<span class="agent">Agent: {escape(content)}</span></p>'
                 )
 
+            elif msg_type == "agent_formatted":
+                # Render markdown-formatted agent text
+                label = msg.get(
+                    "label", ""
+                )  # Optional "Agent:" label for first segment
+
+                if label:
+                    html_parts.append(
+                        f'<p><span class="timestamp">[{timestamp}]</span>'
+                        f'<span class="agent_formatted_label">{escape(label)}</span>'
+                        f'<span class="agent_formatted">{content}</span></p>'
+                    )
+                else:
+                    html_parts.append(
+                        f'<p><span class="agent_formatted">{content}</span></p>'
+                    )
+
             elif msg_type == "warning":
                 html_parts.append(
                     f'<p><span class="timestamp">[{timestamp}]</span>'
@@ -675,8 +824,40 @@ class ChatWidget(QWidget):
         Returns:
             Full prompt string
         """
-        # Format available sources
-        sources_str = ", ".join(state.get("available_sources", []))
+        # Format available sources with types
+        sources = state.get("available_sources", [])
+        source_library = (
+            self.ctrl.chart.source_library
+            if hasattr(self.ctrl.chart, "source_library")
+            else None
+        )
+
+        if source_library and sources:
+            # Get types for each source and format with abbreviated unions
+            sources_with_types = []
+            for source_name in sources:
+                try:
+                    source_type = source_library.getSourceType(source_name)
+                    # Format type: Union[A, B] → A|B
+                    type_str = (
+                        str(source_type.__name__)
+                        if hasattr(source_type, "__name__")
+                        else str(source_type)
+                    )
+                    # Abbreviate Union syntax for readability
+                    if type_str.startswith("Union["):
+                        type_str = type_str[6:-1].replace(
+                            ", ", "|"
+                        )  # Union[A, B] → A|B
+                    sources_with_types.append(f"{source_name} ({type_str})")
+                except (KeyError, AttributeError):
+                    # Type not available - use Any to indicate accepts anything
+                    sources_with_types.append(f"{source_name} (Any)")
+
+            sources_str = ", ".join(sources_with_types)
+        else:
+            # Fallback if no source library available
+            sources_str = ", ".join(sources)
 
         # Format existing nodes (if any)
         nodes_str = ""
@@ -705,6 +886,8 @@ Please generate Python code to fulfill this request using the AMI graph building
         self._append_message("system", "[System] Response received, processing...")
 
         # Show agent's conversational text first
+        logger.debug(f"Response received: {len(response_str)} characters")
+        logger.debug(f"Response preview: {response_str[:500]}")
         self._show_agent_text(response_str)
 
         # Extract code and response data from response
@@ -730,10 +913,67 @@ Please generate Python code to fulfill this request using the AMI graph building
                     # Error - check if we should retry
                     self._handle_error_with_retry(exec_result, response_data)
         else:
-            # No code found - agent might have just answered with text or asked a question
-            self._append_message("system", "[System] No code to execute")
+            # No code found - log diagnostics and inform user
+            self._handle_no_code_response(response_str)
             # Reset retry counter
             self._retry_iteration = 0
+
+    def _handle_no_code_response(self, response_str):
+        """
+        Handle responses without executable code.
+        Logs diagnostics to terminal without cluttering UI.
+
+        Args:
+            response_str: Raw response string from agent
+        """
+        # Count events and analyze response content
+        event_count = 0
+        text_event_count = 0
+        text_with_code_blocks = 0
+        text_without_code = 0
+
+        for line in response_str.split("\n"):
+            if not line.strip():
+                continue
+            try:
+                event = json.loads(line)
+                event_count += 1
+
+                if event.get("type") == "text":
+                    text_event_count += 1
+                    text = event.get("part", {}).get("text", "")
+
+                    if "```" in text:
+                        text_with_code_blocks += 1
+                    elif text.strip():
+                        text_without_code += 1
+
+            except json.JSONDecodeError:
+                continue
+
+        # Log analysis to terminal
+        logger.debug(f"No code to execute - Response analysis:")
+        logger.debug(f"  Total events: {event_count}")
+        logger.debug(f"  Text events: {text_event_count}")
+        logger.debug(f"  Text with code blocks: {text_with_code_blocks}")
+        logger.debug(f"  Text without code: {text_without_code}")
+
+        # Warn if truly empty (unusual case)
+        if event_count == 0:
+            logger.warning("Agent returned completely empty response (0 events)")
+            self._append_message("warning", "⚠️  Agent returned empty response")
+        elif text_event_count == 0:
+            logger.warning(
+                f"Agent response had {event_count} events but no text content"
+            )
+            self._append_message("warning", "⚠️  Agent response contained no text")
+        else:
+            # Normal case - agent answered with text only
+            logger.info(f"Agent responded with text explanation (no executable code)")
+            self._append_message(
+                "system",
+                "[System] Agent responded with explanation (no code generated)",
+            )
 
     @Slot(str)
     def _on_error_occurred(self, error_msg):
@@ -1055,11 +1295,26 @@ Please generate Python code to fulfill this request using the AMI graph building
                     if event.get("type") == "text":
                         text = event.get("part", {}).get("text", "")
 
-                        # Skip if this text contains any code block (shown separately via collapsible blocks)
+                        # If text contains code blocks, extract text before/after them
                         if "```" in text:
-                            continue
+                            # Split by triple backticks
+                            parts = text.split("```")
 
-                        # Skip empty text
+                            # Parts at even indices (0, 2, 4...) are OUTSIDE code blocks
+                            # Parts at odd indices (1, 3, 5...) are INSIDE code blocks
+                            for i, part in enumerate(parts):
+                                if (
+                                    i % 2 == 0
+                                ):  # Outside code block - this is explanatory text
+                                    cleaned = part.strip()
+                                    if cleaned:
+                                        agent_texts.append(cleaned)
+                                        logger.debug(
+                                            f"Extracted text segment (before/after code): {len(cleaned)} chars"
+                                        )
+                            continue  # Already processed this event
+
+                        # No code blocks - add text directly
                         if text.strip():
                             agent_texts.append(text)
 
@@ -1069,12 +1324,44 @@ Please generate Python code to fulfill this request using the AMI graph building
         except Exception as e:
             self._append_output(f"[Warning] Text display error: {e}")
 
+        # Log how many text segments were extracted
+        logger.debug(f"Extracted {len(agent_texts)} text segments from agent response")
+
+        # If no text was extracted, log why
+        if not agent_texts:
+            # Count how many text events were skipped
+            skipped_with_code = 0
+            for line in response_str.split("\n"):
+                if not line.strip():
+                    continue
+                try:
+                    event = json.loads(line)
+                    if event.get("type") == "text":
+                        text = event.get("part", {}).get("text", "")
+                        if "```" in text:
+                            skipped_with_code += 1
+                except json.JSONDecodeError:
+                    continue
+
+            if skipped_with_code > 0:
+                logger.debug(
+                    f"Skipped {skipped_with_code} text events containing code blocks"
+                )
+
         # Display agent text if any was found
         if agent_texts:
-            self._append_output("Agent:")
-            for text in agent_texts:
-                self._append_output(text)
-            self._append_output("")  # Blank line for separation
+            # First text segment gets "Agent:" prefix
+            for i, text in enumerate(agent_texts):
+                # Convert markdown to HTML
+                formatted_html = self._markdown_to_html(text)
+
+                # First segment includes "Agent:" label
+                if i == 0:
+                    self._append_message(
+                        "agent_formatted", formatted_html, label="Agent:"
+                    )
+                else:
+                    self._append_message("agent_formatted", formatted_html)
 
     @Slot(str)
     def _execute_code_slot(self, code):

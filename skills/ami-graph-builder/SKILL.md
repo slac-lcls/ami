@@ -97,6 +97,130 @@ Use this when the user request is clear enough to generate executable code.
 - `warnings` (list of strings): Assumptions or preconditions
 - `next_steps` (list of strings): Suggestions for what to do next
 
+### Text Formatting in Responses
+
+You can use **markdown formatting** in your explanatory text to make responses more readable. The chat widget renders markdown to HTML.
+
+**Supported formatting:**
+- **Bold**: `**text**` → **text**
+- *Italic*: `*text*` → *text*
+- `Inline code`: `` `code` `` → `code`
+- Lists: `- item` or `1. item`
+- Headings: `## Heading` or `### Subheading`
+- Tables: Standard markdown tables
+- Links: `[text](url)`
+
+**When to use formatting:**
+
+1. **Bold** for emphasis or important warnings:
+   - "**Important:** Configure the ROI in the GUI before running"
+   - "Connecting **laser (float)** to **detector (float)**"
+
+2. **Lists** for steps, options, or connections:
+   - Bullet points for related items
+   - Numbered lists for sequential steps
+
+3. **Inline code** for terminal names, node types, or values:
+   - "Use the `ScatterPlot.X` terminal"
+   - "Connect to `Array2d` input"
+   - "Set expression to `In * 2.5 + 10`"
+
+4. **Headings** for structuring longer explanations:
+   - Use `##` for major sections
+   - Use `###` for subsections
+
+**When NOT to use formatting:**
+
+❌ **Don't over-format** - Keep it simple and purposeful:
+```markdown
+❌ BAD: **I'll** *create* a **scatter** *plot* with `these` **connections**
+✅ GOOD: I'll create a scatter plot with these connections
+```
+
+❌ **Don't use markdown inside JSON fields**:
+```json
+// WRONG - markdown in JSON string
+{
+  "explanation": "Connects **laser** to `ScatterPlot.X`",
+  ...
+}
+
+// CORRECT - plain text in JSON
+{
+  "explanation": "Connects laser to ScatterPlot.X terminal",
+  ...
+}
+```
+
+❌ **Don't use excessive headings** for short responses:
+```markdown
+❌ BAD:
+## Response
+### Explanation
+I'll create a plot.
+
+✅ GOOD:
+I'll create a scatter plot for you.
+```
+
+**Examples of effective formatting:**
+
+**Example 1: Type mismatch explanation**
+
+When explaining why a connection won't work:
+
+```
+I cannot connect `c_atmopal:raw:image` **(Array2d)** to WaveformViewer **(expects Array1d)**.
+
+**Why this fails:**
+- WaveformViewer displays 1D waveforms (Array1d)
+- `c_atmopal:raw:image` outputs 2D images (Array2d)
+
+**Suggested alternatives:**
+1. Use **ImageViewer** to display the 2D image
+2. Use **Projection** to reduce Array2d → Array1d, then connect to WaveformViewer
+3. Extract a single row/column with ROI for 1D visualization
+
+Would you like me to create an ImageViewer instead?
+```
+
+**Example 2: Listing connections**
+
+When explaining what connections will be made:
+
+```
+I'll create a scatter plot with these connections:
+
+- **X axis**: `laser` (float) → `ScatterPlot.X`
+- **Y axis**: `detector` (float) → `ScatterPlot.Y`
+
+**Configure in the GUI:**
+1. Axis labels
+2. Point size and colors
+3. Data range limits
+```
+
+**Example 3: Explaining available sources**
+
+When answering "what sources are available?":
+
+```
+Based on the available sources, the camera detectors are:
+
+| Detector | Type | Output |
+|----------|------|--------|
+| c_piranha | Camera | Array2d (image) |
+| c_atmopal | Camera | Array2d (image) |
+| andor_vls | Andor | Array2d |
+
+Use **ImageViewer** to display these 2D camera images.
+```
+
+**Remember:**
+- Only use markdown in **conversational text** (outside JSON code blocks)
+- Don't use markdown inside JSON strings (`explanation`, `warnings`, `next_steps` fields)
+- Keep formatting simple and purposeful - enhance clarity, don't distract
+
 ### Examples
 
 #### Question Response Examples
@@ -315,6 +439,269 @@ node = chart.createNode('NodeType', 'manual_name')
 ```python
 amicli.connect_nodes('source_node', 'Out', 'dest_node', 'In')
 ```
+
+### ⚠️ CRITICAL: Check Type Compatibility Before Connecting
+
+**Always verify terminal types match BEFORE calling `connect_nodes()`!**
+
+AMI validates types at runtime using mypy. Connecting incompatible types causes errors that break the graph.
+
+#### How to Check Types
+
+**1. Source types are shown in the prompt:**
+```
+Available data sources: jungfrau (Array2d), motor_x (float), ebeam (dict)
+```
+
+**2. Terminal types are documented in the reference:**
+- Check `references/all_node_types.md` for complete terminal documentation
+- Check `references/terminals_quick_ref.md` for quick lookup table
+
+**3. Before connecting, verify compatibility:**
+```python
+# ✅ CORRECT - types match
+# jungfrau (Array2d) → ImageViewer.In (Array2d)
+amicli.connect_nodes('jungfrau', 'Out', 'image_viewer', 'In')
+
+# ❌ WRONG - type mismatch
+# motor_x (float) → ImageViewer.In (Array2d)
+# This will fail! Need conversion node.
+```
+
+#### Type Compatibility Rules
+
+| Source Type | Target Type | Compatible? | Notes |
+|------------|-------------|-------------|-------|
+| `float` | `float` | ✅ Yes | Exact match |
+| `int` | `float` | ✅ Yes | Python automatic coercion |
+| `float` | `float\|Array1d` | ✅ Yes | Union match (float is one option) |
+| `Array1d` | `Array` | ✅ Yes | Array = Union[Array1d\|Array2d\|Array3d\|list[float]\|tuple[float]] |
+| `list[float]` | `Array` | ✅ Yes | Array includes list[float] |
+| `Any` | `<anything>` | ✅ Yes | Any accepts/produces anything |
+| `<anything>` | `Any` | ✅ Yes | Any accepts/produces anything |
+| `dict` | `dict` | ✅ Yes | Exact match only for dicts |
+| `float` | `Array2d` | ❌ No | Wrong dimensionality - use conversion node |
+| `Array1d` | `float` | ❌ No | Cannot convert array to scalar |
+| `dict` | `float` | ❌ No | Dict only connects to dict |
+
+#### Common Type Errors and Fixes
+
+**Problem: Connecting scalar to image viewer**
+```python
+# ❌ WRONG - motor_x outputs float, ImageViewer needs Array2d
+amicli.connect_nodes('motor_x', 'Out', 'image_viewer', 'In')
+
+# ✅ CORRECT - Use Binning to convert float stream → Array1d, then visualization
+binning = amicli.create_node('Binning', 'Motor Position Histogram')
+amicli.connect_nodes('motor_x', 'Out', binning.name(), 'In')
+# Binning.Bins output is Array1d - can use with Histogram
+hist = amicli.create_node('Histogram', 'Distribution')
+amicli.connect_nodes(binning.name(), 'Bins', hist.name(), 'Bins')
+print('Configure bin range and count in Binning node GUI.')
+```
+
+**Problem: Connecting array to scalar plot**
+```python
+# ❌ WRONG - jungfrau outputs Array2d, ScalarPlot needs float
+amicli.connect_nodes('jungfrau', 'Out', 'scalar_plot', 'Y')
+
+# ✅ CORRECT - Use Projection to reduce Array2d → float
+proj = amicli.create_node('Projection', 'Total Counts')
+amicli.connect_nodes('jungfrau', 'Out', proj.name(), 'In')
+# Projection.Out is float - can connect to ScalarPlot
+plot = amicli.create_node('ScalarPlot', 'Detector Sum')
+amicli.connect_nodes(proj.name(), 'Out', plot.name(), 'Y')
+```
+
+**Problem: Wrong array dimensionality**
+```python
+# ❌ WRONG - hsd outputs GenericWfWaveforms (list[Array1d]), WaveformViewer might expect Array2d
+# Check node documentation for exact type requirements!
+
+# ✅ CORRECT - Check reference first
+# WaveformViewer.Waveforms accepts GenericWfWaveforms (list[Array1d]) OR AcqirisWaveforms (Array2d)
+# Both work! No conversion needed.
+amicli.connect_nodes('hsd', 'GenericWf.waveforms', 'wf_viewer', 'Waveforms')
+```
+
+#### Conversion Nodes: float → Array
+
+These 9 nodes convert scalar (float) inputs to array outputs for visualization/analysis:
+
+- **Binning** - Histogram bins (float → Array1d bins + counts)
+- **Binning2D** - 2D histogram bins (float, float → Array2d bins + counts)
+- **Stack1d** - Collect scalars into 1D array over time
+- **MeanVsScan** - Average values vs scan variable (float → Array1d)
+- **StatsVsScan** - Statistics vs scan variable (float → Array1d for mean/std)
+- **ScatterRoi** - ROI coordinates from scatter data
+- **Linregress0D** - Linear regression coefficients
+- **MeanWaveformVsScan** - Average waveforms vs scan
+- **Hexanode** - Hexanode detector processing
+
+**When to use conversion nodes:**
+- User asks for histogram of scalar data → use **Binning**
+- User wants to plot scalar vs scan step → use **MeanVsScan**
+- User wants to collect scalars into array → use **Stack1d**
+
+#### Examples: Type Checking in Practice
+
+**Example 1: Scatter plot (both inputs must be compatible)**
+```python
+# User: "create scatter plot of laser vs detector"
+# Prompt shows: laser (float), detector (float)
+
+# Check types:
+# - ScatterPlot.X accepts: float|Array1d
+# - ScatterPlot.Y accepts: float|Array1d
+# - laser (float) → compatible ✅
+# - detector (float) → compatible ✅
+
+scatter = amicli.create_node('ScatterPlot', 'Laser Vs Detector')
+amicli.connect_nodes('laser', 'Out', scatter.name(), 'X')
+amicli.connect_nodes('detector', 'Out', scatter.name(), 'Y')
+```
+
+**Example 2: Image viewer (must be 2D)**
+```python
+# User: "show the jungfrau image"
+# Prompt shows: jungfrau (Array2d)
+
+# Check types:
+# - ImageViewer.In accepts: Array2d
+# - jungfrau (Array2d) → compatible ✅
+
+viewer = amicli.create_node('ImageViewer', 'Jungfrau Image')
+amicli.connect_nodes('jungfrau', 'Out', viewer.name(), 'In')
+```
+
+**Example 3: Type conversion needed**
+```python
+# User: "make a histogram of motor_x positions"
+# Prompt shows: motor_x (float)
+
+# Problem: motor_x (float) → cannot directly create histogram (needs Array1d bins)
+# Solution: Use Binning to convert float stream → Array1d bins
+
+binning = amicli.create_node('Binning', 'Motor Position Bins')
+amicli.connect_nodes('motor_x', 'Out', binning.name(), 'In')
+
+hist = amicli.create_node('Histogram', 'Motor Distribution')
+# Binning.Bins output is Array1d - compatible with Histogram.Bins ✅
+amicli.connect_nodes(binning.name(), 'Bins', hist.name(), 'Bins')
+
+print('Configure bin range and count in Binning node GUI.')
+```
+
+**Example 4: Union type matching**
+```python
+# User: "average the detector signal"
+# Prompt shows: detector (Array2d)
+
+# Check types:
+# - Average.In accepts: float|Array1d|Array2d (union type)
+# - detector (Array2d) → compatible ✅ (Array2d is in the union)
+
+avg = amicli.create_node('Average', 'Detector Average')
+amicli.connect_nodes('detector', 'Out', avg.name(), 'In')
+```
+
+**Example 5: Dict type (special case)**
+```python
+# User: "use the ebeam data"
+# Prompt shows: ebeam (dict)
+
+# dict types are special - they only connect to dict terminals
+# Common nodes accepting dict:
+# - Hexanode.Calib (dict - calibration constants)
+# - EdgeFinder.Calib (dict)
+# - Mask.calibconst (dict)
+# - Geometry.calibcons (dict)
+
+# For data extraction from dict, use ObjectViewer or specific detector nodes
+viewer = amicli.create_node('ObjectViewer', 'Beam Parameters')
+# ObjectViewer.In accepts Any - compatible with dict ✅
+amicli.connect_nodes('ebeam', 'Out', viewer.name(), 'In')
+```
+
+---
+
+#### Appendix: Common LCLS Detector Types
+
+This reference helps you understand detector **context and typical outputs**. 
+
+**⚠️ IMPORTANT:** Always prefer the explicit type shown in the prompt (e.g., `"jungfrau (Array2d)"`) over these heuristics. This appendix is for understanding the LCLS experimental domain, not for primary type checking.
+
+##### AreaDetector (outputs Array2d - 2D images)
+**Description:** Camera and imaging detectors that produce 2D pixel arrays.
+
+**Examples:** jungfrau, epix, cspad, opal, uxi, rayonix, andor
+
+**Typical use:**
+- **Visualization:** ImageViewer
+- **ROI extraction:** Roi2D, RoiArch
+- **Processing:** Projection (2D → 1D or scalar), Binning2D
+
+**Connection example:**
+```python
+# jungfrau (Array2d) → ImageViewer.In (Array2d) ✅
+viewer = amicli.create_node('ImageViewer', 'Camera Image')
+amicli.connect_nodes('jungfrau', 'Out', viewer.name(), 'In')
+```
+
+##### WFDetector (outputs AcqirisTimes/AcqirisWaveforms - Array2d waveforms)
+**Description:** Acqiris digitizers that produce digitized waveforms.
+
+**Examples:** acqiris, imp
+
+**Typical use:**
+- **Visualization:** WaveformViewer
+- **Analysis:** Waveform processing nodes
+
+**Connection example:**
+```python
+# acqiris (AcqirisWaveforms) → WaveformViewer.Waveforms ✅
+viewer = amicli.create_node('WaveformViewer', 'Digitizer Traces')
+amicli.connect_nodes('acqiris', 'AcqirisWf.waveforms', viewer.name(), 'Waveforms')
+```
+
+##### GenericWFDetector (outputs GenericWfTimes/GenericWfWaveforms - list[Array1d])
+**Description:** HSD and generic waveform digitizers with multiple channels.
+
+**Examples:** hsd, wave, generic_wf
+
+**Typical use:**
+- **Visualization:** WaveformViewer (handles list[Array1d])
+- **Per-channel processing:** Extract individual channels for analysis
+
+**Connection example:**
+```python
+# hsd (GenericWfWaveforms) → WaveformViewer.Waveforms ✅
+viewer = amicli.create_node('WaveformViewer', 'HSD Waveforms')
+amicli.connect_nodes('hsd', 'GenericWf.waveforms', viewer.name(), 'Waveforms')
+```
+
+##### DdlDetector (outputs scalars/structures - often dict or individual PVs)
+**Description:** Beam Line Data (BLD) providing scalar measurements and beam parameters.
+
+**Examples:** ebeam, gasdet, ipm
+
+**Typical use:**
+- **Visualization:** ScalarPlot, TimePlot (for individual scalar fields)
+- **Monitoring:** ObjectViewer (for full dict structure)
+
+**Connection example:**
+```python
+# ebeam (dict) → ObjectViewer.In (Any) ✅
+viewer = amicli.create_node('ObjectViewer', 'Beam Parameters')
+amicli.connect_nodes('ebeam', 'Out', viewer.name(), 'In')
+```
+
+---
+
+**Remember:**
+- Check the type shown in the prompt FIRST: `"jungfrau (Array2d)"`
+- Use this appendix only for contextual understanding
+- When in doubt, check the node reference documentation for exact terminal types
 
 ### ⚠️ CRITICAL: Terminal Names by Node Type
 
@@ -1038,6 +1425,157 @@ Only use this approach if questions aren't needed:
 }
 ```
 
+## Handling "Can We" Questions ⚠️ SPECIAL CASE
+
+### Recognizing Ambiguous "Can We" Phrasing
+
+When user asks "can we do X?", this phrasing is **ambiguous** - it could mean:
+- "Is this possible?" (wants explanation)
+- "Please set this up for me" (wants action)
+
+**Your response depends on whether the request is actionable and explicit:**
+
+### Case 1: Actionable Request with "Can We" → Ask for Clarification
+
+When user asks "can we do X?" and X is possible/actionable, **ask which they prefer:**
+
+**Example: "can we view the piranha raw image?"**
+
+```json
+{
+  "type": "question",
+  "message": "Yes, you can view the c_piranha raw:image data! Would you like me to:",
+  "questions": [{
+    "question": "What would you like me to do?",
+    "options": [
+      "Create the c_piranha source node (then click it to view)",
+      "Just explain how to view it (I'll do it manually)"
+    ],
+    "context": "Source nodes have built-in viewers for their data"
+  }]
+}
+```
+
+**Example: "can we make a histogram of motor positions?"**
+
+```json
+{
+  "type": "question",
+  "message": "Yes, I can create a histogram of motor positions using Binning + Histogram nodes.",
+  "questions": [{
+    "question": "Would you like me to:",
+    "options": [
+      "Generate the code to create the histogram",
+      "Explain how the histogram works first"
+    ]
+  }]
+}
+```
+
+### Case 2: Problematic Request with "Can We" → Explain Problem
+
+When user asks "can we do X?" but X has issues (type mismatch, missing source, etc.), **explain the problem with alternatives:**
+
+**Example: "can we connect c_atmopal:raw:image to WaveformViewer?"**
+
+Respond with **conversational text** (NOT code):
+
+```
+I cannot connect `c_atmopal:raw:image` **(Array2d)** to WaveformViewer **(expects Array1d)**.
+
+**Why this won't work:**
+- WaveformViewer displays 1D waveforms (Array1d)
+- `c_atmopal:raw:image` outputs 2D images (Array2d)
+
+**Suggested alternatives:**
+1. Use **ImageViewer** to display the 2D image
+2. Use **Projection** to reduce Array2d → Array1d first, then connect to WaveformViewer
+3. Extract a row/column with ROI for 1D visualization
+
+Would you like me to create an ImageViewer instead?
+```
+
+**Important:** This is conversational text, NOT a code response with print statements!
+
+### Case 3: Explicit Command → Take Action
+
+When user uses **imperative phrasing** (commands, not questions), interpret as a request to generate code:
+
+**Trigger phrases that indicate direct commands:**
+- "view X"
+- "create Y"
+- "show me X"
+- "connect X to Y"
+- "make a histogram"
+- "generate a plot"
+
+**Example: "view the c_piranha raw image"**
+
+Generate code immediately (no question needed):
+
+```json
+{
+  "explanation": "Creating c_piranha source node for viewing the raw:image (Array2d) data",
+  "code": "source = amicli.ensure_source('c_piranha')\nprint('✅ Created c_piranha source - click it to view the Array2d image')"
+}
+```
+
+**Example: "create a scatter plot of laser vs detector"**
+
+Generate code immediately:
+
+```json
+{
+  "explanation": "Creating scatter plot with laser on X-axis and detector on Y-axis",
+  "code": "scatter = amicli.create_node('ScatterPlot', 'Laser Vs Detector')\namicli.connect_nodes('laser', 'Out', scatter.name(), 'X')\namicli.connect_nodes('detector', 'Out', scatter.name(), 'Y')\nprint('✅ Scatter plot created!')"
+}
+```
+
+### Case 4: Information Question → Explain in Text
+
+When user asks informational questions ("what", "how", "why", "which"), respond with **conversational text only** (no code):
+
+**Trigger phrases:**
+- "what sources are available?"
+- "how do I configure X?"
+- "why is X happening?"
+- "which detector should I use?"
+
+**Example: "what camera detectors are available?"**
+
+Respond with formatted text (NOT code):
+
+```
+Based on the available sources, the camera detectors are:
+
+| Detector | Type | Output |
+|----------|------|--------|
+| c_piranha | Camera | Array2d (image) |
+| c_atmopal | Camera | Array2d (image) |
+| andor_vls | Andor | Array2d |
+
+Use **ImageViewer** to display these 2D camera images.
+
+Would you like me to create a source node for any of these?
+```
+
+### Summary: When to Generate Code vs. Text
+
+| User Phrasing | Agent Action | Response Type |
+|---------------|--------------|---------------|
+| "can we view X?" | Ask for clarification | Question JSON |
+| "view X" | Create source node | Code JSON |
+| "what sources exist?" | Explain | Conversational text |
+| "can we connect A to B?" (invalid) | Explain problem | Conversational text |
+| "create a histogram" | Generate histogram code | Code JSON |
+| "how do I configure X?" | Explain configuration | Conversational text |
+
+**Remember:**
+- **"Can we" = ambiguous** → Ask what user wants (unless there's a problem to explain)
+- **Imperative = action** → Generate code immediately
+- **"What/how/why" = information** → Respond with conversational text
+- **Never put explanations in print statements** → Use conversational text OR JSON explanation field
+
 ## Common Request Types and Responses
 
 ### "Show me detector X"
@@ -1165,6 +1703,45 @@ amicli.connect_nodes('laser', 'Out', 'plot', 'In')
 }
 ```
 
+❌ **Don't connect incompatible types:**
+```python
+# WRONG - motor_x (float) cannot connect to ImageViewer (needs Array2d)
+amicli.connect_nodes('motor_x', 'Out', 'image_viewer', 'In')
+```
+
+✅ **Always check types in prompt and use conversion nodes:**
+```python
+# CORRECT - Check prompt: motor_x (float)
+# ImageViewer needs Array2d → use Binning to create histogram
+binning = amicli.create_node('Binning', 'Motor Histogram')
+amicli.connect_nodes('motor_x', 'Out', binning.name(), 'In')
+# Now have Array1d bins for visualization
+hist = amicli.create_node('Histogram', 'Distribution')
+amicli.connect_nodes(binning.name(), 'Bins', hist.name(), 'Bins')
+```
+
+❌ **Don't put explanations in print statements:**
+```python
+# WRONG - explanation as code
+print('c_piranha detector source available')
+print('👉 Click on the "c_piranha" node in the flowchart to view the raw image')
+print('Source nodes automatically display the appropriate viewer when clicked')
+```
+
+✅ **Use conversational text for explanations:**
+```
+Agent: The **c_piranha** source node has a built-in viewer.
+Simply click the node to view the `raw:image` (Array2d) data.
+```
+
+Or if generating code, use the `explanation` field:
+```json
+{
+  "explanation": "Creating c_piranha source node for viewing",
+  "code": "amicli.ensure_source('c_piranha')"
+}
+```
+
 ## Validation Checklist
 
 Before returning your response, verify:
@@ -1189,10 +1766,11 @@ Before returning your response, verify:
 9. ✅ MeanVsScan nodes mention scan variable configuration
 10. ✅ If assumptions made, include in `warnings`
 11. ✅ Terminal names are correct for each node type (ScatterPlot: X/Y, LinePlot: X/Y, most others: In/Out)
-12. ✅ Only uses node types from the reference documentation
-13. ✅ All nodes use `amicli.create_node()` (not `chart.createNode()`)
-14. ✅ Labels are in Title Case and descriptive
-15. ✅ Connections use `.name()` method on node objects
+12. ✅ **Terminal types are compatible** - Check source types in prompt match destination terminal types
+13. ✅ Only uses node types from the reference documentation
+14. ✅ All nodes use `amicli.create_node()` (not `chart.createNode()`)
+15. ✅ Labels are in Title Case and descriptive
+16. ✅ Connections use `.name()` method on node objects
 
 ## Example Interaction
 
@@ -1260,12 +1838,229 @@ User patterns that indicate multi-graph generation:
   - Parse constraint and only use specified node types
   - Still randomize connections and parameters
 
+## Understanding Terminal Types
+
+### Type System Overview
+
+AMI uses Python's typing system (validated by mypy) to ensure terminals are connected correctly. Each terminal has a type that defines what data it accepts or produces.
+
+### Common Types
+
+**Scalars:**
+- `float` - Floating point number (e.g., beam intensity, temperature)
+- `int` - Integer (e.g., event count, bin number)
+- `str` - String (e.g., detector name)
+- `bool` - Boolean (true/false)
+
+**Arrays:**
+- `Array1d` - 1D numpy array (e.g., waveform, histogram bins)
+- `Array2d` - 2D numpy array (e.g., image, 2D histogram)
+- `Array3d` - 3D numpy array (e.g., image stack)
+- `Array` - Generic array (accepts Array1d, Array2d, Array3d, or lists)
+
+**Special Types:**
+- `MultiChannelWaveform` - Multi-channel waveform data (for Acqiris, etc.)
+- `DataSource` - Psana data source
+- `Detector` - Psana detector object
+- `Any` - Accepts any type (no validation)
+
+**Union Types:**
+- `float|Array1d` - Accepts EITHER a float OR a 1D array
+- `float|Array1d|Array2d` - Accepts float, 1D array, OR 2D array
+- Use when a node can handle multiple input types
+
+### Type Compatibility Rules
+
+1. **Exact Match:** `float` output → `float` input ✅
+2. **Union Match:** `float` output → `float|Array1d` input ✅ (float is in union)
+3. **Mismatch:** `Array1d` output → `float` input ❌ (incompatible)
+
+### Common Patterns
+
+**Scalar Processing:**
+```python
+# Extract scalar → Display
+amicli.connect_nodes(sum_node.name(), 'Out', scalar_viewer.name(), 'In')
+# Sum.Out (float) → ScalarViewer.In (float) ✅
+```
+
+**Array Processing:**
+```python
+# Create histogram → Display
+binning = amicli.create_node('Binning', 'bin')
+histogram = amicli.create_node('Histogram', 'hist')
+amicli.connect_nodes(binning.name(), 'Bins', histogram.name(), 'Bins')
+amicli.connect_nodes(binning.name(), 'Counts', histogram.name(), 'Counts')
+# Binning.Bins (Array1d) → Histogram.Bins (Array1d) ✅
+# Binning.Counts (Array1d) → Histogram.Counts (Array1d) ✅
+```
+
+**Flexible Input (Union Types):**
+```python
+# Binning accepts scalars OR arrays
+# All of these work:
+amicli.connect_nodes(scalar_source.name(), 'Out', binning.name(), 'In')  # float → float|Array1d|Array2d ✅
+amicli.connect_nodes(waveform.name(), 'Out', binning.name(), 'In')  # Array1d → float|Array1d|Array2d ✅
+amicli.connect_nodes(image.name(), 'Out', binning.name(), 'In')  # Array2d → float|Array1d|Array2d ✅
+```
+
+### Troubleshooting Type Errors
+
+**Error:** "Invalid types. Expected: float Got: Array1d"
+- **Cause:** Trying to connect array output to scalar input
+- **Fix:** Add a conversion node (e.g., `Sum` to convert Array1d → float)
+
+**Error:** "Invalid types. Expected: Array1d Got: float"
+- **Cause:** Trying to connect scalar output to array input
+- **Fix:** Use a node with union type input (e.g., `Binning` accepts `float|Array1d|Array2d`)
+
+**Error:** Connection rejected with no clear message
+- **Cause:** Complex type mismatch (Union, special types)
+- **Fix:** Check the terminal types in the reference documentation - ensure output type is in the input's union, or use intermediate conversion
+
+### Type Reference
+
+For complete terminal type information, see:
+- `references/all_node_types.md` - Full node documentation with types for all terminals
+- `references/terminals_quick_ref.md` - Quick lookup table with types
+
+## Dynamic Terminals
+
+Some nodes allow you to add or remove terminals dynamically for flexible graph building.
+
+### Adding and Removing Terminals
+
+**Nodes with "Can add/remove input terminals":**
+- Can add multiple input terminals of the same type
+- Added terminals are automatically removable
+- Common use cases:
+  - **WaveformViewer** - Overlay multiple waveforms on same plot
+  - **ScatterPlot** - Plot multiple (X,Y) pairs together
+  - **Calculator** - Perform calculations with variable number of inputs
+  - **Filter** - Filter multiple data streams with same criteria
+
+**Nodes with "Can add/remove output terminals":**
+- Can send processed data to multiple downstream paths
+- Common use cases:
+  - **Split** - Send array slices to different analysis branches
+  - **Filter** - Send filtered data to multiple destinations
+  - **PythonEditor** - Custom multi-output processing
+
+**Nodes with optional initial terminals** (marked `*[optional, can remove]*` in docs):
+- These terminals exist when node is created but can be removed
+- Cannot be re-added after removal (unlike dynamic terminals)
+- Example: **RoiArch** has optional 'mask' input
+
+### When to Use Dynamic Terminals
+
+**1. Overlaying multiple plots:**
+```python
+# Instead of creating multiple WaveformViewers:
+wf1 = amicli.create_node('WaveformViewer', 'wf1')
+wf2 = amicli.create_node('WaveformViewer', 'wf2')
+
+# Use one WaveformViewer with multiple inputs (better):
+wf = amicli.create_node('WaveformViewer', 'wf')
+# Add terminals using amicli methods
+amicli.add_input_terminal(wf.name())  # Adds 'In.1'
+amicli.add_input_terminal(wf.name())  # Adds 'In.2'
+
+# Connect multiple sources
+amicli.connect_nodes(source1.name(), 'Out', wf.name(), 'In')
+amicli.connect_nodes(source2.name(), 'Out', wf.name(), 'In.1')
+amicli.connect_nodes(source3.name(), 'Out', wf.name(), 'In.2')
+```
+
+**2. Flexible calculations:**
+```python
+# Calculator can accept variable number of inputs
+calc = amicli.create_node('Calculator', 'calc')
+# Add inputs as needed for your expression
+amicli.add_input_terminal(calc.name())
+amicli.add_input_terminal(calc.name())
+# Right-click node → "Add input" to add more variables in GUI
+```
+
+**3. Multi-path data flow:**
+```python
+# Filter can send output to multiple destinations
+filt = amicli.create_node('Filter', 'filter')
+amicli.add_output_terminal(filt.name())  # Adds 'Out.1'
+# Each output can connect to different analysis path
+```
+
+### Dynamic vs. Optional Terminals
+
+| Feature | Dynamic Terminals | Optional Initial Terminals |
+|---------|------------------|---------------------------|
+| Present at creation | ❌ No (must add) | ✅ Yes |
+| Can remove | ✅ Yes | ✅ Yes |
+| Can re-add after removal | ✅ Yes | ❌ No |
+| Example | WaveformViewer inputs | RoiArch mask input |
+
+### Programmatic Terminal Management
+
+Use amicli methods to add/remove terminals programmatically:
+
+**Add Input Terminal:**
+```python
+# Add input terminal to WaveformViewer (for overlaying waveforms)
+wf = amicli.create_node('WaveformViewer', 'wf')
+amicli.add_input_terminal(wf.name())  # Adds 'In.1'
+amicli.add_input_terminal(wf.name())  # Adds 'In.2'
+
+# Connect multiple sources
+amicli.connect_nodes(source1.name(), 'Out', wf.name(), 'In')
+amicli.connect_nodes(source2.name(), 'Out', wf.name(), 'In.1')
+amicli.connect_nodes(source3.name(), 'Out', wf.name(), 'In.2')
+```
+
+**Add Output Terminal:**
+```python
+# Add output terminal to Split
+split = amicli.create_node('Split', 'split')
+amicli.add_output_terminal(split.name())  # Adds 'Out.1'
+```
+
+**Remove Terminal:**
+```python
+# Remove optional terminal
+amicli.remove_terminal('RoiArch.0', 'mask')
+```
+
+**Available Methods:**
+- `amicli.add_input_terminal(node_name, terminal_name=None)` - Add input to nodes with dynamic input capability
+- `amicli.add_output_terminal(node_name, terminal_name=None)` - Add output to nodes with dynamic output capability  
+- `amicli.remove_terminal(node_name, terminal_name)` - Remove any removable terminal
+
+### Finding Nodes with Dynamic Terminals
+
+Check the **Capabilities** section in node documentation:
+```markdown
+**Capabilities:**
+- ✓ Can add/remove input terminals
+- ✓ Can add/remove output terminals
+```
+
+Or check the quick reference table for nodes supporting dynamic terminals.
+
+### Important Notes
+
+- When using the chat interface or `amicli`, dynamic terminals are handled automatically when you specify connections
+- The agent will detect when multiple connections are needed and work with the GUI's dynamic terminal system
+- Terminal names auto-increment: `In`, `In.1`, `In.2`, etc.
+
 ## Remember
 
 - **Always use `amicli.create_node()` with Title Case labels** - Never use `chart.createNode()` in generated code
 - **Use `.name()` for connections** - Node objects need `.name()` method for `connect_nodes()`
 - **Use correct terminal names** - ScatterPlot/LinePlot use X/Y, NOT In/In.1! Check node type before connecting.
 - **Check source names first** - User mentions a source? Verify it exists in available_sources list!
+- **Check type compatibility** - Source types are shown in the available sources list - verify types match before connecting!
+- **Use markdown formatting** - Bold, lists, and inline code make explanations clearer (but don't over-format!)
+- **Recognize "can we" as ambiguous** - Ask for clarification (create it or explain it?)
+- **Imperative commands = action** - "view X" means generate code, not just explain
+- **Never explain in print statements** - Use conversational text or explanation field
 - **Ask questions when unclear** - Don't guess if the request is ambiguous
 - **Ask if source doesn't exist** - If user mentions a source not in available_sources, ask for clarification
 - **SourceNodes are viewable** - Don't create unnecessary display nodes for raw data
