@@ -1,13 +1,13 @@
 # AMI Node Terminals Quick Reference
 
-**Generated:** 2026-04-01 12:56:34
+**Generated:** 2026-04-01 20:59:09
 
 Quick lookup table for node terminal names and connection patterns.
 
 ---
 
-| Node | Input Terminals | Output Terminals |
-|------|-----------------|------------------|
+| Node | Inputs | Outputs |
+|------|--------|---------|
 
 ---
 
