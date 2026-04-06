@@ -586,25 +586,38 @@ class Manager(Collector):
             self.publish_message("sources", "manager", dill.dumps(self.partition))
 
     def view_request(self):
-        request = self.view_comm.recv_string()
+        # Receive batch request (list of "view:graph:feature" strings)
+        request = self.view_comm.recv_pyobj()
 
-        matched = self.view_req.match(request)
+        # Parse all requests and collect feature data
+        graph = None
+        data_dict = {}
 
-        if matched:
-            graph = matched.group("graph")
-            name = matched.group("name")
-            size = 0
-            if self.exists(graph) and name in self.feature_stores[graph]:
-                size += self.publish_view(
-                    "view:%s:%s" % (graph, name), self.heartbeats[graph], self.feature_stores[graph].get(name)
-                )
-            else:
-                size += self.publish_view("view:%s:%s" % (graph, name), None, None)
-                logger.debug("Received view request for unknown graph/feature: %s", request)
+        for req_string in request:
+            matched = self.view_req.match(req_string)
+            if matched:
+                req_graph = matched.group("graph")
+                req_name = matched.group("name")
 
-            self.event_size.labels(self.hutch, self.name).set(size)
-        else:
-            logger.warn("Received invalid view request: %s", request)
+                # Extract graph name (same for all features in batch)
+                if graph is None:
+                    graph = req_graph
+
+                # Get feature data from Manager's store
+                if self.exists(graph) and req_name in self.feature_stores[graph]:
+                    data_dict[req_name] = self.feature_stores[graph].get(req_name)
+                else:
+                    data_dict[req_name] = None
+
+        # Build atomic response
+        response = {
+            "graph": graph,
+            "heartbeat": self.heartbeats.get(graph),
+            "data": data_dict,
+        }
+
+        # Send batch response
+        self.view_comm.send_pyobj(response)
 
     def view_front_forward(self):
         req = self.view_comm_frontend.recv_multipart()

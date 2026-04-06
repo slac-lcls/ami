@@ -191,6 +191,11 @@ AMI follows a distributed tree architecture with three main components:
 - **Port definitions** (`Ports`): Standard port assignments for different services
 - **Node**: Base class for all network-connected components
 - **Collector**: Base class for result collection
+- **EventBuilder/GraphBuilder**: Core synchronization mechanism for distributed event assembly
+  - Uses bitmask tracking to wait for contributions from N sources (workers/collectors)
+  - Executes computation graphs on complete or pruned (depth-limited) heartbeats
+  - Implements pruning to manage memory with configurable depth parameter
+  - **See**: [Heartbeat Event Builder Architecture](docs/HEARTBEAT_EVENT_BUILDER.md) for detailed design
 - **ResultStore**: Handles sending results to collectors
 - **AutoName**: Manages automatic data export
 - Uses ZeroMQ for all network communication
