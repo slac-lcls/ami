@@ -2,6 +2,135 @@
 
 This document provides a high-level overview of the AMI (Analysis Monitoring Interface) codebase to help AI agents navigate and understand the architecture.
 
+---
+
+## CRITICAL: Mandatory Plan Organization Policy
+
+### ALL plans MUST be organized according to the directory structure standards documented below
+
+**NEVER commit plans or documentation to the project root.** All plans, implementation summaries, design documents, and TODO files MUST be organized into `.opencode/plans/` following the feature directory structure.
+
+### Before Committing ANY Documentation
+
+1. **Check location**: Is this file in `.opencode/plans/` with proper structure?
+   - ❌ WRONG: `/project-root/MY_IMPLEMENTATION_SUMMARY.md`
+   - ✅ CORRECT: `.opencode/plans/feature-name/completed/implementation-summary.md`
+
+2. **Check directory structure**: Does it follow the standards?
+   - ✅ Feature directories for multi-plan features
+   - ✅ `active/` with numbered priorities (01-, 02-, etc.)
+   - ✅ `completed/` for finished work (no number prefix)
+   - ✅ `research/` for analysis and failed approaches
+   - ✅ README.md and 00-PRIORITY-ORDER.md for complex features
+
+3. **Check naming**: Is it kebab-case without number prefixes (unless in active/)?
+   - ❌ WRONG: `IMPLEMENTATION_COMPLETE_FEATURE.md`
+   - ✅ CORRECT: `feature-implementation.md`
+
+### When Creating New Plans
+
+AI agents MUST:
+- Ask user: "Should this be a new feature directory or added to existing one?"
+- Create proper directory structure (README.md, 00-PRIORITY-ORDER.md, active/)
+- Update main `.opencode/plans/README.md` to reference new feature
+- Never leave orphaned .md files in project root
+
+### Cleanup Responsibility
+
+If you find unorganized plans in the project root:
+1. **Ask the user** before reorganizing (don't assume!)
+2. **Categorize by feature** - group related plans together
+3. **Create feature directories** following the standards below
+4. **Update documentation** - keep README.md files current
+5. **Verify with user** before committing the reorganization
+
+---
+
+## CRITICAL: Testing and Commit Policy
+
+### ABSOLUTE RULE: Never Commit Untested Code
+
+**NO code changes may be committed to git without explicit user testing and approval.**
+
+This is NON-NEGOTIABLE. No exceptions. No shortcuts.
+
+### Before ANY Git Commit
+
+1. **User MUST manually test** the changes
+2. **User MUST explicitly approve** the commit
+3. **User MUST verify** the implementation works as expected
+
+### AI Agent Responsibilities
+
+When implementation is complete:
+
+**✅ DO THIS:**
+1. Inform user that changes are ready for testing
+2. Provide clear, specific testing instructions
+3. List all files modified with line numbers
+4. Suggest test commands or verification steps
+5. Wait for explicit user confirmation before committing
+
+**❌ NEVER DO THIS:**
+1. Commit automatically after implementation
+2. Assume tests passing means ready to commit
+3. Skip manual user verification
+4. Commit "on behalf of" the user
+5. Use git commit without explicit user request
+
+### Example Correct Workflow
+
+```
+Agent: ✅ Implementation complete! Here's what changed:
+       
+       Files Modified:
+       - ami/graphkit_wrapper.py (lines 166-205)
+       - tests/test_replace.py (added test_mismatch_inputs)
+       
+       Testing Instructions:
+       1. Run existing tests: pytest tests/test_replace.py
+       2. Run new test: pytest tests/test_replace.py::test_mismatch_inputs
+       3. Manual verification:
+          - Load graph with PickN node
+          - Replace with different inputs
+          - Verify no AssertionError crash
+       
+       Please test these changes and let me know if you'd like me to commit.
+
+User: [performs testing]
+
+User: Tests pass, looks good. Please commit with message "Fix global operation replace crash"
+
+Agent: [NOW and ONLY NOW creates the git commit]
+```
+
+### Why This Policy Exists
+
+1. **User knows their code best** - AI may miss critical edge cases
+2. **Production systems** - AMI runs live LCLS experiments; broken commits have real consequences
+3. **Git history quality** - Only verified, working code belongs in version control
+4. **Accountability** - User must consciously approve what enters the codebase
+5. **Trust** - Users must trust AI won't surprise them with unexpected commits
+
+### Exception: Documentation-Only Changes
+
+Documentation updates (README changes, plan organization, typo fixes) may be committed after user review without extensive testing, BUT:
+- User must still review all changes
+- User must explicitly approve the commit
+- Never commit large documentation restructuring without careful review
+- When in doubt, ask for approval
+
+### Handling User Requests to "Just Commit It"
+
+Even if user says "commit when done" at the start of a task:
+1. **Still show them what changed** before committing
+2. **Still ask for confirmation** that testing passed
+3. **Better to over-communicate** than assume
+
+This protects both the user and the codebase.
+
+---
+
 ## What is AMI?
 
 AMI is the LCLS-II online graphical analysis monitoring package. It's a distributed system that processes data from LCLS experiments in real-time using a computation graph model.
