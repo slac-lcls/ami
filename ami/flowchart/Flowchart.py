@@ -625,9 +625,11 @@ class Flowchart(Node):
                 startDir = '.'
             self.fileDialog = FileDialog(None, "Save Flowchart..", startDir, "Flowchart (*.fc)")
             self.fileDialog.setAcceptMode(QtWidgets.QFileDialog.AcceptSave)
-            self.fileDialog.show()
-            self.fileDialog.fileSelected.connect(self.saveFile)
-            return
+
+            if self.fileDialog.exec():
+                fileName = self.fileDialog.selectedFiles()[0]
+            else:
+                return
 
         if not fileName.endswith('.fc'):
             fileName += ".fc"
@@ -693,6 +695,11 @@ class Flowchart(Node):
                     self.sigNodeChanged.emit(node)
 
             node.viewed = new_node_state['viewed']
+
+            # Update state panel if this node is currently displayed
+            ctrl_widget = self.widget()
+            if ctrl_widget.chartWidget.current_displayed_node == node:
+                ctrl_widget.chartWidget.refreshStatePanel(node)
 
     async def updateSources(self, init=False):
         num_workers = None
@@ -1157,6 +1164,7 @@ class FlowchartWidget(dockarea.DockArea):
         self.chart = chart
         self.ctrl = ctrl
         self.hoverItem = None
+        self.current_displayed_node = None  # Track which node is shown in state panel
 
         #  build user interface (it was easier to do it here than via developer)
         self.view = FlowchartGraphicsView(self)
@@ -1260,6 +1268,8 @@ class FlowchartWidget(dockarea.DockArea):
             return
 
         node = item.node
+        self.updateNodeStatePanel(items[0].node)
+
         if not node.enabled():
             return
 
@@ -1503,8 +1513,56 @@ class FlowchartWidget(dockarea.DockArea):
         if text:
             self.hoverText.setPlainText(text)
 
+        # Update state panel when hovering over a node
+        # Don't clear when hovering off - keep last displayed node
+        if isinstance(obj, Node):
+            self.updateNodeStatePanel(obj)
+
     def clear(self):
         self.hoverText.setPlainText('')
+
+    def updateNodeStatePanel(self, node):
+        """Update the state panel to show the given node's state.
+
+        Args:
+            node: Node instance to display, or None to clear
+        """
+        # Get reference to state widget
+        state_widget = self.ctrl.ui.state_widget
+
+        # Disconnect from previous node's sigStateChanged signal
+        if self.current_displayed_node:
+            if hasattr(self.current_displayed_node, 'sigStateChanged'):
+                try:
+                    self.current_displayed_node.sigStateChanged.disconnect(self.refreshStatePanel)
+                except (TypeError, RuntimeError):
+                    pass  # Signal already disconnected or object deleted
+
+        # Update current node reference
+        self.current_displayed_node = node
+
+        # Clear or display
+        if node is None:
+            state_widget.clear()
+            return
+
+        # Display the node's state
+        state_widget.displayNodeState(node)
+
+        # Connect to sigStateChanged for live updates (CtrlNodes only)
+        if hasattr(node, 'sigStateChanged'):
+            node.sigStateChanged.connect(self.refreshStatePanel)
+
+    def refreshStatePanel(self, node=None):
+        """Refresh the state panel for the currently displayed node.
+
+        Args:
+            node: Optional node parameter (from signal), uses current_displayed_node if None
+        """
+        if node is None:
+            node = self.current_displayed_node
+        if node:
+            self.ctrl.ui.state_widget.displayNodeState(node)
 
     def updateStatus(self, text, color='black'):
         now = datetime.now().strftime('%H:%M:%S')

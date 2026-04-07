@@ -301,7 +301,7 @@ class Worker(Node):
 
 def run_worker(num, num_workers, hb_period, source, collector_addr, graph_addr, msg_addr, export_addr,
                flags=None, prometheus_dir=None, prometheus_port=None, hutch=None, hwm=None, timeout=None,
-               cprofile=False, select_manager=None):
+               cprofile=False, select_manager=(None, None, None, None, None)):
 
     logger.info('Starting worker # %d, sending to collector at %s PID: %d', num, collector_addr, os.getpid())
 
