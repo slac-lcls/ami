@@ -118,10 +118,10 @@ class AsyncFetcher(QtCore.QThread):
                 feature_requests.append(req)
 
             # Send single batch request
-            self.view.send_pyobj(feature_requests)
+            self.view.send_pyobj(feature_requests, flags=zmq.NOBLOCK)
 
             # Receive single batch response
-            response = self.view.recv_pyobj()
+            response = self.view.recv_serialized(self.deserializer, copy=False)
 
             batch_graph = response["graph"]
             batch_heartbeat = response["heartbeat"]

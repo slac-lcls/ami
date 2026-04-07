@@ -617,7 +617,10 @@ class Manager(Collector):
         }
 
         # Send batch response
-        self.view_comm.send_pyobj(response)
+        response = self.serializer(response)
+        self.view_comm.send_multipart(response, copy=False, flags=zmq.NOBLOCK)
+        size = self.serializer.sizeof(response)
+        self.event_size.labels(self.hutch, self.name).set(size)
 
     def view_front_forward(self):
         req = self.view_comm_frontend.recv_multipart()
