@@ -200,7 +200,6 @@ class Flowchart(Node):
 
         # if the node is a source, connect the source kwargs interface to the manager
         if node.isSource():
-            source_kwargs = node.graphicsItem().source_kwargs
             node.graphicsItem().sigSourceKwargs.connect(self.send_requested_data)
 
         self.sigNodeCreated.emit(node)
@@ -219,14 +218,14 @@ class Flowchart(Node):
             replacement_source_name: Name of the replacement source
         """
         # Get the outgoing connections from old node
-        old_terminal = old_node.terminals['Out']
+        old_terminal = old_node.terminals["Out"]
         connections_to_transfer = list(old_terminal.connections().keys())
 
         # Check if replacement already exists
         if replacement_source_name in self._graph.nodes():
             # Merge: get existing node and transfer connections
-            new_node = self._graph.nodes[replacement_source_name]['node']
-            new_terminal = new_node.terminals['Out']
+            new_node = self._graph.nodes[replacement_source_name]["node"]
+            new_terminal = new_node.terminals["Out"]
 
             # Transfer connections
             for remote_term in connections_to_transfer:
@@ -245,13 +244,11 @@ class Flowchart(Node):
             node_type = self.source_library.getSourceType(replacement_source_name)
 
             new_node = SourceNode(
-                name=replacement_source_name,
-                terminals={'Out': {'io': 'out', 'ttype': node_type}},
-                flowchart=self
+                name=replacement_source_name, terminals={"Out": {"io": "out", "ttype": node_type}}, flowchart=self
             )
 
             self.addNode(node=new_node, pos=[pos.x(), pos.y()])
-            new_terminal = new_node.terminals['Out']
+            new_terminal = new_node.terminals["Out"]
 
             # Transfer connections
             for remote_term in connections_to_transfer:
