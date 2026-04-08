@@ -1,40 +1,50 @@
 #!/usr/bin/env python
-import sys
 import argparse
 import asyncio
+import datetime as dt
 import logging
 import pickle
-import zmq
-import tornado.ioloop
-import datetime as dt
+import sys
+
+import holoviews as hv
 import numpy as np
 import panel as pn
-import holoviews as hv
-from networkfox import modifiers
-from ami import LogConfig, Defaults
-from ami.client import GraphMgrAddress
-from ami.comm import Ports, PlatformAction, ZMQ_TOPIC_DELIM
-from ami.data import Deserializer
+import tornado.ioloop
+import zmq
 from bokeh.models.ranges import DataRange1d
+from networkfox import modifiers
+
+from ami import Defaults, LogConfig
+from ami.client import GraphMgrAddress
+from ami.comm import ZMQ_TOPIC_DELIM, PlatformAction, Ports
+from ami.data import Deserializer
 
 logger = logging.getLogger(__name__)
 pn.extension()
-hv.extension('bokeh')
-pn.config.sizing_mode = 'scale_both'
+hv.extension("bokeh")
+pn.config.sizing_mode = "scale_both"
 
 
 def hook(plot, element):
     # work around for this issue: https://github.com/holoviz/holoviews/issues/2441
-    plot.state.x_range = DataRange1d(follow='end', follow_interval=60000, range_padding=0)
-    plot.state.y_range = DataRange1d(follow='end', follow_interval=60000, range_padding=0)
+    plot.state.x_range = DataRange1d(follow="end", follow_interval=60000, range_padding=0)
+    plot.state.y_range = DataRange1d(follow="end", follow_interval=60000, range_padding=0)
 
 
-options = {'axiswise': True, 'framewise': True, 'shared_axes': False, 'show_grid': True, 'tools': ['hover'],
-           'responsive': True, 'min_height': 200, 'min_width': 200, 'hooks': [hook]}
-hv.opts.defaults(hv.opts.Curve(**options),
-                 hv.opts.Scatter(**options),
-                 hv.opts.Image(**options),
-                 hv.opts.Histogram(**options))
+options = {
+    "axiswise": True,
+    "framewise": True,
+    "shared_axes": False,
+    "show_grid": True,
+    "tools": ["hover"],
+    "responsive": True,
+    "min_height": 200,
+    "min_width": 200,
+    "hooks": [hook],
+}
+hv.opts.defaults(
+    hv.opts.Curve(**options), hv.opts.Scatter(**options), hv.opts.Image(**options), hv.opts.Histogram(**options)
+)
 row_step = 3
 col_step = 4
 
@@ -96,14 +106,14 @@ class AsyncFetcher(object):
                 self.sockets[name] = (sock, 1)  # reference count
             else:
                 sock, count = self.sockets[name]
-                self.sockets[name] = (sock, count+1)
+                self.sockets[name] = (sock, count + 1)
 
     async def fetch(self):
         for sock, flag in await self.poller.poll():
             if flag != zmq.POLLIN:
                 continue
             topic = await sock.recv_string()
-            topic = topic.rstrip('\0')
+            topic = topic.rstrip("\0")
             heartbeat = await sock.recv_pyobj()
             reply = await sock.recv_serialized(self.deserializer, copy=False)
             self.data[self.view_subs[topic]] = reply
@@ -116,19 +126,19 @@ class AsyncFetcher(object):
             sock.close()
 
 
-class PlotWidget():
+class PlotWidget:
 
     def __init__(self, topics=None, terms=None, addr=None, ctx=None, **kwargs):
         self.fetcher = AsyncFetcher(topics, terms, addr, ctx)
         self.terms = terms
 
-        self.name = kwargs.get('name', '')
-        self.idx = kwargs.get('idx', (0, 0))
+        self.name = kwargs.get("name", "")
+        self.idx = kwargs.get("idx", (0, 0))
         self.pipes = {}
         self._plot = None
         self._latency_lbl = pn.widgets.StaticText()
 
-        if kwargs.get('pipes', True):
+        if kwargs.get("pipes", True):
             for term, name in terms.items():
                 self.pipes[name] = hv.streams.Pipe(data=[])
 
@@ -140,7 +150,7 @@ class PlotWidget():
                 heartbeat = self.fetcher.heartbeats.pop()
                 now = dt.datetime.now()
                 now = now.strftime("%T")
-                latency = (dt.datetime.now() - dt.datetime.fromtimestamp(heartbeat.timestamp))
+                latency = dt.datetime.now() - dt.datetime.fromtimestamp(heartbeat.timestamp)
                 last_updated = f"<b>{self.name}<br/>Last Updated: {now}<br/>Latency: {latency}</b>"
                 self._latency_lbl.value = last_updated
 
@@ -181,8 +191,7 @@ class ImageWidget(PlotWidget):
 
     def __init__(self, topics=None, terms=None, addr=None, **kwargs):
         super().__init__(topics, terms, addr, **kwargs)
-        self._plot = hv.DynamicMap(self.trace(),
-                                   streams=list(self.pipes.values())).hist().opts(toolbar='right')
+        self._plot = hv.DynamicMap(self.trace(), streams=list(self.pipes.values())).hist().opts(toolbar="right")
 
     def data_updated(self, data):
         for term, name in self.terms.items():
@@ -190,7 +199,7 @@ class ImageWidget(PlotWidget):
 
     def trace(self):
         def func(data):
-            x1, y1 = getattr(data, 'shape', (0, 0))
+            x1, y1 = getattr(data, "shape", (0, 0))
             img = hv.Image(data, bounds=(0, 0, x1, y1)).opts(colorbar=True)
             return img
 
@@ -201,14 +210,13 @@ class HistogramWidget(PlotWidget):
 
     def __init__(self, topics=None, terms=None, addr=None, **kwargs):
         super().__init__(topics, terms, addr, pipes=False, **kwargs)
-        self.num_terms = int(len(terms)/2) if terms else 0
+        self.num_terms = int(len(terms) / 2) if terms else 0
         plots = []
 
         for i in range(0, self.num_terms):
             y = self.terms[f"Counts.{i}" if i > 0 else "Counts"]
             self.pipes[y] = hv.streams.Pipe(data=[])
-            plots.append(hv.DynamicMap(lambda data: hv.Histogram(data),
-                                       streams=[self.pipes[y]]))
+            plots.append(hv.DynamicMap(lambda data: hv.Histogram(data), streams=[self.pipes[y]]))
 
         self._plot = hv.Overlay(plots).collate() if len(plots) > 1 else plots[0]
 
@@ -228,22 +236,25 @@ class Histogram2DWidget(PlotWidget):
 
     def __init__(self, topics=None, terms=None, addr=None, **kwargs):
         super().__init__(topics, terms, addr, pipes=False, **kwargs)
-        self.pipes['Counts'] = hv.streams.Pipe(data=[])
-        self._plot = hv.DynamicMap(lambda data: hv.Image(data).opts(colorbar=True),
-                                   streams=list(self.pipes.values())).hist().opts(toolbar='right')
+        self.pipes["Counts"] = hv.streams.Pipe(data=[])
+        self._plot = (
+            hv.DynamicMap(lambda data: hv.Image(data).opts(colorbar=True), streams=list(self.pipes.values()))
+            .hist()
+            .opts(toolbar="right")
+        )
 
     def data_updated(self, data):
-        xbins = data[self.terms['XBins']]
-        ybins = data[self.terms['YBins']]
-        counts = data[self.terms['Counts']]
-        self.pipes['Counts'].send((xbins, ybins, counts.transpose()))
+        xbins = data[self.terms["XBins"]]
+        ybins = data[self.terms["YBins"]]
+        counts = data[self.terms["Counts"]]
+        self.pipes["Counts"].send((xbins, ybins, counts.transpose()))
 
 
 class ScatterWidget(PlotWidget):
 
     def __init__(self, topics=None, terms=None, addr=None, **kwargs):
         super().__init__(topics, terms, addr, pipes=False, **kwargs)
-        self.num_terms = int(len(terms)/2) if terms else 0
+        self.num_terms = int(len(terms) / 2) if terms else 0
         plots = []
 
         for i in range(0, self.num_terms):
@@ -251,8 +262,11 @@ class ScatterWidget(PlotWidget):
             y = self.terms[f"Y.{i}" if i > 0 else "Y"]
             name = " vs ".join((y, x))
             self.pipes[name] = hv.streams.Pipe(data=[])
-            plots.append(hv.DynamicMap(lambda data: hv.Scatter(data, label=name).opts(framewise=True),
-                                       streams=[self.pipes[name]]))
+            plots.append(
+                hv.DynamicMap(
+                    lambda data: hv.Scatter(data, label=name).opts(framewise=True), streams=[self.pipes[name]]
+                )
+            )
 
         self._plot = hv.Overlay(plots).collate() if len(plots) > 1 else plots[0]
 
@@ -275,8 +289,9 @@ class WaveformWidget(PlotWidget):
         plots = []
 
         for term, name in terms.items():
-            plots.append(hv.DynamicMap(lambda data: hv.Curve(data, label=name).opts(framewise=True),
-                                       streams=[self.pipes[name]]))
+            plots.append(
+                hv.DynamicMap(lambda data: hv.Curve(data, label=name).opts(framewise=True), streams=[self.pipes[name]])
+            )
 
         self._plot = hv.Overlay(plots).collate() if len(plots) > 1 else plots[0]
 
@@ -289,7 +304,7 @@ class LineWidget(PlotWidget):
 
     def __init__(self, topics=None, terms=None, addr=None, **kwargs):
         super().__init__(topics, terms, addr, pipes=False, **kwargs)
-        self.num_terms = int(len(terms)/2) if terms else 0
+        self.num_terms = int(len(terms) / 2) if terms else 0
         plots = []
 
         for i in range(0, self.num_terms):
@@ -297,8 +312,9 @@ class LineWidget(PlotWidget):
             y = self.terms[f"Y.{i}" if i > 0 else "Y"]
             name = " vs ".join((y, x))
             self.pipes[name] = hv.streams.Pipe(data=[])
-            plots.append(hv.DynamicMap(lambda data: hv.Curve(data, label=name).opts(framewise=True),
-                                       streams=[self.pipes[name]]))
+            plots.append(
+                hv.DynamicMap(lambda data: hv.Curve(data, label=name).opts(framewise=True), streams=[self.pipes[name]])
+            )
 
         self._plot = hv.Overlay(plots).collate() if len(plots) > 1 else plots[0]
 
@@ -324,7 +340,7 @@ class TimeWidget(LineWidget):
         super().__init__(topics, terms, addr, **kwargs)
 
 
-class Monitor():
+class Monitor:
 
     def __init__(self, graphmgr_addr):
         self.graphmgr_addr = graphmgr_addr
@@ -339,16 +355,13 @@ class Monitor():
         self.plots = {}
         self.tasks = {}
 
-        logo = 'https://www6.slac.stanford.edu/sites/www6.slac.stanford.edu/files/SLAC_LogoSD_W.png'
-        self.template = pn.template.ReactTemplate(title='AMI', header_background='#8c1515',
-                                                  logo=logo)
+        logo = "https://www6.slac.stanford.edu/sites/www6.slac.stanford.edu/files/SLAC_LogoSD_W.png"
+        self.template = pn.template.ReactTemplate(title="AMI", header_background="#8c1515", logo=logo)
 
-        self.enabled_plots = pn.widgets.CheckBoxGroup(name='Plots', options=[])
-        self.enabled_plots.param.watch(self.plot_checked, 'value')
+        self.enabled_plots = pn.widgets.CheckBoxGroup(name="Plots", options=[])
+        self.enabled_plots.param.watch(self.plot_checked, "value")
         self.latency_lbls = pn.Column()
-        self.tab = pn.Tabs(('Plots', self.enabled_plots),
-                           ('Latency', self.latency_lbls),
-                           dynamic=True)
+        self.tab = pn.Tabs(("Plots", self.enabled_plots), ("Latency", self.latency_lbls), dynamic=True)
         self.sidebar_col = pn.Column(self.tab)
         self.template.sidebar.append(self.sidebar_col)
 
@@ -358,7 +371,7 @@ class Monitor():
             for c in range(0, 12, col_step):
                 col = pn.Column()
                 self.layout_widgets[(r, c)] = col
-                self.layout[r:r+row_step, c:c+col_step] = col
+                self.layout[r : r + row_step, c : c + col_step] = col
 
     def __enter__(self):
         return self
@@ -379,8 +392,7 @@ class Monitor():
         asyncio.create_task(self.monitor_tasks())
 
     async def start_server(self, loop, address, http_port):
-        self.server = pn.serve(self.template, address=address, port=http_port,
-                               loop=loop, title="AMI", show=False)
+        self.server = pn.serve(self.template, address=address, port=http_port, loop=loop, title="AMI", show=False)
 
     async def monitor_tasks(self):
         while True:
@@ -411,8 +423,8 @@ class Monitor():
                 if name in self.plots:
                     continue
 
-                if metadata['type'] not in globals():
-                    print("UNSUPPORTED PLOT TYPE:", metadata['type'])
+                if metadata["type"] not in globals():
+                    print("UNSUPPORTED PLOT TYPE:", metadata["type"])
                     continue
 
                 row, col = (0, 0)
@@ -421,9 +433,15 @@ class Monitor():
                         continue
 
                     row, col = key
-                    widget = globals()[metadata['type']]
-                    widget = widget(topics=metadata['topics'], terms=metadata['terms'],
-                                    addr=self.graphmgr_addr, name=name, idx=(row, col), ctx=self.ctx)
+                    widget = globals()[metadata["type"]]
+                    widget = widget(
+                        topics=metadata["topics"],
+                        terms=metadata["terms"],
+                        addr=self.graphmgr_addr,
+                        name=name,
+                        idx=(row, col),
+                        ctx=self.ctx,
+                    )
                     self.plots[name] = widget
                     column.append(pn.Card(widget.plot, title=name, min_height=300, min_width=300))
                     self.latency_lbls.append(widget.latency)
@@ -454,9 +472,9 @@ class Monitor():
             if self.graphmgr_addr.name != graph:
                 continue
 
-            if topic == 'store':
+            if topic == "store":
                 async with self.lock:
-                    plots = exports['plots']
+                    plots = exports["plots"]
                     new_plots = set(plots.keys()).difference(self.plot_metadata.keys())
                     for name in new_plots:
                         self.plot_metadata[name] = plots[name]
@@ -466,12 +484,12 @@ class Monitor():
                         self.plot_metadata.pop(name, None)
                         self.remove_plot(name)
 
-                    logger.debug('Received plots: %s', self.plot_metadata.keys())
+                    logger.debug("Received plots: %s", self.plot_metadata.keys())
                     self.enabled_plots.options = list(self.plot_metadata.keys())
 
 
 def run_monitor(graph_name, export_addr, view_addr, address, http_port):
-    logger.info('Starting monitor')
+    logger.info("Starting monitor")
 
     graphmgr_addr = GraphMgrAddress(graph_name, export_addr, view_addr, None)
 
@@ -482,57 +500,34 @@ def run_monitor(graph_name, export_addr, view_addr, address, http_port):
 
 
 def main():
-    parser = argparse.ArgumentParser(description='AMII GUI Client')
+    parser = argparse.ArgumentParser(description="AMII GUI Client")
 
     parser.add_argument(
-        '-H',
-        '--host',
-        default=Defaults.Host,
-        help='hostname of the AMII Manager (default: %s)' % Defaults.Host
+        "-H", "--host", default=Defaults.Host, help="hostname of the AMII Manager (default: %s)" % Defaults.Host
     )
 
     parser.add_argument(
-        '-p',
-        '--port',
-        type=int,
-        default=Ports.BasePort,
-        action=PlatformAction,
-        help='base port for AMI'
+        "-p", "--port", type=int, default=Ports.BasePort, action=PlatformAction, help="base port for AMI"
     )
 
-    parser.add_argument(
-        '-l',
-        '--listen-port',
-        type=int,
-        default=0,
-        help='http port for panel'
-    )
+    parser.add_argument("-l", "--listen-port", type=int, default=0, help="http port for panel")
+
+    parser.add_argument("-a", "--address", type=str, default=None, help="address name for panel")
 
     parser.add_argument(
-        '-a',
-        '--address',
-        type=str,
-        default=None,
-        help='address name for panel'
-    )
-
-    parser.add_argument(
-        '-g',
-        '--graph-name',
+        "-g",
+        "--graph-name",
         default=Defaults.GraphName,
-        help='the name of the graph used (default: %s)' % Defaults.GraphName
+        help="the name of the graph used (default: %s)" % Defaults.GraphName,
     )
 
     parser.add_argument(
-        '--log-level',
+        "--log-level",
         default=LogConfig.Level,
-        help='the logging level of the application (default %s)' % LogConfig.Level
+        help="the logging level of the application (default %s)" % LogConfig.Level,
     )
 
-    parser.add_argument(
-        '--log-file',
-        help='an optional file to write the log output to'
-    )
+    parser.add_argument("--log-file", help="an optional file to write the log output to")
 
     args = parser.parse_args()
     graph = args.graph_name
@@ -554,5 +549,5 @@ def main():
         return 0
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     sys.exit(main())

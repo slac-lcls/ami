@@ -1,111 +1,87 @@
-import os
-import re
-import sys
-import signal
-import logging
 import argparse
 import functools
+import logging
+import os
+import re
+import signal
+import sys
+
 from mpi4py import MPI
 
 from ami import LogConfig
-from ami.multiproc import check_mp_start_method
-from ami.comm import Ports, PlatformAction
-from ami.worker import run_worker
 from ami.collector import run_node_collector
+from ami.comm import PlatformAction, Ports
+from ami.multiproc import check_mp_start_method
+from ami.worker import run_worker
 
 try:
     from psana.psexp.node import Communicators
-    HAS_PSANA=True
+
+    HAS_PSANA = True
 except ImportError:
-    HAS_PSANA=False
+    HAS_PSANA = False
 
 logger = logging.getLogger(__name__)
 
 
 def build_parser():
-    parser = argparse.ArgumentParser(description='AMII Single Node App')
+    parser = argparse.ArgumentParser(description="AMII Single Node App")
+
+    parser.add_argument("-H", "--host", type=str, help="ami manager host")
 
     parser.add_argument(
-        '-H',
-        '--host',
-        type=str,
-        help='ami manager host')
-
-    parser.add_argument(
-        '-p',
-        '--port',
+        "-p",
+        "--port",
         type=int,
         default=Ports.BasePort,
         action=PlatformAction,
-        help='base port for ami (default: %d) reserves next %d consecutive ports' % (Ports.BasePort, Ports.NumPorts)
+        help="base port for ami (default: %d) reserves next %d consecutive ports" % (Ports.BasePort, Ports.NumPorts),
     )
 
-    parser.add_argument(
-        '-b',
-        '--heartbeat',
-        type=int,
-        default=10,
-        help='the heartbeat period in ms (default: 10)'
-    )
+    parser.add_argument("-b", "--heartbeat", type=int, default=10, help="the heartbeat period in ms (default: 10)")
 
     parser.add_argument(
-        '-d',
-        '--eb-depth',
+        "-d",
+        "--eb-depth",
         type=int,
         default=1,
-        help='the depth of contribution builder buffer in units of heartbeats (default: 1)'
+        help="the depth of contribution builder buffer in units of heartbeats (default: 1)",
     )
 
     parser.add_argument(
-        '-f',
-        '--flags',
-        action='append',
+        "-f",
+        "--flags",
+        action="append",
         default=[],
-        help='extra flags as key=value pairs that are passed to the data source of the worker'
+        help="extra flags as key=value pairs that are passed to the data source of the worker",
     )
 
     parser.add_argument(
-        '--log-level',
+        "--log-level",
         default=LogConfig.Level,
-        help='the logging level of the application (default %s)' % LogConfig.Level
+        help="the logging level of the application (default %s)" % LogConfig.Level,
     )
 
-    parser.add_argument(
-        '--log-file',
-        help='an optional file to write the log output to'
-    )
+    parser.add_argument("--log-file", help="an optional file to write the log output to")
 
     parser.add_argument(
-        'source',
-        nargs='?',
-        metavar='SOURCE',
-        help='data source configuration (exampes: static://test.json, psana://exp=xcsdaq13:run=14)'
+        "source",
+        nargs="?",
+        metavar="SOURCE",
+        help="data source configuration (exampes: static://test.json, psana://exp=xcsdaq13:run=14)",
     )
 
-    parser.add_argument(
-        '--prometheus-port',
-        type=int,
-        default=Ports.Prometheus,
-        help='port for prometheus'
-    )
+    parser.add_argument("--prometheus-port", type=int, default=Ports.Prometheus, help="port for prometheus")
 
-    parser.add_argument(
-        '--prometheus-dir',
-        help='directory for prometheus configuration',
-        default=None
-    )
+    parser.add_argument("--prometheus-dir", help="directory for prometheus configuration", default=None)
 
-    parser.add_argument(
-        '--hutch',
-        help='hutch for prometheus label',
-        default=None
-    )
+    parser.add_argument("--hutch", help="hutch for prometheus label", default=None)
 
     return parser
 
 
 def _sig_handler(procs, signum, frame):
-    logger.debug('Caught signal %d', signum)
+    logger.debug("Caught signal %d", signum)
     sys.exit(cleanup(procs))
 
 
@@ -126,10 +102,10 @@ def cleanup(procs):
             proc.join()
 
         if proc.exitcode == 0 or proc.exitcode == -signal.SIGTERM:
-            logger.info('%s exited successfully', proc.name)
+            logger.info("%s exited successfully", proc.name)
         else:
             failed_proc = True
-            logger.error('%s exited with non-zero status code: %d', proc.name, proc.exitcode)
+            logger.error("%s exited with non-zero status code: %d", proc.name, proc.exitcode)
 
     return failed_proc
 
@@ -156,13 +132,13 @@ def run_ami(args):
     try:
         for flag in args.flags:
             try:
-                key, value = flag.split('=')
+                key, value = flag.split("=")
                 flags[key] = value
             except ValueError:
                 logger.exception("Problem parsing data source flag %s", flag)
 
         if args.source is not None:
-            src_url_match = re.match('(?P<prot>.*)://(?P<body>.*)', args.source)
+            src_url_match = re.match("(?P<prot>.*)://(?P<body>.*)", args.source)
             if src_url_match:
                 src_cfg = src_url_match.groups()
             else:
@@ -195,14 +171,36 @@ def run_ami(args):
             bd_size = comm.bd_size - 1
             bd_rank = comm.bd_rank - comm.n_smd_nodes
             if psana_node_type == "bd":
-                run_worker(bd_rank, bd_size, args.heartbeat, src_cfg,
-                           collector_addr, graph_addr, msg_addr, export_addr,
-                           flags, args.prometheus_dir, args.prometheus_port, args.hutch)
+                run_worker(
+                    bd_rank,
+                    bd_size,
+                    args.heartbeat,
+                    src_cfg,
+                    collector_addr,
+                    graph_addr,
+                    msg_addr,
+                    export_addr,
+                    flags,
+                    args.prometheus_dir,
+                    args.prometheus_port,
+                    args.hutch,
+                )
             else:
                 null_addr = "tcp://0.0.0.0:1"
-                run_worker(1, 1, args.heartbeat, src_cfg,
-                           null_addr, graph_addr, null_addr, null_addr,
-                           flags, args.prometheus_dir, args.prometheus_port, args.hutch)
+                run_worker(
+                    1,
+                    1,
+                    args.heartbeat,
+                    src_cfg,
+                    null_addr,
+                    graph_addr,
+                    null_addr,
+                    null_addr,
+                    flags,
+                    args.prometheus_dir,
+                    args.prometheus_port,
+                    args.hutch,
+                )
         else:
             comm = MPI.COMM_WORLD
             global_rank_size = comm.Get_size()
@@ -213,9 +211,20 @@ def run_ami(args):
             node_rank = global_rank // local_rank_size
             num_nodes = global_rank_size // local_rank_size
 
-            run_worker(local_rank, local_rank_size, args.heartbeat, src_cfg,
-                       collector_addr, graph_addr, msg_addr, export_addr,
-                       flags, args.prometheus_dir, args.prometheus_port, args.hutch)
+            run_worker(
+                local_rank,
+                local_rank_size,
+                args.heartbeat,
+                src_cfg,
+                collector_addr,
+                graph_addr,
+                msg_addr,
+                export_addr,
+                flags,
+                args.prometheus_dir,
+                args.prometheus_port,
+                args.hutch,
+            )
 
         # register a signal handler for cleanup on sigterm
         signal.signal(signal.SIGTERM, functools.partial(_sig_handler, procs))
@@ -242,5 +251,5 @@ def main():
     return run_ami(args)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     sys.exit(main())

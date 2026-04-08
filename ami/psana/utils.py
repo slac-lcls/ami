@@ -1,17 +1,17 @@
+import inspect
 import re
 import sys
+
+import amitypes
 import numpy
 import psana
-import inspect
-import amitypes
 
-
-__all__ = ['export']
+__all__ = ["export"]
 
 
 def export(obj):
     mod = sys.modules[obj.__module__]
-    if hasattr(mod, '__all__'):
+    if hasattr(mod, "__all__"):
         mod.__all__.append(obj.__name__)
     else:
         mod.__all__ = [obj.__name__]
@@ -20,19 +20,19 @@ def export(obj):
 
 def is_boost(obj, name):
     otype = type(obj)
-    return otype.__module__ == 'Boost.Python' and otype.__name__ == name
+    return otype.__module__ == "Boost.Python" and otype.__name__ == name
 
 
 def is_boost_class(obj):
-    return is_boost(obj, 'class')
+    return is_boost(obj, "class")
 
 
 def is_boost_function(obj):
-    return is_boost(obj, 'function')
+    return is_boost(obj, "function")
 
 
 def is_hidden(obj):
-    return obj.__name__.startswith('_')
+    return obj.__name__.startswith("_")
 
 
 def is_valid(obj):
@@ -51,9 +51,9 @@ def get_boost_annotations(obj):
     annotations = {}
 
     for name, meth in get_boost_methods(obj):
-        match = re.search(fr'{name}\(.*\)\s+->\s+(?P<rtype>\S+)\s?', meth.__doc__)
+        match = re.search(rf"{name}\(.*\)\s+->\s+(?P<rtype>\S+)\s?", meth.__doc__)
         if match:
-            rtype = eval(match.group('rtype'))
+            rtype = eval(match.group("rtype"))
             if issubclass(rtype, numpy.ndarray):
                 rtype = amitypes.Array1d
             annotations[name] = rtype

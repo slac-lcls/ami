@@ -1,93 +1,82 @@
-import sys
-import glob
-import logging
-import IPython
-import pathlib
-import tempfile
 import argparse
 import datetime
+import glob
+import logging
+import pathlib
+import sys
+import tempfile
 
+import IPython
 from traitlets.config.loader import Config
-from ami import LogConfig, Defaults
-from ami.comm import Ports
 
+from ami import Defaults, LogConfig
+from ami.comm import Ports
 
 logger = logging.getLogger(__name__)
 
 
 def run_console(name, addr, load):
     banners = {
-        'banner1': 'AMII Interactive Shell Client',
-        'banner2': " - using manager at %s\n - use 'amicli?' for help\n" % addr,
+        "banner1": "AMII Interactive Shell Client",
+        "banner2": " - using manager at %s\n - use 'amicli?' for help\n" % addr,
     }
     exec_lines = [
-        'import sys',
-        'from ami.comm import GraphCommHandler',
+        "import sys",
+        "from ami.comm import GraphCommHandler",
         'amicli = GraphCommHandler("%s", "%s")' % (name, addr),
-        'sys.path.extend(amicli.paths)'
+        "sys.path.extend(amicli.paths)",
     ]
     if load is not None:
         exec_lines.append('amicli.load("%s")' % load)
 
-    IPython.start_ipython(argv=[], config=Config(TerminalInteractiveShell=banners,
-                                                 InteractiveShellApp={'exec_lines': exec_lines}))
+    IPython.start_ipython(
+        argv=[], config=Config(TerminalInteractiveShell=banners, InteractiveShellApp={"exec_lines": exec_lines})
+    )
 
 
 def main():
-    parser = argparse.ArgumentParser(description='AMII Shell Client')
+    parser = argparse.ArgumentParser(description="AMII Shell Client")
 
     parser.add_argument(
-        '-H',
-        '--host',
-        default=Defaults.Host,
-        help='hostname of the AMII Manager (default: %s)' % Defaults.Host
+        "-H", "--host", default=Defaults.Host, help="hostname of the AMII Manager (default: %s)" % Defaults.Host
     )
 
     addr_group = parser.add_mutually_exclusive_group()
 
     addr_group.add_argument(
-        '-p',
-        '--port',
+        "-p",
+        "--port",
         type=int,
         default=Ports.BasePort,
-        help='base port for manager/client (SHELL) communication (default: %d)' % Ports.BasePort
+        help="base port for manager/client (SHELL) communication (default: %d)" % Ports.BasePort,
     )
 
     addr_group.add_argument(
-        '-i',
-        '--ipc-dir',
-        help='directory containing the ipc file descriptor for manager/client (SHELL) communication'
+        "-i", "--ipc-dir", help="directory containing the ipc file descriptor for manager/client (SHELL) communication"
     )
 
     addr_group.add_argument(
-        '--ipc',
-        action='store_true',
-        help='attempt to search for ipc file descriptors for manager/client (SHELL) communication'
+        "--ipc",
+        action="store_true",
+        help="attempt to search for ipc file descriptors for manager/client (SHELL) communication",
     )
 
     parser.add_argument(
-        '-g',
-        '--graph-name',
+        "-g",
+        "--graph-name",
         default=Defaults.GraphName,
-        help='the name of the graph used for manager/client (SHELL) communication (default: %s)' % Defaults.GraphName
+        help="the name of the graph used for manager/client (SHELL) communication (default: %s)" % Defaults.GraphName,
     )
 
-    parser.add_argument(
-        '-l',
-        '--load',
-        help='saved AMII configuration to load'
-    )
+    parser.add_argument("-l", "--load", help="saved AMII configuration to load")
 
     parser.add_argument(
-        '--log-level',
+        "--log-level",
         default=LogConfig.Level,
-        help='the logging level of the application (default %s)' % LogConfig.Level
+        help="the logging level of the application (default %s)" % LogConfig.Level,
     )
 
-    parser.add_argument(
-        '--log-file',
-        help='an optional file to write the log output to'
-    )
+    parser.add_argument("--log-file", help="an optional file to write the log output to")
 
     args = parser.parse_args()
 
@@ -101,7 +90,7 @@ def main():
     logging.basicConfig(format=LogConfig.BasicFormat, level=log_level, handlers=log_handlers)
 
     if args.ipc:
-        ipc_list = glob.glob(tempfile.gettempdir() + '/*/comm')
+        ipc_list = glob.glob(tempfile.gettempdir() + "/*/comm")
         if ipc_list:
             if len(ipc_list) == 1:
                 addr = "ipc://%s" % ipc_list[0]
@@ -109,7 +98,7 @@ def main():
                 prompt = "Found %d ipc file descriptors:\n" % len(ipc_list)
                 for i, ipc_name in enumerate(ipc_list):
                     path = pathlib.Path(ipc_name)
-                    cdate = datetime.datetime.fromtimestamp(path.stat().st_ctime).strftime('%Y-%m-%d %H:%M:%S')
+                    cdate = datetime.datetime.fromtimestamp(path.stat().st_ctime).strftime("%Y-%m-%d %H:%M:%S")
                     prompt += " %d - addr: %s, user: %s, date: %s\n" % (i, ipc_name, path.owner(), cdate)
                 prompt += " %d - Quit\n\nPlease choose one: " % len(ipc_list)
                 choice = input(prompt)
@@ -136,5 +125,5 @@ def main():
         return 0
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     sys.exit(main())

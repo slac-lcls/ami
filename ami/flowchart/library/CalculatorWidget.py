@@ -41,7 +41,9 @@
 #############################################################################
 
 import re
-from qtpy import QtWidgets, QtCore
+
+from qtpy import QtCore, QtWidgets
+
 from ami.flowchart.library.common import generateUi
 
 
@@ -166,7 +168,7 @@ class CalculatorWidget(QtWidgets.QWidget):
         clickedButton = self.sender()
         digitValue = int(clickedButton.text())
 
-        if self.display.text() == '0' and digitValue == 0.0:
+        if self.display.text() == "0" and digitValue == 0.0:
             return
 
         self.display.setText(self.display.text() + str(digitValue))
@@ -186,12 +188,12 @@ class CalculatorWidget(QtWidgets.QWidget):
     def backspaceClicked(self):
         text = self.display.text()[:-1]
         if not text:
-            text = ''
+            text = ""
 
         self.display.setText(text)
 
     def clear(self):
-        self.display.setText('')
+        self.display.setText("")
 
     def createButton(self, text, member, op=None):
         button = Button(parent=self, text=text)
@@ -200,7 +202,7 @@ class CalculatorWidget(QtWidgets.QWidget):
         return button
 
     def terminalConnected(self, nodeTermConnected):
-        if nodeTermConnected.localTermState['io'] == 'out':
+        if nodeTermConnected.localTermState["io"] == "out":
             return
 
         term = nodeTermConnected.localTerm
@@ -218,7 +220,7 @@ class CalculatorWidget(QtWidgets.QWidget):
             self.row += 1
 
     def terminalDisconnected(self, nodeTermDisconnected):
-        if nodeTermDisconnected.localTermState['io'] == 'out':
+        if nodeTermDisconnected.localTermState["io"] == "out":
             return
 
         term = nodeTermDisconnected.localTerm
@@ -227,10 +229,10 @@ class CalculatorWidget(QtWidgets.QWidget):
         widget.deleteLater()
 
     def saveState(self):
-        return {'operation': self.display.text()}
+        return {"operation": self.display.text()}
 
     def restoreState(self, state):
-        self.display.setText(state['operation'])
+        self.display.setText(state["operation"])
 
 
 class FilterWidget(QtWidgets.QWidget):
@@ -303,20 +305,20 @@ class FilterWidget(QtWidgets.QWidget):
         if isinstance(widget, QtWidgets.QLineEdit):
             widget.setText(widget.text() + value)
 
-    def add_elif_condition(self, name=''):
+    def add_elif_condition(self, name=""):
         if not name:
             name = f"Elif {len(self.condition_groups)}"
 
-        condition_group = [('condition', 'text', {'values': '', 'group': name})]
+        condition_group = [("condition", "text", {"values": "", "group": name})]
 
         inputs = list(self.inputs.values())
         inputs.append("None")
         for output in sorted(self.outputs):
-            condition_group.append((output, 'combo', {'values': inputs, 'value': 'None', 'group': name}))
+            condition_group.append((output, "combo", {"values": inputs, "value": "None", "group": name}))
 
         self.condition_groups[name] = generateUi(condition_group)
         ui, stateGroup, ctrls, attrs = self.condition_groups[name]
-        ctrls[name]['condition'].setFocus()
+        ctrls[name]["condition"].setFocus()
 
         if name.startswith("Elif"):
             removeBtn = QtWidgets.QPushButton("Remove", parent=self)
@@ -329,7 +331,7 @@ class FilterWidget(QtWidgets.QWidget):
 
         return ui, stateGroup, ctrls, attrs
 
-    def add_else_condition(self, name=''):
+    def add_else_condition(self, name=""):
         if self.else_condition:
             return self.else_condition
 
@@ -341,7 +343,7 @@ class FilterWidget(QtWidgets.QWidget):
         inputs = list(self.inputs.values())
         inputs.append("None")
         for output in self.outputs:
-            condition_group.append((output, 'combo', {'values': inputs, 'value': 'None', 'group': name}))
+            condition_group.append((output, "combo", {"values": inputs, "value": "None", "group": name}))
 
         self.else_condition = generateUi(condition_group)
         ui, stateGroup, ctrls, attrs = self.else_condition
@@ -356,7 +358,7 @@ class FilterWidget(QtWidgets.QWidget):
 
         return ui, stateGroup, ctrls, attrs
 
-    def remove_condition(self, name=''):
+    def remove_condition(self, name=""):
         if self.sender():
             name = self.sender().name
 
@@ -366,7 +368,7 @@ class FilterWidget(QtWidgets.QWidget):
             ui, stateGroup, ctrls, attrs = self.condition_groups[name]
 
         self.layout.removeWidget(ui)
-        ctrls[name]['groupbox'].deleteLater()
+        ctrls[name]["groupbox"].deleteLater()
 
         if name == "Else":
             del self.else_condition
@@ -393,7 +395,7 @@ class FilterWidget(QtWidgets.QWidget):
             widget = QtWidgets.QComboBox(parent=groupbox)
             for input in inputs:
                 widget.addItem(input, input)
-            widget.setCurrentIndex(len(inputs)-1)
+            widget.setCurrentIndex(len(inputs) - 1)
             widget_name = f"{node_name}.{term}"
             ctrls[name][widget_name] = widget
             stateGroup.addWidget(widget, name=widget_name, group=name)
@@ -407,7 +409,7 @@ class FilterWidget(QtWidgets.QWidget):
             widget = QtWidgets.QComboBox(parent=groupbox)
             for input in inputs:
                 widget.addItem(input, input)
-            widget.setCurrentIndex(len(inputs)-1)
+            widget.setCurrentIndex(len(inputs) - 1)
             widget_name = f"{node_name}.{term}"
             ctrls["Else"][widget_name] = widget
             stateGroup.addWidget(widget, name=widget_name, group="Else")
@@ -445,7 +447,7 @@ class FilterWidget(QtWidgets.QWidget):
                 self.sigStateChanged.emit("remove", "Else", None)
 
     def terminalConnected(self, nodeTermConnected):
-        if nodeTermConnected.localTermState['io'] == 'out':
+        if nodeTermConnected.localTermState["io"] == "out":
             return
 
         new_input = ""
@@ -458,7 +460,7 @@ class FilterWidget(QtWidgets.QWidget):
 
         self.variables[new_input] = self.createButton(new_input, self.operatorClicked)
         self.variable_layout.addWidget(self.variables[new_input], self.row, self.col)
-        idx = len(self.inputs)-1
+        idx = len(self.inputs) - 1
 
         if self.col == 0 and self.row == 0:  # if the connection is the first connection
             self.add_elif_condition(name="If")
@@ -478,7 +480,7 @@ class FilterWidget(QtWidgets.QWidget):
             self.row += 1
 
     def terminalDisconnected(self, nodeTermDisconnected):
-        if nodeTermDisconnected.localTermState['io'] == 'out':
+        if nodeTermDisconnected.localTermState["io"] == "out":
             return
 
         term = nodeTermDisconnected.localTerm
@@ -494,14 +496,14 @@ class FilterWidget(QtWidgets.QWidget):
             for output in self.outputs:
                 widget = ctrls[name][output]
                 if stateGroup.readWidget(widget) == input_name:
-                    stateGroup.setWidget(widget, 'None')
+                    stateGroup.setWidget(widget, "None")
                 widget.removeItem(idx)
         if self.else_condition:
             ui, stateGroup, ctrls, attrs = self.else_condition
             for output in self.outputs:
                 widget = ctrls["Else"][output]
                 if stateGroup.readWidget(widget) == input_name:
-                    stateGroup.setWidget(widget, 'None')
+                    stateGroup.setWidget(widget, "None")
                 widget.removeItem(idx)
 
     def state_changed(self, *args, **kwargs):
@@ -520,9 +522,7 @@ class FilterWidget(QtWidgets.QWidget):
         self.sigStateChanged.emit(group, values, None)
 
     def saveState(self):
-        state = {'conditions': len(self.condition_groups),
-                 'inputs': self.inputs,
-                 'outputs': self.outputs}
+        state = {"conditions": len(self.condition_groups), "inputs": self.inputs, "outputs": self.outputs}
 
         for name, group in self.condition_groups.items():
             _, stateGroup, _, _ = group
@@ -535,10 +535,10 @@ class FilterWidget(QtWidgets.QWidget):
         return state
 
     def restoreState(self, state):
-        conditions = state['conditions']
+        conditions = state["conditions"]
 
-        self.inputs = state.get('inputs', {})
-        self.outputs = state.get('outputs', [])
+        self.inputs = state.get("inputs", {})
+        self.outputs = state.get("outputs", [])
 
         for condition in range(0, conditions):
             if condition == 0:
@@ -574,18 +574,48 @@ class FilterWidget(QtWidgets.QWidget):
 def extract_variables_from_condition(condition, return_sanitized=True):
     """Extract variable names from a condition string, excluding numbers and operators."""
     # List of Python keywords to exclude
-    python_keywords = ['and', 'or', 'not', 'if', 'else', 'elif', 'for', 'while', 'in',
-                      'True', 'False', 'None', 'is', 'as', 'assert', 'break', 'class',
-                      'continue', 'def', 'del', 'except', 'finally', 'from', 'global',
-                      'import', 'lambda', 'nonlocal', 'pass', 'raise', 'return', 'try',
-                      'with', 'yield']
+    python_keywords = [
+        "and",
+        "or",
+        "not",
+        "if",
+        "else",
+        "elif",
+        "for",
+        "while",
+        "in",
+        "True",
+        "False",
+        "None",
+        "is",
+        "as",
+        "assert",
+        "break",
+        "class",
+        "continue",
+        "def",
+        "del",
+        "except",
+        "finally",
+        "from",
+        "global",
+        "import",
+        "lambda",
+        "nonlocal",
+        "pass",
+        "raise",
+        "return",
+        "try",
+        "with",
+        "yield",
+    ]
 
     # This pattern finds variable names but excludes:
     # 1. Python keywords
     # 2. Numeric literals (integers, floats)
     # 3. Operators and symbols
     # Allow for names that can include -, :, and . in them
-    pattern = r'\b(?!(?:' + '|'.join(python_keywords) + r')\b)([a-zA-Z_][-a-zA-Z0-9_:.]*)\b'
+    pattern = r"\b(?!(?:" + "|".join(python_keywords) + r")\b)([a-zA-Z_][-a-zA-Z0-9_:.]*)\b"
 
     # Extract all matches
     potential_vars = re.findall(pattern, condition)
@@ -606,9 +636,9 @@ def check_conditions(conditions_dict, inputs):
 
     # Extract all variables from all conditions
     for key, value in conditions_dict.items():
-        if 'condition' in value:
-            #sanitized_condition = sanitize_name(value['condition'])
-            condition_vars = extract_variables_from_condition(value['condition'])
+        if "condition" in value:
+            # sanitized_condition = sanitize_name(value['condition'])
+            condition_vars = extract_variables_from_condition(value["condition"])
             cond_variables.update(condition_vars)
 
     # Get all variables from inputs
@@ -623,34 +653,37 @@ def check_conditions(conditions_dict, inputs):
 
 
 def gen_filter_func(values, inputs, outputs):
-    assert (len(values) >= 1)
+    assert len(values) >= 1
 
     cond_ok = check_conditions(values, inputs)
     if not cond_ok:
         raise ValueError("Condition variables not found in the input variables.")
-    cond = sanitize_condition(values['If']['condition'])
+    cond = sanitize_condition(values["If"]["condition"])
 
     filter_func = """
 def func(*args, **kwargs):
 \t(%s,) = args
 \tif %s:
 \t\treturn %s
-""" % (', '.join(inputs.values()), cond,
-       ', '.join(map(lambda x: sanitize_condition(values['If'].get(x)),
-                     outputs)))
+""" % (
+        ", ".join(inputs.values()),
+        cond,
+        ", ".join(map(lambda x: sanitize_condition(values["If"].get(x)), outputs)),
+    )
 
     for k, condition in values.items():
         if not k.startswith("Elif"):
             continue
 
-        cond = sanitize_condition(condition['condition'])
+        cond = sanitize_condition(condition["condition"])
 
         elif_condition = """
 \telif %s:
 \t\treturn %s
-        """ % (cond,
-               ', '.join(map(lambda x: sanitize_condition(condition.get(x)),
-                             outputs)))
+        """ % (
+            cond,
+            ", ".join(map(lambda x: sanitize_condition(condition.get(x)), outputs)),
+        )
 
         filter_func += elif_condition
 
@@ -658,11 +691,12 @@ def func(*args, **kwargs):
         else_condition = """
 \telse:
 \t\treturn %s
-        """ % ', '.join(map(lambda x: sanitize_condition(values['Else'].get(x)),
-                            outputs))
+        """ % ", ".join(
+            map(lambda x: sanitize_condition(values["Else"].get(x)), outputs)
+        )
         filter_func += else_condition
 
-    filter_func += "\n\treturn %s" % (', '.join([str(None)]*len(outputs)))
+    filter_func += "\n\treturn %s" % (", ".join([str(None)] * len(outputs)))
     return filter_func
 
 
@@ -675,6 +709,7 @@ def sanitize_name(name, space=True):
         return name.translate(sanitizer_space if space else sanitizer)
     else:
         return str(name)
+
 
 sanitizer_space = str.maketrans(" .:|-", "_____")
 sanitizer = str.maketrans(".:|-", "____")
@@ -690,7 +725,7 @@ def sanitize_condition(condition_str):
 
     :param condition_str: The raw condition string to be cleaned.
     """
-    if condition_str is None or condition_str == 'None':
+    if condition_str is None or condition_str == "None":
         return "None"
 
     raw_vars = extract_variables_from_condition(condition_str, return_sanitized=False)
@@ -700,20 +735,20 @@ def sanitize_condition(condition_str):
         sanitized = sanitize_name(raw, space=False)
         # Use re.escape so dots/colons are treated as literal text in the regex
         # Use \b to ensure we match the exact variable name
-        pattern = r'\b' + re.escape(raw) + r'\b'
+        pattern = r"\b" + re.escape(raw) + r"\b"
         cleaned_condition = re.sub(pattern, sanitized, cleaned_condition)
 
     return cleaned_condition
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
 
     import sys
 
     app = QtWidgets.QApplication(sys.argv)
     terms = {}
     for i in range(0, 9):
-        terms[f'In.{i}'] = f'Input.{i}'
+        terms[f"In.{i}"] = f"Input.{i}"
 
     calc = FilterWidget(terms)
     calc.show()

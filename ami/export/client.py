@@ -1,18 +1,19 @@
 #!/usr/bin/env python
-import re
 import abc
-import dill
 import asyncio
 import logging
+import re
+
+import dill
 import numpy as np
+import p4p.client.asyncio as pca
+import p4p.client.thread as pct
+from p4p.nt import NTURI
+from p4p.rpc import rpccall, rpcproxy
+
 from ami import LogConfig
 from ami.comm import CommHandler
 from ami.export.nt import CUSTOM_TYPE_WRAPPERS
-from p4p.nt import NTURI
-from p4p.rpc import rpccall, rpcproxy
-import p4p.client.thread as pct
-import p4p.client.asyncio as pca
-
 
 logger = logging.getLogger(LogConfig.get_package_name(__name__))
 
@@ -25,10 +26,10 @@ class RpcProxyThreads:
         self.errors = errors
         self.timeout = timeout
         self.command_map = {
-            'create_graph': self.create,
-            'clear_graph': self.clear,
-            'reset_features': self.reset,
-            'destroy_graph': self.destroy,
+            "create_graph": self.create,
+            "clear_graph": self.clear,
+            "reset_features": self.reset,
+            "destroy_graph": self.destroy,
         }
 
     def payload(self, cmd, payload):
@@ -46,24 +47,24 @@ class RpcProxyThreads:
         else:
             return False
 
-    @rpccall('%s:create')
-    def create(graph='s'):
+    @rpccall("%s:create")
+    def create(graph="s"):
         pass
 
-    @rpccall('%s:destroy')
-    def destroy(graph='s'):
+    @rpccall("%s:destroy")
+    def destroy(graph="s"):
         pass
 
-    @rpccall('%s:clear')
-    def clear(graph='s'):
+    @rpccall("%s:clear")
+    def clear(graph="s"):
         pass
 
-    @rpccall('%s:reset')
-    def reset(graph='s'):
+    @rpccall("%s:reset")
+    def reset(graph="s"):
         pass
 
-    @rpccall('%s:post')
-    def post(graph='s', topic='s', payload='aB'):
+    @rpccall("%s:post")
+    def post(graph="s", topic="s", payload="aB"):
         pass
 
 
@@ -77,15 +78,15 @@ class RpcProxyAsyncio:
         self.errors = errors
         self.timeout = timeout
         self.scheme = context.name
-        self.authority = ''
-        self.cmd_nturi = NTURI([('graph', 's')])
-        self.payload_nturi = NTURI([('graph', 's'), ('topic', 's'), ('payload', 'aB')])
+        self.authority = ""
+        self.cmd_nturi = NTURI([("graph", "s")])
+        self.payload_nturi = NTURI([("graph", "s"), ("topic", "s"), ("payload", "aB")])
         self.command_map = {
             # cmd name: ('pv', 'request', 'NTURI')
-            'create_graph': ('%s:create', None, self.cmd_nturi),
-            'clear_graph': ('%s:clear', None, self.cmd_nturi),
-            'reset_features': ('%s:reset', None, self.cmd_nturi),
-            'destroy_graph': ('%s:destroy', None, self.cmd_nturi),
+            "create_graph": ("%s:create", None, self.cmd_nturi),
+            "clear_graph": ("%s:clear", None, self.cmd_nturi),
+            "reset_features": ("%s:reset", None, self.cmd_nturi),
+            "destroy_graph": ("%s:destroy", None, self.cmd_nturi),
         }
 
     def wrap(self, nturi, path, *args, **kwargs):
@@ -98,7 +99,7 @@ class RpcProxyAsyncio:
 
     async def payload(self, cmd, payload):
         try:
-            pvname = '%s:post' % self.basepv
+            pvname = "%s:post" % self.basepv
             uri = self.wrap(self.payload_nturi, pvname, graph=self.name, topic=cmd, payload=payload)
             return await asyncio.wait_for(self.ctx.rpc(pvname, uri, request=None), timeout=self.timeout)
         except self.errors:
@@ -136,17 +137,17 @@ class PvaCommHandler(CommHandler):
         self._proxy = PvaCommRpcProxy(ctx, format="%s:cmd" % addr, name=name, errors=errors, timeout=timeout)
         self._feature_req = re.compile("(?P<type>fetch|lookup):(?P<name>.*)")
         self._pvinfomap = {
-            'list_graphs': '%s:info:graphs',
+            "list_graphs": "%s:info:graphs",
         }
         self._pvmap = {
-            'get_names': '%s:ana:%s:names',
-            'get_sources': '%s:ana:%s:sources',
-            'get_versions': ['%s:ana:%s:version', '%s:ana:%s:store:version'],
-            'get_graph_version': '%s:ana:%s:version',
-            'get_heartbeat': '%s:ana:%s:heartbeat',
-            'get_features_version': '%s:ana:%s:store:version',
-            'get_features': '%s:ana:%s:store:features',
-            'get_graph': '%s:ana:%s:dill',
+            "get_names": "%s:ana:%s:names",
+            "get_sources": "%s:ana:%s:sources",
+            "get_versions": ["%s:ana:%s:version", "%s:ana:%s:store:version"],
+            "get_graph_version": "%s:ana:%s:version",
+            "get_heartbeat": "%s:ana:%s:heartbeat",
+            "get_features_version": "%s:ana:%s:store:version",
+            "get_features": "%s:ana:%s:store:features",
+            "get_graph": "%s:ana:%s:dill",
         }
 
     @staticmethod
@@ -191,7 +192,7 @@ class PvaCommHandler(CommHandler):
         if not self._name:
             raise ValueError("graph name must be a non-emtpy string")
         else:
-            return '%s:ana:%s:data:%s' % (self._addr, self._name, data)
+            return "%s:ana:%s:data:%s" % (self._addr, self._name, data)
 
     def close(self):
         if self._owner:
@@ -203,11 +204,10 @@ class GraphCommHandler(PvaCommHandler):
     def __init__(self, name, addr, ctx=None, timeout=1.0):
         errors = (TimeoutError, pct.RemoteError)
         if ctx is None:
-            ctx = pct.Context('pva', nt=CUSTOM_TYPE_WRAPPERS)
+            ctx = pct.Context("pva", nt=CUSTOM_TYPE_WRAPPERS)
             owner = True
         elif not isinstance(ctx, pct.Context):
-            raise TypeError("%s only supports shared contexts of type %s not %s"
-                            % (__class__, pct.Context, type(ctx)))
+            raise TypeError("%s only supports shared contexts of type %s not %s" % (__class__, pct.Context, type(ctx)))
         else:
             owner = False
         super().__init__(name, addr, ctx, errors, owner, timeout=timeout)
@@ -241,8 +241,8 @@ class GraphCommHandler(PvaCommHandler):
         try:
             matched = self._feature_req.match(cmd)
             if matched:
-                if matched.group('type') == 'fetch':
-                    return True, self._unchecked_get(self._get_data_pvname(matched.group('name')))
+                if matched.group("type") == "fetch":
+                    return True, self._unchecked_get(self._get_data_pvname(matched.group("name")))
             else:
                 pvname = self._get_pvname(cmd)
                 if pvname is not None:
@@ -315,11 +315,11 @@ class GraphCommHandler(PvaCommHandler):
             return self.create()
 
     def _load(self, filename):
-        with open(filename, 'rb') as cnf:
+        with open(filename, "rb") as cnf:
             self.update(dill.load(cnf))
 
     def _save(self, filename):
-        with open(filename, 'wb') as cnf:
+        with open(filename, "wb") as cnf:
             dill.dump(self.graph, cnf)
 
 
@@ -328,11 +328,10 @@ class AsyncGraphCommHandler(PvaCommHandler):
     def __init__(self, name, addr, ctx=None, timeout=1.0):
         errors = (asyncio.TimeoutError, pca.RemoteError)
         if ctx is None:
-            ctx = pca.Context('pva', nt=CUSTOM_TYPE_WRAPPERS)
+            ctx = pca.Context("pva", nt=CUSTOM_TYPE_WRAPPERS)
             owner = True
         elif not isinstance(ctx, pca.Context):
-            raise TypeError("%s only supports shared contexts of type %s not %s"
-                            % (__class__, pca.Context, type(ctx)))
+            raise TypeError("%s only supports shared contexts of type %s not %s" % (__class__, pca.Context, type(ctx)))
         else:
             owner = False
         super().__init__(name, addr, ctx, errors, owner, timeout=timeout)
@@ -366,8 +365,8 @@ class AsyncGraphCommHandler(PvaCommHandler):
         try:
             matched = self._feature_req.match(cmd)
             if matched:
-                if matched.group('type') == 'fetch':
-                    return True, await self._unchecked_get(self._get_data_pvname(matched.group('name')))
+                if matched.group("type") == "fetch":
+                    return True, await self._unchecked_get(self._get_data_pvname(matched.group("name")))
             else:
                 pvname = self._get_pvname(cmd)
                 if pvname is not None:
@@ -440,11 +439,11 @@ class AsyncGraphCommHandler(PvaCommHandler):
             return await self.create()
 
     async def _load(self, filename):
-        with open(filename, 'rb') as cnf:
+        with open(filename, "rb") as cnf:
             graph = dill.load(cnf)
         return await self.update(graph)
 
     async def _save(self, filename):
         graph = await self.graph
-        with open(filename, 'wb') as cnf:
+        with open(filename, "wb") as cnf:
             return dill.dump(graph, cnf)

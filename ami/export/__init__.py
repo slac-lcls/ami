@@ -1,14 +1,14 @@
-import sys
-import logging
 import argparse
 import asyncio
+import logging
+import sys
 
-from ami import LogConfig, Defaults
-from ami.comm import Ports, PlatformAction
+from ami import Defaults, LogConfig
+from ami.comm import PlatformAction, Ports
 from ami.export import server
 
-
 logger = logging.getLogger(__name__)
+
 
 async def run_export_async(name, msg_addr, export_addr, aggregate=False, batched=False):
     tasks = []
@@ -22,56 +22,45 @@ async def run_export_async(name, msg_addr, export_addr, aggregate=False, batched
 
     await asyncio.gather(*tasks)
 
+
 def run_export(name, msg_addr, export_addr, aggregate=False, batched=False):
     asyncio.run(run_export_async(name, msg_addr, export_addr, aggregate, batched))
 
+
 def main():
-    parser = argparse.ArgumentParser(description='AMII DataExport App')
+    parser = argparse.ArgumentParser(description="AMII DataExport App")
 
     parser.add_argument(
-        '-H',
-        '--host',
-        default=Defaults.Host,
-        help='hostname of the AMII Manager (default: %s)' % Defaults.Host
+        "-H", "--host", default=Defaults.Host, help="hostname of the AMII Manager (default: %s)" % Defaults.Host
     )
 
     parser.add_argument(
-        '-p',
-        '--port',
+        "-p",
+        "--port",
         type=int,
         default=Ports.BasePort,
         action=PlatformAction,
-        help='base port for ami (default: %d) reserves next %d consecutive ports' % (Ports.BasePort, Ports.NumPorts)
+        help="base port for ami (default: %d) reserves next %d consecutive ports" % (Ports.BasePort, Ports.NumPorts),
     )
 
     parser.add_argument(
-        '-a',
-        '--aggregate',
-        action='store_true',
-        help='aggregates graph and store related variables into structured data (not all clients support this)'
+        "-a",
+        "--aggregate",
+        action="store_true",
+        help="aggregates graph and store related variables into structured data (not all clients support this)",
     )
 
-    parser.add_argument(
-        '--batched',
-        action='store_true',
-        help='batch export as a list of structs'
-    )
+    parser.add_argument("--batched", action="store_true", help="batch export as a list of structs")
 
     parser.add_argument(
-        '--log-level',
+        "--log-level",
         default=LogConfig.Level,
-        help='the logging level of the application (default %s)' % LogConfig.Level
+        help="the logging level of the application (default %s)" % LogConfig.Level,
     )
 
-    parser.add_argument(
-        '--log-file',
-        help='an optional file to write the log output to'
-    )
+    parser.add_argument("--log-file", help="an optional file to write the log output to")
 
-    parser.add_argument(
-        'name',
-        help='the base name to use for data export (e.g. the base of all the PV names)'
-    )
+    parser.add_argument("name", help="the base name to use for data export (e.g. the base of all the PV names)")
 
     args = parser.parse_args()
 
@@ -91,5 +80,5 @@ def main():
         return 0
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     sys.exit(main())

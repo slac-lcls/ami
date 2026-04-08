@@ -1,8 +1,7 @@
 import psana
 from Detector import DetectorTypes, PyDetector
-from .utils import export, parse_cls, parse_methods, parse_annotations, \
-        make_method, make_config, sanitize_ext, Extender
 
+from .utils import Extender, export, make_config, make_method, parse_annotations, parse_cls, parse_methods, sanitize_ext
 
 __all__ = []
 
@@ -11,7 +10,7 @@ RAW_INTERFACES = {}
 FEX_INTERFACES = {}
 BLD_INTERFACES = {}
 ENV_INTERFACES = {}
-MULTI_PANEL_DETS = {'CsPad2x2', 'CsPad', 'Jungfrau', 'Epix10ka2M', 'Epix10kaQuad', 'Uxi'}
+MULTI_PANEL_DETS = {"CsPad2x2", "CsPad", "Jungfrau", "Epix10ka2M", "Epix10kaQuad", "Uxi"}
 PSANA_DETS = (DetectorTypes.DdlDetector, DetectorTypes.WFDetector, DetectorTypes.AreaDetector)
 
 
@@ -54,8 +53,8 @@ class DdlHelperMeta(type):
     def __new__(cls, clsname, bases, attrs, methods):
         func = None
         for base in bases:
-            if hasattr(base, 'get'):
-                func = getattr(base, 'get')
+            if hasattr(base, "get"):
+                func = getattr(base, "get")
                 break
         if func is not None:
             for name in parse_methods(methods):
@@ -84,95 +83,80 @@ class DdlHelper:
 
 @export
 class BldMeta(type):
-    def __new__(cls,
-                clsname,
-                bases,
-                attrs,
-                detcls,
-                sources,
-                annotations=None,
-                overrides=None,
-                configs=None):
-        attrs['detcls'] = parse_cls(detcls)
-        attrs['fexcls'] = None
-        attrs['_dettype'] = clsname
-        attrs['_detinfo'] = {}
+    def __new__(cls, clsname, bases, attrs, detcls, sources, annotations=None, overrides=None, configs=None):
+        attrs["detcls"] = parse_cls(detcls)
+        attrs["fexcls"] = None
+        attrs["_dettype"] = clsname
+        attrs["_detinfo"] = {}
         if configs is not None:
             for name, cfgmods in configs.items():
                 attrs[name] = make_config(cfgmods)
 
         return super().__new__(cls, clsname, bases, attrs)
 
-    def __init__(cls,
-                 clsname,
-                 bases,
-                 attrs,
-                 detcls,
-                 sources,
-                 annotations=None,
-                 overrides=None,
-                 configs=None):
+    def __init__(cls, clsname, bases, attrs, detcls, sources, annotations=None, overrides=None, configs=None):
         super().__init__(clsname, bases, attrs)
-        cls._detinfo['raw'] = []
-        for name, rtype in parse_annotations(annotations,
-                                             overrides).items():
-            cls._detinfo['raw'].append(name)
+        cls._detinfo["raw"] = []
+        for name, rtype in parse_annotations(annotations, overrides).items():
+            cls._detinfo["raw"].append(name)
             func = getattr(cls.detcls, name)
-            func.__annotations__ = {'return': rtype}
+            func.__annotations__ = {"return": rtype}
         for src in sources:
             BLD_INTERFACES[src] = cls
 
 
 @export
 class DetectorMeta(type):
-    def __new__(cls,
-                clsname,
-                bases,
-                attrs,
-                detcls,
-                annotations=None,
-                overrides=None,
-                configs=None,
-                fexcls=None,
-                fexannotations=None,
-                fexoverrides=None):
-        attrs['detcls'] = parse_cls(detcls)
-        attrs['fexcls'] = parse_cls(fexcls)
-        attrs['_dettype'] = clsname
-        attrs['_detinfo'] = {}
+    def __new__(
+        cls,
+        clsname,
+        bases,
+        attrs,
+        detcls,
+        annotations=None,
+        overrides=None,
+        configs=None,
+        fexcls=None,
+        fexannotations=None,
+        fexoverrides=None,
+    ):
+        attrs["detcls"] = parse_cls(detcls)
+        attrs["fexcls"] = parse_cls(fexcls)
+        attrs["_dettype"] = clsname
+        attrs["_detinfo"] = {}
         if configs is not None:
             for name, cfgmods in configs.items():
                 attrs[name] = make_config(cfgmods)
 
         return super().__new__(cls, clsname, bases, attrs)
 
-    def __init__(cls,
-                 clsname,
-                 bases,
-                 attrs,
-                 detcls,
-                 annotations,
-                 overrides=None,
-                 configs=None,
-                 fexcls=None,
-                 fexannotations=None,
-                 fexoverrides=None):
+    def __init__(
+        cls,
+        clsname,
+        bases,
+        attrs,
+        detcls,
+        annotations,
+        overrides=None,
+        configs=None,
+        fexcls=None,
+        fexannotations=None,
+        fexoverrides=None,
+    ):
         super().__init__(clsname, bases, attrs)
         if cls.detcls is not None:
-            cls._detinfo['raw'] = []
-            for name, rtype in parse_annotations(annotations,
-                                                 overrides).items():
-                cls._detinfo['raw'].append(name)
+            cls._detinfo["raw"] = []
+            for name, rtype in parse_annotations(annotations, overrides).items():
+                cls._detinfo["raw"].append(name)
                 func = getattr(cls.detcls, name)
-                func.__annotations__ = {'return': rtype}
+                func.__annotations__ = {"return": rtype}
             RAW_INTERFACES[cls.detcls] = cls
         if cls.fexcls is not None:
-            cls._detinfo['fex'] = []
-            for name, rtype in parse_annotations(fexannotations,
-                                                 fexoverrides).items():
-                cls._detinfo['fex'].append(name)
+            cls._detinfo["fex"] = []
+            for name, rtype in parse_annotations(fexannotations, fexoverrides).items():
+                cls._detinfo["fex"].append(name)
                 func = getattr(cls.fexcls, name)
-                func.__annotations__ = {'return': rtype}
+                func.__annotations__ = {"return": rtype}
             FEX_INTERFACES[cls.fexcls] = cls
 
 
@@ -275,6 +259,6 @@ def detnames_to_epicsinfo(detnames, env):
         if alias:
             epicsinfo[(alias, pvname)] = pvname
         else:
-            epicsinfo[(pvname, '')] = ''
+            epicsinfo[(pvname, "")] = ""
 
     return epicsinfo

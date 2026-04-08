@@ -1,17 +1,21 @@
-import os
-import sys
 import importlib
 import logging
+import os
+import sys
+
 import pyqtgraph as pg
+from pyqtgraph import FileDialog, dockarea
 from pyqtgraph.debug import printExc
-from pyqtgraph import dockarea, FileDialog
-from qtpy import QtGui, QtWidgets, QtCore
-from ami.flowchart.NodeLibrary import isNodeClass
+from qtpy import QtCore, QtGui, QtWidgets
+
 from ami.flowchart.library.Editors import STYLE
+from ami.flowchart.NodeLibrary import isNodeClass
 from ami.flowchart.NodeStateWidget import NodeStateWidget
+
 try:
-    from qtconsole.rich_jupyter_widget import RichJupyterWidget
     from qtconsole.inprocess import QtInProcessKernelManager
+    from qtconsole.rich_jupyter_widget import RichJupyterWidget
+
     HAS_QTCONSOLE = True
 except ImportError:
     HAS_QTCONSOLE = False
@@ -133,7 +137,7 @@ class LibraryEditor(QtWidgets.QWidget):
                 continue
             for node in nodes:
                 try:
-                    self.library.addNodeType(node, [(mod.__name__, )])
+                    self.library.addNodeType(node, [(mod.__name__,)])
                     loaded = True
                 except Exception as e:
                     printExc(e)
@@ -148,18 +152,17 @@ class LibraryEditor(QtWidgets.QWidget):
         self.sigApplyClicked.emit()
 
     def saveState(self):
-        return {'paths': list(self.paths)}
+        return {"paths": list(self.paths)}
 
     def restoreState(self, state):
-        self.fileDialogFilesSelected(state['paths'])
+        self.fileDialogFilesSelected(state["paths"])
 
 
 class SearchProxyModel(QtCore.QSortFilterProxyModel):
 
     def setFilterRegularExpression(self, pattern):
         if isinstance(pattern, str):
-            pattern = QtCore.QRegularExpression(
-                pattern, QtCore.QRegularExpression.PatternOption.CaseInsensitiveOption)
+            pattern = QtCore.QRegularExpression(pattern, QtCore.QRegularExpression.PatternOption.CaseInsensitiveOption)
         super(SearchProxyModel, self).setFilterRegularExpression(pattern)
 
     def _accept_index(self, idx):
@@ -320,30 +323,30 @@ class Ui_Toolbar(object):
 
         self.source_model = build_model()
         self.source_search = QtWidgets.QLineEdit()
-        self.source_search.setPlaceholderText('Search Sources...')
+        self.source_search.setPlaceholderText("Search Sources...")
         self.source_tree = build_tree(self.source_model, parent)
 
         self.node_model = build_model()
         self.node_search = QtWidgets.QLineEdit()
-        self.node_search.setPlaceholderText('Search Operations...')
+        self.node_search.setPlaceholderText("Search Operations...")
         self.node_tree = build_tree(self.node_model, parent)
 
         self.gridLayout.addWidget(self.toolBar, 0, 0, 1, -1)
 
-        self.node_dock = dockarea.Dock('nodes', size=(400, 1000))
+        self.node_dock = dockarea.Dock("nodes", size=(400, 1000))
         self.node_dock.hideTitleBar()
-        self.node_dock.setOrientation('vertical')
+        self.node_dock.setOrientation("vertical")
         self.node_dock.addWidget(self.source_search, 1, 0, 1, 1)
         self.node_dock.addWidget(self.source_tree, 2, 0, 1, 1)
         self.node_dock.addWidget(self.node_search, 3, 0, 1, 1)
         self.node_dock.addWidget(self.node_tree, 4, 0, 1, 1)
-        chart.addDock(self.node_dock, 'left')
+        chart.addDock(self.node_dock, "left")
 
         # Create state inspector dock on the right
-        self.state_dock = dockarea.Dock('Node State', size=(400, 1000))
+        self.state_dock = dockarea.Dock("Node State", size=(400, 1000))
         self.state_widget = NodeStateWidget()
         self.state_dock.addWidget(self.state_widget)
-        chart.addDock(self.state_dock, 'right')
+        chart.addDock(self.state_dock, "right")
         self.state_dock.setVisible(False)  # Hidden by default
 
         # Connect inspector action to dock visibility
@@ -385,7 +388,7 @@ class Ui_Toolbar(object):
         self.populate_tree(data, model.invisibleRootItem())
         tree.sortByColumn(0, QtCore.Qt.AscendingOrder)
         tree.expandAll()
-        if typ in STYLE and not STYLE[typ].get('expand', True):
+        if typ in STYLE and not STYLE[typ].get("expand", True):
             tree.collapseAll()
 
     def clear_model(self, tree):

@@ -1,16 +1,16 @@
-import os
-import sys
-import zmq
-import time
-import shutil
-import logging
-import tempfile
 import argparse
+import logging
+import os
+import shutil
+import sys
+import tempfile
 import threading
+import time
+
+import zmq
 
 from ami import LogConfig
 from ami.comm import Ports
-
 
 logger = logging.getLogger(__name__)
 
@@ -68,7 +68,7 @@ class SimSync:
         If a value of 'exit' is received then the receive loop is stopped.
         """
         request = self.comm.recv_string()
-        if request == 'exit':
+        if request == "exit":
             self.running = False
             self.comm.send_pyobj(0)
         else:
@@ -82,14 +82,14 @@ class SimSync:
         made then None is the reply.
         """
         request = self.sock.recv_string()
-        if request == 'ts':
+        if request == "ts":
             self.sock.send_pyobj((self.ts, time.time()))
             self.ts += 1
             if self.ts % self.interval == 0:
                 tcurrent = time.time()
                 if self.tlast is not None:
                     tdelta = tcurrent - self.tlast
-                    logger.info("Processing %f events per second", (self.interval/tdelta))
+                    logger.info("Processing %f events per second", (self.interval / tdelta))
                 self.tlast = tcurrent
         else:
             self.sock.send_pyobj(None)
@@ -128,57 +128,43 @@ def run_syncer(addr, comm_addr, start, interval, ctx=None):
 
 
 def main():
-    parser = argparse.ArgumentParser(description='AMII timestamp syncer for simulated data')
+    parser = argparse.ArgumentParser(description="AMII timestamp syncer for simulated data")
 
     parser.add_argument(
-        '-H',
-        '--host',
-        default='*',
-        help='interface the AMII timestamp syncer listens on (default: all)'
+        "-H", "--host", default="*", help="interface the AMII timestamp syncer listens on (default: all)"
     )
 
     addr_group = parser.add_mutually_exclusive_group()
 
     addr_group.add_argument(
-        '-p',
-        '--port',
+        "-p",
+        "--port",
         type=int,
         default=Ports.Sync,
-        help='port for the AMII timestamp syncer (default: %d)' % Ports.Sync
+        help="port for the AMII timestamp syncer (default: %d)" % Ports.Sync,
     )
 
-    addr_group.add_argument(
-        '--ipc',
-        action='store_true',
-        help='use ipc for the AMII timestamp syncer'
+    addr_group.add_argument("--ipc", action="store_true", help="use ipc for the AMII timestamp syncer")
+
+    parser.add_argument(
+        "-s", "--start", type=int, default=0, help="starting value to use for the timestamps (default: 0)"
     )
 
     parser.add_argument(
-        '-s',
-        '--start',
-        type=int,
-        default=0,
-        help='starting value to use for the timestamps (default: 0)'
-    )
-
-    parser.add_argument(
-        '-i',
-        '--interval',
+        "-i",
+        "--interval",
         type=int,
         default=10,
-        help='the interval (in timestamp increments) to use for reporting (default: 10)'
+        help="the interval (in timestamp increments) to use for reporting (default: 10)",
     )
 
     parser.add_argument(
-        '--log-level',
+        "--log-level",
         default=LogConfig.Level,
-        help='the logging level of the application (default %s)' % LogConfig.Level
+        help="the logging level of the application (default %s)" % LogConfig.Level,
     )
 
-    parser.add_argument(
-        '--log-file',
-        help='an optional file to write the log output to'
-    )
+    parser.add_argument("--log-file", help="an optional file to write the log output to")
 
     args = parser.parse_args()
 
@@ -204,10 +190,9 @@ def main():
 
     try:
         ctx = zmq.Context()
-        sync_thread = threading.Thread(target=run_syncer,
-                                       args=(addr, comm_addr, args.start, args.interval, ctx),
-                                       name='syncer',
-                                       daemon=True)
+        sync_thread = threading.Thread(
+            target=run_syncer, args=(addr, comm_addr, args.start, args.interval, ctx), name="syncer", daemon=True
+        )
         sync_thread.start()
 
         # create a socket for messaging the syncer thread
@@ -215,7 +200,7 @@ def main():
         comm.connect(comm_addr)
 
         input("Press any key to exit...\n")
-        comm.send_string('exit')
+        comm.send_string("exit")
         exit_code = comm.recv_pyobj()
         logger.info("Waiting for timestamp syncer to terminate...")
         sync_thread.join()
@@ -233,5 +218,5 @@ def main():
             shutil.rmtree(ipcdir)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     sys.exit(main())

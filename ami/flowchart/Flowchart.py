@@ -1,48 +1,53 @@
 # -*- coding: utf-8 -*-
-from datetime import datetime
-from qtpy import QtCore, QtWidgets
-from pyqtgraph import FileDialog
-from pyqtgraph.debug import printExc
-from pyqtgraph import dockarea as dockarea
 from collections import OrderedDict
+from datetime import datetime
+
+from pyqtgraph import FileDialog
+from pyqtgraph import dockarea as dockarea
+from pyqtgraph.debug import printExc
+from qtpy import QtCore, QtWidgets
+
 from ami import LogConfig
 from ami.asyncqt import asyncSlot
+from ami.client import flowchart_messages as fcMsgs
+from ami.comm import AsyncGraphCommHandler, GraphCommHandler
 from ami.flowchart.FlowchartGraphicsView import FlowchartGraphicsView
-from ami.flowchart.Terminal import Terminal, TerminalGraphicsItem, ConnectionItem
 from ami.flowchart.library import LIBRARY
-from ami.flowchart.library.common import SourceNode, CtrlNode
+from ami.flowchart.library.common import CtrlNode, SourceNode
 from ami.flowchart.library.Editors import STYLE
 from ami.flowchart.Node import Node, NodeGraphicsItem, find_nearest
 from ami.flowchart.NodeLibrary import SourceLibrary
 from ami.flowchart.SourceConfiguration import SourceConfiguration
+from ami.flowchart.Terminal import ConnectionItem, Terminal, TerminalGraphicsItem
 from ami.flowchart.TypeEncoder import TypeEncoder
-from ami.comm import AsyncGraphCommHandler, GraphCommHandler
-from ami.client import flowchart_messages as fcMsgs
+
 try:
-    from qtconsole.rich_jupyter_widget import RichJupyterWidget
     from qtconsole.inprocess import QtInProcessKernelManager
+    from qtconsole.rich_jupyter_widget import RichJupyterWidget
+
     HAS_QTCONSOLE = True
 except ImportError:
     HAS_QTCONSOLE = False
 
-import ami.flowchart.Editor as EditorTemplate
-import amitypes
 import asyncio
-import zmq.asyncio
-import json
-import subprocess
-import re
-import tempfile
-import numpy as np
-import networkx as nx
-import itertools as it
 import collections
-import os
-import typing  # noqa
+import itertools as it
+import json
 import logging
+import os
+import re
 import socket
-import prometheus_client as pc
+import subprocess
+import tempfile
+import typing  # noqa
 
+import amitypes
+import networkx as nx
+import numpy as np
+import prometheus_client as pc
+import zmq.asyncio
+
+import ami.flowchart.Editor as EditorTemplate
 
 logger = logging.getLogger(LogConfig.get_package_name(__name__))
 
@@ -54,9 +59,18 @@ class Flowchart(Node):
     sigNodeChanged = QtCore.Signal(object)
     # called when output is expected to have changed
 
-    def __init__(self, name=None, filePath=None, library=None,
-                 broker_addr="", graphmgr_addr="", checkpoint_addr="",
-                 prometheus_dir=None, hutch="", configure=False):
+    def __init__(
+        self,
+        name=None,
+        filePath=None,
+        library=None,
+        broker_addr="",
+        graphmgr_addr="",
+        checkpoint_addr="",
+        prometheus_dir=None,
+        hutch="",
+        configure=False,
+    ):
         super().__init__(name)
         self.socks = []
         self.library = library or LIBRARY
@@ -69,12 +83,12 @@ class Flowchart(Node):
         self.socks.append(self.broker)
 
         self.graphinfo = self.ctx.socket(zmq.SUB)
-        self.graphinfo.setsockopt_string(zmq.SUBSCRIBE, '')
+        self.graphinfo.setsockopt_string(zmq.SUBSCRIBE, "")
         self.graphinfo.connect(graphmgr_addr.info)
         self.socks.append(self.graphinfo)
 
         self.checkpoint = self.ctx.socket(zmq.SUB)  # used to receive ctrlnode updates from processes
-        self.checkpoint.setsockopt_string(zmq.SUBSCRIBE, '')
+        self.checkpoint.setsockopt_string(zmq.SUBSCRIBE, "")
         self.checkpoint.connect(checkpoint_addr)
         self.socks.append(self.checkpoint)
 
@@ -121,7 +135,7 @@ class Flowchart(Node):
             pth = os.path.join(self.prometheus_dir, pth)
             conf = [{"targets": [f"{socket.gethostname()}:{port}"]}]
             try:
-                with open(pth, 'w') as f:
+                with open(pth, "w") as f:
                     json.dump(conf, f)
             except PermissionError:
                 logging.error("Permission denied: %s", pth)
@@ -135,8 +149,7 @@ class Flowchart(Node):
         return self._graph.nodes(**kwargs)
 
     def createNode(self, nodeType=None, name=None, pos=None, prompt=False):
-        """Create a new Node and add it to this flowchart.
-        """
+        """Create a new Node and add it to this flowchart."""
         if name is None:
             n = 0
             while True:
@@ -162,16 +175,16 @@ class Flowchart(Node):
         if type(pos) in [QtCore.QPoint, QtCore.QPointF]:
             pos = [pos.x(), pos.y()]
         item = node.graphicsItem()
-        item.setZValue(self.nextZVal*2)
+        item.setZValue(self.nextZVal * 2)
         self.nextZVal += 1
         self.viewBox.addItem(item)
         pos = (find_nearest(pos[0]), find_nearest(pos[1]))
         item.moveBy(*pos)
         subset = 1
-        mod = node.__module__.split('.')[-1]
-        if mod == 'common' and isinstance(node, SourceNode):
+        mod = node.__module__.split(".")[-1]
+        if mod == "common" and isinstance(node, SourceNode):
             subset = 0
-        elif mod == 'Display':
+        elif mod == "Display":
             subset = 2
         self._graph.add_node(node.name(), node=node, subset=subset)
         node.sigClosed.connect(self.nodeClosed)
@@ -207,7 +220,7 @@ class Flowchart(Node):
         ctrl = self.widget()
         name = node.name()
 
-        if hasattr(node, 'to_operation'):
+        if hasattr(node, "to_operation"):
             self.deleted_nodes.append(name)
             self.sigNodeChanged.emit(node)
             if ctrl.features.remove_plot(name):
@@ -226,12 +239,14 @@ class Flowchart(Node):
                 await ctrl.graphCommHandler.unview(views)
                 await ctrl.graphCommHandler.updatePlots(ctrl.features.plots)
         elif node.exportable():
-            if 'eventid' in input_vars:
-                await ctrl.graphCommHandler.unexport([input_vars['In'], input_vars['eventid']],
-                                                     [node.values['alias'], "_timestamp"])
-            elif 'Timestamp' in input_vars:
-                await ctrl.graphCommHandler.unexport([input_vars['In'], input_vars['Timestamp']],
-                                                     [node.values['alias'], "_timestamp"])
+            if "eventid" in input_vars:
+                await ctrl.graphCommHandler.unexport(
+                    [input_vars["In"], input_vars["eventid"]], [node.values["alias"], "_timestamp"]
+                )
+            elif "Timestamp" in input_vars:
+                await ctrl.graphCommHandler.unexport(
+                    [input_vars["In"], input_vars["Timestamp"]], [node.values["alias"], "_timestamp"]
+                )
 
     @asyncSlot(object, object)
     async def nodeTermAdded(self, node, term):
@@ -257,24 +272,35 @@ class Flowchart(Node):
 
         localNode = localTerm.node().name()
         remoteNode = remoteTerm.node().name()
-        key = localNode + '.' + localTerm.name() + '->' + remoteNode + '.' + remoteTerm.name()
+        key = localNode + "." + localTerm.name() + "->" + remoteNode + "." + remoteTerm.name()
 
         if not self._graph.has_edge(localNode, remoteNode, key=key):
-            self._graph.add_edge(localNode, remoteNode, key=key,
-                                 from_term=localTerm.name(), to_term=remoteTerm.name())
+            self._graph.add_edge(localNode, remoteNode, key=key, from_term=localTerm.name(), to_term=remoteTerm.name())
 
-            msg = fcMsgs.NodeTermConnected(localNode, isinstance(localTerm.node(), SourceNode),
-                                           localTerm.name(), localTerm.saveState(),
-                                           remoteNode, isinstance(remoteTerm.node(), SourceNode),
-                                           remoteTerm.name(), remoteTerm.saveState())
+            msg = fcMsgs.NodeTermConnected(
+                localNode,
+                isinstance(localTerm.node(), SourceNode),
+                localTerm.name(),
+                localTerm.saveState(),
+                remoteNode,
+                isinstance(remoteTerm.node(), SourceNode),
+                remoteTerm.name(),
+                remoteTerm.saveState(),
+            )
             localTerm.node().terminalConnected(msg)
             await self.broker.send_string(localNode, zmq.SNDMORE)
             await self.broker.send_pyobj(msg)
 
-            msg = fcMsgs.NodeTermConnected(remoteNode, isinstance(remoteTerm.node(), SourceNode),
-                                           remoteTerm.name(), remoteTerm.saveState(),
-                                           localNode, isinstance(localTerm.node(), SourceNode),
-                                           localTerm.name(), localTerm.saveState())
+            msg = fcMsgs.NodeTermConnected(
+                remoteNode,
+                isinstance(remoteTerm.node(), SourceNode),
+                remoteTerm.name(),
+                remoteTerm.saveState(),
+                localNode,
+                isinstance(localTerm.node(), SourceNode),
+                localTerm.name(),
+                localTerm.saveState(),
+            )
             remoteTerm.node().terminalConnected(msg)
             await self.broker.send_string(remoteNode, zmq.SNDMORE)
             await self.broker.send_pyobj(msg)
@@ -290,23 +316,35 @@ class Flowchart(Node):
 
         localNode = localTerm.node().name()
         remoteNode = remoteTerm.node().name()
-        key = localNode + '.' + localTerm.name() + '->' + remoteNode + '.' + remoteTerm.name()
+        key = localNode + "." + localTerm.name() + "->" + remoteNode + "." + remoteTerm.name()
 
         if self._graph.has_edge(localNode, remoteNode, key=key):
             self._graph.remove_edge(localNode, remoteNode, key=key)
 
-            msg = fcMsgs.NodeTermDisconnected(localNode, isinstance(localTerm.node(), SourceNode),
-                                              localTerm.name(), localTerm.saveState(),
-                                              remoteNode, isinstance(remoteTerm.node(), SourceNode),
-                                              remoteTerm.name(), remoteTerm.saveState())
+            msg = fcMsgs.NodeTermDisconnected(
+                localNode,
+                isinstance(localTerm.node(), SourceNode),
+                localTerm.name(),
+                localTerm.saveState(),
+                remoteNode,
+                isinstance(remoteTerm.node(), SourceNode),
+                remoteTerm.name(),
+                remoteTerm.saveState(),
+            )
             localTerm.node().terminalDisconnected(msg)
             await self.broker.send_string(localNode, zmq.SNDMORE)
             await self.broker.send_pyobj(msg)
 
-            msg = fcMsgs.NodeTermDisconnected(remoteNode, isinstance(remoteTerm.node(), SourceNode),
-                                              remoteTerm.name(), remoteTerm.saveState(),
-                                              localNode, isinstance(localTerm.node(), SourceNode),
-                                              localTerm.name(), localTerm.saveState())
+            msg = fcMsgs.NodeTermDisconnected(
+                remoteNode,
+                isinstance(remoteTerm.node(), SourceNode),
+                remoteTerm.name(),
+                remoteTerm.saveState(),
+                localNode,
+                isinstance(localTerm.node(), SourceNode),
+                localTerm.name(),
+                localTerm.saveState(),
+            )
             remoteTerm.node().terminalDisconnected(msg)
             await self.broker.send_string(remoteNode, zmq.SNDMORE)
             await self.broker.send_pyobj(msg)
@@ -343,11 +381,11 @@ class Flowchart(Node):
 
             for path in paths:
                 for node in path:
-                    node = self._graph.nodes[node]['node']
+                    node = self._graph.nodes[node]["node"]
                     name = node.name()
                     node.nodeEnabled(enabled)
                     if not enabled:
-                        if hasattr(node, 'to_operation'):
+                        if hasattr(node, "to_operation"):
                             self.deleted_nodes.append(name)
                         elif node.viewable():
                             for term, in_var in node.input_vars().items():
@@ -388,66 +426,66 @@ class Flowchart(Node):
         Return a serializable data structure representing the current state of this flowchart.
         """
         state = {}
-        state['nodes'] = []
-        state['connects'] = []
-        state['viewbox'] = self.viewBox.saveState()
+        state["nodes"] = []
+        state["connects"] = []
+        state["viewbox"] = self.viewBox.saveState()
 
-        for name, node in self.nodes(data='node'):
+        for name, node in self.nodes(data="node"):
             cls = type(node)
             clsName = cls.__name__
-            ns = {'class': clsName, 'name': name, 'state': node.saveState()}
-            state['nodes'].append(ns)
+            ns = {"class": clsName, "name": name, "state": node.saveState()}
+            state["nodes"].append(ns)
 
         for from_node, to_node, data in self._graph.edges(data=True):
-            from_term = data['from_term']
-            to_term = data['to_term']
-            state['connects'].append((from_node, from_term, to_node, to_term))
+            from_term = data["from_term"]
+            to_term = data["to_term"]
+            state["connects"].append((from_node, from_term, to_node, to_term))
 
-        state['source_configuration'] = self.widget().sourceConfigure.saveState()
-        state['library'] = self.widget().libraryEditor.saveState()
+        state["source_configuration"] = self.widget().sourceConfigure.saveState()
+        state["library"] = self.widget().libraryEditor.saveState()
         return state
 
     def restoreState(self, state):
         """
         Restore the state of this flowchart from a previous call to `saveState()`.
         """
-        if 'source_configuration' in state:
-            src_cfg = state['source_configuration']
+        if "source_configuration" in state:
+            src_cfg = state["source_configuration"]
             self.widget().sourceConfigure.restoreState(src_cfg)
-            if src_cfg['files']:
+            if src_cfg["files"]:
                 self.widget().sourceConfigure.applyClicked()
 
-        if 'library' in state:
-            lib_cfg = state['library']
+        if "library" in state:
+            lib_cfg = state["library"]
             self.widget().libraryEditor.restoreState(lib_cfg)
             self.widget().libraryEditor.applyClicked()
 
-        if 'viewbox' in state:
-            self.viewBox.restoreState(state['viewbox'])
+        if "viewbox" in state:
+            self.viewBox.restoreState(state["viewbox"])
 
-        nodes = state['nodes']
-        nodes.sort(key=lambda a: a['state']['pos'][0])
+        nodes = state["nodes"]
+        nodes.sort(key=lambda a: a["state"]["pos"][0])
         for n in nodes:
-            if n['class'] == 'SourceNode':
+            if n["class"] == "SourceNode":
                 try:
-                    ttype = eval(n['state']['terminals']['Out']['ttype'])
-                    n['state']['terminals']['Out']['ttype'] = ttype
-                    node = SourceNode(name=n['name'], terminals=n['state']['terminals'])
+                    ttype = eval(n["state"]["terminals"]["Out"]["ttype"])
+                    n["state"]["terminals"]["Out"]["ttype"] = ttype
+                    node = SourceNode(name=n["name"], terminals=n["state"]["terminals"])
                     self.addNode(node=node)
                 except Exception:
-                    printExc("Error creating node %s: (continuing anyway)" % n['name'])
+                    printExc("Error creating node %s: (continuing anyway)" % n["name"])
             else:
                 try:
-                    node = self.createNode(n['class'], name=n['name'], prompt=False)
+                    node = self.createNode(n["class"], name=n["name"], prompt=False)
                 except Exception:
-                    printExc("Error creating node %s: (continuing anyway)" % n['name'])
+                    printExc("Error creating node %s: (continuing anyway)" % n["name"])
 
             node.blockSignals(True)
 
             if hasattr(node, "display"):
                 node.display(topics=None, terms=None, addr=None, win=None)
 
-            node.restoreState(n['state'])
+            node.restoreState(n["state"])
 
             node.blockSignals(False)
 
@@ -455,7 +493,7 @@ class Flowchart(Node):
         edges = {}
         checked = []
 
-        with tempfile.NamedTemporaryFile(mode='w') as type_file:
+        with tempfile.NamedTemporaryFile(mode="w") as type_file:
             type_file.write("from typing import *\n")
             type_file.write("from mypy_extensions import TypedDict\n")
             type_file.write("import numbers\n")
@@ -463,9 +501,9 @@ class Flowchart(Node):
             type_file.write("import amitypes\n")
             type_file.write("T = TypeVar('T')\n\n")
 
-            nodes = self.nodes(data='node')
+            nodes = self.nodes(data="node")
 
-            for n1, t1, n2, t2 in state['connects']:
+            for n1, t1, n2, t2 in state["connects"]:
                 try:
                     node1 = nodes[n1]
                     term1 = node1[t1]
@@ -474,22 +512,28 @@ class Flowchart(Node):
 
                     term1.connectTo(term2, type_file=type_file, checked=checked)
                     if term1.isInput():
-                        in_name = node1.name() + '_' + term1.name()
-                        in_name = in_name.replace('.', '_')
-                        out_name = node2.name() + '_' + term2.name()
-                        out_name = out_name.replace('.', '_')
-                        edge = ((node2.name(), node1.name()),
-                                f"{node2.name()}.{term2.name()}->{node1.name()}.{term1.name()}",
-                                term2.name(), term1.name())
+                        in_name = node1.name() + "_" + term1.name()
+                        in_name = in_name.replace(".", "_")
+                        out_name = node2.name() + "_" + term2.name()
+                        out_name = out_name.replace(".", "_")
+                        edge = (
+                            (node2.name(), node1.name()),
+                            f"{node2.name()}.{term2.name()}->{node1.name()}.{term1.name()}",
+                            term2.name(),
+                            term1.name(),
+                        )
                         edges[(in_name, out_name)] = edge
                     else:
-                        in_name = node2.name() + '_' + term2.name()
-                        in_name = in_name.replace('.', '_')
-                        out_name = node1.name() + '_' + term1.name()
-                        out_name = out_name.replace('.', '_')
-                        edge = ((node1.name(), node2.name()),
-                                f"{node1.name()}.{term1.name()}->{node2.name()}.{term2.name()}",
-                                term1.name(), term2.name())
+                        in_name = node2.name() + "_" + term2.name()
+                        in_name = in_name.replace(".", "_")
+                        out_name = node1.name() + "_" + term1.name()
+                        out_name = out_name.replace(".", "_")
+                        edge = (
+                            (node1.name(), node2.name()),
+                            f"{node1.name()}.{term1.name()}->{node2.name()}.{term2.name()}",
+                            term1.name(),
+                            term2.name(),
+                        )
                         edges[(in_name, out_name)] = edge
 
                     connections[(in_name, out_name)] = (term1, term2)
@@ -499,16 +543,17 @@ class Flowchart(Node):
                     printExc("Error connecting terminals %s.%s - %s.%s:" % (n1, t1, n2, t2))
 
             type_file.flush()
-            dmypy_status = os.environ['DMYPY_STATUS_FILE']
-            status = subprocess.run(["dmypy", "--status-file", dmypy_status, "check", type_file.name],
-                                    capture_output=True, text=True)
+            dmypy_status = os.environ["DMYPY_STATUS_FILE"]
+            status = subprocess.run(
+                ["dmypy", "--status-file", dmypy_status, "check", type_file.name], capture_output=True, text=True
+            )
 
             if status.returncode != 0:
-                lines = status.stdout.split('\n')[:-1]
+                lines = status.stdout.split("\n")[:-1]
                 for line in lines:
                     m = re.search(r"\"+(\w+)\"+", line)
                     if m:
-                        m = m.group().replace('"', '')
+                        m = m.group().replace('"', "")
                         for i in connections:
                             if i[0] == m:
                                 term1, term2 = connections[i]
@@ -526,8 +571,7 @@ class Flowchart(Node):
             for _, edge in edges.items():
                 localNode_remoteNode, key, localTerm, remoteTerm = edge
                 localNode, remoteNode = localNode_remoteNode
-                self._graph.add_edge(localNode, remoteNode, key=key,
-                                     from_term=localTerm, to_term=remoteTerm)
+                self._graph.add_edge(localNode, remoteNode, key=key, from_term=localTerm, to_term=remoteTerm)
 
     @asyncSlot(str)
     async def loadFile(self, fileName=None):
@@ -540,7 +584,7 @@ class Flowchart(Node):
             msg.exec()
             return
 
-        with open(fileName, 'r') as f:
+        with open(fileName, "r") as f:
             state = json.load(f)
 
         ctrl = self.widget()
@@ -551,14 +595,14 @@ class Flowchart(Node):
         await ctrl.applyClicked(build_views=False)
 
         nodes = []
-        for name, node in self.nodes(data='node'):
+        for name, node in self.nodes(data="node"):
             if node.viewed or node.exportable():
                 nodes.append(node)
             node.blockSignals(False)
 
         await ctrl.chartWidget.build_views(nodes, ctrl=True, export=True)
 
-    def saveFile(self, fileName=None, startDir=None, suggestedFileName='flowchart.fc'):
+    def saveFile(self, fileName=None, startDir=None, suggestedFileName="flowchart.fc"):
         """
         Save this flowchart to a .fc file
         """
@@ -566,7 +610,7 @@ class Flowchart(Node):
             if startDir is None:
                 startDir = self.filePath
             if startDir is None:
-                startDir = '.'
+                startDir = "."
             self.fileDialog = FileDialog(None, "Save Flowchart..", startDir, "Flowchart (*.fc)")
             self.fileDialog.setAcceptMode(QtWidgets.QFileDialog.AcceptSave)
 
@@ -575,18 +619,18 @@ class Flowchart(Node):
             else:
                 return
 
-        if not fileName.endswith('.fc'):
+        if not fileName.endswith(".fc"):
             fileName += ".fc"
 
         state = self.saveState()
-        state = json.dumps(state, indent=2, separators=(',', ': '), sort_keys=False, cls=TypeEncoder)
+        state = json.dumps(state, indent=2, separators=(",", ": "), sort_keys=False, cls=TypeEncoder)
 
-        with open(fileName, 'w') as f:
+        with open(fileName, "w") as f:
             f.write(state)
-            f.write('\n')
+            f.write("\n")
 
         ctrl = self.widget()
-        ctrl.graph_info.labels(self.hutch, ctrl.graph_name).info({'graph': state})
+        ctrl.graph_info.labels(self.hutch, ctrl.graph_name).info({"graph": state})
         ctrl.chartWidget.updateStatus(f"Saved graph to: {fileName}")
         self.sigFileSaved.emit(fileName)
 
@@ -595,7 +639,7 @@ class Flowchart(Node):
         Remove all nodes from this flowchart except the original input/output nodes.
         """
         for name, gnode in self._graph.nodes().items():
-            node = gnode['node']
+            node = gnode["node"]
             await self.broker.send_string(name, zmq.SNDMORE)
             await self.broker.send_pyobj(fcMsgs.CloseNode())
             node.close(emit=False)
@@ -612,23 +656,23 @@ class Flowchart(Node):
             if node_name not in self._graph.nodes:
                 continue
 
-            node = self._graph.nodes[node_name]['node']
+            node = self._graph.nodes[node_name]["node"]
             current_node_state = node.saveState()
             restore_ctrl = False
             restore_widget = False
 
-            if 'ctrl' in new_node_state:
-                if current_node_state['ctrl'] != new_node_state['ctrl']:
-                    current_node_state['ctrl'] = new_node_state['ctrl']
+            if "ctrl" in new_node_state:
+                if current_node_state["ctrl"] != new_node_state["ctrl"]:
+                    current_node_state["ctrl"] = new_node_state["ctrl"]
                     restore_ctrl = True
 
-            if 'widget' in new_node_state:
-                if current_node_state['widget'] != new_node_state['widget']:
+            if "widget" in new_node_state:
+                if current_node_state["widget"] != new_node_state["widget"]:
                     restore_widget = True
-                    current_node_state['widget'] = new_node_state['widget']
+                    current_node_state["widget"] = new_node_state["widget"]
 
-            if 'geometry' in new_node_state:
-                node.geometry = QtCore.QByteArray.fromHex(bytes(new_node_state['geometry'], 'ascii'))
+            if "geometry" in new_node_state:
+                node.geometry = QtCore.QByteArray.fromHex(bytes(new_node_state["geometry"], "ascii"))
 
             if restore_ctrl or restore_widget:
                 node.blockSignals(True)
@@ -638,7 +682,7 @@ class Flowchart(Node):
                 if node.changed:
                     self.sigNodeChanged.emit(node)
 
-            node.viewed = new_node_state['viewed']
+            node.viewed = new_node_state["viewed"]
 
             # Update state panel if this node is currently displayed
             ctrl_widget = self.widget()
@@ -653,17 +697,17 @@ class Flowchart(Node):
             source = await self.graphinfo.recv_string()
             msg = await self.graphinfo.recv_pyobj()
 
-            if topic == 'sources':
+            if topic == "sources":
                 source_library = SourceLibrary()
                 for source, node_type in msg.items():
                     pth = []
                     if ":" in source:
-                        for part in source.split(':')[:-1]:
+                        for part in source.split(":")[:-1]:
                             if pth:
                                 part = ":".join((pth[-1], part))
                             pth.append(part)
                     elif "_" in source:
-                        for part in source.split('_')[:-1]:
+                        for part in source.split("_")[:-1]:
                             if pth:
                                 part = "_".join((pth[-1], part))
                             pth.append(part)
@@ -681,59 +725,58 @@ class Flowchart(Node):
 
                 ctrl.chartWidget.updateStatus("Updated sources.")
 
-            elif topic == 'event_rate':
+            elif topic == "event_rate":
                 if num_workers is None:
                     ctrl = self.widget()
                     compiler_args = await ctrl.graphCommHandler.compilerArgs
-                    num_workers = compiler_args['num_workers']
-                    events_per_second = [None]*num_workers
-                    total_events = [None]*num_workers
+                    num_workers = compiler_args["num_workers"]
+                    events_per_second = [None] * num_workers
+                    total_events = [None] * num_workers
 
                 if ctrl.graph_name not in msg:
                     continue
                 time_per_event = msg[ctrl.graph_name]
-                worker = int(re.search(r'(\d)+', source).group())
-                events_per_second[worker] = len(time_per_event)/(time_per_event[-1][1] - time_per_event[0][0])
-                total_events[worker] = msg['num_events']
+                worker = int(re.search(r"(\d)+", source).group())
+                events_per_second[worker] = len(time_per_event) / (time_per_event[-1][1] - time_per_event[0][0])
+                total_events[worker] = msg["num_events"]
 
                 if all(events_per_second):
                     events_per_second = int(np.average(events_per_second))
                     total_num_events = int(np.sum(total_events))
                     ctrl = self.widget()
                     ctrl.ui.rateLbl.setText(f"Num Events: {total_num_events} Avg Events/Sec: {events_per_second}")
-                    events_per_second = [None]*num_workers
-                    total_events = [None]*num_workers
-            elif topic == 'warning':
+                    events_per_second = [None] * num_workers
+                    total_events = [None] * num_workers
+            elif topic == "warning":
                 ctrl = self.widget()
-                if hasattr(msg, 'node_name'):
+                if hasattr(msg, "node_name"):
                     if msg.graph_name != ctrl.graph_name:
                         continue
                     node_name = ""
                     if msg.node_name in ctrl.metadata:
-                        node_name = ctrl.metadata[msg.node_name]['parent']
-                    if node_name in self.nodes(data='node'):
-                        node = self.nodes(data='node')[node_name]
+                        node_name = ctrl.metadata[msg.node_name]["parent"]
+                    if node_name in self.nodes(data="node"):
+                        node = self.nodes(data="node")[node_name]
                         if node.exception is None:
                             node.setException(msg, "warning")
-                            ctrl.chartWidget.updateStatus(f"WARNING: {source} {node.name()}: {msg}", color='orange')
+                            ctrl.chartWidget.updateStatus(f"WARNING: {source} {node.name()}: {msg}", color="orange")
                             logger.warning(f"{source} {node.name()}: {msg}")
-            elif topic == 'error':
+            elif topic == "error":
                 ctrl = self.widget()
-                if hasattr(msg, 'node_name'):
+                if hasattr(msg, "node_name"):
                     if msg.graph_name != ctrl.graph_name:
                         continue
-                    node_name = ctrl.metadata[msg.node_name]['parent']
-                    node = self.nodes(data='node')[node_name]
+                    node_name = ctrl.metadata[msg.node_name]["parent"]
+                    node = self.nodes(data="node")[node_name]
                     node.setException(msg)
-                    ctrl.chartWidget.updateStatus(f"ERROR: {source} {node.name()}: {msg}", color='red')
+                    ctrl.chartWidget.updateStatus(f"ERROR: {source} {node.name()}: {msg}", color="red")
                     logger.error(f"{source} {node.name()}: {msg}")
                 else:
-                    ctrl.chartWidget.updateStatus(f"ERROR: {source}: {msg}", color='red')
+                    ctrl.chartWidget.updateStatus(f"ERROR: {source}: {msg}", color="red")
                     logger.error(f"{source}: {msg}")
 
     async def run(self, load=None):
-        tasks = [asyncio.create_task(self.updateState()),
-                 asyncio.create_task(self.updateSources())]
+        tasks = [asyncio.create_task(self.updateState()), asyncio.create_task(self.updateSources())]
 
         if load:
             await self.loadFile(load)
@@ -801,8 +844,8 @@ class FlowchartCtrlWidget(QtWidgets.QWidget):
         self.ui.libraryConfigure.clicked.connect(self.libraryEditor.show)
 
         self.ipython_widget = None
-        self.graph_info = pc.Info('ami_graph', 'AMI Client graph', ['hutch', 'name'])
-        self.graph_version = pc.Gauge('ami_graph_version', 'AMI Client graph version', ['hutch', 'name'])
+        self.graph_info = pc.Info("ami_graph", "AMI Client graph", ["hutch", "name"])
+        self.graph_version = pc.Gauge("ami_graph_version", "AMI Client graph version", ["hutch", "name"])
 
     @asyncSlot()
     async def applyClicked(self, build_views=True):
@@ -821,7 +864,7 @@ class FlowchartCtrlWidget(QtWidgets.QWidget):
         if await self.graphCommHandler.graphVersion == 0:
             # mark all the nodes as changed to force a resubmit of the whole graph
             for name, gnode in self.chart._graph.nodes().items():
-                gnode = gnode['node']
+                gnode = gnode["node"]
                 gnode.changed = True
             # reset reference counting on views
             await self.features.reset()
@@ -831,7 +874,7 @@ class FlowchartCtrlWidget(QtWidgets.QWidget):
         seen = set()
 
         for name, gnode in self.chart._graph.nodes().items():
-            gnode = gnode['node']
+            gnode = gnode["node"]
             if not gnode.enabled():
                 continue
 
@@ -845,22 +888,23 @@ class FlowchartCtrlWidget(QtWidgets.QWidget):
             if gnode.changed and gnode not in changed_nodes:
                 changed_nodes.add(gnode)
 
-                if not hasattr(gnode, 'to_operation'):
+                if not hasattr(gnode, "to_operation"):
                     if gnode.viewable() and gnode.viewed:
                         displays.add(gnode)
                     elif gnode.exportable():
                         try:
-                            assert(gnode.values['alias'])
+                            assert gnode.values["alias"]
                         except AssertionError:
                             gnode.setException(True)
-                            self.chartWidget.updateStatus(f"{gnode.name()} set alias!", color='red')
+                            self.chartWidget.updateStatus(f"{gnode.name()} set alias!", color="red")
                             continue
                         try:
-                            assert(gnode.values['alias'] != gnode.input_vars()['In'])
+                            assert gnode.values["alias"] != gnode.input_vars()["In"]
                         except AssertionError:
                             gnode.setException(True)
-                            self.chartWidget.updateStatus(f"{gnode.name()} alias name cannot be same as input!",
-                                                          color='red')
+                            self.chartWidget.updateStatus(
+                                f"{gnode.name()} alias name cannot be same as input!", color="red"
+                            )
                             continue
                         displays.add(gnode)
 
@@ -871,16 +915,18 @@ class FlowchartCtrlWidget(QtWidgets.QWidget):
 
                 for output in outputs:
                     gnode = self.chart._graph.nodes[output]
-                    node = gnode['node']
+                    node = gnode["node"]
 
-                    if hasattr(node, 'to_operation') and node not in seen:
+                    if hasattr(node, "to_operation") and node not in seen:
                         try:
-                            nodes = node.to_operation(inputs=node.input_vars(),
-                                                      outputs=node.output_vars(),
-                                                      parent=node.name(),
-                                                      latched=node.latched)
+                            nodes = node.to_operation(
+                                inputs=node.input_vars(),
+                                outputs=node.output_vars(),
+                                parent=node.name(),
+                                latched=node.latched,
+                            )
                         except Exception as e:
-                            self.chartWidget.updateStatus(f"{node.name()} {e}!", color='red')
+                            self.chartWidget.updateStatus(f"{node.name()} {e}!", color="red")
                             printExc(f"{node.name()} raised exception! See console for stacktrace.")
                             node.setException(True)
                             failed_nodes.add(node)
@@ -898,22 +944,22 @@ class FlowchartCtrlWidget(QtWidgets.QWidget):
 
         if disconnectedNodes:
             for node in disconnectedNodes:
-                self.chartWidget.updateStatus(f"{node.name()} disconnected!", color='red')
+                self.chartWidget.updateStatus(f"{node.name()} disconnected!", color="red")
                 node.setException(True)
             msg.exec()
             return
 
         if failed_nodes:
-            self.chartWidget.updateStatus("failed to submit graph", color='red')
+            self.chartWidget.updateStatus("failed to submit graph", color="red")
             msg.exec()
             return
 
         if graph_nodes:
             await self.graphCommHandler.add(graph_nodes)
-            node_names = ', '.join(set(map(lambda node: node.parent, graph_nodes)))
+            node_names = ", ".join(set(map(lambda node: node.parent, graph_nodes)))
             self.chartWidget.updateStatus(f"Submitted {node_names}")
 
-        node_names = ', '.join(set(map(lambda node: node.name(), displays)))
+        node_names = ", ".join(set(map(lambda node: node.name(), displays)))
         if displays and build_views:
             self.chartWidget.updateStatus(f"Redisplaying {node_names}")
             await self.chartWidget.build_views(displays, export=True, redisplay=True)
@@ -925,20 +971,20 @@ class FlowchartCtrlWidget(QtWidgets.QWidget):
         self.ui.setPendingClear()
         version = str(await self.graphCommHandler.graphVersion)
         state = self.chart.saveState()
-        state = json.dumps(state, indent=2, separators=(',', ': '), sort_keys=False, cls=TypeEncoder)
+        state = json.dumps(state, indent=2, separators=(",", ": "), sort_keys=False, cls=TypeEncoder)
 
         ts = datetime.now().strftime("%d%m%Y_%H%M%S")
         with open(os.path.expanduser(f"~/.cache/ami/autosave_{ts}.fc"), "w") as f:
             f.write(state)
-            f.write('\n')
+            f.write("\n")
 
-        self.graph_info.labels(self.chart.hutch, self.graph_name).info({'graph': state, 'version': version})
+        self.graph_info.labels(self.chart.hutch, self.graph_name).info({"graph": state, "version": version})
         self.graph_version.labels(self.chart.hutch, self.graph_name).set(version)
 
     def openClicked(self):
         startDir = self.chart.filePath
         if startDir is None:
-            startDir = '.'
+            startDir = "."
         self.fileDialog = FileDialog(None, "Load Flowchart..", startDir, "Flowchart (*.fc)")
         self.fileDialog.show()
         self.fileDialog.fileSelected.connect(self.chart.loadFile)
@@ -972,12 +1018,12 @@ class FlowchartCtrlWidget(QtWidgets.QWidget):
         sources = []
         displays = []
         for name, gnode in self.chart._graph.nodes().items():
-            if gnode['subset'] == 0:
+            if gnode["subset"] == 0:
                 sources.append(name)
-            elif gnode['subset'] == 2:
+            elif gnode["subset"] == 2:
                 displays.append(name)
         fixed = sources + displays
-        pos = nx.drawing.layout.multipartite_layout(self.chart._graph, scale=len(self.chart._graph.nodes())*75)
+        pos = nx.drawing.layout.multipartite_layout(self.chart._graph, scale=len(self.chart._graph.nodes()) * 75)
         pos = nx.drawing.layout.spring_layout(nx.Graph(self.chart._graph), pos=pos, fixed=fixed, k=200)
         for name, gnode in self.chart._graph.nodes().items():
             if name not in pos:
@@ -985,7 +1031,7 @@ class FlowchartCtrlWidget(QtWidgets.QWidget):
             px = pos[name][0]
             py = pos[name][1]
             p = (find_nearest(px), find_nearest(py))
-            gnode['node'].graphicsItem().setPos(*p)
+            gnode["node"].graphicsItem().setPos(*p)
 
         children = self.viewBox().allChildren()
         self.viewBox().autoRange(items=children)
@@ -1003,7 +1049,7 @@ class FlowchartCtrlWidget(QtWidgets.QWidget):
         await self.graphCommHandler.destroy()
 
         for name, gnode in self.chart._graph.nodes().items():
-            gnode = gnode['node']
+            gnode = gnode["node"]
             gnode.changed = True
 
         await self.applyClicked()
@@ -1032,8 +1078,9 @@ class FlowchartCtrlWidget(QtWidgets.QWidget):
         self.sourceConfigure.show()
 
     if HAS_QTCONSOLE:
+
         def consoleClicked(self):
-            class AmiCli():
+            class AmiCli:
 
                 def __init__(self, ctrl, chartWidget, chart, graph, graphCommHandler):
                     self.ctrl = ctrl
@@ -1045,19 +1092,19 @@ class FlowchartCtrlWidget(QtWidgets.QWidget):
                 kernel_manager = QtInProcessKernelManager()
                 kernel_manager.start_kernel(show_banner=False)
                 kernel = kernel_manager.kernel
-                kernel.gui = 'qt'
+                kernel.gui = "qt"
 
                 kernel_client = kernel_manager.client()
                 kernel_client.start_channels()
 
                 self.ipython_widget = RichJupyterWidget()
-                self.ipython_widget.setWindowTitle('AMI Console')
+                self.ipython_widget.setWindowTitle("AMI Console")
                 self.ipython_widget.kernel_manager = kernel_manager
                 self.ipython_widget.kernel_client = kernel_client
 
             graphCommHandler = GraphCommHandler(self.graphmgr_addr.name, self.graphmgr_addr.comm)
             self.amicli = AmiCli(self, self.chartWidget, self.chart, self.chart._graph, graphCommHandler)
-            self.ipython_widget.kernel_manager.kernel.shell.push({'amicli': self.amicli})
+            self.ipython_widget.kernel_manager.kernel.shell.push({"amicli": self.amicli})
             win = QtWidgets.QMainWindow(parent=self)
             win.setCentralWidget(self.ipython_widget)
             win.show()
@@ -1066,22 +1113,21 @@ class FlowchartCtrlWidget(QtWidgets.QWidget):
     async def configureApply(self, src_cfg):
         missing = []
 
-        if 'files' in src_cfg:
-            for f in src_cfg['files']:
+        if "files" in src_cfg:
+            for f in src_cfg["files"]:
                 if not os.path.exists(f):
                     missing.append(f)
 
         if not missing:
             await self.graphCommHandler.updateSources(src_cfg)
         else:
-            missing = ' '.join(missing)
-            self.chartWidget.updateStatus(f"Missing {missing}!", color='red')
+            missing = " ".join(missing)
+            self.chartWidget.updateStatus(f"Missing {missing}!", color="red")
 
     @asyncSlot()
     async def libraryUpdated(self):
         await self.chart.broker.send_string("library", zmq.SNDMORE)
-        await self.chart.broker.send_pyobj(fcMsgs.Library(name=self.graph_name,
-                                                          paths=self.libraryEditor.paths))
+        await self.chart.broker.send_pyobj(fcMsgs.Library(name=self.graph_name, paths=self.libraryEditor.paths))
 
         dirs = set(map(os.path.dirname, self.libraryEditor.paths))
         await self.graphCommHandler.updatePath(dirs)
@@ -1093,16 +1139,16 @@ class FlowchartCtrlWidget(QtWidgets.QWidget):
         smods = set(map(lambda mod: mod.__name__, mods))
 
         for name, gnode in self.chart._graph.nodes().items():
-            node = gnode['node']
+            node = gnode["node"]
             if node.__module__ in smods:
                 await self.chart.broker.send_string(node.name(), zmq.SNDMORE)
-                await self.chart.broker.send_pyobj(fcMsgs.ReloadLibrary(name=node.name(),
-                                                                        mods=smods))
+                await self.chart.broker.send_pyobj(fcMsgs.ReloadLibrary(name=node.name(), mods=smods))
                 self.chartWidget.updateStatus(f"Reloaded {node.name()}.")
 
 
 class FlowchartWidget(dockarea.DockArea):
     """Includes the actual graphical flowchart and debugging interface"""
+
     def __init__(self, chart, ctrl):
         super().__init__()
         self.chart = chart
@@ -1112,22 +1158,22 @@ class FlowchartWidget(dockarea.DockArea):
 
         #  build user interface (it was easier to do it here than via developer)
         self.view = FlowchartGraphicsView(self)
-        self.viewDock = dockarea.Dock('view', size=(1000, 600))
+        self.viewDock = dockarea.Dock("view", size=(1000, 600))
         self.viewDock.addWidget(self.view)
         self.viewDock.hideTitleBar()
         self.addDock(self.viewDock)
 
         self.hoverText = QtWidgets.QTextEdit()
         self.hoverText.setReadOnly(True)
-        self.hoverDock = dockarea.Dock('Hover Info', size=(1000, 20))
+        self.hoverDock = dockarea.Dock("Hover Info", size=(1000, 20))
         self.hoverDock.addWidget(self.hoverText)
-        self.addDock(self.hoverDock, 'bottom')
+        self.addDock(self.hoverDock, "bottom")
 
         self.statusText = QtWidgets.QTextEdit()
         self.statusText.setReadOnly(True)
-        self.statusDock = dockarea.Dock('Status', size=(1000, 20))
+        self.statusDock = dockarea.Dock("Status", size=(1000, 20))
         self.statusDock.addWidget(self.statusText)
-        self.addDock(self.statusDock, 'bottom')
+        self.addDock(self.statusDock, "bottom")
 
         self._scene = self.view.scene()
         self._viewBox = self.view.viewBox()
@@ -1154,6 +1200,7 @@ class FlowchartWidget(dockarea.DockArea):
                     act = rootMenu.addAction(section)
                     act.nodeType = section
                     act.pos = pos
+
         self.operationMenu = QtWidgets.QMenu()
         self.operationSubMenus = []
         buildSubMenu(self.chart.library.getNodeTree(), self.operationMenu, self.operationSubMenus, pos=pos)
@@ -1172,6 +1219,7 @@ class FlowchartWidget(dockarea.DockArea):
                     act = rootMenu.addAction(section)
                     act.nodeType = section
                     act.pos = pos
+
         self.sourceMenu = QtWidgets.QMenu()
         self.sourceSubMenus = []
         buildSubMenu(self.chart.source_library.getSourceTree(), self.sourceMenu, self.sourceSubMenus, pos=pos)
@@ -1196,7 +1244,7 @@ class FlowchartWidget(dockarea.DockArea):
             pos = self.viewBox().mouse_pos
             pos = (50 * round(pos.x() / 50), 50 * round(pos.y() / 50))
             node_type = self.chart.source_library.getSourceType(node)
-            node = SourceNode(name=node, terminals={'Out': {'io': 'out', 'ttype': node_type}})
+            node = SourceNode(name=node, terminals={"Out": {"io": "out", "ttype": node_type}})
             self.chart.addNode(node=node, pos=pos)
 
     @asyncSlot()
@@ -1208,7 +1256,7 @@ class FlowchartWidget(dockarea.DockArea):
             return
 
         item = items[0]
-        if not hasattr(item, 'node'):
+        if not hasattr(item, "node"):
             return
 
         node = item.node
@@ -1217,7 +1265,7 @@ class FlowchartWidget(dockarea.DockArea):
         if not node.enabled():
             return
 
-        if not hasattr(node, 'display'):
+        if not hasattr(node, "display"):
             return
 
         if node.viewable():
@@ -1230,7 +1278,7 @@ class FlowchartWidget(dockarea.DockArea):
                 for path in paths:
                     for gnode in path:
                         gnode = self.chart._graph.nodes[gnode]
-                        node = gnode['node']
+                        node = gnode["node"]
                         if node in seen:
                             continue
                         else:
@@ -1240,7 +1288,7 @@ class FlowchartWidget(dockarea.DockArea):
                             pending.add(node.name())
 
             if pending:
-                pending = ', '.join(pending)
+                pending = ", ".join(pending)
                 msg = QtWidgets.QMessageBox(parent=self)
                 msg.setText(f"Pending changes for {pending}. Please apply before trying to view.")
                 msg.show()
@@ -1259,29 +1307,31 @@ class FlowchartWidget(dockarea.DockArea):
             node.display(topics=None, terms=None, addr=None, win=None)
 
             state = {}
-            if hasattr(node.widget, 'saveState'):
+            if hasattr(node.widget, "saveState"):
                 state = node.widget.saveState()
 
-            args = {'name': name,
-                    'state': state,
-                    'redisplay': redisplay,
-                    'geometry': node.geometry,
-                    'units': node.input_units(),
-                    'terminals': node.saveTerminals(),
-                    'label': node._label}
+            args = {
+                "name": name,
+                "state": state,
+                "redisplay": redisplay,
+                "geometry": node.geometry,
+                "units": node.input_units(),
+                "terminals": node.saveTerminals(),
+                "label": node._label,
+            }
 
             if node.buffered():
                 # buffered nodes are allowed to override their topics/terms
                 # this is done because they may want to view intermediate values
-                args['topics'] = node.buffered_topics()
-                args['terms'] = node.buffered_terms()
+                args["topics"] = node.buffered_topics()
+                args["terms"] = node.buffered_terms()
                 self.ctrl.features.add_plot(node, **args)
 
             elif isinstance(node, SourceNode) and node.viewable():
                 new, topic = await self.ctrl.features.get(name, name)
 
-                args['terms'] = node.input_vars()
-                args['topics'] = {name: topic}
+                args["terms"] = node.input_vars()
+                args["topics"] = {name: topic}
 
                 if new:
                     views[name] = name
@@ -1304,29 +1354,29 @@ class FlowchartWidget(dockarea.DockArea):
                         views[in_var] = node.name()
                         new_plot = True
 
-                args['terms'] = node.input_vars()
-                args['topics'] = topics
+                args["terms"] = node.input_vars()
+                args["topics"] = topics
 
                 if new_plot:
                     self.ctrl.features.add_plot(node, **args)
 
             elif isinstance(node, CtrlNode) and ctrl:
-                args['terms'] = node.input_vars()
-                args['topics'] = {}
+                args["terms"] = node.input_vars()
+                args["topics"] = {}
 
             display_args.append(args)
 
             if node.exportable() and export:
                 input_vars = node.input_vars()
                 values = node.values
-                if 'eventid' in input_vars:
-                    await self.ctrl.graphCommHandler.export([input_vars['In'],
-                                                             input_vars['eventid']],
-                                                            [values['alias'], "_timestamp"],
-                                                            N=values['events'])
-                elif 'Timestamp' in input_vars:
-                    await self.ctrl.graphCommHandler.export([input_vars['In'], input_vars['Timestamp']],
-                                                            [values['alias'], "_timestamp"])
+                if "eventid" in input_vars:
+                    await self.ctrl.graphCommHandler.export(
+                        [input_vars["In"], input_vars["eventid"]], [values["alias"], "_timestamp"], N=values["events"]
+                    )
+                elif "Timestamp" in input_vars:
+                    await self.ctrl.graphCommHandler.export(
+                        [input_vars["In"], input_vars["Timestamp"]], [values["alias"], "_timestamp"]
+                    )
 
                 if not ctrl:
                     display_args.pop()
@@ -1342,7 +1392,7 @@ class FlowchartWidget(dockarea.DockArea):
             await self.ctrl.graphCommHandler.view(views)
 
         for args in display_args:
-            name = args['name']
+            name = args["name"]
             await self.chart.broker.send_string(name, zmq.SNDMORE)
             await self.chart.broker.send_pyobj(fcMsgs.DisplayNode(**args))
 
@@ -1367,7 +1417,7 @@ class FlowchartWidget(dockarea.DockArea):
             node = obj
             doc = node.__doc__
             doc = doc.lstrip().rstrip()
-            doc = re.sub(r'(\t+)|(  )+', '', doc)
+            doc = re.sub(r"(\t+)|(  )+", "", doc)
             text = [doc]
 
             if node.inputs():
@@ -1388,7 +1438,7 @@ class FlowchartWidget(dockarea.DockArea):
 
                 for in_term in term.inputTerminals():
                     connections.append(f"{in_term.node().name()}.{in_term.name()}")
-                text.append(' '.join(connections))
+                text.append(" ".join(connections))
 
             if node.outputs():
                 text.append("\nOutputs:")
@@ -1408,9 +1458,9 @@ class FlowchartWidget(dockarea.DockArea):
 
                 for in_term in term.dependentTerms():
                     connections.append(f"{in_term.node().name()}.{in_term.name()}")
-                text.append(' '.join(connections))
+                text.append(" ".join(connections))
 
-            text = '\n'.join(text)
+            text = "\n".join(text)
 
         elif isinstance(obj, Terminal):
             term = obj
@@ -1431,8 +1481,8 @@ class FlowchartWidget(dockarea.DockArea):
                 connections = ["Connected to:"]
                 for in_term in terms:
                     connections.append(f"{in_term.node().name()}.{in_term.name()}")
-                connections = ' '.join(connections)
-                text = '\n'.join([text, connections])
+                connections = " ".join(connections)
+                text = "\n".join([text, connections])
             # self.hoverLabel.setCursorPosition(0)
         elif isinstance(obj, ConnectionItem):
             connection = obj
@@ -1452,7 +1502,7 @@ class FlowchartWidget(dockarea.DockArea):
                 to_node = f"\nto: {target.node().name()}.{target.name()} type: {target.type()}"
                 if target.unit():
                     to_node += f" unit: {target.unit()}"
-                text = ' '.join(["Connection", prefix, from_node, to_node])
+                text = " ".join(["Connection", prefix, from_node, to_node])
 
         if text:
             self.hoverText.setPlainText(text)
@@ -1463,7 +1513,7 @@ class FlowchartWidget(dockarea.DockArea):
             self.updateNodeStatePanel(obj)
 
     def clear(self):
-        self.hoverText.setPlainText('')
+        self.hoverText.setPlainText("")
 
     def updateNodeStatePanel(self, node):
         """Update the state panel to show the given node's state.
@@ -1476,7 +1526,7 @@ class FlowchartWidget(dockarea.DockArea):
 
         # Disconnect from previous node's sigStateChanged signal
         if self.current_displayed_node:
-            if hasattr(self.current_displayed_node, 'sigStateChanged'):
+            if hasattr(self.current_displayed_node, "sigStateChanged"):
                 try:
                     self.current_displayed_node.sigStateChanged.disconnect(self.refreshStatePanel)
                 except (TypeError, RuntimeError):
@@ -1494,7 +1544,7 @@ class FlowchartWidget(dockarea.DockArea):
         state_widget.displayNodeState(node)
 
         # Connect to sigStateChanged for live updates (CtrlNodes only)
-        if hasattr(node, 'sigStateChanged'):
+        if hasattr(node, "sigStateChanged"):
             node.sigStateChanged.connect(self.refreshStatePanel)
 
     def refreshStatePanel(self, node=None):
@@ -1508,10 +1558,10 @@ class FlowchartWidget(dockarea.DockArea):
         if node:
             self.ctrl.ui.state_widget.displayNodeState(node)
 
-    def updateStatus(self, text, color='black'):
-        now = datetime.now().strftime('%H:%M:%S')
-        if STYLE.get("Theme", None) == "dark" and color == 'black':
-            color = '#fff'
+    def updateStatus(self, text, color="black"):
+        now = datetime.now().strftime("%H:%M:%S")
+        if STYLE.get("Theme", None) == "dark" and color == "black":
+            color = "#fff"
         self.statusText.insertHtml(f"<font color={color}>[{now}] {text}</font>")
         self.statusText.append("")
 

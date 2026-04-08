@@ -1,28 +1,37 @@
 #!/usr/bin/env python
+import asyncio
+import importlib
+import logging
 import os
 import re
 import sys
-import dill
-import logging
-import asyncio
-import importlib
 import threading
+
+import dill
 import numpy as np
-import ami.multiproc as mp
-
-from qtpy.QtWidgets import QWidget, QHBoxLayout, QFileDialog, \
-                           QApplication, QMainWindow, QPushButton, \
-                           QLabel, QListWidgetItem, QLineEdit, \
-                           QVBoxLayout, QListWidget, QLCDNumber, \
-                           QGroupBox, QTabWidget, QPlainTextEdit
-from qtpy.QtCore import Slot, Signal, QTimer, QRect, QThread
-
 import pyqtgraph as pg
+from qtpy.QtCore import QRect, QThread, QTimer, Signal, Slot
+from qtpy.QtWidgets import (
+    QApplication,
+    QFileDialog,
+    QGroupBox,
+    QHBoxLayout,
+    QLabel,
+    QLCDNumber,
+    QLineEdit,
+    QListWidget,
+    QListWidgetItem,
+    QMainWindow,
+    QPlainTextEdit,
+    QPushButton,
+    QTabWidget,
+    QVBoxLayout,
+    QWidget,
+)
 
-from ami import LogConfig
-from ami import asyncqt
+import ami.multiproc as mp
+from ami import LogConfig, asyncqt
 from ami.comm import AsyncGraphCommHandler, GraphInfoReceiver
-
 
 logger = logging.getLogger(LogConfig.get_package_name(__name__))
 
@@ -102,14 +111,14 @@ class HistogramWidget(pg.GraphicsLayoutWidget):
     def waveform_updated(self, data):
         x, y = map(list, zip(*sorted(data.items())))
         if self.plot is None:
-            self.plot = self.plot_view.plot(x=x, y=y, symbol='o')
+            self.plot = self.plot_view.plot(x=x, y=y, symbol="o")
         else:
             self.plot.setData(x=x, y=y)
 
 
 class AreaDetWidget(pg.ImageView):
 
-    roiUpdate = Signal(object, name='roiUpdate')
+    roiUpdate = Signal(object, name="roiUpdate")
 
     def __init__(self, name, topic, addr, parent=None):
         super(AreaDetWidget, self).__init__(parent)
@@ -144,10 +153,9 @@ class AreaDetWidget(pg.ImageView):
 
     @asyncqt.asyncSlot(object)
     async def roi_updated_async(self, roi_func):
-        await self.comm_handler.addMap("map_%s_roi" % self.name,
-                                       inputs=[self.name],
-                                       outputs=["%s_roi" % self.name],
-                                       func=roi_func)
+        await self.comm_handler.addMap(
+            "map_%s_roi" % self.name, inputs=[self.name], outputs=["%s_roi" % self.name], func=roi_func
+        )
 
 
 class TabPlot(QWidget):
@@ -177,19 +185,19 @@ class TimePlot(TabPlot):
 
     async def make_plot(self, src, post):
         if not post:
-            name = '%s_vs_time' % src
+            name = "%s_vs_time" % src
             post = self.comm.auto(name)
         else:
             name = post
-        await self.comm.addBinning(post+'_op', ['heartbeat', src], post)
-        return 'HistogramDetector', name, post
+        await self.comm.addBinning(post + "_op", ["heartbeat", src], post)
+        return "HistogramDetector", name, post
 
 
 class ScanPlot(TabPlot):
 
     def __init__(self, idx, comm, plot_spawner, parent=None):
         super(__class__, self).__init__(idx, comm, plot_spawner, parent)
-        self.plotName = QLabel('Scan var', self)
+        self.plotName = QLabel("Scan var", self)
         self.plotBox = QLineEdit(self)
 
         self.plot_layout = QHBoxLayout(self)
@@ -201,17 +209,17 @@ class ScanPlot(TabPlot):
 
         if key:
             if not post:
-                name = '%s_vs_%s' % (src, key)
+                name = "%s_vs_%s" % (src, key)
                 post = self.comm.auto(name)
             else:
                 name = post
-            await self.comm.addBinning(post+'_op', [key, src], post)
-            return 'HistogramDetector', name, post
+            await self.comm.addBinning(post + "_op", [key, src], post)
+            return "HistogramDetector", name, post
 
 
 class Env(QWidget):
 
-    makePlot = Signal(int, object, object, name='makePlot')
+    makePlot = Signal(int, object, object, name="makePlot")
 
     def __init__(self, comm, plot_spawner, parent=None):
         super(__class__, self).__init__(parent)
@@ -219,14 +227,14 @@ class Env(QWidget):
         self.comm = comm
 
         self.srcBox = QLineEdit(self)
-        self.srcSelect = QPushButton('Select', self)
-        self.srcFilter = QPushButton('Filter', self)
-        self.postName = QLabel('Entry name', self)
+        self.srcSelect = QPushButton("Select", self)
+        self.srcFilter = QPushButton("Filter", self)
+        self.postName = QLabel("Entry name", self)
         self.postBox = QLineEdit(self)
         self.tabs = QTabWidget(self)
         self.tabs.addTab(TimePlot(0, self.comm, plot_spawner, self.tabs), "Mean v Time")
         self.tabs.addTab(ScanPlot(1, self.comm, plot_spawner, self.tabs), "Mean v Scan")
-        self.button = QPushButton('Plot', self)
+        self.button = QPushButton("Plot", self)
         self.button.clicked.connect(self.on_click)
 
         self.src = QGroupBox("Source Channel")
@@ -263,7 +271,7 @@ class Env(QWidget):
 
 class Calculator(QWidget):
 
-    calcUpdated = Signal(str, object, object, name='calcUpdated')
+    calcUpdated = Signal(str, object, object, name="calcUpdated")
 
     def __init__(self, comm, parent=None):
         super(__class__, self).__init__(parent)
@@ -274,15 +282,15 @@ class Calculator(QWidget):
         self.field_parse = re.compile(r"\s+")
         self.alias_parse = re.compile(r"(?P<import>\w+),(?P<alias>\w+)")
 
-        self.nameLabel = QLabel('Name:', self)
+        self.nameLabel = QLabel("Name:", self)
         self.nameBox = QLineEdit(self)
-        self.inputsLabel = QLabel('Inputs:', self)
+        self.inputsLabel = QLabel("Inputs:", self)
         self.inputsBox = QLineEdit(self)
-        self.importsLabel = QLabel('Imports:', self)
+        self.importsLabel = QLabel("Imports:", self)
         self.importsBox = QLineEdit(self)
-        self.codeLabel = QLabel('Expression:', self)
+        self.codeLabel = QLabel("Expression:", self)
         self.codeBox = QLineEdit(self)
-        self.button = QPushButton('Apply', self)
+        self.button = QPushButton("Apply", self)
         self.button.clicked.connect(self.on_click)
 
         self.calc_layout = QVBoxLayout(self)
@@ -334,10 +342,7 @@ class Calculator(QWidget):
 
     @asyncqt.asyncSlot(str, object, object)
     async def update_calc(self, name, inputs, calc_func):
-        await self.comm.addMap(name="map_%s_calc" % name,
-                               inputs=inputs,
-                               outputs=[name],
-                               func=calc_func)
+        await self.comm.addMap(name="map_%s_calc" % name, inputs=inputs, outputs=[name], func=calc_func)
 
 
 class DetectorList(QListWidget):
@@ -367,13 +372,13 @@ class DetectorList(QListWidget):
             data_type, ndims = data_type
             if issubclass(data_type, np.ndarray):
                 if ndims == 1:
-                    return 'WaveformDetector'
+                    return "WaveformDetector"
                 elif ndims == 2:
-                    return 'AreaDetector'
+                    return "AreaDetector"
         elif issubclass(data_type, dict):
-            return 'HistogramDetector'
+            return "HistogramDetector"
         elif issubclass(data_type, (int, float)):
-            return 'ScalarDetector'
+            return "ScalarDetector"
 
     @asyncqt.asyncSlot()
     async def get_names(self):
@@ -393,9 +398,9 @@ class DetectorList(QListWidget):
                     window_type = self.window_type(self.features[topic])
                     if window_type is not None:
                         self.spawn_window(window_type, name, topic)
-                        logger.info('create %s window for: %s', window_type, name)
+                        logger.info("create %s window for: %s", window_type, name)
                     else:
-                        logger.error('Feature type %s is not supported', self.features[topic])
+                        logger.error("Feature type %s is not supported", self.features[topic])
                     # append to list of done entries to delete after iterating
                     done.append(topic)
             for key in done:
@@ -415,21 +420,21 @@ class DetectorList(QListWidget):
 
         if name == self.calc_id:
             if self.calc is None:
-                logger.info('create calculator widget')
+                logger.info("create calculator widget")
                 self.calc = Calculator(self.comm_handler)
             self.calc.show()
         elif name == self.env_id:
             if self.env is None:
-                logger.info('create env widget')
+                logger.info("create env widget")
                 self.env = Env(self.comm_handler, self.spawn_window)
             self.env.show()
         elif topic in self.features:
             window_type = self.window_type(self.features[topic])
             if window_type is not None:
                 self.spawn_window(window_type, name, topic)
-                logger.info('create %s window for: %s', window_type, name)
+                logger.info("create %s window for: %s", window_type, name)
             else:
-                logger.error('Feature type %s is not supported', self.features[topic])
+                logger.error("Feature type %s is not supported", self.features[topic])
             # check if a view needs to be re-added
             if need_view and topic not in self.names:
                 await self.comm_handler.view(name)
@@ -473,9 +478,9 @@ class AmiInfo(QThread):
 
 class AmiGui(QWidget):
 
-    loadFile = Signal(str, name='loadFile')
-    saveFile = Signal(str, name='saveFile')
-    statusUpdate = Signal(str, name='statusUpdate')
+    loadFile = Signal(str, name="loadFile")
+    saveFile = Signal(str, name="saveFile")
+    statusUpdate = Signal(str, name="statusUpdate")
 
     def __init__(self, queue, graphmgr_addr, ami_save, save_dir, parent=None):
         super(__class__, self).__init__(parent)
@@ -483,13 +488,13 @@ class AmiGui(QWidget):
         self.setWindowTitle("AMI Client")
         self.comm_handler = AsyncGraphCommHandler(graphmgr_addr.name, graphmgr_addr.comm)
 
-        self.save_button = QPushButton('Save', self)
+        self.save_button = QPushButton("Save", self)
         self.save_button.clicked.connect(self.save)
-        self.load_button = QPushButton('Load', self)
+        self.load_button = QPushButton("Load", self)
         self.load_button.clicked.connect(self.load)
-        self.clear_button = QPushButton('Clear', self)
+        self.clear_button = QPushButton("Clear", self)
         self.clear_button.clicked.connect(self.clear)
-        self.reset_button = QPushButton('Reset Plots', self)
+        self.reset_button = QPushButton("Reset Plots", self)
         self.reset_button.clicked.connect(self.reset)
         self.status_box = QPlainTextEdit(self)
         self.status_box.setReadOnly(True)
@@ -534,16 +539,14 @@ class AmiGui(QWidget):
     @Slot(str, str)
     def log_message(self, topic, msg):
         # see if the topic name is a log level then use that otherwise use info
-        log_func = getattr(logger, topic, 'info')
+        log_func = getattr(logger, topic, "info")
         log_func(msg)
 
     @Slot()
     def load(self):
         load_file = QFileDialog.getOpenFileName(
-            self,
-            "Open file",
-            self.save_dir,
-            "AMI Autosave files (*.ami);;All Files (*)")
+            self, "Open file", self.save_dir, "AMI Autosave files (*.ami);;All Files (*)"
+        )
         if load_file[0]:
             logger.info("Loading graph configuration from file (%s)", load_file[0])
             self.loadFile.emit(load_file[0])
@@ -551,10 +554,8 @@ class AmiGui(QWidget):
     @Slot()
     def save(self):
         save_file = QFileDialog.getSaveFileName(
-            self,
-            "Save file",
-            os.path.join(self.save_dir, "autosave.ami"),
-            "AMI Autosave files (*.ami);;All Files (*)")
+            self, "Save file", os.path.join(self.save_dir, "autosave.ami"), "AMI Autosave files (*.ami);;All Files (*)"
+        )
         if save_file[0]:
             logger.info("Saving graph configuration to file (%s)", save_file[0])
             self.saveFile.emit(save_file[0])
@@ -605,20 +606,20 @@ def run_widget(queue, window_type, name, topic, addr):
     asyncio.set_event_loop(loop)
     win = QMainWindow()
 
-    if window_type == 'AreaDetector':
+    if window_type == "AreaDetector":
         widget = AreaDetWidget(name, topic, addr, win)
 
-    elif window_type == 'WaveformDetector':
+    elif window_type == "WaveformDetector":
         widget = WaveformWidget(name, topic, addr, win)
 
-    elif window_type == 'HistogramDetector':
+    elif window_type == "HistogramDetector":
         widget = HistogramWidget(name, topic, addr, win)
 
-    elif window_type == 'ScalarDetector':
+    elif window_type == "ScalarDetector":
         widget = ScalarWidget(name, topic, addr, win)
 
     else:
-        raise ValueError('%s not valid window_type' % window_type)
+        raise ValueError("%s not valid window_type" % window_type)
 
     win.setCentralWidget(widget)
     win.setWindowTitle(name)
@@ -633,7 +634,7 @@ def run_client(graphmgr_addr, load, save_dir):
     saved_cfg = None
     if load is not None:
         try:
-            with open(load, 'rb') as cnf:
+            with open(load, "rb") as cnf:
                 saved_cfg = dill.load(cnf)
         except OSError:
             logger.exception("ami-client: problem opening saved graph configuration file:")
@@ -643,20 +644,16 @@ def run_client(graphmgr_addr, load, save_dir):
             return 1
 
     queue = mp.Queue()
-    list_proc = mp.Process(
-        target=run_main_window, args=(
-            queue, graphmgr_addr, saved_cfg, save_dir))
+    list_proc = mp.Process(target=run_main_window, args=(queue, graphmgr_addr, saved_cfg, save_dir))
     list_proc.start()
     widget_procs = []
 
     while True:
         window_type, name, topic = queue.get()
-        if window_type == 'exit':
+        if window_type == "exit":
             logger.info("received exit signal - exiting!")
             break
         logger.debug("opening new widget: %s %s %s", window_type, name, topic)
-        proc = mp.Process(
-            target=run_widget, args=(
-                queue, window_type, name, topic, graphmgr_addr))
+        proc = mp.Process(target=run_widget, args=(queue, window_type, name, topic, graphmgr_addr))
         proc.start()
         widget_procs.append(proc)

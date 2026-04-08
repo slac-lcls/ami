@@ -1,7 +1,7 @@
 import psana
-from .detector import detector_factory, detnames_to_detinfo, detnames_to_epicsinfo
-from .utils import export, Extender
 
+from .detector import detector_factory, detnames_to_detinfo, detnames_to_epicsinfo
+from .utils import Extender, export
 
 __all__ = []
 
@@ -13,35 +13,35 @@ class DataSource(Extender):
         opts = []
 
         # extra options that can be tagged on the end
-        if 'dir' in kwargs:
-            opts.append('dir=%s' % kwargs['dir'])
-            del kwargs['dir']
-        if 'live' in kwargs and kwargs['live']:
-            opts.append('live')
-            del kwargs['live']
-        if 'smd' in kwargs and kwargs['smd']:
-            opts.append('smd')
-            del kwargs['smd']
+        if "dir" in kwargs:
+            opts.append("dir=%s" % kwargs["dir"])
+            del kwargs["dir"]
+        if "live" in kwargs and kwargs["live"]:
+            opts.append("live")
+            del kwargs["live"]
+        if "smd" in kwargs and kwargs["smd"]:
+            opts.append("smd")
+            del kwargs["smd"]
 
         # convert args to lcls1 psana format
-        if 'files' in kwargs:
-            for f in kwargs['files']:
+        if "files" in kwargs:
+            for f in kwargs["files"]:
                 args.append(f)
-            del kwargs['files']
-        elif 'shmem' in kwargs:
-            arg = 'shmem=%s:stop=no' % kwargs['shmem']
-            args.append(":".join([arg]+opts))
-            del kwargs['shmem']
-        elif 'exp' in kwargs and 'run' in kwargs:
-            arg = 'exp=%s:run=%d' % (kwargs['exp'], kwargs['run'])
-            args.append(":".join([arg]+opts))
-            del kwargs['exp']
-            del kwargs['run']
+            del kwargs["files"]
+        elif "shmem" in kwargs:
+            arg = "shmem=%s:stop=no" % kwargs["shmem"]
+            args.append(":".join([arg] + opts))
+            del kwargs["shmem"]
+        elif "exp" in kwargs and "run" in kwargs:
+            arg = "exp=%s:run=%d" % (kwargs["exp"], kwargs["run"])
+            args.append(":".join([arg] + opts))
+            del kwargs["exp"]
+            del kwargs["run"]
 
         # check for special calibdir kwarg
-        if 'calibdir' in kwargs:
-            psana.setOption('psana.calib-dir', kwargs['calibdir'])
-            del kwargs['calibdir']
+        if "calibdir" in kwargs:
+            psana.setOption("psana.calib-dir", kwargs["calibdir"])
+            del kwargs["calibdir"]
 
         # create the underlying datasource
         ds = psana.DataSource(*args, **kwargs)
@@ -81,7 +81,7 @@ class Run(Extender):
     @property
     def epicsinfo(self):
         if self.__epicsinfo is None:
-            self.__epicsinfo = detnames_to_epicsinfo(psana.DetNames('epics'), self.env())
+            self.__epicsinfo = detnames_to_epicsinfo(psana.DetNames("epics"), self.env())
         return self.__epicsinfo
 
     @property

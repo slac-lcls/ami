@@ -1,9 +1,9 @@
-import psana
 import amitypes
+import psana
 from Detector import PyDetector
-from .detector import register_raw_interface
-from .utils import get_methods, export, Extender
 
+from .detector import register_raw_interface
+from .utils import Extender, export, get_methods
 
 __all__ = []
 
@@ -66,7 +66,7 @@ class ScanDetector:
         self.env = env
         self.raw = ScanDetectorHelper(src)
         self._dettype = __class__.__name__
-        self._detinfo = {'raw': [name for name, _ in get_methods(self.raw)]}
+        self._detinfo = {"raw": [name for name, _ in get_methods(self.raw)]}
 
     @classmethod
     def _named_detinfo(cls, name):

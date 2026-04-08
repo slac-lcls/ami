@@ -1,14 +1,15 @@
 # -*- coding: utf-8 -*-
-import os
-from qtpy import QtCore, QtGui, QtWidgets
-from pyqtgraph.graphicsItems.GraphicsObject import GraphicsObject
-from pyqtgraph import functions as fn
-from pyqtgraph.Point import Point
-import subprocess
 import inspect
-import weakref
+import os
+import subprocess
 import tempfile
 import typing
+import weakref
+
+from pyqtgraph import functions as fn
+from pyqtgraph.graphicsItems.GraphicsObject import GraphicsObject
+from pyqtgraph.Point import Point
+from qtpy import QtCore, QtGui, QtWidgets
 
 
 class Terminal(QtCore.QObject):
@@ -39,7 +40,7 @@ class Terminal(QtCore.QObject):
         self._connections = {}
         self._group = group
         self._type = ttype
-        self._allowOptional = optional or self._io == 'in'
+        self._allowOptional = optional or self._io == "in"
         self._optional = optional
         self._unit = unit
         self._graphicsItem = TerminalGraphicsItem(self, parent=self._node().graphicsItem())
@@ -50,10 +51,10 @@ class Terminal(QtCore.QObject):
             self.sigTerminalOptional.emit(self)
 
     def setOpts(self, **opts):
-        self._removable = opts.get('removable', self._removable)
-        self._type = opts.get('type', self._type)
-        self._group = opts.get('group', None)
-        self._optional = opts.get('optional', False)
+        self._removable = opts.get("removable", self._removable)
+        self._type = opts.get("type", self._type)
+        self._group = opts.get("group", None)
+        self._optional = opts.get("optional", False)
         if self._allowOptional:
             self.sigTerminalOptional.emit(self)
 
@@ -104,10 +105,10 @@ class Terminal(QtCore.QObject):
         return self._node()
 
     def isInput(self):
-        return self._io == 'in'
+        return self._io == "in"
 
     def isOutput(self):
-        return self._io == 'out'
+        return self._io == "out"
 
     def isRemovable(self):
         return self._removable
@@ -141,9 +142,9 @@ class Terminal(QtCore.QObject):
     def connectTo(self, term, connectionItem=None, type_file=None, checked=[]):
         try:
             if self.connectedTo(term):
-                raise Exception('Already connected')
+                raise Exception("Already connected")
             if term is self:
-                raise Exception('Not connecting terminal to self')
+                raise Exception("Not connecting terminal to self")
             if term.node() is self.node():
                 raise Exception("Can't connect to terminal on same node.")
 
@@ -160,8 +161,9 @@ class Terminal(QtCore.QObject):
                     if len(t.connections()) > 0:
                         raise Exception(
                             "Cannot connect %s <-> %s: Terminal %s is already connected to %s \
-                            (and does not allow multiple connections)" % (self, term, t,
-                                                                          list(t.connections().keys())))
+                            (and does not allow multiple connections)"
+                            % (self, term, t, list(t.connections().keys()))
+                        )
                 elif t.isOutput():
                     types["Output"] = t
 
@@ -238,15 +240,15 @@ class Terminal(QtCore.QObject):
 
     def saveState(self):
         ttype = str(self._type)
-        if not ttype.startswith('typing'):
+        if not ttype.startswith("typing"):
             ttype = self._type
 
         return {
-            'io': self._io,
-            'removable': self._removable,
-            'ttype': ttype,
-            'optional': self._optional,
-            'group': self._group
+            "io": self._io,
+            "removable": self._removable,
+            "ttype": ttype,
+            "optional": self._optional,
+            "group": self._group,
         }
 
 
@@ -286,11 +288,11 @@ class TerminalGraphicsItem(GraphicsObject):
         lr = self.label.mapRectToParent(self.label.boundingRect())
 
         if self.term.isInput():
-            self.box.setPos(pos.x(), pos.y()-br.height()/2.)
-            self.label.setPos(pos.x() + br.width(), pos.y() - lr.height()/2.)
+            self.box.setPos(pos.x(), pos.y() - br.height() / 2.0)
+            self.label.setPos(pos.x() + br.width(), pos.y() - lr.height() / 2.0)
         else:
-            self.box.setPos(pos.x()-br.width(), pos.y()-br.height()/2.)
-            self.label.setPos(pos.x()-br.width()-lr.width(), pos.y()-lr.height()/2.)
+            self.box.setPos(pos.x() - br.width(), pos.y() - br.height() / 2.0)
+            self.label.setPos(pos.x() - br.width() - lr.width(), pos.y() - lr.height() / 2.0)
         self.updateConnections()
 
     def updateConnections(self):
@@ -326,6 +328,7 @@ class TerminalGraphicsItem(GraphicsObject):
             self.menu.setTitle("Terminal")
 
             if self.term.isConnected():
+
                 def disconnect(term, connections):
                     for conn in connections:
                         term.disconnectFrom(conn)
@@ -403,7 +406,7 @@ class TerminalGraphicsItem(GraphicsObject):
             # we don't use the click, but we also don't want anyone else to use it.
             ev.acceptClicks(QtCore.Qt.LeftButton)
             ev.acceptClicks(QtCore.Qt.RightButton)
-            self.box.setBrush(fn.mkBrush('w'))
+            self.box.setBrush(fn.mkBrush("w"))
         else:
             self.box.setBrush(self.brush)
         self.update()
@@ -421,24 +424,21 @@ class ConnectionItem(GraphicsObject):
 
     def __init__(self, source, target=None):
         super().__init__(source)
-        self.setFlags(
-            QtWidgets.QGraphicsItem.ItemIsSelectable |
-            QtWidgets.QGraphicsItem.ItemIsFocusable
-        )
+        self.setFlags(QtWidgets.QGraphicsItem.ItemIsSelectable | QtWidgets.QGraphicsItem.ItemIsFocusable)
         self.source = source
         self.target = target
         self.hovered = False
         self.path = None
         self.shapePath = None
         self.style = {
-            'shape': 'cubic',
-            'color': (100, 100, 250),
-            'width': 3.0,
-            'hoverColor': (255, 0, 0),
-            'hoverWidth': 10.0,
-            'selectedColor': (200, 200, 0),
-            'selectedWidth': 3.0,
-            }
+            "shape": "cubic",
+            "color": (100, 100, 250),
+            "width": 3.0,
+            "hoverColor": (255, 0, 0),
+            "hoverWidth": 10.0,
+            "selectedColor": (200, 200, 0),
+            "selectedWidth": 3.0,
+        }
         self.source.getViewBox().addItem(self)
         self.updateLine()
         self.setZValue(0)
@@ -453,7 +453,7 @@ class ConnectionItem(GraphicsObject):
 
     def setStyle(self, **kwds):
         self.style.update(kwds)
-        if 'shape' in kwds:
+        if "shape" in kwds:
             self.updateLine()
         else:
             self.update()
@@ -475,12 +475,12 @@ class ConnectionItem(GraphicsObject):
     def generatePath(self, start, stop):
         path = QtGui.QPainterPath()
         path.moveTo(start)
-        if self.style['shape'] == 'line':
+        if self.style["shape"] == "line":
             path.lineTo(stop)
-        elif self.style['shape'] == 'cubic':
+        elif self.style["shape"] == "cubic":
             path.cubicTo(Point(stop.x(), start.y()), Point(start.x(), stop.y()), Point(stop.x(), stop.y()))
         else:
-            raise Exception('Invalid shape "%s"; options are "line" or "cubic"' % self.style['shape'])
+            raise Exception('Invalid shape "%s"; options are "line" or "cubic"' % self.style["shape"])
         return path
 
     def keyPressEvent(self, ev):
@@ -526,18 +526,18 @@ class ConnectionItem(GraphicsObject):
                 return QtGui.QPainterPath()
             stroker = QtGui.QPainterPathStroker()
             px = self.pixelWidth()
-            stroker.setWidth(px*8)
+            stroker.setWidth(px * 8)
             self.shapePath = stroker.createStroke(self.path)
         return self.shapePath
 
     def paint(self, p, *args):
         if self.isSelected():
-            p.setPen(fn.mkPen(self.style['selectedColor'], width=self.style['selectedWidth']))
+            p.setPen(fn.mkPen(self.style["selectedColor"], width=self.style["selectedWidth"]))
         else:
             if self.hovered:
-                p.setPen(fn.mkPen(self.style['hoverColor'], width=self.style['hoverWidth']))
+                p.setPen(fn.mkPen(self.style["hoverColor"], width=self.style["hoverWidth"]))
             else:
-                p.setPen(fn.mkPen(self.style['color'], width=self.style['width']))
+                p.setPen(fn.mkPen(self.style["color"], width=self.style["width"]))
 
         p.drawPath(self.path)
 
@@ -550,28 +550,28 @@ def checkType(terminals, type_file=None, checked=[]):
     def f_in(t):
         pass
 
-    f_in_name = t_in.node().name() + '_' + t_in.name()
+    f_in_name = t_in.node().name() + "_" + t_in.name()
     f_in_name = f_in_name.translate(checkType.replacements)
-    f_in.__annotations__ = {'t': t_in.type()}
+    f_in.__annotations__ = {"t": t_in.type()}
     f_in = str(inspect.signature(f_in))
-    f_in = f_in.replace('~', '')
+    f_in = f_in.replace("~", "")
     f_in = f_in_name + f_in
 
     def f_out():
         pass
 
-    f_out_name = t_out.node().name() + '_' + t_out.name()
+    f_out_name = t_out.node().name() + "_" + t_out.name()
     f_out_name = f_out_name.translate(checkType.replacements)
-    f_out.__annotations__ = {'return': t_out.type()}
+    f_out.__annotations__ = {"return": t_out.type()}
     f_out_sig = inspect.signature(f_out)
     f_out_annotation = f_out_sig.return_annotation
     if f_out_annotation is inspect.Signature.empty or f_out_annotation is typing.Any:
-        f_out_return_string = 'pass'
+        f_out_return_string = "pass"
     else:
-        f_out_annotation_str = f_out_annotation.__module__ + '.' + f_out_annotation.__name__
-        f_out_return_string = 'return '+f_out_annotation_str+'()'
+        f_out_annotation_str = f_out_annotation.__module__ + "." + f_out_annotation.__name__
+        f_out_return_string = "return " + f_out_annotation_str + "()"
     f_out = str(f_out_sig)
-    f_out = f_out.replace('~', '')
+    f_out = f_out.replace("~", "")
     f_out = f_out_name + f_out
 
     if type_file:
@@ -588,7 +588,7 @@ def checkType(terminals, type_file=None, checked=[]):
         type_file.write(f"\n{f_in_name}({f_out_name}())\n\n")
         return True
     else:
-        with tempfile.NamedTemporaryFile(mode='w') as f:
+        with tempfile.NamedTemporaryFile(mode="w") as f:
             f.write("from typing import *\n")
             f.write("from mypy_extensions import TypedDict\n")
             f.write("import numbers\n")
@@ -599,7 +599,7 @@ def checkType(terminals, type_file=None, checked=[]):
             f.write(f"def {f_out}:\n\t{f_out_return_string}")
             f.write(f"\n{f_in_name}({f_out_name}())")
             f.flush()
-            dmypy_status = os.environ['DMYPY_STATUS_FILE']
+            dmypy_status = os.environ["DMYPY_STATUS_FILE"]
             status = subprocess.call(["dmypy", "--status-file", dmypy_status, "check", f.name])
             if status == 2:
                 subprocess.call(["dmypy", "--status-file", dmypy_status, "start"])

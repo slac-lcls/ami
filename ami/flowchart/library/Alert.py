@@ -1,10 +1,12 @@
-from qtpy import QtWidgets, QtCore
+import collections
 from typing import Any
+
 from amitypes import Array1d
+from qtpy import QtCore, QtWidgets
+
+import ami.graph_nodes as gn
 from ami.flowchart.library.common import CtrlNode
 from ami.flowchart.library.DisplayWidgets import AsyncFetcher, CategoryWidget
-import ami.graph_nodes as gn
-import collections
 
 
 class DialogWidget(QtWidgets.QWidget):
@@ -51,18 +53,15 @@ class DialogWidget(QtWidgets.QWidget):
 
 
 class ArrayThreshold(CtrlNode):
-
     """
     Display an alert when the values and number of values in an array are greater than a threshold and count.
     """
 
     nodeName = "ArrayThreshold"
-    uiTemplate = [("Threshold", 'intSpin', {'value': 0, 'min': 0}),
-                  ("Count", 'intSpin', {'value': 0, 'min': 0})]
+    uiTemplate = [("Threshold", "intSpin", {"value": 0, "min": 0}), ("Count", "intSpin", {"value": 0, "min": 0})]
 
     def __init__(self, name):
-        super().__init__(name, terminals={'In': {'io': 'in', 'ttype': Array1d}},
-                         buffered=True)
+        super().__init__(name, terminals={"In": {"io": "in", "ttype": Array1d}}, buffered=True)
         self.dialog = None
 
     def buffered_topics(self):
@@ -72,35 +71,39 @@ class ArrayThreshold(CtrlNode):
         return super().display(topics, terms, addr, win, DialogWidget, **kwargs)
 
     def to_operation(self, inputs, outputs, **kwargs):
-        map_outputs = [self.name()+"_map"]
-        threshold = self.values['Threshold']
-        count = self.values['Count']
+        map_outputs = [self.name() + "_map"]
+        threshold = self.values["Threshold"]
+        count = self.values["Count"]
 
-        nodes = [gn.Map(name=self.name()+"_operation",
-                        inputs=inputs, outputs=map_outputs, **kwargs,
-                        func=lambda arr: len(arr[arr > threshold]) > count),
-                 gn.PickN(name=self.name()+"_pickN", inputs=map_outputs, outputs=outputs, **kwargs)]
+        nodes = [
+            gn.Map(
+                name=self.name() + "_operation",
+                inputs=inputs,
+                outputs=map_outputs,
+                **kwargs,
+                func=lambda arr: len(arr[arr > threshold]) > count,
+            ),
+            gn.PickN(name=self.name() + "_pickN", inputs=map_outputs, outputs=outputs, **kwargs),
+        ]
 
         return nodes
 
 
 class Monitor(CtrlNode):
-
     """
     Debug box which plots which boxes have an event in a heartbeat
     """
 
     nodeName = "Monitor"
-    uiTemplate = [("Num Points", "intSpin", {'value': 100, 'min': 1})]
+    uiTemplate = [("Num Points", "intSpin", {"value": 100, "min": 1})]
 
     def __init__(self, name):
-        super().__init__(name,
-                         terminals={'In': {'io': 'in', 'ttype': Any, 'optional': True}},
-                         allowAddInput=True,
-                         buffered=True)
+        super().__init__(
+            name, terminals={"In": {"io": "in", "ttype": Any, "optional": True}}, allowAddInput=True, buffered=True
+        )
 
     def addTerminal(self, *args, **opts):
-        opts['optional'] = True
+        opts["optional"] = True
         return super().addTerminal(*args, **opts)
 
     def isChanged(self, restore_ctrl, restore_widget):
@@ -110,9 +113,9 @@ class Monitor(CtrlNode):
         return super().display(topics, terms, addr, win, CategoryWidget, **kwargs)
 
     def to_operation(self, inputs, outputs, **kwargs):
-        outputs = [self.name()+'.'+i for i in inputs.keys()]
-        map_outputs = [self.name()+"_mapcounter"]
-        buffer_output = [self.name()+"_count", self.name()+"_buffered"]
+        outputs = [self.name() + "." + i for i in inputs.keys()]
+        map_outputs = [self.name() + "_mapcounter"]
+        buffer_output = [self.name() + "_count", self.name() + "_buffered"]
 
         def count(*args, **kwargs):
             res = {}
@@ -132,10 +135,16 @@ class Monitor(CtrlNode):
             else:
                 return res
 
-        nodes = [gn.Map(name=self.name()+"_counter", inputs=inputs, outputs=map_outputs, func=count, **kwargs),
-                 gn.RollingBuffer(name=self.name()+"_buffer", N=self.values['Num Points'],
-                                  inputs=map_outputs, outputs=buffer_output, **kwargs),
-                 gn.Map(name=self.name()+"_operation", inputs=buffer_output, outputs=outputs,
-                        func=map_unzip, **kwargs)]
+        nodes = [
+            gn.Map(name=self.name() + "_counter", inputs=inputs, outputs=map_outputs, func=count, **kwargs),
+            gn.RollingBuffer(
+                name=self.name() + "_buffer",
+                N=self.values["Num Points"],
+                inputs=map_outputs,
+                outputs=buffer_output,
+                **kwargs,
+            ),
+            gn.Map(name=self.name() + "_operation", inputs=buffer_output, outputs=outputs, func=map_unzip, **kwargs),
+        ]
 
         return nodes

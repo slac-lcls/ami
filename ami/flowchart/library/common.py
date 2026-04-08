@@ -1,11 +1,16 @@
 # -*- coding: utf-8 -*-
+from amitypes import Array1d, Array2d, MultiChannelWaveformTypes
 from qtpy import QtCore
 
-from ami.flowchart.Node import Node
+from ami.flowchart.library.DisplayWidgets import (
+    ImageWidget,
+    MultiWaveformWidget,
+    ObjectWidget,
+    ScalarWidget,
+    WaveformWidget,
+)
 from ami.flowchart.library.WidgetGroup import generateUi
-from ami.flowchart.library.DisplayWidgets import ScalarWidget, WaveformWidget, ImageWidget, \
-        ObjectWidget, MultiWaveformWidget
-from amitypes import Array1d, Array2d, MultiChannelWaveformTypes
+from ami.flowchart.Node import Node
 
 
 class CtrlNode(Node):
@@ -21,7 +26,7 @@ class CtrlNode(Node):
         super().__init__(name=name, terminals=terminals, **kwargs)
 
         if ui is None:
-            if hasattr(self, 'uiTemplate'):
+            if hasattr(self, "uiTemplate"):
                 ui = self.uiTemplate
             else:
                 ui = []
@@ -52,13 +57,13 @@ class CtrlNode(Node):
     def saveState(self):
         state = super().saveState()
         if self.stateGroup:
-            state['ctrl'] = self.stateGroup.state()
+            state["ctrl"] = self.stateGroup.state()
 
-        if self.widget and hasattr(self.widget, 'saveState'):
-            state['widget'] = self.widget.saveState()
+        if self.widget and hasattr(self.widget, "saveState"):
+            state["widget"] = self.widget.saveState()
 
         if self.geometry:
-            state['geometry'] = bytes(self.geometry.toHex()).decode('ascii')
+            state["geometry"] = bytes(self.geometry.toHex()).decode("ascii")
 
         return state
 
@@ -66,14 +71,14 @@ class CtrlNode(Node):
         super().restoreState(state)
 
         if self.stateGroup is not None:
-            ctrlstate = state.get('ctrl', {})
+            ctrlstate = state.get("ctrl", {})
             self.stateGroup.setState(ctrlstate)
 
-        if self.widget is not None and 'widget' in state:
-            self.widget.restoreState(state['widget'])
+        if self.widget is not None and "widget" in state:
+            self.widget.restoreState(state["widget"])
 
-        if 'geometry' in state:
-            self.geometry = QtCore.QByteArray.fromHex(bytes(state['geometry'], 'ascii'))
+        if "geometry" in state:
+            self.geometry = QtCore.QByteArray.fromHex(bytes(state["geometry"], "ascii"))
 
     def hideRow(self, name):
         w = self.ctrls[name]
@@ -108,7 +113,7 @@ class CtrlNode(Node):
         if self.widget is None:
             return term
 
-        if hasattr(self.widget, 'terminalAdded'):
+        if hasattr(self.widget, "terminalAdded"):
             self.widget.terminalAdded(term)
 
         return term
@@ -119,7 +124,7 @@ class CtrlNode(Node):
                 return
             term = self.terminals[term]
 
-        if self.widget and hasattr(self.widget, 'terminalRemoved'):
+        if self.widget and hasattr(self.widget, "terminalRemoved"):
             self.widget.terminalRemoved(term)
 
         super().removeTerminal(term)
@@ -142,8 +147,8 @@ class CtrlNode(Node):
 class SourceNode(CtrlNode):
 
     def __init__(self, **kwargs):
-        kwargs['viewable'] = True
-        kwargs['allowOptional'] = False
+        kwargs["viewable"] = True
+        kwargs["allowOptional"] = False
         super().__init__(**kwargs)
 
         self.widgetType = None
@@ -164,8 +169,8 @@ class SourceNode(CtrlNode):
         return self._input_vars
 
     def setWidgetType(self):
-        if 'Out' in self.terminals:
-            ttype = self.terminals['Out']._type
+        if "Out" in self.terminals:
+            ttype = self.terminals["Out"]._type
             if ttype is int or ttype is float or ttype is bool:
                 self.widgetType = ScalarWidget
             elif ttype is Array1d:
@@ -178,18 +183,18 @@ class SourceNode(CtrlNode):
                 self.widgetType = ObjectWidget
 
     def plotMetadata(self, topics, terms, **kwargs):
-        return {'type': self.widgetType.__name__, 'terms': terms, 'topics': topics}
+        return {"type": self.widgetType.__name__, "terms": terms, "topics": topics}
 
     def saveState(self):
         state = super().saveState()
-        state['source_kwargs'] = self._graphicsItem.source_kwargs
+        state["source_kwargs"] = self._graphicsItem.source_kwargs
         return state
 
     def restoreState(self, state):
         super().restoreState(state)
         self.setWidgetType()
         try:
-            self._graphicsItem.source_kwargs = state['source_kwargs']
+            self._graphicsItem.source_kwargs = state["source_kwargs"]
         except:
             pass
 
@@ -202,7 +207,7 @@ class GroupedNode(CtrlNode):
 
     def addInput(self, **kwargs):
         group = self.nextGroupName()
-        kwargs['group'] = group
+        kwargs["group"] = group
         super().addInput(**kwargs)
         super().addOutput(**kwargs)
 
@@ -218,4 +223,4 @@ class GroupedNode(CtrlNode):
                 if term.isOutput():
                     return term
         else:
-            return self.terminals['Out']
+            return self.terminals["Out"]

@@ -1,29 +1,32 @@
-from qtpy import QtCore
-from ami.flowchart.library.Numpy import Projection, Binning
-from ami.flowchart.library.Accumulators import PickN
-from ami.flowchart.library.Display import ScatterPlot, ScalarPlot
-import ami.graph_nodes as gn
 import numpy as np
+from qtpy import QtCore
+
+import ami.graph_nodes as gn
+from ami.flowchart.library.Accumulators import PickN
+from ami.flowchart.library.Display import ScalarPlot, ScatterPlot
+from ami.flowchart.library.Numpy import Binning, Projection
 
 
 def test_projection(qtbot):
 
-    node = Projection('projection')
+    node = Projection("projection")
     widget = node.ctrlWidget()
     # showing windows steals focus after the tests exit, its not necessary for the test, and is annoying
     # widget.show()
     qtbot.addWidget(widget)
 
-    assert node.values['axis'] == 0
-    qtbot.keyPress(node.ctrls['axis'], QtCore.Qt.Key_Up)
-    assert node.values['axis'] == 1
+    assert node.values["axis"] == 0
+    qtbot.keyPress(node.ctrls["axis"], QtCore.Qt.Key_Up)
+    assert node.values["axis"] == 1
 
     inputs = {"In": node.name()}
     op = node.to_operation(inputs=inputs, outputs=["projection.Out"])
-    mop = gn.Map(name="projection_operation",
-                 inputs=list(inputs.values()),
-                 outputs=[node.name()+'.Out'],
-                 func=lambda a: np.sum(a, axis=1))
+    mop = gn.Map(
+        name="projection_operation",
+        inputs=list(inputs.values()),
+        outputs=[node.name() + ".Out"],
+        func=lambda a: np.sum(a, axis=1),
+    )
 
     assert op.name == mop.name
     assert op.inputs == mop.inputs
@@ -32,22 +35,19 @@ def test_projection(qtbot):
 
 def test_pickn(qtbot):
 
-    node = PickN('pickn')
+    node = PickN("pickn")
     widget = node.ctrlWidget()
     # widget.show()
     qtbot.addWidget(widget)
 
-    assert node.values['N'] == 2
-    qtbot.keyPress(node.ctrls['N'], QtCore.Qt.Key_Up)
-    assert node.values['N'] == 3
+    assert node.values["N"] == 2
+    qtbot.keyPress(node.ctrls["N"], QtCore.Qt.Key_Up)
+    assert node.values["N"] == 3
 
     inputs = {"In": node.name()}
-    outputs = ['pickn.Out']
+    outputs = ["pickn.Out"]
     op = node.to_operation(inputs=inputs, outputs=outputs)
-    pop = gn.PickN(name="pickn_operation",
-                   inputs=list(inputs.values()),
-                   outputs=[node.name()+'.Out'],
-                   N=3)
+    pop = gn.PickN(name="pickn_operation", inputs=list(inputs.values()), outputs=[node.name() + ".Out"], N=3)
 
     assert op.name == pop.name
     assert op.inputs == pop.inputs
@@ -57,26 +57,26 @@ def test_pickn(qtbot):
 
 def test_binning(qtbot):
 
-    node = Binning('binning')
+    node = Binning("binning")
     widget = node.ctrlWidget()
     # widget.show()
     qtbot.addWidget(widget)
 
-    assert node.values['bins'] == 10
-    qtbot.keyPress(node.ctrls['bins'], QtCore.Qt.Key_Up)
-    qtbot.keyPress(node.ctrls['bins'], QtCore.Qt.Key_Up)
-    assert node.values['bins'] == 12
+    assert node.values["bins"] == 10
+    qtbot.keyPress(node.ctrls["bins"], QtCore.Qt.Key_Up)
+    qtbot.keyPress(node.ctrls["bins"], QtCore.Qt.Key_Up)
+    assert node.values["bins"] == 12
 
-    assert node.values['range min'] == 1
-    qtbot.keyPress(node.ctrls['range min'], QtCore.Qt.Key_Down)
-    assert node.values['range min'] == 0
+    assert node.values["range min"] == 1
+    qtbot.keyPress(node.ctrls["range min"], QtCore.Qt.Key_Down)
+    assert node.values["range min"] == 0
 
-    assert node.values['range max'] == 100
+    assert node.values["range max"] == 100
     for i in range(0, 10):
-        qtbot.keyPress(node.ctrls['range max'], QtCore.Qt.Key_Up)
-    assert node.values['range max'] == 110
+        qtbot.keyPress(node.ctrls["range max"], QtCore.Qt.Key_Up)
+    assert node.values["range max"] == 110
 
-    op = node.to_operation(inputs={"In": node.name()}, outputs=['binning.out'])
+    op = node.to_operation(inputs={"In": node.name()}, outputs=["binning.out"])
     assert len(op) == 3
     assert type(op[0]) == gn.Map
     assert type(op[1]) == gn.Accumulator
@@ -84,18 +84,17 @@ def test_binning(qtbot):
 
 def test_scatterplot(qtbot):
 
-    node = ScatterPlot('scatter')
+    node = ScatterPlot("scatter")
     widget = node.ctrlWidget()
     # widget.show()
     qtbot.addWidget(widget)
 
-    assert node.values['Num Points'] == 100
-    qtbot.keyPress(node.ctrls['Num Points'], QtCore.Qt.Key_Up)
-    assert node.values['Num Points'] == 101
+    assert node.values["Num Points"] == 100
+    qtbot.keyPress(node.ctrls["Num Points"], QtCore.Qt.Key_Up)
+    assert node.values["Num Points"] == 101
 
-    inputs = {"X": "X",
-              "Y": "Y"}
-    op = node.to_operation(inputs=inputs, outputs=['x', 'y'])
+    inputs = {"X": "X", "Y": "Y"}
+    op = node.to_operation(inputs=inputs, outputs=["x", "y"])
     assert type(op[0]) == gn.RollingBuffer
     assert type(op[1]) == gn.Map
     assert op[0].N == 101
@@ -114,18 +113,18 @@ def test_scatterplot(qtbot):
 
 def test_scalarplot(qtbot):
 
-    node = ScalarPlot('scalar')
+    node = ScalarPlot("scalar")
     widget = node.ctrlWidget()
     # widget.show()
     qtbot.addWidget(widget)
 
-    assert node.values['Num Points'] == 100
-    qtbot.keyPress(node.ctrls['Num Points'], QtCore.Qt.Key_Down)
-    qtbot.keyPress(node.ctrls['Num Points'], QtCore.Qt.Key_Down)
-    assert node.values['Num Points'] == 98
+    assert node.values["Num Points"] == 100
+    qtbot.keyPress(node.ctrls["Num Points"], QtCore.Qt.Key_Down)
+    qtbot.keyPress(node.ctrls["Num Points"], QtCore.Qt.Key_Down)
+    assert node.values["Num Points"] == 98
 
     inputs = {"Y": "Y"}
-    op = node.to_operation(inputs=inputs, outputs=['y'])[0]
+    op = node.to_operation(inputs=inputs, outputs=["y"])[0]
     assert type(op) == gn.RollingBuffer
     assert op.N == 98
 

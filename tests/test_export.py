@@ -1,18 +1,20 @@
+import multiprocessing as mp
+import threading
+
+import dill
+import numpy as np
 import pytest
 import zmq
-import dill
-import threading
-import numpy as np
-import multiprocessing as mp
 
-from ami.graphkit_wrapper import Graph
 from ami.data import Heartbeat
+from ami.graphkit_wrapper import Graph
 
 try:
-    from ami.export import run_export
-    from ami.export.nt import CUSTOM_TYPE_WRAPPERS
     # from ami.export.client import GraphCommHandler, AsyncGraphCommHandler
     from p4p.client.thread import Context, RemoteError
+
+    from ami.export import run_export
+    from ami.export.nt import CUSTOM_TYPE_WRAPPERS
 except ImportError:
     pytest.skip("skipping EPICS PVA tests", allow_module_level=True)
 
@@ -76,11 +78,11 @@ class ExportInjector:
 
         # send response
         if fail:
-            self.comm.send_string('error')
+            self.comm.send_string("error")
         elif reply is None:
-            self.comm.send_string('ok')
+            self.comm.send_string("ok")
         else:
-            self.comm.send_string('ok', zmq.SNDMORE)
+            self.comm.send_string("ok", zmq.SNDMORE)
             self.comm.send_pyobj(reply)
 
         return cmd, graph, payload
@@ -93,7 +95,7 @@ class ExportInjector:
 
     def recv_start(self, reply=None, timeout=1000, fail=False):
         self.result = None
-        self.thread = threading.Thread(name='injector_recv', target=self.recv_thread, args=(reply, timeout, fail))
+        self.thread = threading.Thread(name="injector_recv", target=self.recv_thread, args=(reply, timeout, fail))
         self.thread.daemon = True
         self.thread.start()
 
@@ -107,48 +109,46 @@ class ExportInjector:
         return self.result
 
 
-@pytest.fixture(scope='function')
+@pytest.fixture(scope="function")
 def exporter(ipc_dir):
     pvbase = "testing:ami"
-    comm = 'ipc://%s/pva_comm' % ipc_dir
-    export = 'ipc://%s/pva_export' % ipc_dir
+    comm = "ipc://%s/pva_comm" % ipc_dir
+    export = "ipc://%s/pva_export" % ipc_dir
 
     with ExportInjector(export, comm) as injector:
         # start the manager process
-        proc = mp.Process(
-            name='export',
-            target=run_export,
-            args=(pvbase, comm, export, True, False)
-        )
+        proc = mp.Process(name="export", target=run_export, args=(pvbase, comm, export, True, False))
         proc.daemon = False
         proc.start()
 
         # wait for the export code to connect to the injector
         assert injector.wait()
-        injector.send('info', '', {'graphs': ['test']})
-        injector.send('store', 'test', {'version': 1, 'features': {'delta_t': float, 'laser': bool}})
-        injector.send('graph',
-                      'test',
-                      {
-                        'names': ['delta_t', 'laser', 'sum'],
-                        'sources': {'delta_t': float, 'laser': bool},
-                        'version': 0,
-                        'dill': dill.dumps(Graph('test')),
-                      })
-        injector.send('data',
-                      'test',
-                      {
-                        '_timestamp': 1,
-                        'laser': True,
-                        'delta_t': 3,
-                        'ebeam': 10.1,
-                        # 'vals': ['foo', 'bar', 'baz'],
-                        'wave8': np.zeros(20),
-                        'cspad': np.zeros((10, 10)),
-                      })
-        injector.send('heartbeat',
-                      'test',
-                      Heartbeat(5, 0))
+        injector.send("info", "", {"graphs": ["test"]})
+        injector.send("store", "test", {"version": 1, "features": {"delta_t": float, "laser": bool}})
+        injector.send(
+            "graph",
+            "test",
+            {
+                "names": ["delta_t", "laser", "sum"],
+                "sources": {"delta_t": float, "laser": bool},
+                "version": 0,
+                "dill": dill.dumps(Graph("test")),
+            },
+        )
+        injector.send(
+            "data",
+            "test",
+            {
+                "_timestamp": 1,
+                "laser": True,
+                "delta_t": 3,
+                "ebeam": 10.1,
+                # 'vals': ['foo', 'bar', 'baz'],
+                "wave8": np.zeros(20),
+                "cspad": np.zeros((10, 10)),
+            },
+        )
+        injector.send("heartbeat", "test", Heartbeat(5, 0))
         yield pvbase, injector
 
         # cleanup the manager process
@@ -192,9 +192,9 @@ def exporter(ipc_dir):
 #         yield comm
 
 
-@pytest.fixture(scope='function')
+@pytest.fixture(scope="function")
 def pvactx():
-    with Context('pva', nt=CUSTOM_TYPE_WRAPPERS) as ctx:
+    with Context("pva", nt=CUSTOM_TYPE_WRAPPERS) as ctx:
         yield ctx
 
 

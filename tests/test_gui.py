@@ -1,22 +1,24 @@
 import asyncio
+import json
+import multiprocessing as mp
+import os
+import signal
+import subprocess
+import tempfile
+import time
+from collections import OrderedDict
+
+import amitypes as at
 import pytest
 import zmq
-import time
-import os
-import tempfile
-import signal
-import json
-import subprocess
-import amitypes as at
-import multiprocessing as mp
+
 import ami.client.flowchart_messages as fcMsgs
 from ami.client import GraphMgrAddress
 from ami.client.flowchart import MessageBroker
+from ami.comm import GraphCommHandler
 from ami.flowchart.Flowchart import Flowchart
 from ami.flowchart.library.common import SourceNode
 from ami.local import build_parser, run_ami
-from ami.comm import GraphCommHandler
-from collections import OrderedDict
 
 
 class BrokerHelper:
@@ -63,7 +65,7 @@ class BrokerProxy:
         return self.comm.recv()
 
 
-@pytest.fixture(scope='function')
+@pytest.fixture(scope="function")
 def event_loop(qevent_loop):
     """
     Adding this overrides the event_loop fixture from pytest-asyncio. This lets
@@ -74,10 +76,11 @@ def event_loop(qevent_loop):
     qevent_loop.close()
 
 
-@pytest.fixture(scope='function')
+@pytest.fixture(scope="function")
 def graphmgr_addr(ipc_dir):
     try:
         from pytest_cov.embed import cleanup_on_sigterm
+
         cleanup_on_sigterm()
     except ImportError:
         pass
@@ -92,10 +95,11 @@ def graphmgr_addr(ipc_dir):
     yield graphmgr
 
 
-@pytest.fixture(scope='function')
+@pytest.fixture(scope="function")
 def broker(ipc_dir, graphmgr_addr):
     try:
         from pytest_cov.embed import cleanup_on_sigterm
+
         cleanup_on_sigterm()
     except ImportError:
         pass
@@ -103,10 +107,7 @@ def broker(ipc_dir, graphmgr_addr):
     parent_comm, child_comm = mp.Pipe()
     # start the manager process
     proc = mp.Process(
-        name='broker',
-        target=BrokerHelper.execute,
-        args=(graphmgr_addr, ipc_dir, child_comm),
-        daemon=False
+        name="broker", target=BrokerHelper.execute, args=(graphmgr_addr, ipc_dir, child_comm), daemon=False
     )
     proc.start()
 
@@ -123,10 +124,10 @@ def broker(ipc_dir, graphmgr_addr):
     return proc.exitcode
 
 
-@pytest.fixture(scope='module')
+@pytest.fixture(scope="module")
 def dmypy():
-    dmypy_file = tempfile.NamedTemporaryFile(mode='w', delete=False)
-    os.environ['DMYPY_STATUS_FILE'] = dmypy_file.name
+    dmypy_file = tempfile.NamedTemporaryFile(mode="w", delete=False)
+    os.environ["DMYPY_STATUS_FILE"] = dmypy_file.name
     subprocess.run(["dmypy", "--status-file", dmypy_file.name, "start"])
 
     yield
@@ -138,23 +139,20 @@ def dmypy():
         subprocess.run(["dmypy", "--status-file", dmypy_file.name, "kill"])
 
 
-@pytest.fixture(scope='function')
+@pytest.fixture(scope="function")
 def flowchart(request, workerjson, broker, ipc_dir, graphmgr_addr, qevent_loop, dmypy):
     try:
         from pytest_cov.embed import cleanup_on_sigterm
+
         cleanup_on_sigterm()
     except ImportError:
         pass
 
     parser = build_parser()
-    args = parser.parse_args(["-n", "1", '-i', str(ipc_dir), '--headless',
-                              '%s://%s' %
-                              (request.param, workerjson)])
+    args = parser.parse_args(["-n", "1", "-i", str(ipc_dir), "--headless", "%s://%s" % (request.param, workerjson)])
 
     queue = mp.Queue()
-    ami = mp.Process(name='ami',
-                     target=run_ami,
-                     args=(args, queue))
+    ami = mp.Process(name="ami", target=run_ami, args=(args, queue))
     ami.start()
 
     try:
@@ -165,9 +163,9 @@ def flowchart(request, workerjson, broker, ipc_dir, graphmgr_addr, qevent_loop, 
 
         os.makedirs(os.path.expanduser("~/.cache/ami/"), exist_ok=True)
 
-        with Flowchart(broker_addr=broker.broker_sub_addr,
-                       graphmgr_addr=graphmgr_addr,
-                       checkpoint_addr=broker.checkpoint_pub_addr) as fc:
+        with Flowchart(
+            broker_addr=broker.broker_sub_addr, graphmgr_addr=graphmgr_addr, checkpoint_addr=broker.checkpoint_pub_addr
+        ) as fc:
 
             qevent_loop.run_until_complete(fc.updateSources(init=True))
 
@@ -188,14 +186,15 @@ def flowchart(request, workerjson, broker, ipc_dir, graphmgr_addr, qevent_loop, 
         if ami.exitcode == 0 or ami.exitcode == -signal.SIGTERM:
             return 0
         else:
-            print('AMI exited with non-zero status code: %d' % ami.exitcode)
+            print("AMI exited with non-zero status code: %d" % ami.exitcode)
             return 1
 
 
-@pytest.fixture(scope='function')
+@pytest.fixture(scope="function")
 def flowchart_hdf(request, tmp_path, qtbot, broker, ipc_dir, graphmgr_addr, qevent_loop):
     try:
         from pytest_cov.embed import cleanup_on_sigterm
+
         cleanup_on_sigterm()
     except ImportError:
         pass
@@ -205,21 +204,18 @@ def flowchart_hdf(request, tmp_path, qtbot, broker, ipc_dir, graphmgr_addr, qeve
         "init_time": 0.1,
         "bound": 100,
         "repeat": True,
-        "files": [os.path.join('tests/graphs', request.param[0])]
+        "files": [os.path.join("tests/graphs", request.param[0])],
     }
 
-    fname = os.path.join(tmp_path, 'worker.json')
-    with open(fname, 'w') as fd:
+    fname = os.path.join(tmp_path, "worker.json")
+    with open(fname, "w") as fd:
         json.dump(cfg, fd)
 
     parser = build_parser()
-    args = parser.parse_args(["-n", "1", '-i', str(ipc_dir), '--headless',
-                              'hdf5://%s' % fname])
+    args = parser.parse_args(["-n", "1", "-i", str(ipc_dir), "--headless", "hdf5://%s" % fname])
 
     queue = mp.Queue()
-    ami = mp.Process(name='ami',
-                     target=run_ami,
-                     args=(args, queue))
+    ami = mp.Process(name="ami", target=run_ami, args=(args, queue))
     ami.start()
 
     try:
@@ -228,14 +224,14 @@ def flowchart_hdf(request, tmp_path, qtbot, broker, ipc_dir, graphmgr_addr, qeve
         while not comm.sources:
             time.sleep(0.1)
 
-        with Flowchart(broker_addr=broker.broker_sub_addr,
-                       graphmgr_addr=graphmgr_addr,
-                       checkpoint_addr=broker.checkpoint_pub_addr) as fc:
+        with Flowchart(
+            broker_addr=broker.broker_sub_addr, graphmgr_addr=graphmgr_addr, checkpoint_addr=broker.checkpoint_pub_addr
+        ) as fc:
 
             qevent_loop.run_until_complete(fc.updateSources(init=True))
 
             qtbot.addWidget(fc.widget())
-            fc.loadFile(os.path.join('tests/graphs', request.param[1]))
+            fc.loadFile(os.path.join("tests/graphs", request.param[1]))
 
             yield (fc, broker, comm)
 
@@ -254,7 +250,7 @@ def flowchart_hdf(request, tmp_path, qtbot, broker, ipc_dir, graphmgr_addr, qeve
         if ami.exitcode == 0 or ami.exitcode == -signal.SIGTERM:
             return 0
         else:
-            print('AMI exited with non-zero status code: %d' % ami.exitcode)
+            print("AMI exited with non-zero status code: %d" % ami.exitcode)
             return 1
 
 
@@ -263,7 +259,7 @@ def test_broker_sub(broker):
     socket = ctx.socket(zmq.XPUB)
     socket.connect(broker.broker_sub_addr)
     # wait for the subscriber to connect
-    assert socket.recv_string() == '\x01'
+    assert socket.recv_string() == "\x01"
 
     name = "Projection"
     msg = fcMsgs.CreateNode(name, "Projection")
@@ -294,7 +290,7 @@ def test_broker_sub(broker):
     ctx.destroy()
 
 
-@pytest.mark.parametrize('flowchart', ['static'], indirect=True)
+@pytest.mark.parametrize("flowchart", ["static"], indirect=True)
 def test_sources(qtbot, flowchart):
     flowchart = flowchart[0]
     source_library = flowchart.source_library
@@ -302,54 +298,58 @@ def test_sources(qtbot, flowchart):
     source_tree = source_library.getSourceTree()
     sources = set(source_tree.keys())
     print(sources)
-    assert sources == set(['delta', 'cspad', 'laser', 'eventid', 'timestamp', 'heartbeat', 'source'])
+    assert sources == set(["delta", "cspad", "laser", "eventid", "timestamp", "heartbeat", "source"])
 
-    label_tree = OrderedDict([('cspad', "<class 'amitypes.array.Array2d'>"),
-                              ('delta', {'delta_t': "<class 'int'>"}),
-                              ('eventid', "<class 'int'>"),
-                              ('heartbeat', "<class 'int'>"),
-                              ('laser', "<class 'int'>"),
-                              ('source', "<class 'amitypes.source.DataSource'>"),
-                              ('timestamp', "<class 'float'>")])
+    label_tree = OrderedDict(
+        [
+            ("cspad", "<class 'amitypes.array.Array2d'>"),
+            ("delta", {"delta_t": "<class 'int'>"}),
+            ("eventid", "<class 'int'>"),
+            ("heartbeat", "<class 'int'>"),
+            ("laser", "<class 'int'>"),
+            ("source", "<class 'amitypes.source.DataSource'>"),
+            ("timestamp", "<class 'float'>"),
+        ]
+    )
     assert source_library.getLabelTree() == label_tree
     # test cached version
     assert source_library.getLabelTree() == label_tree
 
-    assert source_library.getSourceType('cspad') == at.Array2d
+    assert source_library.getSourceType("cspad") == at.Array2d
 
     try:
-        source_library.getSourceType('')
+        source_library.getSourceType("")
     except KeyError:
         pass
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize('flowchart', ['static'], indirect=True)
+@pytest.mark.parametrize("flowchart", ["static"], indirect=True)
 async def test_editor(qtbot, flowchart, tmp_path):
     flowchart, broker = flowchart
 
     qtbot.addWidget(flowchart.widget())
 
-    flowchart.createNode('Roi2D')
-    roi_node = flowchart.nodes(data='node')['Roi2D.0']
+    flowchart.createNode("Roi2D")
+    roi_node = flowchart.nodes(data="node")["Roi2D.0"]
 
-    node_name = 'cspad'
+    node_name = "cspad"
     node_type = flowchart.source_library.getSourceType(node_name)
-    node = SourceNode(name=node_name, terminals={'Out': {'io': 'out', 'ttype': node_type}})
+    node = SourceNode(name=node_name, terminals={"Out": {"io": "out", "ttype": node_type}})
 
     flowchart.addNode(node=node)
-    cspad_node = flowchart.nodes(data='node')['cspad']
+    cspad_node = flowchart.nodes(data="node")["cspad"]
 
-    cspad_out = cspad_node._outputs['Out']
-    roi_in = roi_node._inputs['In']
+    cspad_out = cspad_node._outputs["Out"]
+    roi_in = roi_node._inputs["In"]
 
     cspad_out().connectTo(roi_in())
-    await asyncio.sleep(0.1) # need to wait for nodeTermConnected slot to execute before we can check edges
+    await asyncio.sleep(0.1)  # need to wait for nodeTermConnected slot to execute before we can check edges
     assert len(flowchart._graph.edges()) == 1
 
     widget = flowchart.widget()
 
-    pth = os.path.join(tmp_path, 'graph.fc')
+    pth = os.path.join(tmp_path, "graph.fc")
     widget.setCurrentFile(pth)
     widget.saveClicked()
 

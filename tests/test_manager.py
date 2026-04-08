@@ -1,15 +1,16 @@
+import functools
+import multiprocessing as mp
+import time
+
+import amitypes as at
+import dill
+import numpy as np
 import pytest
 import zmq
-import time
-import dill
-import functools
-import numpy as np
-import multiprocessing as mp
-import ami.graph_nodes as gn
-import amitypes as at
 
-from ami.data import MsgTypes, Transitions, Transition, Heartbeat
-from ami.comm import AutoExport, Store, Node, ZmqHandler, GraphCommHandler
+import ami.graph_nodes as gn
+from ami.comm import AutoExport, GraphCommHandler, Node, Store, ZmqHandler
+from ami.data import Heartbeat, MsgTypes, Transition, Transitions
 from ami.manager import run_manager
 
 
@@ -39,7 +40,7 @@ class ExportHelper:
     def store(version=0, features=None):
         if features is None:
             features = {}
-        return {'version': version, 'features': features, 'plots': {}}
+        return {"version": version, "features": features, "plots": {}}
 
     @staticmethod
     def graph(version=0, names=None, sources=None, graph=None):
@@ -49,14 +50,14 @@ class ExportHelper:
             sources = {}
         else:
             sources = {src: at.dumps(typ) for src, typ in sources.items()}
-        return {'version': version, 'names': names, 'sources': sources, 'dill': dill.dumps(graph)}
+        return {"version": version, "names": names, "sources": sources, "dill": dill.dumps(graph)}
 
 
 class ResultsInjector(Node, ZmqHandler):
     def __init__(self, addrs, ctx, identity, name, version=0):
-        Node.__init__(self, identity, addrs['graph'], addrs['msg'], ctx=ctx)
-        ZmqHandler.__init__(self, addrs['results'], ctx=ctx)
-        self.comm = GraphCommHandler(name, addrs['comm'], ctx=ctx)
+        Node.__init__(self, identity, addrs["graph"], addrs["msg"], ctx=ctx)
+        ZmqHandler.__init__(self, addrs["results"], ctx=ctx)
+        self.comm = GraphCommHandler(name, addrs["comm"], ctx=ctx)
         self._name = name
         self.version = version
         self.exceptions = {}
@@ -159,41 +160,55 @@ class ResultsInjector(Node, ZmqHandler):
             self.graph_comm.recv()
 
 
-@pytest.fixture(scope='function')
+@pytest.fixture(scope="function")
 def result_data():
     return {
-        'laser': True,
-        'delta_t': np.random.random(),
-        'wave8': np.random.normal(0, 20.0, 100),
-        'cspad': np.random.normal(30, 5.0, (10, 10)),
+        "laser": True,
+        "delta_t": np.random.random(),
+        "wave8": np.random.normal(0, 20.0, 100),
+        "cspad": np.random.normal(30, 5.0, (10, 10)),
     }
 
 
-@pytest.fixture(scope='function')
+@pytest.fixture(scope="function")
 def manager_proc(ipc_dir):
     try:
         from pytest_cov.embed import cleanup_on_sigterm
+
         cleanup_on_sigterm()
     except ImportError:
         pass
 
     addrs = {
-        'results': 'ipc://%s/manager_results' % ipc_dir,
-        'comm': 'ipc://%s/manager_comm' % ipc_dir,
-        'graph': 'ipc://%s/manager_graph' % ipc_dir,
-        'msg': 'ipc://%s/manager_msg' % ipc_dir,
-        'info': 'ipc://%s/manager_info' % ipc_dir,
-        'export': 'ipc://%s/manager_export' % ipc_dir,
-        'view': 'ipc://%s/manager_view' % ipc_dir,
+        "results": "ipc://%s/manager_results" % ipc_dir,
+        "comm": "ipc://%s/manager_comm" % ipc_dir,
+        "graph": "ipc://%s/manager_graph" % ipc_dir,
+        "msg": "ipc://%s/manager_msg" % ipc_dir,
+        "info": "ipc://%s/manager_info" % ipc_dir,
+        "export": "ipc://%s/manager_export" % ipc_dir,
+        "view": "ipc://%s/manager_view" % ipc_dir,
     }
 
     # start the manager process
     proc = mp.Process(
-        name='manager',
+        name="manager",
         target=run_manager,
-        args=(1, 1, addrs['results'], addrs['graph'], addrs['comm'],
-              addrs['msg'], addrs['info'], addrs['export'], addrs['view'],
-              None, None, None, None, None)
+        args=(
+            1,
+            1,
+            addrs["results"],
+            addrs["graph"],
+            addrs["comm"],
+            addrs["msg"],
+            addrs["info"],
+            addrs["export"],
+            addrs["view"],
+            None,
+            None,
+            None,
+            None,
+            None,
+        ),
     )
     proc.daemon = False
     proc.start()
@@ -206,7 +221,7 @@ def manager_proc(ipc_dir):
     return proc.exitcode
 
 
-@pytest.fixture(scope='function')
+@pytest.fixture(scope="function")
 def manager_ctrl(manager_proc):
     ctx = zmq.Context()
     name = "graph"
@@ -221,11 +236,11 @@ def manager_ctrl(manager_proc):
         ctx.destroy()
 
 
-@pytest.fixture(scope='function')
+@pytest.fixture(scope="function")
 def manager_export(manager_proc):
     ctx = zmq.Context()
     name = "graph"
-    addr = manager_proc['export']
+    addr = manager_proc["export"]
     try:
         with ExportHelper(addr, ctx) as export, ResultsInjector(manager_proc, ctx, 0, name) as inject:
             # wait for the graph subscription to finish setting up
@@ -237,14 +252,14 @@ def manager_export(manager_proc):
         ctx.destroy()
 
 
-@pytest.fixture(scope='function')
+@pytest.fixture(scope="function")
 def manager_info(request, manager_proc):
     ctx = zmq.Context()
     name = "graph"
     try:
         with ctx.socket(zmq.SUB) as info, ResultsInjector(manager_proc, ctx, 0, name) as inject:
             info.setsockopt_string(zmq.SUBSCRIBE, request.param)
-            info.connect(manager_proc['info'])
+            info.connect(manager_proc["info"])
 
             # wait for the graph subscription to finish setting up
             inject.wait_for_subs()
@@ -255,7 +270,7 @@ def manager_info(request, manager_proc):
         ctx.destroy()
 
 
-@pytest.mark.parametrize('partition', [{'cspad': np.ndarray, 'delta_t': float}, {'laser': bool}, {}])
+@pytest.mark.parametrize("partition", [{"cspad": np.ndarray, "delta_t": float}, {"laser": bool}, {}])
 def test_manager_export_config(manager_export, partition):
     export, injector = manager_export
 
@@ -271,25 +286,33 @@ def test_manager_export_config(manager_export, partition):
     ]
     replies = [
         [
-            ('info', '', {'graphs': set()}, 'initial info message'),
+            ("info", "", {"graphs": set()}, "initial info message"),
         ],
         [
-            ('info', '', {'graphs': expected_names}, 'info after create is called'),
-            ('store', injector.comm.current, export.store(), 'store after create is called'),
-            ('graph', injector.comm.current, export.graph(), 'graph after create is called'),
+            ("info", "", {"graphs": expected_names}, "info after create is called"),
+            ("store", injector.comm.current, export.store(), "store after create is called"),
+            ("graph", injector.comm.current, export.graph(), "graph after create is called"),
         ],
         [
-            ('info', '', {'graphs': expected_names}, 'info after configure'),
-            ('store', injector.comm.current, export.store(), 'store after configure'),
-            ('graph', injector.comm.current, export.graph(names=set(partition), sources=partition),
-             'graph after configure'),
-            ('heartbeat', injector.comm.current, 0, 'hb after configure'),
+            ("info", "", {"graphs": expected_names}, "info after configure"),
+            ("store", injector.comm.current, export.store(), "store after configure"),
+            (
+                "graph",
+                injector.comm.current,
+                export.graph(names=set(partition), sources=partition),
+                "graph after configure",
+            ),
+            ("heartbeat", injector.comm.current, 0, "hb after configure"),
         ],
         [
-            ('graph', injector.comm.current, export.graph(version=1, names=set(partition), sources=partition),
-             'graph after destroy is called'),
-            ('info', '', {'graphs': set()}, 'info after destroy is called'),
-            ('destroy', injector.comm.current, None, 'destroy after destroy is called'),
+            (
+                "graph",
+                injector.comm.current,
+                export.graph(version=1, names=set(partition), sources=partition),
+                "graph after destroy is called",
+            ),
+            ("info", "", {"graphs": set()}, "info after destroy is called"),
+            ("destroy", injector.comm.current, None, "destroy after destroy is called"),
         ],
     ]
 
@@ -305,17 +328,19 @@ def test_manager_export_config(manager_export, partition):
             assert data == exp_data, "checking data of %s" % test_name
 
 
-@pytest.mark.parametrize('exports',
-                         [
-                            [],
-                            ['cspad'],
-                            ['delta_t'],
-                            ['cspad', 'delta_t'],
-                            ['laser'],
-                            ['fake'],
-                            ['fake', 'laser'],
-                         ])
-@pytest.mark.parametrize('inputs', [{'cspad': [0, 1, 2, 3], 'delta_t': 10.1}, {'laser': True}, {}])
+@pytest.mark.parametrize(
+    "exports",
+    [
+        [],
+        ["cspad"],
+        ["delta_t"],
+        ["cspad", "delta_t"],
+        ["laser"],
+        ["fake"],
+        ["fake", "laser"],
+    ],
+)
+@pytest.mark.parametrize("inputs", [{"cspad": [0, 1, 2, 3], "delta_t": 10.1}, {"laser": True}, {}])
 def test_manager_export_data(manager_export, inputs, exports):
     export, injector = manager_export
 
@@ -326,9 +351,9 @@ def test_manager_export_data(manager_export, inputs, exports):
     expected_hb = 1
     expected_names = {injector.comm.current}
     expected_features = {
-        'version': injector.version,
-        'features': {k: Store.get_type(v) for k, v in input_data.items()},
-        'plots': {}
+        "version": injector.version,
+        "features": {k: Store.get_type(v) for k, v in input_data.items()},
+        "plots": {},
     }
     expected_data = {k: v for k, v in inputs.items() if k in exports}
 
@@ -339,12 +364,12 @@ def test_manager_export_data(manager_export, inputs, exports):
     ]
     replies = [
         [
-            ('info', '', {'graphs': set()}, 'initial info message'),
+            ("info", "", {"graphs": set()}, "initial info message"),
         ],
         [
-            ('info', '', {'graphs': expected_names}, 'info after create is called'),
-            ('store', injector.comm.current, export.store(), 'store after create is called'),
-            ('graph', injector.comm.current, export.graph(), 'graph after create is called'),
+            ("info", "", {"graphs": expected_names}, "info after create is called"),
+            ("store", injector.comm.current, export.store(), "store after create is called"),
+            ("graph", injector.comm.current, export.graph(), "graph after create is called"),
         ],
     ]
 
@@ -367,10 +392,10 @@ def test_manager_export_data(manager_export, inputs, exports):
         assert injector.wait_graph(timeout=1.0)
         # check the graph message
         topic, graph, data = export.recv()
-        assert topic == 'graph'
+        assert topic == "graph"
         assert graph == injector.comm.current
         for name in exports:
-            assert AutoExport.mangle(name) in data['names']
+            assert AutoExport.mangle(name) in data["names"]
 
     # inject some data
     injector.data(expected_hb, input_data, wait=True)
@@ -379,7 +404,7 @@ def test_manager_export_data(manager_export, inputs, exports):
     if inputs:
         # check the updated features list
         topic, graph, data = export.recv()
-        assert topic == 'store'
+        assert topic == "store"
         assert graph == injector.comm.current
         assert data == expected_features
 
@@ -387,18 +412,18 @@ def test_manager_export_data(manager_export, inputs, exports):
     if set(exports) & set(inputs):
         # check the data message
         topic, graph, data = export.recv()
-        assert topic == 'data'
+        assert topic == "data"
         assert graph == injector.comm.current
         assert data == expected_data
 
     # check the heartbeat message
     topic, graph, data = export.recv()
-    assert topic == 'heartbeat'
+    assert topic == "heartbeat"
     assert graph == injector.comm.current
     assert data == expected_hb
 
 
-@pytest.mark.parametrize('partition', [{'cspad': at.Array2d, 'delta_t': float}, {'laser': bool}, {}])
+@pytest.mark.parametrize("partition", [{"cspad": at.Array2d, "delta_t": float}, {"laser": bool}, {}])
 def test_manager_partition(manager_ctrl, partition):
     comm, injector = manager_ctrl
 
@@ -417,11 +442,9 @@ def test_manager_partition(manager_ctrl, partition):
     assert not comm.exports
 
 
-@pytest.mark.parametrize('manager_info, partition',
-                         [
-                            ('', {'cspad': at.Array2d, 'delta_t': float})
-                         ],
-                         indirect=['manager_info'])
+@pytest.mark.parametrize(
+    "manager_info, partition", [("", {"cspad": at.Array2d, "delta_t": float})], indirect=["manager_info"]
+)
 def test_manager_partition_updates(manager_info, partition):
     info, injector = manager_info
 
@@ -430,9 +453,9 @@ def test_manager_partition_updates(manager_info, partition):
     node = info.recv_string()
     payload = dill.loads(info.recv())
     # check that the topic of the message is as expected
-    assert topic == 'sources'
+    assert topic == "sources"
     # check that the message came from the manager
-    assert node == 'manager'
+    assert node == "manager"
     # check that the expected partition/source info was empty
     assert not payload
 
@@ -444,26 +467,28 @@ def test_manager_partition_updates(manager_info, partition):
     node = info.recv_string()
     payload = dill.loads(info.recv())
     # check that the topic of the message is as expected
-    assert topic == 'sources'
+    assert topic == "sources"
     # check that the message came from the manager
-    assert node == 'manager'
+    assert node == "manager"
     # check that the expected partition/source info was attached
     payload = {src: at.loads(typ) for src, typ in payload.items()}
     assert payload == partition
 
 
-@pytest.mark.parametrize('names',
-                         [
-                            ["cspad"],
-                            ["delta_t"],
-                            ["test"],
-                            ["cspad", "delta_t"],
-                         ])
+@pytest.mark.parametrize(
+    "names",
+    [
+        ["cspad"],
+        ["delta_t"],
+        ["test"],
+        ["cspad", "delta_t"],
+    ],
+)
 def test_manager_add_view(manager_ctrl, names):
     comm, injector = manager_ctrl
 
     # create a fake partition
-    partition = {'cspad': np.ndarray, 'delta_t': float}
+    partition = {"cspad": np.ndarray, "delta_t": float}
     injector.partition(partition, wait=True)
 
     # add a view to the graph
@@ -494,19 +519,21 @@ def test_manager_add_view(manager_ctrl, names):
         assert remove == "%s_view" % comm.auto(name)
 
 
-@pytest.mark.parametrize('exports',
-                         [
-                            (["cspad"], [None]),
-                            (["delta_t"], ["t_atled"]),
-                            (["test"], [None]),
-                            (["cspad", "delta_t"], [None, "t_atled"]),
-                         ])
+@pytest.mark.parametrize(
+    "exports",
+    [
+        (["cspad"], [None]),
+        (["delta_t"], ["t_atled"]),
+        (["test"], [None]),
+        (["cspad", "delta_t"], [None, "t_atled"]),
+    ],
+)
 def test_manager_add_export(manager_ctrl, exports):
     names, aliases = exports
     comm, injector = manager_ctrl
 
     # create a fake partition
-    partition = {'cspad': np.ndarray, 'delta_t': float}
+    partition = {"cspad": np.ndarray, "delta_t": float}
     injector.partition(partition, wait=True)
 
     # add a export to the graph
@@ -540,25 +567,31 @@ def test_manager_add_export(manager_ctrl, exports):
         assert remove == "%s_export" % comm.alias(name, alias=alias)
 
 
-@pytest.mark.parametrize('node_info',
-                         [
-                            ('addMap',
-                             {
-                                'name': 'test_map',
-                                'inputs': 'inval',
-                                'outputs': 'outval',
-                                'func': lambda x: float(x),
-                             },
-                             gn.Map),
-                            ('addPickN',
-                             {
-                                'name': 'test_map',
-                                'inputs': 'inval',
-                                'outputs': 'outval',
-                                'N': 5,
-                             },
-                             gn.PickN),
-                         ])
+@pytest.mark.parametrize(
+    "node_info",
+    [
+        (
+            "addMap",
+            {
+                "name": "test_map",
+                "inputs": "inval",
+                "outputs": "outval",
+                "func": lambda x: float(x),
+            },
+            gn.Map,
+        ),
+        (
+            "addPickN",
+            {
+                "name": "test_map",
+                "inputs": "inval",
+                "outputs": "outval",
+                "N": 5,
+            },
+            gn.PickN,
+        ),
+    ],
+)
 def test_manager_add_node(manager_ctrl, node_info):
     comm, injector = manager_ctrl
     func, kwargs, expected = node_info
@@ -568,8 +601,8 @@ def test_manager_add_node(manager_ctrl, node_info):
     assert getattr(comm, func)(**kwargs)
 
     # check that the node is in the graph
-    assert kwargs['inputs'] in comm.graph.names
-    assert kwargs['outputs'] in comm.graph.names
+    assert kwargs["inputs"] in comm.graph.names
+    assert kwargs["outputs"] in comm.graph.names
 
     # check that the change is in the received graph object
     assert injector.wait_graph(timeout=1.0)
@@ -577,13 +610,13 @@ def test_manager_add_node(manager_ctrl, node_info):
     # check the type of the node
     assert isinstance(node, expected)
     # check the name of the node
-    assert node.name == kwargs['name']
+    assert node.name == kwargs["name"]
     # check the inputs and outputs of the node
-    assert kwargs['inputs'] in node.inputs
-    assert kwargs['outputs'] in node.outputs
+    assert kwargs["inputs"] in node.inputs
+    assert kwargs["outputs"] in node.outputs
 
     # remove the node from the graph
-    assert comm.remove(kwargs['name'])
+    assert comm.remove(kwargs["name"])
 
     # check that the node was removed
     assert comm.graph is None
@@ -591,14 +624,14 @@ def test_manager_add_node(manager_ctrl, node_info):
     # check that the change is in the received graph object
     assert injector.wait_graph(timeout=1.0)
     names = injector.graphs[comm.current][comm.graphVersion]
-    assert kwargs['name'] in names
+    assert kwargs["name"] in names
 
 
 def test_manager_create(manager_ctrl):
     comm, injector = manager_ctrl
 
     # make a graph and test that it is there
-    view_name = 'test'
+    view_name = "test"
     default = comm.current
     alt_name = "%s_alt" % default
     assert comm.create()
@@ -625,7 +658,7 @@ def test_manager_create(manager_ctrl):
 def test_manager_destroy(manager_ctrl):
     comm, injector = manager_ctrl
 
-    view_name = 'test'
+    view_name = "test"
     name = comm.current
     assert name not in comm.active
 
@@ -714,14 +747,14 @@ def test_manager_badcommand(manager_ctrl):
 
     # send an unknown command to manager
     comm._header("fake_command")
-    assert comm._sock.recv_string() != 'ok'
+    assert comm._sock.recv_string() != "ok"
 
     # check that a valid command still works
     assert comm.clear()
 
     # send an incomplete command
     comm._sock.send_string("clear_graph")
-    assert comm._sock.recv_string() != 'ok'
+    assert comm._sock.recv_string() != "ok"
 
     # check that a valid command still works
     assert comm.clear()

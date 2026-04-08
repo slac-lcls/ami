@@ -1,6 +1,7 @@
+from amitypes import Array1d
+
 import ami.graph_nodes as gn
 from ami.flowchart.library.common import CtrlNode
-from amitypes import Array1d
 
 
 class TestNode(CtrlNode):

@@ -1,24 +1,27 @@
-import os
 import json
+import os
+
 import numpy as np
 import pyqtgraph as pg
-from qtpy import QtGui, QtWidgets, QtCore
+from qtpy import QtCore, QtGui, QtWidgets
+
 from ami.flowchart.library.WidgetGroup import generateUi
 
-
-line_styles = {'None': QtCore.Qt.PenStyle.NoPen,
-               'Solid': QtCore.Qt.PenStyle.SolidLine,
-               'Dash': QtCore.Qt.PenStyle.DashLine,
-               'Dot': QtCore.Qt.PenStyle.DotLine,
-               'DashDot': QtCore.Qt.PenStyle.DashDotLine,
-               'DashDotDot': QtCore.Qt.PenStyle.DashDotDotLine}
+line_styles = {
+    "None": QtCore.Qt.PenStyle.NoPen,
+    "Solid": QtCore.Qt.PenStyle.SolidLine,
+    "Dash": QtCore.Qt.PenStyle.DashLine,
+    "Dot": QtCore.Qt.PenStyle.DotLine,
+    "DashDot": QtCore.Qt.PenStyle.DashDotLine,
+    "DashDotDot": QtCore.Qt.PenStyle.DashDotDotLine,
+}
 
 
 def load_style():
     style_path = os.path.expanduser("~/.config/ami/stylesheet.json")
     style = {}
     if os.path.exists(style_path):
-        with open(style_path, 'r') as f:
+        with open(style_path, "r") as f:
             try:
                 style = json.load(f)
             except json.decoder.JSONDecodeError as e:
@@ -35,21 +38,31 @@ class TraceEditor(QtWidgets.QWidget):
     def __init__(self, parent=None, widget=None, **kwargs):
         super().__init__(parent)
 
-        if 'uiTemplate' in kwargs:
-            self.uiTemplate = kwargs.pop('uiTemplate')
+        if "uiTemplate" in kwargs:
+            self.uiTemplate = kwargs.pop("uiTemplate")
         else:
             self.uiTemplate = [
                 # Point
-                ('symbol', 'combo',
-                 {'values': ['o', 't', 't1', 't2', 't3', 's', 'p', 'h', 'star', '+', 'd', 'None'],
-                  'value': kwargs.get('symbol', 'o'), 'group': 'Point'}),
-                ('Brush', 'color', {'value': kwargs.get('color', (0, 0, 255)), 'group': 'Point'}),
-                ('Size', 'intSpin', {'min': 1, 'value': 14, 'group': 'Point'}),
+                (
+                    "symbol",
+                    "combo",
+                    {
+                        "values": ["o", "t", "t1", "t2", "t3", "s", "p", "h", "star", "+", "d", "None"],
+                        "value": kwargs.get("symbol", "o"),
+                        "group": "Point",
+                    },
+                ),
+                ("Brush", "color", {"value": kwargs.get("color", (0, 0, 255)), "group": "Point"}),
+                ("Size", "intSpin", {"min": 1, "value": 14, "group": "Point"}),
                 # Line
-                ('color', 'color', {'group': 'Line', 'value': kwargs.get('line_color', (255, 255, 255))}),
-                ('width', 'intSpin', {'min': 1, 'value': 1, 'group': 'Line'}),
-                ('style', 'combo',
-                 {'values': line_styles.keys(), 'value': kwargs.get('style', 'Solid'), 'group': 'Line'})]
+                ("color", "color", {"group": "Line", "value": kwargs.get("line_color", (255, 255, 255))}),
+                ("width", "intSpin", {"min": 1, "value": 1, "group": "Line"}),
+                (
+                    "style",
+                    "combo",
+                    {"values": line_styles.keys(), "value": kwargs.get("style", "Solid"), "group": "Line"},
+                ),
+            ]
 
         self.ui, self.stateGroup, self.ctrls, self.trace_attrs = generateUi(self.uiTemplate)
 
@@ -71,8 +84,8 @@ class TraceEditor(QtWidgets.QWidget):
         self.plot_view.setMenuEnabled(False)
         # self.plot_view.addLegend()
 
-        ax = self.plot_view.getAxis('bottom')
-        ay = self.plot_view.getAxis('left')
+        ax = self.plot_view.getAxis("bottom")
+        ay = self.plot_view.getAxis("left")
         self.plot_view.vb.removeItem(ax)
         self.plot_view.vb.removeItem(ay)
         self.plot_view.vb.setMouseEnabled(False, False)
@@ -83,42 +96,39 @@ class TraceEditor(QtWidgets.QWidget):
 
         self.layout.addWidget(self.plot_widget, 0, 2, -1, -1)
 
-        if 'restore' not in kwargs:
+        if "restore" not in kwargs:
             name = widget.__class__.__name__
             if name in STYLE:
                 self.restoreState(STYLE[name])
 
     def update_plot(self):
-        point = self.trace_attrs['Point']
+        point = self.trace_attrs["Point"]
 
-        symbol = point['symbol']
-        if symbol == 'None':
+        symbol = point["symbol"]
+        if symbol == "None":
             symbol = None
 
-        point = {'symbol': symbol,
-                 'symbolSize': point['Size'],
-                 'symbolBrush': tuple(point['Brush'])}
+        point = {"symbol": symbol, "symbolSize": point["Size"], "symbolBrush": tuple(point["Brush"])}
 
-        line = self.trace_attrs['Line']
-        width = line['width']
-        line = {'color': line['color'],
-                'style': line_styles[line['style']]}
+        line = self.trace_attrs["Line"]
+        width = line["width"]
+        line = {"color": line["color"], "style": line_styles[line["style"]]}
 
         # if pg.getConfigOption('useOpenGL'):
-        line['width'] = width
+        line["width"] = width
 
         pen = pg.mkPen(**line)
 
-        if 'Fill' in self.trace_attrs and self.trace_attrs['Fill']['Fill Annotation']:
-            point['fillBrush'] = tuple(self.trace_attrs['Fill']['Brush'])
-            point['fillLevel'] = 0
+        if "Fill" in self.trace_attrs and self.trace_attrs["Fill"]["Fill Annotation"]:
+            point["fillBrush"] = tuple(self.trace_attrs["Fill"]["Brush"])
+            point["fillLevel"] = 0
 
         if self.trace is None:
             self.trace = self.plot_view.plot([0, 1, 2, 3], [0, 0, 0, 0], pen=pen, **point)
         else:
             self.trace.setData([0, 1, 2, 3], [0, 0, 0, 0], pen=pen, **point)
 
-        self.attrs = {'pen': pen, 'point': point}
+        self.attrs = {"pen": pen, "point": point}
 
     def state_changed(self, *args, **kwargs):
         attr, group, val = args
@@ -141,7 +151,7 @@ class TraceEditor(QtWidgets.QWidget):
 class HistEditor(TraceEditor):
 
     def __init__(self, parent=None, **kwargs):
-        kwargs['uiTemplate'] = [('Brush', 'color', {'value': kwargs.get('color', (255, 0, 0))})]
+        kwargs["uiTemplate"] = [("Brush", "color", {"value": kwargs.get("color", (255, 0, 0))})]
         super().__init__(parent=parent, **kwargs)
 
     def update_plot(self):
@@ -163,11 +173,13 @@ class ChannelEditor(QtWidgets.QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
 
-        self.uiTemplate = [("num hits", "intSpin", {"value": 1, "min": 1}),
-                           ("uniform parameters", "check"),
-                           ("DLD", "check"),
-                           ("cfd_wfbinbeg", "intSpin", {"value": 0, "min": 0}),
-                           ("cfd_wfbinend", "intSpin", {"value": 1, "min": 1})]
+        self.uiTemplate = [
+            ("num hits", "intSpin", {"value": 1, "min": 1}),
+            ("uniform parameters", "check"),
+            ("DLD", "check"),
+            ("cfd_wfbinbeg", "intSpin", {"value": 0, "min": 0}),
+            ("cfd_wfbinend", "intSpin", {"value": 1, "min": 1}),
+        ]
 
         self.ui, self.stateGroup, self.ctrls, self.values = generateUi(self.uiTemplate)
         self.stateGroup.sigChanged.connect(self.state_changed)
@@ -191,8 +203,19 @@ class ChannelEditor(QtWidgets.QWidget):
         hbox = QtWidgets.QHBoxLayout()
         hbox.addWidget(QtWidgets.QLabel("Copy", parent=self))
 
-        params = ['all parameters', 'channel', 'delay', 'fraction', 'offset', 'polarity',
-                  'sample_interval', 'threshold', 'timerange_high', 'timerange_low', 'walk']
+        params = [
+            "all parameters",
+            "channel",
+            "delay",
+            "fraction",
+            "offset",
+            "polarity",
+            "sample_interval",
+            "threshold",
+            "timerange_high",
+            "timerange_low",
+            "walk",
+        ]
 
         self.copy_param = QtWidgets.QComboBox()
         for p in params:
@@ -223,16 +246,18 @@ class ChannelEditor(QtWidgets.QWidget):
         if not name:
             name = f"Channel {channel}"
 
-        channel_group = [('channel', 'text', {'values': f'Channel {channel}', 'group': name}),
-                         ('delay', 'doubleSpin', {'group': name}),
-                         ('fraction', 'doubleSpin', {'group': name}),
-                         ('offset', 'doubleSpin', {'group': name}),
-                         ('polarity', 'combo', {'values': ["Negative", "Positive"], 'group': name}),
-                         ('sample_interval', 'doubleSpin', {'group': name}),
-                         ('threshold', 'doubleSpin', {'group': name}),
-                         ('timerange_low', 'doubleSpin', {'group': name}),
-                         ('timerange_high', 'doubleSpin', {'group': name}),
-                         ('walk', 'doubleSpin', {'group': name})]
+        channel_group = [
+            ("channel", "text", {"values": f"Channel {channel}", "group": name}),
+            ("delay", "doubleSpin", {"group": name}),
+            ("fraction", "doubleSpin", {"group": name}),
+            ("offset", "doubleSpin", {"group": name}),
+            ("polarity", "combo", {"values": ["Negative", "Positive"], "group": name}),
+            ("sample_interval", "doubleSpin", {"group": name}),
+            ("threshold", "doubleSpin", {"group": name}),
+            ("timerange_low", "doubleSpin", {"group": name}),
+            ("timerange_high", "doubleSpin", {"group": name}),
+            ("walk", "doubleSpin", {"group": name}),
+        ]
 
         self.channel_groups[name] = generateUi(channel_group)
         ui, stateGroup, ctrls, attrs = self.channel_groups[name]
@@ -247,7 +272,7 @@ class ChannelEditor(QtWidgets.QWidget):
         return ui, stateGroup, ctrls, attrs
 
     def remove_channel(self):
-        channel = len(self.channel_groups)-1
+        channel = len(self.channel_groups) - 1
         if channel == 0:
             return
 
@@ -258,7 +283,7 @@ class ChannelEditor(QtWidgets.QWidget):
         ui, stateGroup, ctrls, attrs = self.channel_groups[channel]
 
         self.layout.removeWidget(ui)
-        ctrls[channel]['groupbox'].deleteLater()
+        ctrls[channel]["groupbox"].deleteLater()
         del self.channel_groups[channel]
 
     def copy_channel(self):
@@ -291,7 +316,7 @@ class ChannelEditor(QtWidgets.QWidget):
     def saveState(self):
         state = self.stateGroup.state()
 
-        state['channels'] = len(self.channel_groups)
+        state["channels"] = len(self.channel_groups)
 
         for name, group in self.channel_groups.items():
             _, stateGroup, _, _ = group
@@ -302,7 +327,7 @@ class ChannelEditor(QtWidgets.QWidget):
     def restoreState(self, state):
         self.stateGroup.setState(state)
 
-        channels = state['channels']
+        channels = state["channels"]
 
         for channel in range(0, channels):
             channel = f"Channel {channel}"
@@ -321,31 +346,38 @@ class AnnotationEditor(TraceEditor):
 
     def __init__(self, parent=None, name="", **kwargs):
         uiTemplate = [
-            ('name', 'text'),
+            ("name", "text"),
             # from
-            ('X', 'doubleSpin', {'value': 0, 'group': kwargs.get('from_', 'From')}),
-            ('Y', 'doubleSpin', {'value': 0, 'group': kwargs.get('from_', 'From')}),
+            ("X", "doubleSpin", {"value": 0, "group": kwargs.get("from_", "From")}),
+            ("Y", "doubleSpin", {"value": 0, "group": kwargs.get("from_", "From")}),
             # to
-            ('X', 'doubleSpin', {'value': 0, 'group': kwargs.get('to', 'To')}),
-            ('Y', 'doubleSpin', {'value': 0, 'group': kwargs.get('to', 'To')}),
+            ("X", "doubleSpin", {"value": 0, "group": kwargs.get("to", "To")}),
+            ("Y", "doubleSpin", {"value": 0, "group": kwargs.get("to", "To")}),
             # Point
-            ('symbol', 'combo',
-             {'values': ['o', 't', 't1', 't2', 't3', 's', 'p', 'h', 'star', '+', 'd', 'None'],
-              'value': kwargs.get('symbol', 'o'), 'group': 'Point'}),
-            ('Brush', 'color', {'value': kwargs.get('color', (0, 0, 255)), 'group': 'Point'}),
-            ('Size', 'intSpin', {'min': 1, 'value': 14, 'group': 'Point'}),
+            (
+                "symbol",
+                "combo",
+                {
+                    "values": ["o", "t", "t1", "t2", "t3", "s", "p", "h", "star", "+", "d", "None"],
+                    "value": kwargs.get("symbol", "o"),
+                    "group": "Point",
+                },
+            ),
+            ("Brush", "color", {"value": kwargs.get("color", (0, 0, 255)), "group": "Point"}),
+            ("Size", "intSpin", {"min": 1, "value": 14, "group": "Point"}),
             # Line
-            ('color', 'color', {'group': 'Line'}),
-            ('width', 'intSpin', {'min': 1, 'value': 1, 'group': 'Line'}),
-            ('style', 'combo',
-             {'values': line_styles.keys(), 'value': kwargs.get('style', 'Solid'), 'group': 'Line'})
+            ("color", "color", {"group": "Line"}),
+            ("width", "intSpin", {"min": 1, "value": 1, "group": "Line"}),
+            ("style", "combo", {"values": line_styles.keys(), "value": kwargs.get("style", "Solid"), "group": "Line"}),
         ]
 
-        if kwargs.get('fill', False):
-            uiTemplate.extend([
-                ('Fill Annotation', 'check', {'group': 'Fill', 'checked': True}),
-                ('Brush', 'color', {'value': (255, 0, 0, 100), 'group': 'Fill'})
-            ])
+        if kwargs.get("fill", False):
+            uiTemplate.extend(
+                [
+                    ("Fill Annotation", "check", {"group": "Fill", "checked": True}),
+                    ("Brush", "color", {"value": (255, 0, 0, 100), "group": "Fill"}),
+                ]
+            )
 
         super().__init__(parent=parent, uiTemplate=uiTemplate)
         self.name = name
@@ -358,8 +390,8 @@ class AnnotationEditor(TraceEditor):
 
     def update_plot(self):
         super().update_plot()
-        pen = self.attrs['pen']
-        point = self.attrs['point']
+        pen = self.attrs["pen"]
+        point = self.attrs["point"]
         x, y = self.trace_data()
 
         self.trace.setData(x, y, pen=pen, **point)
@@ -371,22 +403,22 @@ class AnnotationEditor(TraceEditor):
 class LineEditor(AnnotationEditor):
 
     def __init__(self, parent=None, name="", **kwargs):
-        super().__init__(parent, name, from_='From', to='To')
+        super().__init__(parent, name, from_="From", to="To")
 
     def trace_data(self):
-        x = [self.trace_attrs['From']['X'], self.trace_attrs['To']['X']]
-        y = [self.trace_attrs['From']['Y'], self.trace_attrs['To']['Y']]
+        x = [self.trace_attrs["From"]["X"], self.trace_attrs["To"]["X"]]
+        y = [self.trace_attrs["From"]["Y"], self.trace_attrs["To"]["Y"]]
         return x, y
 
 
 class RectEditor(AnnotationEditor):
 
     def __init__(self, parent=None, name="", **kwargs):
-        super().__init__(parent, name, from_='Top Left', to='Bottom Right', symbol='None', fill=True)
+        super().__init__(parent, name, from_="Top Left", to="Bottom Right", symbol="None", fill=True)
 
     def trace_data(self):
-        tl = (self.trace_attrs['Top Left']['X'], self.trace_attrs['Top Left']['Y'])
-        br = (self.trace_attrs['Bottom Right']['X'], self.trace_attrs['Bottom Right']['Y'])
+        tl = (self.trace_attrs["Top Left"]["X"], self.trace_attrs["Top Left"]["Y"])
+        br = (self.trace_attrs["Bottom Right"]["X"], self.trace_attrs["Bottom Right"]["Y"])
 
         x = [tl[0], br[0], br[0], tl[0], tl[0]]
         y = [tl[1], tl[1], br[1], br[1], tl[1]]
@@ -396,16 +428,16 @@ class RectEditor(AnnotationEditor):
 class CircleEditor(AnnotationEditor):
 
     def __init__(self, parent=None, name="", **kwargs):
-        super().__init__(parent, name, from_='Center', to='Radius', symbol='None', fill=True)
+        super().__init__(parent, name, from_="Center", to="Radius", symbol="None", fill=True)
 
     def trace_data(self):
-        x = [self.trace_attrs['Center']['X'], self.trace_attrs['Radius']['X']]
-        y = [self.trace_attrs['Center']['Y'], self.trace_attrs['Radius']['Y']]
+        x = [self.trace_attrs["Center"]["X"], self.trace_attrs["Radius"]["X"]]
+        y = [self.trace_attrs["Center"]["Y"], self.trace_attrs["Radius"]["Y"]]
 
         center = QtCore.QPointF(x[0], y[0])
         radius = QtGui.QVector2D(x[1], y[1]).distanceToPoint(QtGui.QVector2D(center))
 
-        t = np.linspace(0, 2*np.pi, 100)
+        t = np.linspace(0, 2 * np.pi, 100)
         x = center.x() + radius * np.sin(t)
         y = center.y() + radius * np.cos(t)
         return x, y
@@ -419,4 +451,4 @@ def pixmapFromBase64(base64):
     return pixmap
 
 
-camera = b'iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAYAAABzenr0AAAACXBIWXMAAA9hAAAPYQGoP6dpAAAAJXRFWHRkYXRlOmNyZWF0ZQAyMDEzLTEyLTI2VDIwOjA3OjM5KzAwOjAwzdqr/wAAACV0RVh0ZGF0ZTptb2RpZnkAMjAxMy0xMi0yNlQyMDowNzozOSswMDowMLyHE0MAAANwSURBVFiFxZdPS6pbFMZ/mfqmealBlEFNzrBBVEevgQg1ug6CE3SgCJo0KPwCUR8gaN5nkP6gXScHmoWBERcKHAhNFCP648GwQ6Um2rqDV1+8ve978V5IH9iT/ey1n8Xea629Vxd6uIHvwO/AIFAExGBdN9DTIv8LuAAiwEOddwDDzQZWYBt4q2/4GeOtrvEb8KXuhCb+4xOFP46TuhMattso3hjbDXH3Jx/7v12H24IacHbaDzvw3YIa7Z3CVwtqqnUKfVbUPG0Jm5ubzM/PA/D29kY+n2dgYABFUbQ1sViMnZ2dVrd0WjEuIiiKQiAQwOVyaXMzMzP4fD5KpRL39/d4vV4cDsc/7J6enkilUpTLZXp6eqhUKsTjccrlspFMGSDKhwi1Wq1ydnYmRigWi5JOpyWfz0symZRkMimvr686vlgsanMXFxdis9mMMiFq6IDX6zUVPz09lcXFRVEURVuvKIosLy/L1dWVTrwBn8/XugOBQMBQPBqNSn9/vwBit9vF4/GIx+MRu90ugPT19Uk8Hjd03u/3/38HisWiXF5eytDQkACytLQkuVxO46+vr2Vubk4Acbvd8vj4qLP3er2GDlhQXy1TNAIuGo2Sy+UIBoOEw2EGBwc1vlqtsr+/TzAY5OHhgd3dXZ293W5e647NTqA5oKampgSQRCJhGnCJREIAmZyc1PGBQMDoBI4smNSBhufDw8M4HA6y2SwAExMThnwzl81mDXkDOC0Y1IH393edcW9vLwCFQsF080KhoK1tQRygbDGarVQqOuPp6WkAwuGw6eYHBwcAjI+PtyIOUAODLPD7/bo0Ojk5EUCcTqdhqp2fn4vL5RJAjo+PdbxJDPy3OrCysqLVgFAoJJFIRCKRiIRCIa0WrK+vf04dSKfT8vz8LFtbW2K1WnWbdXd3y8bGhlSrVUPnzepAFxADvjVfzMjICJlMBpvNZhhwmUyGvb09UqkUtVqN0dFRVldXGRsb011yqVTi5uaG2dlZ7u7uPtJHXah14I+PzMLCAmtra7y8vOie3AbMnuRm/vb2lsPDQ2KxmI4H/gQ4Mjiado1jC2rT0Cn8tKB2LJ3CX9Dhb3nDk442JqC2SSdtFP+B2g4CaoP4pe5Eu5pTTbyrLn4PlOpzjfb8K9AHOFF/rzX06GqR/4kacM3tOQB/A606Lk9DGknwAAAAAElFTkSuQmCC'  # noqa: E501
+camera = b"iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAYAAABzenr0AAAACXBIWXMAAA9hAAAPYQGoP6dpAAAAJXRFWHRkYXRlOmNyZWF0ZQAyMDEzLTEyLTI2VDIwOjA3OjM5KzAwOjAwzdqr/wAAACV0RVh0ZGF0ZTptb2RpZnkAMjAxMy0xMi0yNlQyMDowNzozOSswMDowMLyHE0MAAANwSURBVFiFxZdPS6pbFMZ/mfqmealBlEFNzrBBVEevgQg1ug6CE3SgCJo0KPwCUR8gaN5nkP6gXScHmoWBERcKHAhNFCP648GwQ6Um2rqDV1+8ve978V5IH9iT/ey1n8Xea629Vxd6uIHvwO/AIFAExGBdN9DTIv8LuAAiwEOddwDDzQZWYBt4q2/4GeOtrvEb8KXuhCb+4xOFP46TuhMattso3hjbDXH3Jx/7v12H24IacHbaDzvw3YIa7Z3CVwtqqnUKfVbUPG0Jm5ubzM/PA/D29kY+n2dgYABFUbQ1sViMnZ2dVrd0WjEuIiiKQiAQwOVyaXMzMzP4fD5KpRL39/d4vV4cDsc/7J6enkilUpTLZXp6eqhUKsTjccrlspFMGSDKhwi1Wq1ydnYmRigWi5JOpyWfz0symZRkMimvr686vlgsanMXFxdis9mMMiFq6IDX6zUVPz09lcXFRVEURVuvKIosLy/L1dWVTrwBn8/XugOBQMBQPBqNSn9/vwBit9vF4/GIx+MRu90ugPT19Uk8Hjd03u/3/38HisWiXF5eytDQkACytLQkuVxO46+vr2Vubk4Acbvd8vj4qLP3er2GDlhQXy1TNAIuGo2Sy+UIBoOEw2EGBwc1vlqtsr+/TzAY5OHhgd3dXZ293W5e647NTqA5oKampgSQRCJhGnCJREIAmZyc1PGBQMDoBI4smNSBhufDw8M4HA6y2SwAExMThnwzl81mDXkDOC0Y1IH393edcW9vLwCFQsF080KhoK1tQRygbDGarVQqOuPp6WkAwuGw6eYHBwcAjI+PtyIOUAODLPD7/bo0Ojk5EUCcTqdhqp2fn4vL5RJAjo+PdbxJDPy3OrCysqLVgFAoJJFIRCKRiIRCIa0WrK+vf04dSKfT8vz8LFtbW2K1WnWbdXd3y8bGhlSrVUPnzepAFxADvjVfzMjICJlMBpvNZhhwmUyGvb09UqkUtVqN0dFRVldXGRsb011yqVTi5uaG2dlZ7u7uPtJHXah14I+PzMLCAmtra7y8vOie3AbMnuRm/vb2lsPDQ2KxmI4H/gQ4Mjiado1jC2rT0Cn8tKB2LJ3CX9Dhb3nDk442JqC2SSdtFP+B2g4CaoP4pe5Eu5pTTbyrLn4PlOpzjfb8K9AHOFF/rzX06GqR/4kacM3tOQB/A606Lk9DGknwAAAAAElFTkSuQmCC"  # noqa: E501

@@ -1,10 +1,12 @@
-from qtpy import QtGui, QtCore, QtWidgets
-from pyqtgraph.widgets.GraphicsView import GraphicsView
+from pyqtgraph import GraphicsWidget, GridItem
 from pyqtgraph.graphicsItems.ViewBox import ViewBox
-from pyqtgraph import GridItem, GraphicsWidget
-from ami.flowchart.Node import NodeGraphicsItem, find_nearest
+from pyqtgraph.widgets.GraphicsView import GraphicsView
+from qtpy import QtCore, QtGui, QtWidgets
+
 from ami.flowchart.library.common import SourceNode
 from ami.flowchart.library.Editors import STYLE
+from ami.flowchart.Node import NodeGraphicsItem, find_nearest
+
 
 def clamp(pos):
     pos = [find_nearest(pos.x()), find_nearest(pos.y())]
@@ -66,8 +68,7 @@ class CommentRect(GraphicsWidget):
             topLeft.setY(dragPoint.y())
             bottomRight.setY(self.__mouseDownPos.y())
         self.setPos(topLeft)
-        self.resize(max(bottomRight.x() - topLeft.x(), 100),
-                    max(bottomRight.y() - topLeft.y(), 100))
+        self.resize(max(bottomRight.x() - topLeft.x(), 100), max(bottomRight.y() - topLeft.y(), 100))
 
     def paint(self, painter, option, widget):
         rect = self.windowFrameRect()
@@ -103,7 +104,7 @@ class CommentRect(GraphicsWidget):
                 self.view.commentRect = self
             else:
                 ev.accept()
-                pos = self.pos()+self.mapToParent(ev.pos())-self.mapToParent(ev.lastPos())
+                pos = self.pos() + self.mapToParent(ev.pos()) - self.mapToParent(ev.lastPos())
                 old_pos = self.pos()
 
                 if ev.isFinish():
@@ -133,16 +134,18 @@ class CommentRect(GraphicsWidget):
         rect = self.sceneBoundingRect()
         topLeft = clamp(self.view.mapToView(rect.topLeft()))
         bottomRight = clamp(self.view.mapToView(rect.bottomRight()))
-        return {'id': self.id,
-                'text': self.commentName.text(),
-                'topLeft': (topLeft.x(), topLeft.y()),
-                'bottomRight': (bottomRight.x(), bottomRight.y())}
+        return {
+            "id": self.id,
+            "text": self.commentName.text(),
+            "topLeft": (topLeft.x(), topLeft.y()),
+            "bottomRight": (bottomRight.x(), bottomRight.y()),
+        }
 
     def restoreState(self, state):
-        self.id = state['id']
-        self.commentName.setText(state['text'])
-        self.__mouseDownPos = QtCore.QPointF(*state['topLeft'])
-        self.setDragPoint(QtCore.QPointF(*state['bottomRight']))
+        self.id = state["id"]
+        self.commentName.setText(state["text"])
+        self.__mouseDownPos = QtCore.QPointF(*state["topLeft"])
+        self.setDragPoint(QtCore.QPointF(*state["bottomRight"]))
 
 
 class SelectionRect(GraphicsWidget):
@@ -177,8 +180,7 @@ class SelectionRect(GraphicsWidget):
             topLeft.setY(dragPoint.y())
             bottomRight.setY(self.__mouseDownPos.y())
         self.setPos(topLeft)
-        self.resize(bottomRight.x() - topLeft.x(),
-                    bottomRight.y() - topLeft.y())
+        self.resize(bottomRight.x() - topLeft.x(), bottomRight.y() - topLeft.y())
 
     def paint(self, painter, option, widget):
         rect = self.windowFrameRect()
@@ -226,8 +228,7 @@ class FlowchartViewBox(ViewBox):
         if "Background" in STYLE:
             self.setBackgroundColor(STYLE["Background"])
 
-        self.setLimits(minXRange=200, minYRange=200,
-                       xMin=-1000, yMin=-1000, xMax=5.2e3, yMax=5.2e3)
+        self.setLimits(minXRange=200, minYRange=200, xMin=-1000, yMin=-1000, xMax=5.2e3, yMax=5.2e3)
         self.addItem(GridItem())
         self.setAcceptDrops(True)
         self.setRange(xRange=(0, 800), yRange=(0, 800))
@@ -293,9 +294,9 @@ class FlowchartViewBox(ViewBox):
 
     def decode_data(self, arr):
         data = QtCore.QMimeData()
-        data.setData('application/x-qabstractitemmodeldatalist', arr)
+        data.setData("application/x-qabstractitemmodeldatalist", arr)
         source_item = QtGui.QStandardItemModel()
-        source_item.dropMimeData(data, QtCore.Qt.CopyAction, 0,0, QtCore.QModelIndex())
+        source_item.dropMimeData(data, QtCore.Qt.CopyAction, 0, 0, QtCore.QModelIndex())
         return source_item.item(0, 0).text()
         # data = []
         # item = {}
@@ -377,10 +378,10 @@ class FlowchartViewBox(ViewBox):
             comment.updateChildren(children)
 
     def dropEvent(self, ev):
-        if ev.mimeData().hasFormat('application/x-qabstractitemmodeldatalist'):
+        if ev.mimeData().hasFormat("application/x-qabstractitemmodeldatalist"):
             # arr = ev.mimeData().data('application/x-qabstractitemmodeldatalist')
             # node = self.decode_data(arr)[0][0].value()
-            arr = ev.mimeData().data('application/x-qabstractitemmodeldatalist')
+            arr = ev.mimeData().data("application/x-qabstractitemmodeldatalist")
             node = self.decode_data(arr)
 
             try:
@@ -393,7 +394,7 @@ class FlowchartViewBox(ViewBox):
             try:
                 node_type = self.widget.chart.source_library.getSourceType(node)
                 if node not in self.widget.chart._graph:
-                    node = SourceNode(name=node, terminals={'Out': {'io': 'out', 'ttype': node_type}})
+                    node = SourceNode(name=node, terminals={"Out": {"io": "out", "ttype": node_type}})
                     self.widget.chart.addNode(node=node, pos=self.mapToView(ev.pos()))
                     ev.accept()
                     return
@@ -404,18 +405,18 @@ class FlowchartViewBox(ViewBox):
             ev.ignore()
 
     def saveState(self):
-        state = {'comments': []}
+        state = {"comments": []}
 
         for id, comment in self.commentRects.items():
-            state['comments'].append(comment.saveState())
+            state["comments"].append(comment.saveState())
 
         return state
 
     def restoreState(self, state):
         self.commentId = 0
-        for commentState in state['comments']:
+        for commentState in state["comments"]:
             comment = CommentRect(view=self)
             comment.restoreState(commentState)
             self.addItem(comment)
-            self.commentRects[commentState['id']] = comment
-            self.commentId = max(commentState['id']+1, self.commentId)
+            self.commentRects[commentState["id"]] = comment
+            self.commentId = max(commentState["id"] + 1, self.commentId)

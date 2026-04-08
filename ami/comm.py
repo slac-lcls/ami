@@ -1,28 +1,28 @@
 import abc
-import socket
+import argparse
+import asyncio
+import functools
+import json
+import logging
 import os
+import socket
 import sys
 import time
-import zmq
-import dill
-import json
-import asyncio
-import logging
-import argparse
-import functools
-import numpy as np
-import zmq.asyncio
-import prometheus_client as pc
-import amitypes as at
-import ami.graph_nodes as gn
-from ami.graphkit_wrapper import Graph
-from ami.data import MsgTypes, Message, Transition, CollectorMessage, Datagram, Serializer, Deserializer, \
-    Heartbeat
 from enum import IntEnum
 
+import amitypes as at
+import dill
+import numpy as np
+import prometheus_client as pc
+import zmq
+import zmq.asyncio
+
+import ami.graph_nodes as gn
+from ami.data import CollectorMessage, Datagram, Deserializer, Heartbeat, Message, MsgTypes, Serializer, Transition
+from ami.graphkit_wrapper import Graph
 
 logger = logging.getLogger(__name__)
-ZMQ_TOPIC_DELIM = '\0'
+ZMQ_TOPIC_DELIM = "\0"
 
 
 class Colors:
@@ -63,7 +63,7 @@ class Ports(IntEnum):
             The actual tcp port number to use
         """
         if port <= cls.PlatformMax:
-            return cls.BasePort+cls.PortsPerPlatform*port
+            return cls.BasePort + cls.PortsPerPlatform * port
         else:
             return port
 
@@ -74,6 +74,7 @@ class PlatformAction(argparse.Action):
     When a platform number is passed instead of tcp port. The platform number
     is resolved to a port and then returned.
     """
+
     def __init__(self, option_strings, dest, nargs=None, **kwargs):
         if nargs is not None:
             raise ValueError("nargs not allowed")
@@ -93,6 +94,7 @@ class AutoName:
     Args:
         prefix (str): The prefix to use for generating auto names
     """
+
     def __init__(self, prefix):
         self.__prefix = prefix
 
@@ -144,7 +146,7 @@ class AutoName:
             The unmangled name
         """
         if self.is_auto(name):
-            return name[len(self.prefix):]
+            return name[len(self.prefix) :]
         else:
             return name
 
@@ -351,8 +353,9 @@ class Store:
             datatype = self.get_type(data)
             if name in self._store:
                 if not datatype == self._store[name].dtype:
-                    logger.warning("type of new result (%s) differs from existing."
-                                    " (%s)" % (datatype, self._store[name].dtype))
+                    logger.warning(
+                        "type of new result (%s) differs from existing." " (%s)" % (datatype, self._store[name].dtype)
+                    )
                 self._store[name].dtype = datatype
                 self._store[name].data = data
             else:
@@ -395,8 +398,9 @@ class ZmqHandler:
         return self.send(msg)
 
     def collector_message(self, identity, heartbeat, name, version, payload):
-        msg = CollectorMessage(mtype=MsgTypes.Datagram, identity=identity, heartbeat=heartbeat,
-                               name=name, version=version, payload=payload)
+        msg = CollectorMessage(
+            mtype=MsgTypes.Datagram, identity=identity, heartbeat=heartbeat, name=name, version=version, payload=payload
+        )
         return self.send(msg)
 
 
@@ -526,7 +530,7 @@ class ContributionBuilder(abc.ABC):
         if 0 <= eb_id < self.num_contribs:
             if eb_key not in self.contribs:
                 self.contribs[eb_key] = 0
-            self.contribs[eb_key] |= (1 << eb_id)
+            self.contribs[eb_key] |= 1 << eb_id
         else:
             raise ValueError("eb_id of %d is invalid for %d contributors" % (eb_id, self.num_contribs))
 
@@ -672,8 +676,13 @@ class GraphBuilder(ContributionBuilder):
         if eb_key > self.latest:
             self.latest = eb_key
         if ver_key != self.pending[eb_key].version:
-            logger.error("Graph version mismatch: heartbeat %s from id %s has version %s when %s was expected",
-                         eb_key, eb_id, ver_key, self.pending[eb_key].version)
+            logger.error(
+                "Graph version mismatch: heartbeat %s from id %s has version %s when %s was expected",
+                eb_key,
+                eb_id,
+                ver_key,
+                self.pending[eb_key].version,
+            )
         else:
             self.pending[eb_key].put(eb_id, data)
 
@@ -697,8 +706,13 @@ class TransitionBuilder(ContributionBuilder, ZmqHandler):
         if eb_key not in self.pending:
             self.pending[eb_key] = payload
         elif payload != self.pending[eb_key]:
-            logger.error("Transition mismatch: %s payload %s from id %s does not match the other contributers: %s",
-                         eb_key, payload, eb_id, self.pending)
+            logger.error(
+                "Transition mismatch: %s payload %s from id %s does not match the other contributers: %s",
+                eb_key,
+                payload,
+                eb_id,
+                self.pending,
+            )
 
 
 class EventBuilder(ZmqHandler):
@@ -711,10 +725,9 @@ class EventBuilder(ZmqHandler):
         self.builders = {}
 
     def create(self, name):
-        self.builders[name] = GraphBuilder(self.num_contribs,
-                                           self.depth,
-                                           self.color,
-                                           functools.partial(self.completion, name))
+        self.builders[name] = GraphBuilder(
+            self.num_contribs, self.depth, self.color, functools.partial(self.completion, name)
+        )
 
     def destroy(self, name):
         del self.builders[name]
@@ -818,8 +831,17 @@ class Node(abc.ABC):
             passed it creates one.
     """
 
-    def __init__(self, node, graph_addr, msg_addr, export_addr=None, ctx=None, prometheus_dir=None,
-                 prometheus_port=None, hutch=None):
+    def __init__(
+        self,
+        node,
+        graph_addr,
+        msg_addr,
+        export_addr=None,
+        ctx=None,
+        prometheus_dir=None,
+        prometheus_port=None,
+        hutch=None,
+    ):
         self.node = node
         if ctx is None:
             self.ctx = zmq.Context()
@@ -964,7 +986,7 @@ class Node(abc.ABC):
         self.node_msg_comm.send_string(topic, zmq.SNDMORE)
         self.node_msg_comm.send_string(self.name, zmq.SNDMORE)
         if topic == "profile":
-            self.node_msg_comm.send_string(payload['graph'], zmq.SNDMORE)
+            self.node_msg_comm.send_string(payload["graph"], zmq.SNDMORE)
             self.node_msg_comm.send_serialized(payload, self.serializer, copy=False)
         else:
             self.node_msg_comm.send(dill.dumps(payload), copy=False)
@@ -995,7 +1017,7 @@ class Node(abc.ABC):
             pth = os.path.join(self.prometheus_dir, pth)
             conf = [{"targets": [f"{socket.gethostname()}:{port}"]}]
             try:
-                with open(pth, 'w') as f:
+                with open(pth, "w") as f:
                     json.dump(conf, f)
             except PermissionError:
                 logging.error("Permission denied: %s", pth)
@@ -1041,10 +1063,10 @@ class Collector(abc.ABC):
         self.timeout = timeout
         self.hutch = hutch
 
-        self.event_counter = pc.Counter('ami_event_count', 'Event Counter', ['hutch', 'type', 'process'])
-        self.event_time = pc.Gauge('ami_event_time_secs', 'Event Time', ['hutch', 'type', 'process'])
-        self.event_size = pc.Gauge('ami_event_size_bytes', 'Event Size', ['hutch', 'process'])
-        self.event_latency = pc.Gauge('ami_event_latency_secs', 'Event Latency', ['hutch', 'sender', 'process'])
+        self.event_counter = pc.Counter("ami_event_count", "Event Counter", ["hutch", "type", "process"])
+        self.event_time = pc.Gauge("ami_event_time_secs", "Event Time", ["hutch", "type", "process"])
+        self.event_size = pc.Gauge("ami_event_size_bytes", "Event Size", ["hutch", "process"])
+        self.event_latency = pc.Gauge("ami_event_latency_secs", "Event Latency", ["hutch", "sender", "process"])
 
     def register(self, sock, handler):
         """
@@ -1107,7 +1129,7 @@ class Collector(abc.ABC):
                 if flag != zmq.POLLIN:
                     continue
 
-                self.event_time.labels(self.hutch, 'Idle', self.name).set(time.time() - idle_start)
+                self.event_time.labels(self.hutch, "Idle", self.name).set(time.time() - idle_start)
                 reset_idle = True
 
                 if sock is self.collector:
@@ -1404,8 +1426,8 @@ class CommHandler(abc.ABC):
     def __init__(self, name):
         self._name = name
         self._allocated = False
-        self._prune_keys = ['condition_needs', 'condition', 'reduction']
-        self._expand_keys = ['inputs', 'outputs', 'condition_needs']
+        self._prune_keys = ["condition_needs", "condition", "reduction"]
+        self._expand_keys = ["inputs", "outputs", "condition_needs"]
 
         if name is not None and not isinstance(self._name, str):
             raise TypeError("%s only supports graph names of type %s not %s" % (__class__, str, type(name)))
@@ -1503,7 +1525,7 @@ class CommHandler(abc.ABC):
         Returns:
             The constructed graph view node.
         """
-        node_name = '%s_view' % view_name
+        node_name = "%s_view" % view_name
 
         return self._make_node(gn.PickN, name=node_name, inputs=name, outputs=view_name, N=1, parent=parent)
 
@@ -1518,7 +1540,7 @@ class CommHandler(abc.ABC):
         Returns:
             The constructed graph export node.
         """
-        node_name = '%s_export' % export_name
+        node_name = "%s_export" % export_name
 
         return self._make_node(gn.PickN, name=node_name, inputs=name, outputs=export_name, N=N, exportable=True)
 
@@ -1561,7 +1583,7 @@ class CommHandler(abc.ABC):
         Returns:
             A set of the names of the active graphs.
         """
-        return self._query('list_graphs')
+        return self._query("list_graphs")
 
     @property
     def current(self):
@@ -1582,7 +1604,7 @@ class CommHandler(abc.ABC):
         Returns:
             The latest heartbeat that the manager has results from the graph.
         """
-        return self._request('get_heartbeat')
+        return self._request("get_heartbeat")
 
     @property
     def graph(self):
@@ -1592,7 +1614,7 @@ class CommHandler(abc.ABC):
         Returns:
             An object of type `Graph` representing the current analysis graph.
         """
-        return self._request_dill('get_graph')
+        return self._request_dill("get_graph")
 
     @property
     def purged_graph(self):
@@ -1602,7 +1624,7 @@ class CommHandler(abc.ABC):
         Returns:
             An object of type `Graph` representing the current analysis graph.
         """
-        return self._request_dill('get_purged_graph')
+        return self._request_dill("get_purged_graph")
 
     @property
     def features(self):
@@ -1616,13 +1638,12 @@ class CommHandler(abc.ABC):
             feature where the type is an ndarray the value is a tuple of the
             type and the number of dimensions of the array.
         """
-        return self._request('get_features')
+        return self._request("get_features")
 
     @property
     def plots(self):
-        """
-        """
-        return self._request('get_plots')
+        """ """
+        return self._request("get_plots")
 
     @property
     def names(self):
@@ -1633,7 +1654,7 @@ class CommHandler(abc.ABC):
         Returns:
             A set of all the user-defined output names.
         """
-        return self._request('get_names')
+        return self._request("get_names")
 
     @property
     def sources(self):
@@ -1645,7 +1666,7 @@ class CommHandler(abc.ABC):
         Returns:
             A dictionary with information on all of the external data sources.
         """
-        return self._request('get_sources', processing=self._sources)
+        return self._request("get_sources", processing=self._sources)
 
     @property
     def exports(self):
@@ -1658,7 +1679,7 @@ class CommHandler(abc.ABC):
             A dictionary with information on all of the externally exported
             graph results.
         """
-        return self._request('get_exports')
+        return self._request("get_exports")
 
     @property
     def versions(self):
@@ -1668,7 +1689,7 @@ class CommHandler(abc.ABC):
         Returns:
             A tuple of the graph and feature store versions.
         """
-        return self._request('get_versions')
+        return self._request("get_versions")
 
     @property
     def compilerArgs(self):
@@ -1688,7 +1709,7 @@ class CommHandler(abc.ABC):
         Returns:
             The current version of the graph.
         """
-        return self._request('get_graph_version')
+        return self._request("get_graph_version")
 
     @property
     def featuresVersion(self):
@@ -1698,7 +1719,7 @@ class CommHandler(abc.ABC):
         Returns:
             The current version of the feature store.
         """
-        return self._request('get_features_version')
+        return self._request("get_features_version")
 
     @property
     def metadata(self):
@@ -1708,7 +1729,7 @@ class CommHandler(abc.ABC):
         Returns:
             A dict of graph metadata.
         """
-        return self._request_dill('get_metadata')
+        return self._request_dill("get_metadata")
 
     @property
     def paths(self):
@@ -1727,7 +1748,7 @@ class CommHandler(abc.ABC):
         return self._post_dill("update_path", paths)
 
     def updatePlots(self, plots):
-        return self._post_dill('update_plots', plots)
+        return self._post_dill("update_plots", plots)
 
     def fetch(self, names):
         """
@@ -1744,9 +1765,11 @@ class CommHandler(abc.ABC):
             feature store.
         """
         if isinstance(names, list):
-            return self._request_batch(cmds=["fetch:%s" % name for name in names],
-                                       check=True,
-                                       retries=["fetch:%s" % self.auto(name) for name in names])
+            return self._request_batch(
+                cmds=["fetch:%s" % name for name in names],
+                check=True,
+                retries=["fetch:%s" % self.auto(name) for name in names],
+            )
         else:
             # if the reply is none try fetching the 'view' version of the name
             return self._request("fetch:%s" % names, check=True, retry="fetch:%s" % self.auto(names))
@@ -1761,13 +1784,13 @@ class CommHandler(abc.ABC):
         Returns:
             True if the graph change was successful, False otherwise.
         """
-        return self._post_dill('add_graph', nodes)
+        return self._post_dill("add_graph", nodes)
 
     def update_requested_data(self, requested_data):
         """
         Send the updated requested data to the graph.
         """
-        return self._post_dill('update_requested_data', requested_data)
+        return self._post_dill("update_requested_data", requested_data)
 
     def view(self, names):
         """
@@ -1817,7 +1840,7 @@ class CommHandler(abc.ABC):
         Returns:
             Returns string of epics export prefix.
         """
-        return self._request('get_epics_prefix')
+        return self._request("get_epics_prefix")
 
     def export(self, names, aliases=None, N=1):
         """
@@ -1883,8 +1906,9 @@ class CommHandler(abc.ABC):
         Returns:
             True if the graph change was successful, False otherwise.
         """
-        node = self._make_node(gn.PickN, name=name, inputs=inputs, outputs=outputs, N=N,
-                               condition_needs=condition_needs)
+        node = self._make_node(
+            gn.PickN, name=name, inputs=inputs, outputs=outputs, N=N, condition_needs=condition_needs
+        )
         return self.add(node)
 
     def addMap(self, name, inputs, outputs, func, condition_needs=None):
@@ -1902,8 +1926,9 @@ class CommHandler(abc.ABC):
         Returns:
             True if the graph change was successful, False otherwise.
         """
-        node = self._make_node(gn.Map, name=name, inputs=inputs, outputs=outputs, func=func,
-                               condition_needs=condition_needs)
+        node = self._make_node(
+            gn.Map, name=name, inputs=inputs, outputs=outputs, func=func, condition_needs=condition_needs
+        )
         return self.add(node)
 
     def addReduce(self, name, inputs, outputs, reduction=None, condition_needs=None):
@@ -1921,8 +1946,14 @@ class CommHandler(abc.ABC):
         Returns:
             True if the graph change was successful, False otherwise.
         """
-        node = self._make_node(gn.ReduceByKey, name=name, inputs=inputs, outputs=outputs,
-                               reduction=reduction, condition_needs=condition_needs)
+        node = self._make_node(
+            gn.ReduceByKey,
+            name=name,
+            inputs=inputs,
+            outputs=outputs,
+            reduction=reduction,
+            condition_needs=condition_needs,
+        )
         return self.add(node)
 
     def addBinning(self, name, inputs, outputs, condition_needs=None):
@@ -1939,8 +1970,7 @@ class CommHandler(abc.ABC):
         Returns:
             True if the graph change was successful, False otherwise.
         """
-        node = self._make_node(gn.Binning, name=name, inputs=inputs, outputs=outputs,
-                               condition_needs=condition_needs)
+        node = self._make_node(gn.Binning, name=name, inputs=inputs, outputs=outputs, condition_needs=condition_needs)
         return self.add(node)
 
     def remove(self, names):
@@ -1956,7 +1986,7 @@ class CommHandler(abc.ABC):
         if not isinstance(names, list):
             names = [names]
 
-        return self._post_dill('del_graph', names)
+        return self._post_dill("del_graph", names)
 
     def select(self, name):
         """
@@ -1984,7 +2014,7 @@ class CommHandler(abc.ABC):
         Returns:
             True if the graph change was successful, False otherwise.
         """
-        return self._command('create_graph')
+        return self._command("create_graph")
 
     def destroy(self):
         """
@@ -1993,7 +2023,7 @@ class CommHandler(abc.ABC):
         Returns:
             True if the graph change was successful, False otherwise.
         """
-        return self._command('destroy_graph')
+        return self._command("destroy_graph")
 
     def clear(self):
         """
@@ -2002,7 +2032,7 @@ class CommHandler(abc.ABC):
         Returns:
             True if the graph change was successful, False otherwise.
         """
-        return self._command('clear_graph')
+        return self._command("clear_graph")
 
     def reset(self):
         """
@@ -2012,7 +2042,7 @@ class CommHandler(abc.ABC):
         Returns:
             True if the graph change was successful, False otherwise.
         """
-        return self._command('reset_features')
+        return self._command("reset_features")
 
     def update(self, graph):
         """
@@ -2025,7 +2055,7 @@ class CommHandler(abc.ABC):
         Returns:
             True if the graph change was successful, False otherwise.
         """
-        return self._post_dill('set_graph', graph)
+        return self._post_dill("set_graph", graph)
 
     def save(self, filename):
         """
@@ -2158,8 +2188,9 @@ class AsyncGraphCommHandler(ZmqCommHandler):
             ctx = zmq.asyncio.Context()
             owner = True
         elif not isinstance(ctx, zmq.asyncio.Context):
-            raise TypeError("%s only supports shared contexts of type %s not %s"
-                            % (__class__, zmq.asyncio.Context, type(ctx)))
+            raise TypeError(
+                "%s only supports shared contexts of type %s not %s" % (__class__, zmq.asyncio.Context, type(ctx))
+            )
         else:
             owner = False
         super().__init__(name, addr, ctx, owner)
@@ -2175,7 +2206,7 @@ class AsyncGraphCommHandler(ZmqCommHandler):
     async def _command(self, cmd):
         async with self.lock:
             await self._header(cmd)
-            return (await self._sock.recv_string()) == 'ok'
+            return (await self._sock.recv_string()) == "ok"
 
     async def _query(self, cmd):
         async with self.lock:
@@ -2187,12 +2218,12 @@ class AsyncGraphCommHandler(ZmqCommHandler):
             await self._header(cmd)
             if check:
                 reply = await self._sock.recv_string()
-                if reply == 'ok':
+                if reply == "ok":
                     return self._process(processing, await self._sock.recv_pyobj())
                 elif retry is not None:
                     await self._header(retry)
                     reply = await self._sock.recv_string()
-                    if reply == 'ok':
+                    if reply == "ok":
                         return self._process(processing, await self._sock.recv_pyobj())
             else:
                 return self._process(processing, await self._sock.recv_pyobj())
@@ -2219,7 +2250,7 @@ class AsyncGraphCommHandler(ZmqCommHandler):
         async with self.lock:
             await self._header(cmd, zmq.SNDMORE)
             await self._sock.send(dill.dumps(payload))
-            return (await self._sock.recv_string()) == 'ok'
+            return (await self._sock.recv_string()) == "ok"
 
     async def _view(self, names):
         nodes = []
@@ -2248,13 +2279,13 @@ class AsyncGraphCommHandler(ZmqCommHandler):
             return await self.create()
 
     async def _load(self, filename):
-        with open(filename, 'rb') as cnf:
+        with open(filename, "rb") as cnf:
             graph = dill.load(cnf)
         return await self.update(graph)
 
     async def _save(self, filename):
         graph = await self.graph
-        with open(filename, 'wb') as cnf:
+        with open(filename, "wb") as cnf:
             return dill.dump(graph, cnf)
 
 
@@ -2279,8 +2310,7 @@ class GraphCommHandler(ZmqCommHandler):
             ctx = zmq.Context()
             owner = True
         elif not isinstance(ctx, zmq.Context):
-            raise TypeError("%s only supports shared contexts of type %s not %s"
-                            % (__class__, zmq.Context, type(ctx)))
+            raise TypeError("%s only supports shared contexts of type %s not %s" % (__class__, zmq.Context, type(ctx)))
         else:
             owner = False
         super().__init__(name, addr, ctx, owner)
@@ -2294,7 +2324,7 @@ class GraphCommHandler(ZmqCommHandler):
 
     def _command(self, cmd):
         self._header(cmd)
-        return self._sock.recv_string() == 'ok'
+        return self._sock.recv_string() == "ok"
 
     def _query(self, cmd):
         self._sock.send_string(cmd)
@@ -2304,12 +2334,12 @@ class GraphCommHandler(ZmqCommHandler):
         self._header(cmd)
         if check:
             reply = self._sock.recv_string()
-            if reply == 'ok':
+            if reply == "ok":
                 return self._process(processing, self._sock.recv_pyobj())
             elif retry is not None:
                 self._header(retry)
                 reply = self._sock.recv_string()
-                if reply == 'ok':
+                if reply == "ok":
                     return self._process(processing, self._sock.recv_pyobj())
         else:
             return self._process(processing, self._sock.recv_pyobj())
@@ -2334,7 +2364,7 @@ class GraphCommHandler(ZmqCommHandler):
     def _post_dill(self, cmd, payload):
         self._header(cmd, zmq.SNDMORE)
         self._sock.send(dill.dumps(payload))
-        return self._sock.recv_string() == 'ok'
+        return self._sock.recv_string() == "ok"
 
     def _view(self, names):
         nodes = []
@@ -2361,9 +2391,9 @@ class GraphCommHandler(ZmqCommHandler):
             return self.create()
 
     def _load(self, filename):
-        with open(filename, 'rb') as cnf:
+        with open(filename, "rb") as cnf:
             self.update(dill.load(cnf))
 
     def _save(self, filename):
-        with open(filename, 'wb') as cnf:
+        with open(filename, "wb") as cnf:
             dill.dump(self.graph, cnf)

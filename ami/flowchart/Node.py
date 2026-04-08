@@ -1,21 +1,23 @@
 # -*- coding: utf-8 -*-
-from qtpy import QtCore, QtGui, QtWidgets
-from pyqtgraph.graphicsItems.GraphicsObject import GraphicsObject
+import inspect
+import logging
+import typing  # noqa
+import weakref
+from collections import OrderedDict
+
+import amitypes  # noqa
+from lark import Lark, Transformer
+from networkfox import modifiers
 from pyqtgraph import functions as fn
 from pyqtgraph.debug import printExc
-from collections import OrderedDict
-from ami.flowchart.Terminal import Terminal
-from networkfox import modifiers
-from lark import Lark, Transformer
-import inspect
-import weakref
-import amitypes  # noqa
-import typing  # noqa
-import logging
+from pyqtgraph.graphicsItems.GraphicsObject import GraphicsObject
+from qtpy import QtCore, QtGui, QtWidgets
 
 from ami.data import RequestedData
+from ami.flowchart.Terminal import Terminal
 
 logger = logging.getLogger(__name__)
+
 
 def find_nearest(x):
     gs = 100
@@ -125,7 +127,7 @@ class Node(QtCore.QObject):
         i = 1
         while (group % i) in self._groups:
             i += 1
-        return (group % i)
+        return group % i
 
     def nextTerminalName(self, name):
         """Return an unused terminal name"""
@@ -140,9 +142,9 @@ class Node(QtCore.QObject):
         isInput = True
         isOutput = True
         for name, term in terminals.items():
-            if term['io'] == 'in':
+            if term["io"] == "in":
                 isInput = False
-            elif term['io'] == 'out':
+            elif term["io"] == "out":
                 isOutput = False
 
         brush = None
@@ -185,11 +187,11 @@ class Node(QtCore.QObject):
 
         This is a convenience function that just calls addTerminal(io='in', ...)"""
         ttype = typing.Any
-        if 'ttype' in kwargs:
-            ttype = kwargs.pop('ttype')
-        elif 'In' in self.terminals:
-            ttype = self.terminals['In'].type()
-        return self.addTerminal(name, io='in', ttype=ttype, **kwargs)
+        if "ttype" in kwargs:
+            ttype = kwargs.pop("ttype")
+        elif "In" in self.terminals:
+            ttype = self.terminals["In"].type()
+        return self.addTerminal(name, io="in", ttype=ttype, **kwargs)
 
     def addOutput(self, name="Out", **kwargs):
         """Add a new output terminal to this Node with the given name. Extra
@@ -197,11 +199,11 @@ class Node(QtCore.QObject):
 
         This is a convenience function that just calls addTerminal(io='out', ...)"""
         ttype = typing.Any
-        if 'ttype' in kwargs:
-            ttype = kwargs.pop('ttype')
-        elif 'Out' in self.terminals:
-            ttype = self.terminals['Out'].type()
-        return self.addTerminal(name, io='out', ttype=ttype, **kwargs)
+        if "ttype" in kwargs:
+            ttype = kwargs.pop("ttype")
+        elif "Out" in self.terminals:
+            ttype = self.terminals["Out"].type()
+        return self.addTerminal(name, io="out", ttype=ttype, **kwargs)
 
     def removeTerminal(self, term):
         """Remove the specified terminal from this Node. May specify either the
@@ -290,9 +292,9 @@ class Node(QtCore.QObject):
         topics = {}
         for term, in_var in self.input_vars().items():
             if isinstance(in_var, modifiers.optional):
-                topics[in_var.name] = self.name()+'.'+term
+                topics[in_var.name] = self.name() + "." + term
             else:
-                topics[in_var] = self.name()+'.'+term
+                topics[in_var] = self.name() + "." + term
         return topics
 
     def buffered_terms(self):
@@ -320,8 +322,7 @@ class Node(QtCore.QObject):
         for name, term in self.terminals.items():
             if name in self._input_vars:
                 if term.optional():
-                    input_vars[name] = modifiers.optional(self._input_vars[name],
-                                                          mapped_name=name.replace(".", "_"))
+                    input_vars[name] = modifiers.optional(self._input_vars[name], mapped_name=name.replace(".", "_"))
                 else:
                     input_vars[name] = self._input_vars[name]
         return input_vars
@@ -339,7 +340,7 @@ class Node(QtCore.QObject):
         output_vars = []
 
         for name, output in self._outputs.items():
-            output_vars.append('.'.join([self.name(), name]))
+            output_vars.append(".".join([self.name(), name]))
 
         return output_vars
 
@@ -381,12 +382,12 @@ class Node(QtCore.QObject):
         node = remoteTerm.node()
 
         if localTerm.isInput() and remoteTerm.isOutput():
-            if node.exportable() and node.values['alias']:
-                self._input_vars[localTerm.name()] = node.values['alias']
+            if node.exportable() and node.values["alias"]:
+                self._input_vars[localTerm.name()] = node.values["alias"]
             elif node.isSource():
                 self._input_vars[localTerm.name()] = node.name()
             else:
-                self._input_vars[localTerm.name()] = '.'.join([node.name(), remoteTerm.name()])
+                self._input_vars[localTerm.name()] = ".".join([node.name(), remoteTerm.name()])
 
         if not self.changed:
             self.changed = localTerm.isInput()
@@ -440,30 +441,34 @@ class Node(QtCore.QObject):
         Subclasses may want to extend this method, adding extra keys to the returned
         dict."""
         pos = self.graphicsItem().pos()
-        state = {'pos': (pos.x(), pos.y()), 'enabled': self._enabled,
-                 'viewed': self.viewed, 'latched': self.latched,
-                 'label': self._label}
-        state['terminals'] = self.saveTerminals()
+        state = {
+            "pos": (pos.x(), pos.y()),
+            "enabled": self._enabled,
+            "viewed": self.viewed,
+            "latched": self.latched,
+            "label": self._label,
+        }
+        state["terminals"] = self.saveTerminals()
         return state
 
     def restoreState(self, state):
         """Restore the state of this node from a structure previously generated
-        by saveState(). """
-        pos = state.get('pos', (0, 0))
+        by saveState()."""
+        pos = state.get("pos", (0, 0))
         self.graphicsItem().setPos(*pos)
-        self._label = state.get('label', "")
-        self._enabled = state.get('enabled')
-        self.viewed = state.get('viewed', False)
-        self.nodeLatched(state.get('latched', False))
+        self._label = state.get("label", "")
+        self._enabled = state.get("enabled")
+        self.viewed = state.get("viewed", False)
+        self.nodeLatched(state.get("latched", False))
         if self._label:
             self.graphicsItem().setLabel(self._label)
-        if 'terminals' in state:
-            self.restoreTerminals(state['terminals'])
+        if "terminals" in state:
+            self.restoreTerminals(state["terminals"])
 
     def saveTerminals(self):
         terms = OrderedDict()
         for n, t in self.terminals.items():
-            terms[n] = (t.saveState())
+            terms[n] = t.saveState()
 
         return terms
 
@@ -472,8 +477,8 @@ class Node(QtCore.QObject):
             if name not in state:
                 self.removeTerminal(name)
         for name, opts in state.items():
-            if type(opts['ttype']) is str:
-                opts['ttype'] = eval(opts['ttype'])
+            if type(opts["ttype"]) is str:
+                opts["ttype"] = eval(opts["ttype"])
 
             if name in self.terminals:
                 term = self[name]
@@ -562,9 +567,11 @@ class NodeGraphicsItem(GraphicsObject):
         self.hovered = False
 
         self.node = node
-        flags = QtWidgets.QGraphicsItem.ItemIsMovable | \
-            QtWidgets.QGraphicsItem.ItemIsSelectable | \
-            QtWidgets.QGraphicsItem.ItemSendsGeometryChanges
+        flags = (
+            QtWidgets.QGraphicsItem.ItemIsMovable
+            | QtWidgets.QGraphicsItem.ItemIsSelectable
+            | QtWidgets.QGraphicsItem.ItemSendsGeometryChanges
+        )
 
         self.setFlags(flags)
         self.bounds = QtCore.QRectF(0, 0, 100, 100)
@@ -572,7 +579,7 @@ class NodeGraphicsItem(GraphicsObject):
         self.labelItem.setDefaultTextColor(QtGui.QColor(50, 50, 50))
         self.labelItem.mousePressEvent = self.nameEditingStarted
         self.labelItem.focusOutEvent = self.nameEditingFinished
-        self.labelItem.moveBy(self.bounds.width()/2. - self.labelItem.boundingRect().width()/2., 0)
+        self.labelItem.moveBy(self.bounds.width() / 2.0 - self.labelItem.boundingRect().width() / 2.0, 0)
 
         # Add class name item below the name
         self.nameItem = QtWidgets.QGraphicsTextItem(self.node.name(), self)
@@ -583,8 +590,8 @@ class NodeGraphicsItem(GraphicsObject):
         font.setItalic(True)
         self.nameItem.setFont(font)
         self.nameItem.setPos(
-            self.bounds.width()/2. - self.nameItem.boundingRect().width()/2.,
-            self.nameItem.boundingRect().height()
+            self.bounds.width() / 2.0 - self.nameItem.boundingRect().width() / 2.0,
+            self.nameItem.boundingRect().height(),
         )
 
         self.updateTerminals()
@@ -606,13 +613,10 @@ class NodeGraphicsItem(GraphicsObject):
 
     def setLabel(self, label):
         self.labelItem.setPlainText(label)
-        self.labelItem.setPos(self.bounds.width()/2. - self.labelItem.boundingRect().width()/2., 0)
+        self.labelItem.setPos(self.bounds.width() / 2.0 - self.labelItem.boundingRect().width() / 2.0, 0)
         self.nameItem.setVisible(True)
         nameBottom = self.nameItem.boundingRect().height()
-        self.nameItem.setPos(
-            self.bounds.width()/2. - self.nameItem.boundingRect().width()/2.,
-            nameBottom
-        )
+        self.nameItem.setPos(self.bounds.width() / 2.0 - self.nameItem.boundingRect().width() / 2.0, nameBottom)
 
     def nameEditingStarted(self, event):
         self.labelItem.setTextInteractionFlags(QtCore.Qt.TextEditorInteraction)
@@ -623,13 +627,10 @@ class NodeGraphicsItem(GraphicsObject):
         # Call the original focusOutEvent
         super().focusOutEvent(event)
         self.labelItem.setTextInteractionFlags(QtCore.Qt.NoTextInteraction)
-        self.labelItem.setPos(self.bounds.width()/2. - self.labelItem.boundingRect().width()/2., 0)
+        self.labelItem.setPos(self.bounds.width() / 2.0 - self.labelItem.boundingRect().width() / 2.0, 0)
         self.nameItem.setVisible(True)
         nameBottom = self.nameItem.boundingRect().height()
-        self.nameItem.setPos(
-            self.bounds.width()/2. - self.nameItem.boundingRect().width()/2.,
-            nameBottom
-        )
+        self.nameItem.setPos(self.bounds.width() / 2.0 - self.nameItem.boundingRect().width() / 2.0, nameBottom)
         self.node._label = self.labelItem.toPlainText()
         self.node.sigLabelChanged.emit(self.node, self.node._label)
 
@@ -638,7 +639,7 @@ class NodeGraphicsItem(GraphicsObject):
         out = self.node.outputs()
 
         t = max(len(inp), len(out))
-        bounds = QtCore.QRectF(0, 0, 100, 100*((t // 4) + 1))
+        bounds = QtCore.QRectF(0, 0, 100, 100 * ((t // 4) + 1))
 
         if bounds != self.bounds:
             self.bounds = bounds
@@ -646,7 +647,7 @@ class NodeGraphicsItem(GraphicsObject):
 
         self.terminals = {}
 
-        dy = bounds.height() / (len(inp)+1)
+        dy = bounds.height() / (len(inp) + 1)
         y = dy
         for i, t in inp.items():
             t = t()
@@ -656,7 +657,7 @@ class NodeGraphicsItem(GraphicsObject):
             self.terminals[i] = (t, item)
             y += dy
 
-        dy = bounds.height() / (len(out)+1)
+        dy = bounds.height() / (len(out) + 1)
         y = dy
         for i, t in out.items():
             t = t()
@@ -705,7 +706,7 @@ class NodeGraphicsItem(GraphicsObject):
     def mouseDragEvent(self, ev):
         if ev.button() == QtCore.Qt.LeftButton:
             ev.accept()
-            pos = self.pos()+self.mapToParent(ev.pos())-self.mapToParent(ev.lastPos())
+            pos = self.pos() + self.mapToParent(ev.pos()) - self.mapToParent(ev.lastPos())
             if ev.isFinish():
                 pos = [find_nearest(pos.x()), find_nearest(pos.y())]
 
@@ -771,10 +772,10 @@ class NodeGraphicsItem(GraphicsObject):
 
         for name, from_term in self.node.terminals.items():
             if from_term.isInput() and not from_term.isConnected():
-                term_menu = QtWidgets.QMenu(self.node.name() + '.' + name)
+                term_menu = QtWidgets.QMenu(self.node.name() + "." + name)
                 add_term_menu = False
 
-                for node_name, node in graph.nodes(data='node'):
+                for node_name, node in graph.nodes(data="node"):
                     if node == self.node:
                         continue
 
@@ -799,10 +800,10 @@ class NodeGraphicsItem(GraphicsObject):
                     self.connectToSubMenus.append(term_menu)
 
             if from_term.isOutput():
-                term_menu = QtWidgets.QMenu(self.node.name() + '.' + name)
+                term_menu = QtWidgets.QMenu(self.node.name() + "." + name)
                 add_term_menu = False
 
-                for node_name, node in graph.nodes(data='node'):
+                for node_name, node in graph.nodes(data="node"):
                     if node == self.node:
                         continue
 
@@ -893,7 +894,7 @@ class NodeGraphicsItem(GraphicsObject):
         self.sourceEditor = QtWidgets.QTextEdit()
         self.sourceEditor.setText(inspect.getsource(self.node.__class__))
         self.sourceEditor.setReadOnly(True)
-        self.sourceEditor.setWindowTitle(self.node.__class__.__name__ + ' Source')
+        self.sourceEditor.setWindowTitle(self.node.__class__.__name__ + " Source")
         self.sourceEditor.show()
 
 
@@ -901,13 +902,14 @@ class SourceNodeGraphicsItem(NodeGraphicsItem):
     """
     Extension of the NodeGraphicsItem to handle the source kwargs graphics.
     """
-    sigSourceKwargs = QtCore.Signal(object) # signal emitted when new user kwargs are supplied
+
+    sigSourceKwargs = QtCore.Signal(object)  # signal emitted when new user kwargs are supplied
 
     def __init__(self, node, brush=None):
         super().__init__(node, brush=brush)
         self._source_kwargs = {}
 
-        self.kwargs_parser = Lark(kwargs_grammar, start='value') #, transformer=MyTransformer_2(), parser='lalr')
+        self.kwargs_parser = Lark(kwargs_grammar, start="value")  # , transformer=MyTransformer_2(), parser='lalr')
         self.kwargs_transformer = KwargsTransformer()
 
     @property
@@ -920,7 +922,7 @@ class SourceNodeGraphicsItem(NodeGraphicsItem):
         self.emit_source_kwargs()
 
     def emit_source_kwargs(self):
-        logger.debug(f'Emit kws: {self.node._name} {self.source_kwargs}')
+        logger.debug(f"Emit kws: {self.node._name} {self.source_kwargs}")
         requested_data = RequestedData()
         requested_data.add(self.node._name, kwargs=self.source_kwargs)
         self.sigSourceKwargs.emit(requested_data)
@@ -963,7 +965,7 @@ class SourceNodeGraphicsItem(NodeGraphicsItem):
 
         label2 = QtWidgets.QLabel()
         label2.setWordWrap(True)
-        label2.setText("Enter kwargs in a dict format: {\'k1\': v1, ...}")
+        label2.setText("Enter kwargs in a dict format: {'k1': v1, ...}")
 
         self.kwargs_edit = QtWidgets.QLineEdit()
         self.kwargs_edit.setText(str(self.source_kwargs))
@@ -985,9 +987,9 @@ class SourceNodeGraphicsItem(NodeGraphicsItem):
         self.kwargsEditorWindow.resize(450, self.kwargsEditorWindow.height())
 
     def cmd_save(self):
-        #self.source_kwargs = eval(self.kwargs_edit.text())  # Code injection risk
+        # self.source_kwargs = eval(self.kwargs_edit.text())  # Code injection risk
         kwargs = self.kwargs_edit.text()
-        if kwargs == '':
+        if kwargs == "":
             kwargs = "{}"
         p = self.kwargs_parser.parse(kwargs)
         self.source_kwargs = dict(self.kwargs_transformer.transform(p))
@@ -1014,6 +1016,7 @@ kwargs_grammar = r"""
     %ignore WS // ignore white space
 """
 
+
 class KwargsTransformer(Transformer):
     list = list
     dict = dict
@@ -1026,4 +1029,3 @@ class KwargsTransformer(Transformer):
     def string(self, s):
         s = s[0]
         return str(s[1:-1])
-

@@ -1,19 +1,22 @@
-from pyqtgraph.debug import printExc
-from ami.flowchart.Node import Node
-from ami.flowchart.library.common import CtrlNode
-from amitypes import Array1d, Array2d
-import ami.graph_nodes as gn
 import numpy as np
-import scipy.stats as stats
 import scipy.ndimage as ndimage
+import scipy.stats as stats
+from amitypes import Array1d, Array2d
+from pyqtgraph.debug import printExc
+
+import ami.graph_nodes as gn
+from ami.flowchart.library.common import CtrlNode
+from ami.flowchart.Node import Node
 
 
 def gaussian_func(x, ampl, mu, sigma):
-    return ampl * np.exp( -(x-mu)**2/(2.0*sigma**2) )
-    #return ampl *   np.exp( -(x-mu)**2/(2.0*sigma**2) )
+    return ampl * np.exp(-((x - mu) ** 2) / (2.0 * sigma**2))
+    # return ampl *   np.exp( -(x-mu)**2/(2.0*sigma**2) )
+
 
 def lorentzian_func(x, ampl, x0, gamma):
-    return ampl * ( gamma / ((x-x0)**2 + gamma**2) )
+    return ampl * (gamma / ((x - x0) ** 2 + gamma**2))
+
 
 def stats_from_moments(x, y=None):
     """
@@ -30,11 +33,11 @@ def stats_from_moments(x, y=None):
     """
     if y is None:
         y = np.ones_like(x)
-    #y = np.abs(y)  # negative values in the baseline screw things up
-    mean = np.sum(x*y) / np.sum(y)
-    variance = np.sum((x-mean)**2*y) / y.sum()
+    # y = np.abs(y)  # negative values in the baseline screw things up
+    mean = np.sum(x * y) / np.sum(y)
+    variance = np.sum((x - mean) ** 2 * y) / y.sum()
     sigma = np.sqrt(variance)
-    skew = np.sum((x-mean)**3*y) / sigma**3
+    skew = np.sum((x - mean) ** 3 * y) / sigma**3
     return mean, sigma, skew
 
 
@@ -42,97 +45,106 @@ try:
     from psana.peakFinder import blobfinder
 
     class BlobFinder1D(CtrlNode):
-
         """
         Find blobs in a waveform.
         """
 
         nodeName = "BlobFinder1D"
-        uiTemplate = [('threshold', 'doubleSpin'),
-                      ('min sum', 'doubleSpin')]
+        uiTemplate = [("threshold", "doubleSpin"), ("min sum", "doubleSpin")]
 
         def __init__(self, name):
-            super().__init__(name, terminals={
-                'In': {'io': 'in', 'ttype': Array1d},
-                'NBlobs': {'io': 'out', 'ttype': int},
-                'X': {'io': 'out', 'ttype': Array1d},
-                'Sum': {'io': 'out', 'ttype': Array1d}
-            })
+            super().__init__(
+                name,
+                terminals={
+                    "In": {"io": "in", "ttype": Array1d},
+                    "NBlobs": {"io": "out", "ttype": int},
+                    "X": {"io": "out", "ttype": Array1d},
+                    "Sum": {"io": "out", "ttype": Array1d},
+                },
+            )
 
         def to_operation(self, **kwargs):
-            threshold = self.values['threshold']
-            min_sum = self.values['min sum']
+            threshold = self.values["threshold"]
+            min_sum = self.values["min sum"]
 
-            return gn.Map(name=self.name()+"_operation", **kwargs,
-                          func=lambda arr: blobfinder.find_blobs_1d(arr, threshold, min_sum))
+            return gn.Map(
+                name=self.name() + "_operation",
+                **kwargs,
+                func=lambda arr: blobfinder.find_blobs_1d(arr, threshold, min_sum),
+            )
 
     class BlobFinder2D(CtrlNode):
-
         """
         Find blobs in an image.
         """
 
         nodeName = "BlobFinder2D"
-        uiTemplate = [('threshold', 'doubleSpin'),
-                      ('min sum', 'doubleSpin')]
+        uiTemplate = [("threshold", "doubleSpin"), ("min sum", "doubleSpin")]
 
         def __init__(self, name):
-            super().__init__(name, terminals={
-                'In': {'io': 'in', 'ttype': Array2d},
-                'NBlobs': {'io': 'out', 'ttype': int},
-                'X': {'io': 'out', 'ttype': Array1d},
-                'Y': {'io': 'out', 'ttype': Array1d},
-                'Sum': {'io': 'out', 'ttype': Array1d}
-            })
+            super().__init__(
+                name,
+                terminals={
+                    "In": {"io": "in", "ttype": Array2d},
+                    "NBlobs": {"io": "out", "ttype": int},
+                    "X": {"io": "out", "ttype": Array1d},
+                    "Y": {"io": "out", "ttype": Array1d},
+                    "Sum": {"io": "out", "ttype": Array1d},
+                },
+            )
 
         def to_operation(self, **kwargs):
-            threshold = self.values['threshold']
-            min_sum = self.values['min sum']
+            threshold = self.values["threshold"]
+            min_sum = self.values["min sum"]
 
-            return gn.Map(name=self.name()+"_operation", **kwargs,
-                          func=lambda arr: blobfinder.find_blobs_2d(arr, threshold, min_sum))
+            return gn.Map(
+                name=self.name() + "_operation",
+                **kwargs,
+                func=lambda arr: blobfinder.find_blobs_2d(arr, threshold, min_sum),
+            )
 
 except ImportError as e:
     print(e)
 
 
 class Linregress0D(CtrlNode):
-
     """
     Collect N scalars and apply Scipy.stats.linregress
     """
 
     nodeName = "Linregress0D"
-    uiTemplate = [('N', 'intSpin', {'value': 2, 'min': 2})]
+    uiTemplate = [("N", "intSpin", {"value": 2, "min": 2})]
 
     def __init__(self, name):
-        super().__init__(name, terminals={'X.In': {'io': 'in', 'ttype': float},
-                                          'Y.In': {'io': 'in', 'ttype': float},
-                                          'X': {'io': 'out', 'ttype': Array1d},
-                                          'Y': {'io': 'out', 'ttype': Array1d},
-                                          'Fit': {'io': 'out', 'ttype': Array1d},
-                                          'rvalue': {'io': 'out', 'ttype': float}},
-                         global_op=True)
+        super().__init__(
+            name,
+            terminals={
+                "X.In": {"io": "in", "ttype": float},
+                "Y.In": {"io": "in", "ttype": float},
+                "X": {"io": "out", "ttype": Array1d},
+                "Y": {"io": "out", "ttype": Array1d},
+                "Fit": {"io": "out", "ttype": Array1d},
+                "rvalue": {"io": "out", "ttype": float},
+            },
+            global_op=True,
+        )
 
     def to_operation(self, inputs, outputs, **kwargs):
         def fit(arr):
             arr = np.array(arr)
             slope, intercept, r_value, p_value, stderr = stats.linregress(arr[:, 0], arr[:, 1])
-            return arr[:, 0], arr[:, 1], slope*arr[:, 0] + intercept, r_value
+            return arr[:, 0], arr[:, 1], slope * arr[:, 0] + intercept, r_value
 
-        picked_outputs = [self.name()+"_accumulated"]
-        nodes = [gn.PickN(name=self.name()+"_picked",
-                          inputs=inputs, outputs=picked_outputs,
-                          N=self.values['N'], **kwargs),
-                 gn.Map(name=self.name()+"_operation",
-                        inputs=picked_outputs, outputs=outputs,
-                        func=fit, **kwargs)]
+        picked_outputs = [self.name() + "_accumulated"]
+        nodes = [
+            gn.PickN(name=self.name() + "_picked", inputs=inputs, outputs=picked_outputs, N=self.values["N"], **kwargs),
+            gn.Map(name=self.name() + "_operation", inputs=picked_outputs, outputs=outputs, func=fit, **kwargs),
+        ]
 
         return nodes
 
 
 class Linregress1D(Node):
-
     """
     Scipy.stats.linregress
     """
@@ -140,38 +152,43 @@ class Linregress1D(Node):
     nodeName = "Linregress1D"
 
     def __init__(self, name):
-        super().__init__(name, terminals={'X': {'io': 'in', 'ttype': Array1d},
-                                          'Y': {'io': 'in', 'ttype': Array1d},
-                                          'slope': {'io': 'out', 'ttype': float},
-                                          'intercept': {'io': 'out', 'ttype': float},
-                                          'rvalue': {'io': 'out', 'ttype': float},
-                                          'pvalue': {'io': 'out', 'ttype': float},
-                                          'stderr': {'io': 'out', 'ttype': float},
-                                          'fit': {'io': 'out', 'ttype': Array1d}})
+        super().__init__(
+            name,
+            terminals={
+                "X": {"io": "in", "ttype": Array1d},
+                "Y": {"io": "in", "ttype": Array1d},
+                "slope": {"io": "out", "ttype": float},
+                "intercept": {"io": "out", "ttype": float},
+                "rvalue": {"io": "out", "ttype": float},
+                "pvalue": {"io": "out", "ttype": float},
+                "stderr": {"io": "out", "ttype": float},
+                "fit": {"io": "out", "ttype": Array1d},
+            },
+        )
 
     def to_operation(self, **kwargs):
         def fit(x, y):
             slope, intercept, r_value, p_value, stderr = stats.linregress(x, y)
-            return slope, intercept, r_value, p_value, stderr, slope*x + intercept
+            return slope, intercept, r_value, p_value, stderr, slope * x + intercept
 
-        return gn.Map(name=self.name()+"_operation", **kwargs, func=fit)
+        return gn.Map(name=self.name() + "_operation", **kwargs, func=fit)
 
 
 try:
-    import sympy as sp
     import scipy.optimize as optimize
+    import sympy as sp
 
-    class FitProc():
+    class FitProc:
 
         def __init__(self, *args, **kwargs):
-            self.expr = kwargs['f']
-            self.p0 = kwargs['p0']
-            self.syms = kwargs['variables']
+            self.expr = kwargs["f"]
+            self.p0 = kwargs["p0"]
+            self.syms = kwargs["variables"]
 
             if not self.p0:
                 self.p0 = None
             else:
-                self.p0 = tuple(map(float, self.p0.split(',')))
+                self.p0 = tuple(map(float, self.p0.split(",")))
             self.func = None
 
         def set_func(self):
@@ -206,35 +223,40 @@ try:
         """
 
         nodeName = "CurveFit"
-        uiTemplate = [('f', 'text', {'tip': "Function to fit."}),
-                      ('variables', 'text', {'tip': "Comma separated list of variables in f."}),
-                      ('p0', 'text', {'tip': "Optional comma separated list of initial guesses."})]
+        uiTemplate = [
+            ("f", "text", {"tip": "Function to fit."}),
+            ("variables", "text", {"tip": "Comma separated list of variables in f."}),
+            ("p0", "text", {"tip": "Optional comma separated list of initial guesses."}),
+        ]
 
         def __init__(self, name):
-            super().__init__(name, terminals={'Y': {'io': 'in', 'ttype': Array1d},
-                                              'fx': {'io': 'out', 'ttype': Array1d},
-                                              'p0': {'io': 'out', 'ttype': Array1d},
-                                              'pcov': {'io': 'out', 'ttype': Array2d}},
-                             allowAddInput=True)
+            super().__init__(
+                name,
+                terminals={
+                    "Y": {"io": "in", "ttype": Array1d},
+                    "fx": {"io": "out", "ttype": Array1d},
+                    "p0": {"io": "out", "ttype": Array1d},
+                    "pcov": {"io": "out", "ttype": Array2d},
+                },
+                allowAddInput=True,
+            )
 
         def addInput(self, **args):
             if "X" not in self.terminals:
-                self.addTerminal(name="X", io='in', ttype=Array1d, **args)
+                self.addTerminal(name="X", io="in", ttype=Array1d, **args)
 
         def to_operation(self, **kwargs):
-            return gn.Map(name=self.name()+"_operation", **kwargs, func=FitProc(**self.values))
+            return gn.Map(name=self.name() + "_operation", **kwargs, func=FitProc(**self.values))
 
-
-
-    class FitPeakProc():
+    class FitPeakProc:
 
         def __init__(self, *args, **kwargs):
-            self.model = kwargs['Model']
-            self.use_offset = kwargs['Use offset']
-            self.a_0 = kwargs['Initial amplitude']
-            self.x_0 = kwargs['Initial x0']
-            self.fwhm_0 = kwargs['Initial FWHM']
-            self.c_0 = kwargs['Initial offset']
+            self.model = kwargs["Model"]
+            self.use_offset = kwargs["Use offset"]
+            self.a_0 = kwargs["Initial amplitude"]
+            self.x_0 = kwargs["Initial x0"]
+            self.fwhm_0 = kwargs["Initial FWHM"]
+            self.c_0 = kwargs["Initial offset"]
             self.func = None
 
         def get_func(self):
@@ -294,7 +316,6 @@ try:
 
             return np.array([])
 
-
     class PeakFit(CtrlNode):
         """
         Fit a peak to 1d data
@@ -304,72 +325,76 @@ try:
         """
 
         nodeName = "PeakFit"
-        uiTemplate = [('Model', 'combo', {'values':['Gaussian', 'Lorentzian', 'Moments']}),
-                      ('Use offset', 'check', {'checked': True}),
-                      ('Initial amplitude', 'doubleSpin', {'value': 1}),
-                      ('Initial x0', 'doubleSpin'),
-                      ('Initial FWHM', 'doubleSpin', {'value': 1}),
-                      ('Initial offset', 'doubleSpin')]
+        uiTemplate = [
+            ("Model", "combo", {"values": ["Gaussian", "Lorentzian", "Moments"]}),
+            ("Use offset", "check", {"checked": True}),
+            ("Initial amplitude", "doubleSpin", {"value": 1}),
+            ("Initial x0", "doubleSpin"),
+            ("Initial FWHM", "doubleSpin", {"value": 1}),
+            ("Initial offset", "doubleSpin"),
+        ]
 
         def __init__(self, name):
-            super().__init__(name, terminals={'In': {'io': 'in', 'ttype': Array1d},
-                                              'fit': {'io': 'out', 'ttype': Array1d},
-                                              'ampl': {'io': 'out', 'ttype': float},
-                                              'center': {'io': 'out', 'ttype': float},
-                                              'width': {'io': 'out', 'ttype': float},
-                                              'fwhm': {'io': 'out', 'ttype': float},
-                                              'offset': {'io': 'out', 'ttype': float}})
+            super().__init__(
+                name,
+                terminals={
+                    "In": {"io": "in", "ttype": Array1d},
+                    "fit": {"io": "out", "ttype": Array1d},
+                    "ampl": {"io": "out", "ttype": float},
+                    "center": {"io": "out", "ttype": float},
+                    "width": {"io": "out", "ttype": float},
+                    "fwhm": {"io": "out", "ttype": float},
+                    "offset": {"io": "out", "ttype": float},
+                },
+            )
 
         def to_operation(self, **kwargs):
-            return gn.Map(name=self.name()+"_operation", **kwargs, func=FitPeakProc(**self.values))
+            return gn.Map(name=self.name() + "_operation", **kwargs, func=FitPeakProc(**self.values))
 
 except ImportError as e:
     print(e)
 
 
 class GaussianFilter1D(CtrlNode):
-
     """
     Scipy Gaussian Filter 1D
     """
 
     nodeName = "GaussianFilter1D"
 
-    uiTemplate = [('sigma', 'doubleSpin'),
-                  ('axis', 'intSpin', {'value': -1, 'min': -1, 'max': 1}),
-                  ('order', 'intSpin'),
-                  ('mode', 'combo', {'value': 'reflect',
-                                     'values': ['reflect', 'constant', 'nearest', 'mirror', 'wrap']}),
-                  ('cval', 'doubleSpin'),
-                  ('truncate', 'doubleSpin', {'value': 4.0})]
+    uiTemplate = [
+        ("sigma", "doubleSpin"),
+        ("axis", "intSpin", {"value": -1, "min": -1, "max": 1}),
+        ("order", "intSpin"),
+        ("mode", "combo", {"value": "reflect", "values": ["reflect", "constant", "nearest", "mirror", "wrap"]}),
+        ("cval", "doubleSpin"),
+        ("truncate", "doubleSpin", {"value": 4.0}),
+    ]
 
     def __init__(self, name):
-        super().__init__(name, terminals={'In': {'io': 'in', 'ttype': Array1d},
-                                          'Out': {'io': 'out', 'ttype': Array1d}})
+        super().__init__(name, terminals={"In": {"io": "in", "ttype": Array1d}, "Out": {"io": "out", "ttype": Array1d}})
 
     def to_operation(self, **kwargs):
         args = dict(self.values)
 
-        return gn.Map(name=self.name()+"_operation", **kwargs,
-                      func=lambda arr: ndimage.gaussian_filter1d(arr, **args))
+        return gn.Map(
+            name=self.name() + "_operation", **kwargs, func=lambda arr: ndimage.gaussian_filter1d(arr, **args)
+        )
 
 
 class Rotate(CtrlNode):
-
     """
     Scipy.ndimage.rotate
     """
 
     nodeName = "Rotate"
 
-    uiTemplate = [('angle', 'doubleSpin')]
+    uiTemplate = [("angle", "doubleSpin")]
 
     def __init__(self, name):
-        super().__init__(name, terminals={'In': {'io': 'in', 'ttype': Array2d},
-                                          'Out': {'io': 'out', 'ttype': Array2d}})
+        super().__init__(name, terminals={"In": {"io": "in", "ttype": Array2d}, "Out": {"io": "out", "ttype": Array2d}})
 
     def to_operation(self, **kwargs):
         args = dict(self.values)
 
-        return gn.Map(name=self.name()+"_operation", **kwargs,
-                      func=lambda arr: ndimage.rotate(arr, **args))
+        return gn.Map(name=self.name() + "_operation", **kwargs, func=lambda arr: ndimage.rotate(arr, **args))

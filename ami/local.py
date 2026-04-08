@@ -1,25 +1,26 @@
+import argparse
+import contextlib
+import functools
+import logging
+import multiprocessing.sharedctypes
 import os
 import re
-import sys
 import shutil
 import signal
 import socket
-import logging
+import sys
 import tempfile
-import argparse
-import functools
-import contextlib
-import ami.multiproc as mp
-import multiprocessing.sharedctypes
 
-from ami import LogConfig, Defaults
-from ami.multiproc import check_mp_start_method
-from ami.comm import Ports, PlatformAction, GraphCommHandler
-from ami.manager import run_manager
-from ami.worker import run_worker
-from ami.collector import run_node_collector, run_global_collector
-from ami.client import run_client, check_dir
+import ami.multiproc as mp
+from ami import Defaults, LogConfig
+from ami.client import check_dir, run_client
+from ami.collector import run_global_collector, run_node_collector
+from ami.comm import GraphCommHandler, PlatformAction, Ports
 from ami.console import run_console
+from ami.manager import run_manager
+from ami.multiproc import check_mp_start_method
+from ami.worker import run_worker
+
 try:
     from ami.export import run_export
 except ImportError:
@@ -30,207 +31,124 @@ logger = logging.getLogger(__name__)
 
 
 def build_parser():
-    parser = argparse.ArgumentParser(description='AMII Single Node App')
+    parser = argparse.ArgumentParser(description="AMII Single Node App")
+
+    parser.add_argument("-n", "--num-workers", type=int, default=1, help="number of worker processes (default: 1)")
+
+    parser.add_argument("-l", "--load", help="saved AMII configuration to load")
 
     parser.add_argument(
-        '-n',
-        '--num-workers',
-        type=int,
-        default=1,
-        help='number of worker processes (default: 1)'
+        "-s", "--save-dir", type=check_dir, default=None, help="default directory for saving flowcharts"
     )
 
     parser.add_argument(
-        '-l',
-        '--load',
-        help='saved AMII configuration to load'
+        "-e", "--export", help="the base name to use for data export (e.g. the base of all the PV names)"
+    )
+
+    parser.add_argument("--batched", action="store_true", help="batch export as a list of structs")
+
+    parser.add_argument(
+        "-a",
+        "--aggregate",
+        action="store_true",
+        help="aggregates graph and store related variables into structured data when exporting",
     )
 
     parser.add_argument(
-        '-s',
-        '--save-dir',
-        type=check_dir,
-        default=None,
-        help='default directory for saving flowcharts'
-    )
-
-    parser.add_argument(
-        '-e',
-        '--export',
-        help='the base name to use for data export (e.g. the base of all the PV names)'
-    )
-
-    parser.add_argument(
-        '--batched',
-        action='store_true',
-        help='batch export as a list of structs'
-    )
-
-    parser.add_argument(
-        '-a',
-        '--aggregate',
-        action='store_true',
-        help='aggregates graph and store related variables into structured data when exporting'
-    )
-
-    parser.add_argument(
-        '-p',
-        '--port',
+        "-p",
+        "--port",
         type=int,
         default=Ports.BasePort,
         action=PlatformAction,
-        help='use tcp for communication using the specified base port (default: %d)'
-             ' reserves next %d consecutive ports' % (Ports.BasePort, Ports.NumPorts)
+        help="use tcp for communication using the specified base port (default: %d)"
+        " reserves next %d consecutive ports" % (Ports.BasePort, Ports.NumPorts),
     )
 
     comm_group = parser.add_mutually_exclusive_group()
 
     comm_group.add_argument(
-        '-i',
-        '--ipc-dir',
-        help='use ipc for communication and create the file descriptors in the specified directory'
+        "-i", "--ipc-dir", help="use ipc for communication and create the file descriptors in the specified directory"
     )
 
-    comm_group.add_argument(
-        '--tcp',
-        action='store_true',
-        help='use tcp for communication using a randomly chosen port'
-    )
+    comm_group.add_argument("--tcp", action="store_true", help="use tcp for communication using a randomly chosen port")
 
     parser.add_argument(
-        '-d',
-        '--eb-depth',
+        "-d",
+        "--eb-depth",
         type=int,
         default=1,
-        help='the depth of contribution builder buffer in units of heartbeats (default: 1)'
+        help="the depth of contribution builder buffer in units of heartbeats (default: 1)",
     )
 
-    parser.add_argument(
-        '-b',
-        '--heartbeat',
-        type=int,
-        default=10,
-        help='the heartbeat period in ms (default: 10)'
-    )
+    parser.add_argument("-b", "--heartbeat", type=int, default=10, help="the heartbeat period in ms (default: 10)")
+
+    parser.add_argument("-c", "--console", action="store_true", help="run in a console mode (no GUI)")
 
     parser.add_argument(
-        '-c',
-        '--console',
-        action='store_true',
-        help='run in a console mode (no GUI)'
-    )
-
-    parser.add_argument(
-        '-f',
-        '--flags',
-        action='append',
+        "-f",
+        "--flags",
+        action="append",
         default=[],
-        help='extra flags as key=value pairs that are passed to the data source of the worker'
+        help="extra flags as key=value pairs that are passed to the data source of the worker",
     )
 
     parser.add_argument(
-        '-g',
-        '--graph-name',
+        "-g",
+        "--graph-name",
         default=Defaults.GraphName,
-        help='the name of the graph used (default: %s)' % Defaults.GraphName
+        help="the name of the graph used (default: %s)" % Defaults.GraphName,
     )
 
     parser.add_argument(
-        '--headless',
-        action='store_true',
-        help='run in a headless mode (no GUI) can only interact over zmq'
+        "--headless", action="store_true", help="run in a headless mode (no GUI) can only interact over zmq"
     )
 
     guimode_parser = parser.add_mutually_exclusive_group()
 
     guimode_parser.add_argument(
-        '--legacy-gui',
-        dest='gui_mode',
-        action='store_true',
-        help="use the traditional AMI1-style GUI"
+        "--legacy-gui", dest="gui_mode", action="store_true", help="use the traditional AMI1-style GUI"
     )
 
     guimode_parser.add_argument(
-        '--flowchart-gui',
-        dest='gui_mode',
-        action='store_false',
-        help="use the new AMI2-style flowchart GUI"
+        "--flowchart-gui", dest="gui_mode", action="store_false", help="use the new AMI2-style flowchart GUI"
     )
 
     parser.add_argument(
-        '--log-level',
+        "--log-level",
         default=LogConfig.Level,
-        help='the logging level of the application (default %s)' % LogConfig.Level
+        help="the logging level of the application (default %s)" % LogConfig.Level,
     )
 
-    parser.add_argument(
-        '--log-file',
-        help='an optional file to write the log output to'
-    )
+    parser.add_argument("--log-file", help="an optional file to write the log output to")
 
     parser.add_argument(
-        'source',
-        nargs='?',
-        metavar='SOURCE',
-        help='data source configuration (exampes: static://test.json, psana://exp=xcsdaq13:run=14)'
+        "source",
+        nargs="?",
+        metavar="SOURCE",
+        help="data source configuration (exampes: static://test.json, psana://exp=xcsdaq13:run=14)",
     )
 
-    parser.add_argument(
-        '--prometheus-port',
-        type=int,
-        default=Ports.Prometheus,
-        help='port for prometheus'
-    )
+    parser.add_argument("--prometheus-port", type=int, default=Ports.Prometheus, help="port for prometheus")
 
-    parser.add_argument(
-        '--prometheus-dir',
-        help='directory for prometheus configuration',
-        default=None
-    )
+    parser.add_argument("--prometheus-dir", help="directory for prometheus configuration", default=None)
 
-    parser.add_argument(
-        '--hutch',
-        help='hutch for prometheus label',
-        default=None
-    )
+    parser.add_argument("--hutch", help="hutch for prometheus label", default=None)
 
-    parser.add_argument(
-        '--hwm',
-        help='zmq HWM for push/pull sockets (default: 1)',
-        type=int,
-        default=1
-    )
+    parser.add_argument("--hwm", help="zmq HWM for push/pull sockets (default: 1)", type=int, default=1)
 
-    parser.add_argument(
-        '--timeout',
-        help='heartbeat timeout in ms',
-        type=int,
-        default=None
-    )
+    parser.add_argument("--timeout", help="heartbeat timeout in ms", type=int, default=None)
 
-    parser.add_argument(
-        '--cprofile',
-        help="profile with cprofile",
-        action='store_true'
-    )
+    parser.add_argument("--cprofile", help="profile with cprofile", action="store_true")
 
-    parser.add_argument(
-        '--use-opengl',
-        help='Use opengl for plots.',
-        action='store_true'
-    )
+    parser.add_argument("--use-opengl", help="Use opengl for plots.", action="store_true")
 
-    parser.add_argument(
-        '--use-numba',
-        help='Use numba for plots.',
-        action='store_true'
-    )
+    parser.add_argument("--use-numba", help="Use numba for plots.", action="store_true")
 
     return parser
 
 
 def _sig_handler(procs, signum, frame):
-    logger.debug('Caught signal %d', signum)
+    logger.debug("Caught signal %d", signum)
     sys.exit(cleanup(procs))
 
 
@@ -251,10 +169,10 @@ def cleanup(procs):
             proc.join()
 
         if proc.exitcode == 0 or proc.exitcode == -signal.SIGTERM:
-            logger.info('%s exited successfully', proc.name)
+            logger.info("%s exited successfully", proc.name)
         else:
             failed_proc = True
-            logger.error('%s exited with non-zero status code: %d', proc.name, proc.exitcode)
+            logger.error("%s exited with non-zero status code: %d", proc.name, proc.exitcode)
 
     return failed_proc
 
@@ -321,13 +239,13 @@ def run_ami(args, queue=None):
     try:
         for flag in args.flags:
             try:
-                key, value = flag.split('=')
+                key, value = flag.split("=")
                 flags[key] = value
             except ValueError:
                 logger.exception("Problem parsing data source flag %s", flag)
 
         if args.source is not None:
-            src_url_match = re.match('(?P<prot>.*)://(?P<body>.*)', args.source)
+            src_url_match = re.match("(?P<prot>.*)://(?P<body>.*)", args.source)
             if src_url_match:
                 src_cfg = src_url_match.groups()
             else:
@@ -342,8 +260,8 @@ def run_ami(args, queue=None):
             select_manager = mp.Manager()
             select_dict = select_manager.dict()
             select_lock = select_manager.Lock()
-            select_hb = multiprocessing.sharedctypes.RawArray('Q', 128)
-            select_idx = multiprocessing.sharedctypes.RawValue('I', 0)
+            select_hb = multiprocessing.sharedctypes.RawArray("Q", 128)
+            select_idx = multiprocessing.sharedctypes.RawValue("I", 0)
         else:
             select_manager = None
             select_dict = None
@@ -353,43 +271,96 @@ def run_ami(args, queue=None):
 
         for i in range(args.num_workers):
             proc = mp.Process(
-                name='worker%03d-n0' % i,
+                name="worker%03d-n0" % i,
                 target=functools.partial(_sys_exit, run_worker),
-                args=(i, args.num_workers, args.heartbeat, src_cfg,
-                      collector_addr, graph_addr, msg_addr, export_addr, flags, args.prometheus_dir,
-                      args.prometheus_port, args.hutch, args.hwm, args.timeout, args.cprofile,
-                      (select_lock, select_dict, select_idx, select_hb, select_manager))
+                args=(
+                    i,
+                    args.num_workers,
+                    args.heartbeat,
+                    src_cfg,
+                    collector_addr,
+                    graph_addr,
+                    msg_addr,
+                    export_addr,
+                    flags,
+                    args.prometheus_dir,
+                    args.prometheus_port,
+                    args.hutch,
+                    args.hwm,
+                    args.timeout,
+                    args.cprofile,
+                    (select_lock, select_dict, select_idx, select_hb, select_manager),
+                ),
             )
             proc.daemon = True
             proc.start()
             procs.append(proc)
 
         collector_proc = mp.Process(
-            name='nodecol-n0',
+            name="nodecol-n0",
             target=functools.partial(_sys_exit, run_node_collector),
-            args=(0, args.num_workers, args.eb_depth, collector_addr, globalcol_addr, graph_addr,
-                  msg_addr, args.prometheus_dir, args.prometheus_port, args.hutch,
-                  args.hwm, args.timeout, args.cprofile)
+            args=(
+                0,
+                args.num_workers,
+                args.eb_depth,
+                collector_addr,
+                globalcol_addr,
+                graph_addr,
+                msg_addr,
+                args.prometheus_dir,
+                args.prometheus_port,
+                args.hutch,
+                args.hwm,
+                args.timeout,
+                args.cprofile,
+            ),
         )
         collector_proc.daemon = True
         collector_proc.start()
         procs.append(collector_proc)
 
         globalcol_proc = mp.Process(
-            name='globalcol',
+            name="globalcol",
             target=functools.partial(_sys_exit, run_global_collector),
-            args=(0, 1, args.eb_depth, globalcol_addr, results_addr, graph_addr, msg_addr,
-                  args.prometheus_dir, args.prometheus_port, args.hutch, args.hwm, args.timeout, args.cprofile)
+            args=(
+                0,
+                1,
+                args.eb_depth,
+                globalcol_addr,
+                results_addr,
+                graph_addr,
+                msg_addr,
+                args.prometheus_dir,
+                args.prometheus_port,
+                args.hutch,
+                args.hwm,
+                args.timeout,
+                args.cprofile,
+            ),
         )
         globalcol_proc.daemon = True
         globalcol_proc.start()
         procs.append(globalcol_proc)
 
         manager_proc = mp.Process(
-            name='manager',
+            name="manager",
             target=functools.partial(_sys_exit, run_manager),
-            args=(args.num_workers, 1, results_addr, graph_addr, comm_addr, msg_addr, info_addr, export_addr,
-                  view_addr, args.prometheus_dir, args.prometheus_port, args.hutch, args.hwm, args.cprofile)
+            args=(
+                args.num_workers,
+                1,
+                results_addr,
+                graph_addr,
+                comm_addr,
+                msg_addr,
+                info_addr,
+                export_addr,
+                view_addr,
+                args.prometheus_dir,
+                args.prometheus_port,
+                args.hutch,
+                args.hwm,
+                args.cprofile,
+            ),
         )
         manager_proc.daemon = True
         manager_proc.start()
@@ -400,9 +371,9 @@ def run_ami(args, queue=None):
                 logger.critical("Export module is not available: p4p needs to be installed to use the export feature!")
                 return 1
             export_proc = mp.Process(
-                name='export',
+                name="export",
                 target=functools.partial(_sys_exit, run_export),
-                args=(args.export, msg_addr, export_addr, args.aggregate, args.batched)
+                args=(args.export, msg_addr, export_addr, args.aggregate, args.batched),
             )
             export_proc.daemon = True
             export_proc.start()
@@ -410,13 +381,24 @@ def run_ami(args, queue=None):
 
         if not (args.console or args.headless):
             client_proc = mp.Process(
-                name='client',
+                name="client",
                 target=run_client,
-                args=(args.graph_name, comm_addr, info_addr, view_addr, export_addr, args.load, args.gui_mode,
-                      args.prometheus_dir, args.prometheus_port, args.hutch,
-                      args.use_opengl, args.use_numba,
-                      src_cfg is None,
-                      args.save_dir)
+                args=(
+                    args.graph_name,
+                    comm_addr,
+                    info_addr,
+                    view_addr,
+                    export_addr,
+                    args.load,
+                    args.gui_mode,
+                    args.prometheus_dir,
+                    args.prometheus_port,
+                    args.hutch,
+                    args.use_opengl,
+                    args.use_numba,
+                    src_cfg is None,
+                    args.save_dir,
+                ),
             )
             client_proc.daemon = False
             client_proc.start()
@@ -462,5 +444,5 @@ def main():
     return run_ami(args)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     sys.exit(main())

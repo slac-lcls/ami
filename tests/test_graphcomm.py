@@ -1,11 +1,13 @@
-import pytest
 import re
-import zmq
-import dill
 import threading
-import zmq.asyncio
+
+import dill
 import numpy as np
-from ami.comm import GraphCommHandler, AsyncGraphCommHandler
+import pytest
+import zmq
+import zmq.asyncio
+
+from ami.comm import AsyncGraphCommHandler, GraphCommHandler
 
 
 class FakeManager:
@@ -24,12 +26,12 @@ class FakeManager:
     def feature_request(self, request):
         matched = self.feature_req.match(request)
         if matched:
-            cmd_type = matched.group('type')
-            if cmd_type in self.conf and matched.group('name') in self.conf[cmd_type]:
-                self.sock.send_string('ok', zmq.SNDMORE)
-                self.sock.send_pyobj(self.conf[cmd_type][matched.group('name')])
+            cmd_type = matched.group("type")
+            if cmd_type in self.conf and matched.group("name") in self.conf[cmd_type]:
+                self.sock.send_string("ok", zmq.SNDMORE)
+                self.sock.send_pyobj(self.conf[cmd_type][matched.group("name")])
             else:
-                self.sock.send_string('error')
+                self.sock.send_string("error")
             return True
         else:
             return False
@@ -37,10 +39,10 @@ class FakeManager:
     def run(self):
         while True:
             request = self.sock.recv_string()
-            if request == 'test_exit':
+            if request == "test_exit":
                 self.sock.close()
                 break
-            elif request == 'list_graphs':
+            elif request == "list_graphs":
                 self.sock.send_pyobj(self.conf[request])
             else:
                 name = self.sock.recv_string()
@@ -49,31 +51,31 @@ class FakeManager:
                 elif request in self.conf:
                     if self.sock.getsockopt(zmq.RCVMORE):
                         payload = self.sock.recv()
-                        if self.conf[request] == 'graph':
+                        if self.conf[request] == "graph":
                             self.graph = dill.loads(payload)
-                            self.sock.send_string('ok')
-                        elif self.conf[request] == 'add_graph':
+                            self.sock.send_string("ok")
+                        elif self.conf[request] == "add_graph":
                             self.graph.add(dill.loads(payload))
-                            self.sock.send_string('ok')
-                        elif self.conf[request] == 'del_graph':
+                            self.sock.send_string("ok")
+                        elif self.conf[request] == "del_graph":
                             for name in dill.loads(payload):
                                 self.graph.remove(name)
-                            self.sock.send_string('ok')
+                            self.sock.send_string("ok")
                         else:
-                            self.sock.send_string('error')
-                    elif self.conf[request] == 'graph':
+                            self.sock.send_string("error")
+                    elif self.conf[request] == "graph":
                         self.sock.send(dill.dumps(self.graph))
                     elif self.conf[request] is None:
-                        self.sock.send_string('ok')
+                        self.sock.send_string("ok")
                     else:
                         self.sock.send_pyobj(self.conf[request])
                 else:
                     while self.sock.getsockopt(zmq.RCVMORE):
                         self.sock.recv()
-                    self.sock.send_string('error')
+                    self.sock.send_string("error")
 
 
-@pytest.fixture(scope='function')
+@pytest.fixture(scope="function")
 def graph_comm(request, ipc_dir, event_loop):
     ctxs = []
     name = "graph"
@@ -99,14 +101,14 @@ def graph_comm(request, ipc_dir, event_loop):
 
     yield comm, conf
 
-    comm._sock.send_string('test_exit')
+    comm._sock.send_string("test_exit")
     manager.thread.join()
     # clean up all the zmq stuff
     for ctx in ctxs:
         ctx.destroy()
 
 
-@pytest.fixture(scope='function')
+@pytest.fixture(scope="function")
 def graph_comm_simple(request, ipc_dir):
     ctxs = []
     name = "graph"
@@ -122,20 +124,22 @@ def graph_comm_simple(request, ipc_dir):
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize('graph_comm',
-                         [
-                            (True, {'list_graphs': {'graph'}, 'create_graph': None, 'clear_graph': None}),
-                         ],
-                         indirect=True)
+@pytest.mark.parametrize(
+    "graph_comm",
+    [
+        (True, {"list_graphs": {"graph"}, "create_graph": None, "clear_graph": None}),
+    ],
+    indirect=True,
+)
 async def test_valid_name_async(graph_comm):
     comm, conf = graph_comm
 
     # names to try selecting
     names = [
-        ('test', True),
+        ("test", True),
         (None, False),
         (7, False),
-        ('graph', True),
+        ("graph", True),
     ]
 
     # check that this throws a TypeError when expected
@@ -168,20 +172,22 @@ async def test_valid_name_async(graph_comm):
             assert not expected
 
 
-@pytest.mark.parametrize('graph_comm',
-                         [
-                            {'list_graphs': {'graph'}, 'create_graph': None, 'clear_graph': None},
-                         ],
-                         indirect=True)
+@pytest.mark.parametrize(
+    "graph_comm",
+    [
+        {"list_graphs": {"graph"}, "create_graph": None, "clear_graph": None},
+    ],
+    indirect=True,
+)
 def test_valid_name(graph_comm):
     comm, conf = graph_comm
 
     # names to try selecting
     names = [
-        ('test', True),
+        ("test", True),
         (None, False),
         (7, False),
-        ('graph', True),
+        ("graph", True),
     ]
 
     # check that this throws a TypeError when expected
@@ -215,144 +221,160 @@ def test_valid_name(graph_comm):
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize('graph_comm',
-                         [
-                            (True, {'list_graphs': {'graph'}, 'create_graph': None}),
-                         ],
-                         indirect=True)
+@pytest.mark.parametrize(
+    "graph_comm",
+    [
+        (True, {"list_graphs": {"graph"}, "create_graph": None}),
+    ],
+    indirect=True,
+)
 async def test_current_async(graph_comm):
     comm, conf = graph_comm
 
     # test that the graph list is as expected
-    assert await comm.current == 'graph'
-    assert await comm.select('graph2')
-    assert await comm.current == 'graph2'
+    assert await comm.current == "graph"
+    assert await comm.select("graph2")
+    assert await comm.current == "graph2"
 
 
-@pytest.mark.parametrize('graph_comm',
-                         [
-                            {'list_graphs': {'graph'}, 'create_graph': None},
-                         ],
-                         indirect=True)
+@pytest.mark.parametrize(
+    "graph_comm",
+    [
+        {"list_graphs": {"graph"}, "create_graph": None},
+    ],
+    indirect=True,
+)
 def test_current(graph_comm):
     comm, conf = graph_comm
 
     # test that the graph list is as expected
-    assert comm.current == 'graph'
-    assert comm.select('graph2')
-    assert comm.current == 'graph2'
+    assert comm.current == "graph"
+    assert comm.select("graph2")
+    assert comm.current == "graph2"
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize('graph_comm',
-                         [
-                            (True, {'list_graphs': set()}),
-                            (True, {'list_graphs': {'graph'}}),
-                            (True, {'list_graphs': {'graph1', 'graph2'}}),
-                         ],
-                         indirect=True)
+@pytest.mark.parametrize(
+    "graph_comm",
+    [
+        (True, {"list_graphs": set()}),
+        (True, {"list_graphs": {"graph"}}),
+        (True, {"list_graphs": {"graph1", "graph2"}}),
+    ],
+    indirect=True,
+)
 async def test_list_graphs_async(graph_comm):
     comm, conf = graph_comm
 
     # test that the graph list is as expected
-    assert await comm.active == conf['list_graphs']
+    assert await comm.active == conf["list_graphs"]
 
 
-@pytest.mark.parametrize('graph_comm',
-                         [
-                            {'list_graphs': set()},
-                            {'list_graphs': {'graph'}},
-                            {'list_graphs': {'graph1', 'graph2'}},
-                         ],
-                         indirect=True)
+@pytest.mark.parametrize(
+    "graph_comm",
+    [
+        {"list_graphs": set()},
+        {"list_graphs": {"graph"}},
+        {"list_graphs": {"graph1", "graph2"}},
+    ],
+    indirect=True,
+)
 def test_list_graphs(graph_comm):
     comm, conf = graph_comm
 
     # test that the graph list is as expected
-    assert comm.active == conf['list_graphs']
+    assert comm.active == conf["list_graphs"]
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize('graph_comm',
-                         [
-                            (True, {'get_versions': (3, 0), 'get_graph_version': 3, 'get_features_version': 0}),
-                            (True, {'get_versions': (0, 0), 'get_graph_version': 0, 'get_features_version': 0}),
-                         ],
-                         indirect=True)
+@pytest.mark.parametrize(
+    "graph_comm",
+    [
+        (True, {"get_versions": (3, 0), "get_graph_version": 3, "get_features_version": 0}),
+        (True, {"get_versions": (0, 0), "get_graph_version": 0, "get_features_version": 0}),
+    ],
+    indirect=True,
+)
 async def test_versions_async(graph_comm):
     comm, conf = graph_comm
 
     # test the version properties of the comm handler
-    assert await comm.versions == conf['get_versions']
-    assert await comm.graphVersion == conf['get_graph_version']
-    assert await comm.featuresVersion == conf['get_features_version']
+    assert await comm.versions == conf["get_versions"]
+    assert await comm.graphVersion == conf["get_graph_version"]
+    assert await comm.featuresVersion == conf["get_features_version"]
 
 
-@pytest.mark.parametrize('graph_comm',
-                         [
-                            {'get_versions': (3, 0), 'get_graph_version': 3, 'get_features_version': 0},
-                            {'get_versions': (0, 0), 'get_graph_version': 0, 'get_features_version': 0},
-                         ],
-                         indirect=True)
+@pytest.mark.parametrize(
+    "graph_comm",
+    [
+        {"get_versions": (3, 0), "get_graph_version": 3, "get_features_version": 0},
+        {"get_versions": (0, 0), "get_graph_version": 0, "get_features_version": 0},
+    ],
+    indirect=True,
+)
 def test_versions(graph_comm):
     comm, conf = graph_comm
 
     # test the version properties of the comm handler
-    assert comm.versions == conf['get_versions']
-    assert comm.graphVersion == conf['get_graph_version']
-    assert comm.featuresVersion == conf['get_features_version']
+    assert comm.versions == conf["get_versions"]
+    assert comm.graphVersion == conf["get_graph_version"]
+    assert comm.featuresVersion == conf["get_features_version"]
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize('graph_comm',
-                         [
-                            (
-                                True,
-                                {
-                                    'get_names': {'cspad', 'delta_t', 'laser'},
-                                    'get_sources': {'cspad': float, 'delta_t': int, 'laser': int},
-                                    'get_features': {'cspad_img': np.ndarray},
-                                    'get_exports': {'cspad', 'delta_t', 'laser'},
-                                }
-                            ),
-                            (True, {'get_names': set(), 'get_sources':  {}, 'get_features': {}, 'get_exports': set()}),
-                         ],
-                         indirect=True)
+@pytest.mark.parametrize(
+    "graph_comm",
+    [
+        (
+            True,
+            {
+                "get_names": {"cspad", "delta_t", "laser"},
+                "get_sources": {"cspad": float, "delta_t": int, "laser": int},
+                "get_features": {"cspad_img": np.ndarray},
+                "get_exports": {"cspad", "delta_t", "laser"},
+            },
+        ),
+        (True, {"get_names": set(), "get_sources": {}, "get_features": {}, "get_exports": set()}),
+    ],
+    indirect=True,
+)
 async def test_names_async(graph_comm):
     comm, conf = graph_comm
 
     # test the names of features property give the expected value
-    assert await comm.names == conf['get_names']
-    assert await comm.sources == conf['get_sources']
-    assert await comm.features == conf['get_features']
-    assert await comm.exports == conf['get_exports']
+    assert await comm.names == conf["get_names"]
+    assert await comm.sources == conf["get_sources"]
+    assert await comm.features == conf["get_features"]
+    assert await comm.exports == conf["get_exports"]
 
 
-@pytest.mark.parametrize('graph_comm',
-                         [
-                            {
-                                'get_names': {'cspad', 'delta_t', 'laser'},
-                                'get_sources': {'cspad': float, 'delta_t': int, 'laser': int},
-                                'get_features': {'cspad_img': np.ndarray},
-                                'get_exports': {'cspad', 'delta_t', 'laser'},
-                            },
-                            {'get_names': set(), 'get_sources':  {}, 'get_features': {}, 'get_exports': set()},
-                         ],
-                         indirect=True)
+@pytest.mark.parametrize(
+    "graph_comm",
+    [
+        {
+            "get_names": {"cspad", "delta_t", "laser"},
+            "get_sources": {"cspad": float, "delta_t": int, "laser": int},
+            "get_features": {"cspad_img": np.ndarray},
+            "get_exports": {"cspad", "delta_t", "laser"},
+        },
+        {"get_names": set(), "get_sources": {}, "get_features": {}, "get_exports": set()},
+    ],
+    indirect=True,
+)
 def test_names(graph_comm):
     comm, conf = graph_comm
 
     # test the names of features property give the expected value
-    assert comm.names == conf['get_names']
-    assert comm.sources == conf['get_sources']
-    assert comm.features == conf['get_features']
-    assert comm.exports == conf['get_exports']
+    assert comm.names == conf["get_names"]
+    assert comm.sources == conf["get_sources"]
+    assert comm.features == conf["get_features"]
+    assert comm.exports == conf["get_exports"]
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize('graph_comm',
-                         [(True, {'clear_graph': None, 'reset_features': None, 'create_graph': None})],
-                         indirect=True)
+@pytest.mark.parametrize(
+    "graph_comm", [(True, {"clear_graph": None, "reset_features": None, "create_graph": None})], indirect=True
+)
 async def test_commands_async(graph_comm):
     comm, conf = graph_comm
 
@@ -361,9 +383,9 @@ async def test_commands_async(graph_comm):
     assert await comm.create()
 
 
-@pytest.mark.parametrize('graph_comm',
-                         [{'clear_graph': None, 'reset_features': None, 'create_graph': None}],
-                         indirect=True)
+@pytest.mark.parametrize(
+    "graph_comm", [{"clear_graph": None, "reset_features": None, "create_graph": None}], indirect=True
+)
 def test_commands(graph_comm):
     comm, conf = graph_comm
 
@@ -373,9 +395,7 @@ def test_commands(graph_comm):
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize('graph_comm',
-                         [(True, {'set_graph': 'graph', 'get_graph': 'graph'})],
-                         indirect=True)
+@pytest.mark.parametrize("graph_comm", [(True, {"set_graph": "graph", "get_graph": "graph"})], indirect=True)
 async def test_graph_async(graph_comm, complex_graph):
     comm, conf = graph_comm
 
@@ -391,9 +411,7 @@ async def test_graph_async(graph_comm, complex_graph):
     assert (await comm.graph).sources == complex_graph.sources
 
 
-@pytest.mark.parametrize('graph_comm',
-                         [{'set_graph': 'graph', 'get_graph': 'graph'}],
-                         indirect=True)
+@pytest.mark.parametrize("graph_comm", [{"set_graph": "graph", "get_graph": "graph"}], indirect=True)
 def test_graph(graph_comm, complex_graph):
     comm, conf = graph_comm
 
@@ -410,17 +428,11 @@ def test_graph(graph_comm, complex_graph):
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize('graph_comm',
-                         [(
-                            True,
-                            {
-                              'set_graph': 'graph',
-                              'get_graph': 'graph',
-                              'add_graph': 'add_graph',
-                              'del_graph': 'del_graph'
-                            }
-                         )],
-                         indirect=True)
+@pytest.mark.parametrize(
+    "graph_comm",
+    [(True, {"set_graph": "graph", "get_graph": "graph", "add_graph": "add_graph", "del_graph": "del_graph"})],
+    indirect=True,
+)
 async def test_modify_graph_async(graph_comm, complex_graph):
     comm, conf = graph_comm
 
@@ -428,29 +440,29 @@ async def test_modify_graph_async(graph_comm, complex_graph):
     assert await comm.update(complex_graph)
 
     # add a view to the graph
-    assert await comm.view('cspad')
+    assert await comm.view("cspad")
     # check that it is in the graph
-    assert comm.auto('cspad') in (await comm.graph).names
+    assert comm.auto("cspad") in (await comm.graph).names
     # remove the view
-    assert await comm.remove('%s_view' % comm.auto('cspad'))
-    assert comm.auto('cspad') not in (await comm.graph).names
+    assert await comm.remove("%s_view" % comm.auto("cspad"))
+    assert comm.auto("cspad") not in (await comm.graph).names
 
     # add multiple views to the graph
-    names_to_view = {'cspad': None, 'delta_t': None}
+    names_to_view = {"cspad": None, "delta_t": None}
     assert await comm.view(names_to_view)
     # check that the views are in the graph
-    assert comm.auto('cspad') in (await comm.graph).names
-    assert comm.auto('delta_t') in (await comm.graph).names
+    assert comm.auto("cspad") in (await comm.graph).names
+    assert comm.auto("delta_t") in (await comm.graph).names
     # remove the views
     assert await comm.unview(list(names_to_view.keys()))
-    assert comm.auto('cspad') not in (await comm.graph).names
-    assert comm.auto('delta_t') not in (await comm.graph).names
+    assert comm.auto("cspad") not in (await comm.graph).names
+    assert comm.auto("delta_t") not in (await comm.graph).names
 
     # Test the various addNode functions of comm handler
     functions_to_test = {
-        comm.addMap:        ('test_map', 'signal', 'test_value', (lambda x: x + 2,)),
-        comm.addPickN:      ('test_pickn', 'cspad', 'test_pick_val', (2,)),
-        comm.addReduce:     ('test_reduce', ['delta_t', 'laser'], 'test_reduce_value', ()),
+        comm.addMap: ("test_map", "signal", "test_value", (lambda x: x + 2,)),
+        comm.addPickN: ("test_pickn", "cspad", "test_pick_val", (2,)),
+        comm.addReduce: ("test_reduce", ["delta_t", "laser"], "test_reduce_value", ()),
     }
 
     # Loop over the set of functions to test
@@ -463,14 +475,11 @@ async def test_modify_graph_async(graph_comm, complex_graph):
         assert output not in (await comm.graph).names
 
 
-@pytest.mark.parametrize('graph_comm',
-                         [{
-                            'set_graph': 'graph',
-                            'get_graph': 'graph',
-                            'add_graph': 'add_graph',
-                            'del_graph': 'del_graph'
-                         }],
-                         indirect=True)
+@pytest.mark.parametrize(
+    "graph_comm",
+    [{"set_graph": "graph", "get_graph": "graph", "add_graph": "add_graph", "del_graph": "del_graph"}],
+    indirect=True,
+)
 def test_modify_graph(graph_comm, complex_graph):
     comm, conf = graph_comm
 
@@ -478,29 +487,29 @@ def test_modify_graph(graph_comm, complex_graph):
     assert comm.update(complex_graph)
 
     # add a view to the graph
-    assert comm.view('cspad')
+    assert comm.view("cspad")
     # check that it is in the graph
-    assert comm.auto('cspad') in comm.graph.names
+    assert comm.auto("cspad") in comm.graph.names
     # remove the view
-    assert comm.remove('%s_view' % comm.auto('cspad'))
-    assert comm.auto('cspad') not in comm.graph.names
+    assert comm.remove("%s_view" % comm.auto("cspad"))
+    assert comm.auto("cspad") not in comm.graph.names
 
     # add multiple views to the graph
-    names_to_view = {'cspad': None, 'delta_t': None}
+    names_to_view = {"cspad": None, "delta_t": None}
     assert comm.view(names_to_view)
     # check that the views are in the graph
-    assert comm.auto('cspad') in comm.graph.names
-    assert comm.auto('delta_t') in comm.graph.names
+    assert comm.auto("cspad") in comm.graph.names
+    assert comm.auto("delta_t") in comm.graph.names
     # remove the views
     assert comm.unview(list(names_to_view.keys()))
-    assert comm.auto('cspad') not in comm.graph.names
-    assert comm.auto('delta_t') not in comm.graph.names
+    assert comm.auto("cspad") not in comm.graph.names
+    assert comm.auto("delta_t") not in comm.graph.names
 
     # Test the various addNode functions of comm handler
     functions_to_test = {
-        comm.addMap:        ('test_map', 'signal', 'test_value', (lambda x: x + 2,)),
-        comm.addPickN:      ('test_pickn', 'cspad', 'test_pick_val', (2,)),
-        comm.addReduce:     ('test_reduce', ['delta_t', 'laser'], 'test_reduce_value', ()),
+        comm.addMap: ("test_map", "signal", "test_value", (lambda x: x + 2,)),
+        comm.addPickN: ("test_pickn", "cspad", "test_pick_val", (2,)),
+        comm.addReduce: ("test_reduce", ["delta_t", "laser"], "test_reduce_value", ()),
     }
 
     # Loop over the set of functions to test
@@ -515,55 +524,53 @@ def test_modify_graph(graph_comm, complex_graph):
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize('graph_comm',
-                         [
-                            (True, {'fetch': {'cspad': 5, '_auto_opal': 6}}),
-                            (True, {'fetch': {'cspad': 'apple', '_auto_opal': 'orange'}})
-                         ],
-                         indirect=True)
+@pytest.mark.parametrize(
+    "graph_comm",
+    [(True, {"fetch": {"cspad": 5, "_auto_opal": 6}}), (True, {"fetch": {"cspad": "apple", "_auto_opal": "orange"}})],
+    indirect=True,
+)
 async def test_fetch_async(graph_comm):
     comm, conf = graph_comm
 
     # test we can fetch something we expect
-    assert await comm.fetch('cspad') == conf['fetch']['cspad']
+    assert await comm.fetch("cspad") == conf["fetch"]["cspad"]
     # test the feature where you can fetch names generated by view by regular name
-    assert await comm.fetch(comm.auto('opal')) == conf['fetch'][comm.auto('opal')]
-    assert await comm.fetch('opal') == conf['fetch'][comm.auto('opal')]
+    assert await comm.fetch(comm.auto("opal")) == conf["fetch"][comm.auto("opal")]
+    assert await comm.fetch("opal") == conf["fetch"][comm.auto("opal")]
     # check that None is return when we ask for something that isn't there
-    assert await comm.fetch('delta_t') is None
+    assert await comm.fetch("delta_t") is None
 
     # test bulk fetch for things that aren't there
-    assert await comm.fetch(['delta_t', 'laser']) is None
+    assert await comm.fetch(["delta_t", "laser"]) is None
     # test bulk fetch where one item is not there
-    assert await comm.fetch(['cspad', 'delta_t']) == [conf['fetch']['cspad'], None]
+    assert await comm.fetch(["cspad", "delta_t"]) == [conf["fetch"]["cspad"], None]
     # test bulk fetch where all items are there
-    assert await comm.fetch(['cspad', comm.auto('opal')]) == [conf['fetch']['cspad'], conf['fetch'][comm.auto('opal')]]
+    assert await comm.fetch(["cspad", comm.auto("opal")]) == [conf["fetch"]["cspad"], conf["fetch"][comm.auto("opal")]]
     # test the feature where you can fetch names generated by view by regular name
-    assert await comm.fetch(['cspad', 'opal']) == [conf['fetch']['cspad'], conf['fetch'][comm.auto('opal')]]
+    assert await comm.fetch(["cspad", "opal"]) == [conf["fetch"]["cspad"], conf["fetch"][comm.auto("opal")]]
 
 
-@pytest.mark.parametrize('graph_comm',
-                         [
-                            {'fetch': {'cspad': 5, '_auto_opal': 6}},
-                            {'fetch': {'cspad': 'apple', '_auto_opal': 'orange'}}
-                         ],
-                         indirect=True)
+@pytest.mark.parametrize(
+    "graph_comm",
+    [{"fetch": {"cspad": 5, "_auto_opal": 6}}, {"fetch": {"cspad": "apple", "_auto_opal": "orange"}}],
+    indirect=True,
+)
 def test_fetch(graph_comm):
     comm, conf = graph_comm
 
     # test we can fetch something we expect
-    assert comm.fetch('cspad') == conf['fetch']['cspad']
+    assert comm.fetch("cspad") == conf["fetch"]["cspad"]
     # test the feature where you can fetch names generated by view by regular name
-    assert comm.fetch(comm.auto('opal')) == conf['fetch'][comm.auto('opal')]
-    assert comm.fetch('opal') == conf['fetch'][comm.auto('opal')]
+    assert comm.fetch(comm.auto("opal")) == conf["fetch"][comm.auto("opal")]
+    assert comm.fetch("opal") == conf["fetch"][comm.auto("opal")]
     # check that None is return when we ask for something that isn't there
-    assert comm.fetch('delta_t') is None
+    assert comm.fetch("delta_t") is None
 
     # test bulk fetch for things that aren't there
-    assert comm.fetch(['delta_t', 'laser']) is None
+    assert comm.fetch(["delta_t", "laser"]) is None
     # test bulk fetch where one item is not there
-    assert comm.fetch(['cspad', 'delta_t']) == [conf['fetch']['cspad'], None]
+    assert comm.fetch(["cspad", "delta_t"]) == [conf["fetch"]["cspad"], None]
     # test bulk fetch where all items are there
-    assert comm.fetch(['cspad', comm.auto('opal')]) == [conf['fetch']['cspad'], conf['fetch'][comm.auto('opal')]]
+    assert comm.fetch(["cspad", comm.auto("opal")]) == [conf["fetch"]["cspad"], conf["fetch"][comm.auto("opal")]]
     # test the feature where you can fetch names generated by view by regular name
-    assert comm.fetch(['cspad', 'opal']) == [conf['fetch']['cspad'], conf['fetch'][comm.auto('opal')]]
+    assert comm.fetch(["cspad", "opal"]) == [conf["fetch"]["cspad"], conf["fetch"][comm.auto("opal")]]

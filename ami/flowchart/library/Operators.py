@@ -1,13 +1,14 @@
-from typing import Union, Any
-from qtpy import QtCore, QtWidgets
-from amitypes import Array1d, Array2d, Array3d
-from ami.flowchart.library.common import CtrlNode, GroupedNode, generateUi
-from ami.flowchart.library.CalculatorWidget import CalculatorWidget, FilterWidget, gen_filter_func, sanitize_name
-import ami.graph_nodes as gn
-import numpy as np
-import itertools
 import collections
+import itertools
+from typing import Any, Union
 
+import numpy as np
+from amitypes import Array1d, Array2d, Array3d
+from qtpy import QtCore, QtWidgets
+
+import ami.graph_nodes as gn
+from ami.flowchart.library.CalculatorWidget import CalculatorWidget, FilterWidget, gen_filter_func, sanitize_name
+from ami.flowchart.library.common import CtrlNode, GroupedNode, generateUi
 
 
 class ConstantWidget(QtWidgets.QWidget):
@@ -22,20 +23,13 @@ class ConstantWidget(QtWidgets.QWidget):
         self.layout = QtWidgets.QFormLayout()
         self.setLayout(self.layout)
 
-        functions = [
-            'float',
-            'np.arange',
-            'np.linspace',
-            'np.zeros',
-            'np.ones',
-            'np.full'
-        ]
+        functions = ["float", "np.arange", "np.linspace", "np.zeros", "np.ones", "np.full"]
 
-        combo_fct = [['function', 'combo', {'values': functions}]]
+        combo_fct = [["function", "combo", {"values": functions}]]
         self.func_group = generateUi(combo_fct)
         self.layout.addRow(self.func_group[0])
 
-        self.w_combo = self.func_group[1].findWidget('function')
+        self.w_combo = self.func_group[1].findWidget("function")
         self.w_combo.currentTextChanged.connect(self.update_args_ui)
 
         self.args_group = None
@@ -46,31 +40,31 @@ class ConstantWidget(QtWidgets.QWidget):
         if self.args_group is not None:
             self.clear_args_ui()
 
-        if fct_name == 'float':
-            args_group = [['float', 'doubleSpin', {'value': 0, 'group': 'args'}]]
-        elif fct_name == 'np.arange':
+        if fct_name == "float":
+            args_group = [["float", "doubleSpin", {"value": 0, "group": "args"}]]
+        elif fct_name == "np.arange":
             args_group = [
-                    ['start', 'doubleSpin', {'value': 0, 'group': 'args'}],
-                    ['end', 'doubleSpin', {'value': 0, 'group': 'args'}],
-                    ['step', 'doubleSpin', {'value': 0, 'group': 'args'}]
-                ]
-        elif fct_name == 'np.linspace':
+                ["start", "doubleSpin", {"value": 0, "group": "args"}],
+                ["end", "doubleSpin", {"value": 0, "group": "args"}],
+                ["step", "doubleSpin", {"value": 0, "group": "args"}],
+            ]
+        elif fct_name == "np.linspace":
             args_group = [
-                    ['start', 'doubleSpin', {'value': 0, 'group': 'args'}],
-                    ['end', 'doubleSpin', {'value': 0, 'group': 'args'}],
-                    ['n_step', 'intSpin', {'value': 0, 'group': 'args'}]
-                ]
-        elif fct_name == 'np.zeros' or fct_name == 'np.ones':
+                ["start", "doubleSpin", {"value": 0, "group": "args"}],
+                ["end", "doubleSpin", {"value": 0, "group": "args"}],
+                ["n_step", "intSpin", {"value": 0, "group": "args"}],
+            ]
+        elif fct_name == "np.zeros" or fct_name == "np.ones":
             args_group = [
-                    ['m', 'intSpin', {'value': 0, 'group': 'args'}],
-                    ['n', 'intSpin', {'value': 0, 'group': 'args'}],
-                ]
-        elif fct_name == 'np.full':
+                ["m", "intSpin", {"value": 0, "group": "args"}],
+                ["n", "intSpin", {"value": 0, "group": "args"}],
+            ]
+        elif fct_name == "np.full":
             args_group = [
-                    ['m', 'intSpin', {'value': 0, 'group': 'args'}],
-                    ['n', 'intSpin', {'value': 0, 'group': 'args'}],
-                    ['value', 'doubleSpin', {'value': 0, 'group': 'args'}],
-                ]
+                ["m", "intSpin", {"value": 0, "group": "args"}],
+                ["n", "intSpin", {"value": 0, "group": "args"}],
+                ["value", "doubleSpin", {"value": 0, "group": "args"}],
+            ]
 
         self.args_group = generateUi(args_group)
         self.args_ui, self.args_stateGroup, args_ctrls, args_values = self.args_group
@@ -82,30 +76,29 @@ class ConstantWidget(QtWidgets.QWidget):
 
     def clear_args_ui(self):
         self.layout.removeWidget(self.args_ui)
-        self.args_group[2]['args']['groupbox'].deleteLater()
+        self.args_group[2]["args"]["groupbox"].deleteLater()
 
     def state_changed(self, *args, **kwargs):
         state = self.get_state()
-        self.sigStateChanged.emit('widget_state', '', state)
+        self.sigStateChanged.emit("widget_state", "", state)
 
     def saveState(self, *args, **kwargs):
         state = self.get_state()
         return state
 
     def restoreState(self, state):
-        self.w_combo.setCurrentText(state['function'])
+        self.w_combo.setCurrentText(state["function"])
         self.update_args_ui(self.w_combo.currentText())
-        self.args_stateGroup.setState(state['args'])
+        self.args_stateGroup.setState(state["args"])
         return
 
     def get_state(self):
         state = self.args_stateGroup.state()
-        state['function'] = self.w_combo.currentText()
+        state["function"] = self.w_combo.currentText()
         return state
 
 
 class Constant(CtrlNode):
-
     """
     Constant
     """
@@ -113,8 +106,8 @@ class Constant(CtrlNode):
     nodeName = "Constant"
 
     def __init__(self, name):
-        super().__init__(name, terminals={"Out": {'io': 'out', 'ttype': Any}})
-        self.values = {'widget_state' : {'args': {'float': 0}, 'function': 'float'}}
+        super().__init__(name, terminals={"Out": {"io": "out", "ttype": Any}})
+        self.values = {"widget_state": {"args": {"float": 0}, "function": "float"}}
 
     def display(self, topics, terms, addr, win, **kwargs):
         if self.widget is None:
@@ -123,26 +116,25 @@ class Constant(CtrlNode):
         return self.widget
 
     def to_operation(self, **kwargs):
-        fct = self.values['widget_state']['function']
-        args = self.values['widget_state']['args']
+        fct = self.values["widget_state"]["function"]
+        args = self.values["widget_state"]["args"]
 
-        if fct == 'float':
-           output = float(args['float'])
-        elif fct == 'np.arange':
-           output = np.arange(args['start'], args['end'], args['step'])
-        elif fct == 'np.linspace':
-           output = np.linspace(args['start'], args['end'], args['n_step'])
-        elif fct == 'np.zeros':
-           output = np.zeros((args['m'], args['n']))
-        elif fct == 'np.ones':
-           output = np.ones((args['m'], args['n']))
-        elif fct == 'np.full':
-           output = np.full((args['m'], args['n']), args['value'])
-        return gn.Map(name=self.name()+"_operation", **kwargs, func=lambda: output)
+        if fct == "float":
+            output = float(args["float"])
+        elif fct == "np.arange":
+            output = np.arange(args["start"], args["end"], args["step"])
+        elif fct == "np.linspace":
+            output = np.linspace(args["start"], args["end"], args["n_step"])
+        elif fct == "np.zeros":
+            output = np.zeros((args["m"], args["n"]))
+        elif fct == "np.ones":
+            output = np.ones((args["m"], args["n"]))
+        elif fct == "np.full":
+            output = np.full((args["m"], args["n"]), args["value"])
+        return gn.Map(name=self.name() + "_operation", **kwargs, func=lambda: output)
 
 
 class Identity(GroupedNode):
-
     """
     Identity
     """
@@ -150,16 +142,15 @@ class Identity(GroupedNode):
     nodeName = "Identity"
 
     def __init__(self, name):
-        super().__init__(name, terminals={"In": {'io': 'in', 'ttype': Any},
-                                          "Out": {'io': 'out', 'ttype': Any}},
-                         allowAddInput=True)
+        super().__init__(
+            name, terminals={"In": {"io": "in", "ttype": Any}, "Out": {"io": "out", "ttype": Any}}, allowAddInput=True
+        )
 
     def to_operation(self, **kwargs):
-        return gn.Map(name=self.name()+"_operation", **kwargs, func=lambda *args: args)
+        return gn.Map(name=self.name() + "_operation", **kwargs, func=lambda *args: args)
 
 
 class MeanVsScan(CtrlNode):
-
     """
     MeanVsScan creates a histogram using a variable number of bins.
 
@@ -167,47 +158,53 @@ class MeanVsScan(CtrlNode):
     """
 
     nodeName = "MeanVsScan"
-    uiTemplate = [('binned', 'check', {'checked': False}),
-                  ('bins', 'intSpin', {'value': 10, 'min': 1}),
-                  ('min', 'intSpin', {'value': 0}),
-                  ('max', 'intSpin', {'value': 10})]
+    uiTemplate = [
+        ("binned", "check", {"checked": False}),
+        ("bins", "intSpin", {"value": 10, "min": 1}),
+        ("min", "intSpin", {"value": 0}),
+        ("max", "intSpin", {"value": 10}),
+    ]
 
     def __init__(self, name):
-        super().__init__(name, global_op=True,
-                         terminals={
-                             'Bin': {'io': 'in', 'ttype': float},
-                             'Value': {'io': 'in', 'ttype': float},
-                             'Bins': {'io': 'out', 'ttype': Array1d},
-                             'Counts': {'io': 'out', 'ttype': Array1d},
-                         },
-                         allowAddInput=True
-                         )
+        super().__init__(
+            name,
+            global_op=True,
+            terminals={
+                "Bin": {"io": "in", "ttype": float},
+                "Value": {"io": "in", "ttype": float},
+                "Bins": {"io": "out", "ttype": Array1d},
+                "Counts": {"io": "out", "ttype": Array1d},
+            },
+            allowAddInput=True,
+        )
 
     def addInput(self, **args):
         group = self.nextGroupName()
-        self.addTerminal(name="Value", io='in', ttype=float, group=group, **args)
-        self.addTerminal(name="Counts", io='out', ttype=Array1d, group=group, **args)
+        self.addTerminal(name="Value", io="in", ttype=float, group=group, **args)
+        self.addTerminal(name="Counts", io="out", ttype=Array1d, group=group, **args)
         return
 
     def to_operation(self, inputs, outputs, **kwargs):
         outputs = self.output_vars()
 
-        if self.values['binned']:
+        if self.values["binned"]:
             return self.get_gnodes_binned(inputs, outputs, **kwargs)
         else:
             return self.get_gnodes(inputs, outputs, **kwargs)
 
     def get_gnodes_binned(self, inputs, outputs, **kwargs):
-        bins = np.histogram_bin_edges(np.arange(self.values['min'], self.values['max']),
-                                        bins=self.values['bins'],
-                                        range=(self.values['min'], self.values['max']))
-        value_inputs = {k: v for k,v in inputs.items() if 'Bin' not in k}
+        bins = np.histogram_bin_edges(
+            np.arange(self.values["min"], self.values["max"]),
+            bins=self.values["bins"],
+            range=(self.values["min"], self.values["max"]),
+        )
+        value_inputs = {k: v for k, v in inputs.items() if "Bin" not in k}
         n_values = len(value_inputs)
 
-        value_array_outputs = [self.name()+'_value_array']
-        map_outputs = [self.name()+'_bin', self.name()+'_map_count']
-        reduce_outputs = [self.name()+'_reduce_count']
-        mean_outputs = [self.name()+'_mean_outputs']
+        value_array_outputs = [self.name() + "_value_array"]
+        map_outputs = [self.name() + "_bin", self.name() + "_map_count"]
+        reduce_outputs = [self.name() + "_reduce_count"]
+        mean_outputs = [self.name() + "_mean_outputs"]
 
         def values_array(*value_inputs):
             return np.asarray(value_inputs)
@@ -216,10 +213,10 @@ class MeanVsScan(CtrlNode):
             return np.digitize(k, bins), (v, 1)
 
         def mean(d):
-            res = {bins[i]: [0]*n_values for i in range(0, bins.size)}
+            res = {bins[i]: [0] * n_values for i in range(0, bins.size)}
             for k, v in d.items():
                 try:
-                    res[bins[k]] = v[0]/v[1]
+                    res[bins[k]] = v[0] / v[1]
                 except IndexError:
                     pass
             keys, values = zip(*sorted(res.items()))
@@ -238,41 +235,45 @@ class MeanVsScan(CtrlNode):
             return tuple([bins]) + tuple(mean_values)
 
         gnodes = [
-            gn.Map(name=self.name()+'_array',
-                   inputs = value_inputs,
-                   outputs = value_array_outputs,
-                   func = values_array,
-                   **kwargs),
-            gn.Map(name = self.name()+'_map',
-                   inputs = [inputs['Bin']] + value_array_outputs,
-                   outputs = map_outputs,
-                   func = bin_func, 
-                   **kwargs),
-            gn.ReduceByKey(name = self.name()+'_reduce',
-                           inputs = map_outputs,
-                           outputs = reduce_outputs,
-                           reduction = lambda cv, v: (cv[0]+v[0], cv[1]+v[1]),
-                           **kwargs),
-            gn.Map(name=self.name()+'_mean',
-                   inputs = reduce_outputs,
-                   outputs = mean_outputs,
-                   func = mean,
-                   **kwargs),
-            gn.Map(name = self.name()+'_distribute_outputs',
-                   inputs = mean_outputs,
-                   outputs = outputs,
-                   func = distribute_outputs,
-                   **kwargs)
+            gn.Map(
+                name=self.name() + "_array",
+                inputs=value_inputs,
+                outputs=value_array_outputs,
+                func=values_array,
+                **kwargs,
+            ),
+            gn.Map(
+                name=self.name() + "_map",
+                inputs=[inputs["Bin"]] + value_array_outputs,
+                outputs=map_outputs,
+                func=bin_func,
+                **kwargs,
+            ),
+            gn.ReduceByKey(
+                name=self.name() + "_reduce",
+                inputs=map_outputs,
+                outputs=reduce_outputs,
+                reduction=lambda cv, v: (cv[0] + v[0], cv[1] + v[1]),
+                **kwargs,
+            ),
+            gn.Map(name=self.name() + "_mean", inputs=reduce_outputs, outputs=mean_outputs, func=mean, **kwargs),
+            gn.Map(
+                name=self.name() + "_distribute_outputs",
+                inputs=mean_outputs,
+                outputs=outputs,
+                func=distribute_outputs,
+                **kwargs,
+            ),
         ]
         return gnodes
 
     def get_gnodes(self, inputs, outputs, **kwargs):
-        value_inputs = {k: v for k,v in inputs.items() if 'Bin' not in k}
+        value_inputs = {k: v for k, v in inputs.items() if "Bin" not in k}
 
-        value_array_outputs = [self.name()+'_value_array']
-        map_outputs = [self.name()+'_map_count']
-        reduce_outputs = [self.name()+'_reduce_count']
-        mean_outputs = [self.name()+'_mean_outputs']
+        value_array_outputs = [self.name() + "_value_array"]
+        map_outputs = [self.name() + "_map_count"]
+        reduce_outputs = [self.name() + "_reduce_count"]
+        mean_outputs = [self.name() + "_mean_outputs"]
 
         def values_array(*value_inputs):
             return np.asarray(value_inputs)
@@ -280,7 +281,7 @@ class MeanVsScan(CtrlNode):
         def mean(d):
             res = {}
             for k, v in d.items():
-                res[k] = v[0]/v[1]
+                res[k] = v[0] / v[1]
             keys, values = zip(*sorted(res.items()))
             return np.array(keys), np.array(values)
 
@@ -297,37 +298,40 @@ class MeanVsScan(CtrlNode):
             return tuple([bins]) + tuple(mean_values)
 
         gnodes = [
-            gn.Map(name=self.name()+'_array',
-                   inputs=value_inputs,
-                   outputs=value_array_outputs,
-                   func=values_array,
-                   **kwargs),
-            gn.Map(name=self.name()+'_map',
-                   inputs=value_array_outputs,
-                   outputs=map_outputs,
-                   func=lambda a: (a, 1),
-                   **kwargs),
-            gn.ReduceByKey(name=self.name()+'_reduce',
-                           inputs=[inputs['Bin']] + map_outputs,
-                           outputs=reduce_outputs,
-                           reduction=lambda cv, v: (cv[0]+v[0], cv[1]+v[1]),
-                           **kwargs),
-            gn.Map(name=self.name()+'_mean',
-                   inputs=reduce_outputs,
-                   outputs=mean_outputs,
-                   func=mean,
-                   **kwargs),
-            gn.Map(name=self.name()+'_distribute_outputs',
-                   inputs=mean_outputs,
-                   outputs=outputs,
-                   func=distribute_outputs,
-                   **kwargs)
+            gn.Map(
+                name=self.name() + "_array",
+                inputs=value_inputs,
+                outputs=value_array_outputs,
+                func=values_array,
+                **kwargs,
+            ),
+            gn.Map(
+                name=self.name() + "_map",
+                inputs=value_array_outputs,
+                outputs=map_outputs,
+                func=lambda a: (a, 1),
+                **kwargs,
+            ),
+            gn.ReduceByKey(
+                name=self.name() + "_reduce",
+                inputs=[inputs["Bin"]] + map_outputs,
+                outputs=reduce_outputs,
+                reduction=lambda cv, v: (cv[0] + v[0], cv[1] + v[1]),
+                **kwargs,
+            ),
+            gn.Map(name=self.name() + "_mean", inputs=reduce_outputs, outputs=mean_outputs, func=mean, **kwargs),
+            gn.Map(
+                name=self.name() + "_distribute_outputs",
+                inputs=mean_outputs,
+                outputs=outputs,
+                func=distribute_outputs,
+                **kwargs,
+            ),
         ]
         return gnodes
 
 
 class MeanWaveformVsScan(CtrlNode):
-
     """
     MeanWaveformVsScan creates a 2d histogram using a variable number of bins.
 
@@ -335,28 +339,35 @@ class MeanWaveformVsScan(CtrlNode):
     """
 
     nodeName = "MeanWaveformVsScan"
-    uiTemplate = [('binned', 'check', {'checked': False}),
-                  ('bins', 'intSpin', {'value': 10, 'min': 1}),
-                  ('min', 'intSpin', {'value': 0}),
-                  ('max', 'intSpin', {'value': 10})]
+    uiTemplate = [
+        ("binned", "check", {"checked": False}),
+        ("bins", "intSpin", {"value": 10, "min": 1}),
+        ("min", "intSpin", {"value": 0}),
+        ("max", "intSpin", {"value": 10}),
+    ]
 
     def __init__(self, name):
-        super().__init__(name, global_op=True,
-                         terminals={
-                             'Bin': {'io': 'in', 'ttype': float},
-                             'Value': {'io': 'in', 'ttype': Array1d},
-                             'X Bins': {'io': 'out', 'ttype': Array1d},
-                             'Y Bins': {'io': 'out', 'ttype': Array1d},
-                             'Counts': {'io': 'out', 'ttype': Array2d}
-                         })
+        super().__init__(
+            name,
+            global_op=True,
+            terminals={
+                "Bin": {"io": "in", "ttype": float},
+                "Value": {"io": "in", "ttype": Array1d},
+                "X Bins": {"io": "out", "ttype": Array1d},
+                "Y Bins": {"io": "out", "ttype": Array1d},
+                "Counts": {"io": "out", "ttype": Array2d},
+            },
+        )
 
     def to_operation(self, inputs, outputs, **kwargs):
-        if self.values['binned']:
-            bins = np.histogram_bin_edges(np.arange(self.values['min'], self.values['max']),
-                                          bins=self.values['bins'],
-                                          range=(self.values['min'], self.values['max']))
-            map_outputs = [self.name()+'_bin', self.name()+'_map_count']
-            reduce_outputs = [self.name()+'_reduce_count']
+        if self.values["binned"]:
+            bins = np.histogram_bin_edges(
+                np.arange(self.values["min"], self.values["max"]),
+                bins=self.values["bins"],
+                range=(self.values["min"], self.values["max"]),
+            )
+            map_outputs = [self.name() + "_bin", self.name() + "_map_count"]
+            reduce_outputs = [self.name() + "_reduce_count"]
 
             def func(k, v):
                 return np.digitize(k, bins), (v, 1)
@@ -365,7 +376,7 @@ class MeanWaveformVsScan(CtrlNode):
                 res = {}
                 for k, v in d.items():
                     try:
-                        res[bins[k]] = v[0]/v[1]
+                        res[bins[k]] = v[0] / v[1]
                     except IndexError:
                         pass
 
@@ -379,41 +390,50 @@ class MeanWaveformVsScan(CtrlNode):
                 return np.arange(0, stack.shape[0]), np.array(keys), stack
 
             nodes = [
-                gn.Map(name=self.name()+'_map', inputs=inputs, outputs=map_outputs,
-                       func=func, **kwargs),
-                gn.ReduceByKey(name=self.name()+'_reduce',
-                               inputs=map_outputs, outputs=reduce_outputs,
-                               reduction=lambda cv, v: (cv[0]+v[0], cv[1]+v[1]), **kwargs),
-                gn.Map(name=self.name()+'_mean', inputs=reduce_outputs, outputs=outputs, func=mean,
-                       **kwargs)
+                gn.Map(name=self.name() + "_map", inputs=inputs, outputs=map_outputs, func=func, **kwargs),
+                gn.ReduceByKey(
+                    name=self.name() + "_reduce",
+                    inputs=map_outputs,
+                    outputs=reduce_outputs,
+                    reduction=lambda cv, v: (cv[0] + v[0], cv[1] + v[1]),
+                    **kwargs,
+                ),
+                gn.Map(name=self.name() + "_mean", inputs=reduce_outputs, outputs=outputs, func=mean, **kwargs),
             ]
         else:
-            map_outputs = [self.name()+'_map_count']
-            reduce_outputs = [self.name()+'_reduce_count']
+            map_outputs = [self.name() + "_map_count"]
+            reduce_outputs = [self.name() + "_reduce_count"]
 
             def mean(d):
                 res = {}
                 for k, v in d.items():
-                    res[k] = v[0]/v[1]
+                    res[k] = v[0] / v[1]
                 keys, values = zip(*sorted(res.items()))
                 stack = np.stack(values, axis=1)
                 return np.arange(0, stack.shape[0]), np.array(keys), stack
 
             nodes = [
-                gn.Map(name=self.name()+'_map', inputs=[inputs['Value']], outputs=map_outputs,
-                       func=lambda a: (a, 1), **kwargs),
-                gn.ReduceByKey(name=self.name()+'_reduce',
-                               inputs=[inputs['Bin']]+map_outputs, outputs=reduce_outputs,
-                               reduction=lambda cv, v: (cv[0]+v[0], cv[1]+v[1]), **kwargs),
-                gn.Map(name=self.name()+'_mean', inputs=reduce_outputs, outputs=outputs, func=mean,
-                       **kwargs)
+                gn.Map(
+                    name=self.name() + "_map",
+                    inputs=[inputs["Value"]],
+                    outputs=map_outputs,
+                    func=lambda a: (a, 1),
+                    **kwargs,
+                ),
+                gn.ReduceByKey(
+                    name=self.name() + "_reduce",
+                    inputs=[inputs["Bin"]] + map_outputs,
+                    outputs=reduce_outputs,
+                    reduction=lambda cv, v: (cv[0] + v[0], cv[1] + v[1]),
+                    **kwargs,
+                ),
+                gn.Map(name=self.name() + "_mean", inputs=reduce_outputs, outputs=outputs, func=mean, **kwargs),
             ]
 
         return nodes
 
 
 class StatsVsScan(CtrlNode):
-
     """
     StatsVsScan creates a histogram using a variable number of bins.
 
@@ -421,21 +441,26 @@ class StatsVsScan(CtrlNode):
     """
 
     nodeName = "StatsVsScan"
-    uiTemplate = [('binned', 'check', {'checked': False}),
-                  ('bins', 'intSpin', {'value': 10, 'min': 1}),
-                  ('min', 'intSpin', {'value': 0}),
-                  ('max', 'intSpin', {'value': 10})]
+    uiTemplate = [
+        ("binned", "check", {"checked": False}),
+        ("bins", "intSpin", {"value": 10, "min": 1}),
+        ("min", "intSpin", {"value": 0}),
+        ("max", "intSpin", {"value": 10}),
+    ]
 
     def __init__(self, name):
-        super().__init__(name, global_op=True,
-                         terminals={
-                             'Bin': {'io': 'in', 'ttype': float},
-                             'Value': {'io': 'in', 'ttype': float},
-                             'Bins': {'io': 'out', 'ttype': Array1d},
-                             'Mean': {'io': 'out', 'ttype': Array1d},
-                             'Stdev': {'io': 'out', 'ttype': Array1d},
-                             'Error': {'io': 'out', 'ttype': Array1d},
-                         })
+        super().__init__(
+            name,
+            global_op=True,
+            terminals={
+                "Bin": {"io": "in", "ttype": float},
+                "Value": {"io": "in", "ttype": float},
+                "Bins": {"io": "out", "ttype": Array1d},
+                "Mean": {"io": "out", "ttype": Array1d},
+                "Stdev": {"io": "out", "ttype": Array1d},
+                "Error": {"io": "out", "ttype": Array1d},
+            },
+        )
 
     def to_operation(self, inputs, outputs, **kwargs):
         outputs = self.output_vars()
@@ -444,12 +469,14 @@ class StatsVsScan(CtrlNode):
             cv.extend(v)
             return cv
 
-        if self.values['binned']:
-            bins = np.histogram_bin_edges(np.arange(self.values['min'], self.values['max']),
-                                          bins=self.values['bins'],
-                                          range=(self.values['min'], self.values['max']))
-            map_outputs = [self.name()+'_bin', self.name()+'_map_count']
-            reduce_outputs = [self.name()+'_reduce_count']
+        if self.values["binned"]:
+            bins = np.histogram_bin_edges(
+                np.arange(self.values["min"], self.values["max"]),
+                bins=self.values["bins"],
+                range=(self.values["min"], self.values["max"]),
+            )
+            map_outputs = [self.name() + "_bin", self.name() + "_map_count"]
+            reduce_outputs = [self.name() + "_reduce_count"]
 
             def func(k, v):
                 return np.digitize(k, bins), [v]
@@ -459,7 +486,7 @@ class StatsVsScan(CtrlNode):
                 for k, v in d.items():
                     try:
                         stddev = np.std(v)
-                        res[bins[k]] = (np.mean(v), stddev, stddev/np.sqrt(len(v)))
+                        res[bins[k]] = (np.mean(v), stddev, stddev / np.sqrt(len(v)))
                     except IndexError:
                         pass
 
@@ -468,171 +495,204 @@ class StatsVsScan(CtrlNode):
                 return np.array(keys), np.array(mean), np.array(stddev), np.array(error)
 
             nodes = [
-                gn.Map(name=self.name()+'_map', inputs=inputs, outputs=map_outputs,
-                       func=func, **kwargs),
-                gn.ReduceByKey(name=self.name()+'_reduce',
-                               inputs=map_outputs, outputs=reduce_outputs,
-                               reduction=reduction, **kwargs),
-                gn.Map(name=self.name()+'_stats', inputs=reduce_outputs, outputs=outputs, func=stats,
-                       **kwargs)
+                gn.Map(name=self.name() + "_map", inputs=inputs, outputs=map_outputs, func=func, **kwargs),
+                gn.ReduceByKey(
+                    name=self.name() + "_reduce",
+                    inputs=map_outputs,
+                    outputs=reduce_outputs,
+                    reduction=reduction,
+                    **kwargs,
+                ),
+                gn.Map(name=self.name() + "_stats", inputs=reduce_outputs, outputs=outputs, func=stats, **kwargs),
             ]
         else:
-            map_outputs = [self.name()+'_map_count']
-            reduce_outputs = [self.name()+'_reduce_count']
+            map_outputs = [self.name() + "_map_count"]
+            reduce_outputs = [self.name() + "_reduce_count"]
 
             def stats(d):
                 res = {}
                 for k, v in d.items():
                     stddev = np.std(v)
-                    res[k] = (np.mean(v), stddev, stddev/np.sqrt(len(v)))
+                    res[k] = (np.mean(v), stddev, stddev / np.sqrt(len(v)))
                 keys, values = zip(*sorted(res.items()))
                 mean, stddev, error = zip(*values)
                 return np.array(keys), np.array(mean), np.array(stddev), np.array(error)
 
             nodes = [
-                gn.Map(name=self.name()+'_map', inputs=[inputs['Value']], outputs=map_outputs,
-                       func=lambda a: [a], **kwargs),
-                gn.ReduceByKey(name=self.name()+'_reduce',
-                               inputs=[inputs['Bin']]+map_outputs, outputs=reduce_outputs,
-                               reduction=reduction,
-                               **kwargs),
-                gn.Map(name=self.name()+'_stats', inputs=reduce_outputs, outputs=outputs, func=stats,
-                       **kwargs)
+                gn.Map(
+                    name=self.name() + "_map",
+                    inputs=[inputs["Value"]],
+                    outputs=map_outputs,
+                    func=lambda a: [a],
+                    **kwargs,
+                ),
+                gn.ReduceByKey(
+                    name=self.name() + "_reduce",
+                    inputs=[inputs["Bin"]] + map_outputs,
+                    outputs=reduce_outputs,
+                    reduction=reduction,
+                    **kwargs,
+                ),
+                gn.Map(name=self.name() + "_stats", inputs=reduce_outputs, outputs=outputs, func=stats, **kwargs),
             ]
 
         return nodes
 
 
 class ExponentialMovingAverage1D(CtrlNode):
-
     """
     Exponential Moving Average for Waveforms.
     """
 
     nodeName = "ExponentialMovingAverage1D"
-    uiTemplate = [('Fraction of old', 'doubleSpin', {'value': 1, 'min': 0, 'max': 1})]
+    uiTemplate = [("Fraction of old", "doubleSpin", {"value": 1, "min": 0, "max": 1})]
 
     def __init__(self, name):
-        super().__init__(name, terminals={'In': {'io': 'in', 'ttype': Array1d},
-                                          'Out': {'io': 'out', 'ttype': Array1d},
-                                          'Count': {'io': 'out', 'ttype': int}},
-                         global_op=True)
+        super().__init__(
+            name,
+            terminals={
+                "In": {"io": "in", "ttype": Array1d},
+                "Out": {"io": "out", "ttype": Array1d},
+                "Count": {"io": "out", "ttype": int},
+            },
+            global_op=True,
+        )
 
     def to_operation(self, inputs, outputs, **kwargs):
-        summed_outputs = [self.name()+"_count", self.name()+"_sum"]
+        summed_outputs = [self.name() + "_count", self.name() + "_sum"]
 
-        fraction = self.values['Fraction of old']
+        fraction = self.values["Fraction of old"]
 
         def worker_reduction(old, *new, **kwargs):
-            reset = kwargs['reset']
+            reset = kwargs["reset"]
             if reset:
-                return fraction*new[0]
+                return fraction * new[0]
             else:
-                return fraction*old+(1-fraction)*new[0]
+                return fraction * old + (1 - fraction) * new[0]
 
         def local_collector_reduction(old_avg, *new_1worker, **kwargs):
-            count = kwargs['count']
-            return old_avg + new_1worker[0]*count
+            count = kwargs["count"]
+            return old_avg + new_1worker[0] * count
 
         def global_collector_reduction(old_avg, *new_1worker, **kwargs):
             return old_avg + new_1worker[0]
 
-        return [gn.Accumulator(name=self.name()+"_accumulated",
-                               inputs=inputs, outputs=summed_outputs,
-                               worker_reduction=worker_reduction,
-                               local_reduction=local_collector_reduction,
-                               global_reduction=global_collector_reduction,
-                               **kwargs),
-                gn.Map(name=self.name()+"_unzip",
-                       inputs=summed_outputs, outputs=outputs,
-                       func=lambda count, s: (s/count, count), **kwargs)]
+        return [
+            gn.Accumulator(
+                name=self.name() + "_accumulated",
+                inputs=inputs,
+                outputs=summed_outputs,
+                worker_reduction=worker_reduction,
+                local_reduction=local_collector_reduction,
+                global_reduction=global_collector_reduction,
+                **kwargs,
+            ),
+            gn.Map(
+                name=self.name() + "_unzip",
+                inputs=summed_outputs,
+                outputs=outputs,
+                func=lambda count, s: (s / count, count),
+                **kwargs,
+            ),
+        ]
 
 
 class ExponentialMovingAverage2D(CtrlNode):
-
     """
     Exponential Moving Average for Images.
     """
 
     nodeName = "ExponentialMovingAverage2D"
-    uiTemplate = [('Fraction of old', 'doubleSpin', {'value': 1, 'min': 0, 'max': 1})]
+    uiTemplate = [("Fraction of old", "doubleSpin", {"value": 1, "min": 0, "max": 1})]
 
     def __init__(self, name):
-        super().__init__(name, terminals={'In': {'io': 'in', 'ttype': Array2d},
-                                          'Out': {'io': 'out', 'ttype': Array2d},
-                                          'Count': {'io': 'out', 'ttype': int}},
-                         global_op=True)
+        super().__init__(
+            name,
+            terminals={
+                "In": {"io": "in", "ttype": Array2d},
+                "Out": {"io": "out", "ttype": Array2d},
+                "Count": {"io": "out", "ttype": int},
+            },
+            global_op=True,
+        )
 
     def to_operation(self, inputs, outputs, **kwargs):
-        summed_outputs = [self.name()+"_count", self.name()+"_sum"]
+        summed_outputs = [self.name() + "_count", self.name() + "_sum"]
 
-        fraction = self.values['Fraction of old']
+        fraction = self.values["Fraction of old"]
 
         def worker_reduction(old, *new, **kwargs):
-            reset = kwargs['reset']
+            reset = kwargs["reset"]
             if reset:
-                return fraction*new[0]
+                return fraction * new[0]
             else:
-                return fraction*old+(1-fraction)*new[0]
+                return fraction * old + (1 - fraction) * new[0]
 
         def local_collector_reduction(old_avg, *new_1worker, **kwargs):
-            count = kwargs['count']
-            return old_avg + new_1worker[0]*count
+            count = kwargs["count"]
+            return old_avg + new_1worker[0] * count
 
         def global_collector_reduction(old_avg, *new_1worker, **kwargs):
             return old_avg + new_1worker[0]
 
-        return [gn.Accumulator(name=self.name()+"_accumulated",
-                               inputs=inputs, outputs=summed_outputs,
-                               worker_reduction=worker_reduction,
-                               local_reduction=local_collector_reduction,
-                               global_reduction=global_collector_reduction,
-                               **kwargs),
-                gn.Map(name=self.name()+"_unzip",
-                       inputs=summed_outputs, outputs=outputs,
-                       func=lambda count, s: (s/count, count), **kwargs)]
+        return [
+            gn.Accumulator(
+                name=self.name() + "_accumulated",
+                inputs=inputs,
+                outputs=summed_outputs,
+                worker_reduction=worker_reduction,
+                local_reduction=local_collector_reduction,
+                global_reduction=global_collector_reduction,
+                **kwargs,
+            ),
+            gn.Map(
+                name=self.name() + "_unzip",
+                inputs=summed_outputs,
+                outputs=outputs,
+                func=lambda count, s: (s / count, count),
+                **kwargs,
+            ),
+        ]
 
 
 class Combinations(CtrlNode):
-
     """
     Generate combinations using itertools.combinations.
     """
 
     nodeName = "Combinations"
-    uiTemplate = [('length', 'intSpin', {'value': 1, 'min': 1})]
+    uiTemplate = [("length", "intSpin", {"value": 1, "min": 1})]
 
     def __init__(self, name):
-        super().__init__(name, terminals={'In': {'io': 'in', 'ttype': Array1d},
-                                          'Out': {'io': 'out', 'ttype': Array1d}})
+        super().__init__(name, terminals={"In": {"io": "in", "ttype": Array1d}, "Out": {"io": "out", "ttype": Array1d}})
         self.output_terms = []
 
     def state_changed(self, *args, **kwargs):
         super().state_changed(*args, **kwargs)
 
-        while len(self.output_vars()) > self.values['length']:
+        while len(self.output_vars()) > self.values["length"]:
             self.removeTerminal(self.output_terms.pop())
 
-        while len(self.output_vars()) < self.values['length']:
+        while len(self.output_vars()) < self.values["length"]:
             self.output_terms.append(self.addOutput())
 
     def to_operation(self, **kwargs):
-        length = self.values['length']
+        length = self.values["length"]
 
         def func(*args):
             r = list(map(np.array, zip(*itertools.combinations(*args, length))))
             if r:
                 return r
             else:
-                return [np.array([])]*length
+                return [np.array([])] * length
 
-        return gn.Map(name=self.name()+"_operation", func=func, **kwargs)
+        return gn.Map(name=self.name() + "_operation", func=func, **kwargs)
 
 
 try:
     import sympy
 
-    class CalcProc():
+    class CalcProc:
 
         def __init__(self, params):
             self.params = params
@@ -664,45 +724,49 @@ try:
         nodeName = "Calculator"
 
         def __init__(self, name):
-            super().__init__(name,
-                             terminals={'In': {'io': 'in', 'ttype': Union[float, Array1d,
-                                                                          Array2d, Array3d]},
-                                        'Out': {'io': 'out', 'ttype': Any}},
-                             allowAddInput=True)
+            super().__init__(
+                name,
+                terminals={
+                    "In": {"io": "in", "ttype": Union[float, Array1d, Array2d, Array3d]},
+                    "Out": {"io": "out", "ttype": Any},
+                },
+                allowAddInput=True,
+            )
 
-            self.values = {'operation': ''}
+            self.values = {"operation": ""}
 
         def isChanged(self, restore_ctrl, restore_widget):
             return restore_widget
 
         def display(self, topics, terms, addr, win, **kwargs):
             if self.widget is None:
-                self.widget = CalculatorWidget(terms or self.input_vars(), win, self.values['operation'])
+                self.widget = CalculatorWidget(terms or self.input_vars(), win, self.values["operation"])
                 self.widget.sigStateChanged.connect(self.state_changed)
 
             return self.widget
 
         def to_operation(self, **kwargs):
             args = []
-            expr = self.values['operation']
+            expr = self.values["operation"]
 
             # sympy doesn't like symbols name likes Sum.0.Out, need to remove dots.
-            for arg in list(self.input_vars().values())[::-1]:  # Reverse order so "In" does not messes up with the replacement of "In.1"
+            for arg in list(self.input_vars().values())[
+                ::-1
+            ]:  # Reverse order so "In" does not messes up with the replacement of "In.1"
                 rarg = sanitize_name(arg)
                 args.append(rarg)
                 expr = expr.replace(arg, rarg)
 
-            params = {'args': args[::-1],
-                      'expr': expr}
+            params = {"args": args[::-1], "expr": expr}
 
-            return gn.Map(name=self.name()+"_operation", **kwargs, func=CalcProc(params))
+            return gn.Map(name=self.name() + "_operation", **kwargs, func=CalcProc(params))
 
 except ImportError as e:
     print(e)
 
 
 try:
-    from ami.flowchart.library.PythonEditorWidget import PythonEditorWidget, PythonEditorProc
+    from ami.flowchart.library.PythonEditorWidget import PythonEditorProc, PythonEditorWidget
 
     class PythonEditor(CtrlNode):
         """
@@ -712,19 +776,17 @@ try:
         nodeName = "PythonEditor"
 
         def __init__(self, name):
-            super().__init__(name,
-                             allowAddInput=True,
-                             allowAddOutput=True)
-            self.values = {'text': ''}
+            super().__init__(name, allowAddInput=True, allowAddOutput=True)
+            self.values = {"text": ""}
             self.input_prompt = None
             self.output_prompt = None
 
-        def terminal_prompt(self, name='', title='', **kwargs):
+        def terminal_prompt(self, name="", title="", **kwargs):
             prompt = QtWidgets.QWidget()
             prompt.layout = QtWidgets.QFormLayout(parent=prompt)
             prompt.name = QtWidgets.QLineEdit(name, parent=prompt)
             prompt.type_selector = QtWidgets.QComboBox(prompt)
-            prompt.ok = QtWidgets.QPushButton('Ok', parent=prompt)
+            prompt.ok = QtWidgets.QPushButton("Ok", parent=prompt)
             for typ in [Any, bool, int, float, Array1d, Array2d, Array3d]:
                 prompt.type_selector.addItem(str(typ), typ)
             prompt.layout.addRow("Name:", prompt.name)
@@ -739,8 +801,8 @@ try:
             self.addOutput()
 
         def addInput(self, **kwargs):
-            if 'name' not in kwargs:
-                kwargs['name'] = self.nextTerminalName('In')
+            if "name" not in kwargs:
+                kwargs["name"] = self.nextTerminalName("In")
             self.input_prompt = self.terminal_prompt(**kwargs)
             self.input_prompt.ok.clicked.connect(self._addInput)
             self.input_prompt.show()
@@ -748,15 +810,15 @@ try:
         def _addInput(self, **kwargs):
             name = self.input_prompt.name.text()
             ttype = self.input_prompt.type_selector.currentData()
-            kwargs['name'] = name
-            kwargs['ttype'] = ttype
-            kwargs['removable'] = True
+            kwargs["name"] = name
+            kwargs["ttype"] = ttype
+            kwargs["removable"] = True
             self.input_prompt.close()
             return super().addInput(**kwargs)
 
         def addOutput(self, **kwargs):
-            if 'name' not in kwargs:
-                kwargs['name'] = self.nextTerminalName('Out')
+            if "name" not in kwargs:
+                kwargs["name"] = self.nextTerminalName("Out")
             self.output_prompt = self.terminal_prompt(**kwargs)
             self.output_prompt.ok.clicked.connect(self._addOutput)
             self.output_prompt.show()
@@ -764,9 +826,9 @@ try:
         def _addOutput(self, **kwargs):
             name = self.output_prompt.name.text()
             ttype = self.output_prompt.type_selector.currentData()
-            kwargs['name'] = name
-            kwargs['ttype'] = ttype
-            kwargs['removable'] = True
+            kwargs["name"] = name
+            kwargs["ttype"] = ttype
+            kwargs["removable"] = True
             self.output_prompt.close()
             return super().addOutput(**kwargs)
 
@@ -775,10 +837,10 @@ try:
 
         def display(self, topics, terms, addr, win, **kwargs):
             if self.widget is None:
-                if not self.values['text']:
-                    self.values['text'] = self.generate_template(self.inputs().keys(), self.outputs().keys())
+                if not self.values["text"]:
+                    self.values["text"] = self.generate_template(self.inputs().keys(), self.outputs().keys())
 
-                self.widget = PythonEditorWidget(win, self.values['text'], export=True, node=self)
+                self.widget = PythonEditorWidget(win, self.values["text"], export=True, node=self)
                 self.widget.sigStateChanged.connect(self.state_changed)
 
             return self.widget
@@ -790,7 +852,7 @@ try:
                 rarg = sanitize_name(arg)
                 args.append(rarg)
 
-            args = ', '.join(args)
+            args = ", ".join(args)
             template = f"""
 class EventProcessor():
 
@@ -817,14 +879,16 @@ class EventProcessor():
             return template
 
         def to_operation(self, **kwargs):
-            proc = PythonEditorProc(self.values['text'])
-            return gn.Map(name=self.name()+"_operation",
-                          **kwargs,
-                          func=proc,
-                          begin_run=proc.begin_run,
-                          end_run=proc.end_run,
-                          begin_step=proc.begin_step,
-                          end_step=proc.end_step)
+            proc = PythonEditorProc(self.values["text"])
+            return gn.Map(
+                name=self.name() + "_operation",
+                **kwargs,
+                func=proc,
+                begin_run=proc.begin_run,
+                end_run=proc.end_run,
+                begin_step=proc.begin_step,
+                end_step=proc.end_step,
+            )
 
     class Filter(CtrlNode):
         """
@@ -834,11 +898,12 @@ class EventProcessor():
         nodeName = "Filter"
 
         def __init__(self, name):
-            super().__init__(name,
-                             terminals={'In': {'io': 'in', 'ttype': Any},
-                                        'Out': {'io': 'out', 'ttype': Any}},
-                             allowAddInput=True,
-                             allowAddOutput=True)
+            super().__init__(
+                name,
+                terminals={"In": {"io": "in", "ttype": Any}, "Out": {"io": "out", "ttype": Any}},
+                allowAddInput=True,
+                allowAddOutput=True,
+            )
             self.values = collections.defaultdict(dict)
 
         def display(self, topics, terms, addr, win, **kwargs):
@@ -849,7 +914,11 @@ class EventProcessor():
             return self.widget
 
         def update(self, *args, **kwargs):
-            group, values, _, = args
+            (
+                group,
+                values,
+                _,
+            ) = args
 
             if group == "remove":
                 self.values.pop(values, None)
@@ -865,10 +934,9 @@ class EventProcessor():
 
             func = gen_filter_func(values, inputs_for_func, outputs)
 
-            return gn.Map(name=self.name()+"_operation",
-                          inputs=inputs, outputs=outputs,
-                          **kwargs,
-                          func=PythonEditorProc(func))
+            return gn.Map(
+                name=self.name() + "_operation", inputs=inputs, outputs=outputs, **kwargs, func=PythonEditorProc(func)
+            )
 
 except ImportError as e:
     print(e)

@@ -1,36 +1,41 @@
-import os
-import sys
 import abc
-import zmq
-import time
-import dill
-import json
-import typing
-import inspect
-import logging
 import datetime
+import inspect
+import json
+import logging
+import os
 import pickle
 import queue
+import sys
 import threading
+import time
+import typing
+
+import dill
+import zmq
+
 try:
     import h5py
 except ImportError:
     h5py = None
 try:
     import warnings
-    warnings.simplefilter(action='ignore', category=FutureWarning)
+
+    warnings.simplefilter(action="ignore", category=FutureWarning)
     import pyarrow as pa
-    if not hasattr(pa, 'SerializationContext'):
+
+    if not hasattr(pa, "SerializationContext"):
         pa = None
 except ImportError:
     pa = None
-import numpy as np
-import amitypes as at
+from dataclasses import asdict, dataclass, field
 from enum import Enum
-from dataclasses import dataclass, asdict, field
-import prometheus_client as pc
-from ami import psana, psana_uses_epics_epoch
 
+import amitypes as at
+import numpy as np
+import prometheus_client as pc
+
+from ami import psana, psana_uses_epics_epoch
 
 logger = logging.getLogger(__name__)
 
@@ -42,10 +47,10 @@ class MsgTypes(Enum):
     Graph = 3
 
     def _serialize(msgType):
-        return {'type': msgType.value}
+        return {"type": msgType.value}
 
     def _deserialize(data):
-        return MsgTypes(data['type'])
+        return MsgTypes(data["type"])
 
 
 class Transitions(Enum):
@@ -58,10 +63,10 @@ class Transitions(Enum):
     Disable = 6
 
     def _serialize(transitionType):
-        return {'type': transitionType.value}
+        return {"type": transitionType.value}
 
     def _deserialize(data):
-        return Transitions(data['type'])
+        return Transitions(data["type"])
 
 
 @dataclass
@@ -89,6 +94,7 @@ class Heartbeat:
         identity (int): Heartbeat integer id number
         timestamp (float): Unix timestamp associated with heartbeat
     """
+
     identity: int = 0
     timestamp: float = 0.0
 
@@ -144,6 +150,7 @@ class Message:
 
         payload (dict): Message payload
     """
+
     mtype: MsgTypes
     identity: int
     payload: dict
@@ -154,8 +161,8 @@ class Message:
         return asdict(self)
 
     def _deserialize(data):
-        if data['mtype'] == MsgTypes.Transition:
-            data['payload'] = Transition(**data['payload'])
+        if data["mtype"] == MsgTypes.Transition:
+            data["payload"] = Transition(**data["payload"])
         return Message(**data)
 
 
@@ -171,6 +178,7 @@ class CollectorMessage(Message):
 
         version (int): version
     """
+
     heartbeat: Heartbeat = Heartbeat()
     name: str = ""
     version: int = 0
@@ -185,13 +193,10 @@ class CollectorMessage(Message):
 
 def build_serialization_context():
     def register(ctx, cls):
-        ctx.register_type(cls, cls.__name__,
-                          custom_serializer=cls._serialize,
-                          custom_deserializer=cls._deserialize)
+        ctx.register_type(cls, cls.__name__, custom_serializer=cls._serialize, custom_deserializer=cls._deserialize)
 
     context = pa.SerializationContext()
-    for cls in [MsgTypes, Transitions, Heartbeat, Message,
-                CollectorMessage, Transition, Datagram]:
+    for cls in [MsgTypes, Transitions, Heartbeat, Message, CollectorMessage, Transition, Datagram]:
         register(context, cls)
     for cls in at.PyArrowTypes:
         register(context, cls)
@@ -205,12 +210,15 @@ class ModuleSerializer:
         self.module = module
 
         if module == pickle and pickle.HIGHEST_PROTOCOL >= 5:
+
             def dumps(msg):
                 buffers = []
                 m = pickle.dumps(msg, protocol=5, buffer_callback=buffers.append)
                 buffers.append(m)
                 return buffers
+
         else:
+
             def dumps(msg):
                 return [self.module.dumps(msg)]
 
@@ -223,7 +231,7 @@ class ModuleSerializer:
         assert type(msg) is list, "Excepts serialized message!"
         size = sys.getsizeof(msg[-1])
         for c in msg[:-1]:
-            if hasattr(pickle, 'PickleBuffer') and type(c) is pickle.PickleBuffer:
+            if hasattr(pickle, "PickleBuffer") and type(c) is pickle.PickleBuffer:
                 size += c.raw().nbytes
             elif type(c) is bytes:
                 size += sys.getsizeof(c)
@@ -236,9 +244,12 @@ class ModuleDeserializer:
         self.module = module
 
         if module == pickle and pickle.HIGHEST_PROTOCOL >= 5:
+
             def loads(data):
                 return pickle.loads(data[-1], buffers=data[:-1])
+
         else:
+
             def loads(data):
                 msg = [self.module.loads(d) for d in data]
                 if len(msg) == 0:
@@ -263,9 +274,9 @@ class ArrowSerializer:
         serialized_msg = []
         ser = pa.serialize(msg, context=self.context)
         comp = ser.to_components()
-        metadata = {k: comp[k] for k in ['num_tensors', 'num_ndarrays', 'num_buffers', 'num_sparse_tensors']}
+        metadata = {k: comp[k] for k in ["num_tensors", "num_ndarrays", "num_buffers", "num_sparse_tensors"]}
         serialized_msg.append(pickle.dumps(metadata))
-        views = list(map(memoryview, comp['data']))
+        views = list(map(memoryview, comp["data"]))
         serialized_msg.extend(views)
         return serialized_msg
 
@@ -285,18 +296,19 @@ class ArrowDeserializer:
     def __call__(self, data):
         components = pickle.loads(data[0])
         data = list(map(pa.py_buffer, data[1:]))
-        components['data'] = data
+        components["data"] = data
         return pa.deserialize_components(components, context=self.context)
 
 
 SerializationProtocols = {
-    'pickle': (ModuleSerializer, ModuleDeserializer, {'module': pickle}),
-    'dill': (ModuleSerializer, ModuleDeserializer, {'module': dill}),
-    'arrow': (ArrowSerializer, ArrowDeserializer, {}),
-    None:
+    "pickle": (ModuleSerializer, ModuleDeserializer, {"module": pickle}),
+    "dill": (ModuleSerializer, ModuleDeserializer, {"module": dill}),
+    "arrow": (ArrowSerializer, ArrowDeserializer, {}),
+    None: (
         (ArrowSerializer, ArrowDeserializer, {})
-        if pa is not None and pickle.HIGHEST_PROTOCOL < 5 else
-        (ModuleSerializer, ModuleDeserializer, {'module': pickle}),
+        if pa is not None and pickle.HIGHEST_PROTOCOL < 5
+        else (ModuleSerializer, ModuleDeserializer, {"module": pickle})
+    ),
 }
 
 
@@ -327,7 +339,7 @@ class TimestampConverter:
         sec = (raw_ts >> self.shift) & self.mask
         nsec = raw_ts & self.mask
         if as_float:
-            return sec + nsec * 1.e-9
+            return sec + nsec * 1.0e-9
         else:
             return sec, nsec
 
@@ -381,12 +393,13 @@ class TimeoutIterator:
     IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR
     THE USE OR OTHER DEALINGS IN THE SOFTWARE.
     """
+
     ZERO_TIMEOUT = 0.0
 
     def __init__(self, iterator, timeout=0.0, sentinel=Timeout(), reset_on_next=False):
         self._iterator = iterator
         self._timeout = timeout
-        self._sentinel= sentinel
+        self._sentinel = sentinel
         self._reset_on_next = reset_on_next
 
         self._interrupt = False
@@ -471,7 +484,7 @@ class RequestedData:
             self.names = set(names)
         self.kwargs = dict()
         if kws:
-            for k,v in kws.items():
+            for k, v in kws.items():
                 if k not in self.names:
                     continue
                 else:
@@ -479,9 +492,9 @@ class RequestedData:
 
     def __repr__(self):
         s = str(f"{self.__class__}: ")
-        s = ', '.join(self.names)
+        s = ", ".join(self.names)
         if self.kwargs:
-            s += '\n'
+            s += "\n"
             s += str(self.kwargs)
         return s
 
@@ -513,6 +526,7 @@ class RequestedData:
     def __contains__(self, name):
         return name in self.names
 
+
 class Source(abc.ABC):
     def __init__(self, idnum, num_workers, heartbeat_period, src_cfg, flags=None, evtid_type=None, timeout=None):
         """
@@ -535,24 +549,24 @@ class Source(abc.ABC):
         self.requested_special = {}
         self.config = src_cfg
         self.flags = flags or {}
-        self.timeout = timeout*1e-3 if timeout else None
+        self.timeout = timeout * 1e-3 if timeout else None
         self.source = at.DataSource(self.config)
         self._base_types = {
-            'eventid': int if evtid_type is None else evtid_type,
-            'timestamp': float,
-            'heartbeat': int,
-            'source': type(self.source),
+            "eventid": int if evtid_type is None else evtid_type,
+            "timestamp": float,
+            "heartbeat": int,
+            "source": type(self.source),
         }
         self._base_names = set(self._base_types)
         self._cfgkey_types = {
-            'interval': float,
-            'init_time': float,
-            'bound': int,
-            'repeat': lambda s: s if isinstance(s, bool) else s.lower() == 'true',
-            'pregen': lambda s: s if isinstance(s, bool) else s.lower() == 'true',
-            'counting': lambda s: s if isinstance(s, bool) else s.lower() == 'true',
-            'files': lambda n: n if isinstance(n, list) else [os.path.expanduser(f) for f in n.split(',')],
-            'config': lambda c: c if isinstance(c, dict) else os.path.expanduser(c),
+            "interval": float,
+            "init_time": float,
+            "bound": int,
+            "repeat": lambda s: s if isinstance(s, bool) else s.lower() == "true",
+            "pregen": lambda s: s if isinstance(s, bool) else s.lower() == "true",
+            "counting": lambda s: s if isinstance(s, bool) else s.lower() == "true",
+            "files": lambda n: n if isinstance(n, list) else [os.path.expanduser(f) for f in n.split(",")],
+            "config": lambda c: c if isinstance(c, dict) else os.path.expanduser(c),
         }
         # Correct the types of special keys in the dictionary that might have
         # been passed as strings (can happen when specifying config on the
@@ -568,12 +582,12 @@ class Source(abc.ABC):
             else:
                 self.config[flag] = value
         # If 'type' has not been passed in the config dictionary then set it
-        if 'type' not in self.config:
+        if "type" not in self.config:
             base_name = __class__.__name__
             type_name = type(self).__name__
             if type_name.endswith(base_name):
-                type_name = type_name[:-len(base_name)]
-            self.config['type'] = type_name.lower()
+                type_name = type_name[: -len(base_name)]
+            self.config["type"] = type_name.lower()
 
     @property
     def interval(self):
@@ -584,7 +598,7 @@ class Source(abc.ABC):
         Returns:
             The interval value set in the source configuration.
         """
-        return self.config.get('interval', 0)
+        return self.config.get("interval", 0)
 
     @property
     def init_time(self):
@@ -596,11 +610,10 @@ class Source(abc.ABC):
         Returns:
             The init_time value set in the source configuration.
         """
-        return self.config.get('init_time', 0)
+        return self.config.get("init_time", 0)
 
     @property
     def src_type(self):
-
         """
         Getter for the type value set in the source configuration. This tells
         which type of source it is. e.g. sim, psana, hdf5.
@@ -608,7 +621,7 @@ class Source(abc.ABC):
         Returns:
             The type value set in the source configuration.
         """
-        return self.config.get('type', 'generic')
+        return self.config.get("type", "generic")
 
     def reset_heartbeat(self):
         """
@@ -657,9 +670,9 @@ class Source(abc.ABC):
         Returns:
             The matching subclass of `Source` if found otherwise None
         """
-        cls_list = inspect.getmembers(sys.modules[__name__],
-                                      lambda x:
-                                      inspect.isclass(x) and not inspect.isabstract(x) and issubclass(x, cls))
+        cls_list = inspect.getmembers(
+            sys.modules[__name__], lambda x: inspect.isclass(x) and not inspect.isabstract(x) and issubclass(x, cls)
+        )
         for clsname, clsobj in cls_list:
             if (clsname == name) or (clsname == name.capitalize() + cls.__name__):
                 return clsobj
@@ -733,9 +746,7 @@ class Source(abc.ABC):
         self.reset_heartbeat()
         self.request(self.requested_names)
         flatten_types = {name: at.dumps(dtype) for name, dtype in self.types.items()}
-        return Message(MsgTypes.Transition,
-                       self.idnum,
-                       Transition(Transitions.Configure, flatten_types))
+        return Message(MsgTypes.Transition, self.idnum, Transition(Transitions.Configure, flatten_types))
 
     def unconfigure(self):
         """
@@ -744,9 +755,7 @@ class Source(abc.ABC):
         Returns:
             An object of type `Message` which includes an empty dict.
         """
-        return Message(MsgTypes.Transition,
-                       self.idnum,
-                       Transition(Transitions.Unconfigure, {}))
+        return Message(MsgTypes.Transition, self.idnum, Transition(Transitions.Unconfigure, {}))
 
     def begin_step(self):
         """
@@ -759,9 +768,7 @@ class Source(abc.ABC):
             self.stepid = 0
         else:
             self.stepid += 1
-        return Message(MsgTypes.Transition,
-                       self.idnum,
-                       Transition(Transitions.BeginStep, self.stepid))
+        return Message(MsgTypes.Transition, self.idnum, Transition(Transitions.BeginStep, self.stepid))
 
     def end_step(self):
         """
@@ -770,9 +777,7 @@ class Source(abc.ABC):
         Returns:
             An object of type `Message` which includes info on the step.
         """
-        return Message(MsgTypes.Transition,
-                       self.idnum,
-                       Transition(Transitions.EndStep, self.stepid))
+        return Message(MsgTypes.Transition, self.idnum, Transition(Transitions.EndStep, self.stepid))
 
     def heartbeat_msg(self):
         """
@@ -799,10 +804,10 @@ class Source(abc.ABC):
             An object of type `Message` which includes the data for the event.
         """
         base = [
-            ('eventid', eventid),
-            ('timestamp', timestamp),
-            ('heartbeat', self.heartbeat.identity if self.heartbeat is not None else None),
-            ('source', self.source)
+            ("eventid", eventid),
+            ("timestamp", timestamp),
+            ("heartbeat", self.heartbeat.identity if self.heartbeat is not None else None),
+            ("source", self.source),
         ]
         data.update({k: v for k, v in base if k in self.requested_names.names})
         msg = Message(mtype=MsgTypes.Datagram, identity=self.idnum, payload=data, timestamp=eventid, unix_ts=timestamp)
@@ -819,8 +824,8 @@ class Source(abc.ABC):
         logger.debug(f"Requested_data before: {self.requested_data}")
         logger.debug(f"Requested_data: {requested_data}")
         if not is_kws_update:
-            self.requested_names = requested_data # includes things like timestamp, source, ...
-            self.requested_data = RequestedData() # will weed out timestamp, source, ...
+            self.requested_names = requested_data  # includes things like timestamp, source, ...
+            self.requested_data = RequestedData()  # will weed out timestamp, source, ...
             self.requested_special = {}
 
         for name, req in zip(requested_data.names, requested_data):
@@ -832,11 +837,11 @@ class Source(abc.ABC):
             elif name not in self._base_names:
                 if name in self.names:
                     self.requested_data.update(req)
-                    if is_kws_update: # ugly way to clear kwargs
+                    if is_kws_update:  # ugly way to clear kwargs
                         if name not in requested_data.kwargs and name in self.requested_data.kwargs:
                             self.requested_data.kwargs.pop(name)
                 else:
-                    logger.debug("DataSrc: requested source \'%s\' is not available", name)
+                    logger.debug("DataSrc: requested source '%s' is not available", name)
         logger.debug(f"Requested_data after: {self.requested_data}\n")
 
     @abc.abstractmethod
@@ -928,9 +933,7 @@ class HierarchicalDataSource(Source):
         Returns:
             An object of type `Message` which includes the step number.
         """
-        return Message(MsgTypes.Transition,
-                       self.idnum,
-                       Transition(Transitions.BeginStep, self.step_count))
+        return Message(MsgTypes.Transition, self.idnum, Transition(Transitions.BeginStep, self.step_count))
 
     def end_step(self):
         """
@@ -939,17 +942,15 @@ class HierarchicalDataSource(Source):
         Returns:
             An object of type `Message` which includes the step number.
         """
-        return Message(MsgTypes.Transition,
-                       self.idnum,
-                       Transition(Transitions.EndStep, self.step_count))
+        return Message(MsgTypes.Transition, self.idnum, Transition(Transitions.EndStep, self.step_count))
 
     @property
     def repeat_mode(self):
-        return self.config.get('repeat', False)
+        return self.config.get("repeat", False)
 
     @property
     def counting_mode(self):
-        return self.config.get('counting', True)
+        return self.config.get("counting", True)
 
     @property
     def repeat(self):
@@ -1051,33 +1052,33 @@ class PsanaSource(HierarchicalDataSource):
         self.ts_converter = TimestampConverter()
         self.epics_epoch = psana_uses_epics_epoch()
         self.ds_keys = {
-            'exp',
-            'dir',
-            'files',
-            'shmem',
-            'filter',
-            'batch_size',
-            'max_events',
-            'sel_det_ids',
-            'det_name',
-            'run',
-            'live',
-            'smd',
-            'calibdir',
-            'monitor',
-            'detectors',
-            'supervisor',
-            'supervisor_ip_addr',
-            'skip_calib_load',
-            'use_calib_cache',
-            'cached_detectors',
+            "exp",
+            "dir",
+            "files",
+            "shmem",
+            "filter",
+            "batch_size",
+            "max_events",
+            "sel_det_ids",
+            "det_name",
+            "run",
+            "live",
+            "smd",
+            "calibdir",
+            "monitor",
+            "detectors",
+            "supervisor",
+            "supervisor_ip_addr",
+            "skip_calib_load",
+            "use_calib_cache",
+            "cached_detectors",
         }
         # special attributes that are per run instead of per event from a detectors interface, e.g. calib constants
         self.special_attrs = {
-            'calibconst': dict,
+            "calibconst": dict,
         }
         self.evt_attrs = {
-            'keepraw': int,
+            "keepraw": int,
         }
         if psana is None:
             raise NotImplementedError("psana is not available!")
@@ -1090,14 +1091,14 @@ class PsanaSource(HierarchicalDataSource):
         ps_kwargs = {k: self.config[k] for k in self.ds_keys if k in self.config}
 
         convert_kwargs = {
-            'run': lambda s: s if isinstance(s, int) else int(s),
-            'live': lambda s: s if isinstance(s, bool) else s.lower() == 'true',
-            'smd': lambda s: s if isinstance(s, bool) else s.lower() == 'true',
-            'monitor': lambda s: s if isinstance(s, bool) else s.lower() == 'true',
-            'detectors': lambda s: s.split(';'),
-            'supervisor': lambda s: int(s),
-            'use_calib_cache': lambda s: s if isinstance(s, bool) else s.lower() == 'true',
-            'cached_detectors': lambda s: s.split(';'),
+            "run": lambda s: s if isinstance(s, int) else int(s),
+            "live": lambda s: s if isinstance(s, bool) else s.lower() == "true",
+            "smd": lambda s: s if isinstance(s, bool) else s.lower() == "true",
+            "monitor": lambda s: s if isinstance(s, bool) else s.lower() == "true",
+            "detectors": lambda s: s.split(";"),
+            "supervisor": lambda s: int(s),
+            "use_calib_cache": lambda s: s if isinstance(s, bool) else s.lower() == "true",
+            "cached_detectors": lambda s: s.split(";"),
         }
         for key, func in convert_kwargs.items():
             if key in ps_kwargs:
@@ -1107,11 +1108,11 @@ class PsanaSource(HierarchicalDataSource):
 
     @property
     def repeat_mode(self):
-        return self.config.get('repeat', self.config.get('shmem', False))
+        return self.config.get("repeat", self.config.get("shmem", False))
 
     @property
     def counting_mode(self):
-        return self.config.get('counting', not self.config.get('shmem', False))
+        return self.config.get("counting", not self.config.get("shmem", False))
 
     def _runs(self):
         yield from self.ds.runs()
@@ -1253,7 +1254,7 @@ class PsanaSource(HierarchicalDataSource):
 
                 if attr_type in at.HSDTypes:
                     # ignore things which are not derived from dict
-                    if str(attr_type).startswith('dict'):
+                    if str(attr_type).startswith("dict"):
                         seg_chans = getattr(det_interface, det_xface_name)._seg_chans()
                         self._update_hsd_segment(attr_name, attr_type, seg_chans)
                     else:
@@ -1326,7 +1327,7 @@ class PsanaSource(HierarchicalDataSource):
                     detname = name
                 else:
                     # each name is like "detname:drp_class_name:attrN"
-                    namesplit = name.split(':')
+                    namesplit = name.split(":")
                     detname = namesplit[0]
 
                 if name in self.grouped_types:
@@ -1337,23 +1338,23 @@ class PsanaSource(HierarchicalDataSource):
                     for attr in self.grouped_types[name]:
                         grouped[attr] = getattr(obj, attr)(evt)
                     event[name] = at.Group(name, self.src_type, type(obj).__name__, grouped)
-                else: # 'normal' detectors
+                else:  # 'normal' detectors
                     # loop to the bottom level of the Det obj and get data
                     obj = self.detectors[detname].det
                     for token in namesplit[1:]:
                         obj = getattr(obj, token)
                     if name in self.requested_data.kwargs:
-                        logger.debug(f'Use kwargs here: {self.requested_data.kwargs[name]}')
+                        logger.debug(f"Use kwargs here: {self.requested_data.kwargs[name]}")
                         try:
                             event[name] = obj(evt, **self.requested_data.kwargs[name])
                         except TypeError:
-                            print(f'Bad kwargs passed to {obj}.\nIgnoring custom kwargs.')
+                            print(f"Bad kwargs passed to {obj}.\nIgnoring custom kwargs.")
                             event[name] = obj(evt)  # default back to not using kwargs
                     else:
                         event[name] = obj(evt)
 
         for name, sub_names in self.requested_special.items():
-            namesplit = name.split(':')
+            namesplit = name.split(":")
             detname = namesplit[0]
 
             # loop to the bottom level of the Det obj and get data
@@ -1379,8 +1380,8 @@ class Hdf5Source(HierarchicalDataSource):
     def __init__(self, idnum, num_workers, heartbeat_period, src_cfg, flags=None, timeout=None):
         super().__init__(idnum, num_workers, heartbeat_period, src_cfg, flags, timeout=timeout)
         self.hdf5_delim = "/"
-        self.files = self.config.get('files', [])
-        self.hdf5_ts = self.config.get('timestamp')
+        self.files = self.config.get("files", [])
+        self.hdf5_ts = self.config.get("timestamp")
         self.hdf5_idx = None
         self.hdf5_max_idx = self.hdf5_idx
         self.ts_converter = TimestampConverter()
@@ -1413,7 +1414,7 @@ class Hdf5Source(HierarchicalDataSource):
 
     @property
     def repeat_mode(self):
-        return self.config.get('repeat', False)
+        return self.config.get("repeat", False)
 
     def _timestamp(self, evt):
         if self.hdf5_ts is None:
@@ -1424,7 +1425,7 @@ class Hdf5Source(HierarchicalDataSource):
 
     def _runs(self):
         for filename in self.files:
-            with h5py.File(filename, 'r') as hdf5_file:
+            with h5py.File(filename, "r") as hdf5_file:
                 yield hdf5_file
 
     def _events(self, run):
@@ -1472,9 +1473,9 @@ class Hdf5Source(HierarchicalDataSource):
             for obj in grp.values():
                 if isinstance(obj, h5py.Group):
                     groups.append(obj)
-                    self._update_data_names(obj.name.strip('/'), obj)
+                    self._update_data_names(obj.name.strip("/"), obj)
                 elif isinstance(obj, h5py.Dataset):
-                    self._update_data_names(obj.name.strip('/'), obj)
+                    self._update_data_names(obj.name.strip("/"), obj)
                 else:
                     logger.warn("DataSrc: hdf5 node %s has unsupported type: %s", obj.name, type(obj))
 
@@ -1515,28 +1516,28 @@ class SimSource(Source):
         self.count = 0
         self.synced = False
         # load the simulation configuration if not already done
-        sim_cfg = self.config.get('config', {})
+        sim_cfg = self.config.get("config", {})
         if not isinstance(sim_cfg, dict):
-            with open(sim_cfg, 'r') as cnf:
-                self.config['config'] = json.load(cnf)
+            with open(sim_cfg, "r") as cnf:
+                self.config["config"] = json.load(cnf)
         # set up sync connection if specified
-        if 'sync' in self.config:
+        if "sync" in self.config:
             self.ctx = zmq.Context()
             self.ts_src = self.ctx.socket(zmq.REQ)
-            self.ts_src.connect(self.config['sync'])
+            self.ts_src.connect(self.config["sync"])
             self.synced = True
 
     def _map_dtype(self, config):
-        if config['dtype'] == 'Scalar':
-            if config.get('integer', False):
+        if config["dtype"] == "Scalar":
+            if config.get("integer", False):
                 return int
             else:
                 return float
-        elif config['dtype'] == 'List':
+        elif config["dtype"] == "List":
             return list
-        elif config['dtype'] == 'Waveform':
+        elif config["dtype"] == "Waveform":
             return at.Array1d
-        elif config['dtype'] == 'Image':
+        elif config["dtype"] == "Image":
             return at.Array2d
         else:
             return None
@@ -1548,15 +1549,15 @@ class SimSource(Source):
         return {name: self._map_dtype(config) for name, config in self.simulated.items()}
 
     def _load_sim_config(self):
-        sim_cfg = self.config.get('config', {})
+        sim_cfg = self.config.get("config", {})
         if not isinstance(sim_cfg, dict):
-            with open(sim_cfg, 'r') as cnf:
+            with open(sim_cfg, "r") as cnf:
                 sim_cfg = json.load(cnf)
-        self.config['config'] = sim_cfg
+        self.config["config"] = sim_cfg
 
     @property
     def simulated(self):
-        return self.config.get('config', {})
+        return self.config.get("config", {})
 
     @property
     def timestamp(self):
@@ -1573,8 +1574,8 @@ class RandomSource(SimSource):
         super().__init__(idnum, num_workers, heartbeat_period, src_cfg, flags, timeout=timeout)
         np.random.seed([idnum])
         self.rng = np.random.default_rng(idnum)
-        self.pregen = self.config.get('pregen', False)
-        self.bound = self.config.get('bound', np.inf)
+        self.pregen = self.config.get("pregen", False)
+        self.bound = self.config.get("bound", np.inf)
         self.generated_events = {}
 
         if self.pregen:
@@ -1582,23 +1583,28 @@ class RandomSource(SimSource):
                 logger.error("Can only pregenerate bounded number of events! Set bound in config.")
                 exit()
 
-            for name, config in self.config['config'].items():
-                if config['dtype'] == 'Scalar':
-                    value = config['range'][0] + (config['range'][1] - config['range'][0]) * np.random.rand(self.bound)
-                    if config.get('integer', False):
+            for name, config in self.config["config"].items():
+                if config["dtype"] == "Scalar":
+                    value = config["range"][0] + (config["range"][1] - config["range"][0]) * np.random.rand(self.bound)
+                    if config.get("integer", False):
                         self.generated_events[name] = value.astype(int)
                     else:
                         self.generated_events[name] = value
-                elif config['dtype'] == 'Waveform' or config['dtype'] == 'Image':
-                    self.generated_events[name] = np.random.normal(config['pedestal'], config['width'],
-                                                                   [self.bound, *config['shape']])
-                elif config['dtype'] == 'List':
-                    if config.get('type', "integer") == "integer":
+                elif config["dtype"] == "Waveform" or config["dtype"] == "Image":
+                    self.generated_events[name] = np.random.normal(
+                        config["pedestal"], config["width"], [self.bound, *config["shape"]]
+                    )
+                elif config["dtype"] == "List":
+                    if config.get("type", "integer") == "integer":
                         events = []
                         for i in range(0, self.bound):
-                            events.append(list(self.rng.integers(low=config['range'][0],
-                                                                 high=config['range'][1],
-                                                                 size=config['shape'])))
+                            events.append(
+                                list(
+                                    self.rng.integers(
+                                        low=config["range"][0], high=config["range"][1], size=config["shape"]
+                                    )
+                                )
+                            )
                         self.generated_events[name] = events
 
     def events(self):
@@ -1630,7 +1636,7 @@ class RandomSource(SimSource):
         while True:
             event = {}
             eventid, timestamp = self.timestamp
-            event_num = (eventid + int(10*np.random.rand(1)[0])) % self.bound
+            event_num = (eventid + int(10 * np.random.rand(1)[0])) % self.bound
 
             for name in self.requested_data.names:
                 event[name] = self.generated_events[name][event_num]
@@ -1646,21 +1652,21 @@ class RandomSource(SimSource):
 
             for name, config in self.simulated.items():
                 if name in self.requested_data.names:
-                    if config['dtype'] == 'Scalar':
-                        value = config['range'][0] + (config['range'][1] - config['range'][0]) * np.random.rand(1)[0]
-                        if config.get('integer', False):
+                    if config["dtype"] == "Scalar":
+                        value = config["range"][0] + (config["range"][1] - config["range"][0]) * np.random.rand(1)[0]
+                        if config.get("integer", False):
                             event[name] = int(value)
                         else:
                             event[name] = value
-                    elif config['dtype'] == 'Waveform' or config['dtype'] == 'Image':
-                        event[name] = np.random.normal(config['pedestal'], config['width'], config['shape'])
-                    elif config['dtype'] == 'List':
-                        if config.get('type', "integer") == "integer":
-                            event[name] = list(self.rng.integers(low=config['range'][0],
-                                                                 high=config['range'][1],
-                                                                 size=config['shape']))
+                    elif config["dtype"] == "Waveform" or config["dtype"] == "Image":
+                        event[name] = np.random.normal(config["pedestal"], config["width"], config["shape"])
+                    elif config["dtype"] == "List":
+                        if config.get("type", "integer") == "integer":
+                            event[name] = list(
+                                self.rng.integers(low=config["range"][0], high=config["range"][1], size=config["shape"])
+                            )
                     else:
-                        logger.warn("DataSrc: %s has unknown type %s", name, config['dtype'])
+                        logger.warn("DataSrc: %s has unknown type %s", name, config["dtype"])
 
             yield event
 
@@ -1670,7 +1676,7 @@ class RandomSource(SimSource):
 class StaticSource(SimSource):
     def __init__(self, idnum, num_workers, heartbeat_period, src_cfg, flags=None, timeout=None):
         super().__init__(idnum, num_workers, heartbeat_period, src_cfg, flags, timeout=timeout)
-        self.bound = self.config.get('bound', np.inf)
+        self.bound = self.config.get("bound", np.inf)
 
     def events(self):
         count = 0
@@ -1684,12 +1690,12 @@ class StaticSource(SimSource):
                 yield self.heartbeat_msg()
             for name, config in self.simulated.items():
                 if name in self.requested_data.names:
-                    if config['dtype'] == 'Scalar':
+                    if config["dtype"] == "Scalar":
                         event[name] = 1
-                    elif config['dtype'] == 'Waveform' or config['dtype'] == 'Image':
-                        event[name] = np.ones(config['shape'])
+                    elif config["dtype"] == "Waveform" or config["dtype"] == "Image":
+                        event[name] = np.ones(config["shape"])
                     else:
-                        logger.warn("DataSrc: %s has unknown type %s", name, config['dtype'])
+                        logger.warn("DataSrc: %s has unknown type %s", name, config["dtype"])
             count += 1
             yield from self.event(eventid, timestamp, event)
             if count >= self.bound:

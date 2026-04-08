@@ -1,39 +1,41 @@
 #!/usr/bin/env python
+import asyncio
+import importlib
+import json
+import logging
 import os
 import socket
-import json
+import subprocess
 import sys
-import logging
-import importlib
 import tempfile
-import asyncio
+
+import prometheus_client as pc
+import pyqtgraph as pg
 import zmq
 import zmq.asyncio
-import subprocess
-import ami.multiproc as mp
-import pyqtgraph as pg
-import prometheus_client as pc
+from qtpy import QtCore, QtWidgets
 
+import ami.multiproc as mp
 from ami import LogConfig
+from ami.asyncqt import QEventLoop, asyncSlot
 from ami.client import flowchart_messages as fcMsgs
 from ami.comm import ZMQ_TOPIC_DELIM
 from ami.flowchart.Flowchart import Flowchart
 from ami.flowchart.library import LIBRARY
-from ami.flowchart.NodeLibrary import isNodeClass
 from ami.flowchart.library.common import SourceNode
 from ami.flowchart.library.Editors import STYLE
-from ami.asyncqt import QEventLoop, asyncSlot
-from qtpy import QtCore, QtWidgets
+from ami.flowchart.NodeLibrary import isNodeClass
 
 try:
     import qdarktheme
+
     THEME = STYLE.get("Theme", None)
 except ModuleNotFoundError:
     THEME = None
 
 logger = logging.getLogger(LogConfig.get_package_name(__name__))
 
-pg.setConfigOption('imageAxisOrder', 'row-major')
+pg.setConfigOption("imageAxisOrder", "row-major")
 
 
 # Create main window with grid layout
@@ -56,9 +58,9 @@ class EditorMainWindow(QtWidgets.QMainWindow):
             msg.setWindowTitle("Unsaved Changes")
             msg.setText("You have unsaved changes in the flowchart.")
             msg.setInformativeText("Do you want to save your changes before closing?")
-            msg.setStandardButtons(QtWidgets.QMessageBox.Save |
-                                   QtWidgets.QMessageBox.Discard |
-                                   QtWidgets.QMessageBox.Cancel)
+            msg.setStandardButtons(
+                QtWidgets.QMessageBox.Save | QtWidgets.QMessageBox.Discard | QtWidgets.QMessageBox.Cancel
+            )
             msg.setDefaultButton(QtWidgets.QMessageBox.Save)
 
             result = msg.exec()
@@ -87,14 +89,23 @@ class EditorMainWindow(QtWidgets.QMainWindow):
         super().closeEvent(event)
 
 
-def run_editor_window(broker_addr, graphmgr_addr, checkpoint_addr, load=None, prometheus_dir=None,
-                      prometheus_port=None, hutch=None, configure=False, save_dir=None):
-    dmypy_file = tempfile.NamedTemporaryFile(mode='w', delete=False)
-    os.environ['DMYPY_STATUS_FILE'] = dmypy_file.name
+def run_editor_window(
+    broker_addr,
+    graphmgr_addr,
+    checkpoint_addr,
+    load=None,
+    prometheus_dir=None,
+    prometheus_port=None,
+    hutch=None,
+    configure=False,
+    save_dir=None,
+):
+    dmypy_file = tempfile.NamedTemporaryFile(mode="w", delete=False)
+    os.environ["DMYPY_STATUS_FILE"] = dmypy_file.name
     logger.debug(f"dmypy status file: {dmypy_file.name}")
     subprocess.run(["dmypy", "--status-file", dmypy_file.name, "start"])
     check_file = None
-    with tempfile.NamedTemporaryFile(mode='w', delete=False) as f:
+    with tempfile.NamedTemporaryFile(mode="w", delete=False) as f:
         f.write("from typing import *\n")
         f.write("from mypy_extensions import TypedDict\n")
         f.write("import numbers\n")
@@ -114,29 +125,32 @@ def run_editor_window(broker_addr, graphmgr_addr, checkpoint_addr, load=None, pr
     asyncio.set_event_loop(loop)
 
     win = EditorMainWindow()
-    title = 'AMI Client'
+    title = "AMI Client"
     if hutch:
-        title += f' hutch: {hutch}'
+        title += f" hutch: {hutch}"
     win.setWindowTitle(title)
 
     os.makedirs(os.path.expanduser("~/.cache/ami/"), exist_ok=True)
 
     # Create flowchart, define input/output terminals
-    fc = Flowchart(broker_addr=broker_addr,
-                   graphmgr_addr=graphmgr_addr,
-                   checkpoint_addr=checkpoint_addr,
-                   prometheus_dir=prometheus_dir, hutch=hutch,
-                   configure=configure,
-                   filePath=save_dir)
+    fc = Flowchart(
+        broker_addr=broker_addr,
+        graphmgr_addr=graphmgr_addr,
+        checkpoint_addr=checkpoint_addr,
+        prometheus_dir=prometheus_dir,
+        hutch=hutch,
+        configure=configure,
+        filePath=save_dir,
+    )
 
     fc.start_prometheus(prometheus_port)
 
     def update_title(filename):
-        title = 'AMI Client'
+        title = "AMI Client"
         if hutch:
-            title += f' hutch: {hutch}'
+            title += f" hutch: {hutch}"
         if filename is not None:
-            title += ' - ' + filename.split('/')[-1]
+            title += " - " + filename.split("/")[-1]
 
         win.setWindowTitle(title)
 
@@ -175,17 +189,17 @@ class NodeWindow(QtWidgets.QMainWindow):
     def moveEvent(self, event):
         super().moveEvent(event)
         self.proc.node.geometry = self.saveGeometry()
-        self.proc.send_checkpoint(self.proc.node, 'moveEvent')
+        self.proc.send_checkpoint(self.proc.node, "moveEvent")
 
     def resizeEvent(self, event):
         super().resizeEvent(event)
         self.proc.node.geometry = self.saveGeometry()
-        self.proc.send_checkpoint(self.proc.node, 'resizeEvent')
+        self.proc.send_checkpoint(self.proc.node, "resizeEvent")
 
     def closeEvent(self, event):
         self.proc.node.viewed = False
         self.proc.node.geometry = self.saveGeometry()
-        self.proc.send_checkpoint(self.proc.node, 'closeEvent')
+        self.proc.send_checkpoint(self.proc.node, "closeEvent")
         self.proc.node.close()
         self.proc.widget = None
         self.destroy()
@@ -194,8 +208,18 @@ class NodeWindow(QtWidgets.QMainWindow):
 
 class NodeProcess(QtCore.QObject):
 
-    def __init__(self, msg, broker_addr="", graphmgr_addr="", checkpoint_addr="", loop=None,
-                 library_paths=None, prometheus_dir=None, prometheus_port=None, hutch=''):
+    def __init__(
+        self,
+        msg,
+        broker_addr="",
+        graphmgr_addr="",
+        checkpoint_addr="",
+        loop=None,
+        library_paths=None,
+        prometheus_dir=None,
+        prometheus_port=None,
+        hutch="",
+    ):
 
         super().__init__()
 
@@ -227,7 +251,7 @@ class NodeProcess(QtCore.QObject):
                     nodes = [getattr(mod, name) for name in dir(mod) if isNodeClass(getattr(mod, name))]
 
                     for node in nodes:
-                        LIBRARY.addNodeType(node, [(mod.__name__, )])
+                        LIBRARY.addNodeType(node, [(mod.__name__,)])
 
             self.node = LIBRARY.getNodeType(msg.node_type)(msg.name)
 
@@ -248,7 +272,7 @@ class NodeProcess(QtCore.QObject):
 
         title = msg.name
         if hutch:
-            title += f' hutch: {hutch}'
+            title += f" hutch: {hutch}"
         self.win.setWindowTitle(title)
 
         self.hutch = hutch
@@ -296,8 +320,9 @@ class NodeProcess(QtCore.QObject):
             self.node.restoreTerminals(msg.terminals)
 
         if self.widget is None:
-            self.widget = self.node.display(msg.topics, msg.terms, self.graphmgr_addr, self.win,
-                                            units=msg.units, name=self.name, hutch=self.hutch)
+            self.widget = self.node.display(
+                msg.topics, msg.terms, self.graphmgr_addr, self.win, units=msg.units, name=self.name, hutch=self.hutch
+            )
 
             if self.ctrlWidget and self.widget:
                 splitter = QtWidgets.QSplitter(parent=self.win)
@@ -320,7 +345,7 @@ class NodeProcess(QtCore.QObject):
                 self.widget.setParent(scrollarea)
                 self.win.setCentralWidget(scrollarea)
 
-            if msg.state and hasattr(self.widget, 'restoreState'):
+            if msg.state and hasattr(self.widget, "restoreState"):
                 self.widget.blockSignals(True)
                 self.widget.restoreState(msg.state)
                 self.widget.blockSignals(False)
@@ -351,12 +376,12 @@ class NodeProcess(QtCore.QObject):
             title = self.name
 
         if self.hutch:
-            title += f' hutch: {self.hutch}'
+            title += f" hutch: {self.hutch}"
 
         self.win.setWindowTitle(title)
 
     @asyncSlot(object)
-    async def send_checkpoint(self, node, event='sigStateChanged'):
+    async def send_checkpoint(self, node, event="sigStateChanged"):
         state = node.saveState()
 
         msg = fcMsgs.NodeCheckpoint(node.name(), state=state, event=event)
@@ -380,7 +405,7 @@ class NodeProcess(QtCore.QObject):
             pth = os.path.join(self.prometheus_dir, pth)
             conf = [{"targets": [f"{socket.gethostname()}:{port}"]}]
             try:
-                with open(pth, 'w') as f:
+                with open(pth, "w") as f:
                     json.dump(conf, f)
             except PermissionError:
                 logging.error("Permission denied: %s", pth)
@@ -395,8 +420,9 @@ class MessageBroker(object):
     Handles messages between the editor window and the node process instance.
     """
 
-    def __init__(self, graphmgr_addr, load, ipcdir=None, prometheus_dir=None, prometheus_port=None, hutch="",
-                 save_dir=None):
+    def __init__(
+        self, graphmgr_addr, load, ipcdir=None, prometheus_dir=None, prometheus_port=None, hutch="", save_dir=None
+    ):
 
         if ipcdir is None:
             ipcdir = tempfile.mkdtemp()
@@ -419,18 +445,18 @@ class MessageBroker(object):
 
         self.ctx = zmq.asyncio.Context()
 
-        self.broker_sub_sock = self.ctx.socket(zmq.SUB)                # receives messages from editor
-        self.broker_sub_sock.setsockopt_string(zmq.SUBSCRIBE, '')
+        self.broker_sub_sock = self.ctx.socket(zmq.SUB)  # receives messages from editor
+        self.broker_sub_sock.setsockopt_string(zmq.SUBSCRIBE, "")
         self.broker_sub_sock.bind(self.broker_sub_addr)
 
-        self.broker_pub_sock = self.ctx.socket(zmq.XPUB)               # sends messages to node process
+        self.broker_pub_sock = self.ctx.socket(zmq.XPUB)  # sends messages to node process
         self.broker_pub_sock.bind(self.broker_pub_addr)
 
-        self.checkpoint_sub_sock = self.ctx.socket(zmq.SUB)            # receives messages from node process
-        self.checkpoint_sub_sock.setsockopt_string(zmq.SUBSCRIBE, '')
+        self.checkpoint_sub_sock = self.ctx.socket(zmq.SUB)  # receives messages from node process
+        self.checkpoint_sub_sock.setsockopt_string(zmq.SUBSCRIBE, "")
         self.checkpoint_sub_sock.bind(self.checkpoint_sub_addr)
 
-        self.checkpoint_pub_sock = self.ctx.socket(zmq.PUB)            # sends messages to editor
+        self.checkpoint_pub_sock = self.ctx.socket(zmq.PUB)  # sends messages to editor
         self.checkpoint_pub_sock.bind(self.checkpoint_pub_addr)
 
         self.prometheus_dir = prometheus_dir
@@ -457,18 +483,21 @@ class MessageBroker(object):
 
     def launch_editor_window(self, configure):
         editor_proc = mp.Process(
-            name='editor',
+            name="editor",
             target=run_editor_window,
-            args=(self.broker_sub_addr,
-                  self.graphmgr_addr,
-                  self.checkpoint_pub_addr,
-                  self.load,
-                  self.prometheus_dir,
-                  self.prometheus_port,
-                  self.hutch,
-                  configure,
-                  self.save_dir),
-            daemon=True)
+            args=(
+                self.broker_sub_addr,
+                self.graphmgr_addr,
+                self.checkpoint_pub_addr,
+                self.load,
+                self.prometheus_dir,
+                self.prometheus_port,
+                self.hutch,
+                configure,
+                self.save_dir,
+            ),
+            daemon=True,
+        )
         editor_proc.start()
 
         self.editor = editor_proc
@@ -480,8 +509,8 @@ class MessageBroker(object):
 
         while True:
             topic = await self.broker_pub_sock.recv_string()
-            if topic.startswith('\x01'):
-                topic = topic.lstrip('\x01')
+            if topic.startswith("\x01"):
+                topic = topic.lstrip("\x01")
                 topic = topic.rstrip(ZMQ_TOPIC_DELIM)
                 async with self.lock:
                     if topic in self.msgs:
@@ -536,7 +565,7 @@ class MessageBroker(object):
                     msg = fcMsgs.CreateNode(name, typ, state)
 
                     if type(self.msgs[msg.name]) is fcMsgs.DisplayNode and state:
-                        self.msgs[msg.name].state = state['widget']
+                        self.msgs[msg.name].state = state["widget"]
                     else:
                         # don't resend last message
                         del self.msgs[msg.name]
@@ -545,11 +574,13 @@ class MessageBroker(object):
                         target=NodeProcess,
                         name=msg.name,
                         args=(msg, self.broker_pub_addr, self.graphmgr_addr, self.checkpoint_sub_addr),
-                        kwargs={'library_paths': self.library_paths,
-                                'prometheus_dir': self.prometheus_dir,
-                                'prometheus_port': self.prometheus_port,
-                                'hutch': self.hutch},
-                        daemon=True
+                        kwargs={
+                            "library_paths": self.library_paths,
+                            "prometheus_dir": self.prometheus_dir,
+                            "prometheus_port": self.prometheus_port,
+                            "hutch": self.hutch,
+                        },
+                        daemon=True,
                     )
                     proc.start()
                     logger.info("restarting process: %s pid: %d", msg.name, proc.pid)
@@ -566,11 +597,13 @@ class MessageBroker(object):
                     target=NodeProcess,
                     name=msg.name,
                     args=(msg, self.broker_pub_addr, self.graphmgr_addr, self.checkpoint_sub_addr),
-                    kwargs={'library_paths': self.library_paths,
-                            'prometheus_dir': self.prometheus_dir,
-                            'prometheus_port': self.prometheus_port,
-                            'hutch': self.hutch},
-                    daemon=True
+                    kwargs={
+                        "library_paths": self.library_paths,
+                        "prometheus_dir": self.prometheus_dir,
+                        "prometheus_port": self.prometheus_port,
+                        "hutch": self.hutch,
+                    },
+                    daemon=True,
                 )
                 proc.start()
                 logger.info("creating process: %s pid: %d", msg.name, proc.pid)
@@ -616,21 +649,29 @@ class MessageBroker(object):
                 self.library_paths.update(msg.paths)
 
     async def run(self):
-        tasks = [asyncio.create_task(self.handle_connect()),
-                 asyncio.create_task(self.handle_checkpoint()),
-                 asyncio.create_task(self.process_messages()),
-                 asyncio.create_task(self.monitor_processes())]
+        tasks = [
+            asyncio.create_task(self.handle_connect()),
+            asyncio.create_task(self.handle_checkpoint()),
+            asyncio.create_task(self.process_messages()),
+            asyncio.create_task(self.monitor_processes()),
+        ]
         await asyncio.gather(*tasks)
 
 
-def run_client(graphmgr_addr, load, prometheus_dir, prometheus_port, hutch, use_opengl, use_numba,
-               configure, save_dir):
+def run_client(graphmgr_addr, load, prometheus_dir, prometheus_port, hutch, use_opengl, use_numba, configure, save_dir):
     use_opengl = use_opengl and "SSH_CONNECTION" not in os.environ and "NX_CONNECTION" not in os.environ
     pg.setConfigOptions(useOpenGL=use_opengl, enableExperimental=use_opengl, useNumba=use_numba)
 
     with tempfile.TemporaryDirectory() as ipcdir:
-        mb = MessageBroker(graphmgr_addr, load, ipcdir=ipcdir, prometheus_dir=prometheus_dir,
-                           prometheus_port=prometheus_port, hutch=hutch, save_dir=save_dir)
+        mb = MessageBroker(
+            graphmgr_addr,
+            load,
+            ipcdir=ipcdir,
+            prometheus_dir=prometheus_dir,
+            prometheus_port=prometheus_port,
+            hutch=hutch,
+            save_dir=save_dir,
+        )
         mb.launch_editor_window(configure)
         loop = asyncio.get_event_loop()
         task = asyncio.ensure_future(mb.run())

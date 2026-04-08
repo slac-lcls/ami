@@ -7,9 +7,10 @@ in a hierarchical tree view. It's designed to help users debug and inspect node
 state during flowchart execution.
 """
 
-from qtpy import QtCore, QtGui, QtWidgets
-from collections import OrderedDict
 import json
+from collections import OrderedDict
+
+from qtpy import QtCore, QtGui, QtWidgets
 
 
 class NodeStateWidget(QtWidgets.QWidget):
@@ -72,25 +73,24 @@ class NodeStateWidget(QtWidgets.QWidget):
         self._addRuntimeState(node, header)
 
         # Add position section
-        if 'pos' in state:
-            self._addPositionSection(state['pos'], header)
+        if "pos" in state:
+            self._addPositionSection(state["pos"], header)
 
         # Add control state section
-        if 'ctrl' in state:
-            self._addSection("Control State", state['ctrl'], header)
+        if "ctrl" in state:
+            self._addSection("Control State", state["ctrl"], header)
 
         # Add terminals section
-        if 'terminals' in state:
-            self._addTerminalsSection(state['terminals'], node, header)
+        if "terminals" in state:
+            self._addTerminalsSection(state["terminals"], node, header)
 
         # Add widget state section
-        if 'widget' in state:
-            self._addSection("Widget State", state['widget'], header)
+        if "widget" in state:
+            self._addSection("Widget State", state["widget"], header)
 
         # Add other state keys
         other_state = {}
-        standard_keys = {'pos', 'ctrl', 'terminals', 'widget', 'enabled',
-                        'viewed', 'latched', 'label', 'geometry'}
+        standard_keys = {"pos", "ctrl", "terminals", "widget", "enabled", "viewed", "latched", "label", "geometry"}
         for key, value in state.items():
             if key not in standard_keys:
                 other_state[key] = value
@@ -119,21 +119,21 @@ class NodeStateWidget(QtWidgets.QWidget):
 
         # Add runtime attributes
         runtime_attrs = [
-            ('created', getattr(node, 'created', None)),
-            ('changed', getattr(node, 'changed', None)),
-            ('viewed', getattr(node, 'viewed', None)),
-            ('enabled', getattr(node, '_enabled', None)),
-            ('latched', getattr(node, 'latched', None)),
-            ('exception', getattr(node, 'exception', None)),
+            ("created", getattr(node, "created", None)),
+            ("changed", getattr(node, "changed", None)),
+            ("viewed", getattr(node, "viewed", None)),
+            ("enabled", getattr(node, "_enabled", None)),
+            ("latched", getattr(node, "latched", None)),
+            ("exception", getattr(node, "exception", None)),
         ]
 
         for attr_name, attr_value in runtime_attrs:
             self._addStateItem(section, attr_name, attr_value)
 
         # Add label if present
-        label = getattr(node, '_label', '')
+        label = getattr(node, "_label", "")
         if label:
-            self._addStateItem(section, 'label', label)
+            self._addStateItem(section, "label", label)
 
     def _addPositionSection(self, pos, parent):
         """Add position section."""
@@ -142,10 +142,10 @@ class NodeStateWidget(QtWidgets.QWidget):
         self._makeSectionHeader(section)
 
         if isinstance(pos, (list, tuple)) and len(pos) >= 2:
-            self._addStateItem(section, 'x', pos[0])
-            self._addStateItem(section, 'y', pos[1])
+            self._addStateItem(section, "x", pos[0])
+            self._addStateItem(section, "y", pos[1])
         else:
-            self._addStateItem(section, 'pos', pos)
+            self._addStateItem(section, "pos", pos)
 
     def _addTerminalsSection(self, terminals_state, node, parent):
         """Add terminals section showing connections."""
@@ -199,8 +199,8 @@ class NodeStateWidget(QtWidgets.QWidget):
                         connections.append(conn_str)
 
             # Set value text
-            term_type = term_state.get('ttype', 'Unknown')
-            if hasattr(term_type, '__name__'):
+            term_type = term_state.get("ttype", "Unknown")
+            if hasattr(term_type, "__name__"):
                 term_type = term_type.__name__
             else:
                 term_type = str(term_type)

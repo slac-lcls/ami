@@ -1,12 +1,12 @@
+import numpy as np
 import pytest
 import zmq
-import numpy as np
 
-from ami.data import MsgTypes, Datagram, CollectorMessage, Deserializer
-from ami.comm import Store, ResultStore
+from ami.comm import ResultStore, Store
+from ami.data import CollectorMessage, Datagram, Deserializer, MsgTypes
 
 
-@pytest.fixture(scope='function')
+@pytest.fixture(scope="function")
 def store(request, ipc_dir):
     store = None
 
@@ -20,11 +20,11 @@ def store(request, ipc_dir):
     yield store
 
     # if it uses zmq then clean it up
-    if hasattr(store, 'ctx'):
+    if hasattr(store, "ctx"):
         store.ctx.destroy()
 
 
-@pytest.mark.parametrize('store', [None], indirect=True)
+@pytest.mark.parametrize("store", [None], indirect=True)
 def test_store_clear(store):
     # test that the store is empty
     assert not store
@@ -56,16 +56,18 @@ def test_store_clear(store):
     assert not store.namespace
 
 
-@pytest.mark.parametrize('obj, expected, store',
-                         [
-                            (('test', int), ('test', 5, False), None),
-                            (('test', int), ('test', None, False), None),
-                            (('test', None), ('test', 5, False), None),
-                            (('test', None), ('test', 5, None), None),
-                            (('test', str), ('test', "cat", False), None),
-                            (('test', int), ('test', "cat", False), None),
-                         ],
-                         indirect=['store'])
+@pytest.mark.parametrize(
+    "obj, expected, store",
+    [
+        (("test", int), ("test", 5, False), None),
+        (("test", int), ("test", None, False), None),
+        (("test", None), ("test", 5, False), None),
+        (("test", None), ("test", 5, None), None),
+        (("test", str), ("test", "cat", False), None),
+        (("test", int), ("test", "cat", False), None),
+    ],
+    indirect=["store"],
+)
 def test_store_create(obj, expected, store):
     key, value, fail = expected
 
@@ -89,13 +91,15 @@ def test_store_create(obj, expected, store):
         assert fail
 
 
-@pytest.mark.parametrize('obj, expected, store',
-                         [
-                            (('test', 5), ('test', False), None),
-                            (('test', None), ('test', True), None),
-                            (('test', 'cat'), ('fail', True), None),
-                         ],
-                         indirect=['store'])
+@pytest.mark.parametrize(
+    "obj, expected, store",
+    [
+        (("test", 5), ("test", False), None),
+        (("test", None), ("test", True), None),
+        (("test", "cat"), ("fail", True), None),
+    ],
+    indirect=["store"],
+)
 def test_store_get(obj, expected, store):
     key, fail = expected
 
@@ -111,13 +115,15 @@ def test_store_get(obj, expected, store):
         assert fail
 
 
-@pytest.mark.parametrize('obj, expected, store',
-                         [
-                            (('test', 5), ('test', int, False), None),
-                            (('test', None), ('test', None, True), None),
-                            (('test', 'cat'), ('fail', str, True), None),
-                         ],
-                         indirect=['store'])
+@pytest.mark.parametrize(
+    "obj, expected, store",
+    [
+        (("test", 5), ("test", int, False), None),
+        (("test", None), ("test", None, True), None),
+        (("test", "cat"), ("fail", str, True), None),
+    ],
+    indirect=["store"],
+)
 def test_store_getdgram(obj, expected, store):
     key, expected_type, fail = expected
 
@@ -138,62 +144,68 @@ def test_store_getdgram(obj, expected, store):
         assert fail
 
 
-@pytest.mark.parametrize('obj, expected',
-                         [
-                            (6, int),
-                            ("apple", str),
-                            ({"test": 4}, dict),
-                            (np.zeros(5), (np.ndarray, 1)),
-                            (np.zeros((5, 5)), (np.ndarray, 2)),
-                         ])
+@pytest.mark.parametrize(
+    "obj, expected",
+    [
+        (6, int),
+        ("apple", str),
+        ({"test": 4}, dict),
+        (np.zeros(5), (np.ndarray, 1)),
+        (np.zeros((5, 5)), (np.ndarray, 2)),
+    ],
+)
 def test_store_gettype(obj, expected):
     # check that get_type static method returns the expected type
     assert Store.get_type(obj) == expected
 
 
-@pytest.mark.parametrize('obj, expected, store',
-                         [
-                            (6, int, None),
-                            ('fake', str, None),
-                            (None, None, None),
-                            (np.zeros(5), (np.ndarray, 1), None),
-                            (np.zeros((5, 5)), (np.ndarray, 2), None),
-                         ],
-                         indirect=['store'])
+@pytest.mark.parametrize(
+    "obj, expected, store",
+    [
+        (6, int, None),
+        ("fake", str, None),
+        (None, None, None),
+        (np.zeros(5), (np.ndarray, 1), None),
+        (np.zeros((5, 5)), (np.ndarray, 2), None),
+    ],
+    indirect=["store"],
+)
 def test_store_put(obj, expected, store):
 
-    store.put('test', obj)
+    store.put("test", obj)
 
     if obj is not None:
         if isinstance(expected, tuple):
             # check that the store has the obj and it is marked as the right type plus dimension
-            assert 'test' in store.namespace
-            assert np.array_equal(store.get('test'), obj)
-            assert 'test' in store.names
-            assert 'test' in store.types
-            assert store.types['test'] == expected
+            assert "test" in store.namespace
+            assert np.array_equal(store.get("test"), obj)
+            assert "test" in store.names
+            assert "test" in store.types
+            assert store.types["test"] == expected
         else:
             # check that the store has the obj and it is marked as the right type
-            assert 'test' in store.namespace
-            assert store.get('test') == obj
-            assert 'test' in store.names
-            assert 'test' in store.types
-            assert store.types['test'] == expected
+            assert "test" in store.namespace
+            assert store.get("test") == obj
+            assert "test" in store.names
+            assert "test" in store.types
+            assert store.types["test"] == expected
     else:
         # check that None doesn't get put into the store
-        assert 'test' not in store.namespace
-        assert 'test' not in store.names
-        assert 'test' not in store.types
+        assert "test" not in store.namespace
+        assert "test" not in store.names
+        assert "test" not in store.types
 
 
-@pytest.mark.parametrize('obj, expected, store',
-                         [
-                            ({}, {}, None),
-                            ({"test": 5}, {"test": int}, None),
-                            ({"test": 5, "test2": "apple"}, {"test": int, "test2": str}, None),
-                            ({"test": np.zeros(5)}, {"test": (np.ndarray, 1)}, None),
-                         ],
-                         indirect=['store'])
+@pytest.mark.parametrize(
+    "obj, expected, store",
+    [
+        ({}, {}, None),
+        ({"test": 5}, {"test": int}, None),
+        ({"test": 5, "test2": "apple"}, {"test": int, "test2": str}, None),
+        ({"test": np.zeros(5)}, {"test": (np.ndarray, 1)}, None),
+    ],
+    indirect=["store"],
+)
 def test_store_update(obj, expected, store):
 
     store.update(obj)
@@ -224,18 +236,20 @@ def test_store_update(obj, expected, store):
             assert store.types[name] == obj_type
 
 
-@pytest.mark.parametrize('obj, expected, store',
-                         [
-                            ({}, {}, True),
-                            ({"t1": 1, "t2": "bad"}, {"t1": 1, "t2": "bad"}, True),
-                            ({"t1": 1, "t2": "bad"}, {"t1": 1, "t2": "bad"}, True),
-                         ],
-                         indirect=['store'])
+@pytest.mark.parametrize(
+    "obj, expected, store",
+    [
+        ({}, {}, True),
+        ({"t1": 1, "t2": "bad"}, {"t1": 1, "t2": "bad"}, True),
+        ({"t1": 1, "t2": "bad"}, {"t1": 1, "t2": "bad"}, True),
+    ],
+    indirect=["store"],
+)
 def test_store_collect(obj, expected, store):
     store, addr = store
 
     # the namespace and version in the store
-    name = 'test_namespace'
+    name = "test_namespace"
     # test that the namespace doesn't already exist
     assert name not in store
     # initialize the namespace
@@ -274,13 +288,15 @@ def test_store_collect(obj, expected, store):
     collector.close()
 
 
-@pytest.mark.parametrize('obj, expected, store',
-                         [
-                            ({}, False, True),
-                            ({"t1": 1, "t2": "bad"}, True, True),
-                            ({"t1": 1, "t2": "bad"}, True, True),
-                         ],
-                         indirect=['store'])
+@pytest.mark.parametrize(
+    "obj, expected, store",
+    [
+        ({}, False, True),
+        ({"t1": 1, "t2": "bad"}, True, True),
+        ({"t1": 1, "t2": "bad"}, True, True),
+    ],
+    indirect=["store"],
+)
 def test_store_addremove(obj, expected, store):
     store, addr = store
 
@@ -288,8 +304,8 @@ def test_store_addremove(obj, expected, store):
     assert not store
 
     # the namespace and version in the store
-    name = 'test_namespace'
-    bad_name = 'bad_namespace'
+    name = "test_namespace"
+    bad_name = "bad_namespace"
     # add a namespace to the store
     store.configure(name, 0)
 

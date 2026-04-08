@@ -1,4 +1,4 @@
 try:
-    from qasync import * # noqa
+    from qasync import *  # noqa
 except ModuleNotFoundError:
-    from asyncqt import * # noqa
+    from asyncqt import *  # noqa

@@ -5,7 +5,6 @@ class Msg(object):
 
 
 class BrokerMsg(Msg):
-
     """
     Messages to command the broker to do something.
     """
@@ -15,7 +14,6 @@ class BrokerMsg(Msg):
 
 
 class NodeMsg(Msg):
-
     """
     Messages which should be cached and forwarded to node processes.
     """
@@ -57,7 +55,9 @@ class CloseNode(NodeMsg):
 
 class DisplayNode(NodeMsg):
 
-    def __init__(self, name, topics, terms, state={}, units={}, redisplay=False, geometry=None, terminals=None, label=None):
+    def __init__(
+        self, name, topics, terms, state={}, units={}, redisplay=False, geometry=None, terminals=None, label=None
+    ):
         super().__init__(name)
         self.topics = topics
         self.terms = terms
@@ -104,11 +104,17 @@ class NodeTermRemoved(NodeMsg):
 
 class NodeTermConnected(NodeMsg):
 
-    def __init__(self,
-                 localNode, localNodeIsSource,
-                 localTerm, localTermState,
-                 remoteNode, remoteNodeIsSource,
-                 remoteTerm, remoteTermState):
+    def __init__(
+        self,
+        localNode,
+        localNodeIsSource,
+        localTerm,
+        localTermState,
+        remoteNode,
+        remoteNodeIsSource,
+        remoteTerm,
+        remoteTermState,
+    ):
         super().__init__(localNode)
         self.localNode = localNode
         self.localNodeIsSource = localNodeIsSource
@@ -122,11 +128,17 @@ class NodeTermConnected(NodeMsg):
 
 class NodeTermDisconnected(NodeMsg):
 
-    def __init__(self,
-                 localNode, localNodeIsSource,
-                 localTerm, localTermState,
-                 remoteNode, remoteNodeIsSource,
-                 remoteTerm, remoteTermState):
+    def __init__(
+        self,
+        localNode,
+        localNodeIsSource,
+        localTerm,
+        localTermState,
+        remoteNode,
+        remoteNodeIsSource,
+        remoteTerm,
+        remoteTermState,
+    ):
         super().__init__(localNode)
         self.localNode = localNode
         self.localNodeIsSource = localNodeIsSource

@@ -1,5 +1,6 @@
 import abc
 import operator
+
 import numpy as np
 from networkfox import operation
 from networkfox.modifiers import GraphWarning
@@ -16,27 +17,27 @@ class Transformation(abc.ABC):
             func (function): Function node will call
         """
 
-        self.name = kwargs['name']
+        self.name = kwargs["name"]
 
-        inputs = kwargs['inputs']
+        inputs = kwargs["inputs"]
         if type(inputs) is dict:
             self.inputs = list(inputs.values())
         else:
             self.inputs = inputs
 
-        outputs = kwargs['outputs']
+        outputs = kwargs["outputs"]
         if type(outputs) is dict:
             self.outputs = list(outputs.values())
         else:
             self.outputs = outputs
 
-        self.func = kwargs['func']
-        self.parent = kwargs.get('parent', None)
-        self.color = kwargs.get('color', "")
-        self.begin_run_func = kwargs.get('begin_run', None)
-        self.end_run_func = kwargs.get('end_run', None)
-        self.begin_step_func = kwargs.get('begin_step', None)
-        self.end_step_func = kwargs.get('end_step', None)
+        self.func = kwargs["func"]
+        self.parent = kwargs.get("parent", None)
+        self.color = kwargs.get("color", "")
+        self.begin_run_func = kwargs.get("begin_run", None)
+        self.end_run_func = kwargs.get("end_run", None)
+        self.begin_step_func = kwargs.get("begin_step", None)
+        self.end_step_func = kwargs.get("end_step", None)
         self.exportable = False
         self.is_global_operation = False
         self.latched = False
@@ -51,19 +52,25 @@ class Transformation(abc.ABC):
         Args:
             other (Transformation): Node to compare against.
         """
-        return bool(self.name is not None and
-                    self.name == getattr(other, 'name', None))
+        return bool(self.name is not None and self.name == getattr(other, "name", None))
 
     def __repr__(self):
-        return u"%s(name='%s', color='%s', inputs=%s, outputs=%s, parent=%s)" % \
-            (self.__class__.__name__, self.name, self.color, self.inputs, self.outputs, self.parent)
+        return "%s(name='%s', color='%s', inputs=%s, outputs=%s, parent=%s)" % (
+            self.__class__.__name__,
+            self.name,
+            self.color,
+            self.inputs,
+            self.outputs,
+            self.parent,
+        )
 
     def to_operation(self):
         """
         Return NetworkFoX operation node.
         """
-        return operation(name=self.name, needs=self.inputs, provides=self.outputs, color=self.color,
-                         metadata={'parent': self.parent})(self.func)
+        return operation(
+            name=self.name, needs=self.inputs, provides=self.outputs, color=self.color, metadata={"parent": self.parent}
+        )(self.func)
 
     def begin_run(self, color=""):
         if color == self.color and callable(self.begin_run_func):
@@ -105,21 +112,21 @@ class StatefulTransformation(Transformation):
             outputs (list): List of outputs
             reduction (function): Reduction function
         """
-        reduction = kwargs.pop('reduction', None)
-        worker_reduction = kwargs.pop('worker_reduction', None)
-        local_reduction = kwargs.pop('local_reduction', None)
-        global_reduction = kwargs.pop('global_reduction', None)
-        latched = kwargs.pop('latched', False)
+        reduction = kwargs.pop("reduction", None)
+        worker_reduction = kwargs.pop("worker_reduction", None)
+        local_reduction = kwargs.pop("local_reduction", None)
+        global_reduction = kwargs.pop("global_reduction", None)
+        latched = kwargs.pop("latched", False)
 
-        kwargs.setdefault('func', None)
+        kwargs.setdefault("func", None)
         super().__init__(**kwargs)
 
         if worker_reduction and local_reduction and global_reduction:
-            assert hasattr(worker_reduction, '__call__'), 'worker_reduction is not callable'
-            assert hasattr(local_reduction, '__call__'), 'local_reduction is not callable'
-            assert hasattr(global_reduction, '__call__'), 'global_reduction is not callable'
+            assert hasattr(worker_reduction, "__call__"), "worker_reduction is not callable"
+            assert hasattr(local_reduction, "__call__"), "local_reduction is not callable"
+            assert hasattr(global_reduction, "__call__"), "global_reduction is not callable"
         elif reduction:
-            assert hasattr(reduction, '__call__'), 'reduction is not callable'
+            assert hasattr(reduction, "__call__"), "reduction is not callable"
             worker_reduction = reduction
             local_reduction = reduction
             global_reduction = reduction
@@ -147,16 +154,17 @@ class StatefulTransformation(Transformation):
         return
 
     def reduction(self, *args, **kwargs):
-        if self.color == 'worker':
+        if self.color == "worker":
             return self._worker_reduction(*args, **kwargs)
-        elif self.color == 'localCollector':
+        elif self.color == "localCollector":
             return self._local_reduction(*args, **kwargs)
-        elif self.color == 'globalCollector':
+        elif self.color == "globalCollector":
             return self._global_reduction(*args, **kwargs)
 
     def to_operation(self):
-        return operation(name=self.name, needs=self.inputs, provides=self.outputs,
-                         color=self.color, metadata={'parent': self.parent})(self)
+        return operation(
+            name=self.name, needs=self.inputs, provides=self.outputs, color=self.color, metadata={"parent": self.parent}
+        )(self)
 
 
 class GlobalTransformation(StatefulTransformation):
@@ -173,8 +181,8 @@ class GlobalTransformation(StatefulTransformation):
             num_contributors (int): the number of contributors providing input
                 to this part of the global operation
         """
-        is_expanded = kwargs.pop('is_expanded', False)
-        num_contributors = kwargs.pop('num_contributors', None)
+        is_expanded = kwargs.pop("is_expanded", False)
+        num_contributors = kwargs.pop("num_contributors", None)
         super().__init__(**kwargs)
         self.is_global_operation = True
         self.is_expanded = is_expanded
@@ -199,7 +207,7 @@ class GlobalTransformation(StatefulTransformation):
 class ReduceByKey(GlobalTransformation):
 
     def __init__(self, **kwargs):
-        kwargs.setdefault('reduction', operator.add)
+        kwargs.setdefault("reduction", operator.add)
         super().__init__(**kwargs)
         self.res = {}
 
@@ -225,7 +233,7 @@ class ReduceByKey(GlobalTransformation):
         self.res = {}
 
     def heartbeat_finished(self):
-        if self.color != 'globalCollector':
+        if self.color != "globalCollector":
             self.reset()
 
 
@@ -233,8 +241,8 @@ class Accumulator(GlobalTransformation):
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
-        self.res_factory = kwargs.pop('res_factory', lambda: 0)
-        assert hasattr(self.res_factory, '__call__'), 'res_factory is not callable'
+        self.res_factory = kwargs.pop("res_factory", lambda: 0)
+        assert hasattr(self.res_factory, "__call__"), "res_factory is not callable"
         self.res = self.res_factory()
         self.count = 0
         self.was_reset = True
@@ -260,30 +268,30 @@ class Accumulator(GlobalTransformation):
         self.was_reset = True
 
     def heartbeat_finished(self):
-        if self.color != 'globalCollector':
+        if self.color != "globalCollector":
             self.reset()
 
     def on_expand(self):
         res = super().on_expand()
-        res['res_factory'] = self.res_factory
+        res["res_factory"] = self.res_factory
         return res
 
 
 class PickN(GlobalTransformation):
 
     def __init__(self, **kwargs):
-        N = kwargs.pop('N', 1)
-        exportable = kwargs.pop('exportable', False)
+        N = kwargs.pop("N", 1)
+        exportable = kwargs.pop("exportable", False)
         super().__init__(**kwargs)
         self.N = N
         self.exportable = exportable
         self.idx = 0
-        self.res = [None]*self.N
+        self.res = [None] * self.N
         self.clear = False
 
     def __call__(self, *args, **kwargs):
         if self.clear:
-            self.res = [None]*self.N
+            self.res = [None] * self.N
             self.clear = False
 
         if not args and kwargs:
@@ -305,14 +313,14 @@ class PickN(GlobalTransformation):
                 return self.res[0]
 
     def reset(self):
-        self.res = [None]*self.N
+        self.res = [None] * self.N
 
 
 class SumN(GlobalTransformation):
 
     def __init__(self, **kwargs):
-        N = kwargs.pop('N', 1)
-        exportable = kwargs.pop('exportable', False)
+        N = kwargs.pop("N", 1)
+        exportable = kwargs.pop("exportable", False)
         super().__init__(**kwargs)
         self.N = N
         self.exportable = exportable
@@ -355,9 +363,9 @@ class SumN(GlobalTransformation):
 class RollingBuffer(GlobalTransformation):
 
     def __init__(self, **kwargs):
-        N = kwargs.pop('N', 1)
-        use_numpy = kwargs.pop('use_numpy', False)
-        unique = kwargs.pop('unique', False)
+        N = kwargs.pop("N", 1)
+        use_numpy = kwargs.pop("use_numpy", False)
+        unique = kwargs.pop("unique", False)
         super().__init__(**kwargs)
         self.N = N
         self.use_numpy = use_numpy
@@ -382,7 +390,7 @@ class RollingBuffer(GlobalTransformation):
 
         self.count += count
 
-        if self.is_expanded: # this case is for collectors: args = buffer
+        if self.is_expanded:  # this case is for collectors: args = buffer
             # Logic to prevent self.res have a memory footprint > N
             if len(args) + len(self.res) < self.N:
                 self.res.extend(args)
@@ -392,7 +400,7 @@ class RollingBuffer(GlobalTransformation):
                 self.res[:remove] = []
                 self.res.extend(args)
             self.idx = min(self.idx + len(args), self.N)
-        else: # this case is for workers:  args = data
+        else:  # this case is for workers:  args = data
             if not self.unique:
                 self.res.append(args)
                 self.idx = min(self.idx + 1, self.N)
@@ -400,13 +408,13 @@ class RollingBuffer(GlobalTransformation):
                 if len(self.res) == 0:
                     self.res.append(args)
                     self.idx = min(self.idx + 1, self.N)
-                elif self.res[self.idx-1] != args:
+                elif self.res[self.idx - 1] != args:
                     self.res.append(args)
                     self.idx = min(self.idx + 1, self.N)
-        self.res = self.res[-self.idx:]
+        self.res = self.res[-self.idx :]
 
         # returning like this ensure that a copy of self.res is returned, not the same object
-        return self.count, self.res[-self.idx:]
+        return self.count, self.res[-self.idx :]
 
     def reset(self):
         self.idx = 0
@@ -414,8 +422,8 @@ class RollingBuffer(GlobalTransformation):
 
     def on_expand(self):
         res = super().on_expand()
-        res['use_numpy'] = self.use_numpy
-        res['unique'] = self.unique
+        res["use_numpy"] = self.use_numpy
+        res["unique"] = self.unique
         return res
 
 

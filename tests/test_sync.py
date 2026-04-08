@@ -1,15 +1,17 @@
+import multiprocessing as mp
+import time
+
 import pytest
 import zmq
-import time
-import multiprocessing as mp
 
 from ami.sync import run_syncer
 
 
-@pytest.fixture(scope='function')
+@pytest.fixture(scope="function")
 def sync_proc(request, ipc_dir):
     try:
         from pytest_cov.embed import cleanup_on_sigterm
+
         cleanup_on_sigterm()
     except ImportError:
         pass
@@ -23,10 +25,7 @@ def sync_proc(request, ipc_dir):
         nclients = request.param
         start = 0
 
-    sync_proc = mp.Process(target=run_syncer,
-                           args=(addr, comm_addr, start, interval),
-                           name='syncer',
-                           daemon=True)
+    sync_proc = mp.Process(target=run_syncer, args=(addr, comm_addr, start, interval), name="syncer", daemon=True)
     sync_proc.start()
 
     ctx = zmq.Context()
@@ -43,7 +42,7 @@ def sync_proc(request, ipc_dir):
     yield syncs, start
 
     # cleanup the syncer
-    comm.send_string('exit')
+    comm.send_string("exit")
 
     ret = comm.recv_pyobj()
     # join syncer thread
@@ -63,15 +62,15 @@ def sync_proc(request, ipc_dir):
     return ret
 
 
-@pytest.mark.parametrize('iterations', range(4))
-@pytest.mark.parametrize('sync_proc', [1, 2, 3, (2, 45)], indirect=True)
+@pytest.mark.parametrize("iterations", range(4))
+@pytest.mark.parametrize("sync_proc", [1, 2, 3, (2, 45)], indirect=True)
 def test_timestamps(sync_proc, iterations):
     syncs, start = sync_proc
     nclients = len(syncs)
 
     for i in range(iterations):
         for c, sync in enumerate(syncs):
-            sync.send_string('ts')
+            sync.send_string("ts")
             evtid, ts = sync.recv_pyobj()
 
             # check the returned timestamp
@@ -81,7 +80,7 @@ def test_timestamps(sync_proc, iterations):
             assert ts <= time.time()
 
 
-@pytest.mark.parametrize('sync_proc', [1], indirect=True)
+@pytest.mark.parametrize("sync_proc", [1], indirect=True)
 def test_badrequests(sync_proc):
     syncs, expected = sync_proc
     # check that only one client was returned
@@ -89,7 +88,7 @@ def test_badrequests(sync_proc):
     sync = syncs[0]
 
     # send a good request
-    sync.send_string('ts')
+    sync.send_string("ts")
     evtid, ts = sync.recv_pyobj()
 
     # check the returned timestamp
@@ -102,14 +101,14 @@ def test_badrequests(sync_proc):
     expected += 1
 
     # send a bad request
-    sync.send_string('bad')
+    sync.send_string("bad")
     ts = sync.recv_pyobj()
 
     # check that no timestamp is returned
     assert ts is None
 
     # send a good request
-    sync.send_string('ts')
+    sync.send_string("ts")
     evtid, ts = sync.recv_pyobj()
 
     # check the returned timestamp

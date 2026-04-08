@@ -81,23 +81,23 @@ class SourceConfiguration(QtWidgets.QWidget):
 
     def saveState(self):
         cfg = {}
-        cfg['type'] = self.source_type.currentText()
-        cfg['interval'] = self.interval.value()
-        cfg['init_time'] = self.init_time.value()
-        cfg['hb_period'] = self.hb_period.value()
-        cfg['files'] = self.files
-        cfg['repeat'] = self.repeat.isChecked()
+        cfg["type"] = self.source_type.currentText()
+        cfg["interval"] = self.interval.value()
+        cfg["init_time"] = self.init_time.value()
+        cfg["hb_period"] = self.hb_period.value()
+        cfg["files"] = self.files
+        cfg["repeat"] = self.repeat.isChecked()
 
         return cfg
 
     def restoreState(self, state):
-        self.source_type.setCurrentText(state['type'])
-        self.interval.setValue(state['interval'])
-        self.init_time.setValue(state['init_time'])
-        self.hb_period.setValue(state['hb_period'])
-        self.files = state['files']
+        self.source_type.setCurrentText(state["type"])
+        self.interval.setValue(state["interval"])
+        self.init_time.setValue(state["init_time"])
+        self.hb_period.setValue(state["hb_period"])
+        self.files = state["files"]
         self.fileListModel.setStringList(self.files)
-        self.repeat.setChecked(state['repeat'])
+        self.repeat.setChecked(state["repeat"])
 
     def applyClicked(self):
         cfg = self.saveState()

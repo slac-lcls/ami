@@ -1,18 +1,24 @@
 import amitypes
-from ami.flowchart.library.Editors import STYLE
 from pyqtgraph import FileDialog
-from qtpy import QtWidgets, QtCore, QtGui
+from qtpy import QtCore, QtGui, QtWidgets
+
+from ami.flowchart.library.Editors import STYLE
+
 try:
-    from pyqode.python.backend import server
+    import qtpy
+
     # from pyqode.python.widgets import PyCodeEdit
     from pyqode.core import api, modes, panels
-    from pyqode.python import modes as pymodes, panels as pypanels, widgets
-    import qtpy
+    from pyqode.python import modes as pymodes
+    from pyqode.python import panels as pypanels
+    from pyqode.python import widgets
+    from pyqode.python.backend import server
+
     HAS_PYQODE = qtpy.API == "pyqt5"
 except ImportError:
     HAS_PYQODE = False
-import tempfile
 import importlib
+import tempfile
 
 
 class PythonEditorProc(object):
@@ -23,14 +29,14 @@ class PythonEditorProc(object):
         self.mod = None
 
     def load(self):
-        self.file = tempfile.NamedTemporaryFile(mode='w', suffix='.py')
+        self.file = tempfile.NamedTemporaryFile(mode="w", suffix=".py")
         self.file.write(self.text)
         self.file.flush()
         spec = importlib.util.spec_from_file_location("module.name", self.file.name)
         self.mod = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(self.mod)
 
-        if hasattr(self.mod, 'EventProcessor'):
+        if hasattr(self.mod, "EventProcessor"):
             self.proc = self.mod.EventProcessor()
             self.func = self.proc.on_event
         else:
@@ -76,7 +82,9 @@ class PythonEditorProc(object):
         if self.proc:
             return self.proc.end_step(step)
 
+
 if HAS_PYQODE:
+
     class MyPythonCodeEdit(widgets.PyCodeEditBase):
         def __init__(self, parent=None):
             super().__init__(parent=parent)
@@ -129,7 +137,9 @@ class EditWidget(QtWidgets.QPlainTextEdit):
 
     def event(self, event):
         if event.type() == QtCore.QEvent.KeyPress and event.key() == QtCore.Qt.Key_Tab:
-            self.keyPressEvent(QtGui.QKeyEvent(QtCore.QEvent.KeyPress, QtCore.Qt.Key_Space, QtCore.Qt.NoModifier, "    "))
+            self.keyPressEvent(
+                QtGui.QKeyEvent(QtCore.QEvent.KeyPress, QtCore.Qt.Key_Space, QtCore.Qt.NoModifier, "    ")
+            )
             return True
         else:
             return super().event(event)
@@ -165,10 +175,10 @@ class PythonEditorWidget(QtWidgets.QWidget):
         self.sigStateChanged.emit("text", None, self.editor.toPlainText())
 
     def saveState(self):
-        return {'text': self.editor.toPlainText()}
+        return {"text": self.editor.toPlainText()}
 
     def restoreState(self, state):
-        self.editor.setPlainText(state['text'])
+        self.editor.setPlainText(state["text"])
 
     def close(self):
         self.editor.close()
@@ -201,7 +211,7 @@ class ExportWidget(QtWidgets.QWidget):
         self.layout.addWidget(self.ok)
 
     def ok_clicked(self):
-        self.fileDialog = FileDialog(None, "Save File..", '.', "Python (*.py)")
+        self.fileDialog = FileDialog(None, "Save File..", ".", "Python (*.py)")
         self.fileDialog.setAcceptMode(QtWidgets.QFileDialog.AcceptSave)
         self.fileDialog.show()
         self.fileDialog.fileSelected.connect(self.saveFile)
@@ -213,13 +223,13 @@ class ExportWidget(QtWidgets.QWidget):
         terminals = {}
         for name, term in self.node.terminals.items():
             state = term.saveState()
-            state['ttype'] = amitypes.TypeDumper(term._type)
+            state["ttype"] = amitypes.TypeDumper(term._type)
             terminals[name] = state
 
         template = self.export(node_name, docstring, terminals, self.text)
-        if not fileName.endswith('.py'):
-            fileName += '.py'
-        with open(fileName, 'w') as f:
+        if not fileName.endswith(".py"):
+            fileName += ".py"
+        with open(fileName, "w") as f:
             f.write(template)
 
     def export(self, name, docstring, terminals, text):

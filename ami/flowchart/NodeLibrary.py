@@ -1,5 +1,6 @@
 import re
 from collections import OrderedDict
+
 from ami.flowchart.Node import Node
 
 
@@ -9,7 +10,7 @@ def isNodeClass(cls):
             return False
     except Exception:
         return False
-    return hasattr(cls, 'nodeName')
+    return hasattr(cls, "nodeName")
 
 
 class NodeLibrary:
@@ -73,7 +74,7 @@ class NodeLibrary:
                 doc = child.__doc__
                 assert doc, f"Node {name} has no documentation!"
                 doc = doc.lstrip().rstrip()
-                doc = re.sub(r'(\t+)|(  )+', '', doc)
+                doc = re.sub(r"(\t+)|(  )+", "", doc)
                 items[name] = doc
 
             self.labelTree[root] = items

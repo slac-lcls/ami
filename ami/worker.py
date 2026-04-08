@@ -1,37 +1,57 @@
 #!/usr/bin/env python
-import os
-import re
-import sys
-import zmq
+import argparse
+import cProfile
+import datetime as dt
 import json
 import logging
-import argparse
-import time
-import datetime as dt
-import cProfile
+import os
+import re
 import signal
-import prometheus_client as pc
-from ami import LogConfig, Defaults
-from ami.comm import Ports, PlatformAction, Colors, ResultStore, Node, AutoExport
-from ami.data import MsgTypes, Source, Transitions
-from ami.graphkit_wrapper import Graph
-from ami.data import RequestedData
+import sys
+import time
 
+import prometheus_client as pc
+import zmq
+
+from ami import Defaults, LogConfig
+from ami.comm import AutoExport, Colors, Node, PlatformAction, Ports, ResultStore
+from ami.data import MsgTypes, RequestedData, Source, Transitions
+from ami.graphkit_wrapper import Graph
 
 logger = logging.getLogger(__name__)
 
 
 class Worker(Node):
-    def __init__(self, node, src, collector_addr, graph_addr, msg_addr, export_addr, prometheus_dir,
-                 prometheus_port, hutch, hwm, timeout, select_manager):
+    def __init__(
+        self,
+        node,
+        src,
+        collector_addr,
+        graph_addr,
+        msg_addr,
+        export_addr,
+        prometheus_dir,
+        prometheus_port,
+        hutch,
+        hwm,
+        timeout,
+        select_manager,
+    ):
         """
         node : int
             a unique integer identifying this worker
         src : object
             object with an events() method that is an iterable (like psana.DataSource)
         """
-        super().__init__(node, graph_addr, msg_addr, export_addr, prometheus_dir=prometheus_dir,
-                         prometheus_port=prometheus_port, hutch=hutch)
+        super().__init__(
+            node,
+            graph_addr,
+            msg_addr,
+            export_addr,
+            prometheus_dir=prometheus_dir,
+            prometheus_port=prometheus_port,
+            hutch=hutch,
+        )
 
         self.src = src
         self.pending_src = False
@@ -69,7 +89,7 @@ class Worker(Node):
         self.update_requests()
 
     def update_requests(self):
-        logger.debug('Update requests')
+        logger.debug("Update requests")
         requests = RequestedData()
         for graph in self.graphs.values():
             if graph is not None:
@@ -79,7 +99,7 @@ class Worker(Node):
             self.src.request(requests)
 
     def update_requests_kwargs(self, name, version, args, requested_data):
-        logger.debug('Update requested data')
+        logger.debug("Update requested data")
         self.src.request(requested_data, is_kws_update=True)
         return
 
@@ -87,7 +107,7 @@ class Worker(Node):
         if self.graphs[name]:
             self.graphs[name].compile(**args)
         self.update_requests()
-        self.store.configure(name, version, self.graphs[name].outputs['worker'])
+        self.store.configure(name, version, self.graphs[name].outputs["worker"])
 
     def recv_graph(self, name, version, args, graph):
         self.graphs[name] = graph
@@ -114,17 +134,16 @@ class Worker(Node):
         self.update_requests()
 
     def recv_graph_exception(self, name, version, exception):
-        logger.exception("%s: Failure encountered updating graph (%s v%d):",
-                         self.name, name, self.store.version(name))
+        logger.exception("%s: Failure encountered updating graph (%s v%d):", self.name, name, self.store.version(name))
         self.report("error", "Failure updating graph: %s" % exception)
         logger.error("%s: Purging graph (%s v%d)", self.name, name, self.store.version(name))
         self.clear_graph(name)
         self.report("purge", name)
 
     def update_sources(self, name, version, args, src_cfg):
-        src_type = src_cfg['type']
-        hb_period = src_cfg['hb_period']
-        num_workers = args['num_workers']
+        src_type = src_cfg["type"]
+        hb_period = src_cfg["hb_period"]
+        num_workers = args["num_workers"]
         logger.info("%s: Received source configuration", self.name)
         try:
             src_cls = Source.find_source(src_type)
@@ -136,7 +155,7 @@ class Worker(Node):
             else:
                 self.pending_src = True
                 self.report("info", "Pending source configuration")
-                self.source_args = {'name': name, 'version': version, 'args': args, 'src_cfg': src_cfg}
+                self.source_args = {"name": name, "version": version, "args": args, "src_cfg": src_cfg}
         except Exception as e:
             self.report("error", e)
             logger.error("%s: Error configuring source", self.name)
@@ -146,7 +165,7 @@ class Worker(Node):
         size = self.store.collect(self.node, heartbeat)
 
         if self.event_rate:
-            self.event_rate['num_events'] = self.num_events
+            self.event_rate["num_events"] = self.num_events
             self.report("event_rate", self.event_rate)
             self.event_rate = {}
 
@@ -164,10 +183,10 @@ class Worker(Node):
             logger.info("%s: Waiting for source configuration", self.name)
             self.graph_comm.recv(True)
 
-        event_counter = pc.Counter('ami_event_count', 'Event Counter', ['hutch', 'type', 'process'])
-        event_time = pc.Gauge('ami_event_time_secs', 'Event Time', ['hutch', 'type', 'process'])
-        event_size = pc.Gauge('ami_event_size_bytes', 'Event Size', ['hutch', 'process'])
-        event_latency = pc.Gauge('ami_event_latency_secs', 'Event Latency', ['hutch', 'sender', 'process'])
+        event_counter = pc.Counter("ami_event_count", "Event Counter", ["hutch", "type", "process"])
+        event_time = pc.Gauge("ami_event_time_secs", "Event Time", ["hutch", "type", "process"])
+        event_size = pc.Gauge("ami_event_size_bytes", "Event Size", ["hutch", "process"])
+        event_latency = pc.Gauge("ami_event_latency_secs", "Event Latency", ["hutch", "sender", "process"])
 
         idle_start = time.time()
         idle_stop = time.time()
@@ -176,7 +195,7 @@ class Worker(Node):
         while True:
             for msg in self.src.events():
                 idle_stop = time.time()
-                event_time.labels(self.hutch, 'Idle', self.name).set(idle_stop - idle_start)
+                event_time.labels(self.hutch, "Idle", self.name).set(idle_stop - idle_start)
 
                 # check to see if the graph has been reconfigured after update
                 if msg.mtype == MsgTypes.Heartbeat:
@@ -200,30 +219,30 @@ class Worker(Node):
                     while True:
                         try:
                             name, data = self.export_comm.recv(False)
-                            self.exports[name] = {AutoExport.unmangle(k): v
-                                                  for k, v in data.items() if k in self.src.requested_names}
+                            self.exports[name] = {
+                                AutoExport.unmangle(k): v for k, v in data.items() if k in self.src.requested_names
+                            }
                         except zmq.Again:
                             break
 
-                    event_counter.labels(self.hutch, 'Heartbeat', self.name).inc()
+                    event_counter.labels(self.hutch, "Heartbeat", self.name).inc()
 
                     if self.pending_src:
                         break
 
                     heartbeat_stop = time.time()
                     heartbeat_time += heartbeat_stop - heartbeat_start
-                    event_time.labels(self.hutch, 'Heartbeat', self.name).set(heartbeat_time)
+                    event_time.labels(self.hutch, "Heartbeat", self.name).set(heartbeat_time)
                     event_size.labels(self.hutch, self.name).set(size)
                     heartbeat_time = 0
 
                 elif msg.mtype == MsgTypes.Datagram:
                     datagram_start = time.time()
                     input_latency = dt.datetime.now() - dt.datetime.fromtimestamp(msg.unix_ts)
-                    event_latency.labels(self.hutch, "Source",
-                                         self.name).set(input_latency.total_seconds())
+                    event_latency.labels(self.hutch, "Source", self.name).set(input_latency.total_seconds())
 
                     if any(v is None for k, v in msg.payload.items()):
-                        event_counter.labels(self.hutch, 'Partial', self.name).inc()
+                        event_counter.labels(self.hutch, "Partial", self.name).inc()
 
                     for name, graph in self.graphs.items():
                         graph_result = None
@@ -249,17 +268,21 @@ class Worker(Node):
 
                         except Exception as e:
                             e.graph_name = name
-                            logger.exception("%s: Failure encountered while executing graph (%s, v%d):",
-                                             self.name, name, self.store.version(name))
+                            logger.exception(
+                                "%s: Failure encountered while executing graph (%s, v%d):",
+                                self.name,
+                                name,
+                                self.store.version(name),
+                            )
                             self.report("error", e)
                             logger.error("%s: Purging graph (%s v%d)", self.name, name, self.store.version(name))
                             self.clear_graph(name)
                             self.report("purge", name)
 
                     self.num_events += 1
-                    event_counter.labels(self.hutch, 'Datagram', self.name).inc()
+                    event_counter.labels(self.hutch, "Datagram", self.name).inc()
                     datagram_duration = time.time() - datagram_start
-                    event_time.labels(self.hutch, 'Datagram', self.name).set(datagram_duration)
+                    event_time.labels(self.hutch, "Datagram", self.name).set(datagram_duration)
                     heartbeat_time += datagram_duration
 
                 elif msg.mtype == MsgTypes.Transition:
@@ -285,10 +308,10 @@ class Worker(Node):
 
                     # forward the transition
                     self.store.send(msg)
-                    event_counter.labels(self.hutch, 'Transition', self.name).inc()
+                    event_counter.labels(self.hutch, "Transition", self.name).inc()
                 else:
                     self.store.send(msg)
-                    event_counter.labels(self.hutch, 'Other', self.name).inc()
+                    event_counter.labels(self.hutch, "Other", self.name).inc()
 
                 idle_start = time.time()
 
@@ -299,11 +322,26 @@ class Worker(Node):
                 self.update_sources(**self.source_args)
 
 
-def run_worker(num, num_workers, hb_period, source, collector_addr, graph_addr, msg_addr, export_addr,
-               flags=None, prometheus_dir=None, prometheus_port=None, hutch=None, hwm=None, timeout=None,
-               cprofile=False, select_manager=(None, None, None, None, None)):
+def run_worker(
+    num,
+    num_workers,
+    hb_period,
+    source,
+    collector_addr,
+    graph_addr,
+    msg_addr,
+    export_addr,
+    flags=None,
+    prometheus_dir=None,
+    prometheus_port=None,
+    hutch=None,
+    hwm=None,
+    timeout=None,
+    cprofile=False,
+    select_manager=(None, None, None, None, None),
+):
 
-    logger.info('Starting worker # %d, sending to collector at %s PID: %d', num, collector_addr, os.getpid())
+    logger.info("Starting worker # %d, sending to collector at %s PID: %d", num, collector_addr, os.getpid())
 
     if cprofile:
         profiler = cProfile.Profile()
@@ -321,9 +359,9 @@ def run_worker(num, num_workers, hb_period, source, collector_addr, graph_addr, 
         src_type = source[0]
         if isinstance(source[1], dict):
             src_cfg = source[1]
-        elif source[1].endswith('.json') and source[1].find('=') < 0:
+        elif source[1].endswith(".json") and source[1].find("=") < 0:
             try:
-                with open(source[1], 'r') as cnf:
+                with open(source[1], "r") as cnf:
                     src_cfg = json.load(cnf)
             except OSError:
                 logger.exception("worker%03d: problem opening json file:", num)
@@ -333,26 +371,32 @@ def run_worker(num, num_workers, hb_period, source, collector_addr, graph_addr, 
                 return 1
         else:
             src_cfg = {}
-            cfg = source[1].split(',')
+            cfg = source[1].split(",")
             for c in cfg:
-                k, v = c.split('=')
+                k, v = c.split("=")
                 src_cfg[k] = v
 
         src_cls = Source.find_source(src_type)
         if src_cls is not None:
-            src = src_cls(num,
-                          num_workers,
-                          hb_period,
-                          src_cfg,
-                          flags,
-                          timeout=timeout)
+            src = src_cls(num, num_workers, hb_period, src_cfg, flags, timeout=timeout)
         else:
             logger.critical("worker%03d: unknown data source type: %s", num, source[0])
             return 1
 
-
-    with Worker(num, src, collector_addr, graph_addr, msg_addr, export_addr, prometheus_dir, prometheus_port,
-                hutch, hwm, timeout, select_manager) as worker:
+    with Worker(
+        num,
+        src,
+        collector_addr,
+        graph_addr,
+        msg_addr,
+        export_addr,
+        prometheus_dir,
+        prometheus_port,
+        hutch,
+        hwm,
+        timeout,
+        select_manager,
+    ) as worker:
         return worker.run()
 
 
@@ -360,13 +404,13 @@ def parse_args(args):
     flags = {}
     for flag in args.flags:
         try:
-            key, value = flag.split('=')
+            key, value = flag.split("=")
             flags[key] = value
         except ValueError:
             logger.exception("Problem parsing data source flag %s", flag)
 
     if args.source is not None:
-        src_url_match = re.match('(?P<prot>.*)://(?P<body>.*)', args.source)
+        src_url_match = re.match("(?P<prot>.*)://(?P<body>.*)", args.source)
         if src_url_match:
             src_cfg = src_url_match.groups()
         else:
@@ -379,111 +423,60 @@ def parse_args(args):
 
 
 def main():
-    parser = argparse.ArgumentParser(description='AMII Worker App')
+    parser = argparse.ArgumentParser(description="AMII Worker App")
 
     parser.add_argument(
-        '-H',
-        '--host',
-        default=Defaults.Host,
-        help='hostname of the AMII Manager (default: %s)' % Defaults.Host
+        "-H", "--host", default=Defaults.Host, help="hostname of the AMII Manager (default: %s)" % Defaults.Host
     )
 
     parser.add_argument(
-        '-p',
-        '--port',
+        "-p",
+        "--port",
         type=int,
         default=Ports.BasePort,
         action=PlatformAction,
-        help='base port for ami (default: %d) reserves next %d consecutive ports' % (Ports.BasePort, Ports.NumPorts)
+        help="base port for ami (default: %d) reserves next %d consecutive ports" % (Ports.BasePort, Ports.NumPorts),
     )
 
-    parser.add_argument(
-        '-n',
-        '--num-workers',
-        type=int,
-        default=1,
-        help='number of worker processes (default: 1)'
-    )
+    parser.add_argument("-n", "--num-workers", type=int, default=1, help="number of worker processes (default: 1)")
+
+    parser.add_argument("-N", "--node-num", type=int, default=0, help="node identification number (default: 0)")
+
+    parser.add_argument("-b", "--heartbeat", type=int, default=10, help="the heartbeat period (default: 10)")
 
     parser.add_argument(
-        '-N',
-        '--node-num',
-        type=int,
-        default=0,
-        help='node identification number (default: 0)'
-    )
-
-    parser.add_argument(
-        '-b',
-        '--heartbeat',
-        type=int,
-        default=10,
-        help='the heartbeat period (default: 10)'
-    )
-
-    parser.add_argument(
-        '-f',
-        '--flags',
-        action='append',
+        "-f",
+        "--flags",
+        action="append",
         default=[],
-        help='extra flags as key=value pairs that are passed to the data source'
+        help="extra flags as key=value pairs that are passed to the data source",
     )
 
     parser.add_argument(
-        '--log-level',
+        "--log-level",
         default=LogConfig.Level,
-        help='the logging level of the application (default %s)' % LogConfig.Level
+        help="the logging level of the application (default %s)" % LogConfig.Level,
     )
 
-    parser.add_argument(
-        '--log-file',
-        help='an optional file to write the log output to'
-    )
+    parser.add_argument("--log-file", help="an optional file to write the log output to")
+
+    parser.add_argument("--prometheus-port", type=int, default=Ports.Prometheus, help="port for prometheus")
+
+    parser.add_argument("--prometheus-dir", help="directory for prometheus configuration", default=None)
+
+    parser.add_argument("--hutch", help="hutch for prometheus label", default=None)
+
+    parser.add_argument("--hwm", help="zmq HWM for push/pull sockets (default: 1)", type=int, default=1)
+
+    parser.add_argument("--timeout", help="heartbeat timeout in ms", type=int, default=None)
+
+    parser.add_argument("--cprofile", help="profile with cprofile", action="store_true")
 
     parser.add_argument(
-        '--prometheus-port',
-        type=int,
-        default=Ports.Prometheus,
-        help='port for prometheus'
-    )
-
-    parser.add_argument(
-        '--prometheus-dir',
-        help='directory for prometheus configuration',
-        default=None
-    )
-
-    parser.add_argument(
-        '--hutch',
-        help='hutch for prometheus label',
-        default=None
-    )
-
-    parser.add_argument(
-        '--hwm',
-        help='zmq HWM for push/pull sockets (default: 1)',
-        type=int,
-        default=1
-    )
-
-    parser.add_argument(
-        '--timeout',
-        help='heartbeat timeout in ms',
-        type=int,
-        default=None
-    )
-
-    parser.add_argument(
-        '--cprofile',
-        help="profile with cprofile",
-        action='store_true'
-    )
-
-    parser.add_argument(
-        'source',
-        nargs='?',
-        metavar='SOURCE',
-        help='data source configuration (exampes: static://test.json, random://test.json, psana://exp=xcsdaq13:run=14)'
+        "source",
+        nargs="?",
+        metavar="SOURCE",
+        help="data source configuration (exampes: static://test.json, random://test.json, psana://exp=xcsdaq13:run=14)",
     )
 
     args = parser.parse_args()
@@ -501,25 +494,27 @@ def main():
     try:
         flags, src_cfg = parse_args(args)
 
-        return run_worker(args.node_num,
-                          args.num_workers,
-                          args.heartbeat,
-                          src_cfg,
-                          collector_addr,
-                          graph_addr,
-                          msg_addr,
-                          export_addr,
-                          flags,
-                          args.prometheus_dir,
-                          args.prometheus_port,
-                          args.hutch,
-                          args.hwm,
-                          args.timeout,
-                          args.cprofile)
+        return run_worker(
+            args.node_num,
+            args.num_workers,
+            args.heartbeat,
+            src_cfg,
+            collector_addr,
+            graph_addr,
+            msg_addr,
+            export_addr,
+            flags,
+            args.prometheus_dir,
+            args.prometheus_port,
+            args.hutch,
+            args.hwm,
+            args.timeout,
+            args.cprofile,
+        )
     except KeyboardInterrupt:
         logger.info("Worker killed by user...")
         return 0
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     sys.exit(main())

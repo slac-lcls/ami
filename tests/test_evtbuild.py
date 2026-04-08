@@ -1,11 +1,11 @@
+import dill
 import pytest
 import zmq
-import dill
 
-from ami.data import MsgTypes, Transitions, Message, CollectorMessage, Deserializer, Heartbeat
-from ami.comm import Colors, ContributionBuilder, TransitionBuilder, EventBuilder
-from ami.graphkit_wrapper import Graph
+from ami.comm import Colors, ContributionBuilder, EventBuilder, TransitionBuilder
+from ami.data import CollectorMessage, Deserializer, Heartbeat, Message, MsgTypes, Transitions
 from ami.graph_nodes import PickN
+from ami.graphkit_wrapper import Graph
 
 
 class FakeBuilder(ContributionBuilder):
@@ -23,16 +23,14 @@ class FakeBuilder(ContributionBuilder):
         self.pending[eb_key][eb_id] = data
 
 
-@pytest.fixture(scope='module')
+@pytest.fixture(scope="module")
 def eb_graph():
-    graph = Graph(name='graph')
-    graph.add(PickN(name='pick1_values', N=1,
-                    inputs=['values'],
-                    outputs=['value']))
+    graph = Graph(name="graph")
+    graph.add(PickN(name="pick1_values", N=1, inputs=["values"], outputs=["value"]))
     return dill.dumps(graph)
 
 
-@pytest.fixture(scope='function')
+@pytest.fixture(scope="function")
 def event_builder(request):
     num, depth = request.param
     eb = EventBuilder(num, depth, Colors.LocalCollector, "inproc://eb_test")
@@ -43,7 +41,7 @@ def event_builder(request):
     eb.ctx.destroy()
 
 
-@pytest.fixture(scope='function')
+@pytest.fixture(scope="function")
 def transition_builder(request):
     num = request.param
     addr = "inproc://eb_test"
@@ -55,18 +53,20 @@ def transition_builder(request):
     tb.ctx.destroy()
 
 
-@pytest.fixture(scope='function')
+@pytest.fixture(scope="function")
 def test_builder(request):
     return FakeBuilder(request.param)
 
 
-@pytest.mark.parametrize('test_builder, num_contribs, expected',
-                         [
-                            (1, 1, True),
-                            (2, 2, True),
-                            (3, 2, False),
-                         ],
-                         indirect=['test_builder'])
+@pytest.mark.parametrize(
+    "test_builder, num_contribs, expected",
+    [
+        (1, 1, True),
+        (2, 2, True),
+        (3, 2, False),
+    ],
+    indirect=["test_builder"],
+)
 def test_builder_comp(test_builder, num_contribs, expected):
     num_hb = 5
     identity = 0
@@ -100,16 +100,18 @@ def test_builder_comp(test_builder, num_contribs, expected):
             assert not test_builder.completed
 
 
-@pytest.mark.parametrize('test_builder, contrib_id, bad',
-                         [
-                            (1, -1, True),
-                            (1, 0, False),
-                            (1, 1, True),
-                            (2, 0, False),
-                            (2, 1, False),
-                            (2, 2, True),
-                         ],
-                         indirect=['test_builder'])
+@pytest.mark.parametrize(
+    "test_builder, contrib_id, bad",
+    [
+        (1, -1, True),
+        (1, 0, False),
+        (1, 1, True),
+        (2, 0, False),
+        (2, 1, False),
+        (2, 2, True),
+    ],
+    indirect=["test_builder"],
+)
 def test_builder_valid_contributors(test_builder, contrib_id, bad):
     try:
         test_builder.update(0, contrib_id, "test_data")
@@ -120,16 +122,18 @@ def test_builder_valid_contributors(test_builder, contrib_id, bad):
         assert bad
 
 
-@pytest.mark.parametrize('transition_builder, ttype',
-                         [
-                            (1, Transitions.Configure),
-                            (2, Transitions.Configure),
-                            (3, Transitions.Configure),
-                            (1, Transitions.Allocate),
-                            (2, Transitions.Allocate),
-                            (3, Transitions.Allocate),
-                         ],
-                         indirect=['transition_builder'])
+@pytest.mark.parametrize(
+    "transition_builder, ttype",
+    [
+        (1, Transitions.Configure),
+        (2, Transitions.Configure),
+        (3, Transitions.Configure),
+        (1, Transitions.Allocate),
+        (2, Transitions.Allocate),
+        (3, Transitions.Allocate),
+    ],
+    indirect=["transition_builder"],
+)
 def test_tb_comp(transition_builder, ttype):
     contribs, addr, tb = transition_builder
     sock = tb.ctx.socket(zmq.PULL)
@@ -166,9 +170,9 @@ def test_tb_comp(transition_builder, ttype):
     assert msg.payload.payload == payload
 
 
-@pytest.mark.parametrize('event_builder', [(1, 5), (2, 5), (3, 5)], indirect=True)
+@pytest.mark.parametrize("event_builder", [(1, 5), (2, 5), (3, 5)], indirect=True)
 def test_eb_comp(event_builder):
-    name = 'test'
+    name = "test"
     num_hb = 5
     event_builder.create(name)
 
@@ -179,9 +183,9 @@ def test_eb_comp(event_builder):
     assert event_builder.ready(name, hb)
 
 
-@pytest.mark.parametrize('event_builder', [(2, 1), (2, 5)], indirect=True)
+@pytest.mark.parametrize("event_builder", [(2, 1), (2, 5)], indirect=True)
 def test_eb_depth(event_builder):
-    name = 'test'
+    name = "test"
     num_hb = 10
     depth = event_builder.depth
     event_builder.create(name)
@@ -200,11 +204,11 @@ def test_eb_depth(event_builder):
         assert set(event_builder.pending(name).keys()) == expected_keys
 
 
-@pytest.mark.parametrize('event_builder', [(2, 5)], indirect=True)
+@pytest.mark.parametrize("event_builder", [(2, 5)], indirect=True)
 def test_comp_prune(event_builder):
     # Do the first three heartbeats partially, fourth is complete
     # (hb, list(contributers), expected depth)
-    name = 'test'
+    name = "test"
     hbs = [
         (0, [0], 1),
         (1, [0], 2),
@@ -226,7 +230,7 @@ def test_comp_prune(event_builder):
     assert event_builder.latest(name) == hbs[-1][0]
 
 
-@pytest.mark.parametrize('event_builder', [(2, 5)], indirect=True)
+@pytest.mark.parametrize("event_builder", [(2, 5)], indirect=True)
 def test_comp_graph(event_builder, eb_graph):
     sock = event_builder.ctx.socket(zmq.PULL)
     sock.bind("inproc://eb_test")
@@ -234,12 +238,12 @@ def test_comp_graph(event_builder, eb_graph):
     hb = 0
     idnum = 0
     graph_version = 0
-    graph_name = 'test'
+    graph_name = "test"
     nworkers = event_builder.num_contribs
     ncollectors = 1
-    graph_args = {'num_workers': nworkers, 'num_local_collectors': ncollectors}
+    graph_args = {"num_workers": nworkers, "num_local_collectors": ncollectors}
     value = 6
-    data = {'value_%s' % Colors.Worker: value}
+    data = {"value_%s" % Colors.Worker: value}
 
     # add the graph to the event builder
     eb_graph = dill.loads(eb_graph)
@@ -275,10 +279,10 @@ def test_comp_graph(event_builder, eb_graph):
     assert msg.name == graph_name
     assert msg.version == graph_version
     # test the value in the results dictionary from the message
-    assert msg.payload.get('value_%s' % Colors.LocalCollector) == value
+    assert msg.payload.get("value_%s" % Colors.LocalCollector) == value
 
 
-@pytest.mark.parametrize('event_builder', [(2, 5)], indirect=True)
+@pytest.mark.parametrize("event_builder", [(2, 5)], indirect=True)
 def test_pending_graph(event_builder, eb_graph):
     sock = event_builder.ctx.socket(zmq.PULL)
     sock.bind("inproc://eb_test")
@@ -286,12 +290,12 @@ def test_pending_graph(event_builder, eb_graph):
     hb = 0
     idnum = 0
     graph_versions = 3
-    graph_name = 'test'
+    graph_name = "test"
     nworkers = event_builder.num_contribs
     ncollectors = 1
-    graph_args = {'num_workers': nworkers, 'num_local_collectors': ncollectors}
+    graph_args = {"num_workers": nworkers, "num_local_collectors": ncollectors}
     value = 6
-    data = {'value_%s' % Colors.Worker: value}
+    data = {"value_%s" % Colors.Worker: value}
 
     # add the graph to the event builder
     eb_graph = dill.loads(eb_graph)
@@ -313,7 +317,7 @@ def test_pending_graph(event_builder, eb_graph):
         assert ver not in event_builder.pending_graphs(graph_name)
         assert event_builder.version(graph_name) == ver
         # check that the pending graphs are still pending...
-        for nv in range(ver+1, graph_versions):
+        for nv in range(ver + 1, graph_versions):
             assert nv in event_builder.pending_graphs(graph_name)
             assert event_builder.version(graph_name) == ver
 
@@ -329,6 +333,6 @@ def test_pending_graph(event_builder, eb_graph):
         assert ver not in event_builder.pending_graphs(graph_name)
         assert event_builder.version(graph_name) == ver
         # check that the pending graphs are still pending...
-        for nv in range(ver+1, graph_versions):
+        for nv in range(ver + 1, graph_versions):
             assert nv in event_builder.pending_graphs(graph_name)
             assert event_builder.version(graph_name) == ver

@@ -15,6 +15,7 @@ def get_version():
 def psana_available():
     try:
         import psana  # noqa: F401
+
         return True
     except ImportError:
         return False
@@ -23,7 +24,8 @@ def psana_available():
 def psana_uses_epics_epoch():
     try:
         import psana  # noqa: F401
-        return not hasattr(psana, '_psana')
+
+        return not hasattr(psana, "_psana")
     except ImportError:
         return False
 
@@ -31,6 +33,7 @@ def psana_uses_epics_epoch():
 def p4p_available():
     try:
         import p4p  # noqa: F401
+
         return True
     except (ImportError, RuntimeError):
         return False
@@ -44,7 +47,7 @@ def p4p_get_version():
         # backport to python 3.7
         import importlib_metadata
     try:
-        return importlib_metadata.version('p4p')
+        return importlib_metadata.version("p4p")
     except importlib_metadata.PackageNotFoundError:
         # package is not installed
         pass
@@ -52,24 +55,24 @@ def p4p_get_version():
 
 class p4pConfig:
     Version = p4p_get_version()
-    SupportsTimestamps = p4p_get_version() >= '4.0.0' if p4p_available() else False
+    SupportsTimestamps = p4p_get_version() >= "4.0.0" if p4p_available() else False
 
 
 class LogConfig:
-    BasicFormat = '%(message)s'
-    Format = '[ %(asctime)s | %(levelname)-8s] %(message)s'
-    FullFormat = '[ %(asctime)s | %(name)-13s | %(levelname)-8s] %(message)s'
-    Level = 'INFO'
+    BasicFormat = "%(message)s"
+    Format = "[ %(asctime)s | %(levelname)-8s] %(message)s"
+    FullFormat = "[ %(asctime)s | %(name)-13s | %(levelname)-8s] %(message)s"
+    Level = "INFO"
 
     @staticmethod
     def get_package_name(name):
-        return '.'.join(name.split('.')[:-1])
+        return ".".join(name.split(".")[:-1])
 
 
 class Defaults:
-    Host = 'localhost'
-    GraphName = 'graph'
-    SourceType = 'psana' if psana_available() else 'random'
+    Host = "localhost"
+    GraphName = "graph"
+    SourceType = "psana" if psana_available() else "random"
     SourceConfig = {
         "interval": 0.0,
         "init_time": 0.5,

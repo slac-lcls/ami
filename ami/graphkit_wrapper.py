@@ -1,16 +1,18 @@
+import collections
+
 import dill
 import networkx as nx
-import collections
+from networkfox import compose, modifiers
+
 import ami.graph_nodes as gn
 from ami.data import RequestedData
-from networkfox import compose, modifiers
 
 
 def skip(n):
     return type(n) is str or type(n) is modifiers.optional
 
 
-class Graph():
+class Graph:
 
     def __init__(self, name):
         """
@@ -47,7 +49,7 @@ class Graph():
             True if the name is valid, False otherwise.
         """
         if isinstance(name, str):
-            return not name.endswith(('_worker', '_localCollector', '_globalCollector'))
+            return not name.endswith(("_worker", "_localCollector", "_globalCollector"))
         else:
             return False
 
@@ -74,7 +76,7 @@ class Graph():
         """
         sources = RequestedData()
 
-        for var in self.inputs['worker']:
+        for var in self.inputs["worker"]:
             if self.name_is_valid(var):
                 sources.add(var)
 
@@ -167,11 +169,11 @@ class Graph():
             descendants = set()
             ancestors = set()
             for child in self.children_of_global_operations[new_node.parent]:
-                if child.name == '%s_worker' % new_node.name:
+                if child.name == "%s_worker" % new_node.name:
                     descendants.add(child)
                     descendants.update(nx.dag.descendants(self.graph, child))
                     assert set(child.inputs) == set(new_node.inputs), "Inputs must match."
-                if child.name == '%s_globalCollector' % new_node.name:
+                if child.name == "%s_globalCollector" % new_node.name:
                     ancestors.add(child)
                     ancestors.update(nx.dag.ancestors(self.graph, child))
                     assert set(child.outputs) == set(new_node.outputs), "Outputs must match."
@@ -217,8 +219,7 @@ class Graph():
         """
         Execute post heartbeat hook on StatefulTransformation nodes in the graph.
         """
-        nodes = list(filter(lambda node: isinstance(node, gn.StatefulTransformation),
-                            self.graph.nodes))
+        nodes = list(filter(lambda node: isinstance(node, gn.StatefulTransformation), self.graph.nodes))
         list(map(lambda node: node.heartbeat_finished(), nodes))
 
     def begin_run(self, color):
@@ -257,14 +258,18 @@ class Graph():
         """
         self.global_operations = set()
 
-        global_operations = list(filter(lambda node: getattr(node, 'is_global_operation', False), self.graph.nodes))
+        global_operations = list(filter(lambda node: getattr(node, "is_global_operation", False), self.graph.nodes))
         for node in global_operations:
             if node in self.expanded_global_operations:
                 continue
 
-            node.color = 'globalCollector'
-            before = list(filter(lambda node: getattr(node, 'is_global_operation', False),
-                                 nx.algorithms.dag.ancestors(self.graph, node)))
+            node.color = "globalCollector"
+            before = list(
+                filter(
+                    lambda node: getattr(node, "is_global_operation", False),
+                    nx.algorithms.dag.ancestors(self.graph, node),
+                )
+            )
             if before == []:
                 self.global_operations.add(node)
 
@@ -272,15 +277,15 @@ class Graph():
                     if skip(ancestor):
                         continue
 
-                    if ancestor.color == '':
-                        ancestor.color = 'worker'
+                    if ancestor.color == "":
+                        ancestor.color = "worker"
 
             for descendant in nx.algorithms.dag.descendants(self.graph, node):
                 if skip(descendant):
                     continue
 
-                if descendant.color == '':
-                    descendant.color = 'globalCollector'
+                if descendant.color == "":
+                    descendant.color = "globalCollector"
 
         for node in nx.algorithms.topological_sort(self.graph):
             if skip(node) or node.color:
@@ -289,12 +294,12 @@ class Graph():
             colors = set()
 
             for predecessor in map(self.graph.predecessors, node.inputs):
-                colors.update(map(lambda node: getattr(node, 'color', ''), predecessor))
+                colors.update(map(lambda node: getattr(node, "color", ""), predecessor))
 
-            if 'globalCollector' in colors:
-                node.color = 'globalCollector'
+            if "globalCollector" in colors:
+                node.color = "globalCollector"
             else:
-                node.color = 'worker'
+                node.color = "worker"
 
     def _expand_global_operations(self, num_workers, num_local_collectors):
         """
@@ -308,7 +313,7 @@ class Graph():
         """
 
         inputs = [n for n, d in self.graph.in_degree() if d == 0]
-        self.inputs['worker'].update(inputs)
+        self.inputs["worker"].update(inputs)
 
         for node in self.global_operations:
             inputs = node.inputs
@@ -319,24 +324,27 @@ class Graph():
             self.graph.remove_node(node)
             NewNode = getattr(gn, node.__class__.__name__)
 
-            color_order = ['worker', 'localCollector', 'globalCollector']
+            color_order = ["worker", "localCollector", "globalCollector"]
             worker_outputs = None
             local_collector_outputs = None
             extras = node.on_expand()
 
             for color in color_order:
-                if color == 'worker':
-                    worker_outputs = list(map(lambda o: o+'_worker', node.outputs))
+                if color == "worker":
+                    worker_outputs = list(map(lambda o: o + "_worker", node.outputs))
 
                     worker_N = 1
-                    if hasattr(node, 'N'):
+                    if hasattr(node, "N"):
                         worker_N = max(node.N // num_workers, 1)
 
-                    worker_node = NewNode(name=node.name+'_worker',
-                                          inputs=inputs, outputs=worker_outputs,
-                                          reduction=node._worker_reduction,
-                                          N=worker_N,
-                                          **extras)
+                    worker_node = NewNode(
+                        name=node.name + "_worker",
+                        inputs=inputs,
+                        outputs=worker_outputs,
+                        reduction=node._worker_reduction,
+                        N=worker_N,
+                        **extras,
+                    )
                     worker_node.color = color
                     worker_node.is_global_operation = False
                     self.children_of_global_operations[node.parent].add(worker_node)
@@ -346,21 +354,26 @@ class Graph():
                     for o in worker_outputs:
                         self.graph.add_edge(worker_node, o)
 
-                elif color == 'localCollector':
+                elif color == "localCollector":
                     self.inputs[color].update(worker_outputs)
-                    local_collector_outputs = list(map(lambda o: o+'_localCollector', node.outputs))
+                    local_collector_outputs = list(map(lambda o: o + "_localCollector", node.outputs))
 
                     local_collector_N = 1
                     workers_per_local_collector = None
-                    if hasattr(node, 'N'):
+                    if hasattr(node, "N"):
                         local_collector_N = max(node.N // num_local_collectors, 1)
                         workers_per_local_collector = max(num_workers // num_local_collectors, 1)
 
-                    local_collector_node = NewNode(name=node.name+'_localCollector',
-                                                   inputs=worker_outputs,  outputs=local_collector_outputs,
-                                                   reduction=node._local_reduction,
-                                                   N=local_collector_N, is_expanded=True,
-                                                   num_contributors=workers_per_local_collector, **extras)
+                    local_collector_node = NewNode(
+                        name=node.name + "_localCollector",
+                        inputs=worker_outputs,
+                        outputs=local_collector_outputs,
+                        reduction=node._local_reduction,
+                        N=local_collector_N,
+                        is_expanded=True,
+                        num_contributors=workers_per_local_collector,
+                        **extras,
+                    )
                     local_collector_node.color = color
                     local_collector_node.is_global_operation = False
                     self.children_of_global_operations[node.parent].add(local_collector_node)
@@ -370,17 +383,22 @@ class Graph():
                     for o in local_collector_outputs:
                         self.graph.add_edge(local_collector_node, o)
 
-                elif color == 'globalCollector':
+                elif color == "globalCollector":
                     self.inputs[color].update(local_collector_outputs)
 
-                    N = getattr(node, 'N', 1)
-                    N = max((N // num_workers)*num_workers, 1)
+                    N = getattr(node, "N", 1)
+                    N = max((N // num_workers) * num_workers, 1)
 
-                    global_collector_node = NewNode(name=node.name+'_globalCollector',
-                                                    inputs=local_collector_outputs, outputs=outputs,
-                                                    reduction=node._global_reduction,
-                                                    N=N, is_expanded=True,
-                                                    num_contributors=num_local_collectors, **extras)
+                    global_collector_node = NewNode(
+                        name=node.name + "_globalCollector",
+                        inputs=local_collector_outputs,
+                        outputs=outputs,
+                        reduction=node._global_reduction,
+                        N=N,
+                        is_expanded=True,
+                        num_contributors=num_local_collectors,
+                        **extras,
+                    )
                     global_collector_node.color = color
                     self.children_of_global_operations[node.parent].add(global_collector_node)
                     self.expanded_global_operations.add(global_collector_node)
@@ -389,8 +407,10 @@ class Graph():
                     for o in outputs:
                         self.graph.add_edge(global_collector_node, o)
                     if global_collector_node.latched:
-                        self.latched_names[global_collector_node.name] = (set(global_collector_node.inputs),
-                                                                          global_collector_node.outputs)
+                        self.latched_names[global_collector_node.name] = (
+                            set(global_collector_node.inputs),
+                            global_collector_node.outputs,
+                        )
 
     def _collect_global_inputs(self):
         """
@@ -398,8 +418,9 @@ class Graph():
         """
         inputs = [n for n, d in self.graph.in_degree() if d == 0]
 
-        global_collector_nodes = list(filter(lambda node: getattr(node, 'color', '') == 'globalCollector',
-                                             self.graph.nodes))
+        global_collector_nodes = list(
+            filter(lambda node: getattr(node, "color", "") == "globalCollector", self.graph.nodes)
+        )
 
         for node in global_collector_nodes:
             new_inputs = []
@@ -408,7 +429,7 @@ class Graph():
                 continue
             for i in node.inputs:
                 if i in inputs:
-                    pickone = gn.PickN(name=i+"_pick1", inputs=[i], outputs=["one_"+i], parent=node.parent)
+                    pickone = gn.PickN(name=i + "_pick1", inputs=[i], outputs=["one_" + i], parent=node.parent)
                     self.global_operations.add(pickone)
                     self.add(pickone)
                     update_inputs = True
@@ -446,12 +467,12 @@ class Graph():
                 continue
             body.append(node.to_operation())
 
-        self.outputs['globalCollector'].update(outputs)
+        self.outputs["globalCollector"].update(outputs)
         self.graphkit = compose(name=self.name)(*body)
 
     def nxplot(self, filename=None):
         A = nx.nx_agraph.to_agraph(self.graph)
-        A.layout(prog='dot')
+        A.layout(prog="dot")
         A.draw(filename)
 
     def plot(self, filename=None):
@@ -486,9 +507,9 @@ class Graph():
             args[0].pop(missed_inputs)
 
         assert self.graphkit is not None, "call compile first"
-        color = kwargs.get('color', None)
+        color = kwargs.get("color", None)
         assert color is not None
-        if color == 'globalCollector':
+        if color == "globalCollector":
             for node, names in self.latched_names.items():
                 inputs, outputs = names
                 if inputs.issubset(args[0].keys()):
@@ -499,7 +520,7 @@ class Graph():
                         # print("LATCHING:", output)
                         args[0][output] = self.latch_cache[output]
         result = self.graphkit(*args, **kwargs)
-        if color == 'globalCollector':
+        if color == "globalCollector":
             for node, names in self.latched_names.items():
                 inputs, outputs = names
                 for output in outputs:
@@ -507,7 +528,6 @@ class Graph():
                         # print("UPDATING LATCH:", output)
                         self.latch_cache[output] = result[output]
         return {k: result[k] for k in self.outputs[color] if k in result}
-
 
     def times(self):
         """
@@ -528,5 +548,5 @@ class Graph():
         return self.graphkit.node_metadata()
 
     def dump(self, pth):
-        with open(pth, 'wb') as f:
+        with open(pth, "wb") as f:
             dill.dump(self, f)

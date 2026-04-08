@@ -1,7 +1,8 @@
 import inspect
-import numpy
 import json
 import typing
+
+import numpy
 
 
 def _map_numpy_types():
@@ -9,9 +10,9 @@ def _map_numpy_types():
     for name, dtype in inspect.getmembers(numpy, lambda x: inspect.isclass(x) and issubclass(x, numpy.generic)):
         try:
             ptype = None
-            if 'time' in name:
-                ptype = type(dtype(0, 'D').item())
-            elif 'object' not in name:
+            if "time" in name:
+                ptype = type(dtype(0, "D").item())
+            elif "object" not in name:
                 ptype = type(dtype(0).item())
 
             # if it is still a numpy dtype don't make a mapping
@@ -35,7 +36,7 @@ class TypeEncoder(json.JSONEncoder):
         elif isinstance(obj, numpy.ndarray):
             return obj.tolist()
         if inspect.isclass(obj):
-            if obj.__module__ in ['builtins']:
+            if obj.__module__ in ["builtins"]:
                 return obj.__name__
             else:
                 return "%s.%s" % (obj.__module__, obj.__name__)

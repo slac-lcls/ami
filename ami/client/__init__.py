@@ -1,20 +1,20 @@
-import os
-import sys
-import glob
-import pathlib
-import logging
 import argparse
-import tempfile
 import collections
-from ami import LogConfig, Defaults
-from ami.comm import Ports, PlatformAction
-from ami.client import flowchart, legacy
+import glob
+import logging
+import os
+import pathlib
+import sys
+import tempfile
 
+from ami import Defaults, LogConfig
+from ami.client import flowchart, legacy
+from ami.comm import PlatformAction, Ports
 
 logger = logging.getLogger(__name__)
 
 
-GraphMgrAddress = collections.namedtuple('GraphMgrAddress', ['name', 'comm', 'view', 'info', 'export'])
+GraphMgrAddress = collections.namedtuple("GraphMgrAddress", ["name", "comm", "view", "info", "export"])
 
 
 def check_dir(pathname):
@@ -25,130 +25,99 @@ def check_dir(pathname):
         raise ValueError(f"specified path ({path}) is not a directory")
 
 
-def run_client(graph_name, comm_addr, info_addr, view_addr, export_addr, load,
-               use_legacy=True, prometheus_dir=None, prometheus_port=None, hutch='',
-               use_opengl=False, use_numba=False,
-               configure=False, save_dir=None):
+def run_client(
+    graph_name,
+    comm_addr,
+    info_addr,
+    view_addr,
+    export_addr,
+    load,
+    use_legacy=True,
+    prometheus_dir=None,
+    prometheus_port=None,
+    hutch="",
+    use_opengl=False,
+    use_numba=False,
+    configure=False,
+    save_dir=None,
+):
     graphmgr_addr = GraphMgrAddress(graph_name, comm_addr, view_addr, info_addr, export_addr)
     if use_legacy:
         return legacy.run_client(graphmgr_addr, load, save_dir)
     else:
-        return flowchart.run_client(graphmgr_addr, load, prometheus_dir, prometheus_port, hutch,
-                                    use_opengl, use_numba,
-                                    configure, save_dir)
+        return flowchart.run_client(
+            graphmgr_addr, load, prometheus_dir, prometheus_port, hutch, use_opengl, use_numba, configure, save_dir
+        )
 
 
 def main():
-    parser = argparse.ArgumentParser(description='AMII GUI Client')
+    parser = argparse.ArgumentParser(description="AMII GUI Client")
 
     parser.add_argument(
-        '-H',
-        '--host',
-        default=Defaults.Host,
-        help='hostname of the AMII Manager (default: %s)' % Defaults.Host
+        "-H", "--host", default=Defaults.Host, help="hostname of the AMII Manager (default: %s)" % Defaults.Host
     )
 
     addr_group = parser.add_mutually_exclusive_group()
 
     addr_group.add_argument(
-        '-p',
-        '--port',
+        "-p",
+        "--port",
         type=int,
         default=Ports.BasePort,
         action=PlatformAction,
-        help='base port for ami (default: %d) reserves next %d consecutive ports' % (Ports.BasePort, Ports.NumPorts)
+        help="base port for ami (default: %d) reserves next %d consecutive ports" % (Ports.BasePort, Ports.NumPorts),
     )
 
     addr_group.add_argument(
-        '-i',
-        '--ipc-dir',
-        help='directory containing the ipc file descriptor for manager/client (GUI) communication'
+        "-i", "--ipc-dir", help="directory containing the ipc file descriptor for manager/client (GUI) communication"
     )
 
     addr_group.add_argument(
-        '--ipc',
-        action='store_true',
-        help='attempt to search for ipc file descriptors for manager/client (GUI) communication'
+        "--ipc",
+        action="store_true",
+        help="attempt to search for ipc file descriptors for manager/client (GUI) communication",
     )
 
     parser.add_argument(
-        '-g',
-        '--graph-name',
+        "-g",
+        "--graph-name",
         default=Defaults.GraphName,
-        help='the name of the graph used (default: %s)' % Defaults.GraphName
+        help="the name of the graph used (default: %s)" % Defaults.GraphName,
     )
 
-    parser.add_argument(
-        '--prometheus-port',
-        type=int,
-        default=Ports.Prometheus,
-        help='port for prometheus'
-    )
+    parser.add_argument("--prometheus-port", type=int, default=Ports.Prometheus, help="port for prometheus")
+
+    parser.add_argument("--prometheus-dir", help="directory for prometheus configuration", default=None)
+
+    parser.add_argument("--hutch", help="hutch for prometheus label", default="")
+
+    parser.add_argument("-l", "--load", help="saved AMII configuration to load")
 
     parser.add_argument(
-        '--prometheus-dir',
-        help='directory for prometheus configuration',
-        default=None
-    )
-
-    parser.add_argument(
-        '--hutch',
-        help='hutch for prometheus label',
-        default=''
-    )
-
-    parser.add_argument(
-        '-l',
-        '--load',
-        help='saved AMII configuration to load'
-    )
-
-    parser.add_argument(
-        '-s',
-        '--save-dir',
-        type=check_dir,
-        default=None,
-        help='default directory for saving flowcharts'
+        "-s", "--save-dir", type=check_dir, default=None, help="default directory for saving flowcharts"
     )
 
     guimode_parser = parser.add_mutually_exclusive_group()
 
     guimode_parser.add_argument(
-        '--legacy-gui',
-        dest='gui_mode',
-        action='store_true',
-        help="use the traditional AMI1-style GUI"
+        "--legacy-gui", dest="gui_mode", action="store_true", help="use the traditional AMI1-style GUI"
     )
 
     guimode_parser.add_argument(
-        '--flowchart-gui',
-        dest='gui_mode',
-        action='store_false',
-        help="use the new AMI2-style flowchart GUI"
+        "--flowchart-gui", dest="gui_mode", action="store_false", help="use the new AMI2-style flowchart GUI"
     )
 
     parser.add_argument(
-        '--log-level',
+        "--log-level",
         default=LogConfig.Level,
-        help='the logging level of the application (default %s)' % LogConfig.Level
+        help="the logging level of the application (default %s)" % LogConfig.Level,
     )
 
-    parser.add_argument(
-        '--log-file',
-        help='an optional file to write the log output to'
-    ),
+    parser.add_argument("--log-file", help="an optional file to write the log output to"),
 
-    parser.add_argument(
-        '--use-opengl',
-        help='Use opengl for plots.',
-        action='store_true'
-    )
+    parser.add_argument("--use-opengl", help="Use opengl for plots.", action="store_true")
 
-    parser.add_argument(
-        '--use-numba',
-        help='Use numba for plots.',
-        action='store_true'
-    )
+    parser.add_argument("--use-numba", help="Use numba for plots.", action="store_true")
 
     args = parser.parse_args()
 
@@ -159,8 +128,8 @@ def main():
     logging.basicConfig(format=LogConfig.Format, level=log_level, handlers=log_handlers)
 
     if args.ipc:
-        ipc_comm_set = {os.path.dirname(ipc) for ipc in glob.glob(tempfile.gettempdir() + '/*/comm')}
-        ipc_info_set = {os.path.dirname(ipc) for ipc in glob.glob(tempfile.gettempdir() + '/*/info')}
+        ipc_comm_set = {os.path.dirname(ipc) for ipc in glob.glob(tempfile.gettempdir() + "/*/comm")}
+        ipc_info_set = {os.path.dirname(ipc) for ipc in glob.glob(tempfile.gettempdir() + "/*/info")}
         ipc_list = list(ipc_comm_set.intersection(ipc_info_set))
         if ipc_list and ipc_list:
             if len(ipc_list) == 1:
@@ -200,14 +169,26 @@ def main():
         export_addr = "tcp://%s:%d" % (args.host, args.port + Ports.Export)
 
     try:
-        return run_client(args.graph_name, comm_addr, info_addr, view_addr, export_addr, args.load,
-                          args.gui_mode, args.prometheus_dir, args.prometheus_port, args.hutch,
-                          args.use_opengl, args.use_numba,
-                          False, args.save_dir)
+        return run_client(
+            args.graph_name,
+            comm_addr,
+            info_addr,
+            view_addr,
+            export_addr,
+            args.load,
+            args.gui_mode,
+            args.prometheus_dir,
+            args.prometheus_port,
+            args.hutch,
+            args.use_opengl,
+            args.use_numba,
+            False,
+            args.save_dir,
+        )
     except KeyboardInterrupt:
         logger.info("Client killed by user...")
         return 0
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     sys.exit(main())
