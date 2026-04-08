@@ -13,7 +13,6 @@ def skip(n):
 
 
 class Graph:
-
     def __init__(self, name):
         """
         Args:
@@ -156,35 +155,59 @@ class Graph:
 
     def replace(self, new_node):
         """
-        Replace a node in the graph. Inputs and outputs of new_node must match the existing node in the graph otherwise
-        an AssertionError will be raised.
+        Replace a node in the graph. If the node is a global operation and inputs/outputs match,
+        an optimized fast path is used. If inputs/outputs differ, the node is removed and re-added.
 
         Args:
             new_node (Transformation): New node to replace existing node with.
-
-        Raises:
-            AssertionError: if inputs and outputs of new_node do not match existing node.
         """
         if new_node.is_global_operation and new_node.parent in self.children_of_global_operations:
             descendants = set()
             ancestors = set()
+            worker_node = None
+            global_collector_node = None
+
             for child in self.children_of_global_operations[new_node.parent]:
                 if child.name == "%s_worker" % new_node.name:
+                    worker_node = child
                     descendants.add(child)
                     descendants.update(nx.dag.descendants(self.graph, child))
-                    assert set(child.inputs) == set(new_node.inputs), "Inputs must match."
                 if child.name == "%s_globalCollector" % new_node.name:
+                    global_collector_node = child
                     ancestors.add(child)
                     ancestors.update(nx.dag.ancestors(self.graph, child))
-                    assert set(child.outputs) == set(new_node.outputs), "Outputs must match."
-            nodes_to_remove = descendants.intersection(ancestors)
 
-            self.graph.remove_nodes_from(nodes_to_remove)
-            for node in nodes_to_remove:
-                if node in self.expanded_global_operations:
-                    self.expanded_global_operations.remove(node)
+            # Detect input/output mismatches
+            inputs_match = worker_node and set(worker_node.inputs) == set(new_node.inputs)
+            outputs_match = global_collector_node and set(global_collector_node.outputs) == set(new_node.outputs)
 
-            self.children_of_global_operations[new_node.parent].difference_update(nodes_to_remove)
+            if not inputs_match or not outputs_match:
+                # Path A: Mismatch - remove all expanded children and re-add
+                nodes_to_remove = set(self.children_of_global_operations[new_node.parent])
+
+                # If outputs changed, also remove downstream dependents
+                if not outputs_match and global_collector_node:
+                    for output in global_collector_node.outputs:
+                        if output in self.graph:
+                            downstream = nx.dag.descendants(self.graph, output)
+                            nodes_to_remove.update(downstream)
+
+                self.graph.remove_nodes_from(nodes_to_remove)
+                for node in nodes_to_remove:
+                    if node in self.expanded_global_operations:
+                        self.expanded_global_operations.remove(node)
+
+                del self.children_of_global_operations[new_node.parent]
+            else:
+                # Path B: Match - use optimized fast path (original logic)
+                nodes_to_remove = descendants.intersection(ancestors)
+
+                self.graph.remove_nodes_from(nodes_to_remove)
+                for node in nodes_to_remove:
+                    if node in self.expanded_global_operations:
+                        self.expanded_global_operations.remove(node)
+
+                self.children_of_global_operations[new_node.parent].difference_update(nodes_to_remove)
         else:
             old_node = None
             for n in self.graph.nodes:
@@ -211,7 +234,12 @@ class Graph:
         """
         Resets the state of all StatefulTransmation nodes in the graph.
         """
-        nodes = list(filter(lambda node: isinstance(node, gn.StatefulTransformation), self.graph.nodes))
+        nodes = list(
+            filter(
+                lambda node: isinstance(node, gn.StatefulTransformation),
+                self.graph.nodes,
+            )
+        )
         list(map(lambda node: node.reset(), nodes))
         self.latch_cache = {}
 
@@ -219,7 +247,12 @@ class Graph:
         """
         Execute post heartbeat hook on StatefulTransformation nodes in the graph.
         """
-        nodes = list(filter(lambda node: isinstance(node, gn.StatefulTransformation), self.graph.nodes))
+        nodes = list(
+            filter(
+                lambda node: isinstance(node, gn.StatefulTransformation),
+                self.graph.nodes,
+            )
+        )
         list(map(lambda node: node.heartbeat_finished(), nodes))
 
     def begin_run(self, color):
@@ -258,7 +291,12 @@ class Graph:
         """
         self.global_operations = set()
 
-        global_operations = list(filter(lambda node: getattr(node, "is_global_operation", False), self.graph.nodes))
+        global_operations = list(
+            filter(
+                lambda node: getattr(node, "is_global_operation", False),
+                self.graph.nodes,
+            )
+        )
         for node in global_operations:
             if node in self.expanded_global_operations:
                 continue
@@ -419,7 +457,10 @@ class Graph:
         inputs = [n for n, d in self.graph.in_degree() if d == 0]
 
         global_collector_nodes = list(
-            filter(lambda node: getattr(node, "color", "") == "globalCollector", self.graph.nodes)
+            filter(
+                lambda node: getattr(node, "color", "") == "globalCollector",
+                self.graph.nodes,
+            )
         )
 
         for node in global_collector_nodes:
@@ -429,7 +470,12 @@ class Graph:
                 continue
             for i in node.inputs:
                 if i in inputs:
-                    pickone = gn.PickN(name=i + "_pick1", inputs=[i], outputs=["one_" + i], parent=node.parent)
+                    pickone = gn.PickN(
+                        name=i + "_pick1",
+                        inputs=[i],
+                        outputs=["one_" + i],
+                        parent=node.parent,
+                    )
                     self.global_operations.add(pickone)
                     self.add(pickone)
                     update_inputs = True
