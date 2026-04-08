@@ -1,7 +1,8 @@
 [flake8]
-max-line-length=120
-builtins=__class__
-exclude=
+max-line-length = 120
+extend-ignore = E203, W503
+builtins = __class__
+exclude =
     src,
     doc,
     install,
