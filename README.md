@@ -1,6 +1,48 @@
 # ami [![Build Status](https://travis-ci.org/slac-lcls/ami.svg?branch=master)](https://travis-ci.org/slac-lcls/ami)
 The LCLS-II online graphical analysis monitoring package.
 
+## Developer Setup
+
+### Code Formatting
+
+This project uses automated code formatting:
+- **Black** for Python formatting (120 char line length)
+- **isort** for import organization
+- **pre-commit** hooks for automation
+
+#### Quick Start
+
+Install pre-commit hooks after cloning:
+```bash
+pip install --user pre-commit
+pre-commit install
+```
+
+Code will be formatted automatically on commit.
+
+#### Manual Formatting
+
+Format all code:
+```bash
+black --line-length=120 .
+isort --profile=black --line-length=120 .
+```
+
+Check formatting:
+```bash
+black --check --line-length=120 .
+isort --check --profile=black --line-length=120 .
+flake8
+```
+
+#### Install Dev Tools
+
+```bash
+pip install --user -e ".[dev]"
+```
+
+**Note**: Use `--user` flag when working in shared LCLS conda environments (e.g., `ps_*`).
+
 # Examples
 If you use the setup.py included to set this up you should now have two console
 scripts available on your path: `ami-worker` and `ami-manager`. Several example
