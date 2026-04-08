@@ -1,7 +1,7 @@
-import os
 import datetime as dt
 import itertools as it
 import logging
+import os
 import queue
 import resource
 
@@ -9,14 +9,13 @@ import numpy as np
 import prometheus_client as pc
 import pyqtgraph as pg
 import zmq
-
 from networkfox import modifiers
-from pyqtgraph.GraphicsScene.exportDialog import ExportDialog
 from pyqtgraph.exporters import ImageExporter
+from pyqtgraph.GraphicsScene.exportDialog import ExportDialog
 from qtpy import QtCore, QtGui, QtWidgets
 
 from ami import LogConfig
-from ami.data import Deserializer, Heartbeat
+from ami.data import Deserializer
 from ami.flowchart.library.Editors import (
     STYLE,
     CircleEditor,
@@ -46,7 +45,6 @@ class AsyncFetcher(QtCore.QThread):
         self.ctx = zmq.Context()
         self.poller = zmq.Poller()
         self.data = {}
-        self.timestamps = {}  # Heartbeats for each view_sub
         self.reply_queue = queue.Queue()
         self.heartbeat_timestamp = 0
         self.deserializer = Deserializer()
@@ -93,7 +91,6 @@ class AsyncFetcher(QtCore.QThread):
             topic = topics[name]
             sub_topic = "view:%s:%s" % (self.addr.name, topic)
             self.view_subs[sub_topic] = topic
-            self.timestamps[topic] = Heartbeat()
             self.sub_views[topic] = sub_topic
 
     def run(self):
@@ -123,7 +120,6 @@ class AsyncFetcher(QtCore.QThread):
             # Receive single batch response
             response = self.view.recv_serialized(self.deserializer, copy=False)
 
-            batch_graph = response["graph"]
             batch_heartbeat = response["heartbeat"]
             batch_data = response["data"]
 
@@ -134,7 +130,6 @@ class AsyncFetcher(QtCore.QThread):
                 req = self.sub_views[topic]
                 feature_name = req.split(":")[-1]  # "view:graph:feature" -> "feature"
                 self.data[view_sub] = batch_data[feature_name]
-                self.timestamps[view_sub] = batch_heartbeat
 
             # Check if data is ready (no need to check num_heartbeats - all atomic)
             res = {}
@@ -235,7 +230,7 @@ class PlotWidget(QtWidgets.QWidget):
 
         # Screenshot settings
         self.screenshot_enabled = False
-        self.screenshot_dir = './screenshots'
+        self.screenshot_dir = "./screenshots"
         self.screenshot_counter = 0
 
         self.last_updated = QtWidgets.QLabel(parent=self)
@@ -250,18 +245,20 @@ class PlotWidget(QtWidgets.QWidget):
         )
 
         if uiTemplate is None:
-            uiTemplate = [('Title', 'text'),
-                          ('Show Grid', 'check', {'checked': True}),
-                          # ('Auto Range', 'check', {'checked': True}),
-                          # x axis
-                          ('Label', 'text', {'group': 'X Axis'}),
-                          ('Log Scale', 'check', {'group': 'X Axis', 'checked': False}),
-                          # y axis
-                          ('Label', 'text', {'group': 'Y Axis'}),
-                          ('Log Scale', 'check', {'group': 'Y Axis', 'checked': False}),
-                          # screenshots
-                          ('Record Screenshots', 'check', {'group': 'Screenshots', 'checked': False}),
-                          ('Screenshot Directory', 'text', {'group': 'Screenshots', 'value': './screenshots'})]
+            uiTemplate = [
+                ("Title", "text"),
+                ("Show Grid", "check", {"checked": True}),
+                # ('Auto Range', 'check', {'checked': True}),
+                # x axis
+                ("Label", "text", {"group": "X Axis"}),
+                ("Log Scale", "check", {"group": "X Axis", "checked": False}),
+                # y axis
+                ("Label", "text", {"group": "Y Axis"}),
+                ("Log Scale", "check", {"group": "Y Axis", "checked": False}),
+                # screenshots
+                ("Record Screenshots", "check", {"group": "Screenshots", "checked": False}),
+                ("Screenshot Directory", "text", {"group": "Screenshots", "value": "./screenshots"}),
+            ]
 
         self.uiTemplate = uiTemplate
         self.ui, self.stateGroup, self.ctrls, self.plot_attrs = generateUi(self.uiTemplate)
@@ -436,9 +433,9 @@ class PlotWidget(QtWidgets.QWidget):
                     self.legend.addItem(item, editor.ctrls["name"].text())
 
         # Handle screenshot configuration
-        if 'Screenshots' in self.plot_attrs:
-            self.screenshot_enabled = self.plot_attrs['Screenshots'].get('Record Screenshots', False)
-            self.screenshot_dir = self.plot_attrs['Screenshots'].get('Screenshot Directory', './screenshots')
+        if "Screenshots" in self.plot_attrs:
+            self.screenshot_enabled = self.plot_attrs["Screenshots"].get("Record Screenshots", False)
+            self.screenshot_dir = self.plot_attrs["Screenshots"].get("Screenshot Directory", "./screenshots")
 
             # Create directory if it doesn't exist and screenshots are enabled
             if self.screenshot_enabled:
@@ -470,7 +467,7 @@ class PlotWidget(QtWidgets.QWidget):
             if annotations:
                 state["annotations"] = annotations
 
-        state['viewbox'] = self.plot_view.vb.getState()
+        state["viewbox"] = self.plot_view.vb.getState()
         # Save screenshot settings
         state["screenshot_enabled"] = self.screenshot_enabled
         state["screenshot_dir"] = self.screenshot_dir
@@ -561,14 +558,10 @@ class PlotWidget(QtWidgets.QWidget):
             os.makedirs(self.screenshot_dir, exist_ok=True)
 
             # Generate filename with timestamp and node name
-            timestamp = dt.datetime.now().strftime("%Y-%m-%d_%H-%M-%S-%f")[
-                :-3
-            ]  # Include milliseconds
+            timestamp = dt.datetime.now().strftime("%Y-%m-%d_%H-%M-%S-%f")[:-3]  # Include milliseconds
             node_name = self.name if self.name else "plot"
             # Sanitize node name for filesystem
-            node_name = "".join(
-                c if c.isalnum() or c in ("-", "_") else "_" for c in node_name
-            )
+            node_name = "".join(c if c.isalnum() or c in ("-", "_") else "_" for c in node_name)
             filename = f"{timestamp}_{node_name}.png"
             filepath = os.path.join(self.screenshot_dir, filename)
 
@@ -577,9 +570,7 @@ class PlotWidget(QtWidgets.QWidget):
             exporter.export(filepath)
 
             self.screenshot_counter += 1
-            logger.debug(
-                f"Screenshot saved: {filepath} (count: {self.screenshot_counter})"
-            )
+            logger.debug(f"Screenshot saved: {filepath} (count: {self.screenshot_counter})")
 
         except Exception as e:
             logger.error(f"Failed to save screenshot: {e}")
