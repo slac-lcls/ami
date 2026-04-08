@@ -4,6 +4,30 @@ on:
     branches:
       - master
 jobs:
+  formatting:
+    runs-on: ubuntu-latest
+    steps:
+      - name: checkout
+        uses: actions/checkout@v4
+      
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.9'
+      
+      - name: Install formatting tools
+        run: |
+          pip install black==24.2.0 isort==5.13.2 flake8 flake8-black
+      
+      - name: Check Black formatting
+        run: black --check --line-length=120 .
+      
+      - name: Check isort
+        run: isort --check --profile=black --line-length=120 .
+      
+      - name: Run flake8
+        run: flake8
+
   run-tests-macos:
     runs-on: macos-latest
     steps:
