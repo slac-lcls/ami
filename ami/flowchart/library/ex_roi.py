@@ -1,5 +1,4 @@
-"""Test available types of ROI
-"""
+"""Test available types of ROI"""
 
 import os
 import sys

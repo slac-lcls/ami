@@ -107,7 +107,7 @@ class Worker(Node):
         if self.graphs[name]:
             self.graphs[name].compile(**args)
             self.update_requests()
-            self.store.configure(name, version, self.graphs[name].outputs['worker'])
+            self.store.configure(name, version, self.graphs[name].outputs["worker"])
         else:
             # Empty graph - just update requests
             self.update_requests()

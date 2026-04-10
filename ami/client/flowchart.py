@@ -219,7 +219,7 @@ class NodeProcess(QtCore.QObject):
         prometheus_dir=None,
         prometheus_port=None,
         hutch="",
-        headless=False
+        headless=False,
     ):
 
         super().__init__()
@@ -366,7 +366,7 @@ class NodeProcess(QtCore.QObject):
             self.win.show()
             if self.node.viewed:
                 self.win.activateWindow()
-        
+
         self.node.viewed = True
 
     def reloadLibrary(self, msg):
@@ -396,7 +396,7 @@ class NodeProcess(QtCore.QObject):
 
     def start_prometheus(self):
         port = self.prometheus_port
-        
+
         # Skip starting Prometheus if no port is specified
         if port is None:
             return
@@ -431,7 +431,15 @@ class MessageBroker(object):
     """
 
     def __init__(
-            self, graphmgr_addr, load, ipcdir=None, prometheus_dir=None, prometheus_port=None, hutch="", save_dir=None, headless=False
+        self,
+        graphmgr_addr,
+        load,
+        ipcdir=None,
+        prometheus_dir=None,
+        prometheus_port=None,
+        hutch="",
+        save_dir=None,
+        headless=False,
     ):
 
         if ipcdir is None:
@@ -590,7 +598,7 @@ class MessageBroker(object):
                             "prometheus_dir": self.prometheus_dir,
                             "prometheus_port": self.prometheus_port,
                             "hutch": self.hutch,
-                            "headless": self.headless
+                            "headless": self.headless,
                         },
                         daemon=True,
                     )
@@ -614,7 +622,7 @@ class MessageBroker(object):
                         "prometheus_dir": self.prometheus_dir,
                         "prometheus_port": self.prometheus_port,
                         "hutch": self.hutch,
-                        "headless": self.headless
+                        "headless": self.headless,
                     },
                     daemon=True,
                 )

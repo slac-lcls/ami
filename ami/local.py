@@ -17,10 +17,10 @@ from ami.client import check_dir, run_client
 from ami.collector import run_global_collector, run_node_collector
 from ami.comm import GraphCommHandler, PlatformAction, Ports
 from ami.console import run_console
+from ami.fc_to_worker import generate_worker_json
 from ami.manager import run_manager
 from ami.multiproc import check_mp_start_method
 from ami.worker import run_worker
-from ami.fc_to_worker import generate_worker_json
 
 try:
     from ami.export import run_export
@@ -142,19 +142,15 @@ def build_parser():
     parser.add_argument("--cprofile", help="profile with cprofile", action="store_true")
 
     parser.add_argument(
-        '--source-type',
+        "--source-type",
         type=str,
-        choices=['static', 'random'],
-        default='random',
-        help='Type of auto-generated source when loading .fc without explicit source '
-             '(default: random). static: constant values, random: varied data'
+        choices=["static", "random"],
+        default="random",
+        help="Type of auto-generated source when loading .fc without explicit source "
+        "(default: random). static: constant values, random: varied data",
     )
 
-    parser.add_argument(
-        '--use-opengl',
-        help='Use opengl for plots.',
-        action='store_true'
-    )
+    parser.add_argument("--use-opengl", help="Use opengl for plots.", action="store_true")
 
     parser.add_argument("--use-numba", help="Use numba for plots.", action="store_true")
 
@@ -274,15 +270,10 @@ def run_ami(args, queue=None):
             try:
                 # Generate worker config directly (returns tuple: source_type, config)
                 source_type, worker_config = generate_worker_json(
-                    args.load,
-                    num_events=1000,
-                    repeat=True,
-                    interval=0.01,
-                    init_time=0.1,
-                    source_type=args.source_type
+                    args.load, num_events=1000, repeat=True, interval=0.01, init_time=0.1, source_type=args.source_type
                 )
 
-                if not worker_config.get('config'):
+                if not worker_config.get("config"):
                     # No sources found in .fc file
                     logger.warning("No source nodes found in %s", args.load)
                     logger.info("Continuing without data source. You can add SourceNodes in the GUI.")
@@ -290,7 +281,7 @@ def run_ami(args, queue=None):
                 else:
                     # Pass the config dict directly to workers (no temp file needed!)
                     src_cfg = (source_type, worker_config)
-                    num_sources = len(worker_config['config'])
+                    num_sources = len(worker_config["config"])
                     logger.info("Auto-generated %s source with %d sources", source_type, num_sources)
 
             except FileNotFoundError:

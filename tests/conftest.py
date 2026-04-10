@@ -33,16 +33,16 @@ try:
 except ImportError:
     h5py = None
 
+import time
+
 from ami.asyncqt import QEventLoop
+from ami.client import GraphMgrAddress
 from ami.comm import GraphCommHandler
 from ami.flowchart.library.Operators import MeanVsScan
 from ami.graph_nodes import Map, PickN
 from ami.graphkit_wrapper import Graph
 from ami.local import build_parser, run_ami
 from ami.multiproc import check_mp_start_method
-from ami.client import GraphMgrAddress
-import time
-
 
 psanatest = pytest.mark.skipif(psana is None or hasattr(psana, "_psana"), reason="psana not avaliable")
 
@@ -149,7 +149,8 @@ def psana1_testdata():
 @pytest.fixture(scope="function")
 def psana1_xtc(request, psana1_testdata):
     directory, filename = request.param
-    # calibDir = psana1_testdata / 'multifile' / directory / 'calib' # do we want to keep a special dir or use the xpptut15?
+    # calibDir = psana1_testdata / 'multifile' / directory / 'calib'
+    # do we want to keep a special dir or use the xpptut15?
     calibDir = psana1_testdata / directory / "calib"
     psana.setOption("psana.calib-dir", calibDir)
     return psana1_testdata / directory / "xtc" / filename
@@ -159,43 +160,43 @@ def psana1_xtc(request, psana1_testdata):
 def workerjson(tmpdir_factory, xtcwriter):
     """
     Universal worker configuration with auto-scanned and default sources.
-    
+
     Sources are merged from two places:
     1. Default sources for core tests (baseline configuration)
     2. Auto-scanned from all .fc files in tests/graphs/ and examples/
-    
+
     Auto-scanned sources take precedence over defaults if names conflict.
-    
+
     This ensures:
     - Core tests always have required sources (explicit defaults)
     - New .fc files automatically work (zero maintenance via auto-scan)
     - Easy to see baseline configuration (default_sources dict)
     """
-    from ami.fc_to_worker import extract_sources_from_fc
     from pathlib import Path
-    
+
+    from ami.fc_to_worker import extract_sources_from_fc
+
     # Default/baseline sources for core tests
     default_sources = {
         # Sources for test_complex_graph (also in examples/complex_example.fc)
         "cspad": {"dtype": "Image", "pedestal": 5, "width": 1, "shape": [512, 512]},
         "laser": {"dtype": "Scalar", "range": [0, 2], "integer": True},
         "delta_t": {"dtype": "Scalar", "range": [0, 10], "integer": True},
-        
         # Sources for test_psana_graph (psana-specific, not in any .fc)
         "xppcspad:raw:image": {"dtype": "Image", "pedestal": 5, "width": 1, "shape": [512, 512]},
     }
-    
+
     # Auto-scan all .fc files
     fc_files = []
-    
-    tests_graphs = Path('tests/graphs')
+
+    tests_graphs = Path("tests/graphs")
     if tests_graphs.exists():
-        fc_files.extend(tests_graphs.glob('*.fc'))
-    
-    examples_dir = Path('examples')
+        fc_files.extend(tests_graphs.glob("*.fc"))
+
+    examples_dir = Path("examples")
     if examples_dir.exists():
-        fc_files.extend(examples_dir.glob('*.fc'))
-    
+        fc_files.extend(examples_dir.glob("*.fc"))
+
     # Extract sources from .fc files
     scanned_sources = {}
     for fc_file in fc_files:
@@ -204,17 +205,19 @@ def workerjson(tmpdir_factory, xtcwriter):
             scanned_sources.update(sources)
         except Exception as e:
             print(f"Warning: Could not scan {fc_file}: {e}")
-    
+
     # Merge: defaults first, then overlay scanned sources
     all_sources = {**default_sources, **scanned_sources}
-    
+
     # Log summary
     num_files = len(fc_files)
     num_scanned = len(scanned_sources)
     num_default = len(default_sources)
     num_total = len(all_sources)
-    print(f"Universal worker config: {num_default} default + "
-          f"{num_scanned} scanned from {num_files} .fc files = {num_total} total")
+    print(
+        f"Universal worker config: {num_default} default + "
+        f"{num_scanned} scanned from {num_files} .fc files = {num_total} total"
+    )
 
     cfg = {
         "interval": 0.01,
@@ -237,7 +240,7 @@ def complex_graph(complex_graph_file):
         return dill.load(fd)
 
 
-@pytest.fixture(scope='session')
+@pytest.fixture(scope="session")
 def ami_backend(request, workerjson, ipc_dir):
     """
     Start a single, session-scoped AMI backend (worker, collector, manager)
@@ -253,15 +256,10 @@ def ami_backend(request, workerjson, ipc_dir):
         pass
 
     parser = build_parser()
-    args = parser.parse_args([
-        "-n", "1",
-        '-i', str(ipc_dir),
-        '--headless',
-        f'static://{workerjson}'
-    ])
+    args = parser.parse_args(["-n", "1", "-i", str(ipc_dir), "--headless", f"static://{workerjson}"])
 
     queue = mp.Queue()
-    ami_proc = mp.Process(name='ami_backend', target=run_ami, args=(args, queue))
+    ami_proc = mp.Process(name="ami_backend", target=run_ami, args=(args, queue))
     ami_proc.start()
 
     # Create the graphmgr address object
@@ -302,44 +300,38 @@ def ami_backend(request, workerjson, ipc_dir):
     yield graphmgr
 
 
-@pytest.fixture(scope='function')
+@pytest.fixture(scope="function")
 def start_ami(request, workerjson, ami_backend, ipc_dir):
     """
     Smart routing fixture for AMI backend.
     - 'static' param: Uses session-scoped ami_backend (fast, shared)
     - 'psana' param: Creates function-scoped backend (slower, isolated)
     """
-    data_source = request.param if hasattr(request, 'param') else 'static'
+    data_source = request.param if hasattr(request, "param") else "static"
 
-    if data_source == 'static':
+    if data_source == "static":
         # Use existing session-scoped backend (IPC)
         with GraphCommHandler(ami_backend.name, ami_backend.comm) as comm_handler:
             yield comm_handler
         return
 
-    elif data_source == 'psana':
+    elif data_source == "psana":
         # Create function-scoped psana backend (IPC)
         try:
             from pytest_cov.embed import cleanup_on_sigterm
+
             cleanup_on_sigterm()
         except ImportError:
             pass
 
         # Create temporary IPC directory for this test
-        psana_ipc_dir = tempfile.mkdtemp(prefix='ami_psana_')
+        psana_ipc_dir = tempfile.mkdtemp(prefix="ami_psana_")
 
         parser = build_parser()
-        args = parser.parse_args([
-            "-n", "1",
-            '-i', psana_ipc_dir,
-            '--headless',
-            f'psana://{workerjson}'
-        ])
+        args = parser.parse_args(["-n", "1", "-i", psana_ipc_dir, "--headless", f"psana://{workerjson}"])
 
         queue = mp.Queue()
-        ami = mp.Process(name='ami_psana',
-                         target=run_ami,
-                         args=(args, queue))
+        ami = mp.Process(name="ami_psana", target=run_ami, args=(args, queue))
         ami.start()
 
         try:
@@ -371,7 +363,7 @@ def start_ami(request, workerjson, ami_backend, ipc_dir):
                 pass
 
             if ami.exitcode not in (0, -signal.SIGTERM, None):
-                print('AMI psana backend exited with non-zero status code: %d' % ami.exitcode)
+                print("AMI psana backend exited with non-zero status code: %d" % ami.exitcode)
     else:
         pytest.fail(f"Unknown data source: {data_source}")
 
@@ -387,7 +379,7 @@ class QEventLoopPolicy(asyncio.DefaultEventLoopPolicy):
         return QEventLoop(self.qapp)
 
 
-@pytest.fixture(scope='session')
+@pytest.fixture(scope="session")
 def event_loop_policy(qapp):
     """
     Provide a custom event loop policy that creates QEventLoop instances.
@@ -396,7 +388,7 @@ def event_loop_policy(qapp):
     return QEventLoopPolicy(qapp)
 
 
-@pytest.fixture(scope='function')
+@pytest.fixture(scope="function")
 def qevent_loop(qapp):
     """
     Create a fresh QEventLoop for each test function.
@@ -410,7 +402,7 @@ def qevent_loop(qapp):
     try:
         for notifier in itertools.chain(
             loop._read_notifiers.values() if loop._read_notifiers is not None else [],
-            loop._write_notifiers.values() if loop._write_notifiers is not None else []
+            loop._write_notifiers.values() if loop._write_notifiers is not None else [],
         ):
             notifier.setEnabled(False)
     except Exception:
@@ -421,12 +413,12 @@ def qevent_loop(qapp):
 check_mp_start_method()
 
 
-@pytest.fixture(scope='function')
+@pytest.fixture(scope="function")
 def broker(ami_backend):
     """
     Create a MessageBroker that runs in a background thread.
     This connects to the session-scoped AMI backend.
-    
+
     Cleanup:
     - Properly cancels and awaits all async tasks to suppress warnings
     - Uses asyncio.gather with return_exceptions=True for graceful shutdown
@@ -434,26 +426,28 @@ def broker(ami_backend):
     """
     try:
         from pytest_cov.embed import cleanup_on_sigterm
+
         cleanup_on_sigterm()
     except ImportError:
         pass
 
     import threading
+
     from ami.client.flowchart import MessageBroker
-    
+
     # Create a temporary directory for the broker's IPC sockets
     ipcdir = tempfile.mkdtemp()
-    
+
     # Create the MessageBroker instance in headless mode (no popup windows in tests)
     # Disable prometheus metrics in tests by not passing prometheus_port
     mb = MessageBroker(ami_backend, "", ipcdir=ipcdir, prometheus_port=None, headless=True)
-    
+
     # Create a new event loop for the broker thread
     broker_loop = asyncio.new_event_loop()
-    
+
     # Variable to track if the broker is running
     broker_running = threading.Event()
-    
+
     # Run the broker in a background thread with its own event loop
     def run_broker():
         asyncio.set_event_loop(broker_loop)
@@ -462,16 +456,16 @@ def broker(ami_backend):
             broker_loop.run_until_complete(mb.run())
         except (asyncio.CancelledError, RuntimeError):
             pass  # Expected when we cancel the broker or stop the loop
-    
+
     broker_thread = threading.Thread(target=run_broker, daemon=True)
     broker_thread.start()
-    
+
     # Wait for the broker to start
     broker_running.wait(timeout=2)
     time.sleep(0.1)  # Give it a moment to bind sockets
-    
+
     yield mb
-    
+
     # Cleanup: Stop the broker gracefully
     # IMPORTANT: Must properly cancel and await tasks to suppress Python warnings
     # about "Task was destroyed but it is pending!"
@@ -481,17 +475,17 @@ def broker(ami_backend):
             tasks = list(asyncio.all_tasks(broker_loop))
             for task in tasks:
                 task.cancel()
-        
+
         # First cancel all tasks
         broker_loop.call_soon_threadsafe(cancel_all_tasks)
-        
+
         # Give the event loop time to process the cancellations
         # This allows CancelledError to propagate through the gather()
         time.sleep(0.02)
-        
+
         # Now stop the loop
         broker_loop.call_soon_threadsafe(broker_loop.stop)
-        
+
         # Wait for the thread to finish (with timeout)
         broker_thread.join(timeout=2)
     except Exception:
@@ -499,11 +493,11 @@ def broker(ami_backend):
     finally:
         # Close the broker and clean up ZMQ resources
         mb.close()
-        
+
         # Close the event loop if not already closed
         if not broker_loop.is_closed():
             broker_loop.close()
-        
+
         # Clean up the temporary directory
         try:
             shutil.rmtree(ipcdir)
@@ -511,10 +505,10 @@ def broker(ami_backend):
             pass
 
 
-@pytest.fixture(scope='module')
+@pytest.fixture(scope="module")
 def dmypy():
-    dmypy_file = tempfile.NamedTemporaryFile(mode='w', delete=False)
-    os.environ['DMYPY_STATUS_FILE'] = dmypy_file.name
+    dmypy_file = tempfile.NamedTemporaryFile(mode="w", delete=False)
+    os.environ["DMYPY_STATUS_FILE"] = dmypy_file.name
     subprocess.run(["dmypy", "--status-file", dmypy_file.name, "start"])
 
     yield
@@ -526,7 +520,7 @@ def dmypy():
         subprocess.run(["dmypy", "--status-file", dmypy_file.name, "kill"])
 
 
-@pytest_asyncio.fixture(scope='function')
+@pytest_asyncio.fixture(scope="function")
 async def flowchart(request, ami_backend, broker, dmypy):
     """
     Creates a new Flowchart instance for each test, connected to the
@@ -534,26 +528,28 @@ async def flowchart(request, ami_backend, broker, dmypy):
     """
     try:
         from pytest_cov.embed import cleanup_on_sigterm
+
         cleanup_on_sigterm()
     except ImportError:
         pass
 
     from ami.flowchart.Flowchart import Flowchart
-    
+
     os.makedirs(os.path.expanduser("~/.cache/ami/"), exist_ok=True)
 
     # Create a new flowchart instance connected to the persistent backend
-    fc = Flowchart(broker_addr=broker.broker_sub_addr,
-                   graphmgr_addr=ami_backend,
-                   checkpoint_addr=broker.checkpoint_pub_addr)
+    fc = Flowchart(
+        broker_addr=broker.broker_sub_addr, graphmgr_addr=ami_backend, checkpoint_addr=broker.checkpoint_pub_addr
+    )
 
     await fc.updateSources(init=True)
 
     yield (fc, broker)
-    
+
     # Cleanup: unregister Prometheus metrics if widget was created
     try:
         import prometheus_client as pc
+
         if fc._widget is not None:
             # Unregister prometheus metrics to avoid "Duplicated timeseries" errors
             try:
@@ -566,6 +562,6 @@ async def flowchart(request, ami_backend, broker, dmypy):
                 pass
     except Exception as e:
         print(f"Warning: Failed to unregister prometheus metrics: {e}")
-    
+
     # Close the flowchart after the test completes
     fc.close()

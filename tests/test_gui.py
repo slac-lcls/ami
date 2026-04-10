@@ -1,24 +1,13 @@
 import asyncio
-import json
-import multiprocessing as mp
 import os
-import signal
-import subprocess
-import tempfile
-import threading
 import time
-from collections import OrderedDict
 
 import amitypes as at
 import pytest
 import zmq
-import time
-import os
-import amitypes as at
+
 import ami.client.flowchart_messages as fcMsgs
 from ami.flowchart.library.common import SourceNode
-from collections import OrderedDict
-
 
 # Fixtures (broker, dmypy, flowchart) are now in conftest.py
 
@@ -60,7 +49,7 @@ def test_broker_sub(broker):
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize('flowchart', ['static'], indirect=True)
+@pytest.mark.parametrize("flowchart", ["static"], indirect=True)
 async def test_sources(qtbot, flowchart):
     fc, _ = flowchart
     source_library = fc.source_library
@@ -92,18 +81,18 @@ async def test_sources(qtbot, flowchart):
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize('flowchart', ['static'], indirect=True)
+@pytest.mark.parametrize("flowchart", ["static"], indirect=True)
 async def test_create_single_node(qtbot, flowchart):
     """Test creating a single node in GUI."""
     fc, _ = flowchart
     qtbot.addWidget(fc.widget())  # Ensure widget is created
-    fc.createNode('Projection')
+    fc.createNode("Projection")
     await asyncio.sleep(0.1)
-    assert 'Projection.0' in fc.nodes(data='node')
+    assert "Projection.0" in fc.nodes(data="node")
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize('flowchart', ['static'], indirect=True)
+@pytest.mark.parametrize("flowchart", ["static"], indirect=True)
 async def test_connect_nodes(qtbot, flowchart):
     """Test connecting two nodes via terminals."""
     fc, _ = flowchart
@@ -113,24 +102,24 @@ async def test_connect_nodes(qtbot, flowchart):
     initial_edges = len(fc._graph.edges())
 
     # Create a source node (cspad is an Array2d)
-    node_name = 'cspad'
+    node_name = "cspad"
     node_type = fc.source_library.getSourceType(node_name)
-    source_node = SourceNode(name=node_name, terminals={'Out': {'io': 'out', 'ttype': node_type}})
+    source_node = SourceNode(name=node_name, terminals={"Out": {"io": "out", "ttype": node_type}})
     fc.addNode(node=source_node)
 
     # Create a processing node (Roi2D accepts Array2d)
-    fc.createNode('Roi2D')
+    fc.createNode("Roi2D")
 
     # Get nodes
-    cspad_node = fc.nodes(data='node')['cspad']
+    cspad_node = fc.nodes(data="node")["cspad"]
     # Find the Roi2D node (might be Roi2D.0 or Roi2D.1 depending on previous tests)
-    all_nodes = dict(fc.nodes(data='node'))
-    roi_nodes = [n for n in all_nodes.keys() if n.startswith('Roi2D.')]
+    all_nodes = dict(fc.nodes(data="node"))
+    roi_nodes = [n for n in all_nodes.keys() if n.startswith("Roi2D.")]
     roi_node = all_nodes[roi_nodes[-1]]  # Get the last one created
 
     # Connect them
-    cspad_out = cspad_node._outputs['Out']
-    roi_in = roi_node._inputs['In']
+    cspad_out = cspad_node._outputs["Out"]
+    roi_in = roi_node._inputs["In"]
     cspad_out().connectTo(roi_in())
 
     # Wait for connection to register
@@ -141,19 +130,19 @@ async def test_connect_nodes(qtbot, flowchart):
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize('flowchart', ['static'], indirect=True)
+@pytest.mark.parametrize("flowchart", ["static"], indirect=True)
 async def test_save_flowchart(qtbot, flowchart, tmp_path):
     """Test saving flowchart to .fc file."""
     fc, _ = flowchart
     qtbot.addWidget(fc.widget())  # Ensure widget is created
 
     # Create a simple graph
-    fc.createNode('Projection')
+    fc.createNode("Projection")
     await asyncio.sleep(0.1)
 
     # Save to file
     widget = fc.widget()
-    pth = os.path.join(tmp_path, 'test_graph.fc')
+    pth = os.path.join(tmp_path, "test_graph.fc")
 
     widget.setCurrentFile(pth)
     widget.saveClicked()
@@ -163,7 +152,8 @@ async def test_save_flowchart(qtbot, flowchart, tmp_path):
 
     # Verify it's valid JSON
     import json
+
     with open(pth) as f:
         data = json.load(f)
-        assert 'nodes' in data
-        assert len(data['nodes']) >= 1  # At least the Projection node
+        assert "nodes" in data
+        assert len(data["nodes"]) >= 1  # At least the Projection node
