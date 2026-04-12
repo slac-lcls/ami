@@ -246,11 +246,7 @@ class NodeProcess(QtCore.QObject):
                     mod = os.path.splitext(mod)[0]
                     mod = importlib.import_module(mod)
 
-                    nodes = [
-                        getattr(mod, name)
-                        for name in dir(mod)
-                        if isNodeClass(getattr(mod, name))
-                    ]
+                    nodes = [getattr(mod, name) for name in dir(mod) if isNodeClass(getattr(mod, name))]
 
                     for node in nodes:
                         LIBRARY.addNodeType(node, [(mod.__name__,)])
@@ -511,9 +507,9 @@ class MessageBroker(object):
                         stdout=subprocess.DEVNULL,
                         stderr=subprocess.DEVNULL,
                     )
-                    logger.debug("OpenCode warmup request sent")
+                    logger.info("OpenCode warmup request sent")
                 except Exception as e:
-                    logger.debug(f"OpenCode warmup failed: {e}")
+                    logger.info(f"OpenCode warmup failed: {e}")
 
             # Schedule warmup after 2 seconds (give server time to start)
             import threading
@@ -574,9 +570,7 @@ class MessageBroker(object):
                 async with self.lock:
                     if topic in self.msgs:
                         msg = self.msgs[topic]
-                        self.broker_pub_sock.send_string(
-                            topic + ZMQ_TOPIC_DELIM, zmq.SNDMORE
-                        )
+                        self.broker_pub_sock.send_string(topic + ZMQ_TOPIC_DELIM, zmq.SNDMORE)
                         self.broker_pub_sock.send_pyobj(msg)
                     else:
                         continue

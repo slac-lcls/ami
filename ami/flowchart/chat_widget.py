@@ -33,22 +33,21 @@ try:
 except ImportError:
     HAS_MARKDOWN = False
     logger.warning("markdown library not available - agent text will be plain")
-from qtpy.QtWidgets import (
-    QWidget,
-    QVBoxLayout,
-    QHBoxLayout,
-    QTextEdit,
-    QTextBrowser,
-    QLineEdit,
-    QPushButton,
-    QApplication,
-)
-from qtpy.QtCore import Qt, Signal, QThread, Slot, QTimer
-
 # Syntax highlighting
 from pygments import highlight
-from pygments.lexers import PythonLexer
 from pygments.formatters import HtmlFormatter
+from pygments.lexers import PythonLexer
+from qtpy.QtCore import Qt, QThread, QTimer, Signal, Slot
+from qtpy.QtWidgets import (
+    QApplication,
+    QHBoxLayout,
+    QLineEdit,
+    QPushButton,
+    QTextBrowser,
+    QTextEdit,
+    QVBoxLayout,
+    QWidget,
+)
 
 
 class ChatWorker(QThread):
@@ -85,9 +84,7 @@ class ChatWorker(QThread):
             if "Session not found" in error_msg:
                 self.bridge.session_id = None
                 try:
-                    result = self.bridge.ask(
-                        self.prompt, timeout=120, stream_progress=False
-                    )
+                    result = self.bridge.ask(self.prompt, timeout=120, stream_progress=False)
                     self.response_received.emit(result)
                     return
                 except Exception as retry_error:
@@ -153,8 +150,7 @@ class ChatWidget(QWidget):
         self.output_text.setOpenLinks(False)
         self.output_text.setOpenExternalLinks(False)
         self.output_text.setPlaceholderText(
-            "Chat conversation will appear here...\n\n"
-            "Try: 'create a scatter plot of source_0.raw vs source_1.raw'"
+            "Chat conversation will appear here...\n\n" "Try: 'create a scatter plot of source_0.raw vs source_1.raw'"
         )
         layout.addWidget(self.output_text)
 
@@ -264,9 +260,7 @@ class ChatWidget(QWidget):
         """
         timestamp = datetime.now().strftime("%H:%M:%S")
 
-        self._messages.append(
-            {"type": msg_type, "content": content, "timestamp": timestamp, **kwargs}
-        )
+        self._messages.append({"type": msg_type, "content": content, "timestamp": timestamp, **kwargs})
         self._render_messages()
 
     def _append_code_block(self, code, block_number):
@@ -438,51 +432,51 @@ class ChatWidget(QWidget):
             margin: 10px;
             background-color: #FAFAFA;
         }
-        
+
         /* Message styles */
         p {
             margin: 6px 0;
             padding: 4px 0;
         }
-        
+
         .timestamp {
             color: #9E9E9E;
             font-size: 11px;
             font-family: 'Consolas', monospace;
             margin-right: 8px;
         }
-        
+
         .user {
             color: #1976D2;
             font-weight: 600;
         }
-        
+
         .system {
             color: #757575;
             font-style: italic;
         }
-        
+
         .agent {
             color: #388E3C;
             font-weight: 600;
         }
-        
+
         /* Agent formatted text (markdown rendered) */
         .agent_formatted {
             color: #2E7D32;
             margin: 8px 0;
             line-height: 1.7;
         }
-        
+
         .agent_formatted strong {
             color: #1B5E20;
             font-weight: 700;
         }
-        
+
         .agent_formatted em {
             font-style: italic;
         }
-        
+
         .agent_formatted code {
             background-color: #E8F5E9;
             padding: 2px 5px;
@@ -492,68 +486,68 @@ class ChatWidget(QWidget):
             color: #1B5E20;
             border: 1px solid #C8E6C9;
         }
-        
+
         .agent_formatted ul, .agent_formatted ol {
             margin: 6px 0;
             padding-left: 24px;
         }
-        
+
         .agent_formatted li {
             margin: 3px 0;
         }
-        
+
         .agent_formatted h1, .agent_formatted h2, .agent_formatted h3 {
             color: #1B5E20;
             font-weight: 600;
             margin: 10px 0 6px 0;
         }
-        
+
         .agent_formatted h1 { font-size: 16px; }
         .agent_formatted h2 { font-size: 15px; }
         .agent_formatted h3 { font-size: 14px; }
-        
+
         .agent_formatted p {
             margin: 6px 0;
         }
-        
+
         .agent_formatted a {
             color: #1976D2;
             text-decoration: underline;
         }
-        
+
         .agent_formatted a:hover {
             color: #1565C0;
         }
-        
+
         .agent_formatted table {
             border-collapse: collapse;
             margin: 8px 0;
             font-size: 12px;
         }
-        
+
         .agent_formatted th {
             background-color: #E8F5E9;
             padding: 6px 10px;
             border: 1px solid #C8E6C9;
             font-weight: 600;
         }
-        
+
         .agent_formatted td {
             padding: 6px 10px;
             border: 1px solid #E0E0E0;
         }
-        
+
         .agent_formatted_label {
             color: #388E3C;
             font-weight: 600;
             margin-right: 6px;
         }
-        
+
         .warning {
             color: #F57C00;
             padding-left: 20px;
         }
-        
+
         /* Separator */
         .separator {
             text-align: center;
@@ -564,7 +558,7 @@ class ChatWidget(QWidget):
             background: linear-gradient(to right, #E8F5E9, #C8E6C9, #E8F5E9);
             border-radius: 4px;
         }
-        
+
         /* Code container */
         .code-container {
             margin: 15px 0;
@@ -574,7 +568,7 @@ class ChatWidget(QWidget):
             box-shadow: 0 2px 4px rgba(0,0,0,0.1);
             overflow: hidden;
         }
-        
+
         .code-header {
             background: linear-gradient(to bottom, #E8F5E9, #C8E6C9);
             padding: 10px 15px;
@@ -582,22 +576,22 @@ class ChatWidget(QWidget):
             display: flex;
             align-items: center;
         }
-        
+
         .code-title {
             font-weight: 600;
             color: #2E7D32;
         }
-        
+
         .code-info {
             color: #66BB6A;
             margin-left: 8px;
             font-size: 12px;
         }
-        
+
         .code-actions {
             margin-left: auto;
         }
-        
+
         .code-toggle {
             color: #2196F3;
             text-decoration: none;
@@ -605,12 +599,12 @@ class ChatWidget(QWidget):
             cursor: pointer;
             font-size: 12px;
         }
-        
+
         .code-toggle:hover {
             text-decoration: underline;
             color: #1976D2;
         }
-        
+
         .copy-btn {
             color: #2196F3;
             text-decoration: none;
@@ -618,23 +612,23 @@ class ChatWidget(QWidget):
             cursor: pointer;
             font-size: 12px;
         }
-        
+
         .copy-btn:hover {
             text-decoration: underline;
             color: #1976D2;
         }
-        
+
         .copy-btn-success {
             color: #4CAF50;
             font-weight: 600;
             margin-left: 10px;
             font-size: 12px;
         }
-        
+
         .code-body {
             background-color: #2b2b2b;
         }
-        
+
         /* Code table */
         .code-table {
             width: 100%;
@@ -642,7 +636,7 @@ class ChatWidget(QWidget):
             font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
             font-size: 12px;
         }
-        
+
         .line-numbers {
             color: #75715e;
             text-align: right;
@@ -653,13 +647,13 @@ class ChatWidget(QWidget):
             background-color: #1e1e1e;
             width: 40px;
         }
-        
+
         .code-content {
             padding: 0;
             vertical-align: top;
             width: 100%;
         }
-        
+
         .code-content pre {
             margin: 0;
             padding: 12px;
@@ -699,9 +693,7 @@ class ChatWidget(QWidget):
 
             elif msg_type == "agent_formatted":
                 # Render markdown-formatted agent text
-                label = msg.get(
-                    "label", ""
-                )  # Optional "Agent:" label for first segment
+                label = msg.get("label", "")  # Optional "Agent:" label for first segment
 
                 if label:
                     html_parts.append(
@@ -710,9 +702,7 @@ class ChatWidget(QWidget):
                         f'<span class="agent_formatted">{content}</span></p>'
                     )
                 else:
-                    html_parts.append(
-                        f'<p><span class="agent_formatted">{content}</span></p>'
-                    )
+                    html_parts.append(f'<p><span class="agent_formatted">{content}</span></p>')
 
             elif msg_type == "warning":
                 html_parts.append(
@@ -721,9 +711,7 @@ class ChatWidget(QWidget):
                 )
 
             elif msg_type == "separator":
-                html_parts.append(
-                    f'<div class="separator">━━━ {escape(content)} ━━━</div>'
-                )
+                html_parts.append(f'<div class="separator">━━━ {escape(content)} ━━━</div>')
 
             elif msg_type == "code":
                 block_id = msg["block_id"]
@@ -761,9 +749,7 @@ class ChatWidget(QWidget):
             self.bridge = OpenCodeBridge()
             self._append_message("system", "[System] OpenCode bridge initialized")
         except Exception as e:
-            self._append_message(
-                "system", f"[System] Warning: Could not initialize OpenCode: {e}"
-            )
+            self._append_message("system", f"[System] Warning: Could not initialize OpenCode: {e}")
             self._append_message("system", "[System] AI features will not be available")
 
     def _on_submit(self):
@@ -826,11 +812,7 @@ class ChatWidget(QWidget):
         """
         # Format available sources with types
         sources = state.get("available_sources", [])
-        source_library = (
-            self.ctrl.chart.source_library
-            if hasattr(self.ctrl.chart, "source_library")
-            else None
-        )
+        source_library = self.ctrl.chart.source_library if hasattr(self.ctrl.chart, "source_library") else None
 
         if source_library and sources:
             # Get types for each source and format with abbreviated unions
@@ -839,16 +821,10 @@ class ChatWidget(QWidget):
                 try:
                     source_type = source_library.getSourceType(source_name)
                     # Format type: Union[A, B] → A|B
-                    type_str = (
-                        str(source_type.__name__)
-                        if hasattr(source_type, "__name__")
-                        else str(source_type)
-                    )
+                    type_str = str(source_type.__name__) if hasattr(source_type, "__name__") else str(source_type)
                     # Abbreviate Union syntax for readability
                     if type_str.startswith("Union["):
-                        type_str = type_str[6:-1].replace(
-                            ", ", "|"
-                        )  # Union[A, B] → A|B
+                        type_str = type_str[6:-1].replace(", ", "|")  # Union[A, B] → A|B
                     sources_with_types.append(f"{source_name} ({type_str})")
                 except (KeyError, AttributeError):
                     # Type not available - use Any to indicate accepts anything
@@ -885,97 +861,78 @@ Please generate Python code to fulfill this request using the AMI graph building
         """
         self._append_message("system", "[System] Response received, processing...")
 
-        # Show agent's conversational text first
         logger.debug(f"Response received: {len(response_str)} characters")
         logger.debug(f"Response preview: {response_str[:500]}")
-        self._show_agent_text(response_str)
 
         # Extract code and response data from response
         codes, response_data = self._extract_code_with_data(response_str)
 
+        # Debug: log what we extracted
+        logger.debug(f"Extracted codes: {len(codes) if codes else 0}")
+        logger.debug(f"Response data keys: {list(response_data.keys()) if response_data else 'None'}")
+
+        # Display all response fields (explanation, warnings, next_steps)
+        self._display_response_data(response_data)
+
+        # If there's code, display and execute it
         if codes:
             self._append_message("system", f"[System] Found {len(codes)} code block(s)")
 
-            # Display and execute each code block with retry logic
             for i, code in enumerate(codes, 1):
                 self._append_code_block(code, i)
-
-                # Execute code and get result
                 exec_result = self._execute_code(code)
 
-                # Handle execution result
                 if exec_result["status"] == "success":
-                    # Success - show next_steps if provided
-                    self._handle_success(response_data, exec_result)
-                    # Reset retry counter
+                    # Show captured output if any
+                    if exec_result.get("output"):
+                        output = exec_result["output"].strip()
+                        if output:
+                            self._append_message("output", output)
                     self._retry_iteration = 0
                 else:
                     # Error - check if we should retry
                     self._handle_error_with_retry(exec_result, response_data)
         else:
-            # No code found - log diagnostics and inform user
-            self._handle_no_code_response(response_str)
-            # Reset retry counter
+            # No code - just log for debugging
+            logger.debug("Agent responded with explanation (no code)")
             self._retry_iteration = 0
 
-    def _handle_no_code_response(self, response_str):
+    def _display_response_data(self, response_data):
         """
-        Handle responses without executable code.
-        Logs diagnostics to terminal without cluttering UI.
+        Display all response fields (explanation, warnings, next_steps).
+
+        This is the single source of truth for displaying agent response data.
+        Called for both code and no-code responses.
 
         Args:
-            response_str: Raw response string from agent
+            response_data: Parsed agent response dict
         """
-        # Count events and analyze response content
-        event_count = 0
-        text_event_count = 0
-        text_with_code_blocks = 0
-        text_without_code = 0
+        logger.debug(f"_display_response_data called with: {response_data}")
 
-        for line in response_str.split("\n"):
-            if not line.strip():
-                continue
-            try:
-                event = json.loads(line)
-                event_count += 1
+        if not response_data:
+            logger.debug("_display_response_data: response_data is empty, returning")
+            return
 
-                if event.get("type") == "text":
-                    text_event_count += 1
-                    text = event.get("part", {}).get("text", "")
-
-                    if "```" in text:
-                        text_with_code_blocks += 1
-                    elif text.strip():
-                        text_without_code += 1
-
-            except json.JSONDecodeError:
-                continue
-
-        # Log analysis to terminal
-        logger.debug(f"No code to execute - Response analysis:")
-        logger.debug(f"  Total events: {event_count}")
-        logger.debug(f"  Text events: {text_event_count}")
-        logger.debug(f"  Text with code blocks: {text_with_code_blocks}")
-        logger.debug(f"  Text without code: {text_without_code}")
-
-        # Warn if truly empty (unusual case)
-        if event_count == 0:
-            logger.warning("Agent returned completely empty response (0 events)")
-            self._append_message("warning", "⚠️  Agent returned empty response")
-        elif text_event_count == 0:
-            logger.warning(
-                f"Agent response had {event_count} events but no text content"
+        # Display explanation
+        if response_data.get("explanation"):
+            logger.debug(
+                f"_display_response_data: Displaying explanation of length {len(response_data.get('explanation', ''))}"
             )
-            self._append_message("warning", "⚠️  Agent response contained no text")
-        else:
-            # Normal case - agent answered with text only
-            logger.info(f"Agent responded with text explanation (no executable code)")
-            self._append_message(
-                "system",
-                "[System] Agent responded with explanation (no code generated)",
-            )
+            formatted_html = self._markdown_to_html(response_data["explanation"])
+            self._append_message("agent_formatted", formatted_html, label="Agent:")
 
-    @Slot(str)
+        # Display warnings
+        if response_data.get("warnings"):
+            for warning in response_data["warnings"]:
+                formatted_html = self._markdown_to_html(f"⚠️  {warning}")
+                self._append_message("warning_formatted", formatted_html)
+
+        # Display next_steps
+        if response_data.get("next_steps"):
+            steps_text = "**Next steps:**\n" + "\n".join(f"- {step}" for step in response_data["next_steps"])
+            formatted_html = self._markdown_to_html(steps_text)
+            self._append_message("agent_formatted", formatted_html)
+
     def _on_error_occurred(self, error_msg):
         """
         Handle error from background worker.
@@ -984,28 +941,6 @@ Please generate Python code to fulfill this request using the AMI graph building
             error_msg: Error message string
         """
         self._append_message("system", f"[Error] {error_msg}")
-
-    def _handle_success(self, response_data, exec_result):
-        """
-        Handle successful code execution.
-
-        Args:
-            response_data: Parsed agent response dict
-            exec_result: Execution result dict
-        """
-        # Show captured output if any
-        if exec_result.get("output"):
-            output = exec_result["output"].strip()
-            if output:
-                self._append_message("output", output)
-
-        # Show next_steps if provided
-        next_steps = response_data.get("next_steps", [])
-        if next_steps:
-            steps_text = "**Next steps:**\n" + "\n".join(
-                f"- {step}" for step in next_steps
-            )
-            self._append_message("agent", steps_text)
 
     def _handle_error_with_retry(self, exec_result, response_data):
         """
@@ -1035,9 +970,7 @@ Please generate Python code to fulfill this request using the AMI graph building
 
                 state = get_graph_state(self.ctrl.amicli)
             except Exception as e:
-                self._append_message(
-                    "system", f"[Error] Could not get graph state: {e}"
-                )
+                self._append_message("system", f"[Error] Could not get graph state: {e}")
                 self._retry_iteration = 0
                 return
 
@@ -1084,102 +1017,6 @@ Please generate Python code to fulfill this request using the AMI graph building
             f"Generate corrected code in the same JSON format."
         )
 
-        return prompt
-
-    def _extract_code(self, response_str):
-        """
-        Extract executable code from agent response.
-
-        Matches the working extract_code_from_response() from graph_builder.py.
-        Parses in reverse to get the final response from the agent.
-
-        Args:
-            response_str: String with newline-separated JSON events from agent
-
-        Returns:
-            List of code strings
-        """
-        codes = []
-
-        try:
-            # Parse events in reverse (agent's final response is at the end)
-            for line in reversed(response_str.split("\n")):
-                if not line.strip():
-                    continue
-
-                try:
-                    event = json.loads(line)
-
-                    # Look for text events (agent's responses)
-                    if event.get("type") == "text":
-                        text = event.get("part", {}).get("text", "")
-
-                        # Look for JSON code block (ami-graph-builder skill format)
-                        match = re.search(r"```json\n(.*?)```", text, re.DOTALL)
-                        if match:
-                            try:
-                                response = json.loads(match.group(1))
-
-                                # Check if it's a question (no code to execute)
-                                if response.get("type") == "question":
-                                    # Display question to user
-                                    self._append_output("")
-                                    self._append_output("Agent has questions:")
-                                    if "message" in response:
-                                        self._append_output(response["message"])
-                                    for q in response.get("questions", []):
-                                        self._append_output(
-                                            f"  Q: {q.get('question', '')}"
-                                        )
-                                        if "options" in q:
-                                            for opt in q["options"]:
-                                                self._append_output(f"     - {opt}")
-                                    self._append_output("")
-                                    return []  # No code to execute
-
-                                # Extract code from response
-                                if "code" in response:
-                                    code = response["code"]
-
-                                    # Show separator only if there's content
-                                    if (
-                                        "explanation" in response
-                                        or "warnings" in response
-                                    ):
-                                        self._append_message(
-                                            "separator", "Agent's Response"
-                                        )
-
-                                    # Show explanation if provided
-                                    if "explanation" in response:
-                                        self._append_message(
-                                            "agent", response["explanation"]
-                                        )
-
-                                    # Show warnings if provided
-                                    if "warnings" in response:
-                                        for warning in response["warnings"]:
-                                            self._append_message("warning", warning)
-
-                                    codes.append(code)
-
-                                    # Only process the first (most recent) JSON block found
-                                    if codes:
-                                        return codes
-
-                            except json.JSONDecodeError:
-                                # Not valid JSON, skip
-                                continue
-
-                except json.JSONDecodeError:
-                    # Skip lines that aren't valid JSON events
-                    continue
-
-        except Exception as e:
-            self._append_output(f"[Warning] Code extraction error: {e}")
-
-        return codes
-
     def _extract_code_with_data(self, response_str):
         """
         Extract executable code AND response data from agent response.
@@ -1208,29 +1045,60 @@ Please generate Python code to fulfill this request using the AMI graph building
                     if event.get("type") == "text":
                         text = event.get("part", {}).get("text", "")
 
-                        # Look for JSON code block (ami-graph-builder skill format)
-                        match = re.search(r"```json\n(.*?)```", text, re.DOTALL)
-                        if match:
-                            try:
-                                response = json.loads(match.group(1))
+                        # Debug: log what text we're trying to parse
+                        logger.info(f"[DEBUG] Found text event, length: {len(text)}, preview: {text[:200]}")
 
-                                # Check if it's a question (no code to execute)
-                                if response.get("type") == "question":
-                                    # Return empty - no code to execute
-                                    return ([], response)
+                        # Parse JSON - try raw first, fall back to markdown-fenced
+                        # NOTE: SKILL.md line 38 instructs agent to send raw JSON without markdown
+                        # fences, but current models (Claude 3.5 Sonnet as of 2026-04) consistently
+                        # wrap JSON in ```json code blocks due to base training bias. This fallback
+                        # parser handles both formats gracefully: attempts raw JSON first (preferred),
+                        # falls back to regex extraction from fences if needed (reality).
+                        response = None
 
-                                # Extract code and metadata
-                                if "code" in response:
-                                    codes.append(response["code"])
-                                    response_data = response
+                        # Attempt 1: Parse raw JSON (preferred format per SKILL.md line 38)
+                        try:
+                            response = json.loads(text.strip())
+                            logger.info(f"[DEBUG] Parsed raw JSON: {list(response.keys())}")
 
-                                    # Only process the first (most recent) JSON block found
-                                    if codes:
-                                        return (codes, response_data)
-
-                            except json.JSONDecodeError:
-                                # Not valid JSON, skip
+                        except json.JSONDecodeError:
+                            # Attempt 2: Extract from markdown fences (agent's actual behavior)
+                            # Pattern: ```json\n{...}\n```
+                            match = re.search(r"```json\s*\n(.*?)\n```", text, re.DOTALL)
+                            if match:
+                                try:
+                                    response = json.loads(match.group(1))
+                                    logger.warning(
+                                        f"[DEBUG] Parsed fenced JSON (agent used old format): {list(response.keys())}"
+                                    )
+                                except json.JSONDecodeError as e:
+                                    logger.info(f"[DEBUG] Failed to parse fenced JSON: {str(e)[:100]}")
+                                    continue
+                            else:
+                                # No JSON found in any format
+                                logger.info(f"[DEBUG] No JSON found (raw or fenced). Text preview: {text[:100]}")
                                 continue
+
+                        # If we got valid JSON (from either method), process it
+                        if response:
+                            # Check if it's a question (no code to execute)
+                            if response.get("type") == "question":
+                                # Return empty - no code to execute
+                                return ([], response)
+
+                            # Extract code and metadata
+                            if "code" in response:
+                                codes.append(response["code"])
+                                response_data = response
+
+                                # Only process the first (most recent) JSON block found
+                                if codes:
+                                    return (codes, response_data)
+
+                            # No code field - might be explanation-only response
+                            # Return empty codes but keep response_data for display
+                            if "explanation" in response or "next_steps" in response or "warnings" in response:
+                                return ([], response)
 
                 except json.JSONDecodeError:
                     # Skip lines that aren't valid JSON events
@@ -1240,128 +1108,6 @@ Please generate Python code to fulfill this request using the AMI graph building
             self._append_output(f"[Warning] Code extraction error: {e}")
 
         return (codes, response_data)
-
-    def _extract_text(self, response_str):
-        """
-        Extract text content from agent response.
-
-        Args:
-            response_str: String with newline-separated JSON events from agent
-
-        Returns:
-            Combined text content from all events
-        """
-        text_parts = []
-
-        try:
-            # Parse newline-separated JSON events
-            for line in response_str.split("\n"):
-                if not line.strip():
-                    continue
-
-                try:
-                    event = json.loads(line)
-
-                    if isinstance(event, dict) and "content" in event:
-                        text_parts.append(event["content"])
-
-                except json.JSONDecodeError:
-                    continue
-
-        except Exception as e:
-            self._append_output(f"[Warning] Text extraction error: {e}")
-
-        return "\n".join(text_parts)
-
-    def _show_agent_text(self, response_str):
-        """
-        Show agent's conversational text (excluding code blocks).
-
-        Args:
-            response_str: String with newline-separated JSON events
-        """
-        agent_texts = []
-
-        try:
-            # Parse events in order (not reversed - show conversation flow)
-            for line in response_str.split("\n"):
-                if not line.strip():
-                    continue
-
-                try:
-                    event = json.loads(line)
-
-                    # Look for text events
-                    if event.get("type") == "text":
-                        text = event.get("part", {}).get("text", "")
-
-                        # If text contains code blocks, extract text before/after them
-                        if "```" in text:
-                            # Split by triple backticks
-                            parts = text.split("```")
-
-                            # Parts at even indices (0, 2, 4...) are OUTSIDE code blocks
-                            # Parts at odd indices (1, 3, 5...) are INSIDE code blocks
-                            for i, part in enumerate(parts):
-                                if (
-                                    i % 2 == 0
-                                ):  # Outside code block - this is explanatory text
-                                    cleaned = part.strip()
-                                    if cleaned:
-                                        agent_texts.append(cleaned)
-                                        logger.debug(
-                                            f"Extracted text segment (before/after code): {len(cleaned)} chars"
-                                        )
-                            continue  # Already processed this event
-
-                        # No code blocks - add text directly
-                        if text.strip():
-                            agent_texts.append(text)
-
-                except json.JSONDecodeError:
-                    continue
-
-        except Exception as e:
-            self._append_output(f"[Warning] Text display error: {e}")
-
-        # Log how many text segments were extracted
-        logger.debug(f"Extracted {len(agent_texts)} text segments from agent response")
-
-        # If no text was extracted, log why
-        if not agent_texts:
-            # Count how many text events were skipped
-            skipped_with_code = 0
-            for line in response_str.split("\n"):
-                if not line.strip():
-                    continue
-                try:
-                    event = json.loads(line)
-                    if event.get("type") == "text":
-                        text = event.get("part", {}).get("text", "")
-                        if "```" in text:
-                            skipped_with_code += 1
-                except json.JSONDecodeError:
-                    continue
-
-            if skipped_with_code > 0:
-                logger.debug(
-                    f"Skipped {skipped_with_code} text events containing code blocks"
-                )
-
-        # Display agent text if any was found
-        if agent_texts:
-            # First text segment gets "Agent:" prefix
-            for i, text in enumerate(agent_texts):
-                # Convert markdown to HTML
-                formatted_html = self._markdown_to_html(text)
-
-                # First segment includes "Agent:" label
-                if i == 0:
-                    self._append_message(
-                        "agent_formatted", formatted_html, label="Agent:"
-                    )
-                else:
-                    self._append_message("agent_formatted", formatted_html)
 
     @Slot(str)
     def _execute_code_slot(self, code):
@@ -1393,8 +1139,8 @@ Please generate Python code to fulfill this request using the AMI graph building
                 - error_type: exception class name (on error)
                 - traceback: full traceback string (on error)
         """
-        import sys
         import io
+        import sys
 
         # Capture stdout
         old_stdout = sys.stdout
