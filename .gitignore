@@ -25,3 +25,9 @@ htmlcov/
 .gdb_history
 examples/*
 *.cprof
+# Ignore .opencode directory except skills (required for OpenCode discovery)
+.opencode/*
+!.opencode/skills/
+
+# OpenCode database
+.code-index.db
