@@ -36,6 +36,7 @@ setup(
         "mypy",
         "setproctitle",
         "prometheus_client",
+        "opencode-ai",
         #        'lark'
     ],
     tests_require=["pytest", "pytest-asyncio", "pytest-qt"],

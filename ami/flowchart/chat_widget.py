@@ -84,7 +84,9 @@ class ChatWorker(QThread):
             if "Session not found" in error_msg:
                 self.bridge.session_id = None
                 try:
-                    result = self.bridge.ask(self.prompt, timeout=120, stream_progress=False)
+                    result = self.bridge.ask(
+                        self.prompt, timeout=120, stream_progress=False
+                    )
                     self.response_received.emit(result)
                     return
                 except Exception as retry_error:
@@ -132,6 +134,9 @@ class ChatWidget(QWidget):
         self._original_user_input = None  # Original user request
         self._current_response_data = None  # Parsed response data for retry
 
+        # Question handling state (single-turn: question → answer → code)
+        self._pending_question = None  # Stores question data when waiting for answer
+
         self._setup_ui()
         self._connect_signals()
         self._init_bridge()
@@ -150,7 +155,8 @@ class ChatWidget(QWidget):
         self.output_text.setOpenLinks(False)
         self.output_text.setOpenExternalLinks(False)
         self.output_text.setPlaceholderText(
-            "Chat conversation will appear here...\n\n" "Try: 'create a scatter plot of source_0.raw vs source_1.raw'"
+            "Chat conversation will appear here...\n\n"
+            "Try: 'create a scatter plot of source_0.raw vs source_1.raw'"
         )
         layout.addWidget(self.output_text)
 
@@ -260,7 +266,9 @@ class ChatWidget(QWidget):
         """
         timestamp = datetime.now().strftime("%H:%M:%S")
 
-        self._messages.append({"type": msg_type, "content": content, "timestamp": timestamp, **kwargs})
+        self._messages.append(
+            {"type": msg_type, "content": content, "timestamp": timestamp, **kwargs}
+        )
         self._render_messages()
 
     def _append_code_block(self, code, block_number):
@@ -693,7 +701,9 @@ class ChatWidget(QWidget):
 
             elif msg_type == "agent_formatted":
                 # Render markdown-formatted agent text
-                label = msg.get("label", "")  # Optional "Agent:" label for first segment
+                label = msg.get(
+                    "label", ""
+                )  # Optional "Agent:" label for first segment
 
                 if label:
                     html_parts.append(
@@ -702,7 +712,9 @@ class ChatWidget(QWidget):
                         f'<span class="agent_formatted">{content}</span></p>'
                     )
                 else:
-                    html_parts.append(f'<p><span class="agent_formatted">{content}</span></p>')
+                    html_parts.append(
+                        f'<p><span class="agent_formatted">{content}</span></p>'
+                    )
 
             elif msg_type == "warning":
                 html_parts.append(
@@ -711,7 +723,9 @@ class ChatWidget(QWidget):
                 )
 
             elif msg_type == "separator":
-                html_parts.append(f'<div class="separator">━━━ {escape(content)} ━━━</div>')
+                html_parts.append(
+                    f'<div class="separator">━━━ {escape(content)} ━━━</div>'
+                )
 
             elif msg_type == "code":
                 block_id = msg["block_id"]
@@ -742,14 +756,37 @@ class ChatWidget(QWidget):
             scrollbar.setValue(old_scroll)
 
     def _init_bridge(self):
-        """Initialize OpenCodeBridge (lazy)."""
+        """Initialize OpenCodeBridge by using global shared instance (lazy initialization)."""
         try:
-            from ami.flowchart.graph_builder import OpenCodeBridge
+            from ami.client.flowchart import get_global_opencode_bridge
+            import ami.client.flowchart as flowchart_module
 
-            self.bridge = OpenCodeBridge()
-            self._append_message("system", "[System] OpenCode bridge initialized")
+            self.bridge = get_global_opencode_bridge()
+
+            if self.bridge is None:
+                # First chat widget open - create bridge and store globally
+                from ami.flowchart.graph_builder import OpenCodeBridge
+
+                logger.info("Creating global OpenCode bridge (lazy initialization)...")
+                self.bridge = OpenCodeBridge()
+
+                # Store globally (no lock needed - single-threaded)
+                flowchart_module._global_opencode_bridge = self.bridge
+                logger.info("Global OpenCode bridge created")
+
+                self._append_message("system", "[System] OpenCode ready")
+                self._append_message(
+                    "system", "💭 Note: First request may take 10-15s (loading skill)"
+                )
+            else:
+                # Reusing existing bridge (conversation history preserved)
+                self._append_message("system", "[System] OpenCode ready")
+
         except Exception as e:
-            self._append_message("system", f"[System] Warning: Could not initialize OpenCode: {e}")
+            logger.error(f"Failed to initialize OpenCode bridge: {e}")
+            self._append_message(
+                "system", f"[System] Warning: Could not initialize OpenCode: {e}"
+            )
             self._append_message("system", "[System] AI features will not be available")
 
     def _on_submit(self):
@@ -769,16 +806,81 @@ class ChatWidget(QWidget):
         # Display user message
         self._append_message("user", user_input)
 
-        # Reset retry state for new user request
+        # Check if we're answering a pending question
+        if self._pending_question is not None:
+            self._submit_answer(user_input)
+            return
+
+        # Normal request flow
+        self._send_request(user_input)
+
+    def _submit_answer(self, answer_text):
+        """
+        Submit answer to pending question and continue conversation.
+
+        Args:
+            answer_text: User's answer (number or text)
+        """
+        question_data = self._pending_question
+        questions = question_data.get("questions", [])
+
+        # Parse answer - convert number to option text if applicable
+        processed_answer = self._parse_answer(answer_text, questions)
+
+        # Display parsed answer confirmation if different from input
+        if processed_answer != answer_text:
+            confirm_html = self._markdown_to_html(f"*→ Using: {processed_answer}*")
+            self._append_message("system", confirm_html)
+
+        # Clear pending question
+        self._pending_question = None
+
+        # Send answer to agent as follow-up
+        self._send_request(processed_answer)
+
+    def _parse_answer(self, answer_text, questions):
+        """
+        Parse user answer - convert number to option text.
+
+        Args:
+            answer_text: Raw user input
+            questions: List of question dicts with 'options'
+
+        Returns:
+            Processed answer string
+        """
+        # Try to parse as number
+        try:
+            choice_num = int(answer_text)
+
+            # Find options from first question (single-turn: one question at a time)
+            if questions:
+                options = questions[0].get("options", [])
+                if 1 <= choice_num <= len(options):
+                    return options[choice_num - 1]
+        except ValueError:
+            pass
+
+        # Not a valid number - return as-is (text answer)
+        return answer_text
+
+    def _send_request(self, user_input):
+        """
+        Send request to agent (extracted from _on_submit for reuse).
+
+        Args:
+            user_input: User's message or answer
+        """
+        # Reset retry state
         self._retry_iteration = 0
         self._original_user_input = user_input
 
-        # Check if bridge is available
+        # Check bridge availability
         if self.bridge is None:
             self._append_message("system", "[Error] OpenCode bridge not available")
             return
 
-        # Get graph state (INSTANT - direct access, same process)
+        # Get graph state
         try:
             from ami.flowchart.graph_builder import get_graph_state
 
@@ -787,13 +889,13 @@ class ChatWidget(QWidget):
             self._append_message("system", f"[Error] Could not get graph state: {e}")
             return
 
-        # Build full prompt with context
+        # Build prompt
         prompt = self._build_prompt(user_input, state)
 
         # Display status
         self._append_message("system", "[System] Sending request to agent...")
 
-        # Launch background worker (NON-BLOCKING)
+        # Launch background worker
         self.current_worker = ChatWorker(self.bridge, prompt)
         self.current_worker.response_received.connect(self._on_response_received)
         self.current_worker.error_occurred.connect(self._on_error_occurred)
@@ -812,7 +914,11 @@ class ChatWidget(QWidget):
         """
         # Format available sources with types
         sources = state.get("available_sources", [])
-        source_library = self.ctrl.chart.source_library if hasattr(self.ctrl.chart, "source_library") else None
+        source_library = (
+            self.ctrl.chart.source_library
+            if hasattr(self.ctrl.chart, "source_library")
+            else None
+        )
 
         if source_library and sources:
             # Get types for each source and format with abbreviated unions
@@ -821,10 +927,16 @@ class ChatWidget(QWidget):
                 try:
                     source_type = source_library.getSourceType(source_name)
                     # Format type: Union[A, B] → A|B
-                    type_str = str(source_type.__name__) if hasattr(source_type, "__name__") else str(source_type)
+                    type_str = (
+                        str(source_type.__name__)
+                        if hasattr(source_type, "__name__")
+                        else str(source_type)
+                    )
                     # Abbreviate Union syntax for readability
                     if type_str.startswith("Union["):
-                        type_str = type_str[6:-1].replace(", ", "|")  # Union[A, B] → A|B
+                        type_str = type_str[6:-1].replace(
+                            ", ", "|"
+                        )  # Union[A, B] → A|B
                     sources_with_types.append(f"{source_name} ({type_str})")
                 except (KeyError, AttributeError):
                     # Type not available - use Any to indicate accepts anything
@@ -869,7 +981,14 @@ Please generate Python code to fulfill this request using the AMI graph building
 
         # Debug: log what we extracted
         logger.debug(f"Extracted codes: {len(codes) if codes else 0}")
-        logger.debug(f"Response data keys: {list(response_data.keys()) if response_data else 'None'}")
+        logger.debug(
+            f"Response data keys: {list(response_data.keys()) if response_data else 'None'}"
+        )
+
+        # Check if this is a question response (single-turn: question → answer → code)
+        if response_data.get("type") == "question":
+            self._handle_question_response(response_data)
+            return  # Don't execute code, wait for user's answer
 
         # Display all response fields (explanation, warnings, next_steps)
         self._display_response_data(response_data)
@@ -929,9 +1048,70 @@ Please generate Python code to fulfill this request using the AMI graph building
 
         # Display next_steps
         if response_data.get("next_steps"):
-            steps_text = "**Next steps:**\n" + "\n".join(f"- {step}" for step in response_data["next_steps"])
+            steps_text = "**Next steps:**\n" + "\n".join(
+                f"- {step}" for step in response_data["next_steps"]
+            )
             formatted_html = self._markdown_to_html(steps_text)
             self._append_message("agent_formatted", formatted_html)
+
+    def _handle_question_response(self, question_data):
+        """
+        Display question from agent and prepare to receive answer (single-turn).
+
+        Args:
+            question_data: Dict with keys:
+                - message: Main question text
+                - questions: List of {prompt, options, default}
+                - context: Optional explanation (why asking)
+        """
+        # Store pending question
+        self._pending_question = question_data
+
+        # Display question message
+        message = question_data.get("message", "I have a question:")
+        formatted_html = self._markdown_to_html(f"❓ **{message}**")
+        self._append_message("agent_formatted", formatted_html, label="Agent:")
+
+        # Display context if provided
+        context = question_data.get("context", "")
+        if context:
+            context_html = self._markdown_to_html(f"*{context}*")
+            self._append_message("agent_formatted", context_html)
+
+        # Display questions with options
+        questions = question_data.get("questions", [])
+        for q_idx, question in enumerate(questions, 1):
+            prompt = question.get("prompt", "Please choose:")
+            options = question.get("options", [])
+            default_idx = question.get("default", 0)
+
+            # Format question prompt
+            if len(questions) > 1:
+                prompt_text = f"**Question {q_idx}:** {prompt}"
+            else:
+                prompt_text = f"**{prompt}**"
+
+            prompt_html = self._markdown_to_html(prompt_text)
+            self._append_message("agent_formatted", prompt_html)
+
+            # Format options as numbered list
+            options_md = "\n".join(
+                [
+                    f"{i}. {opt}{' *(recommended)*' if i - 1 == default_idx else ''}"
+                    for i, opt in enumerate(options, 1)
+                ]
+            )
+            options_html = self._markdown_to_html(options_md)
+            self._append_message("agent_formatted", options_html)
+
+        # Instruction for user
+        instruction_html = self._markdown_to_html(
+            "*Type a number or your answer below:*"
+        )
+        self._append_message("system", instruction_html)
+
+        # Focus input field
+        self.input_field.setFocus()
 
     def _on_error_occurred(self, error_msg):
         """
@@ -970,7 +1150,9 @@ Please generate Python code to fulfill this request using the AMI graph building
 
                 state = get_graph_state(self.ctrl.amicli)
             except Exception as e:
-                self._append_message("system", f"[Error] Could not get graph state: {e}")
+                self._append_message(
+                    "system", f"[Error] Could not get graph state: {e}"
+                )
                 self._retry_iteration = 0
                 return
 
@@ -1021,6 +1203,10 @@ Please generate Python code to fulfill this request using the AMI graph building
         """
         Extract executable code AND response data from agent response.
 
+        Uses two-pass parsing to handle responses that span multiple text events:
+        1. First pass: Accumulate all text from all text events
+        2. Second pass: Parse the complete combined text as JSON
+
         Args:
             response_str: String with newline-separated JSON events from agent
 
@@ -1033,79 +1219,115 @@ Please generate Python code to fulfill this request using the AMI graph building
         response_data = {}
 
         try:
-            # Parse events in reverse (agent's final response is at the end)
-            for line in reversed(response_str.split("\n")):
+            # PASS 1: Accumulate all text from all text events
+            # Agent may split long responses across multiple events, so we need
+            # to combine them before parsing JSON
+            text_parts = []
+
+            for line in response_str.split("\n"):
                 if not line.strip():
                     continue
 
                 try:
                     event = json.loads(line)
 
-                    # Look for text events (agent's responses)
+                    # Collect text from all text events
                     if event.get("type") == "text":
                         text = event.get("part", {}).get("text", "")
-
-                        # Debug: log what text we're trying to parse
-                        logger.info(f"[DEBUG] Found text event, length: {len(text)}, preview: {text[:200]}")
-
-                        # Parse JSON - try raw first, fall back to markdown-fenced
-                        # NOTE: SKILL.md line 38 instructs agent to send raw JSON without markdown
-                        # fences, but current models (Claude 3.5 Sonnet as of 2026-04) consistently
-                        # wrap JSON in ```json code blocks due to base training bias. This fallback
-                        # parser handles both formats gracefully: attempts raw JSON first (preferred),
-                        # falls back to regex extraction from fences if needed (reality).
-                        response = None
-
-                        # Attempt 1: Parse raw JSON (preferred format per SKILL.md line 38)
-                        try:
-                            response = json.loads(text.strip())
-                            logger.info(f"[DEBUG] Parsed raw JSON: {list(response.keys())}")
-
-                        except json.JSONDecodeError:
-                            # Attempt 2: Extract from markdown fences (agent's actual behavior)
-                            # Pattern: ```json\n{...}\n```
-                            match = re.search(r"```json\s*\n(.*?)\n```", text, re.DOTALL)
-                            if match:
-                                try:
-                                    response = json.loads(match.group(1))
-                                    logger.warning(
-                                        f"[DEBUG] Parsed fenced JSON (agent used old format): {list(response.keys())}"
-                                    )
-                                except json.JSONDecodeError as e:
-                                    logger.info(f"[DEBUG] Failed to parse fenced JSON: {str(e)[:100]}")
-                                    continue
-                            else:
-                                # No JSON found in any format
-                                logger.info(f"[DEBUG] No JSON found (raw or fenced). Text preview: {text[:100]}")
-                                continue
-
-                        # If we got valid JSON (from either method), process it
-                        if response:
-                            # Check if it's a question (no code to execute)
-                            if response.get("type") == "question":
-                                # Return empty - no code to execute
-                                return ([], response)
-
-                            # Extract code and metadata
-                            if "code" in response:
-                                codes.append(response["code"])
-                                response_data = response
-
-                                # Only process the first (most recent) JSON block found
-                                if codes:
-                                    return (codes, response_data)
-
-                            # No code field - might be explanation-only response
-                            # Return empty codes but keep response_data for display
-                            if "explanation" in response or "next_steps" in response or "warnings" in response:
-                                return ([], response)
+                        if text:
+                            text_parts.append(text)
+                            logger.debug(
+                                f"[DEBUG] Collected text part ({len(text)} chars), "
+                                f"total parts: {len(text_parts)}"
+                            )
 
                 except json.JSONDecodeError:
                     # Skip lines that aren't valid JSON events
                     continue
 
+            # Combine all text parts into one string
+            combined_text = "".join(text_parts)
+
+            if not combined_text.strip():
+                logger.info("[DEBUG] No text content found in response")
+                return (codes, response_data)
+
+            logger.info(
+                f"[DEBUG] Combined text length: {len(combined_text)}, "
+                f"preview: {combined_text[:200]}"
+            )
+
+            # PASS 2: Parse JSON from the complete combined text
+            # NOTE: SKILL.md instructs agent to send raw JSON without markdown fences,
+            # but current models often wrap JSON in ```json blocks. This parser handles
+            # both formats: tries raw JSON first (preferred), then markdown-fenced.
+            response = None
+
+            # Attempt 1: Parse raw JSON (preferred format per SKILL.md)
+            try:
+                response = json.loads(combined_text.strip())
+                logger.info(f"[DEBUG] Parsed raw JSON: {list(response.keys())}")
+
+            except json.JSONDecodeError as e:
+                # Attempt 2: Extract from markdown fences (agent's fallback behavior)
+                # Pattern: ```json\n{...}\n```
+                match = re.search(r"```json\s*\n(.*?)\n```", combined_text, re.DOTALL)
+                if match:
+                    try:
+                        response = json.loads(match.group(1))
+                        logger.warning(
+                            f"[DEBUG] Parsed fenced JSON (agent used old format): "
+                            f"{list(response.keys())}"
+                        )
+                    except json.JSONDecodeError as parse_error:
+                        logger.error(
+                            f"[DEBUG] Failed to parse fenced JSON: {str(parse_error)[:100]}"
+                        )
+                        # Show user-visible error
+                        self._append_message(
+                            "system",
+                            "[Error] Could not parse agent response. Please try again.",
+                        )
+                        return (codes, response_data)
+                else:
+                    # No JSON found in any format
+                    logger.info(
+                        f"[DEBUG] No JSON found (raw or fenced). "
+                        f"Text preview: {combined_text[:100]}"
+                    )
+                    return (codes, response_data)
+
+            # If we got valid JSON, process it
+            if response:
+                # Check if it's a question (no code to execute)
+                if response.get("type") == "question":
+                    logger.info("[DEBUG] Detected question response")
+                    return ([], response)
+
+                # Extract code and metadata
+                if "code" in response:
+                    codes.append(response["code"])
+                    response_data = response
+                    logger.info(
+                        f"[DEBUG] Extracted code ({len(response['code'])} chars)"
+                    )
+                    return (codes, response_data)
+
+                # No code field - might be explanation-only response
+                if (
+                    "explanation" in response
+                    or "next_steps" in response
+                    or "warnings" in response
+                ):
+                    logger.info("[DEBUG] Extracted explanation-only response")
+                    return ([], response)
+
         except Exception as e:
-            self._append_output(f"[Warning] Code extraction error: {e}")
+            logger.error(f"[DEBUG] Code extraction error: {e}")
+            self._append_message(
+                "system",
+                "[Error] Unexpected error processing agent response. Please try again.",
+            )
 
         return (codes, response_data)
 

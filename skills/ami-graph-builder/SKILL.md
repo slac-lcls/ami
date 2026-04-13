@@ -53,30 +53,32 @@ You can return **TWO types** of JSON responses depending on whether the user req
 
 ### Response Type 1: Question Response (when user request is ambiguous)
 
-Use this when you need clarification before generating code.
+Use this when you need clarification before generating code. **Single-turn only:** Ask ONE question, get ONE answer, then generate code.
 
 
 {
   "type": "question",
-  "message": "Brief explanation of what's unclear",
+  "message": "Brief explanation of what's unclear (one sentence)",
   "questions": [
     {
-      "question": "The specific question to ask the user",
-      "options": ["Option 1", "Option 2", "Option 3"],
-      "context": "Why this matters or what you found"
+      "prompt": "Select detector:",
+      "options": ["cspad_detector", "epix_detector", "jungfrau_detector"],
+      "default": 0
     }
   ],
-  "assumptions_if_skipped": "What you'll assume if user doesn't provide clarification"
+  "context": "Why you're asking (optional explanation)"
 }
 
 **Field Descriptions:**
 - `type` (string): Must be "question"
-- `message` (string): Friendly explanation of why you need clarification
-- `questions` (array): List of question objects
-  - `question` (string): The question to ask
-  - `options` (array, optional): Suggested options for the user
-  - `context` (string, optional): Additional context or reasoning
-- `assumptions_if_skipped` (string, optional): What you'll assume if user just says "proceed"
+- `message` (string): Friendly one-sentence explanation of why you need clarification
+- `questions` (array): List with exactly ONE question object (single-turn only)
+  - `prompt` (string): The question to ask (e.g., "Select detector:", "Which source?")
+  - `options` (array): 2-5 numbered options for the user to choose from
+  - `default` (number): Index of recommended option (usually 0)
+- `context` (string, optional): Brief explanation of why this matters
+
+**IMPORTANT:** Use single-turn questions only. Ask ONE question at a time. User answers with number (1, 2, 3) or text. Then you generate code in the next response.
 
 **When to ask questions:**
 - Multiple sources match user's vague description (e.g., "detector" when 3 detectors exist)
@@ -1698,29 +1700,23 @@ Use `\\n` for newlines in JSON code field:
 
 ---
 
-### Example: Handling Unclear Request with Questions
+### Example: Handling Unclear Request with Questions (Single-Turn)
 
 
 {
   "type": "question",
-  "message": "I need more details to build the correct graph.",
+  "message": "I found multiple detectors. Which one would you like to use?",
   "questions": [
     {
-      "question": "Which detector?",
-      "options": ["cspad", "epix", "jungfrau"],
-      "context": "Found 3 detectors in available sources"
-    },
-    {
-      "question": "What do you want to do?",
-      "options": [
-        "Just view raw image (no code needed)",
-        "ROI analysis with sum",
-        "Correlate with laser"
-      ]
+      "prompt": "Select detector:",
+      "options": ["cspad_detector", "epix_detector", "jungfrau_detector"],
+      "default": 0
     }
   ],
-  "assumptions_if_skipped": "I'll use cspad and tell you to click it to view"
+  "context": "Need to specify detector for ROI creation"
 }
+
+**Flow:** User answers "1" or "cspad_detector" → You generate code in next response using their choice
 
 ### Example: Proceeding with Documented Assumptions
 

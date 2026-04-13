@@ -24,6 +24,7 @@ from ami.flowchart.TypeEncoder import TypeEncoder
 try:
     from qtconsole.inprocess import QtInProcessKernelManager
     from qtconsole.rich_jupyter_widget import RichJupyterWidget
+
     HAS_QTCONSOLE = True
 except ImportError:
     HAS_QTCONSOLE = False
@@ -86,7 +87,9 @@ class Flowchart(Node):
         self.graphinfo.connect(graphmgr_addr.info)
         self.socks.append(self.graphinfo)
 
-        self.checkpoint = self.ctx.socket(zmq.SUB)  # used to receive ctrlnode updates from processes
+        self.checkpoint = self.ctx.socket(
+            zmq.SUB
+        )  # used to receive ctrlnode updates from processes
         self.checkpoint.setsockopt_string(zmq.SUBSCRIBE, "")
         self.checkpoint.connect(checkpoint_addr)
         self.socks.append(self.checkpoint)
@@ -243,11 +246,13 @@ class Flowchart(Node):
         elif node.exportable():
             if "eventid" in input_vars:
                 await ctrl.graphCommHandler.unexport(
-                    [input_vars["In"], input_vars["eventid"]], [node.values["alias"], "_timestamp"]
+                    [input_vars["In"], input_vars["eventid"]],
+                    [node.values["alias"], "_timestamp"],
                 )
             elif "Timestamp" in input_vars:
                 await ctrl.graphCommHandler.unexport(
-                    [input_vars["In"], input_vars["Timestamp"]], [node.values["alias"], "_timestamp"]
+                    [input_vars["In"], input_vars["Timestamp"]],
+                    [node.values["alias"], "_timestamp"],
                 )
 
     @asyncSlot(object, object)
@@ -274,10 +279,24 @@ class Flowchart(Node):
 
         localNode = localTerm.node().name()
         remoteNode = remoteTerm.node().name()
-        key = localNode + "." + localTerm.name() + "->" + remoteNode + "." + remoteTerm.name()
+        key = (
+            localNode
+            + "."
+            + localTerm.name()
+            + "->"
+            + remoteNode
+            + "."
+            + remoteTerm.name()
+        )
 
         if not self._graph.has_edge(localNode, remoteNode, key=key):
-            self._graph.add_edge(localNode, remoteNode, key=key, from_term=localTerm.name(), to_term=remoteTerm.name())
+            self._graph.add_edge(
+                localNode,
+                remoteNode,
+                key=key,
+                from_term=localTerm.name(),
+                to_term=remoteTerm.name(),
+            )
 
             msg = fcMsgs.NodeTermConnected(
                 localNode,
@@ -318,7 +337,15 @@ class Flowchart(Node):
 
         localNode = localTerm.node().name()
         remoteNode = remoteTerm.node().name()
-        key = localNode + "." + localTerm.name() + "->" + remoteNode + "." + remoteTerm.name()
+        key = (
+            localNode
+            + "."
+            + localTerm.name()
+            + "->"
+            + remoteNode
+            + "."
+            + remoteTerm.name()
+        )
 
         if self._graph.has_edge(localNode, remoteNode, key=key):
             self._graph.remove_edge(localNode, remoteNode, key=key)
@@ -549,7 +576,9 @@ class Flowchart(Node):
             type_file.flush()
             dmypy_status = os.environ["DMYPY_STATUS_FILE"]
             status = subprocess.run(
-                ["dmypy", "--status-file", dmypy_status, "check", type_file.name], capture_output=True, text=True
+                ["dmypy", "--status-file", dmypy_status, "check", type_file.name],
+                capture_output=True,
+                text=True,
             )
 
             if status.returncode != 0:
@@ -575,7 +604,13 @@ class Flowchart(Node):
             for _, edge in edges.items():
                 localNode_remoteNode, key, localTerm, remoteTerm = edge
                 localNode, remoteNode = localNode_remoteNode
-                self._graph.add_edge(localNode, remoteNode, key=key, from_term=localTerm, to_term=remoteTerm)
+                self._graph.add_edge(
+                    localNode,
+                    remoteNode,
+                    key=key,
+                    from_term=localTerm,
+                    to_term=remoteTerm,
+                )
 
     @asyncSlot(str)
     async def loadFile(self, fileName=None):
@@ -615,7 +650,9 @@ class Flowchart(Node):
                 startDir = self.filePath
             if startDir is None:
                 startDir = "."
-            self.fileDialog = FileDialog(None, "Save Flowchart..", startDir, "Flowchart (*.fc)")
+            self.fileDialog = FileDialog(
+                None, "Save Flowchart..", startDir, "Flowchart (*.fc)"
+            )
             self.fileDialog.setAcceptMode(QtWidgets.QFileDialog.AcceptSave)
 
             if self.fileDialog.exec():
@@ -627,7 +664,9 @@ class Flowchart(Node):
             fileName += ".fc"
 
         state = self.saveState()
-        state = json.dumps(state, indent=2, separators=(",", ": "), sort_keys=False, cls=TypeEncoder)
+        state = json.dumps(
+            state, indent=2, separators=(",", ": "), sort_keys=False, cls=TypeEncoder
+        )
 
         with open(fileName, "w") as f:
             f.write(state)
@@ -676,7 +715,9 @@ class Flowchart(Node):
                     current_node_state["widget"] = new_node_state["widget"]
 
             if "geometry" in new_node_state:
-                node.geometry = QtCore.QByteArray.fromHex(bytes(new_node_state["geometry"], "ascii"))
+                node.geometry = QtCore.QByteArray.fromHex(
+                    bytes(new_node_state["geometry"], "ascii")
+                )
 
             if restore_ctrl or restore_widget:
                 node.blockSignals(True)
@@ -749,14 +790,18 @@ class Flowchart(Node):
                     continue
                 time_per_event = msg[ctrl.graph_name]
                 worker = int(re.search(r"(\d)+", source).group())
-                events_per_second[worker] = len(time_per_event) / (time_per_event[-1][1] - time_per_event[0][0])
+                events_per_second[worker] = len(time_per_event) / (
+                    time_per_event[-1][1] - time_per_event[0][0]
+                )
                 total_events[worker] = msg["num_events"]
 
                 if all(events_per_second):
                     events_per_second = int(np.average(events_per_second))
                     total_num_events = int(np.sum(total_events))
                     ctrl = self.widget()
-                    ctrl.ui.rateLbl.setText(f"Num Events: {total_num_events} Avg Events/Sec: {events_per_second}")
+                    ctrl.ui.rateLbl.setText(
+                        f"Num Events: {total_num_events} Avg Events/Sec: {events_per_second}"
+                    )
                     events_per_second = [None] * num_workers
                     total_events = [None] * num_workers
             elif topic == "warning":
@@ -771,7 +816,10 @@ class Flowchart(Node):
                         node = self.nodes(data="node")[node_name]
                         if node.exception is None:
                             node.setException(msg, "warning")
-                            ctrl.chartWidget.updateStatus(f"WARNING: {source} {node.name()}: {msg}", color="orange")
+                            ctrl.chartWidget.updateStatus(
+                                f"WARNING: {source} {node.name()}: {msg}",
+                                color="orange",
+                            )
                             logger.warning(f"{source} {node.name()}: {msg}")
             elif topic == "error":
                 ctrl = self.widget()
@@ -781,14 +829,21 @@ class Flowchart(Node):
                     node_name = ctrl.metadata[msg.node_name]["parent"]
                     node = self.nodes(data="node")[node_name]
                     node.setException(msg)
-                    ctrl.chartWidget.updateStatus(f"ERROR: {source} {node.name()}: {msg}", color="red")
+                    ctrl.chartWidget.updateStatus(
+                        f"ERROR: {source} {node.name()}: {msg}", color="red"
+                    )
                     logger.error(f"{source} {node.name()}: {msg}")
                 else:
-                    ctrl.chartWidget.updateStatus(f"ERROR: {source}: {msg}", color="red")
+                    ctrl.chartWidget.updateStatus(
+                        f"ERROR: {source}: {msg}", color="red"
+                    )
                     logger.error(f"{source}: {msg}")
 
     async def run(self, load=None):
-        tasks = [asyncio.create_task(self.updateState()), asyncio.create_task(self.updateSources())]
+        tasks = [
+            asyncio.create_task(self.updateState()),
+            asyncio.create_task(self.updateSources()),
+        ]
 
         if load:
             await self.loadFile(load)
@@ -864,7 +919,9 @@ class FlowchartCtrlWidget(QtWidgets.QWidget):
 
         self.ipython_widget = None
         self.graph_info = pc.Info("ami_graph", "AMI Client graph", ["hutch", "name"])
-        self.graph_version = pc.Gauge("ami_graph_version", "AMI Client graph version", ["hutch", "name"])
+        self.graph_version = pc.Gauge(
+            "ami_graph_version", "AMI Client graph version", ["hutch", "name"]
+        )
 
     @asyncSlot()
     async def applyClicked(self, build_views=True):
@@ -915,14 +972,17 @@ class FlowchartCtrlWidget(QtWidgets.QWidget):
                             assert gnode.values["alias"]
                         except AssertionError:
                             gnode.setException(True)
-                            self.chartWidget.updateStatus(f"{gnode.name()} set alias!", color="red")
+                            self.chartWidget.updateStatus(
+                                f"{gnode.name()} set alias!", color="red"
+                            )
                             continue
                         try:
                             assert gnode.values["alias"] != gnode.input_vars()["In"]
                         except AssertionError:
                             gnode.setException(True)
                             self.chartWidget.updateStatus(
-                                f"{gnode.name()} alias name cannot be same as input!", color="red"
+                                f"{gnode.name()} alias name cannot be same as input!",
+                                color="red",
                             )
                             continue
                         displays.add(gnode)
@@ -945,8 +1005,12 @@ class FlowchartCtrlWidget(QtWidgets.QWidget):
                                 latched=node.latched,
                             )
                         except Exception as e:
-                            self.chartWidget.updateStatus(f"{node.name()} {e}!", color="red")
-                            printExc(f"{node.name()} raised exception! See console for stacktrace.")
+                            self.chartWidget.updateStatus(
+                                f"{node.name()} {e}!", color="red"
+                            )
+                            printExc(
+                                f"{node.name()} raised exception! See console for stacktrace."
+                            )
                             node.setException(True)
                             failed_nodes.add(node)
                             continue
@@ -963,7 +1027,9 @@ class FlowchartCtrlWidget(QtWidgets.QWidget):
 
         if disconnectedNodes:
             for node in disconnectedNodes:
-                self.chartWidget.updateStatus(f"{node.name()} disconnected!", color="red")
+                self.chartWidget.updateStatus(
+                    f"{node.name()} disconnected!", color="red"
+                )
                 node.setException(True)
             msg.exec()
             return
@@ -990,14 +1056,18 @@ class FlowchartCtrlWidget(QtWidgets.QWidget):
         self.ui.setPendingClear()
         version = str(await self.graphCommHandler.graphVersion)
         state = self.chart.saveState()
-        state = json.dumps(state, indent=2, separators=(",", ": "), sort_keys=False, cls=TypeEncoder)
+        state = json.dumps(
+            state, indent=2, separators=(",", ": "), sort_keys=False, cls=TypeEncoder
+        )
 
         ts = datetime.now().strftime("%d%m%Y_%H%M%S")
         with open(os.path.expanduser(f"~/.cache/ami/autosave_{ts}.fc"), "w") as f:
             f.write(state)
             f.write("\n")
 
-        self.graph_info.labels(self.chart.hutch, self.graph_name).info({"graph": state, "version": version})
+        self.graph_info.labels(self.chart.hutch, self.graph_name).info(
+            {"graph": state, "version": version}
+        )
         self.graph_version.labels(self.chart.hutch, self.graph_name).set(version)
 
     def openClicked(self):
@@ -1005,7 +1075,9 @@ class FlowchartCtrlWidget(QtWidgets.QWidget):
         if startDir is None:
             startDir = "."
 
-        self.fileDialog = FileDialog(None, "Load Flowchart..", startDir, "Flowchart (*.fc)")
+        self.fileDialog = FileDialog(
+            None, "Load Flowchart..", startDir, "Flowchart (*.fc)"
+        )
         self.fileDialog.show()
         self.fileDialog.fileSelected.connect(self.chart.loadFile)
 
@@ -1530,7 +1602,6 @@ class FlowchartCtrlWidget(QtWidgets.QWidget):
                     pos = self.chartWidget.pos()
                     self.chart.chat_widget.move(pos.x() + 50, pos.y() + 50)
 
-
             # Show and raise the widget
             self.chart.chat_widget.show()
             self.chart.chat_widget.raise_()
@@ -1554,7 +1625,9 @@ class FlowchartCtrlWidget(QtWidgets.QWidget):
     @asyncSlot()
     async def libraryUpdated(self):
         await self.chart.broker.send_string("library", zmq.SNDMORE)
-        await self.chart.broker.send_pyobj(fcMsgs.Library(name=self.graph_name, paths=self.libraryEditor.paths))
+        await self.chart.broker.send_pyobj(
+            fcMsgs.Library(name=self.graph_name, paths=self.libraryEditor.paths)
+        )
 
         dirs = set(map(os.path.dirname, self.libraryEditor.paths))
         await self.graphCommHandler.updatePath(dirs)
@@ -1569,7 +1642,9 @@ class FlowchartCtrlWidget(QtWidgets.QWidget):
             node = gnode["node"]
             if node.__module__ in smods:
                 await self.chart.broker.send_string(node.name(), zmq.SNDMORE)
-                await self.chart.broker.send_pyobj(fcMsgs.ReloadLibrary(name=node.name(), mods=smods))
+                await self.chart.broker.send_pyobj(
+                    fcMsgs.ReloadLibrary(name=node.name(), mods=smods)
+                )
                 self.chartWidget.updateStatus(f"Reloaded {node.name()}.")
 
 
@@ -1681,7 +1756,9 @@ class FlowchartWidget(dockarea.DockArea):
             pos = self.viewBox().mouse_pos
             pos = (50 * round(pos.x() / 50), 50 * round(pos.y() / 50))
             node_type = self.chart.source_library.getSourceType(node)
-            node = SourceNode(name=node, terminals={"Out": {"io": "out", "ttype": node_type}})
+            node = SourceNode(
+                name=node, terminals={"Out": {"io": "out", "ttype": node_type}}
+            )
             self.chart.addNode(node=node, pos=pos)
 
     @asyncSlot()
@@ -1814,11 +1891,14 @@ class FlowchartWidget(dockarea.DockArea):
                 values = node.values
                 if "eventid" in input_vars:
                     await self.ctrl.graphCommHandler.export(
-                        [input_vars["In"], input_vars["eventid"]], [values["alias"], "_timestamp"], N=values["events"]
+                        [input_vars["In"], input_vars["eventid"]],
+                        [values["alias"], "_timestamp"],
+                        N=values["events"],
                     )
                 elif "Timestamp" in input_vars:
                     await self.ctrl.graphCommHandler.export(
-                        [input_vars["In"], input_vars["Timestamp"]], [values["alias"], "_timestamp"]
+                        [input_vars["In"], input_vars["Timestamp"]],
+                        [values["alias"], "_timestamp"],
                     )
 
                 if not ctrl:
@@ -1973,7 +2053,9 @@ class FlowchartWidget(dockarea.DockArea):
         if self.current_displayed_node:
             if hasattr(self.current_displayed_node, "sigStateChanged"):
                 try:
-                    self.current_displayed_node.sigStateChanged.disconnect(self.refreshStatePanel)
+                    self.current_displayed_node.sigStateChanged.disconnect(
+                        self.refreshStatePanel
+                    )
                 except (TypeError, RuntimeError):
                     pass  # Signal already disconnected or object deleted
 

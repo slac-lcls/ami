@@ -1,5 +1,6 @@
 #!/usr/bin/env python
 import asyncio
+import atexit
 import importlib
 import json
 import logging
@@ -37,6 +38,20 @@ logger = logging.getLogger(LogConfig.get_package_name(__name__))
 
 pg.setConfigOption("imageAxisOrder", "row-major")
 
+# Global OpenCode bridge - shared across all chat widget instances
+# Provides persistent conversation history across widget open/close cycles
+_global_opencode_bridge = None
+
+
+def get_global_opencode_bridge():
+    """
+    Get the global OpenCode bridge instance.
+
+    Returns:
+        OpenCodeBridge instance or None if not yet initialized
+    """
+    return _global_opencode_bridge
+
 
 # Create main window with grid layout
 class EditorMainWindow(QtWidgets.QMainWindow):
@@ -59,7 +74,9 @@ class EditorMainWindow(QtWidgets.QMainWindow):
             msg.setText("You have unsaved changes in the flowchart.")
             msg.setInformativeText("Do you want to save your changes before closing?")
             msg.setStandardButtons(
-                QtWidgets.QMessageBox.Save | QtWidgets.QMessageBox.Discard | QtWidgets.QMessageBox.Cancel
+                QtWidgets.QMessageBox.Save
+                | QtWidgets.QMessageBox.Discard
+                | QtWidgets.QMessageBox.Cancel
             )
             msg.setDefaultButton(QtWidgets.QMessageBox.Save)
 
@@ -206,7 +223,6 @@ class NodeWindow(QtWidgets.QMainWindow):
 
 
 class NodeProcess(QtCore.QObject):
-
     def __init__(
         self,
         msg,
@@ -246,7 +262,11 @@ class NodeProcess(QtCore.QObject):
                     mod = os.path.splitext(mod)[0]
                     mod = importlib.import_module(mod)
 
-                    nodes = [getattr(mod, name) for name in dir(mod) if isNodeClass(getattr(mod, name))]
+                    nodes = [
+                        getattr(mod, name)
+                        for name in dir(mod)
+                        if isNodeClass(getattr(mod, name))
+                    ]
 
                     for node in nodes:
                         LIBRARY.addNodeType(node, [(mod.__name__,)])
@@ -319,7 +339,13 @@ class NodeProcess(QtCore.QObject):
 
         if self.widget is None:
             self.widget = self.node.display(
-                msg.topics, msg.terms, self.graphmgr_addr, self.win, units=msg.units, name=self.name, hutch=self.hutch
+                msg.topics,
+                msg.terms,
+                self.graphmgr_addr,
+                self.win,
+                units=msg.units,
+                name=self.name,
+                hutch=self.hutch,
             )
 
             if self.ctrlWidget and self.widget:
@@ -419,9 +445,15 @@ class MessageBroker(object):
     """
 
     def __init__(
-        self, graphmgr_addr, load, ipcdir=None, prometheus_dir=None, prometheus_port=None, hutch="", save_dir=None
+        self,
+        graphmgr_addr,
+        load,
+        ipcdir=None,
+        prometheus_dir=None,
+        prometheus_port=None,
+        hutch="",
+        save_dir=None,
     ):
-
         if ipcdir is None:
             ipcdir = tempfile.mkdtemp()
 
@@ -447,10 +479,14 @@ class MessageBroker(object):
         self.broker_sub_sock.setsockopt_string(zmq.SUBSCRIBE, "")
         self.broker_sub_sock.bind(self.broker_sub_addr)
 
-        self.broker_pub_sock = self.ctx.socket(zmq.XPUB)  # sends messages to node process
+        self.broker_pub_sock = self.ctx.socket(
+            zmq.XPUB
+        )  # sends messages to node process
         self.broker_pub_sock.bind(self.broker_pub_addr)
 
-        self.checkpoint_sub_sock = self.ctx.socket(zmq.SUB)  # receives messages from node process
+        self.checkpoint_sub_sock = self.ctx.socket(
+            zmq.SUB
+        )  # receives messages from node process
         self.checkpoint_sub_sock.setsockopt_string(zmq.SUBSCRIBE, "")
         self.checkpoint_sub_sock.bind(self.checkpoint_sub_addr)
 
@@ -486,35 +522,19 @@ class MessageBroker(object):
 
             logger.info(f"OpenCode server started at {opencode_url}")
 
-            # Pre-warm OpenCode session with ami-graph-builder skill
-            # This loads the skill documentation (~6s) so the first user request
-            # is fast (~6s instead of ~19s). We use a timer to delay the warmup
-            # by 2 seconds to give the server time to initialize.
-            def send_warmup():
-                try:
-                    # Send warmup request to pre-load ami-graph-builder skill
-                    # Popen is non-blocking - spawns process and returns immediately
-                    subprocess.Popen(
-                        [
-                            "opencode",
-                            "run",
-                            "--attach",
-                            opencode_url,
-                            "--format",
-                            "json",
-                            "warmup request to pre-load ami-graph-builder skill",
-                        ],
-                        stdout=subprocess.DEVNULL,
-                        stderr=subprocess.DEVNULL,
-                    )
-                    logger.info("OpenCode warmup request sent")
-                except Exception as e:
-                    logger.info(f"OpenCode warmup failed: {e}")
+            # Register cleanup handler for global OpenCode bridge
+            # Bridge is created lazily on first chat widget open
+            def cleanup_opencode_session():
+                """Clean up OpenCode session on process exit."""
+                global _global_opencode_bridge
+                if _global_opencode_bridge:
+                    try:
+                        _global_opencode_bridge.close_session()
+                        logger.info("OpenCode session cleaned up at exit")
+                    except Exception as e:
+                        logger.warning(f"Error cleaning up OpenCode session: {e}")
 
-            # Schedule warmup after 2 seconds (give server time to start)
-            import threading
-
-            threading.Timer(2.0, send_warmup).start()
+            atexit.register(cleanup_opencode_session)
 
         except Exception as e:
             logger.warning(f"Could not start OpenCode server: {e}")
@@ -535,6 +555,16 @@ class MessageBroker(object):
         if self.editor is not None:
             self.editor.terminate()
             self.editor.join()
+
+        # Clean up global OpenCode session
+        global _global_opencode_bridge
+        if _global_opencode_bridge:
+            try:
+                _global_opencode_bridge.close_session()
+                logger.info("Global OpenCode session closed")
+            except Exception as e:
+                logger.warning(f"Error closing OpenCode session: {e}")
+
         self.ctx.destroy()
 
     def launch_editor_window(self, configure):
@@ -570,7 +600,9 @@ class MessageBroker(object):
                 async with self.lock:
                     if topic in self.msgs:
                         msg = self.msgs[topic]
-                        self.broker_pub_sock.send_string(topic + ZMQ_TOPIC_DELIM, zmq.SNDMORE)
+                        self.broker_pub_sock.send_string(
+                            topic + ZMQ_TOPIC_DELIM, zmq.SNDMORE
+                        )
                         self.broker_pub_sock.send_pyobj(msg)
                     else:
                         continue
@@ -624,7 +656,12 @@ class MessageBroker(object):
                     proc = mp.Process(
                         target=NodeProcess,
                         name=msg.name,
-                        args=(msg, self.broker_pub_addr, self.graphmgr_addr, self.checkpoint_sub_addr),
+                        args=(
+                            msg,
+                            self.broker_pub_addr,
+                            self.graphmgr_addr,
+                            self.checkpoint_sub_addr,
+                        ),
                         kwargs={
                             "library_paths": self.library_paths,
                             "prometheus_dir": self.prometheus_dir,
@@ -646,7 +683,12 @@ class MessageBroker(object):
                 proc = mp.Process(
                     target=NodeProcess,
                     name=msg.name,
-                    args=(msg, self.broker_pub_addr, self.graphmgr_addr, self.checkpoint_sub_addr),
+                    args=(
+                        msg,
+                        self.broker_pub_addr,
+                        self.graphmgr_addr,
+                        self.checkpoint_sub_addr,
+                    ),
                     kwargs={
                         "library_paths": self.library_paths,
                         "prometheus_dir": self.prometheus_dir,
@@ -708,9 +750,25 @@ class MessageBroker(object):
         await asyncio.gather(*tasks)
 
 
-def run_client(graphmgr_addr, load, prometheus_dir, prometheus_port, hutch, use_opengl, use_numba, configure, save_dir):
-    use_opengl = use_opengl and "SSH_CONNECTION" not in os.environ and "NX_CONNECTION" not in os.environ
-    pg.setConfigOptions(useOpenGL=use_opengl, enableExperimental=use_opengl, useNumba=use_numba)
+def run_client(
+    graphmgr_addr,
+    load,
+    prometheus_dir,
+    prometheus_port,
+    hutch,
+    use_opengl,
+    use_numba,
+    configure,
+    save_dir,
+):
+    use_opengl = (
+        use_opengl
+        and "SSH_CONNECTION" not in os.environ
+        and "NX_CONNECTION" not in os.environ
+    )
+    pg.setConfigOptions(
+        useOpenGL=use_opengl, enableExperimental=use_opengl, useNumba=use_numba
+    )
 
     with tempfile.TemporaryDirectory() as ipcdir:
         mb = MessageBroker(
