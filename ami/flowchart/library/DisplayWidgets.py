@@ -35,7 +35,6 @@ symbols_colors = list(it.product(symbols, colors))
 
 
 class AsyncFetcher(QtCore.QThread):
-
     sig = QtCore.Signal()
 
     def __init__(self, topics, terms, addr, parent=None, ratelimit=None):
@@ -79,24 +78,23 @@ class AsyncFetcher(QtCore.QThread):
             return {}
 
     def update_topics(self, topics, terms):
-        self.topics = topics
+        # Store original mappings
         self.terms = terms
-        self.subs = set(topics.values())
-        self.optional = set([key.name for key, value in topics.items() if type(key) is modifiers.optional])
+        self.input_to_feature = topics  # Renamed for clarity
 
-        self.view_subs = {}
-        self.sub_views = {}
+        # Build reverse mapping: feature_name → input_name (for unpacking batch data)
+        self.feature_to_input = {feature: input_name for input_name, feature in topics.items()}
 
-        for term, name in terms.items():
-            topic = topics[name]
-            sub_topic = "view:%s:%s" % (self.addr.name, topic)
-            self.view_subs[sub_topic] = topic
-            self.sub_views[topic] = sub_topic
+        # Separate required vs optional features
+        self.required_features = {feature for key, feature in topics.items() if not isinstance(key, modifiers.optional)}
+        self.optional_features = {feature for key, feature in topics.items() if isinstance(key, modifiers.optional)}
+
+        # Pre-build request list (computed once, not per heartbeat)
+        self.feature_requests = [f"view:{self.addr.name}:{feature}" for feature in self.feature_to_input.keys()]
 
     def run(self):
-
         while self.running:
-            topic = self.export.recv_string()
+            _ = self.export.recv_string()  # topic - unused but required by protocol
             graph = self.export.recv_string()
             heartbeat = self.export.recv_pyobj()
 
@@ -108,44 +106,49 @@ class AsyncFetcher(QtCore.QThread):
 
             self.heartbeat_timestamp = heartbeat.timestamp
 
-            # Build batch request for ALL features
-            feature_requests = []
-            for term, name in self.terms.items():
-                req = self.sub_views[self.topics[name]]  # "view:graph:feature"
-                feature_requests.append(req)
+            # Build and send batch request (simplified - use pre-built list)
+            self.view.send_pyobj(self.feature_requests, flags=zmq.NOBLOCK)
 
-            # Send single batch request
-            self.view.send_pyobj(feature_requests, flags=zmq.NOBLOCK)
-
-            # Receive single batch response
+            # Receive batch response
             response = self.view.recv_serialized(self.deserializer, copy=False)
-
             batch_heartbeat = response["heartbeat"]
-            batch_data = response["data"]
+            batch_data = response["data"]  # Keys are graph feature names
 
-            # Store batch data (all from same heartbeat atomically)
-            for name, topic in self.topics.items():
-                view_sub = topic
-                # Extract feature name from request string
-                req = self.sub_views[topic]
-                feature_name = req.split(":")[-1]  # "view:graph:feature" -> "feature"
-                self.data[view_sub] = batch_data[feature_name]
+            # Map from graph feature names → input names for widget consumption
+            # NO STRING PARSING NEEDED!
+            input_data = {}
+            for feature_name, data_value in batch_data.items():
+                if feature_name in self.feature_to_input:
+                    input_name = self.feature_to_input[feature_name]
+                    input_data[input_name] = data_value
 
-            # Check if data is ready (no need to check num_heartbeats - all atomic)
-            res = {}
+            # Filter out invalid data that widgets can't handle (silently drop)
+            valid_input_data = {}
+            for input_name, data_value in input_data.items():
+                # Skip None values
+                if data_value is None:
+                    continue
+                # Skip 0-dimensional numpy arrays (scalars like array(nan))
+                if isinstance(data_value, np.ndarray) and data_value.ndim == 0:
+                    continue
+                # Keep valid data
+                valid_input_data[input_name] = data_value
 
-            if self.data.keys() == self.subs:
-                # All required features present
-                for name, topic in self.topics.items():
-                    res[name] = self.data[topic]
-            elif self.optional.issuperset(self.data.keys()):
-                # Optional features
-                for name, topic in self.topics.items():
-                    if topic in self.data:
-                        res[name] = self.data[topic]
+            # Determine which features we actually received (after validation)
+            received_features = {feat for inp, feat in self.input_to_feature.items() if inp in valid_input_data}
 
-            if res:
-                self.reply_queue.put((batch_heartbeat.timestamp, res))
+            # Check if data is complete
+            reply = {}
+
+            if received_features == self.required_features:
+                # All required features present (and valid)
+                reply = valid_input_data
+            elif self.optional_features and received_features >= self.required_features:
+                # All required + some valid optional features
+                reply = valid_input_data
+
+            if reply:
+                self.reply_queue.put((batch_heartbeat.timestamp, reply))
                 self.sig.emit()
 
             # Check for interrupt
@@ -167,7 +170,6 @@ class AsyncFetcher(QtCore.QThread):
 
 
 class PlotWidget(QtWidgets.QWidget):
-
     latency = pc.Gauge("ami_plot_latency_secs", "Plot Latency", ["hutch", "process"])
     memory = pc.Gauge("ami_plot_memory_mb", "Plot Memory", ["hutch", "process"])
 
@@ -241,7 +243,9 @@ class PlotWidget(QtWidgets.QWidget):
         self.layout.addWidget(self.pixel_value, 1, 1)
 
         self.hover_proxy = pg.SignalProxy(
-            self.graphics_layout.sceneObj.sigMouseMoved, rateLimit=30, slot=self.cursor_hover_evt
+            self.graphics_layout.sceneObj.sigMouseMoved,
+            rateLimit=30,
+            slot=self.cursor_hover_evt,
         )
 
         if uiTemplate is None:
@@ -256,8 +260,16 @@ class PlotWidget(QtWidgets.QWidget):
                 ("Label", "text", {"group": "Y Axis"}),
                 ("Log Scale", "check", {"group": "Y Axis", "checked": False}),
                 # screenshots
-                ("Record Screenshots", "check", {"group": "Screenshots", "checked": False}),
-                ("Screenshot Directory", "text", {"group": "Screenshots", "value": "./screenshots"}),
+                (
+                    "Record Screenshots",
+                    "check",
+                    {"group": "Screenshots", "checked": False},
+                ),
+                (
+                    "Screenshot Directory",
+                    "text",
+                    {"group": "Screenshots", "value": "./screenshots"},
+                ),
             ]
 
         self.uiTemplate = uiTemplate
@@ -613,9 +625,14 @@ class ObjectWidget(pg.LayoutWidget):
         while self.fetcher.ready:
             heartbeat_timestamp, reply = self.fetcher.reply
             for k, v in reply.items():
-
                 if type(v) is np.ndarray:
-                    txt = "variable: %s\ntype: %s\nvalue: %s\nshape: %s\ndtype: %s" % (k, type(v), v, v.shape, v.dtype)
+                    txt = "variable: %s\ntype: %s\nvalue: %s\nshape: %s\ndtype: %s" % (
+                        k,
+                        type(v),
+                        v,
+                        v.shape,
+                        v.dtype,
+                    )
                 else:
                     txt = "variable: %s\ntype: %s\nvalue: %s" % (k, type(v), v)
                 self.label.setText(txt)
@@ -626,7 +643,6 @@ class ObjectWidget(pg.LayoutWidget):
 
 
 class ScalarWidget(QtWidgets.QLCDNumber):
-
     def __init__(self, topics=None, terms=None, addr=None, parent=None, **kwargs):
         super().__init__(parent)
 
@@ -650,7 +666,6 @@ class ScalarWidget(QtWidgets.QLCDNumber):
 
 
 class ImageWidget(PlotWidget):
-
     def __init__(self, topics=None, terms=None, addr=None, parent=None, **kwargs):
         uiTemplate = [
             ("Title", "text"),
@@ -675,11 +690,23 @@ class ImageWidget(PlotWidget):
                 (
                     "Rotate Counter Clockwise",
                     "combo",
-                    {"group": "Display", "value": "0", "values": ["0", "90", "180", "270"]},
+                    {
+                        "group": "Display",
+                        "value": "0",
+                        "values": ["0", "90", "180", "270"],
+                    },
                 )
             )
 
-        super().__init__(topics, terms, addr, uiTemplate=uiTemplate, parent=parent, legend=False, **kwargs)
+        super().__init__(
+            topics,
+            terms,
+            addr,
+            uiTemplate=uiTemplate,
+            parent=parent,
+            legend=False,
+            **kwargs,
+        )
         # self.graphics_layout.useOpenGL(False)
         self.flip = False
         self.rotate = 0
@@ -779,7 +806,6 @@ class ImageWidget(PlotWidget):
 
 
 class PixelDetWidget(ImageWidget):
-
     sigClicked = QtCore.Signal(object, object)
 
     def __init__(self, topics=None, terms=None, addr=None, parent=None, **kwargs):
@@ -807,7 +833,6 @@ class PixelDetWidget(ImageWidget):
 
 
 class HistogramWidget(PlotWidget):
-
     def __init__(self, topics=None, terms=None, addr=None, parent=None, **kwargs):
         super().__init__(topics, terms, addr, parent=parent, **kwargs)
         self.graphics_layout.useOpenGL(False)  # pyqtgraph broken
@@ -832,7 +857,12 @@ class HistogramWidget(PlotWidget):
                 attrs = self.legend_editors[idx].attrs
                 self.trace_attrs[name] = attrs
                 self.plot[name] = self.plot_view.plot(
-                    x, y, name=legend_name, brush=attrs["Brush"], stepMode=True, fillLevel=0
+                    x,
+                    y,
+                    name=legend_name,
+                    brush=attrs["Brush"],
+                    stepMode=True,
+                    fillLevel=0,
                 )
             else:
                 attrs = self.trace_attrs[name]
@@ -840,7 +870,6 @@ class HistogramWidget(PlotWidget):
 
 
 class Histogram2DWidget(ImageWidget):
-
     def __init__(self, topics=None, terms=None, addr=None, parent=None, **kwargs):
         super().__init__(topics, terms, addr, parent, display=False, axis=True, **kwargs)
 
@@ -884,7 +913,6 @@ class Histogram2DWidget(ImageWidget):
 
 
 class ScatterWidget(PlotWidget):
-
     def __init__(self, topics=None, terms=None, addr=None, parent=None, **kwargs):
         super().__init__(topics, terms, addr, parent=parent, **kwargs)
         self.num_terms = int(len(terms) / 2) if terms else 0
@@ -911,7 +939,6 @@ class ScatterWidget(PlotWidget):
 
 
 class WaveformWidget(PlotWidget):
-
     def __init__(self, topics=None, terms=None, addr=None, parent=None, **kwargs):
         super().__init__(topics, terms, addr, parent=parent, **kwargs)
 
@@ -941,7 +968,6 @@ class WaveformWidget(PlotWidget):
 
 
 class MultiWaveformWidget(PlotWidget):
-
     def __init__(self, topics=None, terms=None, addr=None, parent=None, **kwargs):
         super().__init__(topics, terms, addr, parent=parent, **kwargs)
 
@@ -957,7 +983,10 @@ class MultiWaveformWidget(PlotWidget):
                 attrs = self.legend_editors[idx].attrs
                 self.trace_attrs[cname] = attrs
                 self.plot[cname] = self.plot_view.plot(
-                    y=waveforms[chan], name=legend_name, pen=attrs["pen"], **attrs["point"]
+                    y=waveforms[chan],
+                    name=legend_name,
+                    pen=attrs["pen"],
+                    **attrs["point"],
                 )
             else:
                 attrs = self.trace_attrs[cname]
@@ -965,7 +994,6 @@ class MultiWaveformWidget(PlotWidget):
 
 
 class LineWidget(PlotWidget):
-
     def __init__(self, topics=None, terms=None, addr=None, parent=None, **kwargs):
         super().__init__(topics, terms, addr, parent=parent, **kwargs)
         self.num_terms = int(len(terms) / 2) if terms else 0
@@ -998,7 +1026,6 @@ class LineWidget(PlotWidget):
 
 
 class TimeWidget(LineWidget):
-
     def __init__(self, topics=None, terms=None, addr=None, parent=None, **kwargs):
         super().__init__(topics, terms, addr, parent=parent, **kwargs)
         self.graphics_layout.useOpenGL(False)
@@ -1007,7 +1034,6 @@ class TimeWidget(LineWidget):
 
 
 class CategoryWidget(PlotWidget):
-
     def __init__(self, topics=None, terms=None, addr=None, parent=None, **kwargs):
         super().__init__(topics, terms, addr, parent=parent, **kwargs)
         self.y = {}  # { name : height }
