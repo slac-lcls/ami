@@ -160,9 +160,10 @@ def run_editor_window(
     with loop:
         loop.run_until_complete(fc.updateSources(init=True))
 
-        # # Add flowchart control panel to the main window
-        win.setCentralWidget(fc.widget())
+        # Add flowchart control panel to the main window
+        win.setCentralWidget(fc.widget(win))
         win.fc = fc  # Store reference for closeEvent
+
         win.show()
 
         app.aboutToQuit.connect(fc.widget().clear)
