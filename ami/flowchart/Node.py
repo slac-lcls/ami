@@ -110,6 +110,11 @@ class Node(QtCore.QObject):
         self.changed = True
         self.viewed = False
         self.exception = None
+
+        self.isSubgraph = False
+        self.isSubgraphInput = False
+        self.isSubgraphOutput = False
+
         self.global_op = kwargs.get("global_op", False)
         self.latched = False
 
@@ -382,11 +387,34 @@ class Node(QtCore.QObject):
         node = remoteTerm.node()
 
         if localTerm.isInput() and remoteTerm.isOutput():
-            if node.exportable() and node.values["alias"]:
+            if node.isSubgraphInput:
+                remoteTerm = node.getInputTerm(remoteTerm)
+                if remoteTerm:
+                    node = remoteTerm.node()
+                else:
+                    # getInputTerm returned None, can't get the source node
+                    node = None
+            elif node.isSubgraph:
+                # Connecting from a SubgraphNode placeholder output
+                # Need to trace through to the actual internal source
+                # placeholder output -> SubgraphOutputs input -> internal output
+                sg_output_term = node.subgraphOutputs.terminals.get(remoteTerm.name())
+                if sg_output_term:
+                    # Get what's connected to this SubgraphOutputs input terminal
+                    internal_term = node.subgraphOutputs.getOutputTerm(sg_output_term)
+                    if internal_term:
+                        remoteTerm = internal_term
+                        node = remoteTerm.node()
+                    else:
+                        node = None
+                else:
+                    node = None
+
+            if node and node.exportable() and node.values["alias"]:
                 self._input_vars[localTerm.name()] = node.values["alias"]
-            elif node.isSource():
+            elif node and node.isSource():
                 self._input_vars[localTerm.name()] = node.name()
-            else:
+            elif node and remoteTerm:
                 self._input_vars[localTerm.name()] = ".".join([node.name(), remoteTerm.name()])
 
         if not self.changed:
@@ -397,8 +425,7 @@ class Node(QtCore.QObject):
     def disconnected(self, localTerm, remoteTerm):
         """Called whenever one of this node's terminals is disconnected from another."""
         if localTerm.isInput() and remoteTerm.isOutput():
-            del self._input_vars[localTerm.name()]
-
+            self._input_vars.pop(localTerm.name(), None)
         self.changed = localTerm.isInput()
         self.sigTerminalDisconnected.emit(localTerm, remoteTerm)
 
@@ -594,6 +621,7 @@ class NodeGraphicsItem(GraphicsObject):
             self.nameItem.boundingRect().height(),
         )
 
+        self.terminals = {}
         self.updateTerminals()
 
         self.menu = None
@@ -655,6 +683,9 @@ class NodeGraphicsItem(GraphicsObject):
             item.setParentItem(self)
             item.setAnchor(0, y)
             self.terminals[i] = (t, item)
+            # Update label based on current terminal count
+            if hasattr(item, "updateLabel"):
+                item.updateLabel()
             y += dy
 
         dy = bounds.height() / (len(out) + 1)
@@ -666,6 +697,9 @@ class NodeGraphicsItem(GraphicsObject):
             item.setZValue(self.zValue())
             item.setAnchor(bounds.width(), y)
             self.terminals[i] = (t, item)
+            # Update label based on current terminal count
+            if hasattr(item, "updateLabel"):
+                item.updateLabel()
             y += dy
 
     def boundingRect(self):
