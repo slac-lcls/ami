@@ -327,7 +327,9 @@ class Node(QtCore.QObject):
         for name, term in self.terminals.items():
             if name in self._input_vars:
                 if term.optional():
-                    input_vars[name] = modifiers.optional(self._input_vars[name], mapped_name=name.replace(".", "_"))
+                    input_vars[name] = modifiers.optional(
+                        self._input_vars[name], mapped_name=name.replace(".", "_")
+                    )
                 else:
                     input_vars[name] = self._input_vars[name]
         return input_vars
@@ -415,7 +417,9 @@ class Node(QtCore.QObject):
             elif node and node.isSource():
                 self._input_vars[localTerm.name()] = node.name()
             elif node and remoteTerm:
-                self._input_vars[localTerm.name()] = ".".join([node.name(), remoteTerm.name()])
+                self._input_vars[localTerm.name()] = ".".join(
+                    [node.name(), remoteTerm.name()]
+                )
 
         if not self.changed:
             self.changed = localTerm.isInput()
@@ -553,7 +557,12 @@ class Node(QtCore.QObject):
 
     def optionalTerm(self, term):
         if self._allowOptional:
-            checked = all([term.isInput() and term.optional() for name, term in self.terminals.items()])
+            checked = all(
+                [
+                    term.isInput() and term.optional()
+                    for name, term in self.terminals.items()
+                ]
+            )
             self.graphicsItem().optional.setChecked(checked)
             self.sigTerminalOptional.emit(self, term)
 
@@ -605,7 +614,10 @@ class NodeGraphicsItem(GraphicsObject):
         self.labelItem.setDefaultTextColor(QtGui.QColor(50, 50, 50))
         self.labelItem.mousePressEvent = self.nameEditingStarted
         self.labelItem.focusOutEvent = self.nameEditingFinished
-        self.labelItem.moveBy(self.bounds.width() / 2.0 - self.labelItem.boundingRect().width() / 2.0, 0)
+        self.labelItem.moveBy(
+            self.bounds.width() / 2.0 - self.labelItem.boundingRect().width() / 2.0, 0
+        )
+        self.labelItem.setCursor(QtCore.Qt.IBeamCursor)
 
         # Add class name item below the name
         self.nameItem = QtWidgets.QGraphicsTextItem(self.node.name(), self)
@@ -640,7 +652,9 @@ class NodeGraphicsItem(GraphicsObject):
 
     def setLabel(self, label):
         self.labelItem.setPlainText(label)
-        self.labelItem.setPos(self.bounds.width() / 2.0 - self.labelItem.boundingRect().width() / 2.0, 0)
+        self.labelItem.setPos(
+            self.bounds.width() / 2.0 - self.labelItem.boundingRect().width() / 2.0, 0
+        )
         self.nameItem.setVisible(True)
         nameBottom = self.nameItem.boundingRect().height()
         self.nameItem.setPos(
@@ -649,23 +663,42 @@ class NodeGraphicsItem(GraphicsObject):
         )
 
     def nameEditingStarted(self, event):
+        """Start editing node label - suppress selection to prevent widget popup"""
+        event.accept()  # Stop event propagation to parent NodeGraphicsItem
         self.labelItem.setTextInteractionFlags(QtCore.Qt.TextEditorInteraction)
-        super().mousePressEvent(event)
+        self.labelItem.setFocus(QtCore.Qt.MouseFocusReason)
+        # Note: Removed super().mousePressEvent(event) to prevent node selection
 
     def nameEditingFinished(self, event):
         """Called when user finishes editing the name"""
-        # Call the original focusOutEvent
         super().focusOutEvent(event)
         self.labelItem.setTextInteractionFlags(QtCore.Qt.NoTextInteraction)
-        self.labelItem.setPos(self.bounds.width() / 2.0 - self.labelItem.boundingRect().width() / 2.0, 0)
-        self.nameItem.setVisible(True)
-        nameBottom = self.nameItem.boundingRect().height()
-        self.nameItem.setPos(
-            self.bounds.width() / 2.0 - self.nameItem.boundingRect().width() / 2.0,
-            nameBottom,
+
+        # Get the new label text
+        new_label = self.labelItem.toPlainText().strip()
+
+        # If label is empty or same as node name, discard it (revert to using node name)
+        if not new_label or new_label == self.node.name():
+            # Revert to node name display
+            self.labelItem.setPlainText(self.node.name())
+            self.nameItem.setVisible(False)
+            # Clear the internal label (node will use its name)
+            self.node._label = ""
+        else:
+            # Label is different - keep it
+            self.node._label = new_label
+            self.nameItem.setVisible(True)
+            nameBottom = self.nameItem.boundingRect().height()
+            self.nameItem.setPos(
+                self.bounds.width() / 2.0 - self.nameItem.boundingRect().width() / 2.0,
+                nameBottom,
+            )
+            self.node.sigLabelChanged.emit(self.node, self.node._label)
+
+        # Reposition label (centered)
+        self.labelItem.setPos(
+            self.bounds.width() / 2.0 - self.labelItem.boundingRect().width() / 2.0, 0
         )
-        self.node._label = self.labelItem.toPlainText()
-        self.node.sigLabelChanged.emit(self.node, self.node._label)
 
     def updateTerminals(self):
         inp = self.node.inputs()
@@ -744,7 +777,9 @@ class NodeGraphicsItem(GraphicsObject):
     def mouseDragEvent(self, ev):
         if ev.button() == QtCore.Qt.LeftButton:
             ev.accept()
-            pos = self.pos() + self.mapToParent(ev.pos()) - self.mapToParent(ev.lastPos())
+            pos = (
+                self.pos() + self.mapToParent(ev.pos()) - self.mapToParent(ev.lastPos())
+            )
             if ev.isFinish():
                 pos = [find_nearest(pos.x()), find_nearest(pos.y())]
 
@@ -941,13 +976,17 @@ class SourceNodeGraphicsItem(NodeGraphicsItem):
     Extension of the NodeGraphicsItem to handle the source kwargs graphics.
     """
 
-    sigSourceKwargs = QtCore.Signal(object)  # signal emitted when new user kwargs are supplied
+    sigSourceKwargs = QtCore.Signal(
+        object
+    )  # signal emitted when new user kwargs are supplied
 
     def __init__(self, node, brush=None):
         super().__init__(node, brush=brush)
         self._source_kwargs = {}
 
-        self.kwargs_parser = Lark(kwargs_grammar, start="value")  # , transformer=MyTransformer_2(), parser='lalr')
+        self.kwargs_parser = Lark(
+            kwargs_grammar, start="value"
+        )  # , transformer=MyTransformer_2(), parser='lalr')
         self.kwargs_transformer = KwargsTransformer()
 
     @property
