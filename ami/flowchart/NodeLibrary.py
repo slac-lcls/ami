@@ -138,12 +138,44 @@ class SourceLibrary:
     def getSourceTree(self):
         return self.sourceTree
 
+    def getSourcesByType(self, target_type, exclude_name=None):
+        """
+        Get all sources matching target_type, preserving hierarchical structure.
+
+        Args:
+            target_type: The type to match (e.g., Array2d, int, float)
+            exclude_name: Optional source name to exclude from results
+
+        Returns:
+            OrderedDict with same hierarchical structure as sourceTree,
+            containing only sources matching target_type
+        """
+
+        def filter_tree(tree_dict):
+            result = OrderedDict()
+            for key, value in tree_dict.items():
+                if isinstance(value, OrderedDict):
+                    # Recursively filter subtree
+                    filtered_subtree = filter_tree(value)
+                    if filtered_subtree:  # Only include if subtree has matches
+                        result[key] = filtered_subtree
+                else:
+                    # This is a leaf (source name)
+                    source_name = value
+                    if source_name != exclude_name:
+                        source_type = self.getSourceType(source_name)
+                        if source_type == target_type:
+                            result[key] = value
+            return result
+
+        return filter_tree(self.sourceTree)
+
     def _getLabelTree(self, children, items):
         for root, child in sorted(children.items()):
             if root not in items:
                 items[root] = {}
 
-            if type(child) == OrderedDict:
+            if isinstance(child, OrderedDict):
                 self._getLabelTree(child, items[root])
             else:
                 items[child] = str(self.getSourceType(child))

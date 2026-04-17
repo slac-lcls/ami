@@ -35,7 +35,11 @@ def test_filter_off(complex_graph):
 def test_add(complex_graph):
     complex_graph.compile(num_workers=4, num_local_collectors=2)
     complex_graph.add(
-        PickN(name="pickReferenceOne", inputs=["BinningOff.Bins", "BinningOff.Counts"], outputs=["referenceOne"])
+        PickN(
+            name="pickReferenceOne",
+            inputs=["BinningOff.Bins", "BinningOff.Counts"],
+            outputs=["referenceOne"],
+        )
     )
     complex_graph.compile(num_workers=4, num_local_collectors=2)
 
@@ -107,18 +111,39 @@ def test_rolling_buffer():
 
     localCollector1 = graph(worker1, color="localCollector")
     localCollector1 = graph(worker2, color="localCollector")
-    assert localCollector1 == {"scatter_localCollector": [(2, 3), (4, 5), (3, 2), (5, 4)], "count_localCollector": 4}
+    assert localCollector1 == {
+        "scatter_localCollector": [(2, 3), (4, 5), (3, 2), (5, 4)],
+        "count_localCollector": 4,
+    }
     localCollector1 = graph(worker3, color="localCollector")
-    assert localCollector1 == {"scatter_localCollector": [(3, 2), (5, 4), (0, 1), (2, 3)], "count_localCollector": 6}
+    assert localCollector1 == {
+        "scatter_localCollector": [(3, 2), (5, 4), (0, 1), (2, 3)],
+        "count_localCollector": 6,
+    }
     localCollector1 = graph(worker4, color="localCollector")
-    assert localCollector1 == {"scatter_localCollector": [(0, 1), (2, 3), (1, 0), (3, 2)], "count_localCollector": 8}
+    assert localCollector1 == {
+        "scatter_localCollector": [(0, 1), (2, 3), (1, 0), (3, 2)],
+        "count_localCollector": 8,
+    }
 
-    localCollector1 = {"scatter_localCollector": [(0, 1), (2, 3), (4, 5), (6, 7)], "count_localCollector": 8}
-    localCollector2 = {"scatter_localCollector": [(8, 9), (10, 11), (12, 13), (14, 15)], "count_localCollector": 8}
+    localCollector1 = {
+        "scatter_localCollector": [(0, 1), (2, 3), (4, 5), (6, 7)],
+        "count_localCollector": 8,
+    }
+    localCollector2 = {
+        "scatter_localCollector": [(8, 9), (10, 11), (12, 13), (14, 15)],
+        "count_localCollector": 8,
+    }
     globalCollector = graph(localCollector1, color="globalCollector")
     globalCollector = graph(localCollector2, color="globalCollector")
-    assert globalCollector == {"scatter_x": (0, 2, 4, 6, 8, 10, 12, 14), "scatter_y": (1, 3, 5, 7, 9, 11, 13, 15)}
-    localCollector1 = {"scatter_localCollector": [(16, 17), (18, 19), (20, 21), (22, 23)], "count_localCollector": 8}
+    assert globalCollector == {
+        "scatter_x": (0, 2, 4, 6, 8, 10, 12, 14),
+        "scatter_y": (1, 3, 5, 7, 9, 11, 13, 15),
+    }
+    localCollector1 = {
+        "scatter_localCollector": [(16, 17), (18, 19), (20, 21), (22, 23)],
+        "count_localCollector": 8,
+    }
     globalCollector = graph(localCollector1, color="globalCollector")
     assert globalCollector == {
         "scatter_x": (8, 10, 12, 14, 16, 18, 20, 22),
@@ -143,12 +168,33 @@ def test_global_replace():
     summed_outputs = [name + "_count", name + "_sum"]
 
     nodes = [
-        Map(name=name + "_map", inputs=inputs, outputs=mapped_outputs, func=threshold_img, parent=name),
-        Accumulator(
-            name=name + "_accumulated", inputs=mapped_outputs, outputs=summed_outputs, reduction=reduction, parent=name
+        Map(
+            name=name + "_map",
+            inputs=inputs,
+            outputs=mapped_outputs,
+            func=threshold_img,
+            parent=name,
         ),
-        Map(name=name + "_unzip", inputs=summed_outputs, outputs=outputs, func=lambda count, s: s, parent=name),
-        PickN(name="_auto_" + name + "_view", inputs=outputs, outputs=["_auto_" + name], N=1),
+        Accumulator(
+            name=name + "_accumulated",
+            inputs=mapped_outputs,
+            outputs=summed_outputs,
+            reduction=reduction,
+            parent=name,
+        ),
+        Map(
+            name=name + "_unzip",
+            inputs=summed_outputs,
+            outputs=outputs,
+            func=lambda count, s: s,
+            parent=name,
+        ),
+        PickN(
+            name="_auto_" + name + "_view",
+            inputs=outputs,
+            outputs=["_auto_" + name],
+            N=1,
+        ),
     ]
 
     graph = Graph(name="graph")
@@ -159,12 +205,18 @@ def test_global_replace():
     img = 10 * np.random.randn(4, 4)
 
     worker = graph({"cspad": img}, color="worker")
-    expected = {"ThresholdingHitFinder.0_count_worker": 1, "ThresholdingHitFinder.0_sum_worker": threshold_img(img)}
+    expected = {
+        "ThresholdingHitFinder.0_count_worker": 1,
+        "ThresholdingHitFinder.0_sum_worker": threshold_img(img),
+    }
     for k in worker.keys():
         np.testing.assert_equal(worker[k], expected[k])
 
     worker = graph({"cspad": img}, color="worker")
-    expected = {"ThresholdingHitFinder.0_count_worker": 2, "ThresholdingHitFinder.0_sum_worker": 2 * threshold_img(img)}
+    expected = {
+        "ThresholdingHitFinder.0_count_worker": 2,
+        "ThresholdingHitFinder.0_sum_worker": 2 * threshold_img(img),
+    }
     for k in worker.keys():
         np.testing.assert_equal(worker[k], expected[k])
 
@@ -187,19 +239,43 @@ def test_global_replace():
     np.testing.assert_equal(globalCollector["_auto_ThresholdingHitFinder.0"], 3 * threshold_img(img))
 
     nodes = [
-        Map(name=name + "_map", inputs=inputs, outputs=mapped_outputs, func=threshold_img, parent=name),
-        SumN(name=name + "_accumulated", inputs=mapped_outputs, outputs=summed_outputs, N=2, parent=name),
-        Map(name=name + "_unzip", inputs=summed_outputs, outputs=outputs, func=lambda count, s: s, parent=name),
+        Map(
+            name=name + "_map",
+            inputs=inputs,
+            outputs=mapped_outputs,
+            func=threshold_img,
+            parent=name,
+        ),
+        SumN(
+            name=name + "_accumulated",
+            inputs=mapped_outputs,
+            outputs=summed_outputs,
+            N=2,
+            parent=name,
+        ),
+        Map(
+            name=name + "_unzip",
+            inputs=summed_outputs,
+            outputs=outputs,
+            func=lambda count, s: s,
+            parent=name,
+        ),
     ]
 
     graph.add(nodes)
     graph.compile()
 
     worker = graph({"cspad": img}, color="worker")
-    assert worker == {"ThresholdingHitFinder.0_sum_worker": None, "ThresholdingHitFinder.0_count_worker": None}
+    assert worker == {
+        "ThresholdingHitFinder.0_sum_worker": None,
+        "ThresholdingHitFinder.0_count_worker": None,
+    }
 
     worker = graph({"cspad": img}, color="worker")
-    expected = {"ThresholdingHitFinder.0_count_worker": 2, "ThresholdingHitFinder.0_sum_worker": 2 * threshold_img(img)}
+    expected = {
+        "ThresholdingHitFinder.0_count_worker": 2,
+        "ThresholdingHitFinder.0_sum_worker": 2 * threshold_img(img),
+    }
     for k in worker.keys():
         np.testing.assert_equal(worker[k], expected[k])
 
@@ -217,7 +293,10 @@ def test_global_replace():
     graph.reset()
 
     worker = graph({"cspad": img}, color="worker")
-    assert worker == {"ThresholdingHitFinder.0_sum_worker": None, "ThresholdingHitFinder.0_count_worker": None}
+    assert worker == {
+        "ThresholdingHitFinder.0_sum_worker": None,
+        "ThresholdingHitFinder.0_count_worker": None,
+    }
 
     localCollector = graph(worker, color="localCollector")
     assert localCollector == {}
@@ -226,16 +305,37 @@ def test_global_replace():
     assert globalCollector == {}
 
     nodes = [
-        Map(name=name + "_map", inputs=inputs, outputs=mapped_outputs, func=threshold_img, parent=name),
-        RollingBuffer(name=name + "_accumulated", inputs=mapped_outputs, outputs=summed_outputs, N=2, parent=name),
-        Map(name=name + "_unzip", inputs=summed_outputs, outputs=outputs, func=lambda count, s: sum(s), parent=name),
+        Map(
+            name=name + "_map",
+            inputs=inputs,
+            outputs=mapped_outputs,
+            func=threshold_img,
+            parent=name,
+        ),
+        RollingBuffer(
+            name=name + "_accumulated",
+            inputs=mapped_outputs,
+            outputs=summed_outputs,
+            N=2,
+            parent=name,
+        ),
+        Map(
+            name=name + "_unzip",
+            inputs=summed_outputs,
+            outputs=outputs,
+            func=lambda count, s: sum(s),
+            parent=name,
+        ),
     ]
 
     graph.add(nodes)
     graph.compile()
 
     worker = graph({"cspad": img}, color="worker")
-    expected = {"ThresholdingHitFinder.0_count_worker": 1, "ThresholdingHitFinder.0_sum_worker": [threshold_img(img)]}
+    expected = {
+        "ThresholdingHitFinder.0_count_worker": 1,
+        "ThresholdingHitFinder.0_sum_worker": [threshold_img(img)],
+    }
     for k in worker.keys():
         np.testing.assert_equal(worker[k], expected[k])
 
@@ -250,7 +350,10 @@ def test_global_replace():
     localCollector = graph(worker, color="localCollector")
     expected = {
         "ThresholdingHitFinder.0_count_localCollector": 2,
-        "ThresholdingHitFinder.0_sum_localCollector": [threshold_img(img), threshold_img(img)],
+        "ThresholdingHitFinder.0_sum_localCollector": [
+            threshold_img(img),
+            threshold_img(img),
+        ],
     }
     for k in localCollector.keys():
         np.testing.assert_equal(localCollector[k], expected[k])
@@ -261,7 +364,10 @@ def test_global_replace():
     graph.reset()
 
     worker = graph({"cspad": img}, color="worker")
-    expected = {"ThresholdingHitFinder.0_count_worker": 1, "ThresholdingHitFinder.0_sum_worker": [threshold_img(img)]}
+    expected = {
+        "ThresholdingHitFinder.0_count_worker": 1,
+        "ThresholdingHitFinder.0_sum_worker": [threshold_img(img)],
+    }
     for k in worker.keys():
         np.testing.assert_equal(worker[k], expected[k])
 
@@ -275,3 +381,90 @@ def test_global_replace():
 
     globalCollector = graph(localCollector, color="globalCollector")
     np.testing.assert_equal(globalCollector["_auto_ThresholdingHitFinder.0"], threshold_img(img))
+
+
+def test_global_replace_mismatched_inputs():
+    """Test replacing global operation with different inputs doesn't crash"""
+    graph = Graph(name="graph")
+
+    # Add PickN with single input
+    graph.add(PickN(name="test_pickN", N=5, inputs=["cspad"], outputs=["out"]))
+    graph.compile(num_workers=4, num_local_collectors=2)
+
+    # Verify initial expansion happened
+    worker_names = [n.name for n in graph.graph.nodes if hasattr(n, "name")]
+    assert "test_pickN_worker" in worker_names
+    assert "test_pickN_localCollector" in worker_names
+    assert "test_pickN_globalCollector" in worker_names
+
+    # Replace with additional input - should NOT crash (previously would AssertionError)
+    graph.replace(PickN(name="test_pickN", N=5, inputs=["cspad", "laser"], outputs=["out"]))
+    graph.compile(num_workers=4, num_local_collectors=2)
+
+    # Verify graph compiled successfully and nodes exist
+    worker_names = [n.name for n in graph.graph.nodes if hasattr(n, "name")]
+    assert "test_pickN_worker" in worker_names
+    assert "test_pickN_globalCollector" in worker_names
+
+
+def test_global_replace_mismatched_outputs():
+    """Test replacing global operation with different outputs removes downstream"""
+    graph = Graph(name="graph")
+
+    # Create graph with downstream dependency
+    graph.add(PickN(name="test_pickN", N=5, inputs=["cspad"], outputs=["out1"]))
+    graph.add(Map(name="downstream", inputs=["out1"], outputs=["result"], func=lambda x: x))
+    graph.compile(num_workers=4, num_local_collectors=2)
+
+    # Verify downstream node exists
+    node_names = [n.name for n in graph.graph.nodes if hasattr(n, "name")]
+    assert "downstream" in node_names
+
+    # Replace with different output - should remove downstream nodes
+    graph.replace(PickN(name="test_pickN", N=5, inputs=["cspad"], outputs=["out2"]))
+    graph.compile(num_workers=4, num_local_collectors=2)
+
+    # Verify downstream node was removed (it depended on 'out1' which no longer exists)
+    node_names = [n.name for n in graph.graph.nodes if hasattr(n, "name")]
+    assert "downstream" not in node_names
+    assert "test_pickN_worker" in node_names
+
+
+def test_global_replace_both_mismatched():
+    """Test replacing global operation with both inputs and outputs different"""
+    graph = Graph(name="graph")
+
+    # Add PickN with specific inputs/outputs
+    graph.add(PickN(name="test_pickN", N=5, inputs=["cspad"], outputs=["out1"]))
+    graph.compile(num_workers=4, num_local_collectors=2)
+
+    # Replace with different inputs AND outputs - should NOT crash
+    graph.replace(PickN(name="test_pickN", N=5, inputs=["laser", "delta_t"], outputs=["out2"]))
+    graph.compile(num_workers=4, num_local_collectors=2)
+
+    # Should compile successfully
+    worker_names = [n.name for n in graph.graph.nodes if hasattr(n, "name")]
+    assert "test_pickN_worker" in worker_names
+    assert "test_pickN_globalCollector" in worker_names
+
+
+def test_global_replace_matching_fast_path():
+    """Test that matching inputs/outputs still uses fast path (backward compatibility)"""
+    graph = Graph(name="graph")
+
+    # Add initial PickN
+    graph.add(PickN(name="test_pickN", N=5, inputs=["cspad"], outputs=["out"]))
+    graph.compile(num_workers=4, num_local_collectors=2)
+
+    # Replace with same inputs/outputs but different N (should use fast path)
+    graph.replace(PickN(name="test_pickN", N=10, inputs=["cspad"], outputs=["out"]))
+    graph.compile(num_workers=4, num_local_collectors=2)
+
+    # Verify graph compiled successfully
+    worker_names = [n.name for n in graph.graph.nodes if hasattr(n, "name")]
+    assert "test_pickN_worker" in worker_names
+    assert "test_pickN_globalCollector" in worker_names
+
+    # Verify the fast path was used by checking that children_of_global_operations still exists
+    # (mismatch path deletes it, fast path updates it)
+    assert len(graph.children_of_global_operations) > 0

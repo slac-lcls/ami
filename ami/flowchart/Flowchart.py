@@ -200,12 +200,65 @@ class Flowchart(Node):
 
         # if the node is a source, connect the source kwargs interface to the manager
         if node.isSource():
-            source_kwargs = node.graphicsItem().source_kwargs
             node.graphicsItem().sigSourceKwargs.connect(self.send_requested_data)
 
         self.sigNodeCreated.emit(node)
         if node.isChanged(True, True):
             self.sigNodeChanged.emit(node)
+
+    def replaceSourceNode(self, old_node, replacement_source_name):
+        """
+        Replace a source node with a different source.
+
+        If replacement source already exists, merge connections into it.
+        Otherwise, create new node with replacement source.
+
+        Args:
+            old_node: The SourceNode to replace
+            replacement_source_name: Name of the replacement source
+        """
+        # Get the outgoing connections from old node
+        old_terminal = old_node.terminals["Out"]
+        connections_to_transfer = list(old_terminal.connections().keys())
+
+        # Check if replacement already exists
+        if replacement_source_name in self._graph.nodes():
+            # Merge: get existing node and transfer connections
+            new_node = self._graph.nodes[replacement_source_name]["node"]
+            new_terminal = new_node.terminals["Out"]
+
+            # Transfer connections
+            for remote_term in connections_to_transfer:
+                # Disconnect from old
+                old_terminal.disconnectFrom(remote_term)
+                # Connect to new (if not already connected)
+                if not new_terminal.connectedTo(remote_term):
+                    new_terminal.connectTo(remote_term)
+
+            # Remove old node
+            old_node.close()
+
+        else:
+            # Create new node at same position
+            pos = old_node.graphicsItem().pos()
+            node_type = self.source_library.getSourceType(replacement_source_name)
+
+            new_node = SourceNode(
+                name=replacement_source_name, terminals={"Out": {"io": "out", "ttype": node_type}}, flowchart=self
+            )
+
+            self.addNode(node=new_node, pos=[pos.x(), pos.y()])
+            new_terminal = new_node.terminals["Out"]
+
+            # Transfer connections
+            for remote_term in connections_to_transfer:
+                # Disconnect from old
+                old_terminal.disconnectFrom(remote_term)
+                # Connect to new
+                new_terminal.connectTo(remote_term)
+
+            # Remove old node
+            old_node.close()
 
     @asyncSlot(object)
     async def send_requested_data(self, requested_data):
@@ -470,7 +523,7 @@ class Flowchart(Node):
                 try:
                     ttype = eval(n["state"]["terminals"]["Out"]["ttype"])
                     n["state"]["terminals"]["Out"]["ttype"] = ttype
-                    node = SourceNode(name=n["name"], terminals=n["state"]["terminals"])
+                    node = SourceNode(name=n["name"], terminals=n["state"]["terminals"], flowchart=self)
                     self.addNode(node=node)
                 except Exception:
                     printExc("Error creating node %s: (continuing anyway)" % n["name"])

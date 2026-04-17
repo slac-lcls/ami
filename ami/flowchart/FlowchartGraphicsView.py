@@ -394,7 +394,9 @@ class FlowchartViewBox(ViewBox):
             try:
                 node_type = self.widget.chart.source_library.getSourceType(node)
                 if node not in self.widget.chart._graph:
-                    node = SourceNode(name=node, terminals={"Out": {"io": "out", "ttype": node_type}})
+                    node = SourceNode(
+                        name=node, terminals={"Out": {"io": "out", "ttype": node_type}}, flowchart=self.widget.chart
+                    )
                     self.widget.chart.addNode(node=node, pos=self.mapToView(ev.pos()))
                     ev.accept()
                     return
