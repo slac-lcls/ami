@@ -86,11 +86,19 @@ def complex_graph_file(tmpdir, qtbot):
         if laser:
             return sum0
 
-    graph.add(Map(name="FilterOn", inputs=["laser", "sum"], outputs=["laseron"], func=filter_on))
+    graph.add(
+        Map(
+            name="FilterOn",
+            inputs=["laser", "sum"],
+            outputs=["laseron"],
+            func=filter_on,
+        )
+    )
 
     binningOn = MeanVsScan("BinningOn")
     nodes = binningOn.to_operation(
-        inputs={"Bin": "delta_t", "Value": "laseron"}, outputs=["laseron_bin", "laseron_value"]
+        inputs={"Bin": "delta_t", "Value": "laseron"},
+        outputs=["laseron_bin", "laseron_value"],
     )
     graph.add(nodes)
 
@@ -98,10 +106,20 @@ def complex_graph_file(tmpdir, qtbot):
         if not laser:
             return sum0
 
-    graph.add(Map(name="FilterOff", inputs=["laser", "sum"], outputs=["laseroff"], func=filter_off))
+    graph.add(
+        Map(
+            name="FilterOff",
+            inputs=["laser", "sum"],
+            outputs=["laseroff"],
+            func=filter_off,
+        )
+    )
 
     binningOff = MeanVsScan("BinningOff")
-    nodes = binningOff.to_operation({"Bin": "delta_t", "Value": "laseroff"}, outputs=["laseroff_bin", "laseroff_value"])
+    nodes = binningOff.to_operation(
+        {"Bin": "delta_t", "Value": "laseroff"},
+        outputs=["laseroff_bin", "laseroff_value"],
+    )
     graph.add(nodes)
 
     fname = tmpdir.mkdir("complex_graph").join("complex_graph.dill")
@@ -183,7 +201,12 @@ def workerjson(tmpdir_factory, xtcwriter):
         "laser": {"dtype": "Scalar", "range": [0, 2], "integer": True},
         "delta_t": {"dtype": "Scalar", "range": [0, 10], "integer": True},
         # Sources for test_psana_graph (psana-specific, not in any .fc)
-        "xppcspad:raw:image": {"dtype": "Image", "pedestal": 5, "width": 1, "shape": [512, 512]},
+        "xppcspad:raw:image": {
+            "dtype": "Image",
+            "pedestal": 5,
+            "width": 1,
+            "shape": [512, 512],
+        },
     }
 
     # Auto-scan all .fc files
@@ -470,31 +493,40 @@ def broker(ami_backend):
     # IMPORTANT: Must properly cancel and await tasks to suppress Python warnings
     # about "Task was destroyed but it is pending!"
     try:
-        # Cancel and await all broker tasks
-        def cancel_all_tasks():
-            tasks = list(asyncio.all_tasks(broker_loop))
+        # Cancel and await all broker tasks properly
+        # This function runs in the broker's event loop and ensures tasks are cancelled
+        # and awaited before stopping the loop
+        async def cancel_all_tasks():
+            current = asyncio.current_task()
+            tasks = [t for t in asyncio.all_tasks(broker_loop) if t is not current and not t.done()]
             for task in tasks:
                 task.cancel()
+            # Gather with return_exceptions=True to suppress CancelledError exceptions
+            # and ensure all tasks are properly awaited
+            await asyncio.gather(*tasks, return_exceptions=True)
+            # broker_loop.stop()
 
-        # First cancel all tasks
-        broker_loop.call_soon_threadsafe(cancel_all_tasks)
-
-        # Give the event loop time to process the cancellations
-        # This allows CancelledError to propagate through the gather()
-        time.sleep(0.02)
-
-        # Now stop the loop
-        broker_loop.call_soon_threadsafe(broker_loop.stop)
+        # Schedule the cancellation and wait for it to complete
+        # This properly awaits all tasks instead of guessing with sleep()
+        future = asyncio.run_coroutine_threadsafe(cancel_all_tasks(), broker_loop)
+        future.result(timeout=2)  # Wait up to 2 seconds for graceful shutdown
 
         # Wait for the thread to finish (with timeout)
         broker_thread.join(timeout=2)
     except Exception:
         pass
     finally:
+        # Close the event loop if not already closed
+        if not broker_loop.is_closed():
+            try:
+                broker_loop.run_until_complete(asyncio.sleep(0))
+            except Exception:
+                pass
+
+            # broker_loop.close()
         # Close the broker and clean up ZMQ resources
         mb.close()
 
-        # Close the event loop if not already closed
         if not broker_loop.is_closed():
             broker_loop.close()
 
@@ -539,7 +571,9 @@ async def flowchart(request, ami_backend, broker, dmypy):
 
     # Create a new flowchart instance connected to the persistent backend
     fc = Flowchart(
-        broker_addr=broker.broker_sub_addr, graphmgr_addr=ami_backend, checkpoint_addr=broker.checkpoint_pub_addr
+        broker_addr=broker.broker_sub_addr,
+        graphmgr_addr=ami_backend,
+        checkpoint_addr=broker.checkpoint_pub_addr,
     )
 
     await fc.updateSources(init=True)

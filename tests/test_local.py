@@ -20,6 +20,7 @@ def test_complex_graph(complex_graph_file, start_ami):
     comm_handler.load(complex_graph_file)
     start = time.time()
     while comm_handler.graphVersion != comm_handler.featuresVersion:
+        time.sleep(0.1)  # Poll every 100ms instead of busy-waiting
         end = time.time()
         if end - start > 20:
             raise TimeoutError
@@ -33,11 +34,11 @@ def test_complex_graph(complex_graph_file, start_ami):
 @psanatest
 @pytest.mark.parametrize("start_ami", ["psana"], indirect=True)
 def test_psana_graph(psana_graph, start_ami):
-
     comm_handler = start_ami
     comm_handler.load(psana_graph)
     start = time.time()
     while comm_handler.graphVersion != comm_handler.featuresVersion:
+        time.sleep(0.1)  # Poll every 100ms instead of busy-waiting
         end = time.time()
         if end - start > 20:
             raise TimeoutError
