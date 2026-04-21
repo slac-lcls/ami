@@ -219,9 +219,11 @@ class NodeProcess(QtCore.QObject):
         prometheus_dir=None,
         prometheus_port=None,
         hutch="",
+        headless=False,
     ):
 
         super().__init__()
+        self.headless = headless
 
         if loop is None:
             self.app = QtWidgets.QApplication([])
@@ -358,9 +360,13 @@ class NodeProcess(QtCore.QObject):
         if msg.label:
             self.updateWindowTitle(msg.label)
 
-        self.win.show()
-        if self.node.viewed:
-            self.win.activateWindow()
+        # Skip showing window in headless mode (e.g., for automated tests)
+        # Window object is still created but not displayed
+        if not self.headless:
+            self.win.show()
+            if self.node.viewed:
+                self.win.activateWindow()
+
         self.node.viewed = True
 
     def reloadLibrary(self, msg):
@@ -390,6 +396,10 @@ class NodeProcess(QtCore.QObject):
 
     def start_prometheus(self):
         port = self.prometheus_port
+
+        # Skip starting Prometheus if no port is specified
+        if self.prometheus_dir is None:
+            return
 
         while True:
             try:
@@ -421,13 +431,22 @@ class MessageBroker(object):
     """
 
     def __init__(
-        self, graphmgr_addr, load, ipcdir=None, prometheus_dir=None, prometheus_port=None, hutch="", save_dir=None
+        self,
+        graphmgr_addr,
+        load,
+        ipcdir=None,
+        prometheus_dir=None,
+        prometheus_port=None,
+        hutch="",
+        save_dir=None,
+        headless=False,
     ):
 
         if ipcdir is None:
             ipcdir = tempfile.mkdtemp()
 
         self.graphmgr_addr = graphmgr_addr
+        self.headless = headless
         self.broker_sub_addr = "ipc://%s/broker_sub" % ipcdir
         self.broker_pub_addr = "ipc://%s/broker_pub" % ipcdir
 
@@ -579,6 +598,7 @@ class MessageBroker(object):
                             "prometheus_dir": self.prometheus_dir,
                             "prometheus_port": self.prometheus_port,
                             "hutch": self.hutch,
+                            "headless": self.headless,
                         },
                         daemon=True,
                     )
@@ -602,6 +622,7 @@ class MessageBroker(object):
                         "prometheus_dir": self.prometheus_dir,
                         "prometheus_port": self.prometheus_port,
                         "hutch": self.hutch,
+                        "headless": self.headless,
                     },
                     daemon=True,
                 )

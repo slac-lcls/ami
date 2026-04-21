@@ -106,8 +106,11 @@ class Worker(Node):
     def update_graph(self, name, version, args):
         if self.graphs[name]:
             self.graphs[name].compile(**args)
-        self.update_requests()
-        self.store.configure(name, version, self.graphs[name].outputs["worker"])
+            self.update_requests()
+            self.store.configure(name, version, self.graphs[name].outputs["worker"])
+        else:
+            # Empty graph - just update requests
+            self.update_requests()
 
     def recv_graph(self, name, version, args, graph):
         self.graphs[name] = graph

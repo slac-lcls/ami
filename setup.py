@@ -36,7 +36,7 @@ setup(
         "mypy",
         "setproctitle",
         "prometheus_client",
-        #        'lark'
+        "lark",
     ],
     tests_require=["pytest", "pytest-asyncio", "pytest-qt"],
     extras_require={
@@ -66,6 +66,7 @@ setup(
             "ami-export = ami.export:main",
             "ami-syncer = ami.sync:main",
             "ami-monitor = ami.monitor:main",
+            "ami-fc-to-source = ami.fc_to_worker:main",
         ]
     },
     scripts=["ami/ami-mpi"],
