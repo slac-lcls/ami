@@ -119,8 +119,8 @@ class CalculatorWidget(QtWidgets.QWidget):
         mainLayout.addWidget(self.EButton, 5, 4)
 
         for i in range(1, CalculatorWidget.NumDigitButtons):
-            row = ((9 - i) / 3) + 2
-            column = ((i - 1) % 3) + 2
+            row = int(((9 - i) / 3) + 2)
+            column = int(((i - 1) % 3) + 2)
             mainLayout.addWidget(self.digitButtons[i], row, column)
 
         mainLayout.addWidget(self.digitButtons[0], 5, 2)
