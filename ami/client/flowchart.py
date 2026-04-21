@@ -398,7 +398,7 @@ class NodeProcess(QtCore.QObject):
         port = self.prometheus_port
 
         # Skip starting Prometheus if no port is specified
-        if port is None:
+        if self.prometheus_dir is None:
             return
 
         while True:
