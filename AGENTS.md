@@ -46,6 +46,44 @@ If you find unorganized plans in the project root:
 
 ---
 
+## CRITICAL: Code Formatting Policy
+
+### ABSOLUTE RULE: Do Not Reformat Code
+
+This project uses **black** (line-length=120) and **isort** (profile=black) as pre-commit hooks. All Python formatting is handled automatically at commit time. **AI agents MUST NOT make any formatting changes to code.**
+
+### When Editing Python Files
+
+**Only change the lines necessary to accomplish the task.** Diffs should be minimal and surgical.
+
+**NEVER do any of the following:**
+1. Change whitespace, indentation, or line breaks in existing code
+2. Re-wrap lines to a different length
+3. Change string quoting style (single vs double quotes)
+4. Reorganize, reorder, or re-group import statements
+5. Add or remove trailing commas or parentheses for style reasons
+6. Reformat function signatures, argument lists, or dict/list literals you aren't otherwise modifying
+
+**When using the Edit tool:**
+- Keep `oldString` as small as possible -- only the lines that must change
+- Keep `newString` matching the style of surrounding code
+- If adding new code (functions, blocks), write it consistently with nearby code -- black will normalize it at commit time
+
+### If You Notice Formatting Issues
+
+**Leave them alone.** The pre-commit hooks will fix formatting automatically when the code is committed. Do not manually reformat code under any circumstances.
+
+If the user asks you to run formatting, suggest:
+```
+pre-commit run --all-files
+```
+
+### Why This Policy Exists
+
+Unnecessary formatting changes create noisy diffs that make pull requests difficult to review. Reviewers must distinguish functional changes from cosmetic ones, which wastes time and increases the risk of missing real bugs.
+
+---
+
 ## CRITICAL: Testing and Commit Policy
 
 ### ABSOLUTE RULE: Never Commit Untested Code
@@ -82,11 +120,11 @@ When implementation is complete:
 
 ```
 Agent: ✅ Implementation complete! Here's what changed:
-       
+
        Files Modified:
        - ami/graphkit_wrapper.py (lines 166-205)
        - tests/test_replace.py (added test_mismatch_inputs)
-       
+
        Testing Instructions:
        1. Run existing tests: pytest tests/test_replace.py
        2. Run new test: pytest tests/test_replace.py::test_mismatch_inputs
@@ -94,7 +132,7 @@ Agent: ✅ Implementation complete! Here's what changed:
           - Load graph with PickN node
           - Replace with different inputs
           - Verify no AssertionError crash
-       
+
        Please test these changes and let me know if you'd like me to commit.
 
 User: [performs testing]
@@ -157,7 +195,7 @@ AMI follows a distributed tree architecture with three main components:
   - Forward aggregated data upstream
   - Forward transitions from workers upstream
 - **Important classes**: `GraphCollector` (extends both `Node` and `Collector`)
-- **Types**: 
+- **Types**:
   - **Local collectors**: Do reductions across workers within a single compute node
   - **Global collectors**: Do reductions across local collectors in a cluster
 
@@ -204,7 +242,7 @@ AMI follows a distributed tree architecture with three main components:
 
 AMI uses three different graph representations:
 
-1. **GUI Graph (`ami/flowchart/Flowchart.py`)**: 
+1. **GUI Graph (`ami/flowchart/Flowchart.py`)**:
    - The top layer visualization in `self._graph`
    - Contains `Node` instances for the graphical representation
    - Each `Node` has a `to_operation()` method
@@ -248,7 +286,7 @@ AMI uses three different graph representations:
 
 ### Starting AMI
 
-1. **Local mode**: 
+1. **Local mode**:
    - Random source: `ami-local -n 3 random://examples/worker.json`
    - Psana offline run (single worker): `ami-local -f interval=1 -b 1 psana://exp=rix101331225,run=156`
    - Note: cannot run psana with multiple workers using ami-local due to psana limitation. Need MPI to distribute events otherwise every worker sees all events
@@ -342,12 +380,12 @@ ami/
 ## Communication Patterns
 
 ### ZeroMQ Sockets
-- **XPUB/XSUB**: 
+- **XPUB/XSUB**:
   - Manager → Workers/Collectors: Graph updates and configuration changes
   - Manager → Clients: Heartbeats and event notifications
 - **PUSH/PULL**: Workers → Collectors → Manager (result collection)
 - **REQ/REP**: Clients → Manager (command/control requests, e.g., get_graph, add_graph, set_graph)
-- **ROUTER/DEALER**: 
+- **ROUTER/DEALER**:
   - Manager internal proxy for view requests (plot/feature data)
   - ROUTER socket (frontend) receives view requests from multiple clients
   - DEALER socket (backend) queues requests to REP socket for processing
@@ -586,9 +624,9 @@ Every plan file MUST have this header:
 ```markdown
 # [Plan Title]
 
-**Date:** [YYYY-MM-DD]  
-**Status:** [Planning/Ready to Implement/In Progress/Completed/Abandoned]  
-**Priority:** [CRITICAL/High/Medium/Low]  
+**Date:** [YYYY-MM-DD]
+**Status:** [Planning/Ready to Implement/In Progress/Completed/Abandoned]
+**Priority:** [CRITICAL/High/Medium/Low]
 **Estimated Time:** [X-Y hours]
 
 ---
@@ -617,7 +655,7 @@ Example:
 - **AI Graph Builder** (`ai-graph-builder/`) - 🚧 IN PROGRESS - Natural language graph interface
   - Status: BLOCKED - Missing API implementation
   - Start: `ai-graph-builder/active/01-api-mismatch-analysis.md`
-  
+
 - **Worker JSON Generation** (`worker-json-generation/`) - 🔄 NEEDS WORK - Auto-generate configs
   - Status: Needs reimplementation
   - Start: `worker-json-generation/active/01-reimplement-worker-json.md`
