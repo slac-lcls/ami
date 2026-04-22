@@ -583,7 +583,9 @@ class MessageBroker(object):
 
                     msg = fcMsgs.CreateNode(name, typ, state)
 
-                    if type(self.msgs[msg.name]) is fcMsgs.DisplayNode and state:
+                    if msg.name not in self.msgs:
+                        pass  # Widget died before DisplayNode message was stored
+                    elif type(self.msgs[msg.name]) is fcMsgs.DisplayNode and state:
                         self.msgs[msg.name].state = state["widget"]
                     else:
                         # don't resend last message
