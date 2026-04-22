@@ -264,7 +264,10 @@ try:
                 sigma_0 = self.fwhm_0 / 2.355
                 if self.use_offset:
                     p0 = [self.a_0, self.x_0, sigma_0, self.c_0]
-                    func = lambda x, a, mu, sig, c: gaussian_func(x, a, mu, sig) + c
+
+                    def func(x, a, mu, sig, c):
+                        return gaussian_func(x, a, mu, sig) + c
+
                     return func, p0
                 else:
                     p0 = [self.a_0, self.x_0, sigma_0]
@@ -274,7 +277,10 @@ try:
                 gamma_0 = self.fwhm_0 / 2
                 if self.use_offset:
                     p0 = [self.a_0, self.x_0, gamma_0, self.c_0]
-                    func = lambda x, a, x0, gamma, c: lorentzian_func(x, a, x0, gamma) + c
+
+                    def func(x, a, x0, gamma, c):
+                        return lorentzian_func(x, a, x0, gamma) + c
+
                     return func, p0
                 else:
                     p0 = [self.a_0, self.x_0, gamma_0]

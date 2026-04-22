@@ -78,8 +78,8 @@ def test_binning(qtbot):
 
     op = node.to_operation(inputs={"In": node.name()}, outputs=["binning.out"])
     assert len(op) == 3
-    assert type(op[0]) == gn.Map
-    assert type(op[1]) == gn.Accumulator
+    assert type(op[0]) is gn.Map
+    assert type(op[1]) is gn.Accumulator
 
 
 def test_scatterplot(qtbot):
@@ -95,8 +95,8 @@ def test_scatterplot(qtbot):
 
     inputs = {"X": "X", "Y": "Y"}
     op = node.to_operation(inputs=inputs, outputs=["x", "y"])
-    assert type(op[0]) == gn.RollingBuffer
-    assert type(op[1]) == gn.Map
+    assert type(op[0]) is gn.RollingBuffer
+    assert type(op[1]) is gn.Map
     assert op[0].N == 101
 
     node.addInput(removable=True)
@@ -125,7 +125,7 @@ def test_scalarplot(qtbot):
 
     inputs = {"Y": "Y"}
     op = node.to_operation(inputs=inputs, outputs=["y"])[0]
-    assert type(op) == gn.RollingBuffer
+    assert type(op) is gn.RollingBuffer
     assert op.N == 98
 
     node.addInput(removable=True)

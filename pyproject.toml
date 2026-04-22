@@ -17,6 +17,21 @@ extend-exclude = '''
 )/
 '''
 
+[tool.ruff]
+line-length = 120
+target-version = ['py39']
+extend-exclude = '''
+/(
+  | build
+  | dist
+  | \.eggs
+  | \.git
+  | \.venv
+  | install
+  | install-lcls1
+)/
+'''
+
 [tool.isort]
 profile = "black"
 line_length = 120

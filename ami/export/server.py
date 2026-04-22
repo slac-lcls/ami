@@ -15,7 +15,7 @@ from caproto import ChannelType
 from caproto.asyncio.server import Context as CAPContext
 from caproto.server import PVSpec
 from p4p.nt import NTNDArray, NTScalar
-from p4p.rpc import NTURIDispatcher, rpc
+from p4p.rpc import rpc
 from p4p.server import Server, StaticProvider
 from p4p.server.asyncio import SharedPV
 

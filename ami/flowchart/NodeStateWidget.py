@@ -7,10 +7,9 @@ in a hierarchical tree view. It's designed to help users debug and inspect node
 state during flowchart execution.
 """
 
-import json
 from collections import OrderedDict
 
-from qtpy import QtCore, QtGui, QtWidgets
+from qtpy import QtGui, QtWidgets
 
 
 class NodeStateWidget(QtWidgets.QWidget):
@@ -300,7 +299,7 @@ class NodeStateWidget(QtWidgets.QWidget):
                 if len(s) > 100:
                     return s[:97] + "..."
                 return s
-            except:
+            except Exception:
                 return f"<{type(value).__name__}>"
 
     def _setItemColor(self, item, value):

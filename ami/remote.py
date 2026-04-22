@@ -1,7 +1,6 @@
 import argparse
 import functools
 import logging
-import os
 import re
 import signal
 import sys
@@ -9,7 +8,6 @@ import sys
 from mpi4py import MPI
 
 from ami import LogConfig
-from ami.collector import run_node_collector
 from ami.comm import PlatformAction, Ports
 from ami.multiproc import check_mp_start_method
 from ami.worker import run_worker
@@ -117,7 +115,7 @@ def run_ami(args):
     graph_addr = "tcp://%s:%d" % (host, args.port + Ports.Graph)
     # collector_addr = "tcp://127.0.0.1:%d" % (args.port + Ports.NodeCollector)
     collector_addr = "tcp://%s:%d" % (host, args.port + Ports.NodeCollector)
-    globalcol_addr = "tcp://%s:%d" % (host, args.port + Ports.FinalCollector)
+    # globalcol_addr = "tcp://%s:%d" % (host, args.port + Ports.FinalCollector)
     export_addr = "tcp://%s:%d" % (host, args.port + Ports.Export)
     msg_addr = "tcp://%s:%d" % (host, args.port + Ports.Message)
 
@@ -155,11 +153,13 @@ def run_ami(args):
         #     id_num = (node_rank*local_rank_size)+local_rank-(node_rank+1)
 
         # name = MPI.Get_processor_name()
-        # print(f"NODE RANK: {node_rank} LOCAL RANK: {local_rank} GLOBAL_RANK: {global_rank} NAME: {name} {id_num} {typ}")
+        # print(f"NODE RANK: {node_rank} LOCAL RANK: {local_rank} GLOBAL_RANK: {global_rank} "
+        #       f"NAME: {name} {id_num} {typ}")
 
         # if local_rank == 0:
-        #     run_node_collector(node_rank, local_rank_size-1, args.eb_depth, collector_addr, globalcol_addr,
-        #                        graph_addr, msg_addr, args.prometheus_dir, args.prometheus_port, args.hutch)
+        #     run_node_collector(node_rank, local_rank_size-1, args.eb_depth, collector_addr,
+        #                        globalcol_addr, graph_addr, msg_addr, args.prometheus_dir,
+        #                        args.prometheus_port, args.hutch)
 
         # run_worker(id_num, local_rank_size-1, args.heartbeat, src_cfg,
         #            collector_addr, graph_addr, msg_addr, export_addr,
@@ -203,13 +203,13 @@ def run_ami(args):
                 )
         else:
             comm = MPI.COMM_WORLD
-            global_rank_size = comm.Get_size()
+            # global_rank_size = comm.Get_size()
             global_rank = comm.Get_rank()
             local_comm = comm.Split_type(MPI.COMM_TYPE_SHARED, global_rank, MPI.INFO_NULL)
             local_rank_size = local_comm.Get_size()
             local_rank = local_comm.Get_rank()
-            node_rank = global_rank // local_rank_size
-            num_nodes = global_rank_size // local_rank_size
+            # node_rank = global_rank // local_rank_size
+            # num_nodes = global_rank_size // local_rank_size
 
             run_worker(
                 local_rank,

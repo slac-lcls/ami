@@ -11,7 +11,7 @@ from ami.graphkit_wrapper import Graph
 
 try:
     # from ami.export.client import GraphCommHandler, AsyncGraphCommHandler
-    from p4p.client.thread import Context, RemoteError
+    from p4p.client.thread import Context
 
     from ami.export import run_export
     from ami.export.nt import CUSTOM_TYPE_WRAPPERS

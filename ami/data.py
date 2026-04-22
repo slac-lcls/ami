@@ -33,7 +33,6 @@ from enum import Enum
 
 import amitypes as at
 import numpy as np
-import prometheus_client as pc
 
 from ami import psana, psana_uses_epics_epoch
 
@@ -363,7 +362,8 @@ class Timeout:
 class TimeoutIterator:
     """
     Wrapper class to add timeout feature to synchronous iterators
-    - timeout: timeout for next(). Default=ZERO_TIMEOUT i.e. no timeout or blocking calls to next. Updated using set_timeout()
+    - timeout: timeout for next(). Default=ZERO_TIMEOUT i.e. no timeout or blocking calls to next.
+      Updated using set_timeout()
     - sentinel: the object returned by iterator when timeout happens
     - reset_on_next: if set to True, timeout is reset to the value of ZERO_TIMEOUT on each iteration
 

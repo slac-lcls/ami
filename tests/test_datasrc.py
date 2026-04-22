@@ -1072,13 +1072,13 @@ def test_random_source(sim_src_cfg):
             for name in expected_names:
                 assert name in msg.payload
                 if expected_dtypes[name] == at.Array1d:
-                    assert type(msg.payload[name]) == np.ndarray
+                    assert type(msg.payload[name]) is np.ndarray
                     assert msg.payload[name].ndim == 1
                 elif expected_dtypes[name] == at.Array2d:
-                    assert type(msg.payload[name]) == np.ndarray
+                    assert type(msg.payload[name]) is np.ndarray
                     assert msg.payload[name].ndim == 2
                 else:
-                    assert type(msg.payload[name]) == expected_dtypes[name]
+                    assert type(msg.payload[name]) is expected_dtypes[name]
             break
 
 

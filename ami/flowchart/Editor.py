@@ -13,8 +13,8 @@ from ami.flowchart.NodeLibrary import isNodeClass
 from ami.flowchart.NodeStateWidget import NodeStateWidget
 
 try:
-    from qtconsole.inprocess import QtInProcessKernelManager
-    from qtconsole.rich_jupyter_widget import RichJupyterWidget
+    from qtconsole.inprocess import QtInProcessKernelManager  # noqa: F401
+    from qtconsole.rich_jupyter_widget import RichJupyterWidget  # noqa: F401
 
     HAS_QTCONSOLE = True
 except ImportError:
