@@ -208,6 +208,7 @@ try:
     import psana  # noqa: F401
 except ImportError:
     _xfail_files["rad_integral.fc"] = "psana not available"
+    _xfail_files["Rousseau.fc"] = "psana not available"
 
 
 @pytest.mark.asyncio
