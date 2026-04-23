@@ -6142,7 +6142,7 @@
   },
   "library": {
     "paths": [
-      "/sdf/home/x/xppopr/daq/ami_graphs/threshold_detector.py"
+      "tests/graphs/threshold_detector.py"
     ]
   }
 }

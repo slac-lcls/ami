@@ -226,7 +226,7 @@ class NodeProcess(QtCore.QObject):
         self.headless = headless
 
         if loop is None:
-            self.app = QtWidgets.QApplication([])
+            self.app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
 
             if THEME:
                 qdarktheme.setup_theme(THEME)
