@@ -203,7 +203,11 @@ def extract_expected_features(fc_path):
 
 # Collect .fc files for parametrization
 _fc_files = sorted(glob.glob("tests/graphs/*.fc"))
-_xfail_files = {"XAS_HSD.fc"}
+_xfail_files = {"XAS_HSD.fc": "dict source type not mockable"}
+try:
+    import psana  # noqa: F401
+except ImportError:
+    _xfail_files["rad_integral.fc"] = "psana not available"
 
 
 @pytest.mark.asyncio
@@ -217,7 +221,7 @@ _xfail_files = {"XAS_HSD.fc"}
 async def test_fc_graph_smoke(qtbot, flowchart, start_ami, fc_file):
     """Load each .fc graph, apply to backend, verify it executes and produces expected features."""
     if Path(fc_file).name in _xfail_files:
-        pytest.xfail(f"{Path(fc_file).name}: dict source type not mockable")
+        pytest.xfail(f"{Path(fc_file).name}: {_xfail_files[Path(fc_file).name]}")
 
     fc, broker = flowchart
     comm = start_ami
