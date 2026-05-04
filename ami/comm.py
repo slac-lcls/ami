@@ -1158,6 +1158,18 @@ class Collector(abc.ABC):
         self.event_time = pc.Gauge("ami_event_time_secs", "Event Time", ["hutch", "type", "process"])
         self.event_size = pc.Gauge("ami_event_size_bytes", "Event Size", ["hutch", "process"])
         self.event_latency = pc.Gauge("ami_event_latency_secs", "Event Latency", ["hutch", "sender", "process"])
+        self.heartbeat_duration = pc.Histogram(
+            "ami_heartbeat_duration_seconds",
+            "Heartbeat processing duration",
+            ["hutch", "process"],
+            buckets=[0.001, 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5],
+        )
+        self.heartbeat_latency = pc.Histogram(
+            "ami_heartbeat_latency_seconds",
+            "Heartbeat end-to-end latency",
+            ["hutch", "sender", "process"],
+            buckets=[0.001, 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0],
+        )
 
     def register(self, sock, handler):
         """

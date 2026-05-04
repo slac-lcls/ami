@@ -124,6 +124,13 @@ class Manager(Collector):
             self.event_latency.labels(self.hutch, "globalCollector%03d" % msg.identity, self.name).set(
                 latency.total_seconds()
             )
+            from ami.tracing import get_trace_id
+
+            trace_id = get_trace_id(msg.heartbeat.identity)
+            self.heartbeat_latency.labels(self.hutch, "globalCollector%03d" % msg.identity, self.name).observe(
+                latency.total_seconds(),
+                exemplar={"TraceID": trace_id} if trace_id else None,
+            )
             datagram_start = time.time()
             if msg.name not in self.feature_stores:
                 if msg.name in self.purged:
@@ -176,6 +183,13 @@ class Manager(Collector):
 
             self.event_counter.labels(self.hutch, "Heartbeat", self.name).inc()
             self.event_time.labels(self.hutch, "Heartbeat", self.name).set(time.time() - datagram_start)
+            from ami.tracing import get_trace_id
+
+            trace_id = get_trace_id(msg.heartbeat.identity)
+            self.heartbeat_duration.labels(self.hutch, self.name).observe(
+                time.time() - datagram_start,
+                exemplar={"TraceID": trace_id} if trace_id else None,
+            )
         elif (msg.mtype == MsgTypes.Transition) and (msg.payload.ttype == Transitions.Configure):
             changed = msg.payload.payload != self.partition
             self.partition = msg.payload.payload

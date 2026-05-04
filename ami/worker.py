@@ -190,6 +190,12 @@ class Worker(Node):
         event_time = pc.Gauge("ami_event_time_secs", "Event Time", ["hutch", "type", "process"])
         event_size = pc.Gauge("ami_event_size_bytes", "Event Size", ["hutch", "process"])
         event_latency = pc.Gauge("ami_event_latency_secs", "Event Latency", ["hutch", "sender", "process"])
+        heartbeat_duration = pc.Histogram(
+            "ami_heartbeat_duration_seconds",
+            "Heartbeat processing duration",
+            ["hutch", "process"],
+            buckets=[0.001, 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5],
+        )
 
         idle_start = time.time()
         idle_stop = time.time()
@@ -245,6 +251,14 @@ class Worker(Node):
                     heartbeat_time += heartbeat_stop - heartbeat_start
                     event_time.labels(self.hutch, "Heartbeat", self.name).set(heartbeat_time)
                     event_size.labels(self.hutch, self.name).set(size)
+
+                    from ami.tracing import get_trace_id
+
+                    trace_id = get_trace_id(msg.payload.identity)
+                    heartbeat_duration.labels(self.hutch, self.name).observe(
+                        heartbeat_time,
+                        exemplar={"TraceID": trace_id} if trace_id else None,
+                    )
 
                     from ami.tracing import start_child_span, start_span
 

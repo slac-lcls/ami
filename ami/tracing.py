@@ -179,3 +179,21 @@ def start_child_span(parent_span, name, start_time_ns=None, attributes=None):
 def is_enabled():
     """Returns whether tracing is currently enabled."""
     return _enabled
+
+
+def get_trace_id(heartbeat_identity):
+    """Return the deterministic trace ID as a hex string for use as a Prometheus exemplar.
+
+    Args:
+        heartbeat_identity: The heartbeat identity (int)
+
+    Returns:
+        32-character hex string trace ID, or None if tracing is disabled.
+    """
+    if not _enabled:
+        return None
+    digest = hashlib.sha256(f"ami-heartbeat-{heartbeat_identity}".encode()).digest()
+    trace_id = int.from_bytes(digest[:16], byteorder="big")
+    if trace_id == 0:
+        trace_id = 1
+    return format(trace_id, "032x")
