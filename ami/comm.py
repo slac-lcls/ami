@@ -590,7 +590,31 @@ class GraphBuilder(ContributionBuilder):
         if len(self.pending) > depth:
             for eb_key in reversed(sorted(self.pending.keys(), reverse=True)[depth:]):
                 logger.debug("Pruned uncompleted key %s", eb_key)
+                # Capture pruning metadata from bitmask
+                num_present = bin(self.contribs.get(eb_key, 0)).count("1")
+                ratio = num_present / self.num_contribs if self.num_contribs else 0
+                age = self.latest.identity - eb_key.identity if hasattr(eb_key, "identity") else 0
+
                 times, size = self.complete(eb_key, identity, drop)
+
+                # Create trace span for pruned heartbeat
+                from ami.tracing import start_span
+
+                hb_identity = eb_key.identity if hasattr(eb_key, "identity") else eb_key
+                span = start_span(
+                    f"{self.color}.prune",
+                    hb_identity,
+                    attributes={
+                        "collector.color": str(self.color),
+                        "collector.pruned": True,
+                        "collector.contrib_ratio": round(ratio, 4),
+                        "collector.num_present": num_present,
+                        "collector.num_contribs": self.num_contribs,
+                        "collector.prune_age": age,
+                    },
+                )
+                if span:
+                    span.end()
 
         return times, size
 
@@ -666,6 +690,25 @@ class GraphBuilder(ContributionBuilder):
 
         if self.graph:
             self.graph.heartbeat_finished()
+
+        # Create trace span for completed heartbeat
+        from ami.tracing import start_span
+
+        graph_exec_secs = sum(s[1] - s[0] for s in times) if times else 0
+        hb_identity = eb_key.identity if hasattr(eb_key, "identity") else eb_key
+        span = start_span(
+            f"{self.color}.heartbeat",
+            hb_identity,
+            attributes={
+                "collector.color": str(self.color),
+                "collector.pruned": False,
+                "collector.graph_exec_secs": round(graph_exec_secs, 6),
+                "collector.data_size_bytes": size,
+                "collector.num_contribs": self.num_contribs,
+            },
+        )
+        if span:
+            span.end()
 
         return times, size
 

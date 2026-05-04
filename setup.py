@@ -45,6 +45,11 @@ setup(
         "arrow": ["pyarrow>=0.17"],
         "lcls": ["psana", "h5py", "p4p"],
         "console": ["qtconsole"],
+        "tracing": [
+            "opentelemetry-api",
+            "opentelemetry-sdk",
+            "opentelemetry-exporter-otlp-proto-grpc",
+        ],
         "dev": [
             "pre-commit>=3.6.0",
             "black==24.2.0",

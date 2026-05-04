@@ -162,6 +162,18 @@ class Manager(Collector):
                 # export data for viewing in the AMI GUI
                 # self.export_view(msg.name, keys=msg.payload.keys())
 
+                from ami.tracing import start_span
+
+                span = start_span(
+                    "manager.heartbeat",
+                    msg.heartbeat.identity,
+                    attributes={
+                        "manager.graph": msg.name,
+                    },
+                )
+                if span:
+                    span.end()
+
             self.event_counter.labels(self.hutch, "Heartbeat", self.name).inc()
             self.event_time.labels(self.hutch, "Heartbeat", self.name).set(time.time() - datagram_start)
         elif (msg.mtype == MsgTypes.Transition) and (msg.payload.ttype == Transitions.Configure):
@@ -751,6 +763,10 @@ def run_manager(
     cprofile,
 ):
     logger.info("Starting manager, controlling %d workers on %d nodes PID: %d", num_workers, num_nodes, os.getpid())
+
+    from ami.tracing import setup_tracing
+
+    setup_tracing("ami-manager")
 
     if cprofile:
         profiler = cProfile.Profile()

@@ -154,6 +154,12 @@ def build_parser():
 
     parser.add_argument("--use-numba", help="Use numba for plots.", action="store_true")
 
+    parser.add_argument(
+        "--tracing-endpoint",
+        help="OpenTelemetry endpoint for tracing (e.g. localhost:4317 or 'console' for stdout)",
+        default=None,
+    )
+
     return parser
 
 
@@ -310,6 +316,9 @@ def run_ami(args, queue=None):
             select_lock = None
             select_hb = None
             select_idx = None
+
+        if args.tracing_endpoint:
+            os.environ["AMI_TRACING_ENDPOINT"] = args.tracing_endpoint
 
         for i in range(args.num_workers):
             proc = mp.Process(
