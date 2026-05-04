@@ -194,6 +194,9 @@ class Worker(Node):
         idle_start = time.time()
         idle_stop = time.time()
         heartbeat_time = 0
+        hb_graph_time = 0
+        hb_num_datagrams = 0
+        hb_interval_start_ns = time.time_ns()
 
         while True:
             for msg in self.src.events():
@@ -203,7 +206,9 @@ class Worker(Node):
                 # check to see if the graph has been reconfigured after update
                 if msg.mtype == MsgTypes.Heartbeat:
                     heartbeat_start = time.time()
+                    send_start = time.time()
                     size = self.collect(msg.payload)
+                    send_time = time.time() - send_start
                     for name, graph in self.graphs.items():
                         if graph:
                             graph.heartbeat_finished()
@@ -237,7 +242,29 @@ class Worker(Node):
                     heartbeat_time += heartbeat_stop - heartbeat_start
                     event_time.labels(self.hutch, "Heartbeat", self.name).set(heartbeat_time)
                     event_size.labels(self.hutch, self.name).set(size)
+
+                    from ami.tracing import start_span
+
+                    span = start_span(
+                        "worker.heartbeat",
+                        msg.payload.identity,
+                        start_time_ns=hb_interval_start_ns,
+                        attributes={
+                            "worker.id": self.num,
+                            "worker.graph_exec_secs": round(hb_graph_time, 6),
+                            "worker.send_secs": round(send_time, 6),
+                            "worker.overhead_secs": round(max(0, heartbeat_time - hb_graph_time - send_time), 6),
+                            "worker.num_datagrams": hb_num_datagrams,
+                            "worker.data_size_bytes": size,
+                        },
+                    )
+                    if span:
+                        span.end()
+
                     heartbeat_time = 0
+                    hb_graph_time = 0
+                    hb_num_datagrams = 0
+                    hb_interval_start_ns = time.time_ns()
 
                 elif msg.mtype == MsgTypes.Datagram:
                     datagram_start = time.time()
@@ -257,6 +284,8 @@ class Worker(Node):
                                 start = time.time()
                                 graph_result = graph(msg.payload, color=Colors.Worker)
                                 stop = time.time()
+
+                                hb_graph_time += stop - start
 
                                 self.store.update(name, graph_result)
 
@@ -283,6 +312,7 @@ class Worker(Node):
                             self.report("purge", name)
 
                     self.num_events += 1
+                    hb_num_datagrams += 1
                     event_counter.labels(self.hutch, "Datagram", self.name).inc()
                     datagram_duration = time.time() - datagram_start
                     event_time.labels(self.hutch, "Datagram", self.name).set(datagram_duration)
@@ -345,6 +375,10 @@ def run_worker(
 ):
 
     logger.info("Starting worker # %d, sending to collector at %s PID: %d", num, collector_addr, os.getpid())
+
+    from ami.tracing import setup_tracing
+
+    setup_tracing(f"ami-worker-{num}")
 
     if cprofile:
         profiler = cProfile.Profile()

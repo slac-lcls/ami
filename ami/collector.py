@@ -225,6 +225,11 @@ def run_collector(
     timeout,
 ):
     logger.info("Starting collector on node # %d PID: %d", node_num, os.getpid())
+
+    from ami.tracing import setup_tracing
+
+    setup_tracing(f"ami-{base_name % node_num}")
+
     with GraphCollector(
         node_num,
         base_name,
