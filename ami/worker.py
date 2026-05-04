@@ -197,15 +197,18 @@ class Worker(Node):
         hb_graph_time = 0
         hb_num_datagrams = 0
         hb_interval_start_ns = time.time_ns()
+        hb_idle_time = 0
 
         while True:
             for msg in self.src.events():
                 idle_stop = time.time()
                 event_time.labels(self.hutch, "Idle", self.name).set(idle_stop - idle_start)
+                hb_idle_time += idle_stop - idle_start
 
                 # check to see if the graph has been reconfigured after update
                 if msg.mtype == MsgTypes.Heartbeat:
                     heartbeat_start = time.time()
+                    saved_event_rate = self.event_rate
                     send_start = time.time()
                     size = self.collect(msg.payload)
                     send_time = time.time() - send_start
@@ -243,27 +246,63 @@ class Worker(Node):
                     event_time.labels(self.hutch, "Heartbeat", self.name).set(heartbeat_time)
                     event_size.labels(self.hutch, self.name).set(size)
 
-                    from ami.tracing import start_span
+                    from ami.tracing import start_child_span, start_span
 
-                    span = start_span(
+                    hb_end_ns = time.time_ns()
+                    parent = start_span(
                         "worker.heartbeat",
                         msg.payload.identity,
                         start_time_ns=hb_interval_start_ns,
                         attributes={
-                            "worker.id": self.num,
-                            "worker.graph_exec_secs": round(hb_graph_time, 6),
-                            "worker.send_secs": round(send_time, 6),
-                            "worker.overhead_secs": round(max(0, heartbeat_time - hb_graph_time - send_time), 6),
+                            "worker.id": self.node,
                             "worker.num_datagrams": hb_num_datagrams,
                             "worker.data_size_bytes": size,
+                            "worker.source_idle_secs": round(hb_idle_time, 6),
                         },
                     )
-                    if span:
-                        span.end()
+                    if parent:
+                        # Graph execution child span
+                        # Use event_rate timestamps for boundaries
+                        all_periods = []
+                        for name_key, periods in saved_event_rate.items():
+                            if isinstance(periods, list):
+                                all_periods.extend(periods)
+                        if all_periods and hb_graph_time > 0:
+                            graph_first_ns = int(all_periods[0][0] * 1e9)
+                            graph_last_ns = int(all_periods[-1][1] * 1e9)
+                            child = start_child_span(
+                                parent,
+                                "worker.graph_exec",
+                                start_time_ns=graph_first_ns,
+                                attributes={
+                                    "worker.graph_exec_secs": round(hb_graph_time, 6),
+                                    "worker.num_datagrams": hb_num_datagrams,
+                                },
+                            )
+                            if child:
+                                child.end(end_time=graph_last_ns)
+
+                        # Collect (serialize + send) child span
+                        send_start_ns = int(send_start * 1e9)
+                        send_end_ns = int((send_start + send_time) * 1e9)
+                        child = start_child_span(
+                            parent,
+                            "worker.collect",
+                            start_time_ns=send_start_ns,
+                            attributes={
+                                "worker.send_secs": round(send_time, 6),
+                                "worker.data_size_bytes": size,
+                            },
+                        )
+                        if child:
+                            child.end(end_time=send_end_ns)
+
+                        parent.end(end_time=hb_end_ns)
 
                     heartbeat_time = 0
                     hb_graph_time = 0
                     hb_num_datagrams = 0
+                    hb_idle_time = 0
                     hb_interval_start_ns = time.time_ns()
 
                 elif msg.mtype == MsgTypes.Datagram:
