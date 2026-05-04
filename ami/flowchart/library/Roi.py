@@ -259,7 +259,7 @@ class Roi2D(CtrlNode):
         )
 
     def isChanged(self, restore_ctrl, restore_widget):
-        return restore_ctrl or self.changed
+        return restore_ctrl
 
     def display(self, topics, terms, addr, win, **kwargs):
         super().display(topics, terms, addr, win, ImageWidget, **kwargs)
