@@ -19,7 +19,7 @@ try:
     from opentelemetry import trace
     from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
     from opentelemetry.sdk.trace import TracerProvider
-    from opentelemetry.sdk.trace.export import BatchSpanProcessor, ConsoleSpanExporter
+    from opentelemetry.sdk.trace.export import ConsoleSpanExporter, SimpleSpanProcessor
     from opentelemetry.trace import NonRecordingSpan, SpanContext, TraceFlags
 
     _OTEL_AVAILABLE = True
@@ -59,7 +59,7 @@ def setup_tracing(service_name, endpoint=None):
         exporter = OTLPSpanExporter(endpoint=endpoint, insecure=True)
 
     # Add span processor
-    processor = BatchSpanProcessor(exporter)
+    processor = SimpleSpanProcessor(exporter)
     provider.add_span_processor(processor)
 
     # Set as global provider
@@ -150,6 +150,30 @@ def start_span(name, heartbeat_identity, start_time_ns=None, attributes=None):
     )
 
     return span
+
+
+def start_child_span(parent_span, name, start_time_ns=None, attributes=None):
+    """Start a child span under the given parent span.
+
+    Args:
+        parent_span: The parent span to create a child of
+        name: Span name
+        start_time_ns: Optional start time in nanoseconds
+        attributes: Optional dict of span attributes
+
+    Returns:
+        Span object if tracing is enabled, None otherwise.
+        Caller must call span.end() when done.
+    """
+    if not _enabled or _tracer is None or parent_span is None:
+        return None
+    parent_ctx = trace.set_span_in_context(parent_span)
+    return _tracer.start_span(
+        name,
+        context=parent_ctx,
+        start_time=start_time_ns,
+        attributes=attributes,
+    )
 
 
 def is_enabled():

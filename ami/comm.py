@@ -557,6 +557,8 @@ class GraphBuilder(ContributionBuilder):
         self.pending_graphs = {}
         self.version = None
         self.completion = completion
+        self.arrival_times = {}
+        self._pruning = False
 
     def _init(self, name):
         if self.graph is None:
@@ -590,12 +592,17 @@ class GraphBuilder(ContributionBuilder):
         if len(self.pending) > depth:
             for eb_key in reversed(sorted(self.pending.keys(), reverse=True)[depth:]):
                 logger.debug("Pruned uncompleted key %s", eb_key)
-                # Capture pruning metadata from bitmask
-                num_present = bin(self.contribs.get(eb_key, 0)).count("1")
+                # Capture pruning metadata from bitmask before complete() deletes it
+                contribs_mask = self.contribs.get(eb_key, 0)
+                num_present = bin(contribs_mask).count("1")
                 ratio = num_present / self.num_contribs if self.num_contribs else 0
                 age = self.latest.identity - eb_key.identity if hasattr(eb_key, "identity") else 0
+                missing_workers = [i for i in range(self.num_contribs) if not (contribs_mask & (1 << i))]
+                arrival_ns = self.arrival_times.pop(eb_key, None)
 
+                self._pruning = True
                 times, size = self.complete(eb_key, identity, drop)
+                self._pruning = False
 
                 # Create trace span for pruned heartbeat
                 from ami.tracing import start_span
@@ -604,13 +611,14 @@ class GraphBuilder(ContributionBuilder):
                 span = start_span(
                     f"{self.color}.prune",
                     hb_identity,
+                    start_time_ns=arrival_ns,
                     attributes={
-                        "collector.color": str(self.color),
                         "collector.pruned": True,
                         "collector.contrib_ratio": round(ratio, 4),
                         "collector.num_present": num_present,
                         "collector.num_contribs": self.num_contribs,
                         "collector.prune_age": age,
+                        "collector.missing_workers": missing_workers,
                     },
                 )
                 if span:
@@ -686,29 +694,68 @@ class GraphBuilder(ContributionBuilder):
         else:
             self.pending[eb_key].clear()
 
+        send_start_ns = time.time_ns()
         size = self.completion(eb_key, identity, self.pending[eb_key], drop)
+        send_end_ns = time.time_ns()
 
         if self.graph:
             self.graph.heartbeat_finished()
 
-        # Create trace span for completed heartbeat
-        from ami.tracing import start_span
+        # Create trace spans for completed heartbeat (skip if called from prune path)
+        if not self._pruning:
+            from ami.tracing import start_child_span, start_span
 
-        graph_exec_secs = sum(s[1] - s[0] for s in times) if times else 0
-        hb_identity = eb_key.identity if hasattr(eb_key, "identity") else eb_key
-        span = start_span(
-            f"{self.color}.heartbeat",
-            hb_identity,
-            attributes={
-                "collector.color": str(self.color),
-                "collector.pruned": False,
-                "collector.graph_exec_secs": round(graph_exec_secs, 6),
-                "collector.data_size_bytes": size,
-                "collector.num_contribs": self.num_contribs,
-            },
-        )
-        if span:
-            span.end()
+            hb_identity = eb_key.identity if hasattr(eb_key, "identity") else eb_key
+            arrival_ns = self.arrival_times.pop(eb_key, None)
+            complete_end_ns = time.time_ns()
+            graph_exec_secs = sum(s[1] - s[0] for s in times) if times else 0
+
+            parent = start_span(
+                f"{self.color}.heartbeat",
+                hb_identity,
+                start_time_ns=arrival_ns,
+                attributes={
+                    "collector.pruned": False,
+                    "collector.num_contribs": self.num_contribs,
+                    "collector.data_size_bytes": size,
+                },
+            )
+            if parent:
+                # Wait child span: from first arrival to graph execution start
+                graph_exec_start_ns = int(times[0][0] * 1e9) if times else send_start_ns
+                wait_secs = (graph_exec_start_ns - arrival_ns) / 1e9 if arrival_ns else 0
+                child = start_child_span(
+                    parent,
+                    "collector.wait",
+                    start_time_ns=arrival_ns,
+                    attributes={"collector.wait_secs": round(wait_secs, 6)},
+                )
+                if child:
+                    child.end(end_time=graph_exec_start_ns)
+
+                # Graph exec child span
+                if times:
+                    graph_exec_end_ns = int(times[-1][1] * 1e9)
+                    child = start_child_span(
+                        parent,
+                        "collector.graph_exec",
+                        start_time_ns=int(times[0][0] * 1e9),
+                        attributes={"collector.graph_exec_secs": round(graph_exec_secs, 6)},
+                    )
+                    if child:
+                        child.end(end_time=graph_exec_end_ns)
+
+                # Send child span
+                child = start_child_span(
+                    parent,
+                    "collector.send",
+                    start_time_ns=send_start_ns,
+                    attributes={"collector.data_size_bytes": size},
+                )
+                if child:
+                    child.end(end_time=send_end_ns)
+
+                parent.end(end_time=complete_end_ns)
 
         return times, size
 
@@ -716,6 +763,7 @@ class GraphBuilder(ContributionBuilder):
         if eb_key not in self.pending:
             self.pending[eb_key] = Store(version=ver_key)
             self.contribs[eb_key] = 0
+            self.arrival_times[eb_key] = time.time_ns()
         if eb_key > self.latest:
             self.latest = eb_key
         if ver_key != self.pending[eb_key].version:
