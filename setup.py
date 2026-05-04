@@ -47,7 +47,7 @@ setup(
         "console": ["qtconsole"],
         "dev": [
             "pre-commit>=3.6.0",
-            "black==24.2.0",
+            "black==26.3.1",
             "isort==5.13.2",
             "flake8",
             "flake8-black",
