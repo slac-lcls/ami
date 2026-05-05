@@ -252,13 +252,18 @@ class PlotWidget(QtWidgets.QWidget):
             uiTemplate = [
                 ("Title", "text"),
                 ("Show Grid", "check", {"checked": True}),
-                # ('Auto Range', 'check', {'checked': True}),
                 # x axis
                 ("Label", "text", {"group": "X Axis"}),
                 ("Log Scale", "check", {"group": "X Axis", "checked": False}),
+                ("Auto Range", "check", {"group": "X Axis", "checked": True}),
+                ("Min", "doubleSpin", {"group": "X Axis", "value": 0.0}),
+                ("Max", "doubleSpin", {"group": "X Axis", "value": 100.0}),
                 # y axis
                 ("Label", "text", {"group": "Y Axis"}),
                 ("Log Scale", "check", {"group": "Y Axis", "checked": False}),
+                ("Auto Range", "check", {"group": "Y Axis", "checked": True}),
+                ("Min", "doubleSpin", {"group": "Y Axis", "value": 0.0}),
+                ("Max", "doubleSpin", {"group": "Y Axis", "value": 100.0}),
                 # screenshots
                 (
                     "Record Screenshots",
@@ -277,6 +282,9 @@ class PlotWidget(QtWidgets.QWidget):
 
         if self.stateGroup:
             self.stateGroup.sigChanged.connect(self.state_changed)
+
+        # Setup range control connections
+        self._setup_range_controls()
 
         ctrl_layout = self.ui.layout()
 
@@ -319,6 +327,62 @@ class PlotWidget(QtWidgets.QWidget):
         self.win.setCentralWidget(scrollArea)
         if self.node:
             self.win.setWindowTitle(self.node.name() + " configuration")
+
+    def _setup_single_axis_controls(self, axis_name):
+        """Setup Auto Range checkbox to enable/disable Min/Max spinboxes for one axis.
+
+        Args:
+            axis_name: str - "X Axis" or "Y Axis"
+        """
+        if axis_name not in self.ctrls:
+            return
+
+        auto = self.ctrls[axis_name].get("Auto Range")
+        min_ctrl = self.ctrls[axis_name].get("Min")
+        max_ctrl = self.ctrls[axis_name].get("Max")
+
+        if auto and min_ctrl and max_ctrl:
+
+            def auto_toggled(checked):
+                min_ctrl.setEnabled(not checked)
+                max_ctrl.setEnabled(not checked)
+
+            auto.toggled.connect(auto_toggled)
+            # Set initial state
+            min_ctrl.setEnabled(not auto.isChecked())
+            max_ctrl.setEnabled(not auto.isChecked())
+
+    def _setup_range_controls(self):
+        """Connect Auto Range checkboxes to enable/disable min/max spinboxes."""
+        self._setup_single_axis_controls("X Axis")
+        self._setup_single_axis_controls("Y Axis")
+
+    def _update_single_axis_spinboxes(self, axis_name, min_val, max_val):
+        """Update min/max spinbox values for one axis.
+
+        Args:
+            axis_name: str - "X Axis" or "Y Axis"
+            min_val: float - Minimum value to set
+            max_val: float - Maximum value to set
+        """
+        if axis_name not in self.ctrls:
+            return
+
+        if "Min" in self.ctrls[axis_name]:
+            self.ctrls[axis_name]["Min"].setValue(min_val)
+        if "Max" in self.ctrls[axis_name]:
+            self.ctrls[axis_name]["Max"].setValue(max_val)
+
+    def _update_range_spinboxes(self):
+        """Update min/max spinbox values from current viewbox state."""
+        viewbox_ranges = self.plot_view.vb.viewRange()
+        # viewbox_ranges = [[xmin, xmax], [ymin, ymax]]
+
+        x_min, x_max = viewbox_ranges[0]
+        y_min, y_max = viewbox_ranges[1]
+
+        self._update_single_axis_spinboxes("X Axis", x_min, x_max)
+        self._update_single_axis_spinboxes("Y Axis", y_min, y_max)
 
     def update_legend_layout(self, idx, data_name, name=None, **kwargs):
         restore = kwargs.get("restore", False)
@@ -389,6 +453,36 @@ class PlotWidget(QtWidgets.QWidget):
         else:
             self.plot_attrs[name] = val
 
+    def _apply_axis_range(self, axis_name, axis_attrs):
+        """Apply range settings for a single axis (X or Y).
+
+        Args:
+            axis_name: str - "X" or "Y"
+            axis_attrs: dict - Axis attributes from self.plot_attrs
+        """
+        auto_range = axis_attrs.get("Auto Range", True)
+
+        # Determine axis constant and setter method
+        if axis_name == "X":
+            axis_const = pg.ViewBox.XAxis
+            set_range = self.plot_view.setXRange
+        else:  # Y
+            axis_const = pg.ViewBox.YAxis
+            set_range = self.plot_view.setYRange
+
+        if auto_range:
+            self.plot_view.vb.enableAutoRange(axis=axis_const)
+        else:
+            min_val = axis_attrs.get("Min", 0.0)
+            max_val = axis_attrs.get("Max", 100.0)
+
+            # Validation: swap if min > max
+            if min_val > max_val:
+                min_val, max_val = max_val, min_val
+
+            set_range(min_val, max_val, padding=0)
+            self.plot_view.vb.disableAutoRange(axis=axis_const)
+
     def apply_clicked(self):
         title = self.plot_attrs.get("Title", None)
         if title:
@@ -412,12 +506,9 @@ class PlotWidget(QtWidgets.QWidget):
         show_grid = self.plot_attrs.get("Show Grid", True)
         self.plot_view.showGrid(x=show_grid, y=show_grid, alpha=1.0)
 
-        # if "Auto Range" in self.plot_attrs:
-        #     auto_range = self.plot_attrs["Auto Range"]
-        #     if auto_range:
-        #         self.plot_view.vb.enableAutoRange()
-        #     else:
-        #         self.plot_view.vb.disableAutoRange()
+        # Apply axis range settings
+        self._apply_axis_range("X", x_axis)
+        self._apply_axis_range("Y", y_axis)
 
         if "Legend" in self.ctrls:
             self.legend.clear()
@@ -518,6 +609,8 @@ class PlotWidget(QtWidgets.QWidget):
         self.screenshot_counter = state.get("screenshot_counter", 0)
 
     def configure_plot(self):
+        # Update min/max spinboxes with current viewbox ranges
+        self._update_range_spinboxes()
         self.win.resize(800, 1000)
         self.win.show()
 
