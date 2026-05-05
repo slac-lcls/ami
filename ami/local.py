@@ -10,6 +10,7 @@ import signal
 import socket
 import sys
 import tempfile
+import uuid
 
 import ami.multiproc as mp
 from ami import Defaults, LogConfig
@@ -319,6 +320,7 @@ def run_ami(args, queue=None):
 
         if args.tracing_endpoint:
             os.environ["AMI_TRACING_ENDPOINT"] = args.tracing_endpoint
+            os.environ["AMI_TRACING_SESSION_ID"] = str(uuid.uuid4())
 
         for i in range(args.num_workers):
             proc = mp.Process(

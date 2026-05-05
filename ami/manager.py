@@ -851,7 +851,22 @@ def main():
 
     parser.add_argument("--cprofile", help="profile with cprofile", action="store_true")
 
+    parser.add_argument(
+        "--tracing-endpoint",
+        help="OpenTelemetry endpoint for tracing (e.g. localhost:4317 or 'console' for stdout)",
+    )
+
+    parser.add_argument(
+        "--tracing-session-id",
+        help="Shared session ID for trace correlation across processes (default: AMI_TRACING_SESSION_ID env var)",
+    )
+
     args = parser.parse_args()
+
+    if args.tracing_endpoint:
+        os.environ["AMI_TRACING_ENDPOINT"] = args.tracing_endpoint
+    if args.tracing_session_id:
+        os.environ["AMI_TRACING_SESSION_ID"] = args.tracing_session_id
 
     results_addr = "tcp://%s:%d" % (args.host, args.port + Ports.Results)
     graph_addr = "tcp://%s:%d" % (args.host, args.port + Ports.Graph)
