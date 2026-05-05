@@ -196,6 +196,23 @@ Traces provide end-to-end visibility to diagnose performance issues. Here are th
 - Check percentage attributes (`pct_wait`, `pct_graph_exec`, `pct_send`, `pct_idle`) to see where time was spent during the prune
 - Even though data was incomplete, the collector still executed the graph on whatever contributions it received — child spans show this breakdown
 
+### Understanding `collector.wait` Span Semantics
+
+The `collector.wait` span has different meanings depending on whether the heartbeat completed normally or was pruned:
+
+**Normal completion:**
+- **Start:** First worker contribution arrives at the collector
+- **End:** ALL workers have contributed (event builder bitmask is complete)
+- **Meaning:** Time spent waiting for stragglers (slowest workers to send their results)
+- **Diagnosis:** A long `collector.wait` means one or more workers are slow — cross-reference by looking at which `worker.collect` span ends last
+
+**Prune (ERROR span):**
+- **Start:** First worker contribution arrives at the collector
+- **End:** Prune decision is triggered (newer heartbeat completes and depth limit is exceeded)
+- **Meaning:** How long the system held onto incomplete data before giving up
+- **Diagnosis:** Combined with `collector.missing_workers` attribute, shows which workers never contributed and how long the collector waited before pruning
+- **Additional context:** Check `collector.prune_age` to see how many heartbeats behind this one was when it got pruned
+
 ### 3. Is the graph taking long?
 
 **Look for:**
