@@ -263,6 +263,7 @@ class Worker(Node):
                     from ami.tracing import start_child_span, start_span
 
                     hb_end_ns = time.time_ns()
+                    full_interval_secs = (hb_end_ns - hb_interval_start_ns) / 1e9
                     parent = start_span(
                         "worker.heartbeat",
                         msg.payload.identity,
@@ -272,16 +273,25 @@ class Worker(Node):
                             "worker.num_datagrams": hb_num_datagrams,
                             "worker.data_size_bytes": size,
                             "worker.source_idle_secs": round(hb_idle_time, 6),
+                            "worker.pct_idle": (
+                                round((hb_idle_time / full_interval_secs) * 100, 1) if full_interval_secs > 0 else 0
+                            ),
+                            "worker.pct_graph_exec": (
+                                round((hb_graph_time / full_interval_secs) * 100, 1) if full_interval_secs > 0 else 0
+                            ),
+                            "worker.pct_collect": (
+                                round((send_time / full_interval_secs) * 100, 1) if full_interval_secs > 0 else 0
+                            ),
                         },
                     )
                     if parent:
-                        # Graph execution child span
-                        # Use event_rate timestamps for boundaries
+                        # Graph execution child span (real wall clock: first exec → last exec)
                         all_periods = []
                         for name_key, periods in saved_event_rate.items():
                             if isinstance(periods, list):
                                 all_periods.extend(periods)
                         if all_periods and hb_graph_time > 0:
+                            all_periods.sort()
                             graph_first_ns = int(all_periods[0][0] * 1e9)
                             graph_last_ns = int(all_periods[-1][1] * 1e9)
                             child = start_child_span(
@@ -296,7 +306,7 @@ class Worker(Node):
                             if child:
                                 child.end(end_time=graph_last_ns)
 
-                        # Collect (serialize + send) child span
+                        # Collect (serialize + send) child span (real wall clock)
                         send_start_ns = int(send_start * 1e9)
                         send_end_ns = int((send_start + send_time) * 1e9)
                         child = start_child_span(

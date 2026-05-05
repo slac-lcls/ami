@@ -410,6 +410,16 @@ def main(color, upstream_port, downstream_port):
 
     parser.add_argument("--cprofile", help="profile with cprofile", action="store_true")
 
+    parser.add_argument(
+        "--tracing-endpoint",
+        help="OpenTelemetry endpoint for tracing (e.g. localhost:4317 or 'console' for stdout)",
+    )
+
+    parser.add_argument(
+        "--tracing-session-id",
+        help="Shared session ID for trace correlation across processes (default: AMI_TRACING_SESSION_ID env var)",
+    )
+
     subparsers = parser.add_subparsers(help="spawn workers", dest="worker")
     worker_subparser = subparsers.add_parser("worker", help="worker arguments")
 
@@ -436,6 +446,11 @@ def main(color, upstream_port, downstream_port):
     )
 
     args = parser.parse_args()
+
+    if args.tracing_endpoint:
+        os.environ["AMI_TRACING_ENDPOINT"] = args.tracing_endpoint
+    if args.tracing_session_id:
+        os.environ["AMI_TRACING_SESSION_ID"] = args.tracing_session_id
 
     # if an address for the downstream collector is not specified just use the manager address
     if args.collection_host is not None:

@@ -16,6 +16,7 @@ logger = logging.getLogger(__name__)
 _enabled = False
 _tracer = None
 _id_generator = None
+_session_id = ""
 
 try:
     from opentelemetry import trace
@@ -51,7 +52,7 @@ class DeterministicTraceIdGenerator:
         return random.getrandbits(128)
 
 
-def setup_tracing(service_name, endpoint=None):
+def setup_tracing(service_name, endpoint=None, session_id=None):
     """
     Initialize OpenTelemetry tracing for AMI.
 
@@ -59,8 +60,10 @@ def setup_tracing(service_name, endpoint=None):
         service_name: Name of the service (e.g. "ami-worker-0", "ami-manager")
         endpoint: OTLP endpoint (host:port) or "console" for stdout.
                   If None, checks AMI_TRACING_ENDPOINT environment variable.
+        session_id: Unique session identifier for trace correlation.
+                    If None, checks AMI_TRACING_SESSION_ID environment variable.
     """
-    global _enabled, _tracer, _id_generator
+    global _enabled, _tracer, _id_generator, _session_id
 
     if not _OTEL_AVAILABLE:
         logger.info("OpenTelemetry not installed. Install with: pip install ami[tracing]")
@@ -72,6 +75,11 @@ def setup_tracing(service_name, endpoint=None):
 
     if not endpoint:
         return
+
+    # Resolve session ID: parameter → env var → empty string
+    if session_id is None:
+        session_id = os.environ.get("AMI_TRACING_SESSION_ID", "")
+    _session_id = session_id
 
     # Initialize TracerProvider with custom IdGenerator and Resource
     _id_generator = DeterministicTraceIdGenerator()
@@ -113,7 +121,7 @@ def heartbeat_context(heartbeat_identity):
         return None
 
     # Generate deterministic trace ID from heartbeat identity
-    hash_input = f"ami-heartbeat-{heartbeat_identity}".encode()
+    hash_input = f"ami-heartbeat-{_session_id}-{heartbeat_identity}".encode()
     digest = hashlib.sha256(hash_input).digest()
 
     # Use first 16 bytes for trace_id (128 bits)
@@ -151,12 +159,17 @@ def start_span(name, heartbeat_identity, start_time_ns=None, attributes=None):
     # Set deterministic trace ID on the generator
     heartbeat_context(heartbeat_identity)
 
+    # Merge heartbeat attribute with any caller-provided attributes
+    merged_attributes = {"heartbeat": int(heartbeat_identity)}
+    if attributes:
+        merged_attributes.update(attributes)
+
     # Start span WITHOUT parent context — makes it a true root span
     # The IdGenerator will supply our deterministic trace_id
     span = _tracer.start_span(
         name,
         start_time=start_time_ns,
-        attributes=attributes,
+        attributes=merged_attributes,
     )
 
     return span
@@ -217,7 +230,7 @@ def get_trace_id(heartbeat_identity):
     """
     if not _enabled:
         return None
-    digest = hashlib.sha256(f"ami-heartbeat-{heartbeat_identity}".encode()).digest()
+    digest = hashlib.sha256(f"ami-heartbeat-{_session_id}-{heartbeat_identity}".encode()).digest()
     trace_id = int.from_bytes(digest[:16], byteorder="big")
     if trace_id == 0:
         trace_id = 1
