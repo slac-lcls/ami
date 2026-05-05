@@ -605,7 +605,7 @@ class GraphBuilder(ContributionBuilder):
                 self._pruning = False
 
                 # Create trace span for pruned heartbeat
-                from ami.tracing import start_span
+                from ami.tracing import mark_span_error, start_span
 
                 hb_identity = eb_key.identity if hasattr(eb_key, "identity") else eb_key
                 span = start_span(
@@ -622,6 +622,7 @@ class GraphBuilder(ContributionBuilder):
                     },
                 )
                 if span:
+                    mark_span_error(span, f"Pruned: missing workers {missing_workers}")
                     span.end()
 
         return times, size

@@ -191,6 +191,21 @@ def is_enabled():
     return _enabled
 
 
+def mark_span_error(span, message):
+    """Mark a span with ERROR status for visual highlighting in Grafana.
+
+    Args:
+        span: The span to mark as error
+        message: Error message to attach to the span
+    """
+    if not _enabled or span is None:
+        return
+
+    from opentelemetry.trace import StatusCode
+
+    span.set_status(StatusCode.ERROR, message)
+
+
 def get_trace_id(heartbeat_identity):
     """Return the deterministic trace ID as a hex string for use as a Prometheus exemplar.
 
