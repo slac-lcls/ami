@@ -9,59 +9,24 @@ jobs:
     steps:
       - name: checkout
         uses: actions/checkout@v4
-      
+
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
           python-version: '3.9'
-      
+
       - name: Install formatting tools
         run: |
           pip install black==24.2.0 isort==5.13.2 flake8 flake8-black
-      
+
       - name: Check Black formatting
         run: black --check --line-length=120 .
-      
+
       - name: Check isort
         run: isort --check --profile=black --line-length=120 .
-      
+
       - name: Run flake8
         run: flake8
-
-  run-tests-macos:
-    runs-on: macos-latest
-    steps:
-      - name: checkout
-        uses: actions/checkout@v2
-      - name: conda installation on macos
-        run: |
-          echo "134.79.138.124 pswww.slac.stanford.edu" | sudo tee -a /etc/hosts;
-          wget https://repo.continuum.io/miniconda/Miniconda3-latest-MacOSX-x86_64.sh -O miniconda.sh;
-      - name: installation
-        run: |
-          bash miniconda.sh -b -p $HOME/miniconda
-          source "$HOME/miniconda/etc/profile.d/conda.sh"
-          conda config --set always_yes yes --set changeps1 no
-          conda config --prepend channels conda-forge
-          conda config --prepend channels lcls-ii
-          conda config --set channel_priority strict
-          conda info -a
-          conda env create -f "$GITHUB_WORKSPACE/.ci-environment.yaml"
-          conda install -q -n myrel flake8 prometheus_client qtconsole
-          conda activate myrel
-          python setup.py install --single-version-externally-managed --record=record.txt
-      - name: flake8
-        run: |
-          source "$HOME/miniconda/etc/profile.d/conda.sh"
-          conda activate myrel
-          flake8
-      - name: tests on macos
-        if: always()
-        run: |
-          source "$HOME/miniconda/etc/profile.d/conda.sh"
-          conda activate myrel
-          # cpo commented out macos tests until we have time to fix. july 29, 2022.
-          #pytest
 
   run-tests-linux:
     runs-on: ubuntu-latest
