@@ -731,8 +731,8 @@ class Flowchart(Node):
                 node.blockSignals(True)
                 node.restoreState(current_node_state)
                 node.blockSignals(False)
-                node.changed = node.isChanged(restore_ctrl, restore_widget)
-                if node.changed:
+                if node.isChanged(restore_ctrl, restore_widget):
+                    node.changed = True
                     self.sigNodeChanged.emit(node)
 
             node.viewed = new_node_state["viewed"]
