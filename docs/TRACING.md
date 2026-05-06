@@ -99,8 +99,10 @@ ami-global &
 | Span Name | Type | Service | Description | Key Attributes |
 |-----------|------|---------|-------------|----------------|
 | `worker.heartbeat` | root | worker | Full heartbeat interval from start of event processing to heartbeat completion | `heartbeat`, `worker.id`, `worker.num_datagrams`, `worker.data_size_bytes`, `worker.source_idle_secs`, `worker.pct_idle`, `worker.pct_graph_exec`, `worker.pct_collect` |
-| `worker.graph_exec` | child | worker | Consolidated graph execution time across all datagrams (real wall clock: first graph exec start to last graph exec end) | `worker.graph_exec_secs`, `worker.num_datagrams` |
-| `worker.collect` | child | worker | Serialize and send results to collector (real wall clock timestamps) | `worker.send_secs`, `worker.data_size_bytes` |
+| `worker.idle` | child | worker | Cumulative idle time within the heartbeat interval. Placed at interval start, duration equals total time spent waiting for data | none |
+| `worker.graph_exec` | child | worker | Cumulative graph execution time across all datagrams, placed sequentially after idle span | `worker.graph_exec_secs`, `worker.num_datagrams` |
+| `worker.collect` | child | worker | Serialize and send results to collector, placed sequentially after graph_exec span | `worker.send_secs`, `worker.data_size_bytes` |
+| `worker.overhead` | child | worker | Processing overhead (ZMQ polling, metric updates, tracing, GC), placed sequentially after collect span to fill remaining interval | none |
 | `{color}.heartbeat` | root | collector | Completed heartbeat at collector (color = localCollector or globalCollector) | `heartbeat`, `collector.pruned`, `collector.num_contribs`, `collector.data_size_bytes`, `collector.pct_wait`, `collector.pct_graph_exec`, `collector.pct_send`, `collector.pct_idle` |
 | `{color}.prune` | root | collector | Pruned incomplete heartbeat due to timeout or missing contributions (marked as ERROR, includes child spans) | `heartbeat`, `collector.pruned`, `collector.contrib_ratio`, `collector.num_present`, `collector.num_contribs`, `collector.prune_age`, `collector.missing_workers`, `collector.data_size_bytes`, `collector.pct_wait`, `collector.pct_graph_exec`, `collector.pct_send`, `collector.pct_idle` |
 | `collector.wait` | child | collector | Waiting for all contributions from downstream workers/collectors (real wall clock timestamps, present in both normal and prune spans) | `collector.wait_secs` |
@@ -114,9 +116,10 @@ A typical trace for a single heartbeat shows spans from all processes involved:
 
 ```
 worker.heartbeat ─────────────────────────────────────────────
-  [visual gap = idle time]
-  ├─ worker.graph_exec ━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  └─ worker.collect                                 ━━━
+  ├─ worker.idle ━━━━━━━━━━
+  ├─ worker.graph_exec     ━━━━━━━━━━━━━━━━━━━━━━━━
+  ├─ worker.collect                                ━━━
+  └─ worker.overhead                                  ━━
 
 localCollector.heartbeat ─────────────────────────────────────
   ├─ collector.wait ━━━━━━━━━━━━━━━
@@ -134,13 +137,13 @@ manager.heartbeat ━━
 **Notes:**
 - All spans in a trace share the same deterministic trace ID based on the heartbeat identity
 - Each process creates root spans (not child spans of remote parents) but they appear grouped in the trace
-- **Child spans use real wall clock timestamps** to show actual timing and cross-process causal flow
-  - Visual gaps before the first child span indicate idle/wait time
-  - For workers: gap before `worker.graph_exec` shows idle time waiting for data from the source
-  - For collectors: gap before `collector.wait` shows unaccounted overhead time
-  - Overlapping spans across processes show parallelism; sequential spans show dependencies
-- `worker.pct_idle` represents cumulative idle time across the heartbeat interval (including micro-gaps between datagrams), not just the initial gap visible in the waterfall
-- `collector.pct_idle` represents unaccounted time (e.g., ZMQ overhead, Python overhead, time gaps between activities)
+- **Worker child spans use sequential stacking** — spans are placed back-to-back using cumulative durations:
+  - `worker.idle` starts at interval start, duration = total idle time
+  - `worker.graph_exec` starts where idle ends, duration = total graph execution time
+  - `worker.collect` starts where graph_exec ends, duration = total collect/send time
+  - `worker.overhead` fills the remaining interval after collect, representing ZMQ polling, metric updates, tracing code, and Python GC
+- **Collector child spans use real wall clock timestamps** showing actual timing
+- `worker.pct_idle`, `worker.pct_graph_exec`, `worker.pct_collect` on the parent span provide exact numeric percentages
 - Multiple worker spans may exist in the same trace if multiple workers process events for the same heartbeat
 
 ### Percentage Attributes
@@ -151,6 +154,9 @@ All percentage attributes use the **full parent span duration** as the denominat
 - `worker.pct_idle` — percentage of time spent idle waiting for data (total idle across the interval, including micro-gaps between datagrams)
 - `worker.pct_graph_exec` — percentage of time executing graph computations
 - `worker.pct_collect` — percentage of time serializing and sending results
+- `worker.pct_overhead` — percentage of overhead time (ZMQ polling, metrics, tracing, GC)
+
+All four worker percentages sum to 100%, providing a complete accounting of the heartbeat interval.
 
 **Collector percentages** (denominator = total processing time from arrival to completion):
 - `collector.pct_idle` — percentage of unaccounted/overhead time

@@ -204,17 +204,18 @@ class Worker(Node):
         hb_num_datagrams = 0
         hb_interval_start_ns = time.time_ns()
         hb_idle_time = 0
+        hb_partial_events = 0
+        hb_last_input_latency = 0
 
         while True:
             for msg in self.src.events():
                 idle_stop = time.time()
-                event_time.labels(self.hutch, "Idle", self.name).set(idle_stop - idle_start)
                 hb_idle_time += idle_stop - idle_start
 
                 # check to see if the graph has been reconfigured after update
                 if msg.mtype == MsgTypes.Heartbeat:
                     heartbeat_start = time.time()
-                    saved_event_rate = self.event_rate
+
                     send_start = time.time()
                     size = self.collect(msg.payload)
                     send_time = time.time() - send_start
@@ -252,18 +253,29 @@ class Worker(Node):
                     event_time.labels(self.hutch, "Heartbeat", self.name).set(heartbeat_time)
                     event_size.labels(self.hutch, self.name).set(size)
 
+                    # Batched metric updates at heartbeat rate
+                    event_counter.labels(self.hutch, "Datagram", self.name).inc(hb_num_datagrams)
+                    event_time.labels(self.hutch, "Idle", self.name).set(hb_idle_time)
+                    event_time.labels(self.hutch, "Datagram", self.name).set(
+                        hb_graph_time / hb_num_datagrams if hb_num_datagrams > 0 else 0
+                    )
+                    event_latency.labels(self.hutch, "Source", self.name).set(hb_last_input_latency)
+                    if hb_partial_events > 0:
+                        event_counter.labels(self.hutch, "Partial", self.name).inc(hb_partial_events)
+
                     from ami.tracing import get_trace_id
 
                     trace_id = get_trace_id(msg.payload.identity)
+                    hb_end_ns = time.time_ns()
+                    full_interval_secs = (hb_end_ns - hb_interval_start_ns) / 1e9
+                    overhead_secs = full_interval_secs - hb_idle_time - hb_graph_time - send_time
                     heartbeat_duration.labels(self.hutch, self.name).observe(
-                        heartbeat_time,
+                        full_interval_secs,
                         exemplar={"TraceID": trace_id} if trace_id else None,
                     )
 
                     from ami.tracing import start_child_span, start_span
 
-                    hb_end_ns = time.time_ns()
-                    full_interval_secs = (hb_end_ns - hb_interval_start_ns) / 1e9
                     parent = start_span(
                         "worker.heartbeat",
                         msg.payload.identity,
@@ -282,44 +294,57 @@ class Worker(Node):
                             "worker.pct_collect": (
                                 round((send_time / full_interval_secs) * 100, 1) if full_interval_secs > 0 else 0
                             ),
+                            "worker.pct_overhead": (
+                                round((overhead_secs / full_interval_secs) * 100, 1) if full_interval_secs > 0 else 0
+                            ),
                         },
                     )
                     if parent:
-                        # Graph execution child span (real wall clock: first exec → last exec)
-                        all_periods = []
-                        for name_key, periods in saved_event_rate.items():
-                            if isinstance(periods, list):
-                                all_periods.extend(periods)
-                        if all_periods and hb_graph_time > 0:
-                            all_periods.sort()
-                            graph_first_ns = int(all_periods[0][0] * 1e9)
-                            graph_last_ns = int(all_periods[-1][1] * 1e9)
+                        t0 = hb_interval_start_ns
+                        idle_ns = int(hb_idle_time * 1e9)
+                        graph_ns = int(hb_graph_time * 1e9)
+                        send_ns = int(send_time * 1e9)
+
+                        # Idle span (cumulative idle placed at interval start)
+                        if idle_ns > 0:
+                            child = start_child_span(parent, "worker.idle", start_time_ns=t0)
+                            if child:
+                                child.end(end_time=t0 + idle_ns)
+
+                        # Graph exec span (cumulative exec placed after idle)
+                        if graph_ns > 0:
                             child = start_child_span(
                                 parent,
                                 "worker.graph_exec",
-                                start_time_ns=graph_first_ns,
+                                start_time_ns=t0 + idle_ns,
                                 attributes={
                                     "worker.graph_exec_secs": round(hb_graph_time, 6),
                                     "worker.num_datagrams": hb_num_datagrams,
                                 },
                             )
                             if child:
-                                child.end(end_time=graph_last_ns)
+                                child.end(end_time=t0 + idle_ns + graph_ns)
 
-                        # Collect (serialize + send) child span (real wall clock)
-                        send_start_ns = int(send_start * 1e9)
-                        send_end_ns = int((send_start + send_time) * 1e9)
-                        child = start_child_span(
-                            parent,
-                            "worker.collect",
-                            start_time_ns=send_start_ns,
-                            attributes={
-                                "worker.send_secs": round(send_time, 6),
-                                "worker.data_size_bytes": size,
-                            },
-                        )
-                        if child:
-                            child.end(end_time=send_end_ns)
+                        # Collect span (cumulative send placed after graph exec)
+                        if send_ns > 0:
+                            child = start_child_span(
+                                parent,
+                                "worker.collect",
+                                start_time_ns=t0 + idle_ns + graph_ns,
+                                attributes={
+                                    "worker.send_secs": round(send_time, 6),
+                                    "worker.data_size_bytes": size,
+                                },
+                            )
+                            if child:
+                                child.end(end_time=t0 + idle_ns + graph_ns + send_ns)
+
+                        # Overhead span (ZMQ polling, metrics, tracing, GC)
+                        overhead_start_ns = t0 + idle_ns + graph_ns + send_ns
+                        if hb_end_ns > overhead_start_ns:
+                            child = start_child_span(parent, "worker.overhead", start_time_ns=overhead_start_ns)
+                            if child:
+                                child.end(end_time=hb_end_ns)
 
                         parent.end(end_time=hb_end_ns)
 
@@ -327,15 +352,17 @@ class Worker(Node):
                     hb_graph_time = 0
                     hb_num_datagrams = 0
                     hb_idle_time = 0
+                    hb_partial_events = 0
+                    hb_last_input_latency = 0
                     hb_interval_start_ns = time.time_ns()
 
                 elif msg.mtype == MsgTypes.Datagram:
                     datagram_start = time.time()
                     input_latency = dt.datetime.now() - dt.datetime.fromtimestamp(msg.unix_ts)
-                    event_latency.labels(self.hutch, "Source", self.name).set(input_latency.total_seconds())
+                    hb_last_input_latency = input_latency.total_seconds()
 
                     if any(v is None for k, v in msg.payload.items()):
-                        event_counter.labels(self.hutch, "Partial", self.name).inc()
+                        hb_partial_events += 1
 
                     for name, graph in self.graphs.items():
                         graph_result = None
@@ -376,9 +403,7 @@ class Worker(Node):
 
                     self.num_events += 1
                     hb_num_datagrams += 1
-                    event_counter.labels(self.hutch, "Datagram", self.name).inc()
                     datagram_duration = time.time() - datagram_start
-                    event_time.labels(self.hutch, "Datagram", self.name).set(datagram_duration)
                     heartbeat_time += datagram_duration
 
                 elif msg.mtype == MsgTypes.Transition:
