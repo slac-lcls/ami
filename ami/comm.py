@@ -20,6 +20,7 @@ import zmq.asyncio
 import ami.graph_nodes as gn
 from ami.data import CollectorMessage, Datagram, Deserializer, Heartbeat, Message, MsgTypes, Serializer, Transition
 from ami.graphkit_wrapper import Graph
+from ami.tracing import mark_span_error, start_child_span, start_span
 
 logger = logging.getLogger(__name__)
 ZMQ_TOPIC_DELIM = "\0"
@@ -692,8 +693,6 @@ class GraphBuilder(ContributionBuilder):
             self.graph.heartbeat_finished()
 
         # Create trace spans (unified for both normal and prune paths)
-        from ami.tracing import mark_span_error, start_child_span, start_span
-
         hb_identity = eb_key.identity if hasattr(eb_key, "identity") else eb_key
         arrival_ns = self.arrival_times.pop(eb_key, None)
         complete_end_ns = time.time_ns()

@@ -14,6 +14,7 @@ import ami.multiproc as mp
 from ami import Defaults, LogConfig
 from ami.comm import Collector, Colors, EventBuilder, Node, PlatformAction, Ports, TransitionBuilder
 from ami.data import MsgTypes, Transitions
+from ami.tracing import get_trace_id, setup_tracing
 from ami.worker import parse_args, run_worker
 
 logger = logging.getLogger(__name__)
@@ -164,7 +165,6 @@ class GraphCollector(Node, Collector):
         elif msg.mtype == MsgTypes.Datagram:
             latency = dt.datetime.now() - dt.datetime.fromtimestamp(msg.heartbeat.timestamp)
             self.event_latency.labels(self.hutch, self.sender % msg.identity, self.name).set(latency.total_seconds())
-            from ami.tracing import get_trace_id
 
             trace_id = get_trace_id(msg.heartbeat.identity)
             self.heartbeat_latency.labels(self.hutch, self.sender % msg.identity, self.name).observe(
@@ -191,8 +191,6 @@ class GraphCollector(Node, Collector):
                     heartbeat_time = self.heartbeat_time.pop(msg.heartbeat.identity, 0)
                     self.event_time.labels(self.hutch, "Heartbeat", self.name).set(heartbeat_time)
                     self.event_size.labels(self.hutch, self.name).set(size)
-
-                    from ami.tracing import get_trace_id
 
                     trace_id = get_trace_id(msg.heartbeat.identity)
                     self.heartbeat_duration.labels(self.hutch, self.name).observe(
@@ -240,8 +238,6 @@ def run_collector(
     timeout,
 ):
     logger.info("Starting collector on node # %d PID: %d", node_num, os.getpid())
-
-    from ami.tracing import setup_tracing
 
     setup_tracing(f"ami-{base_name % node_num}")
 

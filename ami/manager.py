@@ -20,6 +20,7 @@ from ami import LogConfig
 from ami.comm import ZMQ_TOPIC_DELIM, AutoExport, Collector, PlatformAction, Ports, Store
 from ami.data import Deserializer, MsgTypes, Serializer, Transitions
 from ami.graphkit_wrapper import Graph
+from ami.tracing import get_trace_id, setup_tracing, start_span
 
 logger = logging.getLogger(__name__)
 
@@ -124,7 +125,6 @@ class Manager(Collector):
             self.event_latency.labels(self.hutch, "globalCollector%03d" % msg.identity, self.name).set(
                 latency.total_seconds()
             )
-            from ami.tracing import get_trace_id
 
             trace_id = get_trace_id(msg.heartbeat.identity)
             self.heartbeat_latency.labels(self.hutch, "globalCollector%03d" % msg.identity, self.name).observe(
@@ -169,8 +169,6 @@ class Manager(Collector):
                 # export data for viewing in the AMI GUI
                 # self.export_view(msg.name, keys=msg.payload.keys())
 
-                from ami.tracing import start_span
-
                 span = start_span(
                     "manager.heartbeat",
                     msg.heartbeat.identity,
@@ -183,7 +181,6 @@ class Manager(Collector):
 
             self.event_counter.labels(self.hutch, "Heartbeat", self.name).inc()
             self.event_time.labels(self.hutch, "Heartbeat", self.name).set(time.time() - datagram_start)
-            from ami.tracing import get_trace_id
 
             trace_id = get_trace_id(msg.heartbeat.identity)
             self.heartbeat_duration.labels(self.hutch, self.name).observe(
@@ -777,8 +774,6 @@ def run_manager(
     cprofile,
 ):
     logger.info("Starting manager, controlling %d workers on %d nodes PID: %d", num_workers, num_nodes, os.getpid())
-
-    from ami.tracing import setup_tracing
 
     setup_tracing("ami-manager")
 

@@ -17,6 +17,7 @@ from ami import Defaults, LogConfig
 from ami.comm import AutoExport, Colors, Node, PlatformAction, Ports, ResultStore
 from ami.data import MsgTypes, RequestedData, Source, Transitions
 from ami.graphkit_wrapper import Graph
+from ami.tracing import get_trace_id, setup_tracing, start_child_span, start_span
 
 logger = logging.getLogger(__name__)
 
@@ -263,8 +264,6 @@ class Worker(Node):
                     if hb_partial_events > 0:
                         event_counter.labels(self.hutch, "Partial", self.name).inc(hb_partial_events)
 
-                    from ami.tracing import get_trace_id
-
                     trace_id = get_trace_id(msg.payload.identity)
                     hb_end_ns = time.time_ns()
                     full_interval_secs = (hb_end_ns - hb_interval_start_ns) / 1e9
@@ -273,8 +272,6 @@ class Worker(Node):
                         full_interval_secs,
                         exemplar={"TraceID": trace_id} if trace_id else None,
                     )
-
-                    from ami.tracing import start_child_span, start_span
 
                     parent = start_span(
                         "worker.heartbeat",
@@ -463,8 +460,6 @@ def run_worker(
 ):
 
     logger.info("Starting worker # %d, sending to collector at %s PID: %d", num, collector_addr, os.getpid())
-
-    from ami.tracing import setup_tracing
 
     setup_tracing(f"ami-worker-{num}")
 
