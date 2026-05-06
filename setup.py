@@ -22,7 +22,6 @@ setup(
     author_email="ddamiani@slac.stanford.edu",
     url="https://confluence.slac.stanford.edu/display/PSDMInternal/AMI+Replacement",
     packages=find_packages(),
-    setup_requires=["pytest-runner"],
     install_requires=[
         "dill",
         "pyzmq",
