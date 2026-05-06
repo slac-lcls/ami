@@ -1,5 +1,8 @@
 name: Test AMI
 on:
+  push:
+    branches:
+      - master
   schedule:
     - cron: '0 5 * * *'  # once per day at midnight ET
   workflow_dispatch:
@@ -9,7 +12,7 @@ jobs:
     runs-on: ubuntu-latest
     defaults:
       run:
-        shell: bash -el {0}  
+        shell: bash -el {0}
 
     steps:
       - name: Checkout repo with submodules
@@ -31,13 +34,13 @@ jobs:
           cd ..
 
       - name: Build AMI
-        run: |      
+        run: |
           pip install .
 
       - name: Install formatting tools
         run: |
           pip install black==24.2.0 isort==5.13.2 flake8 flake8-black
-      
+
       - name: Check formatting
         run: |
           black --check --line-length=120 .
