@@ -25,7 +25,7 @@ def sim_src_cfg():
             "delta_t": {"dtype": "Scalar", "range": [0, 10], "integer": True},
             "cspad": {"dtype": "Image", "pedestal": 5, "width": 1, "shape": [512, 512]},
             "acq": {"dtype": "Waveform", "pedestal": 5, "width": 1, "shape": 512},
-            "laser": {"dtype": "Scalar", "range": [0, 2], "integer": True},
+            "laser": {"dtype": "Scalar", "range": [0, 2], "integer": True, "binary": True},
         },
     }
 
@@ -998,10 +998,13 @@ def test_static_source(sim_src_cfg):
     for msg in source.events():
         if msg.mtype == MsgTypes.Datagram:
             for name, cfg in sim_src_cfg["config"].items():
+                is_binary = cfg.get("binary", False)
                 if cfg["dtype"] == "Scalar":
-                    assert msg.payload[name] == 1
+                    expected = (1 if count % 2 == 0 else 0) if is_binary else 1
+                    assert msg.payload[name] == expected
                 elif (cfg["dtype"] == "Image") or (cfg["dtype"] == "Waveform"):
-                    assert (msg.payload[name] == 1).all()
+                    expected = (1 if count % 2 == 0 else 0) if is_binary else 1
+                    assert (msg.payload[name] == expected).all()
             count += 1
             expected_ts = num_workers * count + idnum + sim_src_cfg["bound"]
             assert msg.timestamp == expected_ts

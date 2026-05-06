@@ -1,0 +1,6148 @@
+{
+  "nodes": [
+    {
+      "class": "SourceNode",
+      "name": "jungfrau1M:raw:image",
+      "state": {
+        "pos": [
+          100.0,
+          300.0
+        ],
+        "enabled": true,
+        "viewed": false,
+        "latched": false,
+        "label": "",
+        "terminals": {
+          "Out": {
+            "io": "out",
+            "removable": false,
+            "ttype": "amitypes.array.Array2d",
+            "optional": false,
+            "group": null
+          }
+        },
+        "widget": {
+          "ctrl": {
+            "Title": "",
+            "Show Grid": true,
+            "X Axis": {
+              "Label": "",
+              "Log Scale": false
+            },
+            "Y Axis": {
+              "Label": "",
+              "Log Scale": false
+            },
+            "Histogram": {
+              "Auto Range": true,
+              "Auto Levels": true,
+              "Log Scale": false
+            },
+            "Display": {
+              "Lock Aspect Ratio": true,
+              "Flip": false,
+              "Rotate Counter Clockwise": "0"
+            }
+          },
+          "viewbox": {
+            "targetRange": [
+              [
+                -0.5,
+                0.5
+              ],
+              [
+                -0.5,
+                0.5
+              ]
+            ],
+            "viewRange": [
+              [
+                -0.5,
+                0.5
+              ],
+              [
+                -0.5,
+                0.5
+              ]
+            ],
+            "yInverted": true,
+            "xInverted": false,
+            "aspectLocked": 1,
+            "autoRange": [
+              true,
+              true
+            ],
+            "autoPan": [
+              false,
+              false
+            ],
+            "autoVisibleOnly": [
+              false,
+              false
+            ],
+            "linkedViews": [
+              null,
+              null
+            ],
+            "defaultPadding": 0.02,
+            "mouseEnabled": [
+              true,
+              true
+            ],
+            "mouseMode": 3,
+            "enableMenu": false,
+            "wheelScaleFactor": -0.125,
+            "background": null,
+            "logMode": [
+              false,
+              false
+            ],
+            "limits": {
+              "xLimits": [
+                -1e+307,
+                1e+307
+              ],
+              "yLimits": [
+                -1e+307,
+                1e+307
+              ],
+              "xRange": [
+                null,
+                null
+              ],
+              "yRange": [
+                null,
+                null
+              ]
+            }
+          },
+          "histogramLUT": {
+            "gradient": {
+              "mode": "rgb",
+              "ticks": [
+                [
+                  0.0,
+                  [
+                    68,
+                    1,
+                    84,
+                    255
+                  ]
+                ],
+                [
+                  0.25,
+                  [
+                    58,
+                    82,
+                    139,
+                    255
+                  ]
+                ],
+                [
+                  0.5,
+                  [
+                    32,
+                    144,
+                    140,
+                    255
+                  ]
+                ],
+                [
+                  0.75,
+                  [
+                    94,
+                    201,
+                    97,
+                    255
+                  ]
+                ],
+                [
+                  1.0,
+                  [
+                    253,
+                    231,
+                    36,
+                    255
+                  ]
+                ]
+              ],
+              "ticksVisible": true
+            },
+            "levels": [
+              0,
+              1.0
+            ],
+            "mode": "mono"
+          }
+        },
+        "source_kwargs": {}
+      }
+    },
+    {
+      "class": "SourceNode",
+      "name": "timestamp",
+      "state": {
+        "pos": [
+          100.0,
+          400.0
+        ],
+        "enabled": true,
+        "viewed": false,
+        "latched": false,
+        "label": "",
+        "terminals": {
+          "Out": {
+            "io": "out",
+            "removable": false,
+            "ttype": "float",
+            "optional": false,
+            "group": null
+          }
+        },
+        "geometry": "01d9d0cb0003000000000ff0000012030000130f0000153e00000ff00000121f0000130f0000153e00000006000000000a0000000ff00000121f0000130f0000153e",
+        "source_kwargs": {}
+      }
+    },
+    {
+      "class": "SourceNode",
+      "name": "XppSb2BmMon:raw:totalIntensityJoules",
+      "state": {
+        "pos": [
+          100.0,
+          900.0
+        ],
+        "enabled": true,
+        "viewed": false,
+        "latched": false,
+        "label": "",
+        "terminals": {
+          "Out": {
+            "io": "out",
+            "removable": false,
+            "ttype": "float",
+            "optional": false,
+            "group": null
+          }
+        },
+        "source_kwargs": {}
+      }
+    },
+    {
+      "class": "SourceNode",
+      "name": "ebeamh:raw:ebeamL3Energy",
+      "state": {
+        "pos": [
+          100.0,
+          1100.0
+        ],
+        "enabled": true,
+        "viewed": false,
+        "latched": false,
+        "label": "",
+        "terminals": {
+          "Out": {
+            "io": "out",
+            "removable": false,
+            "ttype": "float",
+            "optional": false,
+            "group": null
+          }
+        },
+        "source_kwargs": {}
+      }
+    },
+    {
+      "class": "SourceNode",
+      "name": "alvium:raw:value",
+      "state": {
+        "pos": [
+          100.0,
+          1400.0
+        ],
+        "enabled": true,
+        "viewed": false,
+        "latched": false,
+        "label": "",
+        "terminals": {
+          "Out": {
+            "io": "out",
+            "removable": false,
+            "ttype": "amitypes.array.Array2d",
+            "optional": false,
+            "group": null
+          }
+        },
+        "widget": {
+          "ctrl": {
+            "Title": "",
+            "Show Grid": true,
+            "X Axis": {
+              "Label": "",
+              "Log Scale": false
+            },
+            "Y Axis": {
+              "Label": "",
+              "Log Scale": false
+            },
+            "Histogram": {
+              "Auto Range": true,
+              "Auto Levels": true,
+              "Log Scale": false
+            },
+            "Display": {
+              "Lock Aspect Ratio": true,
+              "Flip": false,
+              "Rotate Counter Clockwise": "0"
+            }
+          },
+          "viewbox": {
+            "targetRange": [
+              [
+                -0.5,
+                0.5
+              ],
+              [
+                -0.5,
+                0.5
+              ]
+            ],
+            "viewRange": [
+              [
+                -0.5,
+                0.5
+              ],
+              [
+                -0.5,
+                0.5
+              ]
+            ],
+            "yInverted": true,
+            "xInverted": false,
+            "aspectLocked": 1,
+            "autoRange": [
+              true,
+              true
+            ],
+            "autoPan": [
+              false,
+              false
+            ],
+            "autoVisibleOnly": [
+              false,
+              false
+            ],
+            "linkedViews": [
+              null,
+              null
+            ],
+            "defaultPadding": 0.02,
+            "mouseEnabled": [
+              true,
+              true
+            ],
+            "mouseMode": 3,
+            "enableMenu": false,
+            "wheelScaleFactor": -0.125,
+            "background": null,
+            "logMode": [
+              false,
+              false
+            ],
+            "limits": {
+              "xLimits": [
+                -1e+307,
+                1e+307
+              ],
+              "yLimits": [
+                -1e+307,
+                1e+307
+              ],
+              "xRange": [
+                null,
+                null
+              ],
+              "yRange": [
+                null,
+                null
+              ]
+            }
+          },
+          "histogramLUT": {
+            "gradient": {
+              "mode": "rgb",
+              "ticks": [
+                [
+                  0.0,
+                  [
+                    68,
+                    1,
+                    84,
+                    255
+                  ]
+                ],
+                [
+                  0.25,
+                  [
+                    58,
+                    82,
+                    139,
+                    255
+                  ]
+                ],
+                [
+                  0.5,
+                  [
+                    32,
+                    144,
+                    140,
+                    255
+                  ]
+                ],
+                [
+                  0.75,
+                  [
+                    94,
+                    201,
+                    97,
+                    255
+                  ]
+                ],
+                [
+                  1.0,
+                  [
+                    253,
+                    231,
+                    36,
+                    255
+                  ]
+                ]
+              ],
+              "ticksVisible": true
+            },
+            "levels": [
+              0,
+              1.0
+            ],
+            "mode": "mono"
+          }
+        },
+        "source_kwargs": {}
+      }
+    },
+    {
+      "class": "PythonEditor",
+      "name": "PythonEditor.0",
+      "state": {
+        "pos": [
+          300.0,
+          300.0
+        ],
+        "enabled": true,
+        "viewed": false,
+        "latched": false,
+        "label": "",
+        "terminals": {
+          "Out": {
+            "io": "out",
+            "removable": true,
+            "ttype": "amitypes.array.Array2d",
+            "optional": false,
+            "group": null
+          },
+          "In": {
+            "io": "in",
+            "removable": true,
+            "ttype": "amitypes.array.Array2d",
+            "optional": false,
+            "group": null
+          }
+        },
+        "widget": {
+          "text": "from copy import deepcopy\nimport numpy as np\n\nclass EventProcessor():\n\n    def __init__(self):\n        pass\n\n    def begin_run(self):\n        pass\n\n    def end_run(self):\n        pass\n\n    def begin_step(self, step):\n        pass\n\n    def end_step(self, step):\n        pass\n\n    def on_event(self, img, *args, **kwargs):\n        img = deepcopy(img)\n        img[img<5] = 0\n        return img"
+        },
+        "geometry": "01d9d0cb0003000000001225000012ec000015440000152d0000122500001308000015440000152d00000006000000000a000000122500001308000015440000152d"
+      }
+    },
+    {
+      "class": "Average0D",
+      "name": "Average0D.1",
+      "state": {
+        "pos": [
+          300.0,
+          900.0
+        ],
+        "enabled": true,
+        "viewed": false,
+        "latched": false,
+        "label": "",
+        "terminals": {
+          "In": {
+            "io": "in",
+            "removable": false,
+            "ttype": "float",
+            "optional": false,
+            "group": null
+          },
+          "Out": {
+            "io": "out",
+            "removable": false,
+            "ttype": "float",
+            "optional": false,
+            "group": null
+          }
+        },
+        "ctrl": {
+          "N": 120,
+          "infinite": false
+        },
+        "geometry": "01d9d0cb0003000000000ff0000012030000130f0000153e00000ff00000121f0000130f0000153e00000006000000000a0000000ff00000121f0000130f0000153e"
+      }
+    },
+    {
+      "class": "ScatterPlot",
+      "name": "ScatterPlot.0",
+      "state": {
+        "pos": [
+          300.0,
+          1100.0
+        ],
+        "enabled": true,
+        "viewed": true,
+        "latched": false,
+        "label": "christmas_tree",
+        "terminals": {
+          "X": {
+            "io": "in",
+            "removable": false,
+            "ttype": "float",
+            "optional": false,
+            "group": null
+          },
+          "Y": {
+            "io": "in",
+            "removable": false,
+            "ttype": "float",
+            "optional": false,
+            "group": null
+          }
+        },
+        "ctrl": {
+          "Num Points": 1000,
+          "Unique": false
+        },
+        "widget": {
+          "ctrl": {
+            "Title": "",
+            "Show Grid": true,
+            "X Axis": {
+              "Label": "",
+              "Log Scale": false
+            },
+            "Y Axis": {
+              "Label": "",
+              "Log Scale": false
+            },
+            "trace.0": "XppSb2BmMon:raw:totalIntensityJoules vs ebeamh:raw:ebeamL3Energy"
+          },
+          "legend": {
+            "trace.0": [
+              "XppSb2BmMon:raw:totalIntensityJoules vs ebeamh:raw:ebeamL3Energy",
+              "XppSb2BmMon:raw:totalIntensityJoules vs ebeamh:raw:ebeamL3Energy",
+              {
+                "Point": {
+                  "symbol": "o",
+                  "Brush": [
+                    0,
+                    255,
+                    255,
+                    255
+                  ],
+                  "Size": 4
+                },
+                "Line": {
+                  "color": [
+                    255,
+                    255,
+                    255,
+                    255
+                  ],
+                  "width": 1,
+                  "style": "None"
+                }
+              }
+            ]
+          },
+          "viewbox": {
+            "targetRange": [
+              [
+                -5.926739200282872,
+                105.9945949843779
+              ],
+              [
+                -9.556485362451502,
+                109.50430237585863
+              ]
+            ],
+            "viewRange": [
+              [
+                -5.926739200282872,
+                105.9945949843779
+              ],
+              [
+                -9.556485362451502,
+                109.50430237585863
+              ]
+            ],
+            "yInverted": false,
+            "xInverted": false,
+            "aspectLocked": false,
+            "autoRange": [
+              1.0,
+              1.0
+            ],
+            "autoPan": [
+              false,
+              false
+            ],
+            "autoVisibleOnly": [
+              false,
+              false
+            ],
+            "linkedViews": [
+              null,
+              null
+            ],
+            "defaultPadding": 0.02,
+            "mouseEnabled": [
+              true,
+              true
+            ],
+            "mouseMode": 3,
+            "enableMenu": false,
+            "wheelScaleFactor": -0.125,
+            "background": null,
+            "logMode": [
+              false,
+              false
+            ],
+            "limits": {
+              "xLimits": [
+                -1e+307,
+                1e+307
+              ],
+              "yLimits": [
+                -1e+307,
+                1e+307
+              ],
+              "xRange": [
+                null,
+                null
+              ],
+              "yRange": [
+                null,
+                null
+              ]
+            }
+          }
+        },
+        "geometry": "01d9d0cb00030000000001e0000004f80000046300000600000001e1000004f900000462000005ff00000000000000000f00000001e1000004f900000462000005ff"
+      }
+    },
+    {
+      "class": "PythonEditor",
+      "name": "PythonEditor.2",
+      "state": {
+        "pos": [
+          300.0,
+          100.0
+        ],
+        "enabled": true,
+        "viewed": false,
+        "latched": false,
+        "label": "",
+        "terminals": {
+          "Out": {
+            "io": "out",
+            "removable": true,
+            "ttype": "typing.Any",
+            "optional": false,
+            "group": null
+          },
+          "In": {
+            "io": "in",
+            "removable": true,
+            "ttype": "typing.Any",
+            "optional": false,
+            "group": null
+          },
+          "Out.1": {
+            "io": "out",
+            "removable": true,
+            "ttype": "typing.Any",
+            "optional": false,
+            "group": null
+          }
+        },
+        "widget": {
+          "text": "from copy import deepcopy\nimport numpy as np\n\nclass EventProcessor():\n\n    def __init__(self):\n        pass\n\n    def begin_run(self):\n        pass\n\n    def end_run(self):\n        pass\n\n    def begin_step(self, step):\n        pass\n\n    def end_step(self, step):\n        pass\n\n    def on_event(self, img, *args, **kwargs):\n        img = deepcopy(img)\n        h, b = np.histogram(img.ravel(), bins = 1000, range = (-10,50))\n        return b[1:], h"
+        },
+        "geometry": "01d9d0cb00030000000011370000132600001456000016610000113700001342000014560000166100000006000000000a0000001137000013420000145600001661"
+      }
+    },
+    {
+      "class": "ImageViewer",
+      "name": "ImageViewer.3",
+      "state": {
+        "pos": [
+          400.0,
+          1400.0
+        ],
+        "enabled": true,
+        "viewed": false,
+        "latched": false,
+        "label": "",
+        "terminals": {
+          "In": {
+            "io": "in",
+            "removable": false,
+            "ttype": "amitypes.array.Array2d",
+            "optional": false,
+            "group": null
+          }
+        },
+        "widget": {
+          "ctrl": {
+            "Title": "",
+            "Show Grid": true,
+            "X Axis": {
+              "Label": "",
+              "Log Scale": false
+            },
+            "Y Axis": {
+              "Label": "",
+              "Log Scale": false
+            },
+            "Histogram": {
+              "Auto Range": true,
+              "Auto Levels": true,
+              "Log Scale": false
+            },
+            "Display": {
+              "Lock Aspect Ratio": true,
+              "Flip": false,
+              "Rotate Counter Clockwise": "0"
+            }
+          },
+          "viewbox": {
+            "targetRange": [
+              [
+                -1000.1650166858977,
+                2132.428111208451
+              ],
+              [
+                -423.92925572551053,
+                1522.725404300284
+              ]
+            ],
+            "viewRange": [
+              [
+                -1000.1650166858977,
+                2132.428111208451
+              ],
+              [
+                -423.92925572551053,
+                1522.725404300284
+              ]
+            ],
+            "yInverted": true,
+            "xInverted": false,
+            "aspectLocked": 1,
+            "autoRange": [
+              false,
+              false
+            ],
+            "autoPan": [
+              false,
+              false
+            ],
+            "autoVisibleOnly": [
+              false,
+              false
+            ],
+            "linkedViews": [
+              null,
+              null
+            ],
+            "defaultPadding": 0.02,
+            "mouseEnabled": [
+              true,
+              true
+            ],
+            "mouseMode": 3,
+            "enableMenu": false,
+            "wheelScaleFactor": -0.125,
+            "background": null,
+            "logMode": [
+              false,
+              false
+            ],
+            "limits": {
+              "xLimits": [
+                -1e+307,
+                1e+307
+              ],
+              "yLimits": [
+                -1e+307,
+                1e+307
+              ],
+              "xRange": [
+                null,
+                null
+              ],
+              "yRange": [
+                null,
+                null
+              ]
+            }
+          },
+          "histogramLUT": {
+            "gradient": {
+              "mode": "rgb",
+              "ticks": [
+                [
+                  0.0,
+                  [
+                    68,
+                    1,
+                    84,
+                    255
+                  ]
+                ],
+                [
+                  0.25,
+                  [
+                    58,
+                    82,
+                    139,
+                    255
+                  ]
+                ],
+                [
+                  0.5,
+                  [
+                    32,
+                    144,
+                    140,
+                    255
+                  ]
+                ],
+                [
+                  0.75,
+                  [
+                    94,
+                    201,
+                    97,
+                    255
+                  ]
+                ],
+                [
+                  1.0,
+                  [
+                    253,
+                    231,
+                    36,
+                    255
+                  ]
+                ]
+              ],
+              "ticksVisible": true
+            },
+            "levels": [
+              0,
+              22
+            ],
+            "mode": "mono"
+          }
+        },
+        "geometry": "01d9d0cb000300000000081d0000039600000b3c000006d10000081d000003b200000b3c000006d100000003000000000c000000081d000003b200000b3c000006d1"
+      }
+    },
+    {
+      "class": "ImageViewer",
+      "name": "ImageViewer.0",
+      "state": {
+        "pos": [
+          500.0,
+          100.0
+        ],
+        "enabled": true,
+        "viewed": true,
+        "latched": false,
+        "label": "jf_single_shot",
+        "terminals": {
+          "In": {
+            "io": "in",
+            "removable": false,
+            "ttype": "amitypes.array.Array2d",
+            "optional": false,
+            "group": null
+          }
+        },
+        "widget": {
+          "ctrl": {
+            "Title": "",
+            "Show Grid": true,
+            "X Axis": {
+              "Label": "",
+              "Log Scale": false
+            },
+            "Y Axis": {
+              "Label": "",
+              "Log Scale": false
+            },
+            "Histogram": {
+              "Auto Range": false,
+              "Auto Levels": false,
+              "Log Scale": false
+            },
+            "Display": {
+              "Lock Aspect Ratio": true,
+              "Flip": false,
+              "Rotate Counter Clockwise": "0"
+            }
+          },
+          "viewbox": {
+            "targetRange": [
+              [
+                -59.69866915134344,
+                1042.3681624029625
+              ],
+              [
+                -6.427074940245916,
+                1133.37978624689
+              ]
+            ],
+            "viewRange": [
+              [
+                -59.69866915134344,
+                1042.3681624029625
+              ],
+              [
+                -6.427074940245916,
+                1133.37978624689
+              ]
+            ],
+            "yInverted": true,
+            "xInverted": false,
+            "aspectLocked": 1,
+            "autoRange": [
+              false,
+              false
+            ],
+            "autoPan": [
+              false,
+              false
+            ],
+            "autoVisibleOnly": [
+              false,
+              false
+            ],
+            "linkedViews": [
+              null,
+              null
+            ],
+            "defaultPadding": 0.02,
+            "mouseEnabled": [
+              true,
+              true
+            ],
+            "mouseMode": 3,
+            "enableMenu": false,
+            "wheelScaleFactor": -0.125,
+            "background": null,
+            "logMode": [
+              false,
+              false
+            ],
+            "limits": {
+              "xLimits": [
+                -1e+307,
+                1e+307
+              ],
+              "yLimits": [
+                -1e+307,
+                1e+307
+              ],
+              "xRange": [
+                null,
+                null
+              ],
+              "yRange": [
+                null,
+                null
+              ]
+            }
+          },
+          "histogramLUT": {
+            "gradient": {
+              "mode": "rgb",
+              "ticks": [
+                [
+                  0.0,
+                  [
+                    68,
+                    1,
+                    84,
+                    255
+                  ]
+                ],
+                [
+                  0.25,
+                  [
+                    58,
+                    82,
+                    139,
+                    255
+                  ]
+                ],
+                [
+                  0.5,
+                  [
+                    32,
+                    144,
+                    140,
+                    255
+                  ]
+                ],
+                [
+                  0.75,
+                  [
+                    94,
+                    201,
+                    97,
+                    255
+                  ]
+                ],
+                [
+                  1.0,
+                  [
+                    253,
+                    231,
+                    36,
+                    255
+                  ]
+                ]
+              ],
+              "ticksVisible": true
+            },
+            "levels": [
+              0.005475980770768718,
+              0.3196616694897351
+            ],
+            "mode": "mono"
+          }
+        },
+        "geometry": "01d9d0cb00030000000013e3000001cc000017cc0000054e000013e3000001e8000017cc0000054e00000005000000000c00000013e3000001e8000017cc0000054e"
+      }
+    },
+    {
+      "class": "Average2D",
+      "name": "Average2D.0",
+      "state": {
+        "pos": [
+          500.0,
+          200.0
+        ],
+        "enabled": true,
+        "viewed": false,
+        "latched": false,
+        "label": "",
+        "terminals": {
+          "In": {
+            "io": "in",
+            "removable": false,
+            "ttype": "amitypes.array.Array2d",
+            "optional": false,
+            "group": null
+          },
+          "Out": {
+            "io": "out",
+            "removable": false,
+            "ttype": "amitypes.array.Array2d",
+            "optional": false,
+            "group": null
+          }
+        },
+        "ctrl": {
+          "N": 2,
+          "infinite": true
+        },
+        "geometry": "01d9d0cb0003000000000ff00000121f0000130f0000153e00000ff00000121f0000130f0000153e00000006000000000a0000000ff00000121f0000130f0000153e"
+      }
+    },
+    {
+      "class": "Average2D",
+      "name": "Average2D.1",
+      "state": {
+        "pos": [
+          500.0,
+          300.0
+        ],
+        "enabled": true,
+        "viewed": false,
+        "latched": false,
+        "label": "",
+        "terminals": {
+          "In": {
+            "io": "in",
+            "removable": false,
+            "ttype": "amitypes.array.Array2d",
+            "optional": false,
+            "group": null
+          },
+          "Out": {
+            "io": "out",
+            "removable": false,
+            "ttype": "amitypes.array.Array2d",
+            "optional": false,
+            "group": null
+          }
+        },
+        "ctrl": {
+          "N": 120,
+          "infinite": false
+        },
+        "geometry": "01d9d0cb0003000000000d50000013250000106f000014e000000d50000013410000106f000014e000000006000000000a0000000d50000013410000106f000014e0"
+      }
+    },
+    {
+      "class": "PythonEditor",
+      "name": "PythonEditor.1",
+      "state": {
+        "pos": [
+          500.0,
+          500.0
+        ],
+        "enabled": true,
+        "viewed": false,
+        "latched": false,
+        "label": "PythonEditor.1",
+        "terminals": {
+          "Out": {
+            "io": "out",
+            "removable": true,
+            "ttype": "amitypes.array.Array2d",
+            "optional": false,
+            "group": null
+          },
+          "In": {
+            "io": "in",
+            "removable": true,
+            "ttype": "amitypes.array.Array2d",
+            "optional": false,
+            "group": null
+          }
+        },
+        "widget": {
+          "text": "from copy import deepcopy\nimport numpy as np\n\nclass EventProcessor():\n\n    def __init__(self):\n        pass\n\n    def begin_run(self):\n        pass\n\n    def end_run(self):\n        pass\n\n    def begin_step(self, step):\n        pass\n\n    def end_step(self, step):\n        pass\n\n    def on_event(self, img, *args, **kwargs):\n        img = deepcopy(img)\n        img[img<5] = 0\n        #img[img>100] = 0\n        return img"
+        },
+        "geometry": "01d9d0cb00030000000019bc0000125800001cdb000014e3000019bc0000127400001cdb000014e300000001000000000a00000019bc0000127400001cdb000014e3"
+      }
+    },
+    {
+      "class": "TimePlot",
+      "name": "TimePlot.1",
+      "state": {
+        "pos": [
+          500.0,
+          900.0
+        ],
+        "enabled": true,
+        "viewed": true,
+        "latched": false,
+        "label": "ipm2_time.1",
+        "terminals": {
+          "X": {
+            "io": "in",
+            "removable": false,
+            "ttype": "float",
+            "optional": false,
+            "group": null
+          },
+          "Y": {
+            "io": "in",
+            "removable": false,
+            "ttype": "float",
+            "optional": false,
+            "group": null
+          }
+        },
+        "ctrl": {
+          "Num Points": 1000
+        },
+        "widget": {
+          "ctrl": {
+            "Title": "",
+            "Show Grid": true,
+            "X Axis": {
+              "Label": "",
+              "Log Scale": false
+            },
+            "Y Axis": {
+              "Label": "",
+              "Log Scale": false
+            },
+            "trace.0": "Average0D.1.Out vs timestamp"
+          },
+          "legend": {
+            "trace.0": [
+              "Average0D.1.Out vs timestamp",
+              "Average0D.1.Out vs timestamp",
+              {
+                "Point": {
+                  "symbol": "o",
+                  "Brush": [
+                    30,
+                    225,
+                    255,
+                    255
+                  ],
+                  "Size": 8
+                },
+                "Line": {
+                  "color": [
+                    0,
+                    255,
+                    255,
+                    255
+                  ],
+                  "width": 1,
+                  "style": "Solid"
+                }
+              }
+            ]
+          },
+          "viewbox": {
+            "targetRange": [
+              [
+                1776785446.2548945,
+                1776785468.8151467
+              ],
+              [
+                48.456525851598315,
+                54.6190601683942
+              ]
+            ],
+            "viewRange": [
+              [
+                1776785446.2548945,
+                1776785468.8151467
+              ],
+              [
+                48.456525851598315,
+                54.6190601683942
+              ]
+            ],
+            "yInverted": false,
+            "xInverted": false,
+            "aspectLocked": false,
+            "autoRange": [
+              true,
+              true
+            ],
+            "autoPan": [
+              false,
+              false
+            ],
+            "autoVisibleOnly": [
+              false,
+              false
+            ],
+            "linkedViews": [
+              null,
+              null
+            ],
+            "defaultPadding": 0.02,
+            "mouseEnabled": [
+              true,
+              true
+            ],
+            "mouseMode": 3,
+            "enableMenu": false,
+            "wheelScaleFactor": -0.125,
+            "background": null,
+            "logMode": [
+              false,
+              false
+            ],
+            "limits": {
+              "xLimits": [
+                -62135596800.0,
+                253370764800.0
+              ],
+              "yLimits": [
+                -1e+307,
+                1e+307
+              ],
+              "xRange": [
+                null,
+                null
+              ],
+              "yRange": [
+                null,
+                null
+              ]
+            }
+          }
+        },
+        "geometry": "01d9d0cb0003000000000000000004f80000033a0000060000000001000004f900000339000005ff00000000000000000f0000000001000004f900000339000005ff"
+      }
+    },
+    {
+      "class": "Average1D",
+      "name": "Average1D.0",
+      "state": {
+        "pos": [
+          500.0,
+          0.0
+        ],
+        "enabled": true,
+        "viewed": false,
+        "latched": false,
+        "label": "",
+        "terminals": {
+          "In": {
+            "io": "in",
+            "removable": false,
+            "ttype": "amitypes.array.Array1d",
+            "optional": false,
+            "group": null
+          },
+          "Out": {
+            "io": "out",
+            "removable": false,
+            "ttype": "amitypes.array.Array1d",
+            "optional": false,
+            "group": null
+          }
+        },
+        "ctrl": {
+          "N": 600,
+          "infinite": false
+        },
+        "geometry": "01d9d0cb0003000000000d160000114f000010350000146e00000d160000114f000010350000146e00000006000000000a0000000d160000114f000010350000146e"
+      }
+    },
+    {
+      "class": "Average1D",
+      "name": "Average1D.1",
+      "state": {
+        "pos": [
+          500.0,
+          -100.0
+        ],
+        "enabled": true,
+        "viewed": false,
+        "latched": false,
+        "label": "",
+        "terminals": {
+          "In": {
+            "io": "in",
+            "removable": false,
+            "ttype": "amitypes.array.Array1d",
+            "optional": false,
+            "group": null
+          },
+          "Out": {
+            "io": "out",
+            "removable": false,
+            "ttype": "amitypes.array.Array1d",
+            "optional": false,
+            "group": null
+          }
+        },
+        "ctrl": {
+          "N": 2,
+          "infinite": true
+        },
+        "geometry": "01d9d0cb00030000000010e5000013350000140400001670000010e500001351000014040000167000000006000000000a00000010e5000013510000140400001670"
+      }
+    },
+    {
+      "class": "SourceNode",
+      "name": "m1_ry",
+      "state": {
+        "pos": [
+          600.0,
+          1200.0
+        ],
+        "enabled": true,
+        "viewed": false,
+        "latched": false,
+        "label": "",
+        "terminals": {
+          "Out": {
+            "io": "out",
+            "removable": false,
+            "ttype": "float",
+            "optional": false,
+            "group": null
+          }
+        },
+        "geometry": "01d9d0cb0003000000000370000012120000068f0000154d000003700000122e0000068f0000154d00000004000000000a00000003700000122e0000068f0000154d",
+        "source_kwargs": {}
+      }
+    },
+    {
+      "class": "ImageViewer",
+      "name": "ImageViewer.1",
+      "state": {
+        "pos": [
+          700.0,
+          200.0
+        ],
+        "enabled": true,
+        "viewed": true,
+        "latched": false,
+        "label": "jf_forever",
+        "terminals": {
+          "In": {
+            "io": "in",
+            "removable": false,
+            "ttype": "amitypes.array.Array2d",
+            "optional": false,
+            "group": null
+          }
+        },
+        "widget": {
+          "ctrl": {
+            "Title": "",
+            "Show Grid": false,
+            "X Axis": {
+              "Label": "",
+              "Log Scale": false
+            },
+            "Y Axis": {
+              "Label": "",
+              "Log Scale": false
+            },
+            "Histogram": {
+              "Auto Range": true,
+              "Auto Levels": true,
+              "Log Scale": false
+            },
+            "Display": {
+              "Lock Aspect Ratio": true,
+              "Flip": false,
+              "Rotate Counter Clockwise": "0"
+            }
+          },
+          "viewbox": {
+            "targetRange": [
+              [
+                245.82004412651736,
+                498.0475778577097
+              ],
+              [
+                603.1135583251025,
+                862.0615259098454
+              ]
+            ],
+            "viewRange": [
+              [
+                245.82004412651736,
+                498.0475778577097
+              ],
+              [
+                603.1135583251025,
+                862.0615259098454
+              ]
+            ],
+            "yInverted": true,
+            "xInverted": false,
+            "aspectLocked": 1,
+            "autoRange": [
+              false,
+              false
+            ],
+            "autoPan": [
+              false,
+              false
+            ],
+            "autoVisibleOnly": [
+              false,
+              false
+            ],
+            "linkedViews": [
+              null,
+              null
+            ],
+            "defaultPadding": 0.02,
+            "mouseEnabled": [
+              true,
+              true
+            ],
+            "mouseMode": 3,
+            "enableMenu": false,
+            "wheelScaleFactor": -0.125,
+            "background": null,
+            "logMode": [
+              false,
+              false
+            ],
+            "limits": {
+              "xLimits": [
+                -1e+307,
+                1e+307
+              ],
+              "yLimits": [
+                -1e+307,
+                1e+307
+              ],
+              "xRange": [
+                null,
+                null
+              ],
+              "yRange": [
+                null,
+                null
+              ]
+            }
+          },
+          "histogramLUT": {
+            "gradient": {
+              "mode": "rgb",
+              "ticks": [
+                [
+                  0.0,
+                  [
+                    48,
+                    18,
+                    59,
+                    255
+                  ]
+                ],
+                [
+                  0.00392156862745098,
+                  [
+                    50,
+                    21,
+                    67,
+                    255
+                  ]
+                ],
+                [
+                  0.00784313725490196,
+                  [
+                    51,
+                    24,
+                    74,
+                    255
+                  ]
+                ],
+                [
+                  0.011764705882352941,
+                  [
+                    52,
+                    27,
+                    81,
+                    255
+                  ]
+                ],
+                [
+                  0.01568627450980392,
+                  [
+                    53,
+                    30,
+                    88,
+                    255
+                  ]
+                ],
+                [
+                  0.0196078431372549,
+                  [
+                    54,
+                    33,
+                    95,
+                    255
+                  ]
+                ],
+                [
+                  0.023529411764705882,
+                  [
+                    55,
+                    36,
+                    102,
+                    255
+                  ]
+                ],
+                [
+                  0.027450980392156862,
+                  [
+                    56,
+                    39,
+                    109,
+                    255
+                  ]
+                ],
+                [
+                  0.03137254901960784,
+                  [
+                    57,
+                    42,
+                    115,
+                    255
+                  ]
+                ],
+                [
+                  0.03529411764705882,
+                  [
+                    58,
+                    45,
+                    121,
+                    255
+                  ]
+                ],
+                [
+                  0.0392156862745098,
+                  [
+                    59,
+                    47,
+                    128,
+                    255
+                  ]
+                ],
+                [
+                  0.043137254901960784,
+                  [
+                    60,
+                    50,
+                    134,
+                    255
+                  ]
+                ],
+                [
+                  0.047058823529411764,
+                  [
+                    61,
+                    53,
+                    139,
+                    255
+                  ]
+                ],
+                [
+                  0.050980392156862744,
+                  [
+                    62,
+                    56,
+                    145,
+                    255
+                  ]
+                ],
+                [
+                  0.054901960784313725,
+                  [
+                    63,
+                    59,
+                    151,
+                    255
+                  ]
+                ],
+                [
+                  0.058823529411764705,
+                  [
+                    63,
+                    62,
+                    156,
+                    255
+                  ]
+                ],
+                [
+                  0.06274509803921569,
+                  [
+                    64,
+                    64,
+                    162,
+                    255
+                  ]
+                ],
+                [
+                  0.06666666666666667,
+                  [
+                    65,
+                    67,
+                    167,
+                    255
+                  ]
+                ],
+                [
+                  0.07058823529411765,
+                  [
+                    65,
+                    70,
+                    172,
+                    255
+                  ]
+                ],
+                [
+                  0.07450980392156863,
+                  [
+                    66,
+                    73,
+                    177,
+                    255
+                  ]
+                ],
+                [
+                  0.0784313725490196,
+                  [
+                    66,
+                    75,
+                    181,
+                    255
+                  ]
+                ],
+                [
+                  0.08235294117647059,
+                  [
+                    67,
+                    78,
+                    186,
+                    255
+                  ]
+                ],
+                [
+                  0.08627450980392157,
+                  [
+                    68,
+                    81,
+                    191,
+                    255
+                  ]
+                ],
+                [
+                  0.09019607843137255,
+                  [
+                    68,
+                    84,
+                    195,
+                    255
+                  ]
+                ],
+                [
+                  0.09411764705882353,
+                  [
+                    68,
+                    86,
+                    199,
+                    255
+                  ]
+                ],
+                [
+                  0.09803921568627451,
+                  [
+                    69,
+                    89,
+                    203,
+                    255
+                  ]
+                ],
+                [
+                  0.10196078431372549,
+                  [
+                    69,
+                    92,
+                    207,
+                    255
+                  ]
+                ],
+                [
+                  0.10588235294117647,
+                  [
+                    69,
+                    94,
+                    211,
+                    255
+                  ]
+                ],
+                [
+                  0.10980392156862745,
+                  [
+                    70,
+                    97,
+                    214,
+                    255
+                  ]
+                ],
+                [
+                  0.11372549019607843,
+                  [
+                    70,
+                    100,
+                    218,
+                    255
+                  ]
+                ],
+                [
+                  0.11764705882352941,
+                  [
+                    70,
+                    102,
+                    221,
+                    255
+                  ]
+                ],
+                [
+                  0.12156862745098039,
+                  [
+                    70,
+                    105,
+                    224,
+                    255
+                  ]
+                ],
+                [
+                  0.12549019607843137,
+                  [
+                    70,
+                    107,
+                    227,
+                    255
+                  ]
+                ],
+                [
+                  0.12941176470588234,
+                  [
+                    71,
+                    110,
+                    230,
+                    255
+                  ]
+                ],
+                [
+                  0.13333333333333333,
+                  [
+                    71,
+                    113,
+                    233,
+                    255
+                  ]
+                ],
+                [
+                  0.13725490196078433,
+                  [
+                    71,
+                    115,
+                    235,
+                    255
+                  ]
+                ],
+                [
+                  0.1411764705882353,
+                  [
+                    71,
+                    118,
+                    238,
+                    255
+                  ]
+                ],
+                [
+                  0.14509803921568626,
+                  [
+                    71,
+                    120,
+                    240,
+                    255
+                  ]
+                ],
+                [
+                  0.14901960784313725,
+                  [
+                    71,
+                    123,
+                    242,
+                    255
+                  ]
+                ],
+                [
+                  0.15294117647058825,
+                  [
+                    70,
+                    125,
+                    244,
+                    255
+                  ]
+                ],
+                [
+                  0.1568627450980392,
+                  [
+                    70,
+                    128,
+                    246,
+                    255
+                  ]
+                ],
+                [
+                  0.16078431372549018,
+                  [
+                    70,
+                    130,
+                    248,
+                    255
+                  ]
+                ],
+                [
+                  0.16470588235294117,
+                  [
+                    70,
+                    133,
+                    250,
+                    255
+                  ]
+                ],
+                [
+                  0.16862745098039217,
+                  [
+                    70,
+                    135,
+                    251,
+                    255
+                  ]
+                ],
+                [
+                  0.17254901960784313,
+                  [
+                    69,
+                    138,
+                    252,
+                    255
+                  ]
+                ],
+                [
+                  0.1764705882352941,
+                  [
+                    69,
+                    140,
+                    253,
+                    255
+                  ]
+                ],
+                [
+                  0.1803921568627451,
+                  [
+                    68,
+                    143,
+                    254,
+                    255
+                  ]
+                ],
+                [
+                  0.1843137254901961,
+                  [
+                    67,
+                    145,
+                    254,
+                    255
+                  ]
+                ],
+                [
+                  0.18823529411764706,
+                  [
+                    66,
+                    148,
+                    255,
+                    255
+                  ]
+                ],
+                [
+                  0.19215686274509802,
+                  [
+                    65,
+                    150,
+                    255,
+                    255
+                  ]
+                ],
+                [
+                  0.19607843137254902,
+                  [
+                    64,
+                    153,
+                    255,
+                    255
+                  ]
+                ],
+                [
+                  0.2,
+                  [
+                    62,
+                    155,
+                    254,
+                    255
+                  ]
+                ],
+                [
+                  0.20392156862745098,
+                  [
+                    61,
+                    158,
+                    254,
+                    255
+                  ]
+                ],
+                [
+                  0.20784313725490194,
+                  [
+                    59,
+                    160,
+                    253,
+                    255
+                  ]
+                ],
+                [
+                  0.21176470588235294,
+                  [
+                    58,
+                    163,
+                    252,
+                    255
+                  ]
+                ],
+                [
+                  0.21568627450980393,
+                  [
+                    56,
+                    165,
+                    251,
+                    255
+                  ]
+                ],
+                [
+                  0.2196078431372549,
+                  [
+                    55,
+                    168,
+                    250,
+                    255
+                  ]
+                ],
+                [
+                  0.22352941176470587,
+                  [
+                    53,
+                    171,
+                    248,
+                    255
+                  ]
+                ],
+                [
+                  0.22745098039215686,
+                  [
+                    51,
+                    173,
+                    247,
+                    255
+                  ]
+                ],
+                [
+                  0.23137254901960785,
+                  [
+                    49,
+                    175,
+                    245,
+                    255
+                  ]
+                ],
+                [
+                  0.23529411764705882,
+                  [
+                    47,
+                    178,
+                    244,
+                    255
+                  ]
+                ],
+                [
+                  0.2392156862745098,
+                  [
+                    46,
+                    180,
+                    242,
+                    255
+                  ]
+                ],
+                [
+                  0.24313725490196078,
+                  [
+                    44,
+                    183,
+                    240,
+                    255
+                  ]
+                ],
+                [
+                  0.24705882352941178,
+                  [
+                    42,
+                    185,
+                    238,
+                    255
+                  ]
+                ],
+                [
+                  0.25098039215686274,
+                  [
+                    40,
+                    188,
+                    235,
+                    255
+                  ]
+                ],
+                [
+                  0.2549019607843137,
+                  [
+                    39,
+                    190,
+                    233,
+                    255
+                  ]
+                ],
+                [
+                  0.2588235294117647,
+                  [
+                    37,
+                    192,
+                    231,
+                    255
+                  ]
+                ],
+                [
+                  0.2627450980392157,
+                  [
+                    35,
+                    195,
+                    228,
+                    255
+                  ]
+                ],
+                [
+                  0.26666666666666666,
+                  [
+                    34,
+                    197,
+                    226,
+                    255
+                  ]
+                ],
+                [
+                  0.27058823529411763,
+                  [
+                    32,
+                    199,
+                    223,
+                    255
+                  ]
+                ],
+                [
+                  0.27450980392156865,
+                  [
+                    31,
+                    201,
+                    221,
+                    255
+                  ]
+                ],
+                [
+                  0.2784313725490196,
+                  [
+                    30,
+                    203,
+                    218,
+                    255
+                  ]
+                ],
+                [
+                  0.2823529411764706,
+                  [
+                    28,
+                    205,
+                    216,
+                    255
+                  ]
+                ],
+                [
+                  0.28627450980392155,
+                  [
+                    27,
+                    208,
+                    213,
+                    255
+                  ]
+                ],
+                [
+                  0.2901960784313725,
+                  [
+                    26,
+                    210,
+                    210,
+                    255
+                  ]
+                ],
+                [
+                  0.29411764705882354,
+                  [
+                    26,
+                    212,
+                    208,
+                    255
+                  ]
+                ],
+                [
+                  0.2980392156862745,
+                  [
+                    25,
+                    213,
+                    205,
+                    255
+                  ]
+                ],
+                [
+                  0.30196078431372547,
+                  [
+                    24,
+                    215,
+                    202,
+                    255
+                  ]
+                ],
+                [
+                  0.3058823529411765,
+                  [
+                    24,
+                    217,
+                    200,
+                    255
+                  ]
+                ],
+                [
+                  0.30980392156862746,
+                  [
+                    24,
+                    219,
+                    197,
+                    255
+                  ]
+                ],
+                [
+                  0.3137254901960784,
+                  [
+                    24,
+                    221,
+                    194,
+                    255
+                  ]
+                ],
+                [
+                  0.3176470588235294,
+                  [
+                    24,
+                    222,
+                    192,
+                    255
+                  ]
+                ],
+                [
+                  0.32156862745098036,
+                  [
+                    24,
+                    224,
+                    189,
+                    255
+                  ]
+                ],
+                [
+                  0.3254901960784314,
+                  [
+                    25,
+                    226,
+                    187,
+                    255
+                  ]
+                ],
+                [
+                  0.32941176470588235,
+                  [
+                    25,
+                    227,
+                    185,
+                    255
+                  ]
+                ],
+                [
+                  0.3333333333333333,
+                  [
+                    26,
+                    228,
+                    182,
+                    255
+                  ]
+                ],
+                [
+                  0.33725490196078434,
+                  [
+                    28,
+                    230,
+                    180,
+                    255
+                  ]
+                ],
+                [
+                  0.3411764705882353,
+                  [
+                    29,
+                    231,
+                    178,
+                    255
+                  ]
+                ],
+                [
+                  0.34509803921568627,
+                  [
+                    31,
+                    233,
+                    175,
+                    255
+                  ]
+                ],
+                [
+                  0.34901960784313724,
+                  [
+                    32,
+                    234,
+                    172,
+                    255
+                  ]
+                ],
+                [
+                  0.3529411764705882,
+                  [
+                    34,
+                    235,
+                    170,
+                    255
+                  ]
+                ],
+                [
+                  0.3568627450980392,
+                  [
+                    37,
+                    236,
+                    167,
+                    255
+                  ]
+                ],
+                [
+                  0.3607843137254902,
+                  [
+                    39,
+                    238,
+                    164,
+                    255
+                  ]
+                ],
+                [
+                  0.36470588235294116,
+                  [
+                    42,
+                    239,
+                    161,
+                    255
+                  ]
+                ],
+                [
+                  0.3686274509803922,
+                  [
+                    44,
+                    240,
+                    158,
+                    255
+                  ]
+                ],
+                [
+                  0.37254901960784315,
+                  [
+                    47,
+                    241,
+                    155,
+                    255
+                  ]
+                ],
+                [
+                  0.3764705882352941,
+                  [
+                    50,
+                    242,
+                    152,
+                    255
+                  ]
+                ],
+                [
+                  0.3803921568627451,
+                  [
+                    53,
+                    243,
+                    148,
+                    255
+                  ]
+                ],
+                [
+                  0.38431372549019605,
+                  [
+                    56,
+                    244,
+                    145,
+                    255
+                  ]
+                ],
+                [
+                  0.38823529411764707,
+                  [
+                    60,
+                    245,
+                    142,
+                    255
+                  ]
+                ],
+                [
+                  0.39215686274509803,
+                  [
+                    63,
+                    246,
+                    138,
+                    255
+                  ]
+                ],
+                [
+                  0.396078431372549,
+                  [
+                    67,
+                    247,
+                    135,
+                    255
+                  ]
+                ],
+                [
+                  0.4,
+                  [
+                    70,
+                    248,
+                    132,
+                    255
+                  ]
+                ],
+                [
+                  0.403921568627451,
+                  [
+                    74,
+                    248,
+                    128,
+                    255
+                  ]
+                ],
+                [
+                  0.40784313725490196,
+                  [
+                    78,
+                    249,
+                    125,
+                    255
+                  ]
+                ],
+                [
+                  0.4117647058823529,
+                  [
+                    82,
+                    250,
+                    122,
+                    255
+                  ]
+                ],
+                [
+                  0.4156862745098039,
+                  [
+                    85,
+                    250,
+                    118,
+                    255
+                  ]
+                ],
+                [
+                  0.4196078431372549,
+                  [
+                    89,
+                    251,
+                    115,
+                    255
+                  ]
+                ],
+                [
+                  0.4235294117647059,
+                  [
+                    93,
+                    252,
+                    111,
+                    255
+                  ]
+                ],
+                [
+                  0.42745098039215684,
+                  [
+                    97,
+                    252,
+                    108,
+                    255
+                  ]
+                ],
+                [
+                  0.43137254901960786,
+                  [
+                    101,
+                    253,
+                    105,
+                    255
+                  ]
+                ],
+                [
+                  0.43529411764705883,
+                  [
+                    105,
+                    253,
+                    102,
+                    255
+                  ]
+                ],
+                [
+                  0.4392156862745098,
+                  [
+                    109,
+                    254,
+                    98,
+                    255
+                  ]
+                ],
+                [
+                  0.44313725490196076,
+                  [
+                    113,
+                    254,
+                    95,
+                    255
+                  ]
+                ],
+                [
+                  0.44705882352941173,
+                  [
+                    117,
+                    254,
+                    92,
+                    255
+                  ]
+                ],
+                [
+                  0.45098039215686275,
+                  [
+                    121,
+                    254,
+                    89,
+                    255
+                  ]
+                ],
+                [
+                  0.4549019607843137,
+                  [
+                    125,
+                    255,
+                    86,
+                    255
+                  ]
+                ],
+                [
+                  0.4588235294117647,
+                  [
+                    128,
+                    255,
+                    83,
+                    255
+                  ]
+                ],
+                [
+                  0.4627450980392157,
+                  [
+                    132,
+                    255,
+                    81,
+                    255
+                  ]
+                ],
+                [
+                  0.4666666666666667,
+                  [
+                    136,
+                    255,
+                    78,
+                    255
+                  ]
+                ],
+                [
+                  0.47058823529411764,
+                  [
+                    139,
+                    255,
+                    75,
+                    255
+                  ]
+                ],
+                [
+                  0.4745098039215686,
+                  [
+                    143,
+                    255,
+                    73,
+                    255
+                  ]
+                ],
+                [
+                  0.4784313725490196,
+                  [
+                    146,
+                    255,
+                    71,
+                    255
+                  ]
+                ],
+                [
+                  0.4823529411764706,
+                  [
+                    150,
+                    254,
+                    68,
+                    255
+                  ]
+                ],
+                [
+                  0.48627450980392156,
+                  [
+                    153,
+                    254,
+                    66,
+                    255
+                  ]
+                ],
+                [
+                  0.49019607843137253,
+                  [
+                    156,
+                    254,
+                    64,
+                    255
+                  ]
+                ],
+                [
+                  0.49411764705882355,
+                  [
+                    159,
+                    253,
+                    63,
+                    255
+                  ]
+                ],
+                [
+                  0.4980392156862745,
+                  [
+                    161,
+                    253,
+                    61,
+                    255
+                  ]
+                ],
+                [
+                  0.5019607843137255,
+                  [
+                    164,
+                    252,
+                    60,
+                    255
+                  ]
+                ],
+                [
+                  0.5058823529411764,
+                  [
+                    167,
+                    252,
+                    58,
+                    255
+                  ]
+                ],
+                [
+                  0.5098039215686274,
+                  [
+                    169,
+                    251,
+                    57,
+                    255
+                  ]
+                ],
+                [
+                  0.5137254901960784,
+                  [
+                    172,
+                    251,
+                    56,
+                    255
+                  ]
+                ],
+                [
+                  0.5176470588235293,
+                  [
+                    175,
+                    250,
+                    55,
+                    255
+                  ]
+                ],
+                [
+                  0.5215686274509804,
+                  [
+                    177,
+                    249,
+                    54,
+                    255
+                  ]
+                ],
+                [
+                  0.5254901960784314,
+                  [
+                    180,
+                    248,
+                    54,
+                    255
+                  ]
+                ],
+                [
+                  0.5294117647058824,
+                  [
+                    183,
+                    247,
+                    53,
+                    255
+                  ]
+                ],
+                [
+                  0.5333333333333333,
+                  [
+                    185,
+                    246,
+                    53,
+                    255
+                  ]
+                ],
+                [
+                  0.5372549019607843,
+                  [
+                    188,
+                    245,
+                    52,
+                    255
+                  ]
+                ],
+                [
+                  0.5411764705882353,
+                  [
+                    190,
+                    244,
+                    52,
+                    255
+                  ]
+                ],
+                [
+                  0.5450980392156862,
+                  [
+                    193,
+                    243,
+                    52,
+                    255
+                  ]
+                ],
+                [
+                  0.5490196078431373,
+                  [
+                    195,
+                    241,
+                    52,
+                    255
+                  ]
+                ],
+                [
+                  0.5529411764705883,
+                  [
+                    198,
+                    240,
+                    52,
+                    255
+                  ]
+                ],
+                [
+                  0.5568627450980392,
+                  [
+                    200,
+                    239,
+                    52,
+                    255
+                  ]
+                ],
+                [
+                  0.5607843137254902,
+                  [
+                    203,
+                    237,
+                    52,
+                    255
+                  ]
+                ],
+                [
+                  0.5647058823529412,
+                  [
+                    205,
+                    236,
+                    52,
+                    255
+                  ]
+                ],
+                [
+                  0.5686274509803921,
+                  [
+                    208,
+                    234,
+                    52,
+                    255
+                  ]
+                ],
+                [
+                  0.5725490196078431,
+                  [
+                    210,
+                    233,
+                    53,
+                    255
+                  ]
+                ],
+                [
+                  0.5764705882352941,
+                  [
+                    212,
+                    231,
+                    53,
+                    255
+                  ]
+                ],
+                [
+                  0.580392156862745,
+                  [
+                    215,
+                    229,
+                    53,
+                    255
+                  ]
+                ],
+                [
+                  0.5843137254901961,
+                  [
+                    217,
+                    228,
+                    54,
+                    255
+                  ]
+                ],
+                [
+                  0.5882352941176471,
+                  [
+                    219,
+                    226,
+                    54,
+                    255
+                  ]
+                ],
+                [
+                  0.592156862745098,
+                  [
+                    221,
+                    224,
+                    55,
+                    255
+                  ]
+                ],
+                [
+                  0.596078431372549,
+                  [
+                    223,
+                    223,
+                    55,
+                    255
+                  ]
+                ],
+                [
+                  0.6,
+                  [
+                    225,
+                    221,
+                    55,
+                    255
+                  ]
+                ],
+                [
+                  0.6039215686274509,
+                  [
+                    227,
+                    219,
+                    56,
+                    255
+                  ]
+                ],
+                [
+                  0.6078431372549019,
+                  [
+                    229,
+                    217,
+                    56,
+                    255
+                  ]
+                ],
+                [
+                  0.611764705882353,
+                  [
+                    231,
+                    215,
+                    57,
+                    255
+                  ]
+                ],
+                [
+                  0.615686274509804,
+                  [
+                    233,
+                    213,
+                    57,
+                    255
+                  ]
+                ],
+                [
+                  0.6196078431372549,
+                  [
+                    235,
+                    211,
+                    57,
+                    255
+                  ]
+                ],
+                [
+                  0.6235294117647059,
+                  [
+                    236,
+                    209,
+                    58,
+                    255
+                  ]
+                ],
+                [
+                  0.6274509803921569,
+                  [
+                    238,
+                    207,
+                    58,
+                    255
+                  ]
+                ],
+                [
+                  0.6313725490196078,
+                  [
+                    239,
+                    205,
+                    58,
+                    255
+                  ]
+                ],
+                [
+                  0.6352941176470588,
+                  [
+                    241,
+                    203,
+                    58,
+                    255
+                  ]
+                ],
+                [
+                  0.6392156862745098,
+                  [
+                    242,
+                    201,
+                    58,
+                    255
+                  ]
+                ],
+                [
+                  0.6431372549019607,
+                  [
+                    244,
+                    199,
+                    58,
+                    255
+                  ]
+                ],
+                [
+                  0.6470588235294118,
+                  [
+                    245,
+                    197,
+                    58,
+                    255
+                  ]
+                ],
+                [
+                  0.6509803921568628,
+                  [
+                    246,
+                    195,
+                    58,
+                    255
+                  ]
+                ],
+                [
+                  0.6549019607843137,
+                  [
+                    247,
+                    193,
+                    58,
+                    255
+                  ]
+                ],
+                [
+                  0.6588235294117647,
+                  [
+                    248,
+                    190,
+                    57,
+                    255
+                  ]
+                ],
+                [
+                  0.6627450980392157,
+                  [
+                    249,
+                    188,
+                    57,
+                    255
+                  ]
+                ],
+                [
+                  0.6666666666666666,
+                  [
+                    250,
+                    186,
+                    57,
+                    255
+                  ]
+                ],
+                [
+                  0.6705882352941176,
+                  [
+                    251,
+                    184,
+                    56,
+                    255
+                  ]
+                ],
+                [
+                  0.6745098039215687,
+                  [
+                    251,
+                    182,
+                    55,
+                    255
+                  ]
+                ],
+                [
+                  0.6784313725490196,
+                  [
+                    252,
+                    179,
+                    54,
+                    255
+                  ]
+                ],
+                [
+                  0.6823529411764706,
+                  [
+                    252,
+                    177,
+                    54,
+                    255
+                  ]
+                ],
+                [
+                  0.6862745098039216,
+                  [
+                    253,
+                    174,
+                    53,
+                    255
+                  ]
+                ],
+                [
+                  0.6901960784313725,
+                  [
+                    253,
+                    172,
+                    52,
+                    255
+                  ]
+                ],
+                [
+                  0.6941176470588235,
+                  [
+                    254,
+                    169,
+                    51,
+                    255
+                  ]
+                ],
+                [
+                  0.6980392156862745,
+                  [
+                    254,
+                    167,
+                    50,
+                    255
+                  ]
+                ],
+                [
+                  0.7019607843137254,
+                  [
+                    254,
+                    164,
+                    49,
+                    255
+                  ]
+                ],
+                [
+                  0.7058823529411764,
+                  [
+                    254,
+                    161,
+                    48,
+                    255
+                  ]
+                ],
+                [
+                  0.7098039215686275,
+                  [
+                    254,
+                    158,
+                    47,
+                    255
+                  ]
+                ],
+                [
+                  0.7137254901960784,
+                  [
+                    254,
+                    155,
+                    45,
+                    255
+                  ]
+                ],
+                [
+                  0.7176470588235294,
+                  [
+                    254,
+                    153,
+                    44,
+                    255
+                  ]
+                ],
+                [
+                  0.7215686274509804,
+                  [
+                    254,
+                    150,
+                    43,
+                    255
+                  ]
+                ],
+                [
+                  0.7254901960784313,
+                  [
+                    254,
+                    147,
+                    42,
+                    255
+                  ]
+                ],
+                [
+                  0.7294117647058823,
+                  [
+                    254,
+                    144,
+                    41,
+                    255
+                  ]
+                ],
+                [
+                  0.7333333333333333,
+                  [
+                    253,
+                    141,
+                    39,
+                    255
+                  ]
+                ],
+                [
+                  0.7372549019607844,
+                  [
+                    253,
+                    138,
+                    38,
+                    255
+                  ]
+                ],
+                [
+                  0.7411764705882353,
+                  [
+                    252,
+                    135,
+                    37,
+                    255
+                  ]
+                ],
+                [
+                  0.7450980392156863,
+                  [
+                    252,
+                    132,
+                    35,
+                    255
+                  ]
+                ],
+                [
+                  0.7490196078431373,
+                  [
+                    251,
+                    129,
+                    34,
+                    255
+                  ]
+                ],
+                [
+                  0.7529411764705882,
+                  [
+                    251,
+                    126,
+                    33,
+                    255
+                  ]
+                ],
+                [
+                  0.7568627450980392,
+                  [
+                    250,
+                    123,
+                    31,
+                    255
+                  ]
+                ],
+                [
+                  0.7607843137254902,
+                  [
+                    249,
+                    120,
+                    30,
+                    255
+                  ]
+                ],
+                [
+                  0.7647058823529411,
+                  [
+                    249,
+                    117,
+                    29,
+                    255
+                  ]
+                ],
+                [
+                  0.7686274509803921,
+                  [
+                    248,
+                    114,
+                    28,
+                    255
+                  ]
+                ],
+                [
+                  0.7725490196078432,
+                  [
+                    247,
+                    111,
+                    26,
+                    255
+                  ]
+                ],
+                [
+                  0.7764705882352941,
+                  [
+                    246,
+                    108,
+                    25,
+                    255
+                  ]
+                ],
+                [
+                  0.7803921568627451,
+                  [
+                    245,
+                    105,
+                    24,
+                    255
+                  ]
+                ],
+                [
+                  0.7843137254901961,
+                  [
+                    244,
+                    102,
+                    23,
+                    255
+                  ]
+                ],
+                [
+                  0.788235294117647,
+                  [
+                    243,
+                    99,
+                    21,
+                    255
+                  ]
+                ],
+                [
+                  0.792156862745098,
+                  [
+                    242,
+                    96,
+                    20,
+                    255
+                  ]
+                ],
+                [
+                  0.796078431372549,
+                  [
+                    241,
+                    93,
+                    19,
+                    255
+                  ]
+                ],
+                [
+                  0.8,
+                  [
+                    240,
+                    91,
+                    18,
+                    255
+                  ]
+                ],
+                [
+                  0.803921568627451,
+                  [
+                    239,
+                    88,
+                    17,
+                    255
+                  ]
+                ],
+                [
+                  0.807843137254902,
+                  [
+                    237,
+                    85,
+                    16,
+                    255
+                  ]
+                ],
+                [
+                  0.8117647058823529,
+                  [
+                    236,
+                    83,
+                    15,
+                    255
+                  ]
+                ],
+                [
+                  0.8156862745098039,
+                  [
+                    235,
+                    80,
+                    14,
+                    255
+                  ]
+                ],
+                [
+                  0.8196078431372549,
+                  [
+                    234,
+                    78,
+                    13,
+                    255
+                  ]
+                ],
+                [
+                  0.8235294117647058,
+                  [
+                    232,
+                    75,
+                    12,
+                    255
+                  ]
+                ],
+                [
+                  0.8274509803921568,
+                  [
+                    231,
+                    73,
+                    12,
+                    255
+                  ]
+                ],
+                [
+                  0.8313725490196078,
+                  [
+                    229,
+                    71,
+                    11,
+                    255
+                  ]
+                ],
+                [
+                  0.8352941176470589,
+                  [
+                    228,
+                    69,
+                    10,
+                    255
+                  ]
+                ],
+                [
+                  0.8392156862745098,
+                  [
+                    226,
+                    67,
+                    10,
+                    255
+                  ]
+                ],
+                [
+                  0.8431372549019608,
+                  [
+                    225,
+                    65,
+                    9,
+                    255
+                  ]
+                ],
+                [
+                  0.8470588235294118,
+                  [
+                    223,
+                    63,
+                    8,
+                    255
+                  ]
+                ],
+                [
+                  0.8509803921568627,
+                  [
+                    221,
+                    61,
+                    8,
+                    255
+                  ]
+                ],
+                [
+                  0.8549019607843137,
+                  [
+                    220,
+                    59,
+                    7,
+                    255
+                  ]
+                ],
+                [
+                  0.8588235294117647,
+                  [
+                    218,
+                    57,
+                    7,
+                    255
+                  ]
+                ],
+                [
+                  0.8627450980392157,
+                  [
+                    216,
+                    55,
+                    6,
+                    255
+                  ]
+                ],
+                [
+                  0.8666666666666667,
+                  [
+                    214,
+                    53,
+                    6,
+                    255
+                  ]
+                ],
+                [
+                  0.8705882352941177,
+                  [
+                    212,
+                    51,
+                    5,
+                    255
+                  ]
+                ],
+                [
+                  0.8745098039215686,
+                  [
+                    210,
+                    49,
+                    5,
+                    255
+                  ]
+                ],
+                [
+                  0.8784313725490196,
+                  [
+                    208,
+                    47,
+                    5,
+                    255
+                  ]
+                ],
+                [
+                  0.8823529411764706,
+                  [
+                    206,
+                    45,
+                    4,
+                    255
+                  ]
+                ],
+                [
+                  0.8862745098039215,
+                  [
+                    204,
+                    43,
+                    4,
+                    255
+                  ]
+                ],
+                [
+                  0.8901960784313725,
+                  [
+                    202,
+                    42,
+                    4,
+                    255
+                  ]
+                ],
+                [
+                  0.8941176470588235,
+                  [
+                    200,
+                    40,
+                    3,
+                    255
+                  ]
+                ],
+                [
+                  0.8980392156862745,
+                  [
+                    197,
+                    38,
+                    3,
+                    255
+                  ]
+                ],
+                [
+                  0.9019607843137255,
+                  [
+                    195,
+                    37,
+                    3,
+                    255
+                  ]
+                ],
+                [
+                  0.9058823529411765,
+                  [
+                    193,
+                    35,
+                    2,
+                    255
+                  ]
+                ],
+                [
+                  0.9098039215686274,
+                  [
+                    190,
+                    33,
+                    2,
+                    255
+                  ]
+                ],
+                [
+                  0.9137254901960784,
+                  [
+                    188,
+                    32,
+                    2,
+                    255
+                  ]
+                ],
+                [
+                  0.9176470588235294,
+                  [
+                    185,
+                    30,
+                    2,
+                    255
+                  ]
+                ],
+                [
+                  0.9215686274509803,
+                  [
+                    183,
+                    29,
+                    2,
+                    255
+                  ]
+                ],
+                [
+                  0.9254901960784314,
+                  [
+                    180,
+                    27,
+                    1,
+                    255
+                  ]
+                ],
+                [
+                  0.9294117647058824,
+                  [
+                    178,
+                    26,
+                    1,
+                    255
+                  ]
+                ],
+                [
+                  0.9333333333333333,
+                  [
+                    175,
+                    24,
+                    1,
+                    255
+                  ]
+                ],
+                [
+                  0.9372549019607843,
+                  [
+                    172,
+                    23,
+                    1,
+                    255
+                  ]
+                ],
+                [
+                  0.9411764705882353,
+                  [
+                    169,
+                    22,
+                    1,
+                    255
+                  ]
+                ],
+                [
+                  0.9450980392156862,
+                  [
+                    167,
+                    20,
+                    1,
+                    255
+                  ]
+                ],
+                [
+                  0.9490196078431372,
+                  [
+                    164,
+                    19,
+                    1,
+                    255
+                  ]
+                ],
+                [
+                  0.9529411764705882,
+                  [
+                    161,
+                    18,
+                    1,
+                    255
+                  ]
+                ],
+                [
+                  0.9568627450980391,
+                  [
+                    158,
+                    16,
+                    1,
+                    255
+                  ]
+                ],
+                [
+                  0.9607843137254902,
+                  [
+                    155,
+                    15,
+                    1,
+                    255
+                  ]
+                ],
+                [
+                  0.9647058823529412,
+                  [
+                    152,
+                    14,
+                    1,
+                    255
+                  ]
+                ],
+                [
+                  0.9686274509803922,
+                  [
+                    149,
+                    13,
+                    1,
+                    255
+                  ]
+                ],
+                [
+                  0.9725490196078431,
+                  [
+                    146,
+                    11,
+                    1,
+                    255
+                  ]
+                ],
+                [
+                  0.9764705882352941,
+                  [
+                    142,
+                    10,
+                    1,
+                    255
+                  ]
+                ],
+                [
+                  0.9803921568627451,
+                  [
+                    139,
+                    9,
+                    2,
+                    255
+                  ]
+                ],
+                [
+                  0.984313725490196,
+                  [
+                    136,
+                    8,
+                    2,
+                    255
+                  ]
+                ],
+                [
+                  0.9882352941176471,
+                  [
+                    133,
+                    7,
+                    2,
+                    255
+                  ]
+                ],
+                [
+                  0.9921568627450981,
+                  [
+                    129,
+                    6,
+                    2,
+                    255
+                  ]
+                ],
+                [
+                  0.996078431372549,
+                  [
+                    126,
+                    5,
+                    2,
+                    255
+                  ]
+                ],
+                [
+                  1.0,
+                  [
+                    122,
+                    4,
+                    3,
+                    255
+                  ]
+                ]
+              ],
+              "ticksVisible": false
+            },
+            "levels": [
+              2.534584077925331,
+              3.2496226966715804
+            ],
+            "mode": "mono"
+          }
+        },
+        "geometry": "01d9d0cb00030000000003a00000086d000006bf00000ba8000003a000000889000006bf00000ba800000000000000000c00000003a000000889000006bf00000ba8"
+      }
+    },
+    {
+      "class": "ImageViewer",
+      "name": "ImageViewer.2",
+      "state": {
+        "pos": [
+          700.0,
+          300.0
+        ],
+        "enabled": true,
+        "viewed": true,
+        "latched": false,
+        "label": "jf_n_average",
+        "terminals": {
+          "In": {
+            "io": "in",
+            "removable": false,
+            "ttype": "amitypes.array.Array2d",
+            "optional": false,
+            "group": null
+          }
+        },
+        "widget": {
+          "ctrl": {
+            "Title": "",
+            "Show Grid": true,
+            "X Axis": {
+              "Label": "",
+              "Log Scale": false
+            },
+            "Y Axis": {
+              "Label": "",
+              "Log Scale": false
+            },
+            "Histogram": {
+              "Auto Range": false,
+              "Auto Levels": false,
+              "Log Scale": false
+            },
+            "Display": {
+              "Lock Aspect Ratio": true,
+              "Flip": false,
+              "Rotate Counter Clockwise": "0"
+            }
+          },
+          "viewbox": {
+            "targetRange": [
+              [
+                295.7482815368675,
+                399.14308737655045
+              ],
+              [
+                685.1520317258422,
+                791.3716600455488
+              ]
+            ],
+            "viewRange": [
+              [
+                295.7482815368675,
+                399.14308737655045
+              ],
+              [
+                685.1520317258422,
+                791.3716600455488
+              ]
+            ],
+            "yInverted": true,
+            "xInverted": false,
+            "aspectLocked": 1,
+            "autoRange": [
+              false,
+              false
+            ],
+            "autoPan": [
+              false,
+              false
+            ],
+            "autoVisibleOnly": [
+              false,
+              false
+            ],
+            "linkedViews": [
+              null,
+              null
+            ],
+            "defaultPadding": 0.02,
+            "mouseEnabled": [
+              true,
+              true
+            ],
+            "mouseMode": 3,
+            "enableMenu": false,
+            "wheelScaleFactor": -0.125,
+            "background": null,
+            "logMode": [
+              false,
+              false
+            ],
+            "limits": {
+              "xLimits": [
+                -1e+307,
+                1e+307
+              ],
+              "yLimits": [
+                -1e+307,
+                1e+307
+              ],
+              "xRange": [
+                null,
+                null
+              ],
+              "yRange": [
+                null,
+                null
+              ]
+            }
+          },
+          "histogramLUT": {
+            "gradient": {
+              "mode": "rgb",
+              "ticks": [
+                [
+                  0.0,
+                  [
+                    68,
+                    1,
+                    84,
+                    255
+                  ]
+                ],
+                [
+                  0.25,
+                  [
+                    58,
+                    82,
+                    139,
+                    255
+                  ]
+                ],
+                [
+                  0.5,
+                  [
+                    32,
+                    144,
+                    140,
+                    255
+                  ]
+                ],
+                [
+                  0.75,
+                  [
+                    94,
+                    201,
+                    97,
+                    255
+                  ]
+                ],
+                [
+                  1.0,
+                  [
+                    253,
+                    231,
+                    36,
+                    255
+                  ]
+                ]
+              ],
+              "ticksVisible": true
+            },
+            "levels": [
+              -0.00651590028560789,
+              1.025986037909054
+            ],
+            "mode": "mono"
+          }
+        },
+        "geometry": "01d9d0cb0003000000000ad00000089a00000def00000bd500000ad0000008b600000def00000bd500000000000000000c0000000ad0000008b600000def00000bd5"
+      }
+    },
+    {
+      "class": "Roi2D",
+      "name": "Roi2D.0",
+      "state": {
+        "pos": [
+          700.0,
+          500.0
+        ],
+        "enabled": true,
+        "viewed": true,
+        "latched": false,
+        "label": "",
+        "terminals": {
+          "In": {
+            "io": "in",
+            "removable": false,
+            "ttype": "amitypes.array.Array2d",
+            "optional": false,
+            "group": null
+          },
+          "Out": {
+            "io": "out",
+            "removable": false,
+            "ttype": "amitypes.array.Array2d",
+            "optional": false,
+            "group": null
+          },
+          "Roi_Coordinates": {
+            "io": "out",
+            "removable": false,
+            "ttype": "amitypes.array.Array1d",
+            "optional": false,
+            "group": null
+          }
+        },
+        "ctrl": {
+          "origin x": 128,
+          "origin y": 320,
+          "extent x": 62,
+          "extent y": 25
+        },
+        "widget": {
+          "ctrl": {
+            "Title": "",
+            "Show Grid": true,
+            "X Axis": {
+              "Label": "",
+              "Log Scale": false
+            },
+            "Y Axis": {
+              "Label": "",
+              "Log Scale": false
+            },
+            "Histogram": {
+              "Auto Range": false,
+              "Auto Levels": false,
+              "Log Scale": false
+            },
+            "Display": {
+              "Lock Aspect Ratio": true,
+              "Flip": false,
+              "Rotate Counter Clockwise": "0"
+            }
+          },
+          "viewbox": {
+            "targetRange": [
+              [
+                -31.275377755214137,
+                543.2753777552141
+              ],
+              [
+                -37.74514077565367,
+                549.7451407756537
+              ]
+            ],
+            "viewRange": [
+              [
+                -31.275377755214137,
+                543.2753777552141
+              ],
+              [
+                -37.74514077565367,
+                549.7451407756537
+              ]
+            ],
+            "yInverted": true,
+            "xInverted": false,
+            "aspectLocked": 1,
+            "autoRange": [
+              1.0,
+              1.0
+            ],
+            "autoPan": [
+              false,
+              false
+            ],
+            "autoVisibleOnly": [
+              false,
+              false
+            ],
+            "linkedViews": [
+              null,
+              null
+            ],
+            "defaultPadding": 0.02,
+            "mouseEnabled": [
+              true,
+              true
+            ],
+            "mouseMode": 3,
+            "enableMenu": false,
+            "wheelScaleFactor": -0.125,
+            "background": null,
+            "logMode": [
+              false,
+              false
+            ],
+            "limits": {
+              "xLimits": [
+                -1e+307,
+                1e+307
+              ],
+              "yLimits": [
+                -1e+307,
+                1e+307
+              ],
+              "xRange": [
+                null,
+                null
+              ],
+              "yRange": [
+                null,
+                null
+              ]
+            }
+          },
+          "histogramLUT": {
+            "gradient": {
+              "mode": "rgb",
+              "ticks": [
+                [
+                  0.0,
+                  [
+                    68,
+                    1,
+                    84,
+                    255
+                  ]
+                ],
+                [
+                  0.25,
+                  [
+                    58,
+                    82,
+                    139,
+                    255
+                  ]
+                ],
+                [
+                  0.5,
+                  [
+                    32,
+                    144,
+                    140,
+                    255
+                  ]
+                ],
+                [
+                  0.75,
+                  [
+                    94,
+                    201,
+                    97,
+                    255
+                  ]
+                ],
+                [
+                  1.0,
+                  [
+                    253,
+                    231,
+                    36,
+                    255
+                  ]
+                ]
+              ],
+              "ticksVisible": true
+            },
+            "levels": [
+              -0.05854922828311615,
+              27.303528984677307
+            ],
+            "mode": "mono"
+          }
+        },
+        "geometry": "01d9d0cb0003000000000a66000002bc00000f730000072f00000a66000002d800000f730000072f00000003000000000c0000000a66000002d800000f730000072f"
+      }
+    },
+    {
+      "class": "LinePlot",
+      "name": "LinePlot.2",
+      "state": {
+        "pos": [
+          800.0,
+          -200.0
+        ],
+        "enabled": true,
+        "viewed": true,
+        "latched": false,
+        "label": "",
+        "terminals": {
+          "X": {
+            "io": "in",
+            "removable": false,
+            "ttype": "amitypes.array.Array1d",
+            "optional": false,
+            "group": null
+          },
+          "Y": {
+            "io": "in",
+            "removable": false,
+            "ttype": "amitypes.array.Array1d",
+            "optional": false,
+            "group": null
+          },
+          "X.1": {
+            "io": "in",
+            "removable": true,
+            "ttype": "amitypes.array.Array1d",
+            "optional": false,
+            "group": "group.1"
+          },
+          "Y.1": {
+            "io": "in",
+            "removable": true,
+            "ttype": "amitypes.array.Array1d",
+            "optional": false,
+            "group": "group.1"
+          },
+          "X.2": {
+            "io": "in",
+            "removable": true,
+            "ttype": "amitypes.array.Array1d",
+            "optional": false,
+            "group": "group.2"
+          },
+          "Y.2": {
+            "io": "in",
+            "removable": true,
+            "ttype": "amitypes.array.Array1d",
+            "optional": false,
+            "group": "group.2"
+          }
+        },
+        "widget": {
+          "ctrl": {
+            "Title": "",
+            "Show Grid": true,
+            "X Axis": {
+              "Label": "",
+              "Log Scale": false
+            },
+            "Y Axis": {
+              "Label": "",
+              "Log Scale": true
+            },
+            "trace.0": "PythonEditor.2.Out.1 vs PythonEditor.2.Out",
+            "trace.1": "Average1D.0.Out vs PythonEditor.2.Out",
+            "trace.2": "Average1D.1.Out vs PythonEditor.2.Out"
+          },
+          "legend": {
+            "trace.0": [
+              "PythonEditor.2.Out.1 vs PythonEditor.2.Out",
+              "PythonEditor.2.Out.1 vs PythonEditor.2.Out",
+              {
+                "Point": {
+                  "symbol": "None",
+                  "Brush": [
+                    0,
+                    0,
+                    255,
+                    255
+                  ],
+                  "Size": 14
+                },
+                "Line": {
+                  "color": [
+                    0,
+                    170,
+                    255,
+                    255
+                  ],
+                  "width": 4,
+                  "style": "Solid"
+                }
+              }
+            ],
+            "trace.1": [
+              "Average1D.0.Out vs PythonEditor.2.Out",
+              "Average1D.0.Out vs PythonEditor.2.Out",
+              {
+                "Point": {
+                  "symbol": "None",
+                  "Brush": [
+                    0,
+                    0,
+                    255,
+                    255
+                  ],
+                  "Size": 14
+                },
+                "Line": {
+                  "color": [
+                    0,
+                    255,
+                    0,
+                    255
+                  ],
+                  "width": 2,
+                  "style": "Solid"
+                }
+              }
+            ],
+            "trace.2": [
+              "Average1D.1.Out vs PythonEditor.2.Out",
+              "Average1D.1.Out vs PythonEditor.2.Out",
+              {
+                "Point": {
+                  "symbol": "None",
+                  "Brush": [
+                    0,
+                    0,
+                    255,
+                    255
+                  ],
+                  "Size": 14
+                },
+                "Line": {
+                  "color": [
+                    0,
+                    0,
+                    255,
+                    255
+                  ],
+                  "width": 1,
+                  "style": "Solid"
+                }
+              }
+            ]
+          },
+          "viewbox": {
+            "targetRange": [
+              [
+                -2.4945991853584206,
+                5.551842909160262
+              ],
+              [
+                3.9376988997970948,
+                5.149604621667193
+              ]
+            ],
+            "viewRange": [
+              [
+                -2.4945991853584206,
+                5.551842909160262
+              ],
+              [
+                3.9376988997970948,
+                5.149604621667193
+              ]
+            ],
+            "yInverted": false,
+            "xInverted": false,
+            "aspectLocked": false,
+            "autoRange": [
+              false,
+              false
+            ],
+            "autoPan": [
+              false,
+              false
+            ],
+            "autoVisibleOnly": [
+              false,
+              false
+            ],
+            "linkedViews": [
+              null,
+              null
+            ],
+            "defaultPadding": 0.02,
+            "mouseEnabled": [
+              true,
+              true
+            ],
+            "mouseMode": 3,
+            "enableMenu": false,
+            "wheelScaleFactor": -0.125,
+            "background": null,
+            "logMode": [
+              false,
+              true
+            ],
+            "limits": {
+              "xLimits": [
+                -1e+307,
+                1e+307
+              ],
+              "yLimits": [
+                -1e+307,
+                1e+307
+              ],
+              "xRange": [
+                null,
+                null
+              ],
+              "yRange": [
+                null,
+                null
+              ]
+            }
+          }
+        },
+        "geometry": "01d9d0cb0003000000000000000002e8000001e0000003f000000001000002e9000001df000003ef00000000000000000f0000000001000002e9000001df000003ef"
+      }
+    },
+    {
+      "class": "LinePlot",
+      "name": "LinePlot.3",
+      "state": {
+        "pos": [
+          800.0,
+          100.0
+        ],
+        "enabled": true,
+        "viewed": false,
+        "latched": false,
+        "label": "",
+        "terminals": {
+          "X": {
+            "io": "in",
+            "removable": false,
+            "ttype": "amitypes.array.Array1d",
+            "optional": false,
+            "group": null
+          },
+          "Y": {
+            "io": "in",
+            "removable": false,
+            "ttype": "amitypes.array.Array1d",
+            "optional": false,
+            "group": null
+          }
+        },
+        "widget": {
+          "ctrl": {
+            "Title": "",
+            "Show Grid": true,
+            "X Axis": {
+              "Label": "",
+              "Log Scale": false
+            },
+            "Y Axis": {
+              "Label": "",
+              "Log Scale": true
+            },
+            "trace.0": "Average1D.0.Out vs PythonEditor.2.Out"
+          },
+          "legend": {
+            "trace.0": [
+              "Average1D.0.Out vs PythonEditor.2.Out",
+              "Average1D.0.Out vs PythonEditor.2.Out",
+              {
+                "Point": {
+                  "symbol": "None",
+                  "Brush": [
+                    0,
+                    0,
+                    255,
+                    255
+                  ],
+                  "Size": 14
+                },
+                "Line": {
+                  "color": [
+                    0,
+                    255,
+                    255,
+                    255
+                  ],
+                  "width": 1,
+                  "style": "Solid"
+                }
+              }
+            ]
+          },
+          "viewbox": {
+            "targetRange": [
+              [
+                -17.331343401514317,
+                47.6979619384191
+              ],
+              [
+                -2.8862844687844675,
+                5.778019990813574
+              ]
+            ],
+            "viewRange": [
+              [
+                -17.331343401514317,
+                47.6979619384191
+              ],
+              [
+                -2.8862844687844675,
+                5.778019990813574
+              ]
+            ],
+            "yInverted": false,
+            "xInverted": false,
+            "aspectLocked": false,
+            "autoRange": [
+              false,
+              false
+            ],
+            "autoPan": [
+              false,
+              false
+            ],
+            "autoVisibleOnly": [
+              false,
+              false
+            ],
+            "linkedViews": [
+              null,
+              null
+            ],
+            "defaultPadding": 0.02,
+            "mouseEnabled": [
+              true,
+              true
+            ],
+            "mouseMode": 3,
+            "enableMenu": false,
+            "wheelScaleFactor": -0.125,
+            "background": null,
+            "logMode": [
+              false,
+              true
+            ],
+            "limits": {
+              "xLimits": [
+                -1e+307,
+                1e+307
+              ],
+              "yLimits": [
+                -1e+307,
+                1e+307
+              ],
+              "xRange": [
+                null,
+                null
+              ],
+              "yRange": [
+                null,
+                null
+              ]
+            }
+          }
+        },
+        "geometry": "01d9d0cb0003000000000cb00000123e00000f49000014a700000cb00000125a00000f49000014a700000006000000000a0000000cb00000125a00000f49000014a7"
+      }
+    },
+    {
+      "class": "Sum",
+      "name": "Sum.0",
+      "state": {
+        "pos": [
+          900.0,
+          500.0
+        ],
+        "enabled": true,
+        "viewed": false,
+        "latched": false,
+        "label": "",
+        "terminals": {
+          "In": {
+            "io": "in",
+            "removable": false,
+            "ttype": "typing.Union[amitypes.array.Array3d, amitypes.array.Array2d, amitypes.array.Array1d, list[float], tuple[float]]",
+            "optional": false,
+            "group": null
+          },
+          "Out": {
+            "io": "out",
+            "removable": false,
+            "ttype": "float",
+            "optional": false,
+            "group": null
+          }
+        }
+      }
+    },
+    {
+      "class": "Average0D",
+      "name": "Average0D.0",
+      "state": {
+        "pos": [
+          1100.0,
+          500.0
+        ],
+        "enabled": true,
+        "viewed": false,
+        "latched": false,
+        "label": "",
+        "terminals": {
+          "In": {
+            "io": "in",
+            "removable": false,
+            "ttype": "float",
+            "optional": false,
+            "group": null
+          },
+          "Out": {
+            "io": "out",
+            "removable": false,
+            "ttype": "float",
+            "optional": false,
+            "group": null
+          }
+        },
+        "ctrl": {
+          "N": 120,
+          "infinite": false
+        },
+        "geometry": "01d9d0cb0003000000000ff0000012260000130f0000153d00000ff0000012260000130f0000153d00000006000000000a0000000ff0000012260000130f0000153d"
+      }
+    },
+    {
+      "class": "Filter",
+      "name": "Filter.0",
+      "state": {
+        "pos": [
+          1100.0,
+          800.0
+        ],
+        "enabled": true,
+        "viewed": false,
+        "latched": false,
+        "label": "",
+        "terminals": {
+          "In": {
+            "io": "in",
+            "removable": false,
+            "ttype": "typing.Any",
+            "optional": false,
+            "group": null
+          },
+          "Out": {
+            "io": "out",
+            "removable": false,
+            "ttype": "typing.Any",
+            "optional": false,
+            "group": null
+          },
+          "In.1": {
+            "io": "in",
+            "removable": true,
+            "ttype": "typing.Any",
+            "optional": false,
+            "group": null
+          },
+          "Out.1": {
+            "io": "out",
+            "removable": true,
+            "ttype": "typing.Any",
+            "optional": false,
+            "group": null
+          }
+        },
+        "widget": {
+          "conditions": 1,
+          "inputs": {
+            "In": "XppSb2BmMon:raw:totalIntensityJoules",
+            "In.1": "Sum.0.Out"
+          },
+          "outputs": [
+            "Filter.0.Out",
+            "Filter.0.Out.1"
+          ],
+          "If": {
+            "condition": "XppSb2BmMon:raw:totalIntensityJoules  > 1000 and XppSb2BmMon:raw:totalIntensityJoules < 1e6",
+            "Filter.0.Out": "XppSb2BmMon:raw:totalIntensityJoules",
+            "Filter.0.Out.1": "Sum.0.Out"
+          }
+        },
+        "geometry": "01d9d0cb0003000000000e0b0000119b0000112a000014d600000e0b000011b70000112a000014d600000006000000000a0000000e0b000011b70000112a000014d6"
+      }
+    },
+    {
+      "class": "Average0D",
+      "name": "Average0D.2",
+      "state": {
+        "pos": [
+          1300.0,
+          700.0
+        ],
+        "enabled": true,
+        "viewed": false,
+        "latched": false,
+        "label": "",
+        "terminals": {
+          "In": {
+            "io": "in",
+            "removable": false,
+            "ttype": "float",
+            "optional": false,
+            "group": null
+          },
+          "Out": {
+            "io": "out",
+            "removable": false,
+            "ttype": "float",
+            "optional": false,
+            "group": null
+          }
+        },
+        "ctrl": {
+          "N": 120,
+          "infinite": false
+        },
+        "geometry": "01d9d0cb00030000000011ca00001250000014e90000156f000011ca00001250000014e90000156f00000006000000000a00000011ca00001250000014e90000156f"
+      }
+    },
+    {
+      "class": "Average0D",
+      "name": "Average0D.3",
+      "state": {
+        "pos": [
+          1300.0,
+          900.0
+        ],
+        "enabled": true,
+        "viewed": false,
+        "latched": false,
+        "label": "",
+        "terminals": {
+          "In": {
+            "io": "in",
+            "removable": false,
+            "ttype": "float",
+            "optional": false,
+            "group": null
+          },
+          "Out": {
+            "io": "out",
+            "removable": false,
+            "ttype": "float",
+            "optional": false,
+            "group": null
+          }
+        },
+        "ctrl": {
+          "N": 120,
+          "infinite": false
+        },
+        "geometry": "01d9d0cb0003000000000ff0000012030000130f0000153e00000ff00000121f0000130f0000153e00000006000000000a0000000ff00000121f0000130f0000153e"
+      }
+    },
+    {
+      "class": "Calculator",
+      "name": "Calculator.3",
+      "state": {
+        "pos": [
+          1300.0,
+          500.0
+        ],
+        "enabled": true,
+        "viewed": false,
+        "latched": false,
+        "label": "",
+        "terminals": {
+          "In": {
+            "io": "in",
+            "removable": false,
+            "ttype": "typing.Union[float, amitypes.array.Array1d, amitypes.array.Array2d, amitypes.array.Array3d]",
+            "optional": false,
+            "group": null
+          },
+          "Out": {
+            "io": "out",
+            "removable": false,
+            "ttype": "typing.Any",
+            "optional": false,
+            "group": null
+          }
+        },
+        "widget": {
+          "operation": "Average0D.0.Out/44000"
+        },
+        "geometry": "01d9d0cb0003000000000f80000012230000129f0000154200000f80000012230000129f0000154200000006000000000a0000000f80000012230000129f00001542"
+      }
+    },
+    {
+      "class": "MeanVsScan",
+      "name": "MeanVsScan.0",
+      "state": {
+        "pos": [
+          1400.0,
+          1100.0
+        ],
+        "enabled": true,
+        "viewed": false,
+        "latched": false,
+        "label": "",
+        "terminals": {
+          "Bin": {
+            "io": "in",
+            "removable": false,
+            "ttype": "float",
+            "optional": false,
+            "group": null
+          },
+          "Value": {
+            "io": "in",
+            "removable": false,
+            "ttype": "float",
+            "optional": false,
+            "group": null
+          },
+          "Bins": {
+            "io": "out",
+            "removable": false,
+            "ttype": "amitypes.array.Array1d",
+            "optional": false,
+            "group": null
+          },
+          "Counts": {
+            "io": "out",
+            "removable": false,
+            "ttype": "amitypes.array.Array1d",
+            "optional": false,
+            "group": null
+          },
+          "Value.1": {
+            "io": "in",
+            "removable": true,
+            "ttype": "float",
+            "optional": false,
+            "group": "group.1"
+          },
+          "Counts.1": {
+            "io": "out",
+            "removable": true,
+            "ttype": "amitypes.array.Array1d",
+            "optional": false,
+            "group": "group.1"
+          }
+        },
+        "ctrl": {
+          "binned": false,
+          "bins": 10,
+          "min": 0,
+          "max": 10
+        }
+      }
+    },
+    {
+      "class": "MeanVsScan",
+      "name": "MeanVsScan.1",
+      "state": {
+        "pos": [
+          1400.0,
+          1400.0
+        ],
+        "enabled": true,
+        "viewed": false,
+        "latched": false,
+        "label": "",
+        "terminals": {
+          "Bin": {
+            "io": "in",
+            "removable": false,
+            "ttype": "float",
+            "optional": false,
+            "group": null
+          },
+          "Value": {
+            "io": "in",
+            "removable": false,
+            "ttype": "float",
+            "optional": false,
+            "group": null
+          },
+          "Bins": {
+            "io": "out",
+            "removable": false,
+            "ttype": "amitypes.array.Array1d",
+            "optional": false,
+            "group": null
+          },
+          "Counts": {
+            "io": "out",
+            "removable": false,
+            "ttype": "amitypes.array.Array1d",
+            "optional": false,
+            "group": null
+          },
+          "Value.1": {
+            "io": "in",
+            "removable": true,
+            "ttype": "float",
+            "optional": false,
+            "group": "group.1"
+          },
+          "Counts.1": {
+            "io": "out",
+            "removable": true,
+            "ttype": "amitypes.array.Array1d",
+            "optional": false,
+            "group": "group.1"
+          }
+        },
+        "ctrl": {
+          "binned": false,
+          "bins": 10,
+          "min": 0,
+          "max": 10
+        },
+        "geometry": "01d9d0cb0003000000000ff0000012030000130f0000153e00000ff00000121f0000130f0000153e00000006000000000a0000000ff00000121f0000130f0000153e"
+      }
+    },
+    {
+      "class": "TimePlot",
+      "name": "TimePlot.0",
+      "state": {
+        "pos": [
+          1500.0,
+          400.0
+        ],
+        "enabled": true,
+        "viewed": true,
+        "latched": false,
+        "label": "jf_roi_time",
+        "terminals": {
+          "X": {
+            "io": "in",
+            "removable": false,
+            "ttype": "float",
+            "optional": false,
+            "group": null
+          },
+          "Y": {
+            "io": "in",
+            "removable": false,
+            "ttype": "float",
+            "optional": false,
+            "group": null
+          }
+        },
+        "ctrl": {
+          "Num Points": 1000
+        },
+        "widget": {
+          "ctrl": {
+            "Title": "",
+            "Show Grid": true,
+            "X Axis": {
+              "Label": "",
+              "Log Scale": false
+            },
+            "Y Axis": {
+              "Label": "",
+              "Log Scale": false
+            },
+            "trace.0": "Sum.0.Out vs timestamp"
+          },
+          "legend": {
+            "trace.0": [
+              "Calculator.3.Out vs timestamp",
+              "Sum.0.Out vs timestamp",
+              {
+                "Point": {
+                  "symbol": "o",
+                  "Brush": [
+                    30,
+                    225,
+                    255,
+                    255
+                  ],
+                  "Size": 8
+                },
+                "Line": {
+                  "color": [
+                    0,
+                    255,
+                    255,
+                    255
+                  ],
+                  "width": 1,
+                  "style": "Solid"
+                }
+              }
+            ]
+          },
+          "viewbox": {
+            "targetRange": [
+              [
+                1776785472.5332649,
+                1776785477.110636
+              ],
+              [
+                0.10213789683190005,
+                0.10227474742039884
+              ]
+            ],
+            "viewRange": [
+              [
+                1776785472.5332649,
+                1776785477.110636
+              ],
+              [
+                0.10213789683190005,
+                0.10227474742039884
+              ]
+            ],
+            "yInverted": false,
+            "xInverted": false,
+            "aspectLocked": false,
+            "autoRange": [
+              true,
+              true
+            ],
+            "autoPan": [
+              false,
+              false
+            ],
+            "autoVisibleOnly": [
+              false,
+              false
+            ],
+            "linkedViews": [
+              null,
+              null
+            ],
+            "defaultPadding": 0.02,
+            "mouseEnabled": [
+              true,
+              true
+            ],
+            "mouseMode": 3,
+            "enableMenu": false,
+            "wheelScaleFactor": -0.125,
+            "background": null,
+            "logMode": [
+              false,
+              false
+            ],
+            "limits": {
+              "xLimits": [
+                -62135596800.0,
+                253370764800.0
+              ],
+              "yLimits": [
+                -1e+307,
+                1e+307
+              ],
+              "xRange": [
+                null,
+                null
+              ],
+              "yRange": [
+                null,
+                null
+              ]
+            }
+          }
+        },
+        "geometry": "01d9d0cb0003000000000000000003f00000029a000004f800000001000003f100000299000004f700000000000000000f0000000001000003f100000299000004f7"
+      }
+    },
+    {
+      "class": "Calculator",
+      "name": "Calculator.0",
+      "state": {
+        "pos": [
+          1500.0,
+          800.0
+        ],
+        "enabled": true,
+        "viewed": false,
+        "latched": false,
+        "label": "",
+        "terminals": {
+          "In": {
+            "io": "in",
+            "removable": false,
+            "ttype": "typing.Union[float, amitypes.array.Array1d, amitypes.array.Array2d, amitypes.array.Array3d]",
+            "optional": false,
+            "group": null
+          },
+          "Out": {
+            "io": "out",
+            "removable": false,
+            "ttype": "typing.Any",
+            "optional": false,
+            "group": null
+          },
+          "In.1": {
+            "io": "in",
+            "removable": true,
+            "ttype": "typing.Union[float, amitypes.array.Array1d, amitypes.array.Array2d, amitypes.array.Array3d]",
+            "optional": false,
+            "group": null
+          }
+        },
+        "widget": {
+          "operation": "Average0D.3.Out / Average0D.2.Out/0.375"
+        },
+        "geometry": "01d9d0cb0003000000000cd00000126300000fef0000158200000cd00000126300000fef0000158200000006000000000a0000000cd00000126300000fef00001582"
+      }
+    },
+    {
+      "class": "Calculator",
+      "name": "Calculator.1",
+      "state": {
+        "pos": [
+          1600.0,
+          1200.0
+        ],
+        "enabled": true,
+        "viewed": false,
+        "latched": false,
+        "label": "",
+        "terminals": {
+          "In": {
+            "io": "in",
+            "removable": false,
+            "ttype": "typing.Union[float, amitypes.array.Array1d, amitypes.array.Array2d, amitypes.array.Array3d]",
+            "optional": false,
+            "group": null
+          },
+          "Out": {
+            "io": "out",
+            "removable": false,
+            "ttype": "typing.Any",
+            "optional": false,
+            "group": null
+          },
+          "In.1": {
+            "io": "in",
+            "removable": true,
+            "ttype": "typing.Union[float, amitypes.array.Array1d, amitypes.array.Array2d, amitypes.array.Array3d]",
+            "optional": false,
+            "group": null
+          }
+        },
+        "widget": {
+          "operation": "MeanVsScan.0.Counts/MeanVsScan.0.Counts.1"
+        },
+        "geometry": "01d9d0cb0003000000000ff0000012030000130f0000153e00000ff00000121f0000130f0000153e00000006000000000a0000000ff00000121f0000130f0000153e"
+      }
+    },
+    {
+      "class": "Calculator",
+      "name": "Calculator.2",
+      "state": {
+        "pos": [
+          1600.0,
+          1500.0
+        ],
+        "enabled": true,
+        "viewed": false,
+        "latched": false,
+        "label": "",
+        "terminals": {
+          "In": {
+            "io": "in",
+            "removable": false,
+            "ttype": "typing.Union[float, amitypes.array.Array1d, amitypes.array.Array2d, amitypes.array.Array3d]",
+            "optional": false,
+            "group": null
+          },
+          "Out": {
+            "io": "out",
+            "removable": false,
+            "ttype": "typing.Any",
+            "optional": false,
+            "group": null
+          },
+          "In.1": {
+            "io": "in",
+            "removable": true,
+            "ttype": "typing.Union[float, amitypes.array.Array1d, amitypes.array.Array2d, amitypes.array.Array3d]",
+            "optional": false,
+            "group": null
+          }
+        },
+        "widget": {
+          "operation": "MeanVsScan.1.Counts/MeanVsScan.1.Counts.1"
+        },
+        "geometry": "01d9d0cb0003000000000ff0000012030000130f0000153e00000ff00000121f0000130f0000153e00000006000000000a0000000ff00000121f0000130f0000153e"
+      }
+    },
+    {
+      "class": "TimePlot",
+      "name": "TimePlot.2",
+      "state": {
+        "pos": [
+          1700.0,
+          800.0
+        ],
+        "enabled": true,
+        "viewed": true,
+        "latched": false,
+        "label": "jf_normalized_time",
+        "terminals": {
+          "X": {
+            "io": "in",
+            "removable": false,
+            "ttype": "float",
+            "optional": false,
+            "group": null
+          },
+          "Y": {
+            "io": "in",
+            "removable": false,
+            "ttype": "float",
+            "optional": false,
+            "group": null
+          }
+        },
+        "ctrl": {
+          "Num Points": 1000
+        },
+        "widget": {
+          "ctrl": {
+            "Title": "",
+            "Show Grid": true,
+            "X Axis": {
+              "Label": "",
+              "Log Scale": false
+            },
+            "Y Axis": {
+              "Label": "",
+              "Log Scale": false
+            },
+            "trace.0": "Calculator.0.Out vs timestamp"
+          },
+          "legend": {
+            "trace.0": [
+              "Calculator.0.Out vs timestamp",
+              "Calculator.0.Out vs timestamp",
+              {
+                "Point": {
+                  "symbol": "o",
+                  "Brush": [
+                    30,
+                    225,
+                    255,
+                    255
+                  ],
+                  "Size": 8
+                },
+                "Line": {
+                  "color": [
+                    0,
+                    255,
+                    255,
+                    255
+                  ],
+                  "width": 1,
+                  "style": "Solid"
+                }
+              }
+            ]
+          },
+          "viewbox": {
+            "targetRange": [
+              [
+                1776665361.9185107,
+                1776665375.0312552
+              ],
+              [
+                0.0034473786793306274,
+                0.35925066356470525
+              ]
+            ],
+            "viewRange": [
+              [
+                1776665361.9185107,
+                1776665375.0312552
+              ],
+              [
+                0.0034473786793306274,
+                0.35925066356470525
+              ]
+            ],
+            "yInverted": false,
+            "xInverted": false,
+            "aspectLocked": false,
+            "autoRange": [
+              1.0,
+              1.0
+            ],
+            "autoPan": [
+              false,
+              false
+            ],
+            "autoVisibleOnly": [
+              false,
+              false
+            ],
+            "linkedViews": [
+              null,
+              null
+            ],
+            "defaultPadding": 0.02,
+            "mouseEnabled": [
+              true,
+              true
+            ],
+            "mouseMode": 3,
+            "enableMenu": false,
+            "wheelScaleFactor": -0.125,
+            "background": null,
+            "logMode": [
+              false,
+              false
+            ],
+            "limits": {
+              "xLimits": [
+                -62135596800.0,
+                253370764800.0
+              ],
+              "yLimits": [
+                -1e+307,
+                1e+307
+              ],
+              "xRange": [
+                null,
+                null
+              ],
+              "yRange": [
+                null,
+                null
+              ]
+            }
+          }
+        },
+        "geometry": "01d9d0cb00030000000003c0000003f0000005a0000004f8000003c1000003f10000059f000004f700000000000000000f00000003c1000003f10000059f000004f7"
+      }
+    },
+    {
+      "class": "ScatterPlot",
+      "name": "ScatterPlot.1",
+      "state": {
+        "pos": [
+          1700.0,
+          500.0
+        ],
+        "enabled": true,
+        "viewed": false,
+        "latched": false,
+        "label": "",
+        "terminals": {
+          "X": {
+            "io": "in",
+            "removable": false,
+            "ttype": "float",
+            "optional": false,
+            "group": null
+          },
+          "Y": {
+            "io": "in",
+            "removable": false,
+            "ttype": "float",
+            "optional": false,
+            "group": null
+          }
+        },
+        "ctrl": {
+          "Num Points": 400,
+          "Unique": false
+        },
+        "widget": {
+          "ctrl": {
+            "Title": "",
+            "Show Grid": true,
+            "X Axis": {
+              "Label": "",
+              "Log Scale": false
+            },
+            "Y Axis": {
+              "Label": "",
+              "Log Scale": false
+            },
+            "trace.0": "Sum.0.Out vs XppSb2BmMon:raw:totalIntensityJoules"
+          },
+          "legend": {
+            "trace.0": [
+              "Sum.0.Out vs XppSb2BmMon:raw:totalIntensityJoules",
+              "Sum.0.Out vs XppSb2BmMon:raw:totalIntensityJoules",
+              {
+                "Point": {
+                  "symbol": "o",
+                  "Brush": [
+                    0,
+                    255,
+                    255,
+                    255
+                  ],
+                  "Size": 8
+                },
+                "Line": {
+                  "color": [
+                    255,
+                    255,
+                    255,
+                    255
+                  ],
+                  "width": 1,
+                  "style": "None"
+                }
+              }
+            ]
+          },
+          "viewbox": {
+            "targetRange": [
+              [
+                3689.589985610171,
+                12351.695728675533
+              ],
+              [
+                -6.823065735799177,
+                6.823065735799177
+              ]
+            ],
+            "viewRange": [
+              [
+                3689.589985610171,
+                12351.695728675533
+              ],
+              [
+                -6.823065735799177,
+                6.823065735799177
+              ]
+            ],
+            "yInverted": false,
+            "xInverted": false,
+            "aspectLocked": false,
+            "autoRange": [
+              true,
+              true
+            ],
+            "autoPan": [
+              false,
+              false
+            ],
+            "autoVisibleOnly": [
+              false,
+              false
+            ],
+            "linkedViews": [
+              null,
+              null
+            ],
+            "defaultPadding": 0.02,
+            "mouseEnabled": [
+              true,
+              true
+            ],
+            "mouseMode": 3,
+            "enableMenu": false,
+            "wheelScaleFactor": -0.125,
+            "background": null,
+            "logMode": [
+              false,
+              false
+            ],
+            "limits": {
+              "xLimits": [
+                -1e+307,
+                1e+307
+              ],
+              "yLimits": [
+                -1e+307,
+                1e+307
+              ],
+              "xRange": [
+                null,
+                null
+              ],
+              "yRange": [
+                null,
+                null
+              ]
+            }
+          }
+        },
+        "geometry": "01d9d0cb0003000000000d0a000012af00001028000015ea00000d0a000012cb00001028000015ea00000006000000000a0000000d0a000012cb00001028000015ea"
+      }
+    },
+    {
+      "class": "LinePlot",
+      "name": "LinePlot.0",
+      "state": {
+        "pos": [
+          1800.0,
+          1100.0
+        ],
+        "enabled": true,
+        "viewed": true,
+        "latched": false,
+        "label": "scan_filtered",
+        "terminals": {
+          "X": {
+            "io": "in",
+            "removable": false,
+            "ttype": "amitypes.array.Array1d",
+            "optional": false,
+            "group": null
+          },
+          "Y": {
+            "io": "in",
+            "removable": false,
+            "ttype": "amitypes.array.Array1d",
+            "optional": false,
+            "group": null
+          }
+        },
+        "widget": {
+          "ctrl": {
+            "Title": "",
+            "Show Grid": true,
+            "X Axis": {
+              "Label": "",
+              "Log Scale": false
+            },
+            "Y Axis": {
+              "Label": "",
+              "Log Scale": false
+            },
+            "trace.0": "Calculator.1.Out vs MeanVsScan.0.Bins"
+          },
+          "legend": {
+            "trace.0": [
+              "Calculator.1.Out vs MeanVsScan.0.Bins",
+              "Calculator.1.Out vs MeanVsScan.0.Bins",
+              {
+                "Point": {
+                  "symbol": "None",
+                  "Brush": [
+                    0,
+                    0,
+                    255,
+                    255
+                  ],
+                  "Size": 14
+                },
+                "Line": {
+                  "color": [
+                    0,
+                    255,
+                    255,
+                    255
+                  ],
+                  "width": 3,
+                  "style": "Solid"
+                }
+              }
+            ]
+          },
+          "viewbox": {
+            "targetRange": [
+              [
+                21.309271070006712,
+                21.314088304993287
+              ],
+              [
+                0.00013838003414001242,
+                0.0001878153987215278
+              ]
+            ],
+            "viewRange": [
+              [
+                21.309271070006712,
+                21.314088304993287
+              ],
+              [
+                0.00013838003414001242,
+                0.0001878153987215278
+              ]
+            ],
+            "yInverted": false,
+            "xInverted": false,
+            "aspectLocked": false,
+            "autoRange": [
+              true,
+              true
+            ],
+            "autoPan": [
+              false,
+              false
+            ],
+            "autoVisibleOnly": [
+              false,
+              false
+            ],
+            "linkedViews": [
+              null,
+              null
+            ],
+            "defaultPadding": 0.02,
+            "mouseEnabled": [
+              true,
+              true
+            ],
+            "mouseMode": 3,
+            "enableMenu": false,
+            "wheelScaleFactor": -0.125,
+            "background": null,
+            "logMode": [
+              false,
+              false
+            ],
+            "limits": {
+              "xLimits": [
+                -1e+307,
+                1e+307
+              ],
+              "yLimits": [
+                -1e+307,
+                1e+307
+              ],
+              "xRange": [
+                null,
+                null
+              ],
+              "yRange": [
+                null,
+                null
+              ]
+            }
+          }
+        },
+        "geometry": "01d9d0cb00030000000003c0000004f8000005a000000600000003c1000004f90000059f000005ff00000000000000000f00000003c1000004f90000059f000005ff"
+      }
+    },
+    {
+      "class": "LinePlot",
+      "name": "LinePlot.1",
+      "state": {
+        "pos": [
+          1800.0,
+          1400.0
+        ],
+        "enabled": true,
+        "viewed": true,
+        "latched": false,
+        "label": "scan_not_filtered",
+        "terminals": {
+          "X": {
+            "io": "in",
+            "removable": false,
+            "ttype": "amitypes.array.Array1d",
+            "optional": false,
+            "group": null
+          },
+          "Y": {
+            "io": "in",
+            "removable": false,
+            "ttype": "amitypes.array.Array1d",
+            "optional": false,
+            "group": null
+          }
+        },
+        "widget": {
+          "ctrl": {
+            "Title": "",
+            "Show Grid": true,
+            "X Axis": {
+              "Label": "",
+              "Log Scale": false
+            },
+            "Y Axis": {
+              "Label": "",
+              "Log Scale": false
+            },
+            "trace.0": "Calculator.2.Out vs MeanVsScan.1.Bins"
+          },
+          "legend": {
+            "trace.0": [
+              "Calculator.2.Out vs MeanVsScan.1.Bins",
+              "Calculator.2.Out vs MeanVsScan.1.Bins",
+              {
+                "Point": {
+                  "symbol": "o",
+                  "Brush": [
+                    0,
+                    0,
+                    255,
+                    255
+                  ],
+                  "Size": 14
+                },
+                "Line": {
+                  "color": [
+                    0,
+                    255,
+                    255,
+                    255
+                  ],
+                  "width": 3,
+                  "style": "Solid"
+                }
+              }
+            ]
+          },
+          "viewbox": {
+            "targetRange": [
+              [
+                -4.718137022394236,
+                104.64850342973833
+              ],
+              [
+                -31909.38894924322,
+                380341.08823829284
+              ]
+            ],
+            "viewRange": [
+              [
+                -4.718137022394236,
+                104.64850342973833
+              ],
+              [
+                -31909.38894924322,
+                380341.08823829284
+              ]
+            ],
+            "yInverted": false,
+            "xInverted": false,
+            "aspectLocked": false,
+            "autoRange": [
+              1.0,
+              1.0
+            ],
+            "autoPan": [
+              false,
+              false
+            ],
+            "autoVisibleOnly": [
+              false,
+              false
+            ],
+            "linkedViews": [
+              null,
+              null
+            ],
+            "defaultPadding": 0.02,
+            "mouseEnabled": [
+              true,
+              true
+            ],
+            "mouseMode": 3,
+            "enableMenu": false,
+            "wheelScaleFactor": -0.125,
+            "background": null,
+            "logMode": [
+              false,
+              false
+            ],
+            "limits": {
+              "xLimits": [
+                -1e+307,
+                1e+307
+              ],
+              "yLimits": [
+                -1e+307,
+                1e+307
+              ],
+              "xRange": [
+                null,
+                null
+              ],
+              "yRange": [
+                null,
+                null
+              ]
+            }
+          }
+        },
+        "geometry": "01d9d0cb00030000000003c0000002e8000005a0000003f0000003c1000002e90000059f000003ef00000000000000000f00000003c1000002e90000059f000003ef"
+      }
+    }
+  ],
+  "connects": [
+    [
+      "jungfrau1M:raw:image",
+      "Out",
+      "PythonEditor.0",
+      "In"
+    ],
+    [
+      "jungfrau1M:raw:image",
+      "Out",
+      "PythonEditor.1",
+      "In"
+    ],
+    [
+      "jungfrau1M:raw:image",
+      "Out",
+      "PythonEditor.2",
+      "In"
+    ],
+    [
+      "timestamp",
+      "Out",
+      "TimePlot.0",
+      "X"
+    ],
+    [
+      "timestamp",
+      "Out",
+      "TimePlot.1",
+      "X"
+    ],
+    [
+      "timestamp",
+      "Out",
+      "TimePlot.2",
+      "X"
+    ],
+    [
+      "XppSb2BmMon:raw:totalIntensityJoules",
+      "Out",
+      "Average0D.1",
+      "In"
+    ],
+    [
+      "XppSb2BmMon:raw:totalIntensityJoules",
+      "Out",
+      "Filter.0",
+      "In"
+    ],
+    [
+      "XppSb2BmMon:raw:totalIntensityJoules",
+      "Out",
+      "MeanVsScan.1",
+      "Value.1"
+    ],
+    [
+      "XppSb2BmMon:raw:totalIntensityJoules",
+      "Out",
+      "ScatterPlot.0",
+      "Y"
+    ],
+    [
+      "XppSb2BmMon:raw:totalIntensityJoules",
+      "Out",
+      "ScatterPlot.1",
+      "X"
+    ],
+    [
+      "ebeamh:raw:ebeamL3Energy",
+      "Out",
+      "ScatterPlot.0",
+      "X"
+    ],
+    [
+      "alvium:raw:value",
+      "Out",
+      "ImageViewer.3",
+      "In"
+    ],
+    [
+      "PythonEditor.0",
+      "Out",
+      "ImageViewer.0",
+      "In"
+    ],
+    [
+      "PythonEditor.0",
+      "Out",
+      "Average2D.0",
+      "In"
+    ],
+    [
+      "PythonEditor.0",
+      "Out",
+      "Average2D.1",
+      "In"
+    ],
+    [
+      "Average0D.1",
+      "Out",
+      "TimePlot.1",
+      "Y"
+    ],
+    [
+      "PythonEditor.2",
+      "Out",
+      "LinePlot.2",
+      "X"
+    ],
+    [
+      "PythonEditor.2",
+      "Out.1",
+      "LinePlot.2",
+      "Y"
+    ],
+    [
+      "PythonEditor.2",
+      "Out",
+      "LinePlot.2",
+      "X.1"
+    ],
+    [
+      "PythonEditor.2",
+      "Out",
+      "LinePlot.2",
+      "X.2"
+    ],
+    [
+      "PythonEditor.2",
+      "Out.1",
+      "Average1D.0",
+      "In"
+    ],
+    [
+      "PythonEditor.2",
+      "Out",
+      "LinePlot.3",
+      "X"
+    ],
+    [
+      "PythonEditor.2",
+      "Out.1",
+      "Average1D.1",
+      "In"
+    ],
+    [
+      "Average2D.0",
+      "Out",
+      "ImageViewer.1",
+      "In"
+    ],
+    [
+      "Average2D.1",
+      "Out",
+      "ImageViewer.2",
+      "In"
+    ],
+    [
+      "PythonEditor.1",
+      "Out",
+      "Roi2D.0",
+      "In"
+    ],
+    [
+      "Average1D.0",
+      "Out",
+      "LinePlot.2",
+      "Y.1"
+    ],
+    [
+      "Average1D.0",
+      "Out",
+      "LinePlot.3",
+      "Y"
+    ],
+    [
+      "Average1D.1",
+      "Out",
+      "LinePlot.2",
+      "Y.2"
+    ],
+    [
+      "m1_ry",
+      "Out",
+      "MeanVsScan.0",
+      "Bin"
+    ],
+    [
+      "m1_ry",
+      "Out",
+      "MeanVsScan.1",
+      "Bin"
+    ],
+    [
+      "Roi2D.0",
+      "Out",
+      "Sum.0",
+      "In"
+    ],
+    [
+      "Sum.0",
+      "Out",
+      "Average0D.0",
+      "In"
+    ],
+    [
+      "Sum.0",
+      "Out",
+      "Filter.0",
+      "In.1"
+    ],
+    [
+      "Sum.0",
+      "Out",
+      "MeanVsScan.1",
+      "Value"
+    ],
+    [
+      "Sum.0",
+      "Out",
+      "ScatterPlot.1",
+      "Y"
+    ],
+    [
+      "Average0D.0",
+      "Out",
+      "Calculator.3",
+      "In"
+    ],
+    [
+      "Filter.0",
+      "Out",
+      "Average0D.2",
+      "In"
+    ],
+    [
+      "Filter.0",
+      "Out.1",
+      "Average0D.3",
+      "In"
+    ],
+    [
+      "Filter.0",
+      "Out",
+      "MeanVsScan.0",
+      "Value.1"
+    ],
+    [
+      "Filter.0",
+      "Out.1",
+      "MeanVsScan.0",
+      "Value"
+    ],
+    [
+      "Average0D.2",
+      "Out",
+      "Calculator.0",
+      "In"
+    ],
+    [
+      "Average0D.3",
+      "Out",
+      "Calculator.0",
+      "In.1"
+    ],
+    [
+      "Calculator.3",
+      "Out",
+      "TimePlot.0",
+      "Y"
+    ],
+    [
+      "MeanVsScan.0",
+      "Counts.1",
+      "Calculator.1",
+      "In.1"
+    ],
+    [
+      "MeanVsScan.0",
+      "Counts",
+      "Calculator.1",
+      "In"
+    ],
+    [
+      "MeanVsScan.0",
+      "Bins",
+      "LinePlot.0",
+      "X"
+    ],
+    [
+      "MeanVsScan.1",
+      "Counts",
+      "Calculator.2",
+      "In"
+    ],
+    [
+      "MeanVsScan.1",
+      "Counts.1",
+      "Calculator.2",
+      "In.1"
+    ],
+    [
+      "MeanVsScan.1",
+      "Bins",
+      "LinePlot.1",
+      "X"
+    ],
+    [
+      "Calculator.0",
+      "Out",
+      "TimePlot.2",
+      "Y"
+    ],
+    [
+      "Calculator.1",
+      "Out",
+      "LinePlot.0",
+      "Y"
+    ],
+    [
+      "Calculator.2",
+      "Out",
+      "LinePlot.1",
+      "Y"
+    ]
+  ],
+  "viewbox": {
+    "comments": []
+  },
+  "source_configuration": {
+    "type": "hdf5",
+    "interval": 0.01,
+    "init_time": 0.5,
+    "hb_period": 10,
+    "files": [],
+    "repeat": true
+  },
+  "library": {
+    "paths": [
+      "tests/graphs/threshold_detector.py"
+    ]
+  }
+}

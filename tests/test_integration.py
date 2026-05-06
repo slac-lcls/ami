@@ -7,8 +7,10 @@ These tests verify complete user workflows:
 """
 
 import asyncio
+import glob
 import json
 import time
+from pathlib import Path
 
 import numpy as np
 import pytest
@@ -151,3 +153,117 @@ async def test_load_atm_crix_modify_save(qtbot, flowchart, tmp_path):
         assert "Projection.0" in node_names
         # Verify sources are still there
         assert any("timing:raw:eventcodes" in name for name in node_names)
+
+
+def extract_expected_features(fc_path):
+    """
+    Parse a .fc file to predict which _auto_* features should be produced.
+
+    Follows the naming logic in Node.connected() (Node.py:384-390):
+    - SourceNode upstream -> input_var is just the node name (no .Out suffix)
+    - Regular node upstream -> input_var is {node_name}.{terminal_name}
+    """
+    with open(fc_path) as f:
+        data = json.load(f)
+
+    # Build node class lookup
+    node_classes = {}
+    for node in data.get("nodes", []):
+        node_classes[node["name"]] = node["class"]
+
+    # Build connection map: {(to_node, to_term): (from_node, from_term)}
+    connections = {}
+    for conn in data.get("connects", []):
+        from_node, from_term, to_node, to_term = conn
+        connections[(to_node, to_term)] = (from_node, from_term)
+
+    expected = set()
+    for node in data.get("nodes", []):
+        state = node.get("state", {})
+        if not state.get("viewed", False):
+            continue
+
+        name = node["name"]
+        cls = node["class"]
+
+        if cls == "SourceNode":
+            expected.add(f"_auto_{name}")
+        else:
+            # Find input connections to this node
+            for (to_node, to_term), (from_node, from_term) in connections.items():
+                if to_node == name:
+                    from_cls = node_classes.get(from_node, "")
+                    if from_cls == "SourceNode":
+                        expected.add(f"_auto_{from_node}")
+                    else:
+                        expected.add(f"_auto_{from_node}.{from_term}")
+
+    return expected
+
+
+# Collect .fc files for parametrization
+_fc_files = sorted(glob.glob("tests/graphs/*.fc"))
+_xfail_files = {"XAS_HSD.fc": "dict source type not mockable"}
+try:
+    import psana  # noqa: F401
+except ImportError:
+    _xfail_files["rad_integral.fc"] = "psana not available"
+    _xfail_files["Rousseau.fc"] = "psana not available"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("flowchart", ["static"], indirect=True)
+@pytest.mark.parametrize("start_ami", ["static"], indirect=True)
+@pytest.mark.parametrize(
+    "fc_file",
+    _fc_files,
+    ids=lambda p: Path(p).stem,
+)
+async def test_fc_graph_smoke(qtbot, flowchart, start_ami, fc_file):
+    """Load each .fc graph, apply to backend, verify it executes and produces expected features."""
+    if Path(fc_file).name in _xfail_files:
+        pytest.xfail(f"{Path(fc_file).name}: {_xfail_files[Path(fc_file).name]}")
+
+    fc, broker = flowchart
+    comm = start_ami
+    widget = fc.widget()
+    qtbot.addWidget(widget)
+
+    # Extract expected features from .fc file
+    expected_features = extract_expected_features(fc_file)
+
+    # Load and apply
+    await fc.loadFile(fc_file)
+
+    # Give views time to be registered
+    await asyncio.sleep(0.3)
+
+    # Wait for execution
+    start = time.time()
+    while comm.graphVersion != comm.featuresVersion:
+        await asyncio.sleep(0.1)
+        if time.time() - start > 15:
+            pytest.fail(f"Timeout: {Path(fc_file).name} did not execute")
+
+    assert comm.graphVersion > 0, f"{Path(fc_file).name}: graph not applied"
+
+    # Verify features exist
+    features = comm.features
+    assert features, f"{Path(fc_file).name}: no features produced"
+
+    # Check if any expected features were produced
+    # (Some may be missing due to filter conditions, non-viewable nodes, etc.)
+    found = expected_features & set(features.keys())
+
+    # If we expected features but none were produced, that's a real failure
+    if expected_features and not found:
+        pytest.fail(
+            f"{Path(fc_file).name}: none of the expected features found\n"
+            f"  Expected: {sorted(expected_features)}\n"
+            f"  Got: {sorted(features.keys())}"
+        )
+
+    # Fetch found features and verify they're not None
+    for feat_name in sorted(found):
+        result = comm.fetch(feat_name)
+        assert result is not None, f"{Path(fc_file).name}: feature {feat_name} returned None"

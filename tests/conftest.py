@@ -198,7 +198,7 @@ def workerjson(tmpdir_factory, xtcwriter):
     default_sources = {
         # Sources for test_complex_graph (also in examples/complex_example.fc)
         "cspad": {"dtype": "Image", "pedestal": 5, "width": 1, "shape": [512, 512]},
-        "laser": {"dtype": "Scalar", "range": [0, 2], "integer": True},
+        "laser": {"dtype": "Scalar", "range": [0, 2], "integer": True, "binary": True},
         "delta_t": {"dtype": "Scalar", "range": [0, 10], "integer": True},
         # Sources for test_psana_graph (psana-specific, not in any .fc)
         "xppcspad:raw:image": {
@@ -472,13 +472,18 @@ def broker(ami_backend):
     broker_running = threading.Event()
 
     # Run the broker in a background thread with its own event loop
+    broker_exception = None
+
     def run_broker():
+        nonlocal broker_exception
         asyncio.set_event_loop(broker_loop)
         broker_running.set()  # Signal that the broker has started
         try:
             broker_loop.run_until_complete(mb.run())
         except (asyncio.CancelledError, RuntimeError):
             pass  # Expected when we cancel the broker or stop the loop
+        except Exception as e:
+            broker_exception = e
 
     broker_thread = threading.Thread(target=run_broker, daemon=True)
     broker_thread.start()
@@ -535,6 +540,9 @@ def broker(ami_backend):
             shutil.rmtree(ipcdir)
         except Exception:
             pass
+
+    if broker_exception is not None:
+        pytest.fail(f"Broker thread raised exception: {broker_exception}")
 
 
 @pytest.fixture(scope="module")

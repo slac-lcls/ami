@@ -76,7 +76,7 @@ class FakeManager:
 
 
 @pytest.fixture(scope="function")
-def graph_comm(request, ipc_dir, event_loop):
+def graph_comm(request, ipc_dir):
     ctxs = []
     name = "graph"
     addr = "ipc://%s/graphcomm_async" % ipc_dir

@@ -54,6 +54,9 @@ def extract_sources_from_fc(fc_path):
     return sources
 
 
+BINARY_SOURCES = {"timing:raw:eventcodes", "laser"}
+
+
 def map_amitypes_to_config(ttype, source_name=""):
     """
     Map amitypes type string to static source config.
@@ -76,13 +79,15 @@ def map_amitypes_to_config(ttype, source_name=""):
         return {"dtype": "Image", "pedestal": 5, "width": 1, "shape": [512, 512]}
     elif "Array1d" in ttype:
         # Special handling for timing event codes
-        if source_name == "timing:raw:eventcodes":
+        if source_name in BINARY_SOURCES:
             return {"dtype": "Waveform", "pedestal": 0, "width": 0, "shape": [300], "binary": True}
         else:
             return {"dtype": "Waveform", "pedestal": 5, "width": 1, "shape": [1024]}
     elif "Array3d" in ttype:
         return {"dtype": "Image", "pedestal": 5, "width": 1, "shape": [100, 512, 512]}
     elif "int" in ttype.lower():
+        if source_name in BINARY_SOURCES:
+            return {"dtype": "Scalar", "range": [0, 2], "integer": True, "binary": True}
         return {"dtype": "Scalar", "range": [0, 100], "integer": True}
     elif "float" in ttype.lower():
         return {"dtype": "Scalar", "range": [0.0, 100.0]}

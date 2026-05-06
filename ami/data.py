@@ -1695,10 +1695,17 @@ class StaticSource(SimSource):
                 yield self.heartbeat_msg()
             for name, config in self.simulated.items():
                 if name in self.requested_data.names:
+                    is_binary = config.get("binary", False)
                     if config["dtype"] == "Scalar":
-                        event[name] = 1
+                        if is_binary:
+                            event[name] = 1 if count % 2 == 0 else 0
+                        else:
+                            event[name] = 1
                     elif config["dtype"] == "Waveform" or config["dtype"] == "Image":
-                        event[name] = np.ones(config["shape"])
+                        if is_binary:
+                            event[name] = np.ones(config["shape"]) if count % 2 == 0 else np.zeros(config["shape"])
+                        else:
+                            event[name] = np.ones(config["shape"])
                     else:
                         logger.warn("DataSrc: %s has unknown type %s", name, config["dtype"])
             count += 1
