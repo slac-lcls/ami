@@ -2,17 +2,18 @@
 
 ## Overview
 
-AMI exports Prometheus metrics from workers for monitoring system health and performance. Metrics are updated at heartbeat rate (~10 Hz) rather than per-event to minimize overhead at high data rates.
+AMI exports Prometheus metrics from workers, collectors, and the manager for monitoring system health and performance. Metrics are updated at heartbeat rate (~10 Hz) rather than per-event to minimize overhead at high data rates.
 
-## Worker Metrics
+## Exported Metrics
 
-| Metric | Type | Labels | Description |
-|--------|------|--------|-------------|
-| `ami_event_count` | Counter | hutch, type, process | Counts events by type |
-| `ami_event_time_secs` | Gauge | hutch, type, process | Time measurements in seconds |
-| `ami_event_size_bytes` | Gauge | hutch, process | Size of last heartbeat payload |
-| `ami_event_latency_secs` | Gauge | hutch, sender, process | Data latency from source |
-| `ami_heartbeat_duration_seconds` | Histogram | hutch, process | Full heartbeat interval (wall clock) |
+| Metric | Type | Labels | Components | Description |
+|--------|------|--------|------------|-------------|
+| `ami_event_count` | Counter | hutch, type, process | Workers, Collectors | Counts events by type |
+| `ami_event_time_secs` | Gauge | hutch, type, process | Workers, Collectors | Time measurements in seconds |
+| `ami_event_size_bytes` | Gauge | hutch, process | Workers, Collectors | Size of last heartbeat payload |
+| `ami_event_latency_secs` | Gauge | hutch, sender, process | Workers, Collectors | Data latency from source/sender |
+| `ami_heartbeat_duration_seconds` | Histogram | hutch, process | Workers, Collectors | Full heartbeat interval (wall clock) |
+| `ami_heartbeat_latency_seconds` | Histogram | hutch, sender, process | Collectors | End-to-end heartbeat latency |
 
 ### Event Count Types
 
@@ -26,11 +27,25 @@ AMI exports Prometheus metrics from workers for monitoring system health and per
 
 ### Event Time Types
 
+| Type | Description | Workers | Collectors |
+|------|-------------|---------|------------|
+| `Heartbeat` | Total non-idle processing time (datagrams + heartbeat handling) | ✓ | ✓ |
+| `Idle` | Time spent waiting for input (source data for workers, contributions for collectors) | ✓ | ✓ |
+| `Datagram` | Graph execution time (per-event average for workers, total reduction for collectors) | ✓ | ✓ |
+| `Send` | Time spent sending results downstream | ✓ | ✓ |
+
+### Heartbeat Phase Percentages
+
+| Metric | Type | Labels | Description |
+|--------|------|--------|-------------|
+| `ami_heartbeat_phase_pct` | Gauge | hutch, type, process | Percentage of heartbeat interval spent in each phase (sums to 100%) |
+
 | Type | Description |
 |------|-------------|
-| `Heartbeat` | Total non-idle processing time (datagrams + heartbeat handling) |
-| `Idle` | Cumulative idle time waiting for data within the heartbeat interval |
-| `Datagram` | Average graph execution time per datagram |
+| `Idle` | Waiting for input (source data for workers, contributions for collectors) |
+| `Datagram` | Executing graph computations |
+| `Send` | Sending results downstream |
+| `Overhead` | Remainder (ZMQ polling, metrics, GC) |
 
 ### Heartbeat Duration Histogram
 
@@ -52,10 +67,12 @@ The histogram supports exemplars linking to trace IDs when tracing is enabled.
 ### Recommended Panels
 
 1. **Event Rate**: `rate(ami_event_count{type="Datagram"}[1m])` — Events processed per second
-2. **Idle Fraction**: `ami_event_time_secs{type="Idle"} / ami_heartbeat_duration_seconds` — Fraction of time idle
-3. **Heartbeat Interval**: `histogram_quantile(0.95, rate(ami_heartbeat_duration_seconds_bucket[1m]))` — p95 heartbeat interval
-4. **Input Latency**: `ami_event_latency_secs` — Time between event creation and processing
-5. **Heartbeat Rate**: `rate(ami_event_count{type="Heartbeat"}[1m])` — Heartbeats per second (should be ~10)
+2. **Idle Time**: `ami_event_time_secs{type="Idle"}` — Time waiting for input (workers: source data, collectors: contributions)
+3. **Graph Execution Time**: `ami_event_time_secs{type="Datagram"}` — Graph processing time (workers: per-event avg, collectors: reduction)
+4. **Send Time**: `ami_event_time_secs{type="Send"}` — Time sending results downstream (indicates backpressure)
+5. **Heartbeat Interval**: `histogram_quantile(0.95, rate(ami_heartbeat_duration_seconds_bucket[1m]))` — p95 heartbeat interval
+6. **Input Latency**: `ami_event_latency_secs` — Time between event creation and processing
+7. **Heartbeat Rate**: `rate(ami_event_count{type="Heartbeat"}[1m])` — Heartbeats per second (should be ~10)
 
 ### Exemplars
 

@@ -572,7 +572,6 @@
               "mode": "off"
             }
           },
-          "links": [],
           "mappings": [],
           "thresholds": {
             "mode": "absolute",
@@ -587,7 +586,7 @@
               }
             ]
           },
-          "unit": "short"
+          "unit": "s"
         },
         "overrides": []
       },
@@ -597,9 +596,8 @@
         "x": 12,
         "y": 16
       },
-      "id": 8,
+      "id": 29,
       "options": {
-        "alertThreshold": true,
         "legend": {
           "calcs": [],
           "displayMode": "table",
@@ -615,17 +613,14 @@
       "pluginVersion": "12.4.2",
       "targets": [
         {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "000000008"
-          },
-          "expr": "rate(ami_event_count_total{hutch=\"$hutch\",type=\"Partial\"}[30s])",
-          "interval": "",
+          "editorMode": "code",
+          "expr": "ami_event_time_secs{hutch=\"$hutch\", type=\"Send\"}",
           "legendFormat": "{{instance}} {{process}}",
+          "range": true,
           "refId": "A"
         }
       ],
-      "title": "Partial Events/Sec",
+      "title": "Send Time",
       "type": "timeseries"
     },
     {
@@ -772,10 +767,8 @@
               "mode": "off"
             }
           },
-          "decimals": 0,
           "links": [],
           "mappings": [],
-          "min": 0,
           "thresholds": {
             "mode": "absolute",
             "steps": [
@@ -799,7 +792,7 @@
         "x": 12,
         "y": 24
       },
-      "id": 14,
+      "id": 8,
       "options": {
         "alertThreshold": true,
         "legend": {
@@ -821,13 +814,13 @@
             "type": "prometheus",
             "uid": "000000008"
           },
-          "expr": "ami_event_count_total{hutch=\"$hutch\", type=\"Pruned Heartbeat\"}",
+          "expr": "rate(ami_event_count_total{hutch=\"$hutch\",type=\"Partial\"}[30s])",
           "interval": "",
           "legendFormat": "{{instance}} {{process}}",
           "refId": "A"
         }
       ],
-      "title": "Pruned Heartbeats",
+      "title": "Partial Events/Sec",
       "type": "timeseries"
     },
     {
@@ -944,7 +937,7 @@
             "axisBorderShow": false,
             "axisCenteredZero": false,
             "axisColorMode": "text",
-            "axisLabel": "Count",
+            "axisLabel": "",
             "axisPlacement": "auto",
             "barAlignment": 0,
             "barWidthFactor": 0.6,
@@ -974,8 +967,10 @@
               "mode": "off"
             }
           },
+          "decimals": 0,
           "links": [],
           "mappings": [],
+          "min": 0,
           "thresholds": {
             "mode": "absolute",
             "steps": [
@@ -999,7 +994,7 @@
         "x": 12,
         "y": 32
       },
-      "id": 21,
+      "id": 14,
       "options": {
         "alertThreshold": true,
         "legend": {
@@ -1021,13 +1016,15 @@
             "type": "prometheus",
             "uid": "000000008"
           },
-          "expr": "ami_event_count_total{hutch=\"$hutch\",type=\"Heartbeat\"}",
+          "editorMode": "code",
+          "expr": "rate(ami_event_count_total{hutch=\"$hutch\", type=\"Pruned Heartbeat\"}[30s])",
           "interval": "",
           "legendFormat": "{{instance}} {{process}}",
+          "range": true,
           "refId": "A"
         }
       ],
-      "title": "Heartbeat",
+      "title": "Pruned Heartbeats/Sec",
       "type": "timeseries"
     },
     {
@@ -1201,7 +1198,7 @@
         "x": 12,
         "y": 40
       },
-      "id": 23,
+      "id": 21,
       "options": {
         "alertThreshold": true,
         "legend": {
@@ -1223,13 +1220,13 @@
             "type": "prometheus",
             "uid": "000000008"
           },
-          "expr": "ami_event_count_total{hutch=\"$hutch\", type=\"Transition\"}",
+          "expr": "ami_event_count_total{hutch=\"$hutch\",type=\"Heartbeat\"}",
           "interval": "",
           "legendFormat": "{{instance}} {{process}}",
           "refId": "A"
         }
       ],
-      "title": "Transitions",
+      "title": "Heartbeat",
       "type": "timeseries"
     },
     {
@@ -1265,7 +1262,7 @@
             "scaleDistribution": {
               "type": "linear"
             },
-            "showPoints": "auto",
+            "showPoints": "never",
             "showValues": false,
             "spanNulls": false,
             "stacking": {
@@ -1341,7 +1338,7 @@
             "axisBorderShow": false,
             "axisCenteredZero": false,
             "axisColorMode": "text",
-            "axisLabel": "RSS (MB)",
+            "axisLabel": "RSS",
             "axisPlacement": "auto",
             "barAlignment": 0,
             "barWidthFactor": 0.6,
@@ -1360,7 +1357,7 @@
             "scaleDistribution": {
               "type": "linear"
             },
-            "showPoints": "auto",
+            "showPoints": "never",
             "showValues": false,
             "spanNulls": false,
             "stacking": {
@@ -1455,7 +1452,7 @@
             "scaleDistribution": {
               "type": "linear"
             },
-            "showPoints": "auto",
+            "showPoints": "never",
             "showValues": false,
             "spanNulls": false,
             "stacking": {
@@ -1553,7 +1550,7 @@
             "scaleDistribution": {
               "type": "linear"
             },
-            "showPoints": "auto",
+            "showPoints": "never",
             "showValues": false,
             "spanNulls": false,
             "stacking": {
@@ -1617,6 +1614,232 @@
       ],
       "title": "Heartbeat Duration",
       "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "ee6o1i84smo74e"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "axisBorderShow": false,
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "",
+            "axisPlacement": "auto",
+            "fillOpacity": 10,
+            "gradientMode": "none",
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            },
+            "lineWidth": 1,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": 0
+              },
+              {
+                "color": "red",
+                "value": 80
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 64
+      },
+      "id": 30,
+      "options": {
+        "barRadius": 0,
+        "barWidth": 0.97,
+        "fullHighlight": false,
+        "groupWidth": 0.7,
+        "legend": {
+          "calcs": [],
+          "displayMode": "table",
+          "placement": "right",
+          "showLegend": true
+        },
+        "orientation": "horizontal",
+        "showValue": "never",
+        "stacking": "percent",
+        "tooltip": {
+          "hideZeros": false,
+          "mode": "multi",
+          "sort": "none"
+        },
+        "xTickLabelRotation": 0,
+        "xTickLabelSpacing": 100
+      },
+      "pluginVersion": "12.4.2",
+      "targets": [
+        {
+          "editorMode": "code",
+          "expr": "ami_heartbeat_phase_pct{hutch=\"$hutch\", process=\"$process\", type=\"Idle\"}",
+          "legendFormat": "{{type}}",
+          "range": true,
+          "refId": "A"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "ee6o1i84smo74e"
+          },
+          "editorMode": "code",
+          "expr": "ami_heartbeat_phase_pct{hutch=\"$hutch\", process=\"$process\", type=\"Datagram\"}",
+          "instant": false,
+          "legendFormat": "{{type}}",
+          "range": true,
+          "refId": "B"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "ee6o1i84smo74e"
+          },
+          "editorMode": "code",
+          "expr": "ami_heartbeat_phase_pct{hutch=\"$hutch\", process=\"$process\", type=\"Send\"}",
+          "instant": false,
+          "legendFormat": "{{type}}",
+          "range": true,
+          "refId": "C"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "ee6o1i84smo74e"
+          },
+          "editorMode": "code",
+          "expr": "ami_heartbeat_phase_pct{hutch=\"$hutch\", process=\"$process\", type=\"Overhead\"}",
+          "instant": false,
+          "legendFormat": "{{type}}",
+          "range": true,
+          "refId": "D"
+        }
+      ],
+      "title": "Heartbeat Budget $process",
+      "type": "barchart"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "ee6o1i84smo74e"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "axisBorderShow": false,
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "Count",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "barWidthFactor": 0.6,
+            "drawStyle": "line",
+            "fillOpacity": 10,
+            "gradientMode": "none",
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            },
+            "insertNulls": false,
+            "lineInterpolation": "linear",
+            "lineWidth": 1,
+            "pointSize": 5,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "showPoints": "never",
+            "showValues": false,
+            "spanNulls": false,
+            "stacking": {
+              "group": "A",
+              "mode": "none"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "links": [],
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": 0
+              },
+              {
+                "color": "red",
+                "value": 80
+              }
+            ]
+          },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 64
+      },
+      "id": 23,
+      "options": {
+        "alertThreshold": true,
+        "legend": {
+          "calcs": [],
+          "displayMode": "table",
+          "placement": "right",
+          "showLegend": true
+        },
+        "tooltip": {
+          "hideZeros": false,
+          "mode": "multi",
+          "sort": "none"
+        }
+      },
+      "pluginVersion": "12.4.2",
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "000000008"
+          },
+          "expr": "ami_event_count_total{hutch=\"$hutch\", type=\"Transition\"}",
+          "interval": "",
+          "legendFormat": "{{instance}} {{process}}",
+          "refId": "A"
+        }
+      ],
+      "title": "Transitions",
+      "type": "timeseries"
     }
   ],
   "preload": false,
@@ -1639,6 +1862,29 @@
         "query": "local,tmo,tst,rix_first,ued,cxi",
         "type": "custom",
         "valuesFormat": "csv"
+      },
+      {
+        "current": {
+          "text": "worker001",
+          "value": "worker001"
+        },
+        "datasource": {
+          "type": "prometheus",
+          "uid": "ee6o1i84smo74e"
+        },
+        "definition": "label_values(ami_event_time_secs,process)",
+        "includeAll": false,
+        "name": "process",
+        "options": [],
+        "query": {
+          "qryType": 1,
+          "query": "label_values(ami_event_time_secs,process)",
+          "refId": "PrometheusVariableQueryEditor-VariableQuery"
+        },
+        "refresh": 2,
+        "regex": "",
+        "regexApplyTo": "value",
+        "type": "query"
       }
     ]
   },
@@ -1650,6 +1896,6 @@
   "timezone": "browser",
   "title": "AMI",
   "uid": "mgG9RzcGk",
-  "version": 11,
+  "version": 15,
   "weekStart": ""
 }

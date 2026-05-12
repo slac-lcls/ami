@@ -192,6 +192,18 @@ class GraphCollector(Node, Collector):
                     self.event_time.labels(self.hutch, "Heartbeat", self.name).set(heartbeat_time)
                     self.event_size.labels(self.hutch, self.name).set(size)
 
+                    # Export phase times
+                    idle_s, graph_s, send_s = self.store.phase_times(msg.name)
+                    self.event_time.labels(self.hutch, "Idle", self.name).set(idle_s)
+                    self.event_time.labels(self.hutch, "Datagram", self.name).set(graph_s)
+                    self.event_time.labels(self.hutch, "Send", self.name).set(send_s)
+
+                    pct_idle, pct_graph, pct_send, pct_overhead = self.store.phase_pcts(msg.name)
+                    self.phase_pct.labels(self.hutch, "Idle", self.name).set(pct_idle)
+                    self.phase_pct.labels(self.hutch, "Datagram", self.name).set(pct_graph)
+                    self.phase_pct.labels(self.hutch, "Send", self.name).set(pct_send)
+                    self.phase_pct.labels(self.hutch, "Overhead", self.name).set(pct_overhead)
+
                     trace_id = get_trace_id(msg.heartbeat.identity)
                     self.heartbeat_duration.labels(self.hutch, self.name).observe(
                         heartbeat_time,
@@ -217,6 +229,18 @@ class GraphCollector(Node, Collector):
                     self.event_counter.labels(self.hutch, "Pruned Heartbeat", self.name).inc()
                     self.event_size.labels(self.hutch, self.name).set(pruned_size)
                     self.heartbeat_time.pop(msg.heartbeat.identity, 0)
+
+                    # Export phase times for pruned heartbeat
+                    idle_s, graph_s, send_s = self.store.phase_times(msg.name)
+                    self.event_time.labels(self.hutch, "Idle", self.name).set(idle_s)
+                    self.event_time.labels(self.hutch, "Datagram", self.name).set(graph_s)
+                    self.event_time.labels(self.hutch, "Send", self.name).set(send_s)
+
+                    pct_idle, pct_graph, pct_send, pct_overhead = self.store.phase_pcts(msg.name)
+                    self.phase_pct.labels(self.hutch, "Idle", self.name).set(pct_idle)
+                    self.phase_pct.labels(self.hutch, "Datagram", self.name).set(pct_graph)
+                    self.phase_pct.labels(self.hutch, "Send", self.name).set(pct_send)
+                    self.phase_pct.labels(self.hutch, "Overhead", self.name).set(pct_overhead)
 
             self.heartbeat_time[msg.heartbeat.identity] += time.time() - datagram_start
 

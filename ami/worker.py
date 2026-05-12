@@ -197,6 +197,7 @@ class Worker(Node):
             ["hutch", "process"],
             buckets=[0.001, 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5],
         )
+        phase_pct = pc.Gauge("ami_heartbeat_phase_pct", "Heartbeat phase percentage", ["hutch", "type", "process"])
 
         idle_start = time.time()
         idle_stop = time.time()
@@ -260,6 +261,7 @@ class Worker(Node):
                     event_time.labels(self.hutch, "Datagram", self.name).set(
                         hb_graph_time / hb_num_datagrams if hb_num_datagrams > 0 else 0
                     )
+                    event_time.labels(self.hutch, "Send", self.name).set(send_time)
                     event_latency.labels(self.hutch, "Source", self.name).set(hb_last_input_latency)
                     if hb_partial_events > 0:
                         event_counter.labels(self.hutch, "Partial", self.name).inc(hb_partial_events)
@@ -271,6 +273,19 @@ class Worker(Node):
                     heartbeat_duration.labels(self.hutch, self.name).observe(
                         full_interval_secs,
                         exemplar={"TraceID": trace_id} if trace_id else None,
+                    )
+
+                    phase_pct.labels(self.hutch, "Idle", self.name).set(
+                        round((hb_idle_time / full_interval_secs) * 100, 1) if full_interval_secs > 0 else 0
+                    )
+                    phase_pct.labels(self.hutch, "Datagram", self.name).set(
+                        round((hb_graph_time / full_interval_secs) * 100, 1) if full_interval_secs > 0 else 0
+                    )
+                    phase_pct.labels(self.hutch, "Send", self.name).set(
+                        round((send_time / full_interval_secs) * 100, 1) if full_interval_secs > 0 else 0
+                    )
+                    phase_pct.labels(self.hutch, "Overhead", self.name).set(
+                        round((overhead_secs / full_interval_secs) * 100, 1) if full_interval_secs > 0 else 0
                     )
 
                     parent = start_span(

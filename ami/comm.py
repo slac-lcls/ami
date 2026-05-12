@@ -561,6 +561,13 @@ class GraphBuilder(ContributionBuilder):
         self.arrival_times = {}
         self._pruning = False
         self._prune_metadata = None
+        self.last_idle_secs = 0
+        self.last_graph_exec_secs = 0
+        self.last_send_secs = 0
+        self.last_pct_idle = 0
+        self.last_pct_graph_exec = 0
+        self.last_pct_send = 0
+        self.last_pct_overhead = 0
 
     def _init(self, name):
         if self.graph is None:
@@ -702,6 +709,15 @@ class GraphBuilder(ContributionBuilder):
         wait_secs = (graph_exec_start_ns - arrival_ns) / 1e9 if arrival_ns else 0
         total_secs = (complete_end_ns - arrival_ns) / 1e9 if arrival_ns else 0
         idle_secs = max(0, total_secs - wait_secs - graph_exec_secs - send_secs) if total_secs > 0 else 0
+
+        # Store phase times for Prometheus metrics
+        self.last_idle_secs = wait_secs
+        self.last_graph_exec_secs = graph_exec_secs
+        self.last_send_secs = send_secs
+        self.last_pct_idle = round((wait_secs / total_secs) * 100, 1) if total_secs > 0 else 0
+        self.last_pct_graph_exec = round((graph_exec_secs / total_secs) * 100, 1) if total_secs > 0 else 0
+        self.last_pct_send = round((send_secs / total_secs) * 100, 1) if total_secs > 0 else 0
+        self.last_pct_overhead = round((idle_secs / total_secs) * 100, 1) if total_secs > 0 else 0
 
         if self._pruning and self._prune_metadata:
             # Prune path: ERROR span with prune metadata + percentage breakdown
@@ -899,6 +915,20 @@ class EventBuilder(ZmqHandler):
         if name not in self.builders:
             self.create(name)
         self.builders[name].update(eb_key, eb_id, ver_key, data)
+
+    def phase_times(self, name):
+        """Return (idle_secs, graph_exec_secs, send_secs) for last completed heartbeat."""
+        builder = self.builders.get(name)
+        if builder:
+            return builder.last_idle_secs, builder.last_graph_exec_secs, builder.last_send_secs
+        return 0, 0, 0
+
+    def phase_pcts(self, name):
+        """Return (pct_idle, pct_graph_exec, pct_send, pct_overhead) for last completed heartbeat."""
+        builder = self.builders.get(name)
+        if builder:
+            return builder.last_pct_idle, builder.last_pct_graph_exec, builder.last_pct_send, builder.last_pct_overhead
+        return 0, 0, 0, 0
 
     def contribs(self, name):
         return self.builders[name].contribs
@@ -1191,6 +1221,7 @@ class Collector(abc.ABC):
             ["hutch", "sender", "process"],
             buckets=[0.001, 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0],
         )
+        self.phase_pct = pc.Gauge("ami_heartbeat_phase_pct", "Heartbeat phase percentage", ["hutch", "type", "process"])
 
     def register(self, sock, handler):
         """
