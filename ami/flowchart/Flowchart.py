@@ -265,6 +265,127 @@ class Flowchart(QtCore.QObject):
             # Remove old node
             old_node.close()
 
+    def _create_subgraph_scaffold(self, name, nodes, pos=None):
+        """Create the subgraph placeholder and dedicated view.
+
+        Args:
+            name: Name for the subgraph
+            nodes: List of nodes that will be in the subgraph
+            pos: Position for placeholder (optional)
+
+        Returns:
+            (subgraph_node, view): Tuple of SubgraphNode placeholder and FlowchartGraphicsView
+        """
+        # Create view for this subgraph
+        view = self.viewManager().addView(name)
+
+        # Create SubgraphNode placeholder (visual only, not in self._graph)
+        subgraphNode = SubgraphNode(name, children=nodes, flowchart=self)
+        subgraphNode.sigClosed.connect(self.nodeClosed)
+        subgraphNode.setGraph(self._graph)
+
+        # Add placeholder to root view
+        placeholder_item = subgraphNode.graphicsItem()
+        self.viewBox().addItem(placeholder_item)
+
+        # Position the placeholder
+        if pos:
+            if isinstance(pos, QtCore.QPointF):
+                # Snap to grid
+                snapped_pos = (find_nearest(pos.x()), find_nearest(pos.y()))
+                placeholder_item.moveBy(*snapped_pos)
+            elif isinstance(pos, (list, tuple)):
+                # Snap to grid
+                snapped_pos = (find_nearest(pos[0]), find_nearest(pos[1]))
+                placeholder_item.moveBy(*snapped_pos)
+            else:
+                placeholder_item.moveBy(*pos)
+        elif nodes:
+            # Default position based on first node
+            first_pos = nodes[0].graphicsItem().pos()
+            snapped_pos = (find_nearest(first_pos.x()), find_nearest(first_pos.y()))
+            placeholder_item.moveBy(*snapped_pos)
+
+        return subgraphNode, view
+
+    def _move_items_to_subgraph_view(self, nodes, view):
+        """Move nodes and their internal connections to the subgraph view.
+
+        Args:
+            nodes: List of nodes to move
+            view: Target FlowchartGraphicsView
+
+        Returns:
+            List of internal ConnectionItems that were moved
+        """
+        internal_connections = []
+
+        # Move nodes to subgraph view
+        for node in nodes:
+            # Remove from root view scene (this automatically removes it)
+            item = node.graphicsItem()
+            if item.scene() is not None:
+                item.scene().removeItem(item)
+
+            # Add to subgraph view (will be visible there)
+            view.viewBox().addItem(item)
+
+            # Find internal connections (both endpoints inside subgraph)
+            for term_name, term in node.terminals.items():
+                for remote_term, conn_item in term.connections().items():
+                    remote_node = remote_term.node()
+                    if remote_node in nodes:
+                        # This is an internal connection - move to subgraph view
+                        if conn_item not in internal_connections:
+                            internal_connections.append(conn_item)
+
+            node.recolor()
+
+        # Move internal connections to subgraph view
+        for conn in internal_connections:
+            if conn.scene() is not None:
+                conn.scene().removeItem(conn)
+            view.viewBox().addItem(conn)
+
+        return internal_connections
+
+    def _commit_subgraph(
+        self, name, subgraphNode, view, nodes, internal_connections, boundary_connections, description
+    ):
+        """Register the newly created subgraph in the flowchart's metadata.
+
+        Args:
+            name: Name of the subgraph
+            subgraphNode: The SubgraphNode placeholder
+            view: The FlowchartGraphicsView for the subgraph
+            nodes: List of Node objects in the subgraph
+            internal_connections: List of ConnectionItems that are internal
+            boundary_connections: List of boundary connection dicts
+            description: Description text for the subgraph
+        """
+        # Convert nodes to names
+        if nodes and isinstance(nodes[0], str):
+            names = nodes
+        else:
+            names = list(map(lambda node: node.name(), nodes))
+
+        # Store subgraph metadata
+        self._subgraphs[name] = {
+            "nodes": names,
+            "placeholder": subgraphNode,
+            "view": view,
+            "boundary_connections": boundary_connections,
+            "internal_connections": internal_connections,
+            "description": description or "",
+        }
+
+        # Set tooltip on placeholder to show description
+        if description:
+            subgraphNode.graphicsItem().setToolTip(description)
+
+        # Add to library
+        self._addSubgraphToLibrary(name)
+
     def makeSubgraphFromSelection(self, nodes=None, name=None, pos=None, description=None):
         """Create a visual-only subgraph from selected nodes.
 
@@ -297,19 +418,13 @@ class Flowchart(QtCore.QObject):
                 # User cancelled
                 return None
 
-        # Create view for this subgraph
-        view = self.viewManager().addView(name)
-
-        # Create SubgraphNode placeholder (visual only, not in self._graph)
-        subgraphNode = SubgraphNode(name, children=nodes, flowchart=self)
-        subgraphNode.sigClosed.connect(self.nodeClosed)
-        subgraphNode.setGraph(graph)
+        # Step 1: Create subgraph scaffold (placeholder and view)
+        subgraphNode, view = self._create_subgraph_scaffold(name, nodes, pos)
 
         names = list(map(lambda node: node.name(), nodes))
 
         # Analyze connections to find boundary crossings
         boundary_connections = []
-        internal_connections = []
         input_pos = None
         output_pos = None
         inputs = set()
@@ -326,11 +441,6 @@ class Flowchart(QtCore.QObject):
             internal_node = graph.nodes[tnode_name]["node"]
             external_term = external_node.terminals[data["from_term"]]
             internal_term = internal_node.terminals[data["to_term"]]
-
-            # Get the original connection object
-            original_conn = external_term.connections().get(internal_term)
-            if not original_conn:
-                continue
 
             # Create unique terminal name
             terminal_name = ".".join([fnode_name, data["from_term"]])
@@ -352,7 +462,6 @@ class Flowchart(QtCore.QObject):
                     "external_term": external_term,
                     "internal_node": internal_node,
                     "internal_term": internal_term,
-                    "original_connection": original_conn,
                     "terminal_name": terminal_name,
                 }
             )
@@ -368,11 +477,6 @@ class Flowchart(QtCore.QObject):
             external_node = graph.nodes[tnode_name]["node"]
             internal_term = internal_node.terminals[data["from_term"]]
             external_term = external_node.terminals[data["to_term"]]
-
-            # Get the original connection object
-            original_conn = internal_term.connections().get(external_term)
-            if not original_conn:
-                continue
 
             # Create unique terminal name
             terminal_name = ".".join([fnode_name, data["from_term"]])
@@ -394,18 +498,9 @@ class Flowchart(QtCore.QObject):
                     "external_term": external_term,
                     "internal_node": internal_node,
                     "internal_term": internal_term,
-                    "original_connection": original_conn,
                     "terminal_name": terminal_name,
                 }
             )
-
-        # Add placeholder to root view FIRST (before creating connections to it)
-        placeholder_item = subgraphNode.graphicsItem()
-        self.viewBox().addItem(placeholder_item)
-        if pos:
-            placeholder_item.moveBy(*pos)
-        else:
-            placeholder_item.moveBy(nodes[0].graphicsItem().pos().x(), nodes[0].graphicsItem().pos().y())
 
         # Position SubgraphInput/Output nodes in subgraph view FIRST
         if inputs and input_pos:
@@ -416,14 +511,11 @@ class Flowchart(QtCore.QObject):
             subgraphNode.subgraphOutputs.graphicsItem().moveBy(output_pos.x(), output_pos.y())
 
         # NOW process boundary connections - create visual-only connections
-        # Track which SubgraphInput/Output terminals we've already created
-        sg_input_terms_created = {}  # internal_term_name -> terminal
-        sg_output_terms_created = {}  # internal_term_name -> terminal
 
         for bc in boundary_connections:
-            # Hide the original connection (remove from scene, but keep in Terminal._connections)
-            if bc["original_connection"].scene() is not None:
-                bc["original_connection"].scene().removeItem(bc["original_connection"])
+            # Disconnect original connection (signal=False preserves _input_vars and graph edges)
+            # This frees the input terminal for the new visual connection
+            bc["external_term"].disconnectFrom(bc["internal_term"], signal=False)
 
             # Get the placeholder terminal
             placeholder_term = subgraphNode.terminals[bc["terminal_name"]]
@@ -441,19 +533,12 @@ class Flowchart(QtCore.QObject):
                         name=sg_input_term_name, ttype=bc["internal_term"].type()
                     )
 
-                # Always recolor terminal to white (visually connected)
-                sg_input_term.recolor(QtGui.QColor(255, 255, 255))
-
                 # Create visual connection in root view: external → placeholder
-                root_visual = ConnectionItem(bc["external_term"].graphicsItem(), placeholder_term.graphicsItem())
-                self.viewBox().addItem(root_visual)
+                # connectTo registers in _connections, creates ConnectionItem, and recolors automatically
+                root_visual = bc["external_term"].connectTo(placeholder_term, signal=False, view=self.viewBox())
 
                 # Create visual connection in subgraph view: subgraph_input → internal
-                sg_visual = ConnectionItem(sg_input_term.graphicsItem(), bc["internal_term"].graphicsItem())
-                view.viewBox().addItem(sg_visual)
-
-                # Recolor placeholder terminal to white (visually connected)
-                placeholder_term.recolor(QtGui.QColor(255, 255, 255))
+                sg_visual = sg_input_term.connectTo(bc["internal_term"], signal=False, view=view.viewBox())
 
             else:  # output
                 # SubgraphOutput terminal should have same name as placeholder terminal
@@ -468,70 +553,25 @@ class Flowchart(QtCore.QObject):
                         name=sg_output_term_name, ttype=bc["internal_term"].type()
                     )
 
-                # Always recolor terminal to white (visually connected)
-                sg_output_term.recolor(QtGui.QColor(255, 255, 255))
-
                 # Create visual connection in root view: placeholder → external
-                root_visual = ConnectionItem(placeholder_term.graphicsItem(), bc["external_term"].graphicsItem())
-                self.viewBox().addItem(root_visual)
+                # connectTo registers in _connections, creates ConnectionItem, and recolors automatically
+                root_visual = placeholder_term.connectTo(bc["external_term"], signal=False, view=self.viewBox())
 
                 # Create visual connection in subgraph view: internal → subgraph_output
-                sg_visual = ConnectionItem(bc["internal_term"].graphicsItem(), sg_output_term.graphicsItem())
-                view.viewBox().addItem(sg_visual)
-
-                # Recolor placeholder terminal to white (visually connected)
-                placeholder_term.recolor(QtGui.QColor(255, 255, 255))
+                sg_visual = bc["internal_term"].connectTo(sg_output_term, signal=False, view=view.viewBox())
 
             # Store visual connection references
             bc["root_visual"] = root_visual
             bc["subgraph_visual"] = sg_visual
 
-        # Move nodes to subgraph view
-        for node in nodes:
-            # Remove from root view scene (this automatically removes it)
-            item = node.graphicsItem()
-            if item.scene() is not None:
-                item.scene().removeItem(item)
+        # Step 2: Move nodes and internal connections to subgraph view
+        internal_connections = self._move_items_to_subgraph_view(nodes, view)
 
-            # Add to subgraph view (will be visible there)
-            view.viewBox().addItem(item)
-
-            # Find internal connections (both endpoints inside subgraph)
-            for term_name, term in node.terminals.items():
-                for remote_term, conn_item in term.connections().items():
-                    remote_node = remote_term.node()
-                    if remote_node in nodes:
-                        # This is an internal connection - move to subgraph view
-                        if conn_item not in internal_connections:
-                            internal_connections.append(conn_item)
-
-            node.recolor()
-
-        # Move internal connections to subgraph view
-        for conn in internal_connections:
-            if conn.scene() is not None:
-                conn.scene().removeItem(conn)
-            view.viewBox().addItem(conn)
-
-        # Store subgraph metadata
-        self._subgraphs[name] = {
-            "nodes": names,
-            "placeholder": subgraphNode,
-            "view": view,
-            "boundary_connections": boundary_connections,
-            "internal_connections": internal_connections,
-            "description": description or "",
-        }
-
-        # Set tooltip on placeholder to show description
-        if description:
-            subgraphNode.graphicsItem().setToolTip(description)
+        # Step 3: Commit the subgraph (store metadata and add to library)
+        self._commit_subgraph(name, subgraphNode, view, nodes, internal_connections, boundary_connections, description)
 
         # Display the subgraph view
         self.viewManager().displayView(name=subgraphNode.name(), autoRange=True)
-
-        # Add to library
-        self._addSubgraphToLibrary(name)
 
     def _showExportDialog(self, default_name, default_desc="", isImport=False):
         """Show dialog for entering subgraph name and description
@@ -650,37 +690,38 @@ class Flowchart(QtCore.QObject):
             view: Pre-created subgraph view (if None, creates one)
         """
 
-        # Step 1: Use provided view or create new one
-        if view is None:
-            view = self.viewManager().addView(name)
+        # Step 1: Create subgraph scaffold (placeholder and view)
+        # Handle view parameter: if provided, use it; otherwise scaffold creates one
+        if view is not None:
+            # View already created, so create scaffold manually
+            subgraphNode = SubgraphNode(name, children=nodes, flowchart=self)
+            subgraphNode.sigClosed.connect(self.nodeClosed)
+            subgraphNode.setGraph(self._graph)
 
-        subgraphNode = SubgraphNode(name, children=nodes, flowchart=self)
-        subgraphNode.sigClosed.connect(self.nodeClosed)
-        subgraphNode.setGraph(self._graph)
+            # Switch to root view to add placeholder there
+            self.viewManager().displayView(name="root")
 
-        # Switch to root view to add placeholder there
-        self.viewManager().displayView(name="root")
-
-        # Add placeholder to root view
-        placeholder_item = subgraphNode.graphicsItem()
-        self.viewBox().addItem(placeholder_item)
-        if pos:
-            if isinstance(pos, QtCore.QPointF):
-                # Snap to grid
-                snapped_pos = (find_nearest(pos.x()), find_nearest(pos.y()))
-                placeholder_item.moveBy(*snapped_pos)
-            else:
-                # Snap to grid
-                snapped_pos = (find_nearest(pos[0]), find_nearest(pos[1]))
-                placeholder_item.moveBy(*snapped_pos)
-        else:
-            # Default position based on first node (also snapped to grid)
-            if nodes:
+            # Add placeholder to root view and position it
+            placeholder_item = subgraphNode.graphicsItem()
+            self.viewBox().addItem(placeholder_item)
+            if pos:
+                if isinstance(pos, QtCore.QPointF):
+                    snapped_pos = (find_nearest(pos.x()), find_nearest(pos.y()))
+                    placeholder_item.moveBy(*snapped_pos)
+                elif isinstance(pos, (list, tuple)):
+                    snapped_pos = (find_nearest(pos[0]), find_nearest(pos[1]))
+                    placeholder_item.moveBy(*snapped_pos)
+                else:
+                    placeholder_item.moveBy(*pos)
+            elif nodes:
                 first_pos = nodes[0].graphicsItem().pos()
                 snapped_pos = (find_nearest(first_pos.x()), find_nearest(first_pos.y()))
                 placeholder_item.moveBy(*snapped_pos)
+        else:
+            # No view provided, use scaffold helper
+            subgraphNode, view = self._create_subgraph_scaffold(name, nodes, pos)
 
-        # Switch back to subgraph view for creating helper nodes
+        # Switch to subgraph view for creating helper nodes
         self.viewManager().displayView(name=name)
 
         # Step 2: Create placeholder terminals and track boundary connections
@@ -696,7 +737,6 @@ class Flowchart(QtCore.QObject):
 
             # Add input terminal to placeholder (also creates SubgraphInput terminal)
             subgraphNode.addInput(name=term_name, ttype=ttype)
-            placeholder_term = subgraphNode.terminals[term_name]
             sg_input_term = subgraphNode.subgraphInputs.terminals[term_name]
 
             # Check if this boundary should be visually connected to internal node
@@ -742,7 +782,6 @@ class Flowchart(QtCore.QObject):
 
             # Add output terminal to placeholder (also creates SubgraphOutput terminal)
             subgraphNode.addOutput(name=term_name, ttype=ttype)
-            placeholder_term = subgraphNode.terminals[term_name]
             sg_output_term = subgraphNode.subgraphOutputs.terminals[term_name]
 
             internal_node_name = boundary_output.get("internal_node")
@@ -806,33 +845,7 @@ class Flowchart(QtCore.QObject):
             subgraphNode.subgraphOutputs.graphicsItem().updateTerminals()
 
         # Step 4: Move nodes and internal connections to subgraph view
-        internal_connections = []
-
-        for node in nodes:
-            # Remove from root view
-            item = node.graphicsItem()
-            if item.scene() is not None:
-                item.scene().removeItem(item)
-
-            # Add to subgraph view
-            view.viewBox().addItem(item)
-
-            # Find internal connections (both endpoints in subgraph)
-            for term_name, term in node.terminals.items():
-                for remote_term, conn_item in term.connections().items():
-                    remote_node = remote_term.node()
-                    if remote_node in nodes:
-                        # This is an internal connection
-                        if conn_item not in internal_connections:
-                            internal_connections.append(conn_item)
-
-            node.recolor()
-
-        # Move internal connections to subgraph view
-        for conn in internal_connections:
-            if conn.scene() is not None:
-                conn.scene().removeItem(conn)
-            view.viewBox().addItem(conn)
+        internal_connections = self._move_items_to_subgraph_view(nodes, view)
 
         # Step 5: Create visual ConnectionItems for boundary connections
         # These are in the subgraph view connecting helpers to internal nodes
@@ -846,14 +859,9 @@ class Flowchart(QtCore.QObject):
 
                 # Create visual-only connection (now that nodes are in the view)
                 # Use signal=False so it doesn't create graph edges
-                sg_input_term.connectTo(internal_term, signal=False)
-
-                # Get the ConnectionItem that was just created
-                conn_item = sg_input_term.connections().get(internal_term)
-                if conn_item:
-                    bc["subgraph_visual"] = conn_item
-                    # Recolor terminal to show it's connected
-                    sg_input_term.recolor(QtGui.QColor(255, 255, 255))
+                # connectTo automatically recolors terminals
+                subgraph_visual = sg_input_term.connectTo(internal_term, signal=False)
+                bc["subgraph_visual"] = subgraph_visual
             else:  # output
                 # Internal → SubgraphOutput
                 sg_output_term = subgraphNode.subgraphOutputs.terminals[bc["terminal_name"]]
@@ -867,23 +875,11 @@ class Flowchart(QtCore.QObject):
                     bc["subgraph_visual"] = conn_item
                     sg_output_term.recolor(QtGui.QColor(255, 255, 255))
 
-        # Step 6: Store subgraph metadata
-        names = [node.name() for node in nodes]
-
-        self._subgraphs[name] = {
-            "nodes": names,
-            "placeholder": subgraphNode,
-            "view": view,
-            "boundary_connections": boundary_connections,
-            "internal_connections": internal_connections,
-            "description": description or "",
-        }
+        # Step 6: Commit the subgraph (store metadata and add to library)
+        self._commit_subgraph(name, subgraphNode, view, nodes, internal_connections, boundary_connections, description)
 
         # Switch back to root view - user sees placeholder and can connect it
         self.viewManager().displayView(name="root")
-
-        # Add to library
-        self._addSubgraphToLibrary(name)
 
         logger.info(f"Created imported subgraph {name} with {len(nodes)} nodes")
 
@@ -1597,6 +1593,8 @@ class Flowchart(QtCore.QObject):
         # Check if disconnecting from a subgraph placeholder
         if hasattr(remoteTerm.node(), "isSubgraph") and remoteTerm.node().isSubgraph:
             subgraph = remoteTerm.node()
+            if subgraph.name() not in self._subgraphs:
+                return
             sg_data = self._subgraphs[subgraph.name()]
 
             if remoteTerm.isInput():
@@ -2447,7 +2445,8 @@ class FlowchartCtrlWidget(QtWidgets.QWidget):
             px = pos[name][0]
             py = pos[name][1]
             p = (find_nearest(px), find_nearest(py))
-            gnode["node"].graphicsItem().setPos(*p)
+            node = self.chart._graph.nodes[name]["node"]
+            node.graphicsItem().setPos(*p)
 
         children = self.viewBox().allChildren()
         self.viewBox().autoRange(items=children)

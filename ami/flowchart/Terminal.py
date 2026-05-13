@@ -11,7 +11,6 @@ from pyqtgraph.graphicsItems.GraphicsObject import GraphicsObject
 from pyqtgraph.Point import Point
 from qtpy import QtCore, QtGui, QtWidgets
 
-
 # Terminal label truncation configuration
 LABEL_WIDTH_RATIO = 0.45  # 45% of node width per side
 MIN_LABEL_WIDTH = 30  # Minimum for readability (px)
@@ -146,7 +145,7 @@ class Terminal(QtCore.QObject):
         """Return the list of terms which receive input from this terminal."""
         return set([t for t in self.connections() if t.isInput()])
 
-    def connectTo(self, term, connectionItem=None, type_file=None, checked=[], signal=True):
+    def connectTo(self, term, connectionItem=None, type_file=None, checked=[], signal=True, view=None):
         try:
             if self.connectedTo(term):
                 raise Exception("Already connected")
@@ -174,7 +173,8 @@ class Terminal(QtCore.QObject):
                 elif t.isOutput():
                     types["Output"] = t
 
-            if not checkType(types, type_file, checked):
+            # Skip type check for visual-only connections
+            if signal and not checkType(types, type_file, checked):
                 raise Exception(f"Invalid types. Expected: {term.type()} Got: {self.type()}")
         except Exception:
             if connectionItem is not None:
@@ -183,7 +183,10 @@ class Terminal(QtCore.QObject):
 
         if connectionItem is None:
             connectionItem = ConnectionItem(self.graphicsItem(), term.graphicsItem())
-            self.graphicsItem().getViewBox().addItem(connectionItem)
+            if view is not None:
+                view.addItem(connectionItem)
+            else:
+                self.graphicsItem().getViewBox().addItem(connectionItem)
         self._connections[term] = connectionItem
         term._connections[self] = connectionItem
 

@@ -294,17 +294,10 @@ class SubgraphNodeGraphicsItem(NodeGraphicsItem):
 
     def addInput(self, name, term):
         """Add an input terminal and connect it"""
-        from qtpy import QtCore, QtGui
-
-        from ami.flowchart.Terminal import ConnectionItem
-
         ttype = term.type()
 
         # Add terminal to placeholder (also adds to SubgraphInputs)
         new_term = self.node.addInput(name, ttype=ttype, removable=True)
-
-        # Get the SubgraphInput terminal that was just created
-        sg_input_term = self.node.subgraphInputs.terminals.get(name)
 
         # Get the flowchart and subgraph data
         if not hasattr(self.node, "flowchart") or not self.node.flowchart:
@@ -324,20 +317,8 @@ class SubgraphNodeGraphicsItem(NodeGraphicsItem):
         root_view = flowchart.viewManager().views["root"]
         subgraph_view = sg_data["view"]
 
-        # Actually connect the terminals (this updates Terminal._connections)
-        term.connectTo(new_term, signal=False)
-
-        # Hide the default connection item that was created
-        for conn in new_term.connections().values():
-            if conn.scene() is not None:
-                conn.scene().removeItem(conn)
-
-        # Create visual-only connection in root view: external → placeholder
-        root_visual = ConnectionItem(term.graphicsItem(), new_term.graphicsItem())
-        root_view.viewBox().addItem(root_visual)
-
-        # Recolor placeholder terminal to white (it's connected in root view)
-        new_term.recolor(QtGui.QColor(255, 255, 255))
+        # Actually connect the terminals (this updates Terminal._connections, creates ConnectionItem, recolors)
+        root_visual = term.connectTo(new_term, signal=False, view=root_view.viewBox())
 
         # SubgraphInput terminal should stay black (not connected yet)
         # User needs to manually connect it to an internal node
@@ -370,14 +351,10 @@ class SubgraphNodeGraphicsItem(NodeGraphicsItem):
 
     def addOutput(self, name, term):
         """Add an output terminal and connect it from internal node"""
-        from qtpy import QtCore, QtGui
-
-        from ami.flowchart.Terminal import ConnectionItem
-
         ttype = term.type()
 
         # Add output terminal to placeholder (also adds input to SubgraphOutputs)
-        new_term = self.node.addOutput(name, ttype=ttype, removable=True)
+        self.node.addOutput(name, ttype=ttype, removable=True)
 
         # Get the SubgraphOutput input terminal that was just created
         sg_output_term = self.node.subgraphOutputs.terminals.get(name)
@@ -397,7 +374,6 @@ class SubgraphNodeGraphicsItem(NodeGraphicsItem):
             return
 
         sg_data = flowchart._subgraphs[subgraph_name]
-        root_view = flowchart.viewManager().views["root"]
         subgraph_view = sg_data["view"]
 
         # Check if SubgraphOutputs node is in the scene, if not add it
@@ -411,20 +387,8 @@ class SubgraphNodeGraphicsItem(NodeGraphicsItem):
             else:
                 self.node.subgraphOutputs.graphicsItem().moveBy(200, 0)
 
-        # Actually connect: internal → SubgraphOutputs
-        term.connectTo(sg_output_term, signal=False)
-
-        # Hide default connection item created by connectTo
-        for conn in sg_output_term.connections().values():
-            if conn.scene() is not None:
-                conn.scene().removeItem(conn)
-
-        # Create visual-only connection in subgraph view: internal → SubgraphOutputs
-        subgraph_visual = ConnectionItem(term.graphicsItem(), sg_output_term.graphicsItem())
-        subgraph_view.viewBox().addItem(subgraph_visual)
-
-        # Recolor SubgraphOutputs terminal to white (connected in subgraph view)
-        sg_output_term.recolor(QtGui.QColor(255, 255, 255))
+        # Actually connect: internal → SubgraphOutputs (creates ConnectionItem, recolors automatically)
+        subgraph_visual = term.connectTo(sg_output_term, signal=False, view=subgraph_view.viewBox())
 
         # Placeholder output terminal stays black (not connected externally yet)
         # User can now connect it to external nodes in root view
