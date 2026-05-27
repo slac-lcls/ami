@@ -6,6 +6,7 @@ from qtpy import QtCore, QtGui, QtWidgets
 from ami.flowchart.library.common import SourceNode
 from ami.flowchart.library.Editors import STYLE
 from ami.flowchart.Node import NodeGraphicsItem, find_nearest
+from ami.flowchart.SubgraphNode import SubgraphNode
 
 
 def clamp(pos):
@@ -224,6 +225,7 @@ class ViewManager(QtWidgets.QWidget):
         self.views = {"root": FlowchartGraphicsView(widget, self, isRoot=True)}
         self.currentView = self.views["root"]
         self.previousView = None
+        self._currentSubgraphName = None
         self.layout.addWidget(self.currentView, 1, 0, -1, -1)
 
     def addView(self, name):
@@ -260,6 +262,7 @@ class ViewManager(QtWidgets.QWidget):
         self.previousView = self.currentView
         self.currentView.hide()
         self.currentView = self.views[name]
+        self._currentSubgraphName = name if name != "root" else None
         self.currentView.show()
 
         self.ctrl.ui.actionPan.trigger()
@@ -402,8 +405,6 @@ class FlowchartViewBox(ViewBox):
             return
 
         # Prevent nested subgraphs
-        from ami.flowchart.SubgraphNode import SubgraphNode
-
         for node in nodes:
             if isinstance(node, SubgraphNode):
                 msg = QtWidgets.QMessageBox()

@@ -1,7 +1,9 @@
 import importlib
+import json
 import logging
 import os
 import sys
+from collections import defaultdict
 
 from pyqtgraph import FileDialog, dockarea
 from pyqtgraph.debug import printExc
@@ -10,6 +12,7 @@ from qtpy import QtCore, QtGui, QtWidgets
 from ami.flowchart.library.Editors import STYLE
 from ami.flowchart.NodeLibrary import isNodeClass
 from ami.flowchart.NodeStateWidget import NodeStateWidget
+from ami.flowchart.SubgraphLibrary import SubgraphTemplate
 
 try:
     from qtconsole.inprocess import QtInProcessKernelManager  # noqa: F401
@@ -155,15 +158,9 @@ class UnifiedLibraryEditor(QtWidgets.QWidget):
         if not pths:
             return
 
-        import json
-
-        from ami.flowchart.SubgraphLibrary import SubgraphTemplate
-
         self.subgraph_paths.update(pths)
 
         # Group subgraphs by source file for hierarchical tree
-        from collections import defaultdict
-
         by_file = defaultdict(list)
 
         for pth in pths:
@@ -226,8 +223,8 @@ class UnifiedLibraryEditor(QtWidgets.QWidget):
             try:
                 self.subgraphLibrary.addSubgraph(name, template, paths=[template.source_file])
                 subgraph_loaded = True
-            except Exception:
-                printExc(f"Error adding subgraph {name}: (continuing anyway)")
+            except Exception as e:
+                printExc(e)
             self.subgraph_loaded[name] = True
 
         # Update UI trees
@@ -239,8 +236,6 @@ class UnifiedLibraryEditor(QtWidgets.QWidget):
             self.ctrl.ui.clear_model(self.ctrl.ui.subgraph_tree)
 
             # Group subgraphs by source file (hierarchical)
-            from collections import defaultdict
-
             by_file = defaultdict(dict)
 
             for name in self.subgraphLibrary.getNames():
@@ -455,6 +450,7 @@ class Ui_Toolbar(object):
         self.subgraph_search = QtWidgets.QLineEdit()
         self.subgraph_search.setPlaceholderText("Search Subgraphs...")
         self.subgraph_tree = build_tree(self.subgraph_model, parent)
+        self.subgraph_tree.setContextMenuPolicy(QtCore.Qt.CustomContextMenu)
 
         self.gridLayout.addWidget(self.toolBar, 0, 0, 1, -1)
 

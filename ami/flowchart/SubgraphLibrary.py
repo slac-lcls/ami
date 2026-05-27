@@ -1,5 +1,4 @@
 # -*- coding: utf-8 -*-
-import os
 from collections import OrderedDict
 
 
@@ -64,6 +63,11 @@ class SubgraphLibrary:
         """
         return list(self.subgraphList.keys())
 
+    def clear(self):
+        """Remove all templates from the library"""
+        self.subgraphList.clear()
+        self.subgraphTree.clear()
+
 
 class SubgraphTemplate:
     """Template for creating subgraph instances"""
@@ -102,7 +106,7 @@ class SubgraphTemplate:
         connected_inputs = set()
         for conn in self.connects:
             if len(conn) >= 4:
-                from_node, from_term, to_node, to_term = conn[0], conn[1], conn[2], conn[3]
+                to_node, to_term = conn[2], conn[3]
                 connected_inputs.add((to_node, to_term))
 
         # Find dangling inputs

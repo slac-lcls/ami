@@ -211,6 +211,18 @@ class Flowchart(QtCore.QObject):
         if node.isChanged(True, True):
             self.sigNodeChanged.emit(node)
 
+        # If we're currently viewing a subgraph, register this node with it
+        if self._widget and not getattr(node, "is_visual_only", False):
+            vm = self.viewManager()
+            sg_name = vm._currentSubgraphName
+            if sg_name and sg_name in self._subgraphs:
+                sg_data = self._subgraphs[sg_name]
+                if node.name() not in sg_data["nodes"]:
+                    sg_data["nodes"].append(node.name())
+                placeholder = sg_data["placeholder"]
+                if node not in placeholder.children:
+                    placeholder.children.append(node)
+
     def replaceSourceNode(self, old_node, replacement_source_name):
         """
         Replace a source node with a different source.
@@ -283,6 +295,9 @@ class Flowchart(QtCore.QObject):
         subgraphNode = SubgraphNode(name, children=nodes, flowchart=self)
         subgraphNode.sigClosed.connect(self.nodeClosed)
         subgraphNode.setGraph(self._graph)
+
+        # Switch to root view to ensure placeholder is added correctly
+        self.viewManager().displayView(name="root")
 
         # Add placeholder to root view
         placeholder_item = subgraphNode.graphicsItem()
@@ -402,12 +417,7 @@ class Flowchart(QtCore.QObject):
 
         # Generate default name if not provided
         if name is None:
-            n = 0
-            while True:
-                default_name = f"subgraph.{n}"
-                if default_name not in self._graph.nodes():
-                    break
-                n += 1
+            default_name = self._generateUniqueSubgraphName("subgraph")
         else:
             default_name = name
 
@@ -671,7 +681,7 @@ class Flowchart(QtCore.QObject):
             n += 1
 
     def _createSubgraphFromImport(
-        self, name, nodes, boundary_inputs, boundary_outputs, node_mapping, pos=None, description=None, view=None
+        self, name, nodes, boundary_inputs, boundary_outputs, node_mapping, pos=None, description=None
     ):
         """Create a subgraph from imported nodes and boundary metadata.
 
@@ -687,39 +697,13 @@ class Flowchart(QtCore.QObject):
             node_mapping: Dict mapping old node names to new node names (for remapping)
             pos: Position for placeholder in root view (optional)
             description: Subgraph description (optional)
-            view: Pre-created subgraph view (if None, creates one)
         """
 
         # Step 1: Create subgraph scaffold (placeholder and view)
-        # Handle view parameter: if provided, use it; otherwise scaffold creates one
-        if view is not None:
-            # View already created, so create scaffold manually
-            subgraphNode = SubgraphNode(name, children=nodes, flowchart=self)
-            subgraphNode.sigClosed.connect(self.nodeClosed)
-            subgraphNode.setGraph(self._graph)
+        subgraphNode, view = self._create_subgraph_scaffold(name, nodes, pos)
 
-            # Switch to root view to add placeholder there
-            self.viewManager().displayView(name="root")
-
-            # Add placeholder to root view and position it
-            placeholder_item = subgraphNode.graphicsItem()
-            self.viewBox().addItem(placeholder_item)
-            if pos:
-                if isinstance(pos, QtCore.QPointF):
-                    snapped_pos = (find_nearest(pos.x()), find_nearest(pos.y()))
-                    placeholder_item.moveBy(*snapped_pos)
-                elif isinstance(pos, (list, tuple)):
-                    snapped_pos = (find_nearest(pos[0]), find_nearest(pos[1]))
-                    placeholder_item.moveBy(*snapped_pos)
-                else:
-                    placeholder_item.moveBy(*pos)
-            elif nodes:
-                first_pos = nodes[0].graphicsItem().pos()
-                snapped_pos = (find_nearest(first_pos.x()), find_nearest(first_pos.y()))
-                placeholder_item.moveBy(*snapped_pos)
-        else:
-            # No view provided, use scaffold helper
-            subgraphNode, view = self._create_subgraph_scaffold(name, nodes, pos)
+        # Move restored nodes (and their internal connections) from root to subgraph view
+        self._move_items_to_subgraph_view(nodes, view)
 
         # Switch to subgraph view for creating helper nodes
         self.viewManager().displayView(name=name)
@@ -881,8 +865,6 @@ class Flowchart(QtCore.QObject):
         # Switch back to root view - user sees placeholder and can connect it
         self.viewManager().displayView(name="root")
 
-        logger.info(f"Created imported subgraph {name} with {len(nodes)} nodes")
-
     def exportSubgraph(self, subgraph_name, fileName=None):
         """Export an existing subgraph to a .fc file
 
@@ -1017,7 +999,6 @@ class Flowchart(QtCore.QObject):
 
         if self._widget:
             self.widget().chartWidget.updateStatus(f"Exported subgraph to: {fileName}")
-        logger.info(f"Exported subgraph {subgraph_name} to {fileName}")
 
     def importSubgraphFromFile(self, fileName, pos=None):
         """Import a .fc file and create a subgraph instance
@@ -1047,11 +1028,7 @@ class Flowchart(QtCore.QObject):
             base_name = base_name or os.path.splitext(os.path.basename(fileName))[0]
         name = self._generateUniqueSubgraphName(base_name)
 
-        # Create subgraph view and switch to it
-        subgraph_view = self.viewManager().addView(name)
-        self.viewManager().displayView(name=name)
-
-        # Restore nodes with unique names (will be created in subgraph view)
+        # Restore nodes with unique names (will be created in current view)
         node_mapping = {}  # old_name -> new_name
         restored_nodes = []
 
@@ -1134,7 +1111,6 @@ class Flowchart(QtCore.QObject):
             node_mapping=node_mapping,
             pos=pos,
             description=metadata.get("description", ""),
-            view=subgraph_view,
         )
 
         # Switch back to root view
@@ -1142,7 +1118,6 @@ class Flowchart(QtCore.QObject):
 
         if self._widget:
             self.widget().chartWidget.updateStatus(f"Imported subgraph: {name}")
-        logger.info(f"Imported subgraph {name} with {len(restored_nodes)} nodes")
 
         return name
 
@@ -1263,8 +1238,6 @@ class Flowchart(QtCore.QObject):
             action = "Updated" if update else "Added"
             self.widget().chartWidget.updateStatus(f"{action} subgraph template: {subgraph_name}")
 
-        logger.info(f"{action if update else 'Added'} subgraph {subgraph_name} to library")
-
     def _updateSubgraphLibraryUI(self):
         """Update the subgraph library tree in the UI (hierarchical by source file)"""
         if not self._widget:
@@ -1312,6 +1285,42 @@ class Flowchart(QtCore.QObject):
             # Update tree model with hierarchical data
             ctrl.ui.create_model(ctrl.ui.subgraph_tree, tree_data, typ="SubgraphTree")
             logger.debug(f"Updated subgraph library UI with {sum(len(v) for v in tree_data.values())} templates")
+
+    def removeSubgraphFromLibrary(self, template_name):
+        """Remove a subgraph template from the library and delete all live instances.
+
+        Args:
+            template_name: Name of the template in the subgraph library
+        """
+        # Find live instances matching this template (same name or name.N pattern)
+        matching = [
+            name
+            for name in list(self._subgraphs.keys())
+            if name == template_name or name.startswith(f"{template_name}.")
+        ]
+
+        # Confirmation dialog
+        msg = f"Remove template '{template_name}'"
+        if matching:
+            msg += f" and {len(matching)} live instance(s)?"
+        else:
+            msg += "?"
+
+        reply = QtWidgets.QMessageBox.question(
+            self.widget(), "Remove Subgraph", msg, QtWidgets.QMessageBox.Yes | QtWidgets.QMessageBox.No
+        )
+        if reply != QtWidgets.QMessageBox.Yes:
+            return
+
+        # Delete live instances by closing their placeholders
+        for sg_name in matching:
+            sg_data = self._subgraphs.get(sg_name)
+            if sg_data and sg_data.get("placeholder"):
+                sg_data["placeholder"].close(emit=True)
+
+        # Remove from library
+        self.subgraph_library.removeSubgraph(template_name)
+        self._updateSubgraphLibraryUI()
 
     def _addRestoredSubgraphsToLibrary(self):
         """Add all subgraphs in the current flowchart to the library
@@ -1370,11 +1379,13 @@ class Flowchart(QtCore.QObject):
             if node_name in sg_data["nodes"]:
                 # Remove from subgraph
                 sg_data["nodes"].remove(node_name)
-                logger.info(f"Removed {node_name} from subgraph {sg_name}")
+                # Also remove from placeholder's children list
+                placeholder = sg_data["placeholder"]
+                if node in placeholder.children:
+                    placeholder.children.remove(node)
 
                 # Auto-delete empty subgraphs
                 if not sg_data["nodes"]:
-                    logger.info(f"Subgraph {sg_name} is empty, deleting")
                     # This will trigger SubgraphNode.close()
                     sg_data["placeholder"].close()
                     # Will be removed from self._subgraphs by close()
@@ -2048,16 +2059,19 @@ class Flowchart(QtCore.QObject):
 
             # Clean up boundary connections (visual-only)
             for bc in sg_data.get("boundary_connections", []):
-                if hasattr(bc.get("root_visual"), "close"):
-                    bc["root_visual"].close()
-                if hasattr(bc.get("subgraph_visual"), "close"):
-                    bc["subgraph_visual"].close()
+                root_visual = bc.get("root_visual")
+                if root_visual and hasattr(root_visual, "close"):
+                    root_visual.close()
+                sg_visual = bc.get("subgraph_visual")
+                if sg_visual and hasattr(sg_visual, "close"):
+                    sg_visual.close()
 
             # Remove from tracking
             del self._subgraphs[sg_name]
 
-        # NOTE: self.subgraph_library intentionally NOT cleared
-        # Templates persist across flowcharts (like node library)
+        # Clear the subgraph library (templates don't persist across New)
+        self.subgraph_library.clear()
+        self._updateSubgraphLibraryUI()
 
     async def updateState(self):
         while True:
@@ -2255,6 +2269,8 @@ class FlowchartCtrlWidget(QtWidgets.QWidget):
         self.libraryEditor.sigApplyClicked.connect(self.libraryUpdated)
         self.libraryEditor.sigReloadClicked.connect(self.libraryReloaded)
         self.ui.libraryConfigure.clicked.connect(self.libraryEditor.show)
+
+        self.ui.subgraph_tree.customContextMenuRequested.connect(self._onSubgraphTreeContextMenu)
 
         self.ipython_widget = None
         self.graph_info = pc.Info("ami_graph", "AMI Client graph", ["hutch", "name"])
@@ -2563,6 +2579,24 @@ class FlowchartCtrlWidget(QtWidgets.QWidget):
             await self.chart.broker.send_string(node.name(), zmq.SNDMORE)
             await self.chart.broker.send_pyobj(fcMsgs.ReloadLibrary(name=node.name(), mods=smods))
             self.chartWidget.updateStatus(f"Reloaded {node.name()}.")
+
+    def _onSubgraphTreeContextMenu(self, pos):
+        """Show context menu for subgraph library tree items."""
+        tree = self.ui.subgraph_tree
+        index = tree.indexAt(pos)
+        if not index.isValid():
+            return
+
+        template_name = index.data()
+        if not self.chart.subgraph_library.hasSubgraph(template_name):
+            return  # Clicked on a group header, not a template
+
+        menu = QtWidgets.QMenu()
+        remove_action = menu.addAction("Remove from Library")
+        action = menu.exec_(tree.viewport().mapToGlobal(pos))
+
+        if action == remove_action:
+            self.chart.removeSubgraphFromLibrary(template_name)
 
 
 class FlowchartWidget(dockarea.DockArea):

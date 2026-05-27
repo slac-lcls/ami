@@ -68,17 +68,13 @@ class SubgraphNode(Node):
         # Validate we have flowchart reference
         if not hasattr(self, "flowchart") or not self.flowchart:
             # Fallback to default Node.close if no flowchart
-            from ami.flowchart.Node import Node
-
-            Node.close(self, emit)
+            super().close(emit)
             return
 
         # Get subgraph data
         if self.name() not in self.flowchart._subgraphs:
             # Subgraph not tracked, just clean up this node
-            from ami.flowchart.Node import Node
-
-            Node.close(self, emit)
+            super().close(emit)
             return
 
         sg_data = self.flowchart._subgraphs[self.name()]
@@ -93,11 +89,13 @@ class SubgraphNode(Node):
 
         # Step 2: Clean up boundary connections
         for bc in sg_data.get("boundary_connections", []):
-            # Remove visual-only connections
-            if hasattr(bc["root_visual"], "close"):
-                bc["root_visual"].close()
-            if hasattr(bc["subgraph_visual"], "close"):
-                bc["subgraph_visual"].close()
+            # Remove visual-only connections (may not exist for imported subgraphs)
+            root_visual = bc.get("root_visual")
+            if root_visual and hasattr(root_visual, "close"):
+                root_visual.close()
+            sg_visual = bc.get("subgraph_visual")
+            if sg_visual and hasattr(sg_visual, "close"):
+                sg_visual.close()
 
         # Step 3: Remove tracking (if still exists - may have been removed by nodeClosed)
         if self.name() in self.flowchart._subgraphs:
@@ -112,9 +110,7 @@ class SubgraphNode(Node):
 
         # Step 6: Clean up placeholder (THIS node)
         # Use Node.close directly to avoid recursion
-        from ami.flowchart.Node import Node
-
-        Node.close(self, emit=False)
+        super().close(emit=False)
 
     def graphicsItem(self, brush=None):
         """Return the GraphicsItem for this node. Subclasses may re-implement

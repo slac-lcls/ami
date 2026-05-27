@@ -592,10 +592,6 @@ class ConnectionItem(GraphicsObject):
         self.target = target
         self.updateLine()
 
-    def setSource(self, source):
-        self.source = source
-        self.updateLine()
-
     def setStyle(self, **kwds):
         self.style.update(kwds)
         if "shape" in kwds:
