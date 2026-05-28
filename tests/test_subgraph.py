@@ -250,7 +250,7 @@ async def test_import_subgraph(qtbot, flowchart):
     qtbot.addWidget(fc.widget())
 
     # Load the export.fc test data
-    export_fc_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "export.fc")
+    export_fc_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "tests/graphs/export.fc")
     with open(export_fc_path, "r") as f:
         full_state = json.load(f)
 
@@ -371,7 +371,7 @@ async def test_import_subgraph_unique_naming(qtbot, flowchart):
     qtbot.addWidget(fc.widget())
 
     # Load the export.fc test data
-    export_fc_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "export.fc")
+    export_fc_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "tests/graphs/export.fc")
     with open(export_fc_path, "r") as f:
         full_state = json.load(f)
 
