@@ -50,7 +50,7 @@ class EditorMainWindow(QtWidgets.QMainWindow):
         """Handle window close event and prompt for unsaved changes."""
         if self.fc is not None:
             ctrl = self.fc.widget()
-            if not ctrl.ui.pending:
+            if not ctrl.unsaved_changes:
                 return
 
             # There are unsaved changes - prompt the user
@@ -160,9 +160,10 @@ def run_editor_window(
     with loop:
         loop.run_until_complete(fc.updateSources(init=True))
 
-        # # Add flowchart control panel to the main window
-        win.setCentralWidget(fc.widget())
+        # Add flowchart control panel to the main window
+        win.setCentralWidget(fc.widget(win))
         win.fc = fc  # Store reference for closeEvent
+
         win.show()
 
         app.aboutToQuit.connect(fc.widget().clear)

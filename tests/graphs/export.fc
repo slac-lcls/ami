@@ -1,0 +1,175 @@
+{
+  "nodes": [
+    {
+      "class": "SourceNode",
+      "name": "cspad",
+      "state": {
+        "pos": [
+          200.0,
+          300.0
+        ],
+        "enabled": true,
+        "viewed": false,
+        "latched": false,
+        "label": "",
+        "terminals": {
+          "Out": {
+            "io": "out",
+            "removable": false,
+            "ttype": "amitypes.array.Array2d",
+            "optional": false,
+            "group": null
+          }
+        },
+        "source_kwargs": {}
+      }
+    },
+    {
+      "class": "ExponentialMovingAverage2D",
+      "name": "ExponentialMovingAverage2D.0",
+      "state": {
+        "pos": [
+          400.0,
+          300.0
+        ],
+        "enabled": true,
+        "viewed": false,
+        "latched": false,
+        "label": "",
+        "terminals": {
+          "In": {
+            "io": "in",
+            "removable": false,
+            "ttype": "amitypes.array.Array2d",
+            "optional": false,
+            "group": null
+          },
+          "Out": {
+            "io": "out",
+            "removable": false,
+            "ttype": "amitypes.array.Array2d",
+            "optional": false,
+            "group": null
+          },
+          "Count": {
+            "io": "out",
+            "removable": false,
+            "ttype": "int",
+            "optional": false,
+            "group": null
+          }
+        },
+        "ctrl": {
+          "Fraction of old": 1.0
+        }
+      }
+    },
+    {
+      "class": "ScalarPlot",
+      "name": "ScalarPlot.0",
+      "state": {
+        "pos": [
+          600.0,
+          400.0
+        ],
+        "enabled": true,
+        "viewed": false,
+        "latched": false,
+        "label": "",
+        "terminals": {
+          "Y": {
+            "io": "in",
+            "removable": false,
+            "ttype": "float",
+            "optional": false,
+            "group": null
+          }
+        },
+        "ctrl": {
+          "Num Points": 100
+        }
+      }
+    },
+    {
+      "class": "ImageViewer",
+      "name": "ImageViewer.0",
+      "state": {
+        "pos": [
+          600.0,
+          200.0
+        ],
+        "enabled": true,
+        "viewed": false,
+        "latched": false,
+        "label": "",
+        "terminals": {
+          "In": {
+            "io": "in",
+            "removable": false,
+            "ttype": "amitypes.array.Array2d",
+            "optional": false,
+            "group": null
+          }
+        }
+      }
+    }
+  ],
+  "connects": [
+    [
+      "cspad",
+      "Out",
+      "ExponentialMovingAverage2D.0",
+      "In"
+    ],
+    [
+      "ExponentialMovingAverage2D.0",
+      "Count",
+      "ScalarPlot.0",
+      "Y"
+    ],
+    [
+      "ExponentialMovingAverage2D.0",
+      "Out",
+      "ImageViewer.0",
+      "In"
+    ]
+  ],
+  "viewbox": {
+    "comments": []
+  },
+  "subgraphs": [
+    {
+      "name": "subgraph",
+      "nodes": [
+        "ExponentialMovingAverage2D.0",
+        "ScalarPlot.0",
+        "ImageViewer.0"
+      ],
+      "placeholder_pos": [
+        400.0,
+        300.0
+      ],
+      "description": ""
+    }
+  ],
+  "views": {
+    "root": {
+      "comments": []
+    },
+    "subgraph": {
+      "comments": []
+    }
+  },
+  "source_configuration": {
+    "type": "hdf5",
+    "interval": 0.01,
+    "init_time": 0.5,
+    "hb_period": 10,
+    "files": [],
+    "repeat": true
+  },
+  "library": {
+    "node_paths": [],
+    "subgraph_paths": []
+  }
+}

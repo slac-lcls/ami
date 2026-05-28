@@ -8,6 +8,7 @@ class SourceConfiguration(QtWidgets.QWidget):
 
     def __init__(self, parent=None):
         super().__init__(parent)
+        self.setWindowFlags(QtCore.Qt.Window)
         self.setWindowTitle("Configure")
         self.formLayout = QtWidgets.QFormLayout(self)
 
