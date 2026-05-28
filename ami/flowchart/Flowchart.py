@@ -428,6 +428,13 @@ class Flowchart(QtCore.QObject):
                 # User cancelled
                 return None
 
+        # Filter out SourceNodes - sources always stay external to subgraphs
+        nodes = [n for n in nodes if not isinstance(n, SourceNode)]
+
+        if not nodes:
+            logger.warning("No non-source nodes selected for subgraph")
+            return None
+
         # Step 1: Create subgraph scaffold (placeholder and view)
         subgraphNode, view = self._create_subgraph_scaffold(name, nodes, pos)
 
@@ -620,27 +627,6 @@ class Flowchart(QtCore.QObject):
             return name_edit.text(), desc_edit.toPlainText()
         else:
             return None, None
-
-    def _showNestedSubgraphWarning(self, num_subgraphs):
-        """Show warning about nested subgraphs not being supported
-
-        Returns:
-            True if user accepts, False if cancelled
-        """
-        msg = QtWidgets.QMessageBox()
-        msg.setIcon(QtWidgets.QMessageBox.Warning)
-        msg.setWindowTitle("Nested Subgraphs Not Supported")
-        msg.setText(
-            f"This flowchart contains {num_subgraphs} subgraph(s).\n\n"
-            "Nested subgraphs are not yet supported. "
-            "The flowchart will be imported as a flat subgraph "
-            "with all nodes at the same level.\n\n"
-            "Original subgraph structure will be lost."
-        )
-        msg.setStandardButtons(QtWidgets.QMessageBox.Ok | QtWidgets.QMessageBox.Cancel)
-        msg.setDefaultButton(QtWidgets.QMessageBox.Cancel)
-
-        return msg.exec_() == QtWidgets.QMessageBox.Ok
 
     def _generateUniqueSubgraphName(self, base_name):
         """Generate unique subgraph name
@@ -1017,11 +1003,6 @@ class Flowchart(QtCore.QObject):
         else:
             state = fileName  # Already a dict
 
-        # Check for nested subgraphs
-        if "subgraphs" in state and state["subgraphs"]:
-            if not self._showNestedSubgraphWarning(len(state["subgraphs"])):
-                return None
-
         # Generate unique subgraph name
         base_name = state.get("subgraph_metadata", {}).get("name", "imported")
         if isinstance(fileName, str):
@@ -1032,28 +1013,31 @@ class Flowchart(QtCore.QObject):
         node_mapping = {}  # old_name -> new_name
         restored_nodes = []
 
+        # Track skipped sources for boundary derivation
+        skipped_sources = {}  # {old_name: {term_name: ttype, ...}}
+
         for node_state in state.get("nodes", []):
             old_name = node_state.get("name")
+
+            # Skip SourceNodes - they become boundary inputs instead
+            if node_state["class"] == "SourceNode":
+                terminals = node_state.get("state", {}).get("terminals", {})
+                source_terms = {}
+                for term_name, term_info in terminals.items():
+                    ttype = term_info.get("ttype")
+                    if isinstance(ttype, str):
+                        ttype = eval(ttype)
+                    source_terms[term_name] = ttype
+                skipped_sources[old_name] = source_terms
+                continue
+
             new_name = self._generateUniqueNodeName(old_name)
 
             try:
-                # Create node
-                if node_state["class"] == "SourceNode":
-                    # Handle SourceNode specially
-                    terminals = node_state.get("state", {}).get("terminals", {})
-                    # Eval ttype strings
-                    for term_name, term_info in terminals.items():
-                        if isinstance(term_info.get("ttype"), str):
-                            term_info["ttype"] = eval(term_info["ttype"])
-
-                    node = SourceNode(name=new_name, terminals=terminals)
-                    self.addNode(node=node)
-                else:
-                    node = self.createNode(node_state["class"], name=new_name, prompt=False)
+                node = self.createNode(node_state["class"], name=new_name, prompt=False)
 
                 if node:
-                    node_mapping[old_name] = node.name()  # Get actual assigned name
-
+                    node_mapping[old_name] = node.name()
                     node.blockSignals(True)
                     node.restoreState(node_state.get("state", {}))
                     node.blockSignals(False)
@@ -1062,11 +1046,39 @@ class Flowchart(QtCore.QObject):
                 printExc(f"Error creating node {old_name}: (continuing anyway)")
                 continue
 
+        # Auto-derive boundary inputs from skipped source connections
+        auto_boundary_inputs = []
+        for conn in state.get("connects", []):
+            if len(conn) < 4:
+                continue
+            from_node, from_term, to_node, to_term = conn[0], conn[1], conn[2], conn[3]
+
+            if from_node in skipped_sources:
+                ttype = skipped_sources[from_node].get(from_term)
+                placeholder_terminal = f"{from_node}.{from_term}"
+                auto_boundary_inputs.append(
+                    {
+                        "placeholder_terminal": placeholder_terminal,
+                        "internal_node": to_node,
+                        "internal_terminal": to_term,
+                        "ttype": ttype,
+                    }
+                )
+
+        if skipped_sources:
+            logger.info(
+                f"Excluded {len(skipped_sources)} source node(s) from subgraph import: {list(skipped_sources.keys())}"
+            )
+
         # Restore connections with mapped names
         for conn in state.get("connects", []):
             if len(conn) < 4:
                 continue
             from_node, from_term, to_node, to_term = conn[0], conn[1], conn[2], conn[3]
+
+            # Skip connections involving skipped sources (they become boundary inputs)
+            if from_node in skipped_sources or to_node in skipped_sources:
+                continue
 
             if from_node not in node_mapping or to_node not in node_mapping:
                 continue
@@ -1103,10 +1115,13 @@ class Flowchart(QtCore.QObject):
 
         # Create subgraph using import-specific function
         metadata = state.get("subgraph_metadata", {})
+        metadata_boundary_inputs = metadata.get("boundary_inputs", [])
+        combined_boundary_inputs = auto_boundary_inputs + metadata_boundary_inputs
+
         self._createSubgraphFromImport(
             name=name,
             nodes=restored_nodes,
-            boundary_inputs=metadata.get("boundary_inputs", []),
+            boundary_inputs=combined_boundary_inputs,
             boundary_outputs=metadata.get("boundary_outputs", []),
             node_mapping=node_mapping,
             pos=pos,
@@ -2231,6 +2246,7 @@ class FlowchartCtrlWidget(QtWidgets.QWidget):
         self.metadata = None
 
         self.currentFileName = None
+        self.unsaved_changes = False
         self.chart = chart
         self.chartWidget = FlowchartWidget(chart, self)
 
@@ -2240,6 +2256,7 @@ class FlowchartCtrlWidget(QtWidgets.QWidget):
         self.ui.create_model(self.ui.source_tree, self.chart.source_library.getLabelTree(), typ="SourceTree")
 
         self.chart.sigNodeChanged.connect(self.ui.setPending)
+        self.chart.sigNodeChanged.connect(self._markUnsaved)
 
         self.features = Features(self.graphCommHandler)
 
@@ -2262,7 +2279,7 @@ class FlowchartCtrlWidget(QtWidgets.QWidget):
         self.chart.sigFileLoaded.connect(self.setCurrentFile)
         self.chart.sigFileSaved.connect(self.setCurrentFile)
 
-        self.sourceConfigure = SourceConfiguration()
+        self.sourceConfigure = SourceConfiguration(parent=self)
         self.sourceConfigure.sigApply.connect(self.configureApply)
 
         self.libraryEditor = EditorTemplate.LibraryEditor(self, chart.library, chart.subgraph_library)
@@ -2439,6 +2456,11 @@ class FlowchartCtrlWidget(QtWidgets.QWidget):
 
     def setCurrentFile(self, fileName):
         self.currentFileName = fileName
+        if fileName is not None:
+            self.unsaved_changes = False
+
+    def _markUnsaved(self, node=None):
+        self.unsaved_changes = True
 
     def homeClicked(self):
         children = self.viewBox().allChildren()
@@ -2505,6 +2527,7 @@ class FlowchartCtrlWidget(QtWidgets.QWidget):
         await self.chart.clear()
         self.chartWidget.clear()
         self.setCurrentFile(None)
+        self.unsaved_changes = False
         self.chart.sigFileLoaded.emit(None)
         self.features = Features(self.graphCommHandler)
         await self.graphCommHandler.updatePlots(self.features.plots)

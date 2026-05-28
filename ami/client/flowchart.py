@@ -50,7 +50,7 @@ class EditorMainWindow(QtWidgets.QMainWindow):
         """Handle window close event and prompt for unsaved changes."""
         if self.fc is not None:
             ctrl = self.fc.widget()
-            if not ctrl.ui.pending:
+            if not ctrl.unsaved_changes:
                 return
 
             # There are unsaved changes - prompt the user

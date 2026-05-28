@@ -33,7 +33,7 @@ class UnifiedLibraryEditor(QtWidgets.QWidget):
     sigReloadClicked = QtCore.Signal(object)
 
     def __init__(self, ctrlWidget, nodeLibrary, subgraphLibrary):
-        super().__init__()
+        super().__init__(parent=ctrlWidget)
 
         self.setWindowTitle("Manage Libraries")
 
