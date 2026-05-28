@@ -34,7 +34,7 @@ class UnifiedLibraryEditor(QtWidgets.QWidget):
 
     def __init__(self, ctrlWidget, nodeLibrary, subgraphLibrary):
         super().__init__(parent=ctrlWidget)
-
+        self.setWindowFlags(QtCore.Qt.Window)
         self.setWindowTitle("Manage Libraries")
 
         # Node library data
