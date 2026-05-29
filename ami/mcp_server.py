@@ -3,6 +3,9 @@
 import json
 import logging
 import os
+import shutil
+import socket
+import tempfile
 import threading
 
 from mcp.server.fastmcp import FastMCP
@@ -10,11 +13,24 @@ from mcp.server.fastmcp import FastMCP
 logger = logging.getLogger(__name__)
 
 # MCP server instance
-mcp = FastMCP("ami", host="127.0.0.1", port=int(os.environ.get("AMI_MCP_PORT", "9100")), log_level="WARNING")
+mcp = FastMCP("ami", log_level="WARNING")
 
 # Global references (set by McpServerThread)
 _amicli = None
 _qt_dispatch = None
+
+
+def _find_free_port(start=9100, max_tries=100):
+    """Find first available port starting from `start`."""
+    for offset in range(max_tries):
+        port = start + offset
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+            try:
+                s.bind(("127.0.0.1", port))
+                return port
+            except OSError:
+                continue
+    raise RuntimeError(f"No free port in range {start}-{start + max_tries}")
 
 
 # ──────────────────────────────────────────────────────────────────────
@@ -421,29 +437,57 @@ Steps:
 class McpServerThread(threading.Thread):
     """Runs MCP HTTP server in a background daemon thread."""
 
-    def __init__(self, amicli, qt_dispatch_fn, host="127.0.0.1", port=9100):
+    def __init__(self, amicli, qt_dispatch_fn, host="127.0.0.1"):
         """
         Args:
             amicli: AmiCli instance for graph manipulation
             qt_dispatch_fn: QtDispatcher.dispatch function
             host: Server host (default localhost)
-            port: Server port (default 9100, override with AMI_MCP_PORT env)
         """
         super().__init__(daemon=True, name="ami-mcp-server")
         global _amicli, _qt_dispatch
         _amicli = amicli
         _qt_dispatch = qt_dispatch_fn
         self.host = host
-        self.port = port
+        self.port = _find_free_port()
+
+        # Create temp dir with opencode.jsonc
+        self._tmpdir = tempfile.TemporaryDirectory(prefix="ami-mcp-")
+        config = {
+            "$schema": "https://opencode.ai/config.json",
+            "mcp": {
+                "ami": {
+                    "type": "remote",
+                    "url": f"http://localhost:{self.port}/mcp",
+                    "enabled": True,
+                }
+            },
+        }
+        config_path = os.path.join(self._tmpdir.name, "opencode.jsonc")
+        with open(config_path, "w") as f:
+            json.dump(config, f, indent=2)
+
+        # Copy AGENTS.md if it exists
+        repo_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        agents_md = os.path.join(repo_root, "AGENTS.md")
+        if os.path.exists(agents_md):
+            shutil.copy2(agents_md, self._tmpdir.name)
+
+        # Copy skills directory if it exists
+        skills_dir = os.path.join(repo_root, "skills")
+        if os.path.isdir(skills_dir):
+            shutil.copytree(skills_dir, os.path.join(self._tmpdir.name, ".opencode/skills"))
 
     def run(self):
         """Run MCP server (blocks in this thread)."""
-        logger.info(f"Starting MCP server on {self.host}:{self.port}")
+        logger.info(f"AMI MCP server on http://{self.host}:{self.port}/mcp, config dir: {self._tmpdir.name}")
 
         # Suppress noisy MCP library request logging
         logging.getLogger("mcp").setLevel(logging.WARNING)
 
         try:
+            mcp.settings.host = self.host
+            mcp.settings.port = self.port
             mcp.run(transport="streamable-http")
         except Exception as e:
             logger.exception(f"MCP server error: {e}")

@@ -2624,11 +2624,13 @@ class FlowchartCtrlWidget(QtWidgets.QWidget):
 
         def agentClicked(self):
             """Spawn external agent harness connected to AMI's MCP server."""
-            import os
             import shutil
             import subprocess
 
-            port = getattr(self.chartWidget, "_mcp_port", 9100)
+            mcp_thread = getattr(self.chartWidget, "mcp_thread", None)
+            if not mcp_thread or not hasattr(mcp_thread, "_tmpdir"):
+                logger.error("MCP server not running - cannot spawn agent")
+                return
 
             # Find available terminal emulator
             terminal_cmd = None
@@ -2646,14 +2648,12 @@ class FlowchartCtrlWidget(QtWidgets.QWidget):
                 logger.error("No terminal emulator found (tried xterm, gnome-terminal, konsole, xfce4-terminal)")
                 return
 
-            # Spawn terminal running OpenCode
+            # Spawn terminal running OpenCode pointed at temp dir with config
             try:
                 subprocess.Popen(
-                    [*terminal_cmd, "opencode"],
-                    env={**os.environ, "AMI_MCP_PORT": str(port)},
-                    cwd=os.getcwd(),
+                    [*terminal_cmd, "opencode", mcp_thread._tmpdir.name],
                 )
-                logger.info(f"Spawned agent harness in terminal (AMI MCP at port {port})")
+                logger.info(f"Spawned agent in {mcp_thread._tmpdir.name}")
             except Exception as e:
                 logger.error(f"Failed to spawn agent terminal: {e}")
 
@@ -3174,13 +3174,10 @@ class FlowchartWidget(dockarea.DockArea):
             from ami.mcp_server import McpServerThread
             from ami.qt_dispatch import QtDispatcher
 
-            port = int(os.environ.get("AMI_MCP_PORT", "9100"))
-
             self.qt_dispatcher = QtDispatcher()
-            self.mcp_thread = McpServerThread(amicli=amicli, qt_dispatch_fn=self.qt_dispatcher.dispatch, port=port)
+            self.mcp_thread = McpServerThread(amicli=amicli, qt_dispatch_fn=self.qt_dispatcher.dispatch)
             self.mcp_thread.start()
-            self._mcp_port = port
-            logger.info(f"AMI MCP server listening on http://127.0.0.1:{port}/mcp")
+            self._mcp_port = self.mcp_thread.port
         except ImportError:
             logger.info("MCP package not installed - AI agent support disabled")
         except Exception as e:
