@@ -138,11 +138,11 @@ try:
             spec.loader.exec_module(self.mod)
             self.accumulator = self.mod.Accumulator()
 
-        def __call__(self, res, *rest):
+        def __call__(self, res, *rest, **kwargs):
             if self.file is None:
                 self.load()
 
-            return self.accumulator.reduction(res, *rest)
+            return self.accumulator.reduction(res, *rest, **kwargs)
 
         def res_factory(self, *args):
             if self.file is None:
@@ -169,7 +169,7 @@ try:
                 global_op=True,
             )
 
-            self.values = {"text": ""}
+            self.values = {"text": self.generate_template()}
 
         def display(self, topics, terms, addr, win, **kwargs):
             if self.widget is None:
@@ -188,7 +188,7 @@ class Accumulator():
     def __init__(self):
         pass
 
-    def reduction(self, res, *rest):
+    def reduction(self, res, *rest, **kwargs):
         pass
 
     def reset(self, *args):
