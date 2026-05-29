@@ -617,3 +617,208 @@ class AmiCli:
         except Exception as e:
             logger.error(f"Failed to get info for template '{template_name}': {e}")
             raise
+
+    def list_features(self):
+        """Return dict of available features in the global store.
+
+        Returns:
+            Dict mapping feature names to their types. For ndarrays, the type
+            is a tuple of (type, ndim).
+        """
+        return self.graphCommHandler.features
+
+    def fetch_data(self, feature_name):
+        """Fetch data for a feature. Auto-views if not in store.
+
+        Args:
+            feature_name: Name of the feature to fetch (e.g., 'ScalarPlot.0.Y')
+
+        Returns:
+            The fetched data (scalar, array, dict, or None if unavailable)
+        """
+        data = self.graphCommHandler.fetch(feature_name)
+        if data is None:
+            # Try registering a view and retrying
+            self.graphCommHandler.view(feature_name)
+            import time
+
+            time.sleep(1.5)  # Wait for heartbeat
+            data = self.graphCommHandler.fetch(feature_name)
+        return data
+
+    def add_terminal(self, node_name, terminal_name, direction, ttype="Any"):
+        """Add a terminal to a node that supports it.
+
+        Args:
+            node_name: Node name (e.g., 'Calculator.0', 'Filter.0')
+            terminal_name: Name for the new terminal (e.g., 'In.1', 'Out.1')
+            direction: 'in' or 'out'
+            ttype: Type string ('Any', 'float', 'int', 'Array1d', 'Array2d', 'Array3d')
+        """
+        from typing import Any
+
+        from amitypes import Array1d, Array2d, Array3d
+
+        TYPE_MAP = {
+            "Any": Any,
+            "float": float,
+            "int": int,
+            "Array1d": Array1d,
+            "Array2d": Array2d,
+            "Array3d": Array3d,
+        }
+
+        if node_name not in self.graph.nodes():
+            raise Exception(f"Node '{node_name}' not found")
+        node = self.graph.nodes[node_name]["node"]
+        resolved_type = TYPE_MAP.get(ttype, Any)
+
+        if direction == "in":
+            if not getattr(node, "_allowAddInput", False):
+                raise ValueError(f"Node {node_name} does not allow adding inputs")
+            node.addTerminal(name=terminal_name, io="in", ttype=resolved_type, removable=True)
+        elif direction == "out":
+            if not getattr(node, "_allowAddOutput", False):
+                raise ValueError(f"Node {node_name} does not allow adding outputs")
+            node.addTerminal(name=terminal_name, io="out", ttype=resolved_type, removable=True)
+        else:
+            raise ValueError(f"direction must be 'in' or 'out', got '{direction}'")
+
+        return {
+            "node": node_name,
+            "terminal": terminal_name,
+            "direction": direction,
+            "type": ttype,
+        }
+
+    def remove_terminal(self, node_name, terminal_name):
+        """Remove a terminal from a node.
+
+        Args:
+            node_name: Node name
+            terminal_name: Terminal to remove
+        """
+        if node_name not in self.graph.nodes():
+            raise Exception(f"Node '{node_name}' not found")
+        node = self.graph.nodes[node_name]["node"]
+        if terminal_name not in node.terminals:
+            raise ValueError(f"Terminal '{terminal_name}' not found on node '{node_name}'")
+        node.removeTerminal(terminal_name)
+        return {"node": node_name, "removed": terminal_name}
+
+    def get_node_inputs(self, node_name):
+        """Get connected variable names and current config for a node.
+
+        Returns dict with:
+            - input_terminals: dict of terminal name -> connected wire name (or None)
+            - output_terminals: list of output terminal names
+            - expression_vars: list of available variable names for expressions
+            - current_config: current expression/conditions if applicable
+        """
+        if node_name not in self.graph.nodes():
+            raise Exception(f"Node '{node_name}' not found")
+        node = self.graph.nodes[node_name]["node"]
+
+        # Use built-in methods
+        input_vars_map = node.input_vars()  # Dict of terminal_name -> variable_name
+
+        # Get current config based on node type
+        current_config = {}
+        if hasattr(node, "values"):
+            current_config = dict(node.values)
+
+        return {
+            "input_vars": input_vars_map,
+            "current_config": current_config,
+        }
+
+    def set_calculator_expression(self, node_name, expression):
+        """Set the math expression for a Calculator node.
+
+        Args:
+            node_name: Calculator node name (e.g., 'Calculator.0')
+            expression: Math expression using connected wire names as variables
+                       (e.g., 'cspad.Out * 2 + 5', 'cspad.Out / laser.Out')
+        """
+        if node_name not in self.graph.nodes():
+            raise Exception(f"Node '{node_name}' not found")
+        node = self.graph.nodes[node_name]["node"]
+
+        if node.nodeName != "Calculator":
+            raise ValueError(f"Node '{node_name}' is not a Calculator (it's a {node.nodeName})")
+
+        # Get available vars using built-in method
+        input_vars = node.input_vars()
+
+        # Set the expression
+        node.values["operation"] = expression
+        node.changed = True
+
+        # Update the widget if it exists
+        if node.widget is not None:
+            node.widget.restoreState({"operation": expression})
+
+        self.chart.sigNodeChanged.emit(node)
+
+        return {
+            "node": node_name,
+            "expression": expression,
+            "available_vars": list(input_vars.values()),
+        }
+
+    def set_filter_conditions(self, node_name, conditions):
+        """Set filter conditions for a Filter node.
+
+        Args:
+            node_name: Filter node name (e.g., 'Filter.0')
+            conditions: Dict with If/Elif/Else blocks. Example:
+                {
+                    "If": {
+                        "condition": "laser.Out == 1",
+                        "Filter.0.Out": "cspad.Out"
+                    },
+                    "Else": {
+                        "Filter.0.Out": "None"
+                    }
+                }
+        """
+        if node_name not in self.graph.nodes():
+            raise Exception(f"Node '{node_name}' not found")
+        node = self.graph.nodes[node_name]["node"]
+
+        if node.nodeName != "Filter":
+            raise ValueError(f"Node '{node_name}' is not a Filter (it's a {node.nodeName})")
+
+        # Set the conditions
+        import collections
+
+        node.values = collections.defaultdict(dict, conditions)
+        node.changed = True
+
+        # Update the widget if it exists
+        if node.widget is not None:
+            # Get current inputs and outputs
+            inputs = node.input_vars()
+            outputs = node.output_vars()
+
+            # CRITICAL: Set inputs/outputs on widget FIRST before restoreState
+            # This ensures the widget has the correct values when building UI components
+            node.widget.inputs = inputs
+            node.widget.outputs = outputs
+
+            # Build state dict for restoreState
+            state = {
+                "conditions": len([k for k in conditions.keys() if k.startswith("Elif") or k == "If"]),
+                "inputs": inputs,
+                "outputs": outputs,
+            }
+            state.update(conditions)  # Add If/Elif/Else blocks
+
+            node.widget.restoreState(state)
+
+        self.chart.sigNodeChanged.emit(node)
+
+        return {
+            "node": node_name,
+            "conditions": conditions,
+        }

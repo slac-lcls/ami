@@ -130,6 +130,49 @@ When you import a subgraph template:
 - It has **boundary outputs** — connect these to display nodes or downstream processing
 - The `import_subgraph` tool returns the boundary terminal names
 
+## Configuring Calculator and Filter
+
+These nodes require expressions/conditions set AFTER connecting inputs.
+Expression variables are the **connected wire names** (e.g., `cspad.Out`), NOT terminal names.
+
+### Calculator Workflow
+1. Create Calculator node and connect inputs
+2. Call `get_node_inputs("Calculator.0")` to see available variable names
+3. Call `set_calculator_expression("Calculator.0", "cspad.Out * 2 + 5")`
+
+Expression examples:
+- Single input: `"cspad.Out * 2 + 5"`
+- Two inputs: `"cspad.Out / laser.Out"` (need `add_node_terminal` for second input)
+- Numpy functions: `"np.sqrt(cspad.Out)"`, `"np.log(cspad.Out)"`
+
+### Filter Workflow (Event Code Filtering)
+1. Create Filter node
+2. Add extra input terminal if needed: `add_node_terminal("Filter.0", "In.1", "in", "Any")`
+3. Connect sources (e.g., laser event code + detector)
+4. Call `get_node_inputs("Filter.0")` to see variable names and output terminals
+5. Call `set_filter_conditions("Filter.0", conditions)` with JSON:
+
+```json
+{
+  "If": {
+    "condition": "laser.Out == 1",
+    "Filter.0.Out": "cspad.Out"
+  },
+  "Else": {
+    "Filter.0.Out": "None"
+  }
+}
+```
+
+This passes cspad images through only when laser is on (event code == 1).
+
+### Adding Extra Terminals
+```
+add_node_terminal("Calculator.0", "In.1", "in", "float")  # extra Calculator input
+add_node_terminal("Filter.0", "In.1", "in", "Any")        # extra Filter input
+add_node_terminal("Filter.0", "Out.1", "out", "Any")      # extra Filter output
+```
+
 ## Common Pitfalls
 
 ### Stack Nodes Need Sequence Inputs
@@ -141,6 +184,10 @@ Stack1d and Stack2d expect list/tuple inputs, not single scalars. Connect them t
 When using CurveFit, include the independent variable first in the `variables` parameter:
 - `variables="x,a,b"` for function `f="a*x+b"` ✓
 - `variables="a,b"` ✗ (will fail: lambdify argument mismatch)
+
+### Calculator/Filter Must Be Connected Before Configuring
+Expression variables are the connected wire names (e.g., `cspad.Out`), not terminal
+names (`In`). Always: connect inputs → call `get_node_inputs()` → then set expression/conditions.
 
 ### Accumulator/PythonEditor Nodes
 These nodes work out-of-the-box with default templates for MCP usage. Custom code requires GUI editor interaction.
