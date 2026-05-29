@@ -42,6 +42,7 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+mcp = ["mcp"]
 pva = [
     "p4p",
     "caproto",
@@ -109,6 +110,9 @@ ami-fc-to-source = "ami.fc_to_worker:main"
 
 [tool.setuptools]
 script-files = ["ami/ami-mpi"]
+
+[tool.setuptools.package-data]
+ami = ["skills/**/*.md"]
 
 [tool.pytest.ini_options]
 asyncio_mode = "strict"
