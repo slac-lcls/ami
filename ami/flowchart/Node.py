@@ -839,6 +839,7 @@ class NodeGraphicsItem(GraphicsObject):
         if ev.button() == QtCore.Qt.LeftButton:
             ev.accept()
             pos = self.pos() + self.mapToParent(ev.pos()) - self.mapToParent(ev.lastPos())
+
             x = max(min(pos.x(), 5e3), 0)
             y = max(min(pos.y(), 5e3), -900)
             if ev.isFinish():

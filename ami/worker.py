@@ -9,6 +9,7 @@ import re
 import signal
 import sys
 import time
+import traceback
 
 import prometheus_client as pc
 import zmq
@@ -393,6 +394,7 @@ class Worker(Node):
 
                         except Exception as e:
                             e.graph_name = name
+                            e.traceback_str = traceback.format_exc()
                             logger.exception(
                                 "%s: Failure encountered while executing graph (%s, v%d):",
                                 self.name,

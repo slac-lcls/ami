@@ -36,6 +36,7 @@ setup(
         "setproctitle",
         "prometheus_client",
         "lark",
+        "mcp",
     ],
     tests_require=["pytest", "pytest-asyncio", "pytest-qt"],
     extras_require={

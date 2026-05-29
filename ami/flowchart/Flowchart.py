@@ -8,6 +8,7 @@ from pyqtgraph.debug import printExc
 from qtpy import QtCore, QtGui, QtWidgets
 
 from ami import LogConfig
+from ami.amicli import AmiCli
 from ami.asyncqt import asyncSlot
 from ami.client import flowchart_messages as fcMsgs
 from ami.comm import AsyncGraphCommHandler, GraphCommHandler
@@ -2586,6 +2587,7 @@ class FlowchartCtrlWidget(QtWidgets.QWidget):
         self.ui.actionReset.triggered.connect(self.resetClicked)
         if HAS_QTCONSOLE:
             self.ui.actionConsole.triggered.connect(self.consoleClicked)
+        self.ui.actionAgent.triggered.connect(self.agentClicked)
 
         self.ui.actionHome.triggered.connect(self.homeClicked)
         self.ui.actionArrange.triggered.connect(self.arrangeClicked)
@@ -2616,6 +2618,12 @@ class FlowchartCtrlWidget(QtWidgets.QWidget):
         self.ipython_widget = None
         self.graph_info = pc.Info("ami_graph", "AMI Client graph", ["hutch", "name"])
         self.graph_version = pc.Gauge("ami_graph_version", "AMI Client graph version", ["hutch", "name"])
+
+        graphCommHandler = GraphCommHandler(self.graphmgr_addr.name, self.graphmgr_addr.comm)
+        self.amicli = AmiCli(self, self.chartWidget, self.chart, graphCommHandler)
+
+        # Start MCP server now that amicli exists
+        self.chartWidget._start_mcp_server(self.amicli)
 
         if HAS_PVCTRL:
             self.pvCtrlServer = PvCtrlServer(self.chart.hutch, self.graph_name, self)
@@ -2685,7 +2693,7 @@ class FlowchartCtrlWidget(QtWidgets.QWidget):
                         try:
                             assert gnode.values["alias"] != gnode.input_vars()["In"]
                         except AssertionError:
-                            gnode.setException(True)
+                            gnode.setException("alias name cannot be same as input!")
                             self.chartWidget.updateStatus(
                                 f"{gnode.display_name()} alias name cannot be same as input!", color="red"
                             )
@@ -2710,9 +2718,15 @@ class FlowchartCtrlWidget(QtWidgets.QWidget):
                                 latched=node.latched,
                             )
                         except Exception as e:
+<<<<<<< HEAD
                             self.chartWidget.updateStatus(f"{node.display_name()} {e}!", color="red")
                             printExc(f"{node.display_name()} raised exception! See console for stacktrace.")
                             node.setException(True)
+=======
+                            self.chartWidget.updateStatus(f"{node.name()} {e}!", color="red")
+                            printExc(f"{node.name()} raised exception! See console for stacktrace.")
+                            node.setException(str(e))
+>>>>>>> 0a4a82d (Add MCP server for AI-assisted graph building and fix runtime error handling)
                             failed_nodes.add(node)
                             continue
 
@@ -2728,8 +2742,13 @@ class FlowchartCtrlWidget(QtWidgets.QWidget):
 
         if disconnectedNodes:
             for node in disconnectedNodes:
+<<<<<<< HEAD
                 self.chartWidget.updateStatus(f"{node.display_name()} disconnected!", color="red")
                 node.setException(True)
+=======
+                self.chartWidget.updateStatus(f"{node.name()} disconnected!", color="red")
+                node.setException("disconnected!")
+>>>>>>> 0a4a82d (Add MCP server for AI-assisted graph building and fix runtime error handling)
             msg.show()
             return
 
@@ -2815,15 +2834,21 @@ class FlowchartCtrlWidget(QtWidgets.QWidget):
             # Subgraph view
             sg_data = self.chart._subgraphs[sg_name]
             node_names = set(sg_data["nodes"])
+<<<<<<< HEAD
             layout_graph = self.chart._graph.subgraph(node_names).copy()
             placeholder = sg_data["placeholder"]
             placeholder_nodes = {}
+=======
+            subgraph = self.chart._graph.subgraph(node_names)
+            placeholder = sg_data["placeholder"]
+>>>>>>> 0a4a82d (Add MCP server for AI-assisted graph building and fix runtime error handling)
         else:
             # Root view: exclude nodes inside subgraphs
             subgraph_nodes = set()
             for sg_data in self.chart._subgraphs.values():
                 subgraph_nodes.update(sg_data["nodes"])
             root_nodes = set(self.chart._graph.nodes()) - subgraph_nodes
+<<<<<<< HEAD
             layout_graph = self.chart._graph.subgraph(root_nodes).copy()
             placeholder = None
 
@@ -2860,6 +2885,26 @@ class FlowchartCtrlWidget(QtWidgets.QWidget):
             sources = [n for n in layout_graph.nodes() if layout_graph.in_degree(n) == 0]
             if not sources:
                 sources = list(layout_graph.nodes())
+=======
+            subgraph = self.chart._graph.subgraph(root_nodes)
+            placeholder = None
+
+        if len(subgraph.nodes()) == 0:
+            return
+
+        # Assign layers via longest path (topological sort)
+        layers = {node: 0 for node in subgraph.nodes()}
+        try:
+            for node in nx.topological_sort(subgraph):
+                for successor in subgraph.successors(node):
+                    layers[successor] = max(layers[successor], layers[node] + 1)
+        except nx.NetworkXUnfeasible:
+            from collections import deque
+
+            sources = [n for n in subgraph.nodes() if subgraph.in_degree(n) == 0]
+            if not sources:
+                sources = list(subgraph.nodes())
+>>>>>>> 0a4a82d (Add MCP server for AI-assisted graph building and fix runtime error handling)
             visited = set()
             queue = deque((s, 0) for s in sources)
             while queue:
@@ -2869,7 +2914,11 @@ class FlowchartCtrlWidget(QtWidgets.QWidget):
                     continue
                 visited.add(node)
                 layers[node] = depth
+<<<<<<< HEAD
                 for succ in layout_graph.successors(node):
+=======
+                for succ in subgraph.successors(node):
+>>>>>>> 0a4a82d (Add MCP server for AI-assisted graph building and fix runtime error handling)
                     queue.append((succ, depth + 1))
 
         # Group by layer and position nodes
@@ -2885,11 +2934,16 @@ class FlowchartCtrlWidget(QtWidgets.QWidget):
             for i, node_name in enumerate(nodes):
                 y = y_offset + i * y_spacing
                 p = (find_nearest(x), find_nearest(y))
+<<<<<<< HEAD
                 if node_name in placeholder_nodes:
                     placeholder_nodes[node_name].graphicsItem().setPos(*p)
                 else:
                     node = self.chart._graph.nodes[node_name]["node"]
                     node.graphicsItem().setPos(*p)
+=======
+                node = self.chart._graph.nodes[node_name]["node"]
+                node.graphicsItem().setPos(*p)
+>>>>>>> 0a4a82d (Add MCP server for AI-assisted graph building and fix runtime error handling)
 
         # Position visual boundary nodes for subgraph views
         if placeholder:
@@ -2953,14 +3007,6 @@ class FlowchartCtrlWidget(QtWidgets.QWidget):
     if HAS_QTCONSOLE:
 
         def consoleClicked(self):
-            class AmiCli:
-
-                def __init__(self, ctrl, chartWidget, chart, graph, graphCommHandler):
-                    self.ctrl = ctrl
-                    self.chartWidget = chartWidget
-                    self.chart = chart
-                    self.graphCommHandler = graphCommHandler
-
             if self.ipython_widget is None:
                 kernel_manager = QtInProcessKernelManager()
                 kernel_manager.start_kernel(show_banner=False)
@@ -2975,12 +3021,46 @@ class FlowchartCtrlWidget(QtWidgets.QWidget):
                 self.ipython_widget.kernel_manager = kernel_manager
                 self.ipython_widget.kernel_client = kernel_client
 
-            graphCommHandler = GraphCommHandler(self.graphmgr_addr.name, self.graphmgr_addr.comm)
-            self.amicli = AmiCli(self, self.chartWidget, self.chart, self.chart._graph, graphCommHandler)
+            # Use the eagerly-initialized amicli from __init__
             self.ipython_widget.kernel_manager.kernel.shell.push({"amicli": self.amicli})
             win = QtWidgets.QMainWindow(parent=self)
             win.setCentralWidget(self.ipython_widget)
             win.show()
+
+        def agentClicked(self):
+            """Spawn external agent harness connected to AMI's MCP server."""
+            import os
+            import shutil
+            import subprocess
+
+            port = getattr(self.chartWidget, "_mcp_port", 9100)
+
+            # Find available terminal emulator
+            terminal_cmd = None
+            for cmd in [
+                ["xterm", "-e"],
+                ["gnome-terminal", "--"],
+                ["konsole", "-e"],
+                ["xfce4-terminal", "-e"],
+            ]:
+                if shutil.which(cmd[0]):
+                    terminal_cmd = cmd
+                    break
+
+            if not terminal_cmd:
+                logger.error("No terminal emulator found (tried xterm, gnome-terminal, konsole, xfce4-terminal)")
+                return
+
+            # Spawn terminal running OpenCode
+            try:
+                subprocess.Popen(
+                    [*terminal_cmd, "opencode"],
+                    env={**os.environ, "AMI_MCP_PORT": str(port)},
+                    cwd=os.getcwd(),
+                )
+                logger.info(f"Spawned agent harness in terminal (AMI MCP at port {port})")
+            except Exception as e:
+                logger.error(f"Failed to spawn agent terminal: {e}")
 
     @asyncSlot(object)
     async def configureApply(self, src_cfg):
@@ -3502,6 +3582,28 @@ class FlowchartWidget(dockarea.DockArea):
             color = "#fff"
         self.statusText.insertHtml(f"<font color={color}>[{now}] {text}</font>")
         self.statusText.append("")
+
+    def _start_mcp_server(self, amicli):
+        """Start MCP server thread for AI-assisted graph building."""
+        import os
+
+        if os.environ.get("AMI_DISABLE_MCP"):
+            return
+        try:
+            from ami.mcp_server import McpServerThread
+            from ami.qt_dispatch import QtDispatcher
+
+            port = int(os.environ.get("AMI_MCP_PORT", "9100"))
+
+            self.qt_dispatcher = QtDispatcher()
+            self.mcp_thread = McpServerThread(amicli=amicli, qt_dispatch_fn=self.qt_dispatcher.dispatch, port=port)
+            self.mcp_thread.start()
+            self._mcp_port = port
+            logger.info(f"AMI MCP server listening on http://127.0.0.1:{port}/mcp")
+        except ImportError:
+            logger.info("MCP package not installed - AI agent support disabled")
+        except Exception as e:
+            logger.warning(f"Could not start MCP server: {e}")
 
 
 class Features(object):

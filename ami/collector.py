@@ -9,6 +9,7 @@ import os
 import signal
 import sys
 import time
+import traceback
 
 import ami.multiproc as mp
 from ami import Defaults, LogConfig
@@ -79,6 +80,7 @@ class GraphCollector(Node, Collector):
             if configure:
                 self.store.flush(self.node, drop=True)
         except Exception as e:
+            e.traceback_str = traceback.format_exc()
             logger.exception("%s: Failure encountered while flushing store", self.name)
             self.report("error", e)
 
@@ -86,6 +88,7 @@ class GraphCollector(Node, Collector):
         try:
             self.store.begin_run()
         except Exception as e:
+            e.traceback_str = traceback.format_exc()
             logger.exception("%s: Failure encountered while beginning run", self.name)
             self.report("error", e)
 
@@ -93,6 +96,7 @@ class GraphCollector(Node, Collector):
         try:
             self.store.end_run()
         except Exception as e:
+            e.traceback_str = traceback.format_exc()
             logger.exception("%s: Failure encountered while ending run %d", self.name)
             self.report("error", e)
 
@@ -100,6 +104,7 @@ class GraphCollector(Node, Collector):
         try:
             self.store.begin_step(step)
         except Exception as e:
+            e.traceback_str = traceback.format_exc()
             logger.exception("%s: Failure encountered while beginning step %d", self.name, step)
             self.report("error", e)
 
@@ -107,6 +112,7 @@ class GraphCollector(Node, Collector):
         try:
             self.store.end_step(step)
         except Exception as e:
+            e.traceback_str = traceback.format_exc()
             logger.exception("%s: Failure encountered while ending step %d", self.name, step)
             self.report("error", e)
 
@@ -217,6 +223,7 @@ class GraphCollector(Node, Collector):
 
                 except Exception as e:
                     e.graph_name = msg.name
+                    e.traceback_str = traceback.format_exc()
                     logger.exception("%s: Failure encountered while executing graph %s:", self.name, msg.name)
                     self.report("error", e)
                     logger.error("%s: Purging graph (%s v%d)", self.name, msg.name, self.store.version(msg.name))
