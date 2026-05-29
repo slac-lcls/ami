@@ -25,7 +25,7 @@ def load_style():
             try:
                 style = json.load(f)
             except json.decoder.JSONDecodeError as e:
-                print(e)
+                print("Error loading stylesheet:", e)
 
     return style
 

@@ -10,7 +10,7 @@ from qtpy import QtCore, QtGui, QtWidgets
 from ami import LogConfig
 from ami.asyncqt import asyncSlot
 from ami.client import flowchart_messages as fcMsgs
-from ami.comm import AsyncGraphCommHandler, GraphCommHandler
+from ami.comm import AsyncGraphCommHandler
 from ami.flowchart.FlowchartGraphicsView import ViewManager
 from ami.flowchart.library import LIBRARY
 from ami.flowchart.library.common import CtrlNode, SourceNode
@@ -2271,6 +2271,7 @@ class FlowchartCtrlWidget(QtWidgets.QWidget):
         self.ui.actionReset.triggered.connect(self.resetClicked)
         if HAS_QTCONSOLE:
             self.ui.actionConsole.triggered.connect(self.consoleClicked)
+        self.ui.actionAgent.triggered.connect(self.agentClicked)
 
         self.ui.actionHome.triggered.connect(self.homeClicked)
         self.ui.actionArrange.triggered.connect(self.arrangeClicked)
@@ -2292,6 +2293,16 @@ class FlowchartCtrlWidget(QtWidgets.QWidget):
         self.ipython_widget = None
         self.graph_info = pc.Info("ami_graph", "AMI Client graph", ["hutch", "name"])
         self.graph_version = pc.Gauge("ami_graph_version", "AMI Client graph version", ["hutch", "name"])
+
+        # Eager AmiCli initialization for MCP server
+        from ami.amicli import AmiCli
+        from ami.comm import GraphCommHandler
+
+        graphCommHandler = GraphCommHandler(self.graphmgr_addr.name, self.graphmgr_addr.comm)
+        self.amicli = AmiCli(self, self.chartWidget, self.chart, graphCommHandler)
+
+        # Start MCP server now that amicli exists
+        self.chartWidget._start_mcp_server(self.amicli)
 
     @asyncSlot()
     async def applyClicked(self, build_views=True):
@@ -2342,13 +2353,13 @@ class FlowchartCtrlWidget(QtWidgets.QWidget):
                         try:
                             assert gnode.values["alias"]
                         except AssertionError:
-                            gnode.setException(True)
+                            gnode.setException("set alias!")
                             self.chartWidget.updateStatus(f"{gnode.name()} set alias!", color="red")
                             continue
                         try:
                             assert gnode.values["alias"] != gnode.input_vars()["In"]
                         except AssertionError:
-                            gnode.setException(True)
+                            gnode.setException("alias name cannot be same as input!")
                             self.chartWidget.updateStatus(
                                 f"{gnode.name()} alias name cannot be same as input!", color="red"
                             )
@@ -2375,7 +2386,7 @@ class FlowchartCtrlWidget(QtWidgets.QWidget):
                         except Exception as e:
                             self.chartWidget.updateStatus(f"{node.name()} {e}!", color="red")
                             printExc(f"{node.name()} raised exception! See console for stacktrace.")
-                            node.setException(True)
+                            node.setException(str(e))
                             failed_nodes.add(node)
                             continue
 
@@ -2392,7 +2403,7 @@ class FlowchartCtrlWidget(QtWidgets.QWidget):
         if disconnectedNodes:
             for node in disconnectedNodes:
                 self.chartWidget.updateStatus(f"{node.name()} disconnected!", color="red")
-                node.setException(True)
+                node.setException("disconnected!")
             msg.show()
             return
 
@@ -2467,24 +2478,77 @@ class FlowchartCtrlWidget(QtWidgets.QWidget):
         self.viewBox().autoRange(items=children)
 
     def arrangeClicked(self):
-        sources = []
-        displays = []
-        for name, data in self.chart._graph.nodes(data=True):
-            if data.get("subset") == 0:
-                sources.append(name)
-            elif data.get("subset") == 2:
-                displays.append(name)
-        fixed = sources + displays
-        pos = nx.drawing.layout.multipartite_layout(self.chart._graph, scale=len(self.chart._graph.nodes()) * 75)
-        pos = nx.drawing.layout.spring_layout(nx.Graph(self.chart._graph), pos=pos, fixed=fixed, k=200)
-        for name in self.chart._graph.nodes():
-            if name not in pos:
-                continue
-            px = pos[name][0]
-            py = pos[name][1]
-            p = (find_nearest(px), find_nearest(py))
-            node = self.chart._graph.nodes[name]["node"]
-            node.graphicsItem().setPos(*p)
+        """Auto-arrange nodes using topological layered layout."""
+        vm = self.viewManager()
+        sg_name = vm._currentSubgraphName
+
+        if sg_name and sg_name in self.chart._subgraphs:
+            # Subgraph view
+            sg_data = self.chart._subgraphs[sg_name]
+            node_names = set(sg_data["nodes"])
+            subgraph = self.chart._graph.subgraph(node_names)
+            placeholder = sg_data["placeholder"]
+        else:
+            # Root view: exclude nodes inside subgraphs
+            subgraph_nodes = set()
+            for sg_data in self.chart._subgraphs.values():
+                subgraph_nodes.update(sg_data["nodes"])
+            root_nodes = set(self.chart._graph.nodes()) - subgraph_nodes
+            subgraph = self.chart._graph.subgraph(root_nodes)
+            placeholder = None
+
+        if len(subgraph.nodes()) == 0:
+            return
+
+        # Assign layers via longest path (topological sort)
+        layers = {node: 0 for node in subgraph.nodes()}
+        try:
+            for node in nx.topological_sort(subgraph):
+                for successor in subgraph.successors(node):
+                    layers[successor] = max(layers[successor], layers[node] + 1)
+        except nx.NetworkXUnfeasible:
+            from collections import deque
+
+            sources = [n for n in subgraph.nodes() if subgraph.in_degree(n) == 0]
+            if not sources:
+                sources = list(subgraph.nodes())
+            visited = set()
+            queue = deque((s, 0) for s in sources)
+            while queue:
+                node, depth = queue.popleft()
+                if node in visited:
+                    layers[node] = max(layers[node], depth)
+                    continue
+                visited.add(node)
+                layers[node] = depth
+                for succ in subgraph.successors(node):
+                    queue.append((succ, depth + 1))
+
+        # Group by layer and position nodes
+        layer_groups = {}
+        for node, layer in layers.items():
+            layer_groups.setdefault(layer, []).append(node)
+
+        x_spacing = 300
+        y_spacing = 200
+        for layer_idx, nodes in sorted(layer_groups.items()):
+            x = layer_idx * x_spacing
+            y_offset = -(len(nodes) - 1) * y_spacing / 2
+            for i, node_name in enumerate(nodes):
+                y = y_offset + i * y_spacing
+                p = (find_nearest(x), find_nearest(y))
+                node = self.chart._graph.nodes[node_name]["node"]
+                node.graphicsItem().setPos(*p)
+
+        # Position visual boundary nodes for subgraph views
+        if placeholder:
+            max_layer = max(layer_groups.keys()) if layer_groups else 0
+            if hasattr(placeholder, "subgraphInputs") and placeholder.subgraphInputs.graphicsItem().scene():
+                placeholder.subgraphInputs.graphicsItem().setPos(find_nearest(-x_spacing), find_nearest(0))
+            if hasattr(placeholder, "subgraphOutputs") and placeholder.subgraphOutputs.graphicsItem().scene():
+                placeholder.subgraphOutputs.graphicsItem().setPos(
+                    find_nearest((max_layer + 1) * x_spacing), find_nearest(0)
+                )
 
         children = self.viewBox().allChildren()
         self.viewBox().autoRange(items=children)
@@ -2538,14 +2602,6 @@ class FlowchartCtrlWidget(QtWidgets.QWidget):
     if HAS_QTCONSOLE:
 
         def consoleClicked(self):
-            class AmiCli:
-
-                def __init__(self, ctrl, chartWidget, chart, graph, graphCommHandler):
-                    self.ctrl = ctrl
-                    self.chartWidget = chartWidget
-                    self.chart = chart
-                    self.graphCommHandler = graphCommHandler
-
             if self.ipython_widget is None:
                 kernel_manager = QtInProcessKernelManager()
                 kernel_manager.start_kernel(show_banner=False)
@@ -2560,12 +2616,46 @@ class FlowchartCtrlWidget(QtWidgets.QWidget):
                 self.ipython_widget.kernel_manager = kernel_manager
                 self.ipython_widget.kernel_client = kernel_client
 
-            graphCommHandler = GraphCommHandler(self.graphmgr_addr.name, self.graphmgr_addr.comm)
-            self.amicli = AmiCli(self, self.chartWidget, self.chart, self.chart._graph, graphCommHandler)
+            # Use the eagerly-initialized amicli from __init__
             self.ipython_widget.kernel_manager.kernel.shell.push({"amicli": self.amicli})
             win = QtWidgets.QMainWindow(parent=self)
             win.setCentralWidget(self.ipython_widget)
             win.show()
+
+        def agentClicked(self):
+            """Spawn external agent harness connected to AMI's MCP server."""
+            import os
+            import shutil
+            import subprocess
+
+            port = getattr(self.chartWidget, "_mcp_port", 9100)
+
+            # Find available terminal emulator
+            terminal_cmd = None
+            for cmd in [
+                ["xterm", "-e"],
+                ["gnome-terminal", "--"],
+                ["konsole", "-e"],
+                ["xfce4-terminal", "-e"],
+            ]:
+                if shutil.which(cmd[0]):
+                    terminal_cmd = cmd
+                    break
+
+            if not terminal_cmd:
+                logger.error("No terminal emulator found (tried xterm, gnome-terminal, konsole, xfce4-terminal)")
+                return
+
+            # Spawn terminal running OpenCode
+            try:
+                subprocess.Popen(
+                    [*terminal_cmd, "opencode"],
+                    env={**os.environ, "AMI_MCP_PORT": str(port)},
+                    cwd=os.getcwd(),
+                )
+                logger.info(f"Spawned agent harness in terminal (AMI MCP at port {port})")
+            except Exception as e:
+                logger.error(f"Failed to spawn agent terminal: {e}")
 
     @asyncSlot(object)
     async def configureApply(self, src_cfg):
@@ -3073,6 +3163,28 @@ class FlowchartWidget(dockarea.DockArea):
             color = "#fff"
         self.statusText.insertHtml(f"<font color={color}>[{now}] {text}</font>")
         self.statusText.append("")
+
+    def _start_mcp_server(self, amicli):
+        """Start MCP server thread for AI-assisted graph building."""
+        import os
+
+        if os.environ.get("AMI_DISABLE_MCP"):
+            return
+        try:
+            from ami.mcp_server import McpServerThread
+            from ami.qt_dispatch import QtDispatcher
+
+            port = int(os.environ.get("AMI_MCP_PORT", "9100"))
+
+            self.qt_dispatcher = QtDispatcher()
+            self.mcp_thread = McpServerThread(amicli=amicli, qt_dispatch_fn=self.qt_dispatcher.dispatch, port=port)
+            self.mcp_thread.start()
+            self._mcp_port = port
+            logger.info(f"AMI MCP server listening on http://127.0.0.1:{port}/mcp")
+        except ImportError:
+            logger.info("MCP package not installed - AI agent support disabled")
+        except Exception as e:
+            logger.warning(f"Could not start MCP server: {e}")
 
 
 class Features(object):
