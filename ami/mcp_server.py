@@ -33,6 +33,41 @@ def _find_free_port(start=9100, max_tries=100):
     raise RuntimeError(f"No free port in range {start}-{start + max_tries}")
 
 
+def _summarize_data(data):
+    """Convert fetched data to LLM-friendly JSON summary.
+
+    Args:
+        data: Data from feature store (scalar, ndarray, dict, or None)
+
+    Returns:
+        Dict with type, shape, statistics suitable for JSON serialization
+    """
+    import numpy as np
+
+    if data is None:
+        return {"status": "no_data", "hint": "Data not flowing. Check connections and apply_graph."}
+    elif isinstance(data, (int, float, bool)):
+        return {"type": "scalar", "value": float(data) if isinstance(data, (int, float)) else data}
+    elif isinstance(data, np.ndarray):
+        return {
+            "type": f"Array{data.ndim}d",
+            "shape": list(data.shape),
+            "dtype": str(data.dtype),
+            "min": float(np.nanmin(data)),
+            "max": float(np.nanmax(data)),
+            "mean": float(np.nanmean(data)),
+            "std": float(np.nanstd(data)),
+        }
+    elif isinstance(data, dict):
+        # Recursively summarize dict values
+        summary = {}
+        for k, v in data.items():
+            summary[k] = _summarize_data(v)
+        return {"type": "dict", "keys": list(data.keys()), "values": summary}
+    else:
+        return {"type": type(data).__name__, "repr": repr(data)[:200]}
+
+
 # ──────────────────────────────────────────────────────────────────────
 # TOOLS
 # ──────────────────────────────────────────────────────────────────────
@@ -335,6 +370,122 @@ def list_node_types() -> str:
         return json.dumps({"error": str(e)})
 
 
+@mcp.tool()
+def add_node_terminal(node_name: str, terminal_name: str, direction: str, type: str = "Any") -> str:
+    """
+    Add an input or output terminal to a node.
+
+    Only works on nodes that support dynamic terminals (Calculator, Filter, PythonEditor).
+
+    Args:
+        node_name: Node name (e.g., 'Calculator.0', 'Filter.0')
+        terminal_name: Name for the new terminal (e.g., 'In.1', 'Out.1')
+        direction: 'in' or 'out'
+        type: Terminal type. Options: 'Any', 'float', 'int', 'Array1d', 'Array2d', 'Array3d'
+
+    Returns:
+        JSON with confirmation or error
+    """
+    try:
+        result = _qt_dispatch(lambda: _amicli.add_terminal(node_name, terminal_name, direction, type))
+        return json.dumps(result)
+    except Exception as e:
+        return json.dumps({"error": str(e)})
+
+
+@mcp.tool()
+def remove_node_terminal(node_name: str, terminal_name: str) -> str:
+    """
+    Remove a terminal from a node. Only user-added terminals can be removed.
+
+    Args:
+        node_name: Node name (e.g., 'Calculator.0')
+        terminal_name: Terminal to remove (e.g., 'In.1')
+
+    Returns:
+        JSON with confirmation or error
+    """
+    try:
+        result = _qt_dispatch(lambda: _amicli.remove_terminal(node_name, terminal_name))
+        return json.dumps(result)
+    except Exception as e:
+        return json.dumps({"error": str(e)})
+
+
+@mcp.tool()
+def get_node_inputs(node_name: str) -> str:
+    """
+    Get connected variable names and current configuration for a node.
+
+    Use this to discover what variable names to use in Calculator expressions
+    or Filter conditions, especially for graphs you didn't build.
+
+    Args:
+        node_name: Node name (e.g., 'Calculator.0', 'Filter.0')
+
+    Returns:
+        JSON with input_terminals, output_terminals, expression_vars, and current_config
+    """
+    try:
+        result = _qt_dispatch(lambda: _amicli.get_node_inputs(node_name))
+        return json.dumps(result, indent=2, default=str)
+    except Exception as e:
+        return json.dumps({"error": str(e)})
+
+
+@mcp.tool()
+def set_calculator_expression(node_name: str, expression: str) -> str:
+    """
+    Set the mathematical expression for a Calculator node.
+
+    The expression uses connected wire names as variables (e.g., 'cspad.Out').
+    Connect inputs FIRST, then call get_node_inputs() to see available variable names.
+    Supports numpy/scipy functions and standard math operators.
+
+    Args:
+        node_name: Calculator node name (e.g., 'Calculator.0')
+        expression: Math expression (e.g., 'cspad.Out * 2 + 5', 'np.sqrt(cspad.Out)')
+
+    Returns:
+        JSON with confirmation and available variables
+    """
+    try:
+        result = _qt_dispatch(lambda: _amicli.set_calculator_expression(node_name, expression))
+        return json.dumps(result)
+    except Exception as e:
+        return json.dumps({"error": str(e)})
+
+
+@mcp.tool()
+def set_filter_conditions(node_name: str, conditions: str) -> str:
+    """
+    Set filter conditions for a Filter node.
+
+    Conditions is a JSON string with If/Elif/Else blocks. Each block has a
+    "condition" (boolean expression using connected wire names) and output
+    routing (maps output terminal name to input variable or "None").
+
+    Connect inputs FIRST, then call get_node_inputs() to see available variables.
+
+    Args:
+        node_name: Filter node name (e.g., 'Filter.0')
+        conditions: JSON string with condition blocks. Example:
+            {"If": {"condition": "laser.Out == 1", "Filter.0.Out": "cspad.Out"},
+             "Else": {"Filter.0.Out": "None"}}
+
+    Returns:
+        JSON with confirmation
+    """
+    try:
+        parsed = json.loads(conditions) if isinstance(conditions, str) else conditions
+        result = _qt_dispatch(lambda: _amicli.set_filter_conditions(node_name, parsed))
+        return json.dumps(result)
+    except json.JSONDecodeError as e:
+        return json.dumps({"error": f"Invalid JSON in conditions: {e}"})
+    except Exception as e:
+        return json.dumps({"error": str(e)})
+
+
 # ──────────────────────────────────────────────────────────────────────
 # RESOURCES
 # ──────────────────────────────────────────────────────────────────────
@@ -366,6 +517,50 @@ def resource_node_types() -> str:
     try:
         types = _qt_dispatch(lambda: _amicli.list_node_types())
         return json.dumps(types, indent=2)
+    except Exception as e:
+        return json.dumps({"error": str(e)})
+
+
+@mcp.tool()
+def list_features() -> str:
+    """
+    List all features currently available in the global feature store.
+
+    Features are node outputs that have computed data ready to fetch.
+    Use this to discover what data is available before calling fetch_data.
+
+    Returns:
+        JSON dict mapping feature names to their types.
+        For arrays, the type is a tuple like ("ndarray", 2) for 2D arrays.
+    """
+    try:
+        features = _amicli.list_features()
+        return json.dumps(features, indent=2, default=str)
+    except Exception as e:
+        return json.dumps({"error": str(e)})
+
+
+@mcp.tool()
+def fetch_data(feature_name: str) -> str:
+    """
+    Fetch computed data from the graph's feature store.
+
+    Use list_features() first to see available names. If the feature
+    isn't in the store yet, a temporary view is registered automatically
+    and data is fetched after waiting for one heartbeat.
+
+    For arrays, returns shape and statistics (min, max, mean, std) rather
+    than raw data to keep responses compact.
+
+    Args:
+        feature_name: Feature name (e.g., 'ScalarPlot.0.Y', 'Roi2D.0.Out', 'cspad')
+
+    Returns:
+        JSON with data type, shape, and statistics.
+    """
+    try:
+        data = _amicli.fetch_data(feature_name)
+        return json.dumps(_summarize_data(data))
     except Exception as e:
         return json.dumps({"error": str(e)})
 

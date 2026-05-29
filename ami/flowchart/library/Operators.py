@@ -947,6 +947,16 @@ class EventProcessor():
                 if self._flowchart is not None:
                     self._flowchart.sigNodeLabelChanged.connect(self.widget.onNodeLabelChanged)
 
+                # Restore saved conditions if they exist
+                if self.values:
+                    state = {
+                        "conditions": len([k for k in self.values.keys() if k.startswith("Elif") or k == "If"]),
+                        "inputs": self.input_vars(),
+                        "outputs": self.output_vars(),
+                    }
+                    state.update(self.values)
+                    self.widget.restoreState(state)
+
             return self.widget
 
         def update(self, *args, **kwargs):
