@@ -415,6 +415,199 @@ class Flowchart(QtCore.QObject):
         # Add to library
         self._addSubgraphToLibrary(name)
 
+    def moveNodeToSubgraph(self, node_name, subgraph_name):
+        """Move a node from root view into an existing subgraph.
+
+        Handles:
+        - Moving node graphics item to subgraph view
+        - Converting external→node edges to boundary input terminals
+        - Converting node→external edges to boundary output terminals
+        - Converting previously-boundary edges that become internal
+
+        Args:
+            node_name: Name of node to move (must be in root view)
+            subgraph_name: Target subgraph name
+
+        Returns:
+            Dict with lists of new boundary terminals: {"inputs": [...], "outputs": [...]}
+        """
+        graph = self._graph
+        sg_data = self._subgraphs[subgraph_name]
+        subgraphNode = sg_data["placeholder"]
+        sg_view = sg_data["view"]
+        root_view = self.viewManager().views["root"]
+        node_names_in_sg = sg_data["nodes"]
+
+        node_obj = graph.nodes[node_name]["node"]
+
+        # Categorize all edges involving this node
+        new_inputs = []  # external → this node (need new boundary input)
+        new_outputs = []  # this node → external (need new boundary output)
+        internal_from = []  # sg node → this node (was boundary output, becomes internal)
+        internal_to = []  # this node → sg node (was boundary input, becomes internal)
+
+        for pred, _, data in graph.in_edges(node_name, data=True):
+            if pred in node_names_in_sg:
+                internal_from.append((pred, data))
+            else:
+                new_inputs.append((pred, data))
+
+        for _, succ, data in graph.out_edges(node_name, data=True):
+            if succ in node_names_in_sg:
+                internal_to.append((succ, data))
+            else:
+                new_outputs.append((succ, data))
+
+        new_terminals = {"inputs": [], "outputs": []}
+
+        # --- Handle edges from sg nodes → this node (were boundary outputs, now internal) ---
+        for pred, data in internal_from:
+            terminal_name = f"{pred}.{data['from_term']}"
+            # If a boundary output terminal exists for this edge, remove it
+            if terminal_name in subgraphNode.outputs():
+                pred_node = graph.nodes[pred]["node"]
+                pred_term = pred_node.terminals[data["from_term"]]
+                node_term = node_obj.terminals[data["to_term"]]
+                # Disconnect visual: placeholder → this node (root view)
+                placeholder_term = subgraphNode.terminals[terminal_name]
+                for remote in list(placeholder_term.dependentTerms()):
+                    if remote.node() is node_obj:
+                        placeholder_term.disconnectFrom(remote, signal=False)
+                # Disconnect SubgraphOutput → pred (subgraph view)
+                sg_output_term = subgraphNode.subgraphOutputs.terminals.get(terminal_name)
+                if sg_output_term:
+                    for remote in list(sg_output_term.inputTerminals()):
+                        if remote.node() is pred_node:
+                            remote.disconnectFrom(sg_output_term, signal=False)
+                # Remove boundary terminal if no other external targets remain
+                still_external = any(
+                    bc
+                    for bc in sg_data["boundary_connections"]
+                    if bc["terminal_name"] == terminal_name
+                    and bc["type"] == "output"
+                    and bc["external_node"] is not node_obj
+                )
+                if not still_external:
+                    subgraphNode.removeTerminal(terminal_name)
+                # Create direct visual in subgraph view
+                pred_term.connectTo(node_term, signal=False, view=sg_view.viewBox())
+                # Remove from boundary_connections
+                sg_data["boundary_connections"] = [
+                    bc
+                    for bc in sg_data["boundary_connections"]
+                    if not (
+                        bc["terminal_name"] == terminal_name
+                        and bc["type"] == "output"
+                        and bc["external_node"] is node_obj
+                    )
+                ]
+
+        # --- Handle edges this node → sg nodes (were boundary inputs, now internal) ---
+        for succ, data in internal_to:
+            terminal_name = f"{node_name}.{data['from_term']}"
+            if terminal_name in subgraphNode.inputs():
+                succ_node = graph.nodes[succ]["node"]
+                node_term = node_obj.terminals[data["from_term"]]
+                succ_term = succ_node.terminals[data["to_term"]]
+                # Disconnect visual: this node → placeholder (root view)
+                placeholder_term = subgraphNode.terminals[terminal_name]
+                for remote in list(placeholder_term.inputTerminals()):
+                    if remote.node() is node_obj:
+                        remote.disconnectFrom(placeholder_term, signal=False)
+                # Disconnect SubgraphInput → succ (subgraph view)
+                sg_input_term = subgraphNode.subgraphInputs.terminals.get(terminal_name)
+                if sg_input_term:
+                    for remote in list(sg_input_term.dependentTerms()):
+                        if remote.node() is succ_node:
+                            sg_input_term.disconnectFrom(remote, signal=False)
+                # Remove boundary terminal
+                subgraphNode.removeTerminal(terminal_name)
+                # Create direct visual in subgraph view
+                node_term.connectTo(succ_term, signal=False, view=sg_view.viewBox())
+                sg_data["boundary_connections"] = [
+                    bc
+                    for bc in sg_data["boundary_connections"]
+                    if not (bc["terminal_name"] == terminal_name and bc["type"] == "input")
+                ]
+
+        # --- Move node graphics to subgraph view ---
+        item = node_obj.graphicsItem()
+        if item.scene() is not None:
+            item.scene().removeItem(item)
+        sg_view.viewBox().addItem(item)
+
+        # --- Handle new input boundaries (external → this node) ---
+        for pred, data in new_inputs:
+            terminal_name = f"{pred}.{data['from_term']}"
+            ext_node = graph.nodes[pred]["node"]
+            ext_term = ext_node.terminals[data["from_term"]]
+            int_term = node_obj.terminals[data["to_term"]]
+
+            # Remove old visual connection (root view)
+            ext_term.disconnectFrom(int_term, signal=False)
+
+            if terminal_name not in subgraphNode.inputs():
+                # Create boundary terminal (also wires external → placeholder)
+                subgraphNode.graphicsItem().addInput(terminal_name, ext_term)
+                new_terminals["inputs"].append(terminal_name)
+
+            # Wire SubgraphInput → this node (subgraph view)
+            sg_input_term = subgraphNode.subgraphInputs.terminals[terminal_name]
+            sg_input_term.connectTo(int_term, signal=False, view=sg_view.viewBox())
+
+            sg_data["boundary_connections"].append(
+                {
+                    "type": "input",
+                    "external_node": ext_node,
+                    "external_term": ext_term,
+                    "internal_node": node_obj,
+                    "internal_term": int_term,
+                    "terminal_name": terminal_name,
+                }
+            )
+
+        # --- Handle new output boundaries (this node → external) ---
+        for succ, data in new_outputs:
+            terminal_name = f"{node_name}.{data['from_term']}"
+            int_term = node_obj.terminals[data["from_term"]]
+            ext_node = graph.nodes[succ]["node"]
+            ext_term = ext_node.terminals[data["to_term"]]
+
+            # Remove old visual connection (root view)
+            int_term.disconnectFrom(ext_term, signal=False)
+
+            if terminal_name not in subgraphNode.outputs():
+                subgraphNode.graphicsItem().addOutput(terminal_name, int_term)
+                new_terminals["outputs"].append(terminal_name)
+
+            # Wire placeholder → external (root view)
+            placeholder_out_term = subgraphNode.terminals[terminal_name]
+            placeholder_out_term.connectTo(ext_term, signal=False, view=root_view.viewBox())
+
+            sg_data["boundary_connections"].append(
+                {
+                    "type": "output",
+                    "external_node": ext_node,
+                    "external_term": ext_term,
+                    "internal_node": node_obj,
+                    "internal_term": int_term,
+                    "terminal_name": terminal_name,
+                }
+            )
+
+        # --- Update subgraph tracking ---
+        sg_data["nodes"].append(node_name)
+        subgraphNode.children.append(node_obj)
+
+        # --- Update graphics ---
+        subgraphNode.graphicsItem().updateTerminals()
+        if subgraphNode.subgraphInputs.graphicsItem().scene() is not None:
+            subgraphNode.subgraphInputs.graphicsItem().updateTerminals()
+        if subgraphNode.subgraphOutputs.graphicsItem().scene() is not None:
+            subgraphNode.subgraphOutputs.graphicsItem().updateTerminals()
+
+        return new_terminals
+
     def makeSubgraphFromSelection(self, nodes=None, name=None, pos=None, description=None):
         """Create a visual-only subgraph from selected nodes.
 
@@ -2718,15 +2911,9 @@ class FlowchartCtrlWidget(QtWidgets.QWidget):
                                 latched=node.latched,
                             )
                         except Exception as e:
-<<<<<<< HEAD
                             self.chartWidget.updateStatus(f"{node.display_name()} {e}!", color="red")
                             printExc(f"{node.display_name()} raised exception! See console for stacktrace.")
-                            node.setException(True)
-=======
-                            self.chartWidget.updateStatus(f"{node.name()} {e}!", color="red")
-                            printExc(f"{node.name()} raised exception! See console for stacktrace.")
                             node.setException(str(e))
->>>>>>> 0a4a82d (Add MCP server for AI-assisted graph building and fix runtime error handling)
                             failed_nodes.add(node)
                             continue
 
@@ -2742,13 +2929,8 @@ class FlowchartCtrlWidget(QtWidgets.QWidget):
 
         if disconnectedNodes:
             for node in disconnectedNodes:
-<<<<<<< HEAD
                 self.chartWidget.updateStatus(f"{node.display_name()} disconnected!", color="red")
-                node.setException(True)
-=======
-                self.chartWidget.updateStatus(f"{node.name()} disconnected!", color="red")
                 node.setException("disconnected!")
->>>>>>> 0a4a82d (Add MCP server for AI-assisted graph building and fix runtime error handling)
             msg.show()
             return
 
@@ -2834,21 +3016,15 @@ class FlowchartCtrlWidget(QtWidgets.QWidget):
             # Subgraph view
             sg_data = self.chart._subgraphs[sg_name]
             node_names = set(sg_data["nodes"])
-<<<<<<< HEAD
             layout_graph = self.chart._graph.subgraph(node_names).copy()
             placeholder = sg_data["placeholder"]
             placeholder_nodes = {}
-=======
-            subgraph = self.chart._graph.subgraph(node_names)
-            placeholder = sg_data["placeholder"]
->>>>>>> 0a4a82d (Add MCP server for AI-assisted graph building and fix runtime error handling)
         else:
             # Root view: exclude nodes inside subgraphs
             subgraph_nodes = set()
             for sg_data in self.chart._subgraphs.values():
                 subgraph_nodes.update(sg_data["nodes"])
             root_nodes = set(self.chart._graph.nodes()) - subgraph_nodes
-<<<<<<< HEAD
             layout_graph = self.chart._graph.subgraph(root_nodes).copy()
             placeholder = None
 
@@ -2885,26 +3061,6 @@ class FlowchartCtrlWidget(QtWidgets.QWidget):
             sources = [n for n in layout_graph.nodes() if layout_graph.in_degree(n) == 0]
             if not sources:
                 sources = list(layout_graph.nodes())
-=======
-            subgraph = self.chart._graph.subgraph(root_nodes)
-            placeholder = None
-
-        if len(subgraph.nodes()) == 0:
-            return
-
-        # Assign layers via longest path (topological sort)
-        layers = {node: 0 for node in subgraph.nodes()}
-        try:
-            for node in nx.topological_sort(subgraph):
-                for successor in subgraph.successors(node):
-                    layers[successor] = max(layers[successor], layers[node] + 1)
-        except nx.NetworkXUnfeasible:
-            from collections import deque
-
-            sources = [n for n in subgraph.nodes() if subgraph.in_degree(n) == 0]
-            if not sources:
-                sources = list(subgraph.nodes())
->>>>>>> 0a4a82d (Add MCP server for AI-assisted graph building and fix runtime error handling)
             visited = set()
             queue = deque((s, 0) for s in sources)
             while queue:
@@ -2914,11 +3070,7 @@ class FlowchartCtrlWidget(QtWidgets.QWidget):
                     continue
                 visited.add(node)
                 layers[node] = depth
-<<<<<<< HEAD
                 for succ in layout_graph.successors(node):
-=======
-                for succ in subgraph.successors(node):
->>>>>>> 0a4a82d (Add MCP server for AI-assisted graph building and fix runtime error handling)
                     queue.append((succ, depth + 1))
 
         # Group by layer and position nodes
@@ -2934,16 +3086,11 @@ class FlowchartCtrlWidget(QtWidgets.QWidget):
             for i, node_name in enumerate(nodes):
                 y = y_offset + i * y_spacing
                 p = (find_nearest(x), find_nearest(y))
-<<<<<<< HEAD
                 if node_name in placeholder_nodes:
                     placeholder_nodes[node_name].graphicsItem().setPos(*p)
                 else:
                     node = self.chart._graph.nodes[node_name]["node"]
                     node.graphicsItem().setPos(*p)
-=======
-                node = self.chart._graph.nodes[node_name]["node"]
-                node.graphicsItem().setPos(*p)
->>>>>>> 0a4a82d (Add MCP server for AI-assisted graph building and fix runtime error handling)
 
         # Position visual boundary nodes for subgraph views
         if placeholder:
