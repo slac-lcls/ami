@@ -103,6 +103,27 @@ def create_node(node_type: str, label: str = "") -> str:
 
 
 @mcp.tool()
+def delete_node(node_name: str) -> str:
+    """
+    Delete a node from the graph.
+
+    Removes the node and all its connections. This is necessary because
+    disconnected nodes will stop graph execution.
+
+    Args:
+        node_name: Node name (e.g., 'Average.0', 'Roi2D.0')
+
+    Returns:
+        JSON with status or error
+    """
+    try:
+        _qt_dispatch(lambda: _amicli.delete_node(node_name))
+        return json.dumps({"status": "deleted", "node": node_name})
+    except Exception as e:
+        return json.dumps({"error": str(e)})
+
+
+@mcp.tool()
 def connect_nodes(source_node: str, source_terminal: str, dest_node: str, dest_terminal: str) -> str:
     """
     Connect two node terminals.
@@ -310,6 +331,199 @@ def list_subgraph_templates() -> str:
     try:
         templates = _qt_dispatch(lambda: _amicli.list_subgraph_templates())
         return json.dumps(templates, indent=2)
+    except Exception as e:
+        return json.dumps({"error": str(e)})
+
+
+@mcp.tool()
+def create_subgraph(node_names: list[str], name: str, description: str = "") -> str:
+    """
+    Group existing nodes into a visual subgraph container.
+
+    Source nodes are automatically excluded (they stay in root view).
+    Boundary terminals are auto-detected from existing connections.
+
+    Args:
+        node_names: List of node names to group (e.g., ['PythonEditor.0', 'Average2D.0'])
+        name: Name for the subgraph (e.g., 'Jungfrau Image View')
+        description: Description text
+
+    Returns:
+        JSON with subgraph_name and auto-detected boundary inputs/outputs
+    """
+    try:
+        result = _qt_dispatch(lambda: _amicli.create_subgraph(node_names, name, description))
+        # After creation, get the boundary info
+        sg_info = _qt_dispatch(lambda: _amicli.list_subgraph_terminals(name))
+        return json.dumps({"subgraph_name": result, "terminals": sg_info})
+    except Exception as e:
+        return json.dumps({"error": str(e)})
+
+
+@mcp.tool()
+def export_subgraph(subgraph_name: str, filename: str) -> str:
+    """
+    Save a subgraph as a reusable .fc template file.
+
+    Args:
+        subgraph_name: Name of existing subgraph
+        filename: Path to save the .fc file
+
+    Returns:
+        JSON with confirmation
+    """
+    try:
+        _qt_dispatch(lambda: _amicli.export_subgraph(subgraph_name, filename))
+        return json.dumps({"exported": subgraph_name, "filename": filename})
+    except Exception as e:
+        return json.dumps({"error": str(e)})
+
+
+@mcp.tool()
+def list_subgraphs() -> str:
+    """
+    List all subgraphs with their child nodes and boundary terminal names.
+
+    Returns:
+        JSON array of subgraphs with name, description, nodes, inputs, outputs
+    """
+    try:
+        result = _qt_dispatch(lambda: _amicli.list_subgraphs())
+        return json.dumps(result, indent=2)
+    except Exception as e:
+        return json.dumps({"error": str(e)})
+
+
+@mcp.tool()
+def list_subgraph_terminals(subgraph_name: str) -> str:
+    """
+    Get detailed boundary terminal info for a subgraph including connections.
+
+    Args:
+        subgraph_name: Name of existing subgraph
+
+    Returns:
+        JSON with inputs and outputs, each showing terminal name, type,
+        external connection, and internal connections
+    """
+    try:
+        result = _qt_dispatch(lambda: _amicli.list_subgraph_terminals(subgraph_name))
+        return json.dumps(result, indent=2)
+    except Exception as e:
+        available = _qt_dispatch(lambda: _amicli.list_subgraphs())
+        names = [sg["name"] for sg in available] if available else []
+        return json.dumps({"error": str(e), "available_subgraphs": names})
+
+
+@mcp.tool()
+def add_subgraph_input(subgraph_name: str, source_node: str, source_term: str) -> str:
+    """
+    Add a boundary input terminal to a subgraph.
+
+    Creates an input on the subgraph placeholder and connects the external source.
+    To wire the internal side, use connect_nodes(source_node, source_term, internal_node, internal_term)
+    which will automatically route through the boundary.
+
+    Args:
+        subgraph_name: Name of existing subgraph
+        source_node: External node providing data (e.g., 'jungfrau1M:raw:image')
+        source_term: Terminal on that node (e.g., 'Out')
+
+    Returns:
+        JSON with terminal_name created
+    """
+    try:
+        result = _qt_dispatch(lambda: _amicli.add_subgraph_input(subgraph_name, source_node, source_term))
+        return json.dumps({"terminal_name": result})
+    except Exception as e:
+        return json.dumps({"error": str(e)})
+
+
+@mcp.tool()
+def remove_subgraph_input(subgraph_name: str, terminal_name: str) -> str:
+    """
+    Remove a boundary input terminal from a subgraph.
+
+    Disconnects execution edges and removes visual connections.
+
+    Args:
+        subgraph_name: Name of existing subgraph
+        terminal_name: Terminal name to remove (e.g., 'jungfrau1M:raw:image.Out')
+
+    Returns:
+        JSON with confirmation
+    """
+    try:
+        _qt_dispatch(lambda: _amicli.remove_subgraph_input(subgraph_name, terminal_name))
+        return json.dumps({"removed": terminal_name, "subgraph": subgraph_name})
+    except Exception as e:
+        return json.dumps({"error": str(e)})
+
+
+@mcp.tool()
+def add_subgraph_output(subgraph_name: str, internal_node: str, internal_term: str) -> str:
+    """
+    Add a boundary output terminal to a subgraph.
+
+    Exposes an internal node's output on the subgraph boundary.
+    To wire the external side, use connect_nodes(internal_node, internal_term, target_node, target_term)
+    which will automatically route through the boundary.
+
+    Args:
+        subgraph_name: Name of existing subgraph
+        internal_node: Internal node to expose (must be child of subgraph)
+        internal_term: Terminal on that node (e.g., 'Out')
+
+    Returns:
+        JSON with terminal_name created
+    """
+    try:
+        result = _qt_dispatch(lambda: _amicli.add_subgraph_output(subgraph_name, internal_node, internal_term))
+        return json.dumps({"terminal_name": result})
+    except Exception as e:
+        return json.dumps({"error": str(e)})
+
+
+@mcp.tool()
+def remove_subgraph_output(subgraph_name: str, terminal_name: str) -> str:
+    """
+    Remove a boundary output terminal from a subgraph.
+
+    Disconnects execution edges and removes visual connections.
+
+    Args:
+        subgraph_name: Name of existing subgraph
+        terminal_name: Terminal name to remove (e.g., 'Calculator.0.Out')
+
+    Returns:
+        JSON with confirmation
+    """
+    try:
+        _qt_dispatch(lambda: _amicli.remove_subgraph_output(subgraph_name, terminal_name))
+        return json.dumps({"removed": terminal_name, "subgraph": subgraph_name})
+    except Exception as e:
+        return json.dumps({"error": str(e)})
+
+
+@mcp.tool()
+def move_node_to_subgraph(node_name: str, subgraph_name: str) -> str:
+    """
+    Move a node from root view into an existing subgraph.
+
+    Only supports root → subgraph moves. Automatically detects and creates
+    boundary terminals for cross-boundary connections. Connections between
+    the moved node and other nodes already in the subgraph become internal.
+
+    Args:
+        node_name: Node to move (must be in root view, not in any subgraph)
+        subgraph_name: Target subgraph name
+
+    Returns:
+        JSON with new boundary terminals created
+    """
+    try:
+        result = _qt_dispatch(lambda: _amicli.move_node_to_subgraph(node_name, subgraph_name))
+        return json.dumps(result)
     except Exception as e:
         return json.dumps({"error": str(e)})
 
