@@ -750,6 +750,8 @@ class NodeGraphicsItem(GraphicsObject):
         if ev.button() == QtCore.Qt.LeftButton:
             ev.accept()
             sel = self.isSelected()
+            if sel:
+                self.setSelected(False)
             self.setSelected(True)
             if not sel and self.isSelected():
                 self.update()
