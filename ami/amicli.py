@@ -52,51 +52,137 @@ class AmiCli:
             logger.error(f"Failed to create node {node_type}: {e}")
             raise
 
-    def connect_nodes(self, src_name, src_term, dst_name, dst_term):
-        """Connect two node terminals.
+    def delete_node(self, node_name):
+        """Delete a node from the graph.
 
         Args:
-            src_name: Source node name (e.g., 'cspad')
-            src_term: Source terminal name (e.g., 'cspad' for SourceNodes, 'Out' for others)
-            dst_name: Destination node name (e.g., 'BinningNode.0')
+            node_name: Node name (e.g., 'Average.0', 'Roi2D.0')
+
+        Raises:
+            Exception: If node doesn't exist
+        """
+        if node_name not in self.graph.nodes():
+            raise Exception(f"Node '{node_name}' not found")
+        node = self.graph.nodes[node_name]["node"]
+        node.close()
+
+    def connect_nodes(self, src_name, src_term, dst_name, dst_term):
+        """Connect two node terminals. Automatically handles subgraph boundary crossing.
+
+        Args:
+            src_name: Source node name
+            src_term: Source terminal name (e.g., 'Out')
+            dst_name: Destination node name
             dst_term: Destination terminal name (e.g., 'In')
 
         Raises:
             Exception: If nodes don't exist or connection fails
         """
         try:
-            # Get nodes from graph
             if src_name not in self.graph.nodes():
-                raise Exception(f"Source node '{src_name}' not found")
+                raise Exception(
+                    f"Source node '{src_name}' not found. " f"Available: {list(self.graph.nodes())[:10]}..."
+                )
             if dst_name not in self.graph.nodes():
-                raise Exception(f"Destination node '{dst_name}' not found")
+                raise Exception(
+                    f"Destination node '{dst_name}' not found. " f"Available: {list(self.graph.nodes())[:10]}..."
+                )
 
             src_node = self.graph.nodes[src_name]["node"]
             dst_node = self.graph.nodes[dst_name]["node"]
 
-            # Get terminals
             if src_term not in src_node.terminals:
                 raise Exception(
-                    f"Terminal '{src_term}' not found on node '{src_name}'. "
-                    f"Available: {list(src_node.terminals.keys())}"
+                    f"Terminal '{src_term}' not found on '{src_name}'. " f"Available: {list(src_node.terminals.keys())}"
                 )
             if dst_term not in dst_node.terminals:
                 raise Exception(
-                    f"Terminal '{dst_term}' not found on node '{dst_name}'. "
-                    f"Available: {list(dst_node.terminals.keys())}"
+                    f"Terminal '{dst_term}' not found on '{dst_name}'. " f"Available: {list(dst_node.terminals.keys())}"
                 )
 
             src_terminal = src_node.terminals[src_term]
             dst_terminal = dst_node.terminals[dst_term]
 
-            # Connect
-            src_terminal.connectTo(dst_terminal)
+            # Check if this crosses a subgraph boundary
+            src_sg = self._find_subgraph_for_node(src_name)
+            dst_sg = self._find_subgraph_for_node(dst_name)
+
+            if src_sg == dst_sg:
+                # Same context (both root, or both in same subgraph): normal connect
+                src_terminal.connectTo(dst_terminal)
+            else:
+                # Cross-boundary: route through placeholder
+                self._connect_across_boundary(
+                    src_name,
+                    src_term,
+                    src_node,
+                    src_terminal,
+                    src_sg,
+                    dst_name,
+                    dst_term,
+                    dst_node,
+                    dst_terminal,
+                    dst_sg,
+                )
         except Exception as e:
             logger.error(f"Failed to connect {src_name}.{src_term} -> {dst_name}.{dst_term}: {e}")
             raise
 
+    def _find_subgraph_for_node(self, node_name):
+        """Return subgraph name if node is inside one, else None."""
+        for sg_name, sg_data in self.chart._subgraphs.items():
+            if node_name in sg_data["nodes"]:
+                return sg_name
+        return None
+
+    def _connect_across_boundary(
+        self, src_name, src_term, src_node, src_terminal, src_sg, dst_name, dst_term, dst_node, dst_terminal, dst_sg
+    ):
+        """Handle a connection that crosses a subgraph boundary.
+
+        External → Internal: creates/reuses boundary input terminal, then connects
+        SubgraphInput → internal node.
+
+        Internal → External: creates/reuses boundary output terminal, then connects
+        placeholder output → external node.
+        """
+        if src_sg is None and dst_sg is not None:
+            # src is external, dst is inside a subgraph
+            sg_data = self.chart._subgraphs[dst_sg]
+            subgraphNode = sg_data["placeholder"]
+            terminal_name = f"{src_name}.{src_term}"
+
+            # Create boundary input terminal if it doesn't exist yet
+            if terminal_name not in subgraphNode.inputs():
+                subgraphNode.graphicsItem().addInput(terminal_name, src_terminal)
+
+            # Connect SubgraphInput output → internal node input
+            sg_input_term = subgraphNode.subgraphInputs.terminals[terminal_name]
+            sg_view = sg_data["view"]
+            sg_input_term.connectTo(dst_terminal, view=sg_view.viewBox())
+
+        elif src_sg is not None and dst_sg is None:
+            # src is inside a subgraph, dst is external
+            sg_data = self.chart._subgraphs[src_sg]
+            subgraphNode = sg_data["placeholder"]
+            terminal_name = f"{src_name}.{src_term}"
+
+            # Create boundary output terminal if it doesn't exist yet
+            if terminal_name not in subgraphNode.outputs():
+                subgraphNode.graphicsItem().addOutput(terminal_name, src_terminal)
+
+            # Connect placeholder output → external node input
+            placeholder_out_term = subgraphNode.terminals[terminal_name]
+            root_view = self.chart.viewManager().views["root"]
+            placeholder_out_term.connectTo(dst_terminal, view=root_view.viewBox())
+
+        else:
+            raise Exception(
+                f"Connecting between two different subgraphs ('{src_sg}' → '{dst_sg}') " f"is not supported"
+            )
+
     def disconnect_nodes(self, src_name, src_term, dst_name, dst_term):
-        """Disconnect two node terminals.
+        """Disconnect two node terminals. Handles subgraph boundary crossing.
 
         Args:
             src_name: Source node name
@@ -108,12 +194,41 @@ class AmiCli:
             Exception: If nodes/terminals don't exist or aren't connected
         """
         try:
+            if src_name not in self.graph.nodes():
+                raise Exception(f"Source node '{src_name}' not found")
+            if dst_name not in self.graph.nodes():
+                raise Exception(f"Destination node '{dst_name}' not found")
+
             src_node = self.graph.nodes[src_name]["node"]
             dst_node = self.graph.nodes[dst_name]["node"]
             src_terminal = src_node.terminals[src_term]
             dst_terminal = dst_node.terminals[dst_term]
 
-            src_terminal.disconnectFrom(dst_terminal)
+            src_sg = self._find_subgraph_for_node(src_name)
+            dst_sg = self._find_subgraph_for_node(dst_name)
+
+            if src_sg == dst_sg:
+                # Same context: normal disconnect
+                src_terminal.disconnectFrom(dst_terminal)
+            elif src_sg is None and dst_sg is not None:
+                # External → internal: disconnect via SubgraphInput terminal
+                sg_data = self.chart._subgraphs[dst_sg]
+                subgraphNode = sg_data["placeholder"]
+                terminal_name = f"{src_name}.{src_term}"
+                if terminal_name in subgraphNode.subgraphInputs.terminals:
+                    sg_input_term = subgraphNode.subgraphInputs.terminals[terminal_name]
+                    sg_input_term.disconnectFrom(dst_terminal)
+            elif src_sg is not None and dst_sg is None:
+                # Internal → external: disconnect via placeholder output terminal
+                sg_data = self.chart._subgraphs[src_sg]
+                subgraphNode = sg_data["placeholder"]
+                terminal_name = f"{src_name}.{src_term}"
+                if terminal_name in subgraphNode.terminals:
+                    placeholder_out_term = subgraphNode.terminals[terminal_name]
+                    placeholder_out_term.disconnectFrom(dst_terminal)
+            else:
+                raise Exception("Disconnecting between two different subgraphs is not supported")
+
         except Exception as e:
             logger.error(f"Failed to disconnect {src_name}.{src_term} -> {dst_name}.{dst_term}: {e}")
             raise
@@ -378,6 +493,7 @@ class AmiCli:
                 "nodes": nodes,
                 "connections": connections,
                 "sources": self.list_sources(),
+                "subgraphs": self.list_subgraphs(),
             }
         except Exception as e:
             logger.error(f"Failed to get graph state: {e}")
@@ -617,6 +733,291 @@ class AmiCli:
         except Exception as e:
             logger.error(f"Failed to get info for template '{template_name}': {e}")
             raise
+
+    def list_subgraphs(self):
+        """List all subgraphs with their child nodes and boundary info.
+
+        Returns:
+            List of dicts with name, description, nodes, inputs, outputs
+        """
+        try:
+            result = []
+            for sg_name, sg_data in self.chart._subgraphs.items():
+                placeholder = sg_data["placeholder"]
+
+                # Get terminal names
+                input_terminals = list(placeholder.inputs().keys())
+                output_terminals = list(placeholder.outputs().keys())
+
+                result.append(
+                    {
+                        "name": sg_name,
+                        "description": sg_data.get("description", ""),
+                        "nodes": sg_data["nodes"],
+                        "inputs": input_terminals,
+                        "outputs": output_terminals,
+                    }
+                )
+            return result
+        except Exception as e:
+            logger.error(f"Failed to list subgraphs: {e}")
+            return []
+
+    def list_subgraph_terminals(self, subgraph_name):
+        """Get detailed boundary terminal info including connections.
+
+        Args:
+            subgraph_name: Name of existing subgraph
+
+        Returns:
+            Dict with inputs and outputs, each showing terminal name, type,
+            external connection, and internal connections
+
+        Raises:
+            Exception: If subgraph doesn't exist
+        """
+        try:
+            if subgraph_name not in self.chart._subgraphs:
+                raise Exception(f"Subgraph '{subgraph_name}' not found")
+
+            sg_data = self.chart._subgraphs[subgraph_name]
+            placeholder = sg_data["placeholder"]
+
+            inputs = []
+            outputs = []
+
+            # Process input terminals
+            for term_name, term_ref in placeholder.inputs().items():
+                term = term_ref() if callable(term_ref) else term_ref
+
+                # Get external source
+                external_conn = None
+                input_terms = term.inputTerminals()
+                if input_terms:
+                    src_term = input_terms[0]
+                    external_conn = {
+                        "node": src_term.node().name(),
+                        "terminal": src_term.name(),
+                    }
+
+                # Get internal connections from boundary_connections
+                internal_conns = []
+                for bc in sg_data.get("boundary_connections", []):
+                    if bc.get("terminal_name") == term_name and bc.get("type") == "input":
+                        internal_conns.append(
+                            {
+                                "node": bc["internal_node"].name(),
+                                "terminal": bc["internal_term"].name(),
+                            }
+                        )
+
+                inputs.append(
+                    {
+                        "name": term_name,
+                        "type": term.type().__name__ if hasattr(term.type(), "__name__") else str(term.type()),
+                        "external_connection": external_conn,
+                        "internal_connections": internal_conns,
+                    }
+                )
+
+            # Process output terminals
+            for term_name, term_ref in placeholder.outputs().items():
+                term = term_ref() if callable(term_ref) else term_ref
+
+                # Get external targets
+                external_conns = []
+                for dep_term in term.dependentTerms():
+                    external_conns.append(
+                        {
+                            "node": dep_term.node().name(),
+                            "terminal": dep_term.name(),
+                        }
+                    )
+
+                # Get internal source from boundary_connections
+                internal_conn = None
+                for bc in sg_data.get("boundary_connections", []):
+                    if bc.get("terminal_name") == term_name and bc.get("type") == "output":
+                        internal_conn = {
+                            "node": bc["internal_node"].name(),
+                            "terminal": bc["internal_term"].name(),
+                        }
+                        break
+
+                outputs.append(
+                    {
+                        "name": term_name,
+                        "type": term.type().__name__ if hasattr(term.type(), "__name__") else str(term.type()),
+                        "internal_connection": internal_conn,
+                        "external_connections": external_conns,
+                    }
+                )
+
+            return {"inputs": inputs, "outputs": outputs}
+        except Exception as e:
+            logger.error(f"Failed to get terminal info for subgraph '{subgraph_name}': {e}")
+            raise
+
+    def add_subgraph_input(self, subgraph_name, source_node, source_term):
+        """Add a boundary input terminal to a subgraph.
+
+        Args:
+            subgraph_name: Name of existing subgraph
+            source_node: External node providing data
+            source_term: Terminal on that node (e.g., 'Out')
+
+        Returns:
+            Terminal name that was created
+
+        Raises:
+            Exception: If subgraph/nodes don't exist or source is inside subgraph
+        """
+        if subgraph_name not in self.chart._subgraphs:
+            raise Exception(f"Subgraph '{subgraph_name}' not found")
+        if source_node not in self.graph.nodes():
+            raise Exception(f"Source node '{source_node}' not found")
+
+        sg_data = self.chart._subgraphs[subgraph_name]
+        if source_node in sg_data["nodes"]:
+            raise Exception(f"Source node '{source_node}' is inside the subgraph")
+
+        subgraphNode = sg_data["placeholder"]
+        ext_node = self.graph.nodes[source_node]["node"]
+        if source_term not in ext_node.terminals:
+            raise Exception(f"Terminal '{source_term}' not found on node '{source_node}'")
+        ext_term = ext_node.terminals[source_term]
+        terminal_name = f"{source_node}.{source_term}"
+
+        if terminal_name in subgraphNode.inputs():
+            raise Exception(f"Input terminal '{terminal_name}' already exists on subgraph")
+
+        # Delegate to existing GUI method — handles terminal pair creation,
+        # visual wiring, SubgraphInputs scene placement, graphics updates
+        subgraphNode.graphicsItem().addInput(terminal_name, ext_term)
+        return terminal_name
+
+    def remove_subgraph_input(self, subgraph_name, terminal_name):
+        """Remove a boundary input terminal from a subgraph.
+
+        Args:
+            subgraph_name: Name of existing subgraph
+            terminal_name: Terminal name to remove (e.g., 'jungfrau1M:raw:image.Out')
+
+        Raises:
+            Exception: If subgraph or terminal doesn't exist
+        """
+        if subgraph_name not in self.chart._subgraphs:
+            raise Exception(f"Subgraph '{subgraph_name}' not found")
+
+        sg_data = self.chart._subgraphs[subgraph_name]
+        subgraphNode = sg_data["placeholder"]
+
+        if terminal_name not in subgraphNode.inputs():
+            raise Exception(
+                f"Input terminal '{terminal_name}' not found on subgraph '{subgraph_name}'. "
+                f"Available: {list(subgraphNode.inputs().keys())}"
+            )
+
+        # removeTerminal handles both placeholder terminal and SubgraphInputs mirror
+        subgraphNode.removeTerminal(terminal_name)
+
+    def add_subgraph_output(self, subgraph_name, internal_node, internal_term):
+        """Add a boundary output terminal to a subgraph.
+
+        Args:
+            subgraph_name: Name of existing subgraph
+            internal_node: Internal node to expose (must be child of subgraph)
+            internal_term: Terminal on that node (e.g., 'Out')
+
+        Returns:
+            Terminal name that was created
+
+        Raises:
+            Exception: If subgraph doesn't exist or internal_node is not a child
+        """
+        if subgraph_name not in self.chart._subgraphs:
+            raise Exception(f"Subgraph '{subgraph_name}' not found")
+
+        sg_data = self.chart._subgraphs[subgraph_name]
+        if internal_node not in sg_data["nodes"]:
+            raise Exception(
+                f"Node '{internal_node}' is not in subgraph '{subgraph_name}'. "
+                f"Nodes in subgraph: {sg_data['nodes']}"
+            )
+
+        if internal_node not in self.graph.nodes():
+            raise Exception(f"Node '{internal_node}' not found in graph")
+
+        subgraphNode = sg_data["placeholder"]
+        int_node = self.graph.nodes[internal_node]["node"]
+        if internal_term not in int_node.terminals:
+            raise Exception(f"Terminal '{internal_term}' not found on node '{internal_node}'")
+        int_term = int_node.terminals[internal_term]
+        terminal_name = f"{internal_node}.{internal_term}"
+
+        if terminal_name in subgraphNode.outputs():
+            raise Exception(f"Output terminal '{terminal_name}' already exists on subgraph")
+
+        # Delegate to existing GUI method — handles terminal pair creation,
+        # visual wiring, SubgraphOutputs scene placement, graphics updates
+        subgraphNode.graphicsItem().addOutput(terminal_name, int_term)
+        return terminal_name
+
+    def remove_subgraph_output(self, subgraph_name, terminal_name):
+        """Remove a boundary output terminal from a subgraph.
+
+        Args:
+            subgraph_name: Name of existing subgraph
+            terminal_name: Terminal name to remove (e.g., 'Calculator.0.Out')
+
+        Raises:
+            Exception: If subgraph or terminal doesn't exist
+        """
+        if subgraph_name not in self.chart._subgraphs:
+            raise Exception(f"Subgraph '{subgraph_name}' not found")
+
+        sg_data = self.chart._subgraphs[subgraph_name]
+        subgraphNode = sg_data["placeholder"]
+
+        if terminal_name not in subgraphNode.outputs():
+            raise Exception(
+                f"Output terminal '{terminal_name}' not found on subgraph '{subgraph_name}'. "
+                f"Available: {list(subgraphNode.outputs().keys())}"
+            )
+
+        subgraphNode.removeTerminal(terminal_name)
+
+    def move_node_to_subgraph(self, node_name, subgraph_name):
+        """Move a node from root view into an existing subgraph.
+
+        Args:
+            node_name: Node to move (must be in root view, not in any subgraph)
+            subgraph_name: Target subgraph name
+
+        Returns:
+            Dict with new boundary terminals created
+
+        Raises:
+            Exception: If node doesn't exist, is a source, or is already in a subgraph
+        """
+        from ami.flowchart.library.common import SourceNode
+
+        if node_name not in self.graph.nodes():
+            raise Exception(f"Node '{node_name}' not found")
+
+        node_obj = self.graph.nodes[node_name]["node"]
+        if isinstance(node_obj, SourceNode):
+            raise Exception(f"Cannot move source node '{node_name}' into subgraph")
+
+        for sg_name, sg_data in self.chart._subgraphs.items():
+            if node_name in sg_data["nodes"]:
+                raise Exception(f"Node '{node_name}' is already in subgraph '{sg_name}'")
+
+        if subgraph_name not in self.chart._subgraphs:
+            raise Exception(f"Subgraph '{subgraph_name}' not found")
+
+        # Delegate all logic to Flowchart
+        return self.chart.moveNodeToSubgraph(node_name, subgraph_name)
 
     def list_features(self):
         """Return dict of available features in the global store.
