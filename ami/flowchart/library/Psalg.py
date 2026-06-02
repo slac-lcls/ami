@@ -4,7 +4,6 @@ from qtpy import QtCore, QtWidgets
 
 import ami.graph_nodes as gn
 from ami.flowchart.library.common import CtrlNode, generateUi
-from ami.flowchart.library.Editors import ChannelEditor
 from ami.flowchart.Node import Node
 from ami.flowchart.Units import ureg
 
@@ -17,7 +16,7 @@ except ImportError as e:
     print(e)
 
 try:
-    import constFracDiscrim as cfd
+    from psana import constFracDiscrim as cfd
 
     class CFD(CtrlNode):
         """
@@ -55,169 +54,6 @@ try:
                 return cfd.cfd(sampleInterval, horpos, gain, offset, waveform, delay, walk, threshold, fraction)
 
             return gn.Map(name=self.name() + "_operation", **kwargs, func=cfd_func)
-
-except ImportError as e:
-    print(e)
-
-try:
-    import psana.hexanode.WFPeaks as psWFPeaks
-
-    class WFPeaks(CtrlNode):
-        """
-        WFPeaks
-        """
-
-        nodeName = "WFPeaks"
-
-        def __init__(self, name):
-            super().__init__(
-                name,
-                terminals={
-                    "Times": {"io": "in", "ttype": Array2d},
-                    "Waveform": {"io": "in", "ttype": Array2d},
-                    "Num of Hits": {"io": "out", "ttype": Array1d},
-                    "Index": {"io": "out", "ttype": Array2d},
-                    "Values": {"io": "out", "ttype": Array2d},
-                    "Peak Times": {"io": "out", "ttype": Array2d},
-                },
-            )
-            self.values = {}
-
-        def display(self, topics, terms, addr, win, **kwargs):
-            if self.widget is None:
-                self.widget = ChannelEditor(parent=win)
-                self.values = self.widget.values
-                self.widget.sigStateChanged.connect(self.state_changed)
-
-            return self.widget
-
-        def to_operation(self, **kwargs):
-            numchs = len(self.widget.channel_groups)
-            cfdpars = {
-                "numchs": numchs,
-                "numhits": self.values["num hits"],
-                "DLD": self.values["DLD"],
-                "version": 4,
-                "cfd_wfbinbeg": self.values["cfd_wfbinbeg"],
-                "cfd_wfbinend": self.values["cfd_wfbinend"],
-            }
-
-            paramsCFD = {}
-            for chn in range(0, numchs):
-                paramsCFD[chn] = self.values[f"Channel {chn}"]
-
-            cfdpars["paramsCFD"] = paramsCFD
-            wfpeaks = psWFPeaks.WFPeaks(**cfdpars)
-
-            def peakFinder(wts, wfs):
-                peaks = wfpeaks(wfs, wts)
-                return peaks
-
-            return gn.Map(name=self.name() + "_operation", **kwargs, func=peakFinder)
-
-    import psana.hexanode.DLDProcessor as psfDLD
-
-    class DLDProc:
-
-        def __init__(self, **params):
-            self.params = params
-            self.proc = None
-
-        def __call__(self, nev, nhits, pktsec, calib):
-            if self.params["consts"] != calib:
-                self.params["consts"] = calib
-                self.proc = psfDLD.DLDProcessor(**self.params)
-
-            r = self.proc.xyrt_list(nev, nhits, pktsec)
-            if r:
-                x, y, r, t = zip(*r)
-                return (np.array(x), np.array(y), np.array(r), np.array(t))
-            else:
-                return (np.array([]), np.array([]), np.array([]), np.array([]))
-
-    class Hexanode(CtrlNode):
-        """
-        Hexanode
-        """
-
-        nodeName = "Hexanode"
-        uiTemplate = [
-            ("num chans", "combo", {"values": ["5", "7"]}),
-            ("num hits", "intSpin", {"value": 16, "min": 1}),
-            ("verbose", "check", {"checked": False}),
-        ]
-
-        def __init__(self, name):
-            super().__init__(
-                name,
-                terminals={
-                    "Event Number": {"io": "in", "ttype": float},
-                    "Num of Hits": {"io": "in", "ttype": Array1d},
-                    "Peak Times": {"io": "in", "ttype": Array2d},
-                    "Calib": {"io": "in", "ttype": dict},
-                    "X": {"io": "out", "ttype": Array1d},
-                    "Y": {"io": "out", "ttype": Array1d},
-                    "R": {"io": "out", "ttype": Array1d},
-                    "T": {"io": "out", "ttype": Array1d},
-                },
-            )
-
-        def to_operation(self, **kwargs):
-            dldpars = {
-                "numchs": int(self.values["num chans"]),
-                "numhits": self.values["num hits"],
-                "verbose": self.values["verbose"],
-                "consts": None,
-            }
-
-            return gn.Map(name=self.name() + "_operation", **kwargs, func=DLDProc(**dldpars))
-
-    import psana.hexanode.HitFinder as psfHitFinder
-
-    class HitFinder(CtrlNode):
-        """
-        HitFinder
-        """
-
-        nodeName = "HitFinder"
-        uiTemplate = [
-            ("runtime_u", "doubleSpin"),
-            ("runtime_v", "doubleSpin"),
-            ("tsum_avg_u", "doubleSpin"),
-            ("tsum_hw_u", "doubleSpin"),
-            ("tsum_avg_v", "doubleSpin"),
-            ("tsum_hw_v", "doubleSpin"),
-            ("f_u", "doubleSpin"),
-            ("f_v", "doubleSpin"),
-            ("Rmax", "doubleSpin"),
-        ]
-
-        def __init__(self, name):
-            super().__init__(
-                name,
-                terminals={
-                    "Num of Hits": {"io": "in", "ttype": Array1d},
-                    "Peak Times": {"io": "in", "ttype": Array2d},
-                    "X": {"io": "out", "ttype": Array1d},
-                    "Y": {"io": "out", "ttype": Array1d},
-                    "T": {"io": "out", "ttype": Array1d},
-                },
-            )
-
-        def to_operation(self, **kwargs):
-            HF = psfHitFinder.HitFinder(self.values)
-
-            def func(nhits, pktsec):
-                HF.FindHits(
-                    pktsec[4, : nhits[4]],
-                    pktsec[0, : nhits[0]],
-                    pktsec[1, : nhits[1]],
-                    pktsec[2, : nhits[2]],
-                    pktsec[3, : nhits[3]],
-                )
-                return HF.GetXYT()
-
-            return gn.Map(name=self.name() + "_operation", **kwargs, func=func)
 
 except ImportError as e:
     print(e)
