@@ -207,7 +207,7 @@ class Worker(Node):
         hb_interval_start_ns = time.time_ns()
         hb_idle_time = 0
         hb_partial_events = 0
-        hb_last_input_latency = 0
+        hb_max_input_latency = 0
 
         while True:
             for msg in self.src.events():
@@ -262,7 +262,7 @@ class Worker(Node):
                         hb_graph_time / hb_num_datagrams if hb_num_datagrams > 0 else 0
                     )
                     event_time.labels(self.hutch, "Send", self.name).set(send_time)
-                    event_latency.labels(self.hutch, "Source", self.name).set(hb_last_input_latency)
+                    event_latency.labels(self.hutch, "Source", self.name).set(hb_max_input_latency)
                     if hb_partial_events > 0:
                         event_counter.labels(self.hutch, "Partial", self.name).inc(hb_partial_events)
 
@@ -356,13 +356,13 @@ class Worker(Node):
                     hb_num_datagrams = 0
                     hb_idle_time = 0
                     hb_partial_events = 0
-                    hb_last_input_latency = 0
+                    hb_max_input_latency = 0
                     hb_interval_start_ns = time.time_ns()
 
                 elif msg.mtype == MsgTypes.Datagram:
                     datagram_start = time.time()
                     input_latency = dt.datetime.now() - dt.datetime.fromtimestamp(msg.unix_ts)
-                    hb_last_input_latency = input_latency.total_seconds()
+                    hb_max_input_latency = max(hb_max_input_latency, input_latency.total_seconds())
 
                     if any(v is None for k, v in msg.payload.items()):
                         hb_partial_events += 1

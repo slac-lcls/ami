@@ -24,6 +24,7 @@ try:
     from opentelemetry.sdk.resources import Resource
     from opentelemetry.sdk.trace import TracerProvider
     from opentelemetry.sdk.trace.export import ConsoleSpanExporter, SimpleSpanProcessor
+    from opentelemetry.trace import StatusCode
 
     _OTEL_AVAILABLE = True
 except ImportError:
@@ -213,8 +214,6 @@ def mark_span_error(span, message):
     """
     if not _enabled or span is None:
         return
-
-    from opentelemetry.trace import StatusCode
 
     span.set_status(StatusCode.ERROR, message)
 
