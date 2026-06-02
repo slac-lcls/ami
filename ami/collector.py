@@ -227,6 +227,7 @@ class GraphCollector(Node, Collector):
                 pruned_times, pruned_size = self.store.prune(msg.name, self.node)
                 if pruned_size:
                     self.event_counter.labels(self.hutch, "Pruned Heartbeat", self.name).inc()
+                    self.event_counter.labels(self.hutch, "Heartbeat", self.name).inc()
                     self.event_size.labels(self.hutch, self.name).set(pruned_size)
                     self.heartbeat_time.pop(msg.heartbeat.identity, 0)
 

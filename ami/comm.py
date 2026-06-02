@@ -510,16 +510,16 @@ class ContributionBuilder(abc.ABC):
         self.contribs = {}
 
     @abc.abstractmethod
-    def _complete(self, eb_key, identity, drop):
+    def _complete(self, eb_key, identity, drop, prune_metadata=None):
         pass
 
     @abc.abstractmethod
     def _update(self, eb_key, identity, *args, **kwargs):
         pass
 
-    def complete(self, eb_key, identity, drop=False):
+    def complete(self, eb_key, identity, drop=False, prune_metadata=None):
         if eb_key in self.pending:
-            times, size = self._complete(eb_key, identity, drop)
+            times, size = self._complete(eb_key, identity, drop, prune_metadata=prune_metadata)
             del self.pending[eb_key]
             del self.contribs[eb_key]
             logger.debug("Completed key %s", eb_key)
@@ -559,8 +559,7 @@ class GraphBuilder(ContributionBuilder):
         self.version = None
         self.completion = completion
         self.arrival_times = {}
-        self._pruning = False
-        self._prune_metadata = None
+
         self.last_idle_secs = 0
         self.last_graph_exec_secs = 0
         self.last_send_secs = 0
@@ -608,8 +607,7 @@ class GraphBuilder(ContributionBuilder):
                 age = self.latest.identity - eb_key.identity if hasattr(eb_key, "identity") else 0
                 missing_workers = [i for i in range(self.num_contribs) if not (contribs_mask & (1 << i))]
 
-                # Store prune metadata for _complete() to use in span creation
-                self._prune_metadata = {
+                prune_metadata = {
                     "collector.contrib_ratio": round(ratio, 4),
                     "collector.num_present": num_present,
                     "collector.num_contribs": self.num_contribs,
@@ -617,10 +615,7 @@ class GraphBuilder(ContributionBuilder):
                     "collector.missing_workers": missing_workers,
                 }
 
-                self._pruning = True
-                times, size = self.complete(eb_key, identity, drop)
-                self._pruning = False
-                self._prune_metadata = None
+                times, size = self.complete(eb_key, identity, drop, prune_metadata=prune_metadata)
 
         return times, size
 
@@ -675,7 +670,7 @@ class GraphBuilder(ContributionBuilder):
         else:
             return False
 
-    def _complete(self, eb_key, identity, drop):
+    def _complete(self, eb_key, identity, drop, prune_metadata=None):
         times = []
         if self.apply_graph(self.pending[eb_key].version):
             contribs = self.pending[eb_key].namespace
@@ -710,26 +705,31 @@ class GraphBuilder(ContributionBuilder):
         total_secs = (complete_end_ns - arrival_ns) / 1e9 if arrival_ns else 0
         idle_secs = max(0, total_secs - wait_secs - graph_exec_secs - send_secs) if total_secs > 0 else 0
 
+        pct_idle = round((wait_secs / total_secs) * 100, 1) if total_secs > 0 else 0
+        pct_graph_exec = round((graph_exec_secs / total_secs) * 100, 1) if total_secs > 0 else 0
+        pct_send = round((send_secs / total_secs) * 100, 1) if total_secs > 0 else 0
+        pct_overhead = round((idle_secs / total_secs) * 100, 1) if total_secs > 0 else 0
+
         # Store phase times for Prometheus metrics
         self.last_idle_secs = wait_secs
         self.last_graph_exec_secs = graph_exec_secs
         self.last_send_secs = send_secs
-        self.last_pct_idle = round((wait_secs / total_secs) * 100, 1) if total_secs > 0 else 0
-        self.last_pct_graph_exec = round((graph_exec_secs / total_secs) * 100, 1) if total_secs > 0 else 0
-        self.last_pct_send = round((send_secs / total_secs) * 100, 1) if total_secs > 0 else 0
-        self.last_pct_overhead = round((idle_secs / total_secs) * 100, 1) if total_secs > 0 else 0
+        self.last_pct_idle = pct_idle
+        self.last_pct_graph_exec = pct_graph_exec
+        self.last_pct_send = pct_send
+        self.last_pct_overhead = pct_overhead
 
-        if self._pruning and self._prune_metadata:
+        if prune_metadata:
             # Prune path: ERROR span with prune metadata + percentage breakdown
             attributes = {
                 "collector.pruned": True,
                 "collector.data_size_bytes": size,
-                "collector.pct_wait": round((wait_secs / total_secs) * 100, 1) if total_secs > 0 else 0,
-                "collector.pct_graph_exec": round((graph_exec_secs / total_secs) * 100, 1) if total_secs > 0 else 0,
-                "collector.pct_send": round((send_secs / total_secs) * 100, 1) if total_secs > 0 else 0,
-                "collector.pct_idle": round((idle_secs / total_secs) * 100, 1) if total_secs > 0 else 0,
+                "collector.pct_idle": pct_idle,
+                "collector.pct_graph_exec": pct_graph_exec,
+                "collector.pct_send": pct_send,
+                "collector.pct_overhead": pct_overhead,
             }
-            attributes.update(self._prune_metadata)
+            attributes.update(prune_metadata)
             parent = start_span(
                 f"{self.color}.prune",
                 hb_identity,
@@ -738,7 +738,7 @@ class GraphBuilder(ContributionBuilder):
             )
             if parent:
                 mark_span_error(
-                    parent, f"Pruned: missing workers {self._prune_metadata.get('collector.missing_workers', [])}"
+                    parent, f"Pruned: missing workers {prune_metadata.get('collector.missing_workers', [])}"
                 )
         else:
             # Normal path: heartbeat span
@@ -750,10 +750,10 @@ class GraphBuilder(ContributionBuilder):
                     "collector.pruned": False,
                     "collector.num_contribs": self.num_contribs,
                     "collector.data_size_bytes": size,
-                    "collector.pct_wait": round((wait_secs / total_secs) * 100, 1) if total_secs > 0 else 0,
-                    "collector.pct_graph_exec": round((graph_exec_secs / total_secs) * 100, 1) if total_secs > 0 else 0,
-                    "collector.pct_send": round((send_secs / total_secs) * 100, 1) if total_secs > 0 else 0,
-                    "collector.pct_idle": round((idle_secs / total_secs) * 100, 1) if total_secs > 0 else 0,
+                    "collector.pct_idle": pct_idle,
+                    "collector.pct_graph_exec": pct_graph_exec,
+                    "collector.pct_send": pct_send,
+                    "collector.pct_overhead": pct_overhead,
                 },
             )
 
@@ -820,7 +820,7 @@ class TransitionBuilder(ContributionBuilder, ZmqHandler):
         ContributionBuilder.__init__(self, num_contribs)
         ZmqHandler.__init__(self, addr, ctx, hwm)
 
-    def _complete(self, eb_key, identity, drop):
+    def _complete(self, eb_key, identity, drop, prune_metadata=None):
         if not drop:
             self.message(MsgTypes.Transition, identity, Transition(eb_key, self.pending[eb_key]))
         return [], 0

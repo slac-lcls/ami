@@ -275,18 +275,17 @@ class Worker(Node):
                         exemplar={"TraceID": trace_id} if trace_id else None,
                     )
 
-                    phase_pct.labels(self.hutch, "Idle", self.name).set(
-                        round((hb_idle_time / full_interval_secs) * 100, 1) if full_interval_secs > 0 else 0
-                    )
-                    phase_pct.labels(self.hutch, "Datagram", self.name).set(
+                    pct_idle = round((hb_idle_time / full_interval_secs) * 100, 1) if full_interval_secs > 0 else 0
+                    pct_graph_exec = (
                         round((hb_graph_time / full_interval_secs) * 100, 1) if full_interval_secs > 0 else 0
                     )
-                    phase_pct.labels(self.hutch, "Send", self.name).set(
-                        round((send_time / full_interval_secs) * 100, 1) if full_interval_secs > 0 else 0
-                    )
-                    phase_pct.labels(self.hutch, "Overhead", self.name).set(
-                        round((overhead_secs / full_interval_secs) * 100, 1) if full_interval_secs > 0 else 0
-                    )
+                    pct_send = round((send_time / full_interval_secs) * 100, 1) if full_interval_secs > 0 else 0
+                    pct_overhead = round((overhead_secs / full_interval_secs) * 100, 1) if full_interval_secs > 0 else 0
+
+                    phase_pct.labels(self.hutch, "Idle", self.name).set(pct_idle)
+                    phase_pct.labels(self.hutch, "Datagram", self.name).set(pct_graph_exec)
+                    phase_pct.labels(self.hutch, "Send", self.name).set(pct_send)
+                    phase_pct.labels(self.hutch, "Overhead", self.name).set(pct_overhead)
 
                     parent = start_span(
                         "worker.heartbeat",
@@ -297,18 +296,10 @@ class Worker(Node):
                             "worker.num_datagrams": hb_num_datagrams,
                             "worker.data_size_bytes": size,
                             "worker.source_idle_secs": round(hb_idle_time, 6),
-                            "worker.pct_idle": (
-                                round((hb_idle_time / full_interval_secs) * 100, 1) if full_interval_secs > 0 else 0
-                            ),
-                            "worker.pct_graph_exec": (
-                                round((hb_graph_time / full_interval_secs) * 100, 1) if full_interval_secs > 0 else 0
-                            ),
-                            "worker.pct_collect": (
-                                round((send_time / full_interval_secs) * 100, 1) if full_interval_secs > 0 else 0
-                            ),
-                            "worker.pct_overhead": (
-                                round((overhead_secs / full_interval_secs) * 100, 1) if full_interval_secs > 0 else 0
-                            ),
+                            "worker.pct_idle": pct_idle,
+                            "worker.pct_graph_exec": pct_graph_exec,
+                            "worker.pct_send": pct_send,
+                            "worker.pct_overhead": pct_overhead,
                         },
                     )
                     if parent:
@@ -337,11 +328,11 @@ class Worker(Node):
                             if child:
                                 child.end(end_time=t0 + idle_ns + graph_ns)
 
-                        # Collect span (cumulative send placed after graph exec)
+                        # Send span (cumulative send placed after graph exec)
                         if send_ns > 0:
                             child = start_child_span(
                                 parent,
-                                "worker.collect",
+                                "worker.send",
                                 start_time_ns=t0 + idle_ns + graph_ns,
                                 attributes={
                                     "worker.send_secs": round(send_time, 6),

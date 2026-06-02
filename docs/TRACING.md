@@ -98,13 +98,13 @@ ami-global &
 
 | Span Name | Type | Service | Description | Key Attributes |
 |-----------|------|---------|-------------|----------------|
-| `worker.heartbeat` | root | worker | Full heartbeat interval from start of event processing to heartbeat completion | `heartbeat`, `worker.id`, `worker.num_datagrams`, `worker.data_size_bytes`, `worker.source_idle_secs`, `worker.pct_idle`, `worker.pct_graph_exec`, `worker.pct_collect` |
+| `worker.heartbeat` | root | worker | Full heartbeat interval from start of event processing to heartbeat completion | `heartbeat`, `worker.id`, `worker.num_datagrams`, `worker.data_size_bytes`, `worker.source_idle_secs`, `worker.pct_idle`, `worker.pct_graph_exec`, `worker.pct_send` |
 | `worker.idle` | child | worker | Cumulative idle time within the heartbeat interval. Placed at interval start, duration equals total time spent waiting for data | none |
 | `worker.graph_exec` | child | worker | Cumulative graph execution time across all datagrams, placed sequentially after idle span | `worker.graph_exec_secs`, `worker.num_datagrams` |
-| `worker.collect` | child | worker | Serialize and send results to collector, placed sequentially after graph_exec span | `worker.send_secs`, `worker.data_size_bytes` |
-| `worker.overhead` | child | worker | Processing overhead (ZMQ polling, metric updates, tracing, GC), placed sequentially after collect span to fill remaining interval | none |
-| `{color}.heartbeat` | root | collector | Completed heartbeat at collector (color = localCollector or globalCollector) | `heartbeat`, `collector.pruned`, `collector.num_contribs`, `collector.data_size_bytes`, `collector.pct_wait`, `collector.pct_graph_exec`, `collector.pct_send`, `collector.pct_idle` |
-| `{color}.prune` | root | collector | Pruned incomplete heartbeat due to timeout or missing contributions (marked as ERROR, includes child spans) | `heartbeat`, `collector.pruned`, `collector.contrib_ratio`, `collector.num_present`, `collector.num_contribs`, `collector.prune_age`, `collector.missing_workers`, `collector.data_size_bytes`, `collector.pct_wait`, `collector.pct_graph_exec`, `collector.pct_send`, `collector.pct_idle` |
+| `worker.send` | child | worker | Serialize and send results to collector, placed sequentially after graph_exec span | `worker.send_secs`, `worker.data_size_bytes` |
+| `worker.overhead` | child | worker | Processing overhead (ZMQ polling, metric updates, tracing, GC), placed sequentially after send span to fill remaining interval | none |
+| `{color}.heartbeat` | root | collector | Completed heartbeat at collector (color = localCollector or globalCollector) | `heartbeat`, `collector.pruned`, `collector.num_contribs`, `collector.data_size_bytes`, `collector.pct_idle`, `collector.pct_graph_exec`, `collector.pct_send`, `collector.pct_overhead` |
+| `{color}.prune` | root | collector | Pruned incomplete heartbeat due to timeout or missing contributions (marked as ERROR, includes child spans) | `heartbeat`, `collector.pruned`, `collector.contrib_ratio`, `collector.num_present`, `collector.num_contribs`, `collector.prune_age`, `collector.missing_workers`, `collector.data_size_bytes`, `collector.pct_idle`, `collector.pct_graph_exec`, `collector.pct_send`, `collector.pct_overhead` |
 | `collector.wait` | child | collector | Waiting for all contributions from downstream workers/collectors (real wall clock timestamps, present in both normal and prune spans) | `collector.wait_secs` |
 | `collector.graph_exec` | child | collector | Executing reduction graph on aggregated data (real wall clock timestamps, present in both normal and prune spans) | `collector.graph_exec_secs` |
 | `collector.send` | child | collector | Sending aggregated results upstream to next collector or manager (real wall clock timestamps, present in both normal and prune spans) | `collector.data_size_bytes` |
@@ -118,7 +118,7 @@ A typical trace for a single heartbeat shows spans from all processes involved:
 worker.heartbeat ─────────────────────────────────────────────
   ├─ worker.idle ━━━━━━━━━━
   ├─ worker.graph_exec     ━━━━━━━━━━━━━━━━━━━━━━━━
-  ├─ worker.collect                                ━━━
+  ├─ worker.send                                   ━━━
   └─ worker.overhead                                  ━━
 
 localCollector.heartbeat ─────────────────────────────────────
@@ -140,10 +140,10 @@ manager.heartbeat ━━
 - **Worker child spans use sequential stacking** — spans are placed back-to-back using cumulative durations:
   - `worker.idle` starts at interval start, duration = total idle time
   - `worker.graph_exec` starts where idle ends, duration = total graph execution time
-  - `worker.collect` starts where graph_exec ends, duration = total collect/send time
-  - `worker.overhead` fills the remaining interval after collect, representing ZMQ polling, metric updates, tracing code, and Python GC
+  - `worker.send` starts where graph_exec ends, duration = total send time
+  - `worker.overhead` fills the remaining interval after send, representing ZMQ polling, metric updates, tracing code, and Python GC
 - **Collector child spans use real wall clock timestamps** showing actual timing
-- `worker.pct_idle`, `worker.pct_graph_exec`, `worker.pct_collect` on the parent span provide exact numeric percentages
+- `worker.pct_idle`, `worker.pct_graph_exec`, `worker.pct_send` on the parent span provide exact numeric percentages
 - Multiple worker spans may exist in the same trace if multiple workers process events for the same heartbeat
 
 ### Percentage Attributes
@@ -153,16 +153,16 @@ All percentage attributes use the **full parent span duration** as the denominat
 **Worker percentages** (denominator = full heartbeat interval):
 - `worker.pct_idle` — percentage of time spent idle waiting for data (total idle across the interval, including micro-gaps between datagrams)
 - `worker.pct_graph_exec` — percentage of time executing graph computations
-- `worker.pct_collect` — percentage of time serializing and sending results
+- `worker.pct_send` — percentage of time serializing and sending results
 - `worker.pct_overhead` — percentage of overhead time (ZMQ polling, metrics, tracing, GC)
 
 All four worker percentages sum to 100%, providing a complete accounting of the heartbeat interval.
 
 **Collector percentages** (denominator = total processing time from arrival to completion):
-- `collector.pct_idle` — percentage of unaccounted/overhead time
-- `collector.pct_wait` — percentage of time waiting for contributions
+- `collector.pct_idle` — percentage of time waiting for contributions
 - `collector.pct_graph_exec` — percentage of time executing graph computations
 - `collector.pct_send` — percentage of time sending results upstream
+- `collector.pct_overhead` — percentage of unaccounted/overhead time
 
 These percentages should sum to approximately 100% (minor variations due to rounding or timing precision).
 
@@ -189,17 +189,17 @@ Traces provide end-to-end visibility to diagnose performance issues. Here are th
 **Look for:**
 - Red ERROR span named `{color}.prune` (e.g., `localCollector.prune`)
 - `collector.missing_workers` attribute showing which worker(s) didn't contribute in time
-- Compare `worker.collect` end times across workers — the late one will finish after the prune event
+- Compare `worker.send` end times across workers — the late one will finish after the prune event
 
 **Example diagnosis:**
 - `localCollector.prune` span with `collector.missing_workers = [2]`
-- Worker 2's `worker.collect` span ends AFTER the prune span
+- Worker 2's `worker.send` span ends AFTER the prune span
 - **Action:** Investigate worker 2 — check `worker.pct_graph_exec` (slow graph?) or `worker.pct_idle` (starved?)
 
 **Investigating prune execution breakdown:**
 - **Expand the prune span** to see child spans (collector.wait, collector.graph_exec, collector.send)
 - This reveals whether graph execution on partial data or the send phase contributed to latency
-- Check percentage attributes (`pct_wait`, `pct_graph_exec`, `pct_send`, `pct_idle`) to see where time was spent during the prune
+- Check percentage attributes (`pct_idle`, `pct_graph_exec`, `pct_send`, `pct_overhead`) to see where time was spent during the prune
 - Even though data was incomplete, the collector still executed the graph on whatever contributions it received — child spans show this breakdown
 
 ### Understanding `collector.wait` Span Semantics
@@ -210,7 +210,7 @@ The `collector.wait` span has different meanings depending on whether the heartb
 - **Start:** First worker contribution arrives at the collector
 - **End:** ALL workers have contributed (event builder bitmask is complete)
 - **Meaning:** Time spent waiting for stragglers (slowest workers to send their results)
-- **Diagnosis:** A long `collector.wait` means one or more workers are slow — cross-reference by looking at which `worker.collect` span ends last
+- **Diagnosis:** A long `collector.wait` means one or more workers are slow — cross-reference by looking at which `worker.send` span ends last
 
 **Prune (ERROR span):**
 - **Start:** First worker contribution arrives at the collector
@@ -234,13 +234,13 @@ The `collector.wait` span has different meanings depending on whether the heartb
 ### 4. Are we blocked on sends?
 
 **Look for:**
-- Duration of `worker.collect` and `collector.send` spans
-- `worker.pct_collect` and `collector.pct_send` percentages
+- Duration of `worker.send` and `collector.send` spans
+- `worker.pct_send` and `collector.pct_send` percentages
 - High percentage indicates network or serialization bottleneck
 
 **Example diagnosis:**
-- `worker.collect` spans are 150ms each
-- `worker.pct_collect = 60%` indicates majority of time spent sending
+- `worker.send` spans are 150ms each
+- `worker.pct_send = 60%` indicates majority of time spent sending
 - **Action:** Check network bandwidth, reduce data size, optimize serialization, or increase ZMQ high water mark (HWM)
 
 ### Waterfall Reading Tips
