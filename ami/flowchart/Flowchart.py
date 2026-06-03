@@ -2780,7 +2780,7 @@ class FlowchartCtrlWidget(QtWidgets.QWidget):
         self.ui.actionReset.triggered.connect(self.resetClicked)
         if HAS_QTCONSOLE:
             self.ui.actionConsole.triggered.connect(self.consoleClicked)
-        self.ui.actionAgent.triggered.connect(self.agentClicked)
+            self.ui.actionAgent.triggered.connect(self.agentClicked)
 
         self.ui.actionHome.triggered.connect(self.homeClicked)
         self.ui.actionArrange.triggered.connect(self.arrangeClicked)
@@ -3187,10 +3187,10 @@ class FlowchartCtrlWidget(QtWidgets.QWidget):
             # Find available terminal emulator
             terminal_cmd = None
             for cmd in [
-                ["xterm", "-e"],
+                ["xfce4-terminal", "-e"],
                 ["gnome-terminal", "--"],
                 ["konsole", "-e"],
-                ["xfce4-terminal", "-e"],
+                ["xterm", "-e"],
             ]:
                 if shutil.which(cmd[0]):
                     terminal_cmd = cmd
@@ -3203,7 +3203,7 @@ class FlowchartCtrlWidget(QtWidgets.QWidget):
             # Spawn terminal running OpenCode pointed at temp dir with config
             try:
                 subprocess.Popen(
-                    [*terminal_cmd, "opencode", mcp_thread._tmpdir.name],
+                    [*terminal_cmd, f"opencode {mcp_thread._tmpdir.name}"],
                 )
                 logger.info(f"Spawned agent in {mcp_thread._tmpdir.name}")
             except Exception as e:
