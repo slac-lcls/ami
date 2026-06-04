@@ -469,6 +469,7 @@ class Manager(Collector):
     def cmd_update_plots(self, name):
         plots = self.comm.recv_pyobj()
         self.feature_stores[name].update_plots(plots)
+        self.export_store(name)
         self.comm.send_string("ok")
 
     def publish_info(self, name):
