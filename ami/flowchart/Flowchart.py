@@ -3064,14 +3064,14 @@ class FlowchartWidget(dockarea.DockArea):
                         gnode = self.chart._graph.nodes[gnode]
                         if "node" not in gnode:
                             continue
-                        node = gnode["node"]
-                        if node in seen:
+                        path_node = gnode["node"]
+                        if path_node in seen:
                             continue
                         else:
-                            seen.add(node)
+                            seen.add(path_node)
 
-                        if node.changed:
-                            pending.add(node.name())
+                        if path_node.changed and hasattr(path_node, "to_operation"):
+                            pending.add(path_node.name())
 
             if pending:
                 pending = ", ".join(pending)
