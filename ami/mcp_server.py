@@ -871,21 +871,17 @@ class McpServerThread(threading.Thread):
                     "enabled": True,
                 }
             },
+            "instructions": ["SKILL.md"],
         }
         config_path = os.path.join(self._tmpdir.name, "opencode.jsonc")
         with open(config_path, "w") as f:
             json.dump(config, f, indent=2)
 
-        # Copy AGENTS.md if it exists
+        # Copy ami-graph-builder skill as always-loaded instructions
         repo_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-        agents_md = os.path.join(repo_root, "AGENTS.md")
-        if os.path.exists(agents_md):
-            shutil.copy2(agents_md, self._tmpdir.name)
-
-        # Copy skills directory if it exists
-        skills_dir = os.path.join(repo_root, "skills")
-        if os.path.isdir(skills_dir):
-            shutil.copytree(skills_dir, os.path.join(self._tmpdir.name, ".opencode/skills"))
+        skill_src = os.path.join(repo_root, ".opencode", "skills", "ami-graph-builder", "SKILL.md")
+        if os.path.exists(skill_src):
+            shutil.copy2(skill_src, os.path.join(self._tmpdir.name, "SKILL.md"))
 
     def run(self):
         """Run MCP server (blocks in this thread)."""
