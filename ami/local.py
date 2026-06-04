@@ -155,6 +155,10 @@ def build_parser():
 
     parser.add_argument("--use-numba", help="Use numba for plots.", action="store_true")
 
+    parser.add_argument("--monitor", action="store_true", help="start the web monitor (Panel/HoloViews dashboard)")
+
+    parser.add_argument("--monitor-port", type=int, default=8787, help="HTTP port for the web monitor (default: 8787)")
+
     parser.add_argument(
         "--tracing-endpoint",
         help="OpenTelemetry endpoint for tracing (e.g. localhost:4317 or 'console' for stdout)",
@@ -431,6 +435,18 @@ def run_ami(args, queue=None):
             export_proc.daemon = True
             export_proc.start()
             procs.append(export_proc)
+
+        if args.monitor:
+            from ami.monitor import run_monitor
+
+            monitor_proc = mp.Process(
+                name="monitor",
+                target=functools.partial(_sys_exit, run_monitor),
+                args=(args.graph_name, export_addr, view_addr, None, args.monitor_port),
+            )
+            monitor_proc.daemon = True
+            monitor_proc.start()
+            procs.append(monitor_proc)
 
         if not (args.console or args.headless):
             client_proc = mp.Process(

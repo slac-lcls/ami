@@ -39,6 +39,7 @@ setup(
     ],
     tests_require=["pytest", "pytest-asyncio", "pytest-qt"],
     extras_require={
+        "monitor": ["panel", "holoviews", "bokeh"],
         "pva": ["p4p"],
         "hdf5": ["h5py"],
         "arrow": ["pyarrow>=0.17"],
