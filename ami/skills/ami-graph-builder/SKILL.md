@@ -299,3 +299,15 @@ remove_node_terminal("Calculator.0", "In.1")      # removes a user-added termina
 ```
 
 Always `validate_graph()` after making corrections to confirm the issue is resolved.
+
+## Performance Monitoring
+
+If a graph change causes performance degradation (GUI updates slowing, latency growing,
+high processing time), refer to the AMI Performance Monitor skill for Grafana MCP tool
+patterns — diagnosing whether graph execution time, send backpressure, or worker
+starvation is the bottleneck using Prometheus metrics and Tempo distributed traces.
+That guidance is available via the `ami-performance-monitor` skill.
+
+Key signal after `apply_graph`: if `ami_event_time_secs{type="Datagram"}` or
+`ami_heartbeat_latency_seconds` increases significantly, the new graph operations may
+be too expensive.

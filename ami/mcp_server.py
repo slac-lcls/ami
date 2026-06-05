@@ -871,17 +871,26 @@ class McpServerThread(threading.Thread):
                     "enabled": True,
                 }
             },
-            "instructions": ["SKILL.md"],
+            "instructions": [
+                ".opencode/skills/ami-graph-builder/SKILL.md",
+                ".opencode/skills/ami-performance-monitor/SKILL.md",
+            ],
         }
         config_path = os.path.join(self._tmpdir.name, "opencode.jsonc")
         with open(config_path, "w") as f:
             json.dump(config, f, indent=2)
 
-        # Copy ami-graph-builder skill as always-loaded instructions
-        repo_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-        skill_src = os.path.join(repo_root, ".opencode", "skills", "ami-graph-builder", "SKILL.md")
-        if os.path.exists(skill_src):
-            shutil.copy2(skill_src, os.path.join(self._tmpdir.name, "SKILL.md"))
+        # Copy skills into .opencode/skills/<name>/ so they are both always-loaded
+        # (via instructions) and discoverable by name via the skill tool.
+        # Skills live in ami/skills/ inside the package so they are accessible
+        # in both development and installed environments.
+        pkg_skills_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "skills")
+        for skill_name in ("ami-graph-builder", "ami-performance-monitor"):
+            src = os.path.join(pkg_skills_dir, skill_name, "SKILL.md")
+            dst_dir = os.path.join(self._tmpdir.name, ".opencode", "skills", skill_name)
+            if os.path.exists(src):
+                os.makedirs(dst_dir, exist_ok=True)
+                shutil.copy2(src, os.path.join(dst_dir, "SKILL.md"))
 
     def run(self):
         """Run MCP server (blocks in this thread)."""
