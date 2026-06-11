@@ -2829,6 +2829,7 @@ class FlowchartCtrlWidget(QtWidgets.QWidget):
 
         def agentClicked(self):
             """Spawn external agent harness connected to AMI's MCP server."""
+            import os
             import shutil
             import subprocess
 
@@ -2837,30 +2838,69 @@ class FlowchartCtrlWidget(QtWidgets.QWidget):
                 logger.error("MCP server not running - cannot spawn agent")
                 return
 
-            # Find available terminal emulator
-            terminal_cmd = None
-            for cmd in [
-                ["xfce4-terminal", "-e"],
-                ["gnome-terminal", "--"],
-                ["konsole", "-e"],
-                ["xterm", "-e"],
-            ]:
+            # Use the user's preferred login shell so PATH, conda, etc. are sourced
+            shell = os.environ.get("SHELL", "/bin/sh")
+            work_dir = mcp_thread._tmpdir.name
+
+            # Per-emulator commands. Each wraps opencode in a login shell.
+            # xterm gets explicit font/scrollback flags for a better out-of-the-box appearance.
+            # Note: xfce4-terminal parses its -e argument as a shell string, so it needs a
+            # single quoted value; the others accept the command as separate argv elements.
+            terminals = [
+                [
+                    "xfce4-terminal",
+                    "--title=AMI Agent",
+                    "-e",
+                    f"{shell} -l -c 'opencode {work_dir}'",
+                ],
+                [
+                    "gnome-terminal",
+                    "--title=AMI Agent",
+                    "--",
+                    shell,
+                    "-l",
+                    "-c",
+                    f"opencode {work_dir}",
+                ],
+                [
+                    "konsole",
+                    "--title",
+                    "AMI Agent",
+                    "--hide-menubar",
+                    "-e",
+                    shell,
+                    "-l",
+                    "-c",
+                    f"opencode {work_dir}",
+                ],
+                [
+                    "xterm",
+                    "-title",
+                    "AMI Agent",
+                    "-fa",
+                    "Monospace",
+                    "-fs",
+                    "16",
+                    "-sl",
+                    "10000",
+                    "-e",
+                    shell,
+                    "-l",
+                    "-c",
+                    f"opencode {work_dir}",
+                ],
+            ]
+
+            for cmd in terminals:
                 if shutil.which(cmd[0]):
-                    terminal_cmd = cmd
-                    break
+                    try:
+                        subprocess.Popen(cmd)
+                        logger.info(f"Spawned agent in {work_dir}")
+                    except Exception as e:
+                        logger.error(f"Failed to spawn agent terminal: {e}")
+                    return
 
-            if not terminal_cmd:
-                logger.error("No terminal emulator found (tried xterm, gnome-terminal, konsole, xfce4-terminal)")
-                return
-
-            # Spawn terminal running OpenCode pointed at temp dir with config
-            try:
-                subprocess.Popen(
-                    [*terminal_cmd, f"opencode {mcp_thread._tmpdir.name}"],
-                )
-                logger.info(f"Spawned agent in {mcp_thread._tmpdir.name}")
-            except Exception as e:
-                logger.error(f"Failed to spawn agent terminal: {e}")
+            logger.error("No terminal emulator found (tried xfce4-terminal, gnome-terminal, konsole, xterm)")
 
     @asyncSlot(object)
     async def configureApply(self, src_cfg):
