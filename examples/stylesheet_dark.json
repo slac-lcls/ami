@@ -1,5 +1,6 @@
 {
     "Theme": "dark",
+    "FontSize": 12,
     "Background": [32, 33, 36],
     "WaveformWidget":
     {
