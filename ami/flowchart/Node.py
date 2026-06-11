@@ -26,6 +26,43 @@ def find_nearest(x):
     return hi if x - low > hi - x else low
 
 
+def find_free_pos(item, x, y, scene):
+    """Find the nearest free grid position that does not overlap other NodeGraphicsItems.
+
+    Searches outward from (x, y) through adjacent 100-unit grid cells until a
+    position is found where the item's bounding rect does not collide with any
+    other NodeGraphicsItem.  Returns the original position if no free cell is
+    found within 20 grid steps.
+    """
+    gs = 100
+    w = item.bounds.width()
+    h = item.bounds.height()
+
+    def has_overlap(px, py):
+        for other in scene.items():
+            if other is item or not isinstance(other, NodeGraphicsItem):
+                continue
+            op = other.pos()
+            if px < op.x() + w and px + w > op.x() and py < op.y() + h and py + h > op.y():
+                return True
+        return False
+
+    if not has_overlap(x, y):
+        return x, y
+
+    for radius in range(1, 21):
+        for dx in range(-radius, radius + 1):
+            for dy in range(-radius, radius + 1):
+                if abs(dx) != radius and abs(dy) != radius:
+                    continue
+                nx = max(min(x + dx * gs, 5000), 0)
+                ny = max(min(y + dy * gs, 5000), -900)
+                if not has_overlap(nx, ny):
+                    return nx, ny
+
+    return x, y
+
+
 class Node(QtCore.QObject):
     """
     Node represents the basic processing unit of a flowchart.
@@ -327,9 +364,7 @@ class Node(QtCore.QObject):
         for name, term in self.terminals.items():
             if name in self._input_vars:
                 if term.optional():
-                    input_vars[name] = modifiers.optional(
-                        self._input_vars[name], mapped_name=name.replace(".", "_")
-                    )
+                    input_vars[name] = modifiers.optional(self._input_vars[name], mapped_name=name.replace(".", "_"))
                 else:
                     input_vars[name] = self._input_vars[name]
         return input_vars
@@ -417,9 +452,7 @@ class Node(QtCore.QObject):
             elif node and node.isSource():
                 self._input_vars[localTerm.name()] = node.name()
             elif node and remoteTerm:
-                self._input_vars[localTerm.name()] = ".".join(
-                    [node.name(), remoteTerm.name()]
-                )
+                self._input_vars[localTerm.name()] = ".".join([node.name(), remoteTerm.name()])
 
         if not self.changed:
             self.changed = localTerm.isInput()
@@ -557,12 +590,7 @@ class Node(QtCore.QObject):
 
     def optionalTerm(self, term):
         if self._allowOptional:
-            checked = all(
-                [
-                    term.isInput() and term.optional()
-                    for name, term in self.terminals.items()
-                ]
-            )
+            checked = all([term.isInput() and term.optional() for name, term in self.terminals.items()])
             self.graphicsItem().optional.setChecked(checked)
             self.sigTerminalOptional.emit(self, term)
 
@@ -606,6 +634,7 @@ class NodeGraphicsItem(GraphicsObject):
             QtWidgets.QGraphicsItem.ItemIsMovable
             | QtWidgets.QGraphicsItem.ItemIsSelectable
             | QtWidgets.QGraphicsItem.ItemSendsGeometryChanges
+            | QtWidgets.QGraphicsItem.ItemIsFocusable
         )
 
         self.setFlags(flags)
@@ -614,9 +643,7 @@ class NodeGraphicsItem(GraphicsObject):
         self.labelItem.setDefaultTextColor(QtGui.QColor(50, 50, 50))
         self.labelItem.mousePressEvent = self.nameEditingStarted
         self.labelItem.focusOutEvent = self.nameEditingFinished
-        self.labelItem.moveBy(
-            self.bounds.width() / 2.0 - self.labelItem.boundingRect().width() / 2.0, 0
-        )
+        self.labelItem.moveBy(self.bounds.width() / 2.0 - self.labelItem.boundingRect().width() / 2.0, 0)
         self.labelItem.setCursor(QtCore.Qt.IBeamCursor)
 
         # Add class name item below the name
@@ -652,9 +679,7 @@ class NodeGraphicsItem(GraphicsObject):
 
     def setLabel(self, label):
         self.labelItem.setPlainText(label)
-        self.labelItem.setPos(
-            self.bounds.width() / 2.0 - self.labelItem.boundingRect().width() / 2.0, 0
-        )
+        self.labelItem.setPos(self.bounds.width() / 2.0 - self.labelItem.boundingRect().width() / 2.0, 0)
         self.nameItem.setVisible(True)
         nameBottom = self.nameItem.boundingRect().height()
         self.nameItem.setPos(
@@ -696,9 +721,7 @@ class NodeGraphicsItem(GraphicsObject):
             self.node.sigLabelChanged.emit(self.node, self.node._label)
 
         # Reposition label (centered)
-        self.labelItem.setPos(
-            self.bounds.width() / 2.0 - self.labelItem.boundingRect().width() / 2.0, 0
-        )
+        self.labelItem.setPos(self.bounds.width() / 2.0 - self.labelItem.boundingRect().width() / 2.0, 0)
 
     def updateTerminals(self):
         inp = self.node.inputs()
@@ -761,15 +784,34 @@ class NodeGraphicsItem(GraphicsObject):
         ev.ignore()
 
     def mouseClickEvent(self, ev):
-        # if int(ev.button()) == int(QtCore.Qt.LeftButton):
         if ev.button() == QtCore.Qt.LeftButton:
             ev.accept()
-            sel = self.isSelected()
-            self.setSelected(True)
-            if not sel and self.isSelected():
-                self.update()
-
-        # elif int(ev.button()) == int(QtCore.Qt.RightButton):
+            vb = self.getViewBox()
+            if ev.modifiers() & QtCore.Qt.ControlModifier:
+                # Ctrl+Click: toggle this node in the multi-selection
+                if vb is not None and hasattr(vb, "selected_nodes"):
+                    if self.node in vb.selected_nodes:
+                        vb.selected_nodes.remove(self.node)
+                        self.node.recolor(None)
+                        self.setSelected(False)
+                    else:
+                        vb.selected_nodes.append(self.node)
+                        self.node.recolor("selected")
+                        self.setSelected(True)
+                else:
+                    self.setSelected(not self.isSelected())
+            else:
+                # Plain click: clear multi-selection, select only this node
+                if vb is not None and hasattr(vb, "selected_nodes"):
+                    for n in list(vb.selected_nodes):
+                        n.recolor(None)
+                        n.graphicsItem().setSelected(False)
+                    vb.selected_nodes = []
+                sel = self.isSelected()
+                self.setSelected(True)
+                if not sel and self.isSelected():
+                    self.update()
+            self.setFocus()
         elif ev.button() == QtCore.Qt.RightButton:
             ev.accept()
             self.raiseContextMenu(ev)
@@ -777,15 +819,15 @@ class NodeGraphicsItem(GraphicsObject):
     def mouseDragEvent(self, ev):
         if ev.button() == QtCore.Qt.LeftButton:
             ev.accept()
-            pos = (
-                self.pos() + self.mapToParent(ev.pos()) - self.mapToParent(ev.lastPos())
-            )
+            pos = self.pos() + self.mapToParent(ev.pos()) - self.mapToParent(ev.lastPos())
+            x = max(min(pos.x(), 5e3), 0)
+            y = max(min(pos.y(), 5e3), -900)
             if ev.isFinish():
-                pos = [find_nearest(pos.x()), find_nearest(pos.y())]
-
-            pos[0] = max(min(pos[0], 5e3), 0)
-            pos[1] = max(min(pos[1], 5e3), -900)
-            self.setPos(*pos)
+                x = find_nearest(x)
+                y = find_nearest(y)
+                if self.scene():
+                    x, y = find_free_pos(self, x, y, self.scene())
+            self.setPos(x, y)
 
     def hoverEvent(self, ev):
         if not ev.isExit() and ev.acceptClicks(QtCore.Qt.LeftButton):
@@ -801,22 +843,24 @@ class NodeGraphicsItem(GraphicsObject):
             if not self.node._allowRemove:
                 return
             self.node.close()
-        elif ev.key() == QtCore.Qt.Key_Up:
+        elif ev.key() in (QtCore.Qt.Key_Up, QtCore.Qt.Key_Down, QtCore.Qt.Key_Left, QtCore.Qt.Key_Right):
             ev.accept()
-            pos = self.pos() + (0, -100)
-            self.setPos(*pos)
-        elif ev.key() == QtCore.Qt.Key_Down:
-            ev.accept()
-            pos = self.pos() + (0, 100)
-            self.setPos(*pos)
-        elif ev.key() == QtCore.Qt.Key_Left:
-            ev.accept()
-            pos = self.pos() + (-100, 0)
-            self.setPos(*pos)
-        elif ev.key() == QtCore.Qt.Key_Right:
-            ev.accept()
-            pos = self.pos() + (100, 0)
-            self.setPos(*pos)
+            offsets = {
+                QtCore.Qt.Key_Up: (0, -100),
+                QtCore.Qt.Key_Down: (0, 100),
+                QtCore.Qt.Key_Left: (-100, 0),
+                QtCore.Qt.Key_Right: (100, 0),
+            }
+            dx, dy = offsets[ev.key()]
+            x = max(min(self.pos().x() + dx, 5e3), 0)
+            y = max(min(self.pos().y() + dy, 5e3), -900)
+            if self.scene():
+                fx, fy = find_free_pos(self, x, y, self.scene())
+                # Only move if the immediate target cell is free
+                if fx == x and fy == y:
+                    self.setPos(x, y)
+            else:
+                self.setPos(x, y)
         else:
             ev.ignore()
 
@@ -914,6 +958,16 @@ class NodeGraphicsItem(GraphicsObject):
         pos = ev.screenPos()
         menu.popup(QtCore.QPoint(pos.x(), pos.y()))
 
+    def _copyFromMenu(self):
+        vb = self.getViewBox()
+        if vb is not None and hasattr(vb, "copyNode"):
+            vb.copyNode(self.node)
+
+    def _cutFromMenu(self):
+        vb = self.getViewBox()
+        if vb is not None and hasattr(vb, "cutNode"):
+            vb.cutNode(self.node)
+
     def buildMenu(self, reset=False):
         if reset:
             # qt seg. faults if you don't delete old menu first
@@ -934,6 +988,8 @@ class NodeGraphicsItem(GraphicsObject):
                 self.menu.addAction("Add input", self.addInputFromMenu)
             if self.node._allowAddOutput:
                 self.menu.addAction("Add output", self.addOutputFromMenu)
+            self.menu.addAction("Copy\tCtrl+C", self._copyFromMenu)
+            self.menu.addAction("Cut\tCtrl+X", self._cutFromMenu)
             if self.node._allowRemove:
                 self.menu.addAction("Remove node", self.node.close)
             self.menu.addAction("View Source Code", self.viewSource)
@@ -976,17 +1032,13 @@ class SourceNodeGraphicsItem(NodeGraphicsItem):
     Extension of the NodeGraphicsItem to handle the source kwargs graphics.
     """
 
-    sigSourceKwargs = QtCore.Signal(
-        object
-    )  # signal emitted when new user kwargs are supplied
+    sigSourceKwargs = QtCore.Signal(object)  # signal emitted when new user kwargs are supplied
 
     def __init__(self, node, brush=None):
         super().__init__(node, brush=brush)
         self._source_kwargs = {}
 
-        self.kwargs_parser = Lark(
-            kwargs_grammar, start="value"
-        )  # , transformer=MyTransformer_2(), parser='lalr')
+        self.kwargs_parser = Lark(kwargs_grammar, start="value")  # , transformer=MyTransformer_2(), parser='lalr')
         self.kwargs_transformer = KwargsTransformer()
 
     @property

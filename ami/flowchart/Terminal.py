@@ -731,7 +731,7 @@ def checkType(terminals, type_file=None, checked=[]):
     else:
         with tempfile.NamedTemporaryFile(mode="w") as f:
             f.write("from typing import *\n")
-            f.write("from mypy_extensions import TypedDict\n")
+            # f.write("from mypy_extensions import TypedDict\n")
             f.write("import numbers\n")
             f.write("import builtins\n")
             f.write("import amitypes\n")
