@@ -10,7 +10,7 @@ from qtpy import QtCore, QtGui, QtWidgets
 from ami import LogConfig
 from ami.asyncqt import asyncSlot
 from ami.client import flowchart_messages as fcMsgs
-from ami.comm import AsyncGraphCommHandler, GraphCommHandler
+from ami.comm import AsyncGraphCommHandler
 from ami.flowchart.FlowchartGraphicsView import ViewManager
 from ami.flowchart.library import LIBRARY
 from ami.flowchart.library.common import CtrlNode, SourceNode
@@ -401,6 +401,199 @@ class Flowchart(QtCore.QObject):
         # Add to library
         self._addSubgraphToLibrary(name)
 
+    def moveNodeToSubgraph(self, node_name, subgraph_name):
+        """Move a node from root view into an existing subgraph.
+
+        Handles:
+        - Moving node graphics item to subgraph view
+        - Converting external→node edges to boundary input terminals
+        - Converting node→external edges to boundary output terminals
+        - Converting previously-boundary edges that become internal
+
+        Args:
+            node_name: Name of node to move (must be in root view)
+            subgraph_name: Target subgraph name
+
+        Returns:
+            Dict with lists of new boundary terminals: {"inputs": [...], "outputs": [...]}
+        """
+        graph = self._graph
+        sg_data = self._subgraphs[subgraph_name]
+        subgraphNode = sg_data["placeholder"]
+        sg_view = sg_data["view"]
+        root_view = self.viewManager().views["root"]
+        node_names_in_sg = sg_data["nodes"]
+
+        node_obj = graph.nodes[node_name]["node"]
+
+        # Categorize all edges involving this node
+        new_inputs = []  # external → this node (need new boundary input)
+        new_outputs = []  # this node → external (need new boundary output)
+        internal_from = []  # sg node → this node (was boundary output, becomes internal)
+        internal_to = []  # this node → sg node (was boundary input, becomes internal)
+
+        for pred, _, data in graph.in_edges(node_name, data=True):
+            if pred in node_names_in_sg:
+                internal_from.append((pred, data))
+            else:
+                new_inputs.append((pred, data))
+
+        for _, succ, data in graph.out_edges(node_name, data=True):
+            if succ in node_names_in_sg:
+                internal_to.append((succ, data))
+            else:
+                new_outputs.append((succ, data))
+
+        new_terminals = {"inputs": [], "outputs": []}
+
+        # --- Handle edges from sg nodes → this node (were boundary outputs, now internal) ---
+        for pred, data in internal_from:
+            terminal_name = f"{pred}.{data['from_term']}"
+            # If a boundary output terminal exists for this edge, remove it
+            if terminal_name in subgraphNode.outputs():
+                pred_node = graph.nodes[pred]["node"]
+                pred_term = pred_node.terminals[data["from_term"]]
+                node_term = node_obj.terminals[data["to_term"]]
+                # Disconnect visual: placeholder → this node (root view)
+                placeholder_term = subgraphNode.terminals[terminal_name]
+                for remote in list(placeholder_term.dependentTerms()):
+                    if remote.node() is node_obj:
+                        placeholder_term.disconnectFrom(remote, signal=False)
+                # Disconnect SubgraphOutput → pred (subgraph view)
+                sg_output_term = subgraphNode.subgraphOutputs.terminals.get(terminal_name)
+                if sg_output_term:
+                    for remote in list(sg_output_term.inputTerminals()):
+                        if remote.node() is pred_node:
+                            remote.disconnectFrom(sg_output_term, signal=False)
+                # Remove boundary terminal if no other external targets remain
+                still_external = any(
+                    bc
+                    for bc in sg_data["boundary_connections"]
+                    if bc["terminal_name"] == terminal_name
+                    and bc["type"] == "output"
+                    and bc["external_node"] is not node_obj
+                )
+                if not still_external:
+                    subgraphNode.removeTerminal(terminal_name)
+                # Create direct visual in subgraph view
+                pred_term.connectTo(node_term, signal=False, view=sg_view.viewBox())
+                # Remove from boundary_connections
+                sg_data["boundary_connections"] = [
+                    bc
+                    for bc in sg_data["boundary_connections"]
+                    if not (
+                        bc["terminal_name"] == terminal_name
+                        and bc["type"] == "output"
+                        and bc["external_node"] is node_obj
+                    )
+                ]
+
+        # --- Handle edges this node → sg nodes (were boundary inputs, now internal) ---
+        for succ, data in internal_to:
+            terminal_name = f"{node_name}.{data['from_term']}"
+            if terminal_name in subgraphNode.inputs():
+                succ_node = graph.nodes[succ]["node"]
+                node_term = node_obj.terminals[data["from_term"]]
+                succ_term = succ_node.terminals[data["to_term"]]
+                # Disconnect visual: this node → placeholder (root view)
+                placeholder_term = subgraphNode.terminals[terminal_name]
+                for remote in list(placeholder_term.inputTerminals()):
+                    if remote.node() is node_obj:
+                        remote.disconnectFrom(placeholder_term, signal=False)
+                # Disconnect SubgraphInput → succ (subgraph view)
+                sg_input_term = subgraphNode.subgraphInputs.terminals.get(terminal_name)
+                if sg_input_term:
+                    for remote in list(sg_input_term.dependentTerms()):
+                        if remote.node() is succ_node:
+                            sg_input_term.disconnectFrom(remote, signal=False)
+                # Remove boundary terminal
+                subgraphNode.removeTerminal(terminal_name)
+                # Create direct visual in subgraph view
+                node_term.connectTo(succ_term, signal=False, view=sg_view.viewBox())
+                sg_data["boundary_connections"] = [
+                    bc
+                    for bc in sg_data["boundary_connections"]
+                    if not (bc["terminal_name"] == terminal_name and bc["type"] == "input")
+                ]
+
+        # --- Move node graphics to subgraph view ---
+        item = node_obj.graphicsItem()
+        if item.scene() is not None:
+            item.scene().removeItem(item)
+        sg_view.viewBox().addItem(item)
+
+        # --- Handle new input boundaries (external → this node) ---
+        for pred, data in new_inputs:
+            terminal_name = f"{pred}.{data['from_term']}"
+            ext_node = graph.nodes[pred]["node"]
+            ext_term = ext_node.terminals[data["from_term"]]
+            int_term = node_obj.terminals[data["to_term"]]
+
+            # Remove old visual connection (root view)
+            ext_term.disconnectFrom(int_term, signal=False)
+
+            if terminal_name not in subgraphNode.inputs():
+                # Create boundary terminal (also wires external → placeholder)
+                subgraphNode.graphicsItem().addInput(terminal_name, ext_term)
+                new_terminals["inputs"].append(terminal_name)
+
+            # Wire SubgraphInput → this node (subgraph view)
+            sg_input_term = subgraphNode.subgraphInputs.terminals[terminal_name]
+            sg_input_term.connectTo(int_term, signal=False, view=sg_view.viewBox())
+
+            sg_data["boundary_connections"].append(
+                {
+                    "type": "input",
+                    "external_node": ext_node,
+                    "external_term": ext_term,
+                    "internal_node": node_obj,
+                    "internal_term": int_term,
+                    "terminal_name": terminal_name,
+                }
+            )
+
+        # --- Handle new output boundaries (this node → external) ---
+        for succ, data in new_outputs:
+            terminal_name = f"{node_name}.{data['from_term']}"
+            int_term = node_obj.terminals[data["from_term"]]
+            ext_node = graph.nodes[succ]["node"]
+            ext_term = ext_node.terminals[data["to_term"]]
+
+            # Remove old visual connection (root view)
+            int_term.disconnectFrom(ext_term, signal=False)
+
+            if terminal_name not in subgraphNode.outputs():
+                subgraphNode.graphicsItem().addOutput(terminal_name, int_term)
+                new_terminals["outputs"].append(terminal_name)
+
+            # Wire placeholder → external (root view)
+            placeholder_out_term = subgraphNode.terminals[terminal_name]
+            placeholder_out_term.connectTo(ext_term, signal=False, view=root_view.viewBox())
+
+            sg_data["boundary_connections"].append(
+                {
+                    "type": "output",
+                    "external_node": ext_node,
+                    "external_term": ext_term,
+                    "internal_node": node_obj,
+                    "internal_term": int_term,
+                    "terminal_name": terminal_name,
+                }
+            )
+
+        # --- Update subgraph tracking ---
+        sg_data["nodes"].append(node_name)
+        subgraphNode.children.append(node_obj)
+
+        # --- Update graphics ---
+        subgraphNode.graphicsItem().updateTerminals()
+        if subgraphNode.subgraphInputs.graphicsItem().scene() is not None:
+            subgraphNode.subgraphInputs.graphicsItem().updateTerminals()
+        if subgraphNode.subgraphOutputs.graphicsItem().scene() is not None:
+            subgraphNode.subgraphOutputs.graphicsItem().updateTerminals()
+
+        return new_terminals
+
     def makeSubgraphFromSelection(self, nodes=None, name=None, pos=None, description=None):
         """Create a visual-only subgraph from selected nodes.
 
@@ -528,6 +721,10 @@ class Flowchart(QtCore.QObject):
             subgraphNode.subgraphOutputs.graphicsItem().moveBy(output_pos.x(), output_pos.y())
 
         # NOW process boundary connections - create visual-only connections
+        # Track which root-level visual connections have been made to avoid duplicates.
+        # A source terminal connecting to multiple internal nodes shares one placeholder terminal,
+        # so the root visual (external → placeholder) only needs to be created once.
+        root_visuals_created = {}  # terminal_name -> root_visual ConnectionItem
 
         for bc in boundary_connections:
             # Disconnect original connection (signal=False preserves _input_vars and graph edges)
@@ -551,8 +748,12 @@ class Flowchart(QtCore.QObject):
                     )
 
                 # Create visual connection in root view: external → placeholder
-                # connectTo registers in _connections, creates ConnectionItem, and recolors automatically
-                root_visual = bc["external_term"].connectTo(placeholder_term, signal=False, view=self.viewBox())
+                # Only create once per terminal_name (same source may feed multiple internal nodes)
+                if bc["terminal_name"] not in root_visuals_created:
+                    root_visual = bc["external_term"].connectTo(placeholder_term, signal=False, view=self.viewBox())
+                    root_visuals_created[bc["terminal_name"]] = root_visual
+                else:
+                    root_visual = root_visuals_created[bc["terminal_name"]]
 
                 # Create visual connection in subgraph view: subgraph_input → internal
                 sg_visual = sg_input_term.connectTo(bc["internal_term"], signal=False, view=view.viewBox())
@@ -571,8 +772,12 @@ class Flowchart(QtCore.QObject):
                     )
 
                 # Create visual connection in root view: placeholder → external
-                # connectTo registers in _connections, creates ConnectionItem, and recolors automatically
-                root_visual = placeholder_term.connectTo(bc["external_term"], signal=False, view=self.viewBox())
+                # Only create once per terminal_name (same internal output may feed multiple externals)
+                if bc["terminal_name"] not in root_visuals_created:
+                    root_visual = placeholder_term.connectTo(bc["external_term"], signal=False, view=self.viewBox())
+                    root_visuals_created[bc["terminal_name"]] = root_visual
+                else:
+                    root_visual = root_visuals_created[bc["terminal_name"]]
 
                 # Create visual connection in subgraph view: internal → subgraph_output
                 sg_visual = bc["internal_term"].connectTo(sg_output_term, signal=False, view=view.viewBox())
@@ -2271,6 +2476,7 @@ class FlowchartCtrlWidget(QtWidgets.QWidget):
         self.ui.actionReset.triggered.connect(self.resetClicked)
         if HAS_QTCONSOLE:
             self.ui.actionConsole.triggered.connect(self.consoleClicked)
+            self.ui.actionAgent.triggered.connect(self.agentClicked)
 
         self.ui.actionHome.triggered.connect(self.homeClicked)
         self.ui.actionArrange.triggered.connect(self.arrangeClicked)
@@ -2292,6 +2498,16 @@ class FlowchartCtrlWidget(QtWidgets.QWidget):
         self.ipython_widget = None
         self.graph_info = pc.Info("ami_graph", "AMI Client graph", ["hutch", "name"])
         self.graph_version = pc.Gauge("ami_graph_version", "AMI Client graph version", ["hutch", "name"])
+
+        # Eager AmiCli initialization for MCP server
+        from ami.amicli import AmiCli
+        from ami.comm import GraphCommHandler
+
+        graphCommHandler = GraphCommHandler(self.graphmgr_addr.name, self.graphmgr_addr.comm)
+        self.amicli = AmiCli(self, self.chartWidget, self.chart, graphCommHandler)
+
+        # Start MCP server now that amicli exists
+        self.chartWidget._start_mcp_server(self.amicli)
 
     @asyncSlot()
     async def applyClicked(self, build_views=True):
@@ -2342,13 +2558,13 @@ class FlowchartCtrlWidget(QtWidgets.QWidget):
                         try:
                             assert gnode.values["alias"]
                         except AssertionError:
-                            gnode.setException(True)
+                            gnode.setException("set alias!")
                             self.chartWidget.updateStatus(f"{gnode.name()} set alias!", color="red")
                             continue
                         try:
                             assert gnode.values["alias"] != gnode.input_vars()["In"]
                         except AssertionError:
-                            gnode.setException(True)
+                            gnode.setException("alias name cannot be same as input!")
                             self.chartWidget.updateStatus(
                                 f"{gnode.name()} alias name cannot be same as input!", color="red"
                             )
@@ -2375,7 +2591,7 @@ class FlowchartCtrlWidget(QtWidgets.QWidget):
                         except Exception as e:
                             self.chartWidget.updateStatus(f"{node.name()} {e}!", color="red")
                             printExc(f"{node.name()} raised exception! See console for stacktrace.")
-                            node.setException(True)
+                            node.setException(str(e))
                             failed_nodes.add(node)
                             continue
 
@@ -2392,7 +2608,7 @@ class FlowchartCtrlWidget(QtWidgets.QWidget):
         if disconnectedNodes:
             for node in disconnectedNodes:
                 self.chartWidget.updateStatus(f"{node.name()} disconnected!", color="red")
-                node.setException(True)
+                node.setException("disconnected!")
             msg.show()
             return
 
@@ -2467,24 +2683,77 @@ class FlowchartCtrlWidget(QtWidgets.QWidget):
         self.viewBox().autoRange(items=children)
 
     def arrangeClicked(self):
-        sources = []
-        displays = []
-        for name, data in self.chart._graph.nodes(data=True):
-            if data.get("subset") == 0:
-                sources.append(name)
-            elif data.get("subset") == 2:
-                displays.append(name)
-        fixed = sources + displays
-        pos = nx.drawing.layout.multipartite_layout(self.chart._graph, scale=len(self.chart._graph.nodes()) * 75)
-        pos = nx.drawing.layout.spring_layout(nx.Graph(self.chart._graph), pos=pos, fixed=fixed, k=200)
-        for name in self.chart._graph.nodes():
-            if name not in pos:
-                continue
-            px = pos[name][0]
-            py = pos[name][1]
-            p = (find_nearest(px), find_nearest(py))
-            node = self.chart._graph.nodes[name]["node"]
-            node.graphicsItem().setPos(*p)
+        """Auto-arrange nodes using topological layered layout."""
+        vm = self.viewManager()
+        sg_name = vm._currentSubgraphName
+
+        if sg_name and sg_name in self.chart._subgraphs:
+            # Subgraph view
+            sg_data = self.chart._subgraphs[sg_name]
+            node_names = set(sg_data["nodes"])
+            subgraph = self.chart._graph.subgraph(node_names)
+            placeholder = sg_data["placeholder"]
+        else:
+            # Root view: exclude nodes inside subgraphs
+            subgraph_nodes = set()
+            for sg_data in self.chart._subgraphs.values():
+                subgraph_nodes.update(sg_data["nodes"])
+            root_nodes = set(self.chart._graph.nodes()) - subgraph_nodes
+            subgraph = self.chart._graph.subgraph(root_nodes)
+            placeholder = None
+
+        if len(subgraph.nodes()) == 0:
+            return
+
+        # Assign layers via longest path (topological sort)
+        layers = {node: 0 for node in subgraph.nodes()}
+        try:
+            for node in nx.topological_sort(subgraph):
+                for successor in subgraph.successors(node):
+                    layers[successor] = max(layers[successor], layers[node] + 1)
+        except nx.NetworkXUnfeasible:
+            from collections import deque
+
+            sources = [n for n in subgraph.nodes() if subgraph.in_degree(n) == 0]
+            if not sources:
+                sources = list(subgraph.nodes())
+            visited = set()
+            queue = deque((s, 0) for s in sources)
+            while queue:
+                node, depth = queue.popleft()
+                if node in visited:
+                    layers[node] = max(layers[node], depth)
+                    continue
+                visited.add(node)
+                layers[node] = depth
+                for succ in subgraph.successors(node):
+                    queue.append((succ, depth + 1))
+
+        # Group by layer and position nodes
+        layer_groups = {}
+        for node, layer in layers.items():
+            layer_groups.setdefault(layer, []).append(node)
+
+        x_spacing = 300
+        y_spacing = 200
+        for layer_idx, nodes in sorted(layer_groups.items()):
+            x = layer_idx * x_spacing
+            y_offset = -(len(nodes) - 1) * y_spacing / 2
+            for i, node_name in enumerate(nodes):
+                y = y_offset + i * y_spacing
+                p = (find_nearest(x), find_nearest(y))
+                node = self.chart._graph.nodes[node_name]["node"]
+                node.graphicsItem().setPos(*p)
+
+        # Position visual boundary nodes for subgraph views
+        if placeholder:
+            max_layer = max(layer_groups.keys()) if layer_groups else 0
+            if hasattr(placeholder, "subgraphInputs") and placeholder.subgraphInputs.graphicsItem().scene():
+                placeholder.subgraphInputs.graphicsItem().setPos(find_nearest(-x_spacing), find_nearest(0))
+            if hasattr(placeholder, "subgraphOutputs") and placeholder.subgraphOutputs.graphicsItem().scene():
+                placeholder.subgraphOutputs.graphicsItem().setPos(
+                    find_nearest((max_layer + 1) * x_spacing), find_nearest(0)
+                )
 
         children = self.viewBox().allChildren()
         self.viewBox().autoRange(items=children)
@@ -2538,14 +2807,6 @@ class FlowchartCtrlWidget(QtWidgets.QWidget):
     if HAS_QTCONSOLE:
 
         def consoleClicked(self):
-            class AmiCli:
-
-                def __init__(self, ctrl, chartWidget, chart, graph, graphCommHandler):
-                    self.ctrl = ctrl
-                    self.chartWidget = chartWidget
-                    self.chart = chart
-                    self.graphCommHandler = graphCommHandler
-
             if self.ipython_widget is None:
                 kernel_manager = QtInProcessKernelManager()
                 kernel_manager.start_kernel(show_banner=False)
@@ -2560,12 +2821,86 @@ class FlowchartCtrlWidget(QtWidgets.QWidget):
                 self.ipython_widget.kernel_manager = kernel_manager
                 self.ipython_widget.kernel_client = kernel_client
 
-            graphCommHandler = GraphCommHandler(self.graphmgr_addr.name, self.graphmgr_addr.comm)
-            self.amicli = AmiCli(self, self.chartWidget, self.chart, self.chart._graph, graphCommHandler)
+            # Use the eagerly-initialized amicli from __init__
             self.ipython_widget.kernel_manager.kernel.shell.push({"amicli": self.amicli})
             win = QtWidgets.QMainWindow(parent=self)
             win.setCentralWidget(self.ipython_widget)
             win.show()
+
+        def agentClicked(self):
+            """Spawn external agent harness connected to AMI's MCP server."""
+            import os
+            import shutil
+            import subprocess
+
+            mcp_thread = getattr(self.chartWidget, "mcp_thread", None)
+            if not mcp_thread or not hasattr(mcp_thread, "_tmpdir"):
+                logger.error("MCP server not running - cannot spawn agent")
+                return
+
+            # Use the user's preferred login shell so PATH, conda, etc. are sourced
+            shell = os.environ.get("SHELL", "/bin/sh")
+            work_dir = mcp_thread._tmpdir.name
+
+            # Per-emulator commands. Each wraps opencode in a login shell.
+            # xterm gets explicit font/scrollback flags for a better out-of-the-box appearance.
+            # Note: xfce4-terminal parses its -e argument as a shell string, so it needs a
+            # single quoted value; the others accept the command as separate argv elements.
+            terminals = [
+                [
+                    "xfce4-terminal",
+                    "--title=AMI Agent",
+                    "-e",
+                    f"{shell} -l -c 'opencode {work_dir}'",
+                ],
+                [
+                    "gnome-terminal",
+                    "--title=AMI Agent",
+                    "--",
+                    shell,
+                    "-l",
+                    "-c",
+                    f"opencode {work_dir}",
+                ],
+                [
+                    "konsole",
+                    "--title",
+                    "AMI Agent",
+                    "--hide-menubar",
+                    "-e",
+                    shell,
+                    "-l",
+                    "-c",
+                    f"opencode {work_dir}",
+                ],
+                [
+                    "xterm",
+                    "-title",
+                    "AMI Agent",
+                    "-fa",
+                    "Monospace",
+                    "-fs",
+                    "16",
+                    "-sl",
+                    "10000",
+                    "-e",
+                    shell,
+                    "-l",
+                    "-c",
+                    f"opencode {work_dir}",
+                ],
+            ]
+
+            for cmd in terminals:
+                if shutil.which(cmd[0]):
+                    try:
+                        subprocess.Popen(cmd)
+                        logger.info(f"Spawned agent in {work_dir}")
+                    except Exception as e:
+                        logger.error(f"Failed to spawn agent terminal: {e}")
+                    return
+
+            logger.error("No terminal emulator found (tried xfce4-terminal, gnome-terminal, konsole, xterm)")
 
     @asyncSlot(object)
     async def configureApply(self, src_cfg):
@@ -2769,14 +3104,14 @@ class FlowchartWidget(dockarea.DockArea):
                         gnode = self.chart._graph.nodes[gnode]
                         if "node" not in gnode:
                             continue
-                        node = gnode["node"]
-                        if node in seen:
+                        path_node = gnode["node"]
+                        if path_node in seen:
                             continue
                         else:
-                            seen.add(node)
+                            seen.add(path_node)
 
-                        if node.changed:
-                            pending.add(node.name())
+                        if path_node.changed and hasattr(path_node, "to_operation"):
+                            pending.add(path_node.name())
 
             if pending:
                 pending = ", ".join(pending)
@@ -3073,6 +3408,25 @@ class FlowchartWidget(dockarea.DockArea):
             color = "#fff"
         self.statusText.insertHtml(f"<font color={color}>[{now}] {text}</font>")
         self.statusText.append("")
+
+    def _start_mcp_server(self, amicli):
+        """Start MCP server thread for AI-assisted graph building."""
+        import os
+
+        if os.environ.get("AMI_DISABLE_MCP"):
+            return
+        try:
+            from ami.mcp_server import McpServerThread
+            from ami.qt_dispatch import QtDispatcher
+
+            self.qt_dispatcher = QtDispatcher()
+            self.mcp_thread = McpServerThread(amicli=amicli, qt_dispatch_fn=self.qt_dispatcher.dispatch)
+            self.mcp_thread.start()
+            self._mcp_port = self.mcp_thread.port
+        except ImportError:
+            logger.info("MCP package not installed - AI agent support disabled")
+        except Exception as e:
+            logger.warning(f"Could not start MCP server: {e}")
 
 
 class Features(object):

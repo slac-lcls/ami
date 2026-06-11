@@ -367,6 +367,12 @@ class Ui_Toolbar(object):
             self.actionConsole.setIconText("Console")
             self.actionConsole.setObjectName("actionConsole")
 
+        # Agent (AI-assisted graph building via external harness)
+        self.actionAgent = QtWidgets.QAction(parent)
+        self.actionAgent.setIconText("Agent")
+        self.actionAgent.setObjectName("actionAgent")
+        self.actionAgent.setShortcut("Ctrl+Shift+A")
+
         # Arrange
         self.actionArrange = QtWidgets.QAction(parent)
         self.actionArrange.setIconText("Arrange")
@@ -419,22 +425,37 @@ class Ui_Toolbar(object):
         self.toolBar.addAction(self.actionReset)
         if HAS_QTCONSOLE:
             self.toolBar.addAction(self.actionConsole)
+        self.toolBar.addAction(self.actionAgent)
 
         if configure:
             self.toolBar.insertSeparator(self.actionConfigure)
         else:
             self.toolBar.insertSeparator(self.actionApply)
-        # self.toolBar.addAction(self.actionArrange)
+        self.toolBar.addAction(self.actionArrange)
         self.toolBar.addAction(self.actionHome)
         self.toolBar.addAction(self.actionPan)
         self.toolBar.addAction(self.actionSelect)
         self.toolBar.addAction(self.actionComment)
         self.toolBar.addAction(self.actionInspector)
-        # self.toolBar.insertSeparator(self.actionArrange)
+        self.toolBar.insertSeparator(self.actionArrange)
         self.toolBar.insertSeparator(self.actionHome)
 
         widget = self.toolBar.widgetForAction(self.actionApply)
         widget.setObjectName("actionApply")
+
+        # Search box on the right side of the toolbar
+        self._toolbar_spacer = QtWidgets.QWidget()
+        self._toolbar_spacer.setSizePolicy(QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Preferred)
+        self.toolBar.addWidget(self._toolbar_spacer)
+        self.graph_search = QtWidgets.QLineEdit()
+        self.graph_search.setPlaceholderText("Find node...")
+        self.graph_search.setMaximumWidth(220)
+        self.graph_search.setClearButtonEnabled(True)
+        self.toolBar.addWidget(self.graph_search)
+        self.actionFindNode = QtWidgets.QAction("Find Node", parent)
+        self.actionFindNode.setShortcut(QtGui.QKeySequence("Ctrl+F"))
+        self.actionFindNode.triggered.connect(self.graph_search.setFocus)
+        parent.addAction(self.actionFindNode)
 
         self.source_model = build_model()
         self.source_search = QtWidgets.QLineEdit()
@@ -475,6 +496,16 @@ class Ui_Toolbar(object):
         # Connect inspector action to dock visibility
         self.actionInspector.toggled.connect(self.state_dock.setVisible)
 
+        # Node search results dock (hidden until search text is entered)
+        self.node_search_dock = dockarea.Dock("Node Search", size=(400, 1000))
+        self.node_search_results = QtWidgets.QTreeWidget()
+        self.node_search_results.setColumnCount(1)
+        self.node_search_results.setHeaderHidden(True)
+        self.node_search_results.setRootIsDecorated(True)
+        self.node_search_dock.addWidget(self.node_search_results)
+        chart.addDock(self.node_search_dock, "right")
+        self.node_search_dock.setVisible(False)
+
         self.rateLbl = QtWidgets.QLabel("")
         self.rateLbl.setAlignment(QtCore.Qt.AlignRight | QtCore.Qt.AlignBottom)
 
@@ -490,6 +521,11 @@ class Ui_Toolbar(object):
         self.node_search.textChanged.connect(self.node_search_text_changed)
         self.source_search.textChanged.connect(self.source_search_text_changed)
         self.subgraph_search.textChanged.connect(self.subgraph_search_text_changed)
+
+        self.graph_search.textChanged.connect(lambda text: self.graph_search_text_changed(chart, text))
+        self.node_search_results.itemClicked.connect(lambda item, col: self.node_search_result_clicked(chart, item))
+        chart.chart.sigNodeCreated.connect(lambda node: self._refresh_node_search(chart))
+        chart.chart.sigNodeChanged.connect(lambda node: self._refresh_node_search(chart))
 
         self.pending = set()
 
@@ -541,3 +577,65 @@ class Ui_Toolbar(object):
         self.pending = set()
         self.actionApply.setToolTip("")
         self.toolBar.setStyleSheet("QToolButton#actionApply { background: none }")
+
+    def graph_search_text_changed(self, chart, text):
+        self.node_search_dock.setVisible(bool(text))
+        if text:
+            self._populate_node_search_results(chart, text)
+        else:
+            self.node_search_results.clear()
+
+    def _populate_node_search_results(self, chart, text):
+        self.node_search_results.clear()
+        flowchart = chart.chart
+
+        # Build map of node_name -> subgraph_name
+        node_to_subgraph = {}
+        for sg_name, sg_data in flowchart._subgraphs.items():
+            for node_name in sg_data.get("nodes", []):
+                node_to_subgraph[node_name] = sg_name
+
+        # Collect matching nodes grouped by subgraph
+        text_lower = text.lower()
+        groups = {}  # subgraph_name -> list of (node_name, label)
+        for node_name, node in flowchart.nodes(data="node"):
+            node_label = getattr(node, "_label", "") or ""
+            search_str = f"{node_name} {node_label}".lower()
+            if text_lower not in search_str:
+                continue
+            sg_name = node_to_subgraph.get(node_name, "root")
+            groups.setdefault(sg_name, []).append((node_name, node_label))
+
+        if not groups:
+            return
+
+        # "root" first, then subgraphs sorted alphabetically
+        order = (["root"] if "root" in groups else []) + sorted(k for k in groups if k != "root")
+        for sg_name in order:
+            header_text = "Root" if sg_name == "root" else sg_name
+            header_item = QtWidgets.QTreeWidgetItem([header_text])
+            header_item.setFlags(header_item.flags() & ~QtCore.Qt.ItemIsSelectable)
+            self.node_search_results.addTopLevelItem(header_item)
+            for node_name, node_label in sorted(groups[sg_name]):
+                display = f"{node_label} ({node_name})" if node_label else node_name
+                child = QtWidgets.QTreeWidgetItem([display])
+                child.setData(0, QtCore.Qt.UserRole, (node_name, sg_name))
+                header_item.addChild(child)
+            header_item.setExpanded(True)
+
+    def node_search_result_clicked(self, chart, item):
+        data = item.data(0, QtCore.Qt.UserRole)
+        if data is None:
+            return
+        node_name, sg_name = data
+        if sg_name == "root":
+            chart.viewManager.displayView(name="root")
+        else:
+            chart.viewManager.displayView(name=sg_name)
+        node = chart.chart._graph.nodes.get(node_name, {}).get("node")
+        if node is not None:
+            node.graphicsItem().setSelected(True)
+
+    def _refresh_node_search(self, chart):
+        if self.node_search_dock.isVisible():
+            self._populate_node_search_results(chart, self.graph_search.text())

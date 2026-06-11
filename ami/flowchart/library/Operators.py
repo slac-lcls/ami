@@ -911,6 +911,16 @@ class EventProcessor():
                 self.widget = FilterWidget(terms or self.input_vars(), self.output_vars(), self, win)
                 self.widget.sigStateChanged.connect(self.state_changed)
 
+                # Restore saved conditions if they exist
+                if self.values:
+                    state = {
+                        "conditions": len([k for k in self.values.keys() if k.startswith("Elif") or k == "If"]),
+                        "inputs": self.input_vars(),
+                        "outputs": self.output_vars(),
+                    }
+                    state.update(self.values)
+                    self.widget.restoreState(state)
+
             return self.widget
 
         def update(self, *args, **kwargs):

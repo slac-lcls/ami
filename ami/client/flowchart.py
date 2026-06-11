@@ -107,7 +107,7 @@ def run_editor_window(
     check_file = None
     with tempfile.NamedTemporaryFile(mode="w", delete=False) as f:
         f.write("from typing import *\n")
-        f.write("from mypy_extensions import TypedDict\n")
+        # f.write("from mypy_extensions import TypedDict\n")
         f.write("import numbers\n")
         f.write("import builtins\n")
         f.write("import amitypes\n")
@@ -365,8 +365,8 @@ class NodeProcess(QtCore.QObject):
         # Window object is still created but not displayed
         if not self.headless:
             self.win.show()
-            if self.node.viewed:
-                self.win.activateWindow()
+            self.win.raise_()
+            self.win.activateWindow()
 
         self.node.viewed = True
 
