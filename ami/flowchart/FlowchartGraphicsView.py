@@ -1,4 +1,5 @@
 from pyqtgraph import GraphicsWidget, GridItem
+from pyqtgraph.debug import printExc
 from pyqtgraph.graphicsItems.ViewBox import ViewBox
 from pyqtgraph.widgets.GraphicsView import GraphicsView
 from qtpy import QtCore, QtGui, QtWidgets
@@ -505,7 +506,6 @@ class FlowchartViewBox(ViewBox):
 
     def pasteSelectedNodes(self, pos=None):
         """Paste nodes from the clipboard, restoring state and connections."""
-        from pyqtgraph.debug import printExc
 
         if not self.manager.clipboard:
             return
