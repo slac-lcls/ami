@@ -15,7 +15,7 @@ from ami.flowchart.FlowchartGraphicsView import ViewManager
 from ami.flowchart.library import LIBRARY
 from ami.flowchart.library.common import CtrlNode, SourceNode
 from ami.flowchart.library.Editors import STYLE
-from ami.flowchart.Node import Node, NodeGraphicsItem, find_nearest
+from ami.flowchart.Node import Node, NodeGraphicsItem, find_free_pos, find_nearest
 from ami.flowchart.NodeLibrary import SourceLibrary
 from ami.flowchart.SourceConfiguration import SourceConfiguration
 from ami.flowchart.SubgraphLibrary import SubgraphLibrary, SubgraphTemplate
@@ -182,6 +182,8 @@ class Flowchart(QtCore.QObject):
         self.nextZVal += 1
         self.viewBox().addItem(item)
         pos = (find_nearest(pos[0]), find_nearest(pos[1]))
+        if item.scene():
+            pos = find_free_pos(item, pos[0], pos[1], item.scene())
         item.moveBy(*pos)
         subset = 1
         mod = node.__module__.split(".")[-1]
@@ -2278,6 +2280,14 @@ class FlowchartCtrlWidget(QtWidgets.QWidget):
 
         self.chart.sigFileLoaded.connect(self.setCurrentFile)
         self.chart.sigFileSaved.connect(self.setCurrentFile)
+
+        save_sc = QtWidgets.QShortcut(QtGui.QKeySequence("Ctrl+S"), self)
+        save_sc.setContext(QtCore.Qt.WidgetWithChildrenShortcut)
+        save_sc.activated.connect(self.saveClicked)
+
+        save_as_sc = QtWidgets.QShortcut(QtGui.QKeySequence("Ctrl+Shift+S"), self)
+        save_as_sc.setContext(QtCore.Qt.WidgetWithChildrenShortcut)
+        save_as_sc.activated.connect(self.saveAsClicked)
 
         self.sourceConfigure = SourceConfiguration(parent=self)
         self.sourceConfigure.sigApply.connect(self.configureApply)
