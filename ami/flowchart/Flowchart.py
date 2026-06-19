@@ -853,33 +853,23 @@ class Flowchart(QtCore.QObject):
         # Switch back to root view - user sees placeholder and can connect it
         self.viewManager().displayView(name="root")
 
-    def exportSubgraph(self, subgraph_name, fileName=None):
-        """Export an existing subgraph to a .fc file
+    def _getSubgraphExportState(self, subgraph_name, name=None, desc=None):
+        """Build and return the full export state dict for a subgraph with no dialogs or file I/O.
 
         Args:
             subgraph_name: Name of the subgraph in self._subgraphs
-            fileName: Path to save file (optional, shows dialog if None)
-        """
-        if subgraph_name not in self._subgraphs:
-            logger.error(f"Subgraph {subgraph_name} not found")
-            return
+            name: Export name to embed in metadata (defaults to subgraph_name)
+            desc: Description to embed in metadata (defaults to existing description)
 
-        # Get subgraph data
+        Returns:
+            state dict suitable for json.dump (with TypeEncoder) or direct use as a dict
+        """
         sg_data = self._subgraphs[subgraph_name]
 
-        # Show dialog for name/description (prefill with existing description)
-        existing_desc = sg_data.get("description", "")
-        name, desc = self._showExportDialog(subgraph_name, existing_desc)
-        if not name:
-            return
-
-        # Show file dialog if no filename provided
-        if fileName is None:
-            fileName, _ = FileDialog.getSaveFileName(
-                self.widget(), "Export Subgraph", f"{name}.fc", "Flowchart files (*.fc)"
-            )
-            if not fileName:
-                return
+        if name is None:
+            name = subgraph_name
+        if desc is None:
+            desc = sg_data.get("description", "")
 
         # Collect nodes in subgraph
         nodes = []
@@ -968,8 +958,7 @@ class Flowchart(QtCore.QObject):
                     }
                 )
 
-        # Create state dict
-        state = {
+        return {
             "subgraph_metadata": {
                 "name": name,
                 "description": desc,
@@ -980,6 +969,36 @@ class Flowchart(QtCore.QObject):
             "connects": connects,
             "views": {"root": sg_data["view"].viewBox().saveState()},
         }
+
+    def exportSubgraph(self, subgraph_name, fileName=None):
+        """Export an existing subgraph to a .fc file
+
+        Args:
+            subgraph_name: Name of the subgraph in self._subgraphs
+            fileName: Path to save file (optional, shows dialog if None)
+        """
+        if subgraph_name not in self._subgraphs:
+            logger.error(f"Subgraph {subgraph_name} not found")
+            return
+
+        # Get subgraph data
+        sg_data = self._subgraphs[subgraph_name]
+
+        # Show dialog for name/description (prefill with existing description)
+        existing_desc = sg_data.get("description", "")
+        name, desc = self._showExportDialog(subgraph_name, existing_desc)
+        if not name:
+            return
+
+        # Show file dialog if no filename provided
+        if fileName is None:
+            fileName, _ = FileDialog.getSaveFileName(
+                self.widget(), "Export Subgraph", f"{name}.fc", "Flowchart files (*.fc)"
+            )
+            if not fileName:
+                return
+
+        state = self._getSubgraphExportState(subgraph_name, name=name, desc=desc)
 
         # Save to file
         with open(fileName, "w") as f:

@@ -474,7 +474,20 @@ class FlowchartViewBox(ViewBox):
     def _buildClipboard(self, nodes_to_copy):
         """Populate the shared clipboard from a list of Node objects."""
         selected_names = {n.name() for n in nodes_to_copy}
-        nodes_data = [{"class": type(n).__name__, "name": n.name(), "state": n.saveState()} for n in nodes_to_copy]
+        nodes_data = []
+        for n in nodes_to_copy:
+            if isinstance(n, SubgraphNode) and n.name() in self.chart._subgraphs:
+                subgraph_data = self.chart._getSubgraphExportState(n.name())
+                base_state = n.saveState()
+                nodes_data.append(
+                    {
+                        "class": "SubgraphNode",
+                        "name": n.name(),
+                        "state": {"pos": base_state.get("pos", (0, 0)), "subgraph_data": subgraph_data},
+                    }
+                )
+            else:
+                nodes_data.append({"class": type(n).__name__, "name": n.name(), "state": n.saveState()})
         connects = []
         for from_name, to_name, data in self.chart._graph.edges(data=True):
             if from_name in selected_names and to_name in selected_names:
@@ -544,10 +557,16 @@ class FlowchartViewBox(ViewBox):
             new_y = max(min(new_y, 5000), -900)
 
             try:
-                new_node = self.widget.chart.createNode(class_name, pos=QtCore.QPointF(new_x, new_y), prompt=False)
-                state["pos"] = (new_x, new_y)
-                new_node.restoreState(state)
-                name_mapping[orig_name] = new_node.name()
+                if class_name == "SubgraphNode":
+                    subgraph_data = state.get("subgraph_data", {})
+                    sg_name = self.widget.chart.importSubgraphFromFile(subgraph_data, pos=QtCore.QPointF(new_x, new_y))
+                    if sg_name:
+                        name_mapping[orig_name] = sg_name
+                else:
+                    new_node = self.widget.chart.createNode(class_name, pos=QtCore.QPointF(new_x, new_y), prompt=False)
+                    state["pos"] = (new_x, new_y)
+                    new_node.restoreState(state)
+                    name_mapping[orig_name] = new_node.name()
             except Exception:
                 printExc(f"Error pasting node {orig_name} of type {class_name}")
                 continue
