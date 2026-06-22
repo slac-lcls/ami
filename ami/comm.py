@@ -439,8 +439,9 @@ class ResultStore(ZmqHandler):
                     continue
 
                 with self.select_lock:
-                    if output not in self.select_dict:
-                        self.select_dict[output] = (self.select_idx.value, self.select_manager.Lock())
+                    key = (name, output)
+                    if key not in self.select_dict:
+                        self.select_dict[key] = (self.select_idx.value, self.select_manager.Lock())
                         self.select_idx.value = (self.select_idx.value + 1) % len(self.select_hb)
 
     def remove(self, name):
@@ -463,7 +464,7 @@ class ResultStore(ZmqHandler):
 
                     # select_dict stores a lock/detector and maps each detector to an index in select_hb
                     # start = time.time()
-                    idx, lock = self.select_dict[val]  # { detector : (index, lock) }
+                    idx, lock = self.select_dict[(name, val)]  # { (graph, detector) : (index, lock) }
                     if self.select_hb[idx] < heartbeat.identity:
                         if lock.acquire(blocking=False):
                             if self.select_hb[idx] < heartbeat.identity:

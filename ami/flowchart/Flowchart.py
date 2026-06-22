@@ -146,7 +146,6 @@ class Flowchart(QtCore.QObject):
 
     def setLibrary(self, lib):
         self.library = lib
-        self.widget().chartWidget.buildMenu()
 
     def nodes(self, **kwargs):
         return self._graph.nodes(**kwargs)
@@ -2698,15 +2697,15 @@ class FlowchartWidget(dockarea.DockArea):
         self.operationMenu = None
         self.subMenus = []
         self.chart.library.reload()
-        self.buildMenu()
+        self.buildOperationMenu()
 
     def buildOperationMenu(self, pos=None):
         def buildSubMenu(node, rootMenu, subMenus, pos=None):
-            for section, node in node.items():
-                menu = QtWidgets.QMenu(section)
-                rootMenu.addMenu(menu)
-                if isinstance(node, OrderedDict):
-                    buildSubMenu(node, menu, subMenus, pos=pos)
+            for section, child in node.items():
+                if isinstance(child, OrderedDict):
+                    menu = QtWidgets.QMenu(section)
+                    rootMenu.addMenu(menu)
+                    buildSubMenu(child, menu, subMenus, pos=pos)
                     subMenus.append(menu)
                 else:
                     act = rootMenu.addAction(section)
@@ -2721,11 +2720,11 @@ class FlowchartWidget(dockarea.DockArea):
 
     def buildSourceMenu(self, pos=None):
         def buildSubMenu(node, rootMenu, subMenus, pos=None):
-            for section, node in node.items():
-                menu = QtWidgets.QMenu(section)
-                rootMenu.addMenu(menu)
-                if isinstance(node, OrderedDict):
-                    buildSubMenu(node, menu, subMenus, pos=pos)
+            for section, child in node.items():
+                if isinstance(child, OrderedDict):
+                    menu = QtWidgets.QMenu(section)
+                    rootMenu.addMenu(menu)
+                    buildSubMenu(child, menu, subMenus, pos=pos)
                     subMenus.append(menu)
                 else:
                     act = rootMenu.addAction(section)
