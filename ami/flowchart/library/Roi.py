@@ -487,7 +487,13 @@ class Roi0D(CtrlNode):
 
     def __init__(self, name):
         super().__init__(
-            name, terminals={"In": {"io": "in", "ttype": Array2d}, "Out": {"io": "out", "ttype": float}}, viewable=True
+            name,
+            terminals={
+                "In": {"io": "in", "ttype": Array2d},
+                "Out": {"io": "out", "ttype": float},
+                "Roi_Coordinates": {"io": "out", "ttype": Array1d},
+            },
+            viewable=True,
         )
 
     def isChanged(self, restore_ctrl, restore_widget):
@@ -522,7 +528,7 @@ class Roi0D(CtrlNode):
         y = self.values["y"]
 
         def func(img):
-            return img[x, y]
+            return img[x, y], np.array([x, y], dtype=np.float32)
 
         return gn.Map(name=self.name() + "_operation", **kwargs, func=func)
 
