@@ -2,6 +2,127 @@
 requires = ["setuptools"]
 build-backend = "setuptools.build_meta"
 
+[project]
+name = "ami"
+version = "2.0.0"
+description = "LCLS analysis monitoring"
+readme = "README.md"
+license = { file = "LICENSE.md" }
+authors = [
+    { name = "Daniel Damiani", email = "ddamiani@slac.stanford.edu" }
+]
+requires-python = ">=3.9"
+classifiers = [
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: BSD License",
+    "Operating System :: MacOS :: MacOS X",
+    "Operating System :: Microsoft :: Windows",
+    "Operating System :: POSIX",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.9",
+    "Topic :: Scientific/Engineering :: Visualization",
+    "Topic :: Utilities",
+]
+dependencies = [
+    "dill",
+    "pyzmq",
+    "numpy",
+    "networkx",
+    "sympy",
+    "pyqtgraph",
+    "networkfox",
+    "ipython",
+    "qtpy",
+    "qasync>=0.27.1",
+    "amityping>=1.1.2",
+    "mypy",
+    "setproctitle",
+    "prometheus_client",
+    "lark",
+]
+
+[project.optional-dependencies]
+pva = [
+    "p4p",
+    "caproto",
+]
+hdf5 = ["h5py"]
+arrow = ["pyarrow>=0.17"]
+lcls = [
+    "psana",
+    "h5py",
+    "p4p",
+    "mpi4py",
+]
+console = ["qtconsole"]
+opengl = ["PyOpenGL"]
+monitor = [
+    "bokeh",
+    "holoviews",
+    "panel",
+    "tornado",
+]
+tracing = [
+    "opentelemetry-api",
+    "opentelemetry-sdk",
+    "opentelemetry-exporter-otlp-proto-grpc",
+]
+scipy = ["scipy"]
+fftw = ["pyFFTW"]
+psalg = [
+    "pint",
+    "numba",
+]
+all = [
+    "ami[pva,hdf5,arrow,lcls,console,opengl,monitor,tracing,scipy,fftw,psalg,dev,test]"
+]
+dev = [
+    "pre-commit>=3.6.0",
+    "black==26.3.1",
+    "isort==5.13.2",
+    "flake8",
+    "flake8-black",
+]
+test = [
+    "pytest",
+    "pytest-asyncio",
+    "pytest-qt",
+    "pytest-cov",
+]
+
+[project.urls]
+Homepage = "https://confluence.slac.stanford.edu/display/PSDMInternal/AMI+Replacement"
+
+[project.scripts]
+ami-worker = "ami.worker:main"
+ami-manager = "ami.manager:main"
+ami-node = "ami.collector:node_main"
+ami-global = "ami.collector:global_main"
+ami-client = "ami.client:main"
+ami-console = "ami.console:main"
+ami-local = "ami.local:main"
+ami-remote = "ami.remote:main"
+ami-export = "ami.export:main"
+ami-syncer = "ami.sync:main"
+ami-monitor = "ami.monitor:main"
+ami-fc-to-source = "ami.fc_to_worker:main"
+
+[tool.setuptools]
+script-files = ["ami/ami-mpi"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "strict"
+asyncio_default_fixture_loop_scope = "function"
+testpaths = ["tests"]
+filterwarnings = [
+    "ignore:'pyarrow..*' is deprecated:FutureWarning",
+    "ignore::DeprecationWarning:past",
+    "ignore::DeprecationWarning:Detector.PyDetectorAccess",
+    "ignore::DeprecationWarning:jupyter_client.connect",
+    "ignore::DeprecationWarning:pkg_resources",
+    "ignore:Unknown config option:pytest.PytestConfigWarning",
+]
+
 [tool.black]
 line-length = 120
 target-version = ['py39']
@@ -19,18 +140,10 @@ extend-exclude = '''
 
 [tool.ruff]
 line-length = 120
-target-version = ['py39']
-extend-exclude = '''
-/(
-  | build
-  | dist
-  | \.eggs
-  | \.git
-  | \.venv
-  | install
-  | install-lcls1
-)/
-'''
+target-version = "py39"
+extend-exclude = [
+    "build", "dist", ".eggs", ".git", ".venv", "install", "install-lcls1"
+]
 
 [tool.isort]
 profile = "black"
