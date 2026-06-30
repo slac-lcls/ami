@@ -54,7 +54,7 @@ def lookup_epicstype(src, env):
         info = epics_store.getPV(src)
         if info is not None:
             if info.numElements() > 1:
-                return amitypes.Array1D
+                return amitypes.Array1d
             else:
                 return EPICS_TO_PYTHON.get(info.dbr().DBR_TYPE_ID.name)
 
