@@ -24,6 +24,8 @@ from ami.flowchart.library.Editors import (
     RectEditor,
     TraceEditor,
     camera,
+    disk,
+    line_styles,
     pixmapFromBase64,
 )
 from ami.flowchart.library.WidgetGroup import generateUi
@@ -169,6 +171,134 @@ class AsyncFetcher(QtCore.QThread):
         self.ctx.destroy()
 
 
+class CSVDialog(QtWidgets.QWidget):
+    """Floating dialog for importing CSV reference overlays and exporting trace data."""
+
+    def __init__(self, plot_widget, parent=None):
+        super().__init__(parent, QtCore.Qt.Tool)
+        self.plot_widget = plot_widget
+        self.setWindowTitle("CSV References")
+        self.resize(520, 320)
+
+        tabs = QtWidgets.QTabWidget()
+
+        # --- Import References tab ---
+        import_widget = QtWidgets.QWidget()
+        import_layout = QtWidgets.QVBoxLayout(import_widget)
+
+        self.ref_table = QtWidgets.QTableWidget(0, 3)
+        self.ref_table.setHorizontalHeaderLabels(["Name", "File", ""])
+        self.ref_table.horizontalHeader().setSectionResizeMode(0, QtWidgets.QHeaderView.ResizeToContents)
+        self.ref_table.horizontalHeader().setSectionResizeMode(1, QtWidgets.QHeaderView.Stretch)
+        self.ref_table.horizontalHeader().setSectionResizeMode(2, QtWidgets.QHeaderView.ResizeToContents)
+        self.ref_table.setSelectionMode(QtWidgets.QAbstractItemView.NoSelection)
+        self.ref_table.verticalHeader().setVisible(False)
+        self.ref_table.setEditTriggers(QtWidgets.QAbstractItemView.NoEditTriggers)
+
+        add_btn = QtWidgets.QPushButton("Add CSV Reference\u2026")
+        add_btn.clicked.connect(self._add_reference)
+
+        import_layout.addWidget(self.ref_table)
+        import_layout.addWidget(add_btn)
+
+        # --- Export References tab ---
+        export_widget = QtWidgets.QWidget()
+        export_layout = QtWidgets.QVBoxLayout(export_widget)
+
+        export_layout.addWidget(QtWidgets.QLabel("Select traces to export:"))
+
+        self.export_list = QtWidgets.QListWidget()
+
+        btn_row = QtWidgets.QHBoxLayout()
+        select_all_btn = QtWidgets.QPushButton("Select All")
+        select_all_btn.clicked.connect(self._select_all)
+        select_none_btn = QtWidgets.QPushButton("Select None")
+        select_none_btn.clicked.connect(self._select_none)
+        btn_row.addWidget(select_all_btn)
+        btn_row.addWidget(select_none_btn)
+        btn_row.addStretch()
+
+        export_btn = QtWidgets.QPushButton("Export Selected to CSV\u2026")
+        export_btn.clicked.connect(self._export_csv)
+
+        export_layout.addWidget(self.export_list)
+        export_layout.addLayout(btn_row)
+        export_layout.addWidget(export_btn)
+
+        tabs.addTab(import_widget, "Import References")
+        tabs.addTab(export_widget, "Export References")
+
+        main_layout = QtWidgets.QVBoxLayout(self)
+        main_layout.addWidget(tabs)
+
+    def showEvent(self, event):
+        super().showEvent(event)
+        self._update_ref_table()
+        self._refresh_export_list()
+
+    def _update_ref_table(self):
+        refs = self.plot_widget.csv_references
+        self.ref_table.setRowCount(len(refs))
+        for i, (name, path) in enumerate(refs.items()):
+            self.ref_table.setItem(i, 0, QtWidgets.QTableWidgetItem(name))
+            path_item = QtWidgets.QTableWidgetItem(os.path.basename(path))
+            path_item.setToolTip(path)
+            self.ref_table.setItem(i, 1, path_item)
+            remove_btn = QtWidgets.QPushButton("Remove")
+            remove_btn.clicked.connect(lambda checked, n=name: self._remove_reference(n))
+            self.ref_table.setCellWidget(i, 2, remove_btn)
+
+    def _add_reference(self):
+        path, _ = QtWidgets.QFileDialog.getOpenFileName(
+            self, "Open CSV Reference", "", "CSV Files (*.csv);;All Files (*)"
+        )
+        if path:
+            self.plot_widget.load_csv_reference(path)
+            self._update_ref_table()
+            self._refresh_export_list()
+
+    def _remove_reference(self, name):
+        self.plot_widget.remove_csv_reference(name)
+        self._update_ref_table()
+        self._refresh_export_list()
+
+    def _refresh_export_list(self):
+        self.export_list.clear()
+        for name in self.plot_widget.plot:
+            item = QtWidgets.QListWidgetItem(name)
+            item.setFlags(item.flags() | QtCore.Qt.ItemIsUserCheckable)
+            item.setCheckState(QtCore.Qt.Checked)
+            self.export_list.addItem(item)
+        for name in self.plot_widget.csv_references:
+            item = QtWidgets.QListWidgetItem(f"[ref] {name}")
+            item.setFlags(item.flags() | QtCore.Qt.ItemIsUserCheckable)
+            item.setCheckState(QtCore.Qt.Checked)
+            self.export_list.addItem(item)
+
+    def _select_all(self):
+        for i in range(self.export_list.count()):
+            self.export_list.item(i).setCheckState(QtCore.Qt.Checked)
+
+    def _select_none(self):
+        for i in range(self.export_list.count()):
+            self.export_list.item(i).setCheckState(QtCore.Qt.Unchecked)
+
+    def _export_csv(self):
+        selected = []
+        for i in range(self.export_list.count()):
+            item = self.export_list.item(i)
+            if item.checkState() == QtCore.Qt.Checked:
+                selected.append(item.text())
+        if not selected:
+            QtWidgets.QMessageBox.warning(self, "No Traces Selected", "Please select at least one trace to export.")
+            return
+        path, _ = QtWidgets.QFileDialog.getSaveFileName(self, "Export CSV", "", "CSV Files (*.csv);;All Files (*)")
+        if path:
+            if not path.endswith(".csv"):
+                path += ".csv"
+            self.plot_widget.export_traces_to_csv(selected, path)
+
+
 class PlotWidget(QtWidgets.QWidget):
     latency = pc.Gauge("ami_plot_latency_secs", "Plot Latency", ["hutch", "process"])
     memory = pc.Gauge("ami_plot_memory_mb", "Plot Memory", ["hutch", "process"])
@@ -221,12 +351,18 @@ class PlotWidget(QtWidgets.QWidget):
         self.exporter = ExportDialog(self.plot_view.vb.scene())
         self.export_btn.clicked.connect(self.export_plot)
 
+        self.csv_btn = pg.ButtonItem(pixmapFromBase64(disk), 18, parentItem=self.plot_view)
+        self.csv_dialog = CSVDialog(self, parent=self)
+        self.csv_btn.clicked.connect(self.csv_dialog.show)
+
         self.plot = {}  # { name : PlotDataItem }
         self.trace_ids = {}  # { trace_idx : name }
         self.trace_attrs = {}  # { name : legend_editors[trace_idx].attrs }
         self.legend_editors = {}  # { trace_idx : TraceEditor() }
         self.annotation_editors = {}
         self.annotation_traces = {}
+        self.reference_traces = {}  # { name : PlotDataItem }
+        self.csv_references = {}  # { name : filepath }
 
         self.terms = terms
 
@@ -315,6 +451,13 @@ class PlotWidget(QtWidgets.QWidget):
         self.add_annotation_btn = QtWidgets.QPushButton("Add", self.annotation_groupbox)
         self.add_annotation_btn.clicked.connect(self.add_annotation)
         self.annotation_layout.addWidget(self.add_annotation_btn)
+
+        self.ref_editors = {}  # { ref_name : TraceEditor }
+        self.ref_layout = QtWidgets.QFormLayout()
+        self.ref_groupbox = QtWidgets.QGroupBox()
+        self.ref_groupbox.setTitle("References")
+        self.ref_groupbox.setLayout(self.ref_layout)
+        ctrl_layout.addWidget(self.ref_groupbox)
 
         self.apply_btn = QtWidgets.QPushButton("Apply", self.ui)
         self.apply_btn.clicked.connect(self.apply_clicked)
@@ -535,6 +678,18 @@ class PlotWidget(QtWidgets.QWidget):
                 if self.legend:
                     self.legend.addItem(item, editor.ctrls["name"].text())
 
+        for ref_name, editor in self.ref_editors.items():
+            if ref_name in self.reference_traces:
+                item = self.reference_traces[ref_name]
+                if editor.attrs:
+                    x, y = item.getData()
+                    pen = editor.attrs.get("pen")
+                    point = editor.attrs.get("point", {})
+                    item.setData(x, y, pen=pen, **point)
+                legend_label = editor.name_edit.text() if hasattr(editor, "name_edit") else ref_name
+                if self.legend:
+                    self.legend.addItem(item, legend_label)
+
         # Handle screenshot configuration
         if "Screenshots" in self.plot_attrs:
             self.screenshot_enabled = self.plot_attrs["Screenshots"].get("Record Screenshots", False)
@@ -575,6 +730,12 @@ class PlotWidget(QtWidgets.QWidget):
         state["screenshot_enabled"] = self.screenshot_enabled
         state["screenshot_dir"] = self.screenshot_dir
         state["screenshot_counter"] = self.screenshot_counter
+        # Save CSV reference paths and editor states
+        state["csv_references"] = dict(self.csv_references)
+        state["ref_editors"] = {n: e.saveState() for n, e in self.ref_editors.items()}
+        state["ref_legend_names"] = {
+            n: e.name_edit.text() for n, e in self.ref_editors.items() if hasattr(e, "name_edit")
+        }
 
         return state
 
@@ -607,6 +768,25 @@ class PlotWidget(QtWidgets.QWidget):
         self.screenshot_enabled = state.get("screenshot_enabled", False)
         self.screenshot_dir = state.get("screenshot_dir", "./screenshots")
         self.screenshot_counter = state.get("screenshot_counter", 0)
+
+        # Restore CSV reference overlays
+        for name in list(self.csv_references.keys()):
+            self.remove_csv_reference(name)
+        for name, path in state.get("csv_references", {}).items():
+            if os.path.exists(path):
+                self.load_csv_reference(path, name=name)
+            else:
+                logger.warning(f"CSV reference file not found, skipping: {path}")
+        for name, editor_state in state.get("ref_editors", {}).items():
+            if name in self.ref_editors:
+                self.ref_editors[name].restoreState(editor_state)
+                if name in self.reference_traces:
+                    attrs = self.ref_editors[name].attrs
+                    if attrs and "pen" in attrs:
+                        self.reference_traces[name].setPen(attrs["pen"])
+        for name, label in state.get("ref_legend_names", {}).items():
+            if name in self.ref_editors and hasattr(self.ref_editors[name], "name_edit"):
+                self.ref_editors[name].name_edit.setText(label)
 
     def configure_plot(self):
         # Update min/max spinboxes with current viewbox ranges
@@ -680,6 +860,115 @@ class PlotWidget(QtWidgets.QWidget):
         except Exception as e:
             logger.error(f"Failed to save screenshot: {e}")
 
+    def load_csv_reference(self, path, name=None):
+        """Load a CSV file as a reference overlay trace on the plot."""
+        try:
+            try:
+                data = np.genfromtxt(path, delimiter=",", names=True, dtype=None, encoding=None)
+                cols = data.dtype.names
+                if cols and len(cols) >= 2:
+                    x = data[cols[0]].astype(float)
+                    y = data[cols[1]].astype(float)
+                elif cols and len(cols) == 1:
+                    y = data[cols[0]].astype(float)
+                    x = np.arange(len(y), dtype=float)
+                else:
+                    raise ValueError("no columns parsed")
+            except Exception:
+                raw = np.genfromtxt(path, delimiter=",")
+                if raw.ndim == 1:
+                    x = np.arange(len(raw), dtype=float)
+                    y = raw.astype(float)
+                elif raw.ndim == 2 and raw.shape[1] >= 2:
+                    x = raw[:, 0]
+                    y = raw[:, 1]
+                else:
+                    logger.error(f"Cannot parse CSV reference {path}: unexpected shape")
+                    return
+        except Exception as e:
+            logger.error(f"Failed to load CSV reference {path}: {e}")
+            return
+
+        if name is None:
+            name = os.path.splitext(os.path.basename(path))[0]
+
+        base_name = name
+        i = 1
+        while name in self.csv_references:
+            name = f"{base_name}_{i}"
+            i += 1
+
+        ref_colors = [(255, 165, 0), (128, 0, 200), (0, 200, 200), (255, 20, 147), (200, 200, 0)]
+        color = ref_colors[len(self.reference_traces) % len(ref_colors)]
+        trace = self.plot_view.plot(x, y, pen=pg.mkPen(color, width=2))
+        self.reference_traces[name] = trace
+        self.csv_references[name] = path
+
+        r, g, b = color[:3]
+        ref_uiTemplate = [
+            (
+                "symbol",
+                "combo",
+                {
+                    "values": ["o", "t", "t1", "t2", "t3", "s", "p", "h", "star", "+", "d", "None"],
+                    "value": "None",
+                    "group": "Point",
+                },
+            ),
+            ("Brush", "color", {"value": (0, 0, 255), "group": "Point"}),
+            ("Size", "intSpin", {"min": 1, "value": 14, "group": "Point"}),
+            ("color", "color", {"group": "Line", "value": (r, g, b)}),
+            ("width", "intSpin", {"min": 1, "value": 1, "group": "Line"}),
+            ("style", "combo", {"values": list(line_styles.keys()), "value": "Solid", "group": "Line"}),
+        ]
+        name_edit = QtWidgets.QLineEdit(name)
+        editor = TraceEditor(parent=self.ref_groupbox, widget=self, uiTemplate=ref_uiTemplate)
+        editor.name_edit = name_edit
+        self.ref_layout.addRow(name, name_edit)
+        self.ref_layout.addRow(editor)
+        self.ref_editors[name] = editor
+        if self.legend:
+            self.legend.addItem(trace, name)
+
+    def remove_csv_reference(self, name):
+        """Remove a CSV reference overlay trace from the plot."""
+        if name in self.reference_traces:
+            item = self.reference_traces.pop(name)
+            self.plot_view.removeItem(item)
+            if self.legend:
+                self.legend.removeItem(item)
+        self.csv_references.pop(name, None)
+        if name in self.ref_editors:
+            editor = self.ref_editors.pop(name)
+            if hasattr(editor, "name_edit"):
+                self.ref_layout.removeRow(editor.name_edit)
+            self.ref_layout.removeRow(editor)
+
+    def export_traces_to_csv(self, selected_names, path):
+        """Write selected live and reference traces to a CSV file."""
+        data_dict = {}
+        for label in selected_names:
+            if label.startswith("[ref] "):
+                name = label[len("[ref] ") :]
+                item = self.reference_traces.get(name)
+            else:
+                item = self.plot.get(label)
+            if item is None:
+                continue
+            xdata, ydata = item.getData()
+            if xdata is not None:
+                data_dict[f"{label}_x"] = xdata
+            if ydata is not None:
+                data_dict[f"{label}_y"] = ydata
+        if not data_dict:
+            return
+        max_len = max(len(v) for v in data_dict.values())
+        cols = [np.pad(v.astype(float), (0, max_len - len(v)), constant_values=np.nan) for v in data_dict.values()]
+        try:
+            np.savetxt(path, np.column_stack(cols), delimiter=",", header=",".join(data_dict.keys()), comments="")
+        except Exception as e:
+            logger.error(f"Failed to export CSV: {e}")
+
     def close(self):
         if self.fetcher:
             self.fetcher.close()
@@ -699,6 +988,10 @@ class PlotWidget(QtWidgets.QWidget):
             rect = self.itemPos("configure_btn")
             x = rect.topRight().x()
             self.export_btn.setPos(x, -5.5)
+
+            rect = self.itemPos("export_btn")
+            x = rect.topRight().x()
+            self.csv_btn.setPos(x, -2.5)
 
 
 class ObjectWidget(pg.LayoutWidget):
