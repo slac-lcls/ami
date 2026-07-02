@@ -327,9 +327,7 @@ class Node(QtCore.QObject):
         for name, term in self.terminals.items():
             if name in self._input_vars:
                 if term.optional():
-                    input_vars[name] = modifiers.optional(
-                        self._input_vars[name], mapped_name=name.replace(".", "_")
-                    )
+                    input_vars[name] = modifiers.optional(self._input_vars[name], mapped_name=name.replace(".", "_"))
                 else:
                     input_vars[name] = self._input_vars[name]
         return input_vars
@@ -417,9 +415,7 @@ class Node(QtCore.QObject):
             elif node and node.isSource():
                 self._input_vars[localTerm.name()] = node.name()
             elif node and remoteTerm:
-                self._input_vars[localTerm.name()] = ".".join(
-                    [node.name(), remoteTerm.name()]
-                )
+                self._input_vars[localTerm.name()] = ".".join([node.name(), remoteTerm.name()])
 
         if not self.changed:
             self.changed = localTerm.isInput()
@@ -557,12 +553,7 @@ class Node(QtCore.QObject):
 
     def optionalTerm(self, term):
         if self._allowOptional:
-            checked = all(
-                [
-                    term.isInput() and term.optional()
-                    for name, term in self.terminals.items()
-                ]
-            )
+            checked = all([term.isInput() and term.optional() for name, term in self.terminals.items()])
             self.graphicsItem().optional.setChecked(checked)
             self.sigTerminalOptional.emit(self, term)
 
@@ -614,9 +605,7 @@ class NodeGraphicsItem(GraphicsObject):
         self.labelItem.setDefaultTextColor(QtGui.QColor(50, 50, 50))
         self.labelItem.mousePressEvent = self.nameEditingStarted
         self.labelItem.focusOutEvent = self.nameEditingFinished
-        self.labelItem.moveBy(
-            self.bounds.width() / 2.0 - self.labelItem.boundingRect().width() / 2.0, 0
-        )
+        self.labelItem.moveBy(self.bounds.width() / 2.0 - self.labelItem.boundingRect().width() / 2.0, 0)
         self.labelItem.setCursor(QtCore.Qt.IBeamCursor)
 
         # Add class name item below the name
@@ -652,9 +641,7 @@ class NodeGraphicsItem(GraphicsObject):
 
     def setLabel(self, label):
         self.labelItem.setPlainText(label)
-        self.labelItem.setPos(
-            self.bounds.width() / 2.0 - self.labelItem.boundingRect().width() / 2.0, 0
-        )
+        self.labelItem.setPos(self.bounds.width() / 2.0 - self.labelItem.boundingRect().width() / 2.0, 0)
         self.nameItem.setVisible(True)
         nameBottom = self.nameItem.boundingRect().height()
         self.nameItem.setPos(
@@ -696,9 +683,7 @@ class NodeGraphicsItem(GraphicsObject):
             self.node.sigLabelChanged.emit(self.node, self.node._label)
 
         # Reposition label (centered)
-        self.labelItem.setPos(
-            self.bounds.width() / 2.0 - self.labelItem.boundingRect().width() / 2.0, 0
-        )
+        self.labelItem.setPos(self.bounds.width() / 2.0 - self.labelItem.boundingRect().width() / 2.0, 0)
 
     def updateTerminals(self):
         inp = self.node.inputs()
@@ -765,6 +750,8 @@ class NodeGraphicsItem(GraphicsObject):
         if ev.button() == QtCore.Qt.LeftButton:
             ev.accept()
             sel = self.isSelected()
+            if sel:
+                self.setSelected(False)
             self.setSelected(True)
             if not sel and self.isSelected():
                 self.update()
@@ -777,11 +764,10 @@ class NodeGraphicsItem(GraphicsObject):
     def mouseDragEvent(self, ev):
         if ev.button() == QtCore.Qt.LeftButton:
             ev.accept()
-            pos = (
-                self.pos() + self.mapToParent(ev.pos()) - self.mapToParent(ev.lastPos())
-            )
+            pos = self.pos() + self.mapToParent(ev.pos()) - self.mapToParent(ev.lastPos())
+            pos = [pos.x(), pos.y()]
             if ev.isFinish():
-                pos = [find_nearest(pos.x()), find_nearest(pos.y())]
+                pos = [find_nearest(pos[0]), find_nearest(pos[1])]
 
             pos[0] = max(min(pos[0], 5e3), 0)
             pos[1] = max(min(pos[1], 5e3), -900)
@@ -976,17 +962,13 @@ class SourceNodeGraphicsItem(NodeGraphicsItem):
     Extension of the NodeGraphicsItem to handle the source kwargs graphics.
     """
 
-    sigSourceKwargs = QtCore.Signal(
-        object
-    )  # signal emitted when new user kwargs are supplied
+    sigSourceKwargs = QtCore.Signal(object)  # signal emitted when new user kwargs are supplied
 
     def __init__(self, node, brush=None):
         super().__init__(node, brush=brush)
         self._source_kwargs = {}
 
-        self.kwargs_parser = Lark(
-            kwargs_grammar, start="value"
-        )  # , transformer=MyTransformer_2(), parser='lalr')
+        self.kwargs_parser = Lark(kwargs_grammar, start="value")  # , transformer=MyTransformer_2(), parser='lalr')
         self.kwargs_transformer = KwargsTransformer()
 
     @property
