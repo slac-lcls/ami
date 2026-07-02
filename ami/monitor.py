@@ -3,20 +3,18 @@ import argparse
 import asyncio
 import datetime as dt
 import logging
-import pickle
 import sys
 
 import holoviews as hv
 import numpy as np
 import panel as pn
-import tornado.ioloop
 import zmq
+import zmq.asyncio
 from bokeh.models.ranges import DataRange1d
-from networkfox import modifiers
 
 from ami import Defaults, LogConfig
 from ami.client import GraphMgrAddress
-from ami.comm import ZMQ_TOPIC_DELIM, PlatformAction, Ports
+from ami.comm import PlatformAction, Ports
 from ami.data import Deserializer
 
 logger = logging.getLogger(__name__)
@@ -49,113 +47,117 @@ row_step = 3
 col_step = 4
 
 
-class AsyncFetcher(object):
+class AsyncFetcher:
+    """Single shared data fetcher for all plot widgets.
 
-    def __init__(self, topics, terms, addr, ctx):
+    Subscribes to heartbeat notifications on the export XPUB socket, then
+    issues a single batched REQ/REP call for all features needed by registered
+    widgets. This avoids N separate ZMQ round-trips.
+    """
+
+    def __init__(self, addr, ctx):
         self.addr = addr
         self.ctx = ctx
-        self.poller = zmq.asyncio.Poller()
-        self.sockets = {}
-        self.data = {}
-        self.timestamps = {}
-        self.heartbeats = set()
-        self.last_updated = ""
         self.deserializer = Deserializer()
-        self.update_topics(topics, terms)
+        self.heartbeat_timestamp = 0
+        self.widgets = {}  # name -> PlotWidget
 
-    @property
-    def reply(self):
-        self.heartbeats = set(self.timestamps.values())
-        res = {}
+        # Subscribe to heartbeat notifications on the export socket
+        self.export = ctx.socket(zmq.SUB)
+        self.export.connect(addr.export)
+        self.export.setsockopt_string(zmq.SUBSCRIBE, "heartbeat")
 
-        if self.data.keys() == self.subs and len(self.heartbeats) == 1:
-            for name, topic in self.topics.items():
-                res[name] = self.data[topic]
+        # REQ socket for batch view data requests
+        self.view = ctx.socket(zmq.REQ)
+        self.view.connect(addr.view)
 
-        elif self.optional.issuperset(self.data.keys()):
-            for name, topic in self.topics.items():
-                if topic in self.data:
-                    res[name] = self.data[topic]
+    def register(self, name, widget):
+        self.widgets[name] = widget
 
-        return res
+    def unregister(self, name):
+        self.widgets.pop(name, None)
 
-    def update_topics(self, topics, terms):
-        self.topics = topics
-        self.terms = terms
-        self.names = list(topics.keys())
-        self.subs = set(topics.values())
-        self.optional = set([value for key, value in topics.items() if type(key) is modifiers.optional])
+    async def run(self):
+        while True:
+            try:
+                # Wait for heartbeat notification from manager
+                await self.export.recv_string()  # topic, unused
+                graph = await self.export.recv_string()
+                heartbeat = await self.export.recv_pyobj()
 
-        for name, sock_count in self.sockets.items():
-            sock, count = sock_count
-            self.poller.unregister(sock)
-            sock.close()
+                if graph != self.addr.name:
+                    continue
+                if heartbeat.timestamp <= self.heartbeat_timestamp:
+                    continue
+                self.heartbeat_timestamp = heartbeat.timestamp
 
-        self.sockets = {}
-        self.view_subs = {}
+                if not self.widgets:
+                    continue
 
-        for term, name in terms.items():
-            if name not in self.sockets:
-                topic = topics[name]
-                sub_topic = "view:%s:%s" % (self.addr.name, topic)
-                self.view_subs[sub_topic] = topic
-                sock = self.ctx.socket(zmq.SUB)
-                sock.setsockopt_string(zmq.SUBSCRIBE, sub_topic + ZMQ_TOPIC_DELIM)
-                sock.connect(self.addr.view)
-                self.poller.register(sock, zmq.POLLIN)
-                self.sockets[name] = (sock, 1)  # reference count
-            else:
-                sock, count = self.sockets[name]
-                self.sockets[name] = (sock, count + 1)
+                # Collect all unique features needed by all active widgets
+                all_features = set()
+                for widget in self.widgets.values():
+                    all_features.update(widget.topics.values())
 
-    async def fetch(self):
-        for sock, flag in await self.poller.poll():
-            if flag != zmq.POLLIN:
-                continue
-            topic = await sock.recv_string()
-            topic = topic.rstrip("\0")
-            heartbeat = await sock.recv_pyobj()
-            reply = await sock.recv_serialized(self.deserializer, copy=False)
-            self.data[self.view_subs[topic]] = reply
-            self.timestamps[self.view_subs[topic]] = heartbeat
+                if not all_features:
+                    continue
+
+                # Single batch request for all features
+                requests = [f"view:{self.addr.name}:{f}" for f in all_features]
+                await self.view.send_pyobj(requests)
+                response = await self.view.recv_serialized(self.deserializer, copy=False)
+
+                batch_data = response.get("data", {})
+                resp_heartbeat = response.get("heartbeat", heartbeat)
+
+                # Distribute data to each registered widget
+                for widget in self.widgets.values():
+                    widget_data = {}
+                    for input_name, feature in widget.topics.items():
+                        val = batch_data.get(feature)
+                        if val is None:
+                            continue
+                        # Skip 0-dimensional numpy arrays
+                        if isinstance(val, np.ndarray) and val.ndim == 0:
+                            continue
+                        widget_data[input_name] = val
+                    if widget_data:
+                        widget.data_updated(widget_data)
+                        widget.update_latency(resp_heartbeat)
+            except Exception:
+                logger.exception("Error in AsyncFetcher.run")
+                await asyncio.sleep(1)
 
     def close(self):
-        for name, sock_count in self.sockets.items():
-            sock, count = sock_count
-            self.poller.unregister(sock)
-            sock.close()
+        self.export.close()
+        self.view.close()
 
 
 class PlotWidget:
 
-    def __init__(self, topics=None, terms=None, addr=None, ctx=None, **kwargs):
-        self.fetcher = AsyncFetcher(topics, terms, addr, ctx)
+    def __init__(self, topics=None, terms=None, name="", idx=(0, 0), **kwargs):
+        self.topics = topics  # {input_name: feature_name}
         self.terms = terms
-
-        self.name = kwargs.get("name", "")
-        self.idx = kwargs.get("idx", (0, 0))
+        self.name = name
+        self.idx = idx
         self.pipes = {}
         self._plot = None
         self._latency_lbl = pn.widgets.StaticText()
 
         if kwargs.get("pipes", True):
-            for term, name in terms.items():
-                self.pipes[name] = hv.streams.Pipe(data=[])
+            for term, input_name in terms.items():
+                self.pipes[input_name] = hv.streams.Pipe(data=[])
 
-    async def update(self):
-        while True:
-            await self.fetcher.fetch()
-            if self.fetcher.reply:
-                self.data_updated(self.fetcher.reply)
-                heartbeat = self.fetcher.heartbeats.pop()
-                now = dt.datetime.now()
-                now = now.strftime("%T")
-                latency = dt.datetime.now() - dt.datetime.fromtimestamp(heartbeat.timestamp)
-                last_updated = f"<b>{self.name}<br/>Last Updated: {now}<br/>Latency: {latency}</b>"
-                self._latency_lbl.value = last_updated
+    def data_updated(self, data):
+        pass  # Overridden by subclasses
+
+    def update_latency(self, heartbeat):
+        now = dt.datetime.now()
+        latency = now - dt.datetime.fromtimestamp(heartbeat.timestamp)
+        self._latency_lbl.value = f"<b>{self.name}<br/>Last Updated: {now:%T}<br/>Latency: {latency}</b>"
 
     def close(self):
-        self.fetcher.close()
+        pass
 
     @property
     def plot(self):
@@ -168,13 +170,14 @@ class PlotWidget:
 
 class ScalarWidget(PlotWidget):
 
-    def __init__(self, topics=None, terms=None, addr=None, **kwargs):
-        super().__init__(topics, terms, addr, **kwargs)
+    def __init__(self, topics=None, terms=None, **kwargs):
+        super().__init__(topics, terms, **kwargs)
         self._plot = pn.Row(pn.widgets.StaticText(value=f"<b>{self.name}:</b>"), pn.widgets.StaticText())
 
     def data_updated(self, data):
         for term, name in self.terms.items():
-            self._plot[-1].value = str(data[name])
+            if name in data:
+                self._plot[-1].value = str(data[name])
 
 
 class ObjectWidget(ScalarWidget):
@@ -189,13 +192,14 @@ class ObjectWidget(ScalarWidget):
 
 class ImageWidget(PlotWidget):
 
-    def __init__(self, topics=None, terms=None, addr=None, **kwargs):
-        super().__init__(topics, terms, addr, **kwargs)
+    def __init__(self, topics=None, terms=None, **kwargs):
+        super().__init__(topics, terms, **kwargs)
         self._plot = hv.DynamicMap(self.trace(), streams=list(self.pipes.values())).hist().opts(toolbar="right")
 
     def data_updated(self, data):
         for term, name in self.terms.items():
-            self.pipes[name].send(data[name])
+            if name in data:
+                self.pipes[name].send(data[name])
 
     def trace(self):
         def func(data):
@@ -208,8 +212,8 @@ class ImageWidget(PlotWidget):
 
 class HistogramWidget(PlotWidget):
 
-    def __init__(self, topics=None, terms=None, addr=None, **kwargs):
-        super().__init__(topics, terms, addr, pipes=False, **kwargs)
+    def __init__(self, topics=None, terms=None, **kwargs):
+        super().__init__(topics, terms, pipes=False, **kwargs)
         self.num_terms = int(len(terms) / 2) if terms else 0
         plots = []
 
@@ -226,6 +230,9 @@ class HistogramWidget(PlotWidget):
             y = self.terms[f"Counts.{i}" if i > 0 else "Counts"]
             name = y
 
+            if x not in data or y not in data:
+                continue
+
             x = data[x]
             y = data[y]
 
@@ -234,8 +241,8 @@ class HistogramWidget(PlotWidget):
 
 class Histogram2DWidget(PlotWidget):
 
-    def __init__(self, topics=None, terms=None, addr=None, **kwargs):
-        super().__init__(topics, terms, addr, pipes=False, **kwargs)
+    def __init__(self, topics=None, terms=None, **kwargs):
+        super().__init__(topics, terms, pipes=False, **kwargs)
         self.pipes["Counts"] = hv.streams.Pipe(data=[])
         self._plot = (
             hv.DynamicMap(lambda data: hv.Image(data).opts(colorbar=True), streams=list(self.pipes.values()))
@@ -244,16 +251,23 @@ class Histogram2DWidget(PlotWidget):
         )
 
     def data_updated(self, data):
-        xbins = data[self.terms["XBins"]]
-        ybins = data[self.terms["YBins"]]
-        counts = data[self.terms["Counts"]]
+        xbins_key = self.terms["XBins"]
+        ybins_key = self.terms["YBins"]
+        counts_key = self.terms["Counts"]
+
+        if xbins_key not in data or ybins_key not in data or counts_key not in data:
+            return
+
+        xbins = data[xbins_key]
+        ybins = data[ybins_key]
+        counts = data[counts_key]
         self.pipes["Counts"].send((xbins, ybins, counts.transpose()))
 
 
 class ScatterWidget(PlotWidget):
 
-    def __init__(self, topics=None, terms=None, addr=None, **kwargs):
-        super().__init__(topics, terms, addr, pipes=False, **kwargs)
+    def __init__(self, topics=None, terms=None, **kwargs):
+        super().__init__(topics, terms, pipes=False, **kwargs)
         self.num_terms = int(len(terms) / 2) if terms else 0
         plots = []
 
@@ -276,6 +290,9 @@ class ScatterWidget(PlotWidget):
             y = self.terms[f"Y.{i}" if i > 0 else "Y"]
             name = " vs ".join((y, x))
 
+            if x not in data or y not in data:
+                continue
+
             x = data[x]
             y = data[y]
 
@@ -284,8 +301,8 @@ class ScatterWidget(PlotWidget):
 
 class WaveformWidget(PlotWidget):
 
-    def __init__(self, topics=None, terms=None, addr=None, **kwargs):
-        super().__init__(topics, terms, addr, **kwargs)
+    def __init__(self, topics=None, terms=None, **kwargs):
+        super().__init__(topics, terms, **kwargs)
         plots = []
 
         for term, name in terms.items():
@@ -297,13 +314,14 @@ class WaveformWidget(PlotWidget):
 
     def data_updated(self, data):
         for term, name in self.terms.items():
-            self.pipes[name].send((np.arange(0, len(data[name])), data[name]))
+            if name in data:
+                self.pipes[name].send((np.arange(0, len(data[name])), data[name]))
 
 
 class LineWidget(PlotWidget):
 
-    def __init__(self, topics=None, terms=None, addr=None, **kwargs):
-        super().__init__(topics, terms, addr, pipes=False, **kwargs)
+    def __init__(self, topics=None, terms=None, **kwargs):
+        super().__init__(topics, terms, pipes=False, **kwargs)
         self.num_terms = int(len(terms) / 2) if terms else 0
         plots = []
 
@@ -336,8 +354,8 @@ class LineWidget(PlotWidget):
 
 class TimeWidget(LineWidget):
 
-    def __init__(self, topics=None, terms=None, addr=None, **kwargs):
-        super().__init__(topics, terms, addr, **kwargs)
+    def __init__(self, topics=None, terms=None, **kwargs):
+        super().__init__(topics, terms, **kwargs)
 
 
 class Monitor:
@@ -346,14 +364,17 @@ class Monitor:
         self.graphmgr_addr = graphmgr_addr
         self.ctx = zmq.asyncio.Context()
 
-        self.export = self.ctx.socket(zmq.SUB)
-        self.export.setsockopt_string(zmq.SUBSCRIBE, "")
-        self.export.connect(self.graphmgr_addr.comm)
+        # Subscribe to store messages (plot metadata) on the export socket
+        self.store_sub = self.ctx.socket(zmq.SUB)
+        self.store_sub.setsockopt_string(zmq.SUBSCRIBE, "")
+        self.store_sub.connect(self.graphmgr_addr.export)
+
+        # Shared data fetcher (heartbeat + view REQ/REP)
+        self.fetcher = AsyncFetcher(self.graphmgr_addr, self.ctx)
 
         self.lock = asyncio.Lock()
         self.plot_metadata = {}
         self.plots = {}
-        self.tasks = {}
 
         logo = "https://www6.slac.stanford.edu/sites/www6.slac.stanford.edu/files/SLAC_LogoSD_W.png"
         self.template = pn.template.ReactTemplate(title="AMI", header_background="#8c1515", logo=logo)
@@ -382,36 +403,28 @@ class Monitor:
     def close(self):
         for name, plot in self.plots.items():
             plot.close()
+            self.fetcher.unregister(name)
 
-        self.export.close()
+        self.fetcher.close()
+        self.store_sub.close()
         self.ctx.destroy()
 
-    async def run(self, loop, address, http_port):
-        asyncio.create_task(self.process_msg())
-        asyncio.create_task(self.start_server(loop, address, http_port))
-        asyncio.create_task(self.monitor_tasks())
+    async def run(self, address, http_port):
+        asyncio.create_task(self.process_store_msgs())
+        asyncio.create_task(self.fetcher.run())
+        await self.start_server(address, http_port)
 
-    async def start_server(self, loop, address, http_port):
-        self.server = pn.serve(self.template, address=address, port=http_port, loop=loop, title="AMI", show=False)
-
-    async def monitor_tasks(self):
-        while True:
-            async with self.lock:
-                cancelled_tasks = set()
-                for name, task in self.tasks.items():
-                    try:
-                        raise task.exception()
-                    except asyncio.CancelledError:
-                        cancelled_tasks.add(name)
-                    except pickle.UnpicklingError:
-                        continue
-                    except asyncio.InvalidStateError:
-                        continue
-
-                for name in cancelled_tasks:
-                    self.tasks.pop(name, None)
-
-            await asyncio.sleep(1)
+    async def start_server(self, address, http_port):
+        self.server = pn.serve(
+            self.template,
+            address=address or "0.0.0.0",
+            port=http_port,
+            title="AMI",
+            show=False,
+            start=False,
+        )
+        self.server.start()
+        logger.info("Monitor server started at http://%s:%d", address or "localhost", self.server.port)
 
     async def plot_checked(self, event):
         async with self.lock:
@@ -423,8 +436,9 @@ class Monitor:
                 if name in self.plots:
                     continue
 
-                if metadata["type"] not in globals():
-                    print("UNSUPPORTED PLOT TYPE:", metadata["type"])
+                widget_cls_name = metadata["type"]
+                if widget_cls_name not in globals():
+                    logger.warning("Unsupported plot type: %s", widget_cls_name)
                     continue
 
                 row, col = (0, 0)
@@ -433,19 +447,17 @@ class Monitor:
                         continue
 
                     row, col = key
-                    widget = globals()[metadata["type"]]
-                    widget = widget(
+                    widget_cls = globals()[widget_cls_name]
+                    widget = widget_cls(
                         topics=metadata["topics"],
                         terms=metadata["terms"],
-                        addr=self.graphmgr_addr,
                         name=name,
                         idx=(row, col),
-                        ctx=self.ctx,
                     )
                     self.plots[name] = widget
+                    self.fetcher.register(name, widget)
                     column.append(pn.Card(widget.plot, title=name, min_height=300, min_width=300))
                     self.latency_lbls.append(widget.latency)
-                    self.tasks[name] = asyncio.create_task(widget.update())
                     break
 
             removed_plots = set(self.plots.keys()).difference(names)
@@ -453,9 +465,7 @@ class Monitor:
                 self.remove_plot(name)
 
     def remove_plot(self, name):
-        task = self.tasks.get(name, None)
-        if task and not task.cancelled():
-            task.cancel()
+        self.fetcher.unregister(name)
         widget = self.plots.pop(name, None)
         if widget:
             row, col = widget.idx
@@ -463,40 +473,50 @@ class Monitor:
             self.layout_widgets[(row, col)].clear()
             widget.close()
 
-    async def process_msg(self):
+    async def process_store_msgs(self):
         while True:
-            topic = await self.export.recv_string()
-            graph = await self.export.recv_string()
-            exports = await self.export.recv_pyobj()
+            try:
+                topic = await self.store_sub.recv_string()
+                graph = await self.store_sub.recv_string()
+                exports = await self.store_sub.recv_pyobj()
 
-            if self.graphmgr_addr.name != graph:
-                continue
+                if self.graphmgr_addr.name != graph:
+                    continue
 
-            if topic == "store":
-                async with self.lock:
-                    plots = exports["plots"]
-                    new_plots = set(plots.keys()).difference(self.plot_metadata.keys())
-                    for name in new_plots:
-                        self.plot_metadata[name] = plots[name]
+                if topic == "store":
+                    async with self.lock:
+                        plots = exports["plots"]
+                        logger.info("Store message has %d plots: %s", len(plots), list(plots.keys()))
+                        new_plots = set(plots.keys()).difference(self.plot_metadata.keys())
+                        for name in new_plots:
+                            self.plot_metadata[name] = plots[name]
 
-                    removed_plots = set(self.plot_metadata.keys()).difference(plots.keys())
-                    for name in removed_plots:
-                        self.plot_metadata.pop(name, None)
-                        self.remove_plot(name)
+                        removed_plots = set(self.plot_metadata.keys()).difference(plots.keys())
+                        for name in removed_plots:
+                            self.plot_metadata.pop(name, None)
+                            self.remove_plot(name)
 
-                    logger.debug("Received plots: %s", self.plot_metadata.keys())
-                    self.enabled_plots.options = list(self.plot_metadata.keys())
+                        self.enabled_plots.options = list(self.plot_metadata.keys())
+            except Exception:
+                logger.exception("Error in process_store_msgs")
+                await asyncio.sleep(1)
 
 
 def run_monitor(graph_name, export_addr, view_addr, address, http_port):
     logger.info("Starting monitor")
 
-    graphmgr_addr = GraphMgrAddress(graph_name, export_addr, view_addr, None)
+    # GraphMgrAddress fields: name, comm, view, info, export
+    # Monitor only needs export (heartbeats + store) and view (REQ/REP for data)
+    graphmgr_addr = GraphMgrAddress(name=graph_name, comm=None, view=view_addr, info=None, export=export_addr)
 
-    loop = tornado.ioloop.IOLoop.current()
-    with Monitor(graphmgr_addr) as mon:
-        asyncio.ensure_future(mon.run(loop, address, http_port))
-        loop.start()
+    async def _run():
+        with Monitor(graphmgr_addr) as mon:
+            await mon.run(address, http_port)
+            # Keep running until interrupted
+            while True:
+                await asyncio.sleep(1)
+
+    asyncio.run(_run())
 
 
 def main():
@@ -510,7 +530,7 @@ def main():
         "-p", "--port", type=int, default=Ports.BasePort, action=PlatformAction, help="base port for AMI"
     )
 
-    parser.add_argument("-l", "--listen-port", type=int, default=0, help="http port for panel")
+    parser.add_argument("-l", "--listen-port", type=int, default=8787, help="http port for panel (default: 8787)")
 
     parser.add_argument("-a", "--address", type=str, default=None, help="address name for panel")
 
