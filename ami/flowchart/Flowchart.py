@@ -31,6 +31,13 @@ try:
 except ImportError:
     HAS_QTCONSOLE = False
 
+try:
+    from ami.flowchart.PvCtrlServer import PvCtrlServer
+
+    HAS_PVCTRL = True
+except ImportError:
+    HAS_PVCTRL = False
+
 import asyncio
 import collections
 import itertools as it
@@ -2292,6 +2299,19 @@ class FlowchartCtrlWidget(QtWidgets.QWidget):
         self.graph_info = pc.Info("ami_graph", "AMI Client graph", ["hutch", "name"])
         self.graph_version = pc.Gauge("ami_graph_version", "AMI Client graph version", ["hutch", "name"])
 
+        if HAS_PVCTRL:
+            self.pvCtrlServer = PvCtrlServer(self.chart.hutch, self.graph_name, self)
+            self.pvCtrlServer.start()
+            self.chart.sigNodeChanged.connect(self._pvctrl_push_values)
+            QtWidgets.QApplication.instance().aboutToQuit.connect(self.pvCtrlServer.stop)
+        else:
+            self.pvCtrlServer = None
+
+    def _pvctrl_push_values(self, node=None):
+        """Push current ctrl values to EPICS PVs when a node ctrl changes in the GUI."""
+        if self.pvCtrlServer is not None:
+            self.pvCtrlServer.push_pv_values(self.chart)
+
     @asyncSlot()
     async def applyClicked(self, build_views=True):
         graph_nodes = []
@@ -2426,6 +2446,9 @@ class FlowchartCtrlWidget(QtWidgets.QWidget):
 
         self.graph_info.labels(self.chart.hutch, self.graph_name).info({"graph": state, "version": version})
         self.graph_version.labels(self.chart.hutch, self.graph_name).set(version)
+
+        if self.pvCtrlServer is not None:
+            self.pvCtrlServer.update_pvs(self.chart)
 
     def openClicked(self):
         startDir = self.chart.filePath

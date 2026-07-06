@@ -87,6 +87,20 @@ class NodeCheckpoint(NodeMsg):
         self.event = event
 
 
+class NodeCtrlUpdate(NodeMsg):
+    """Push a ctrl parameter update directly to a running NodeProcess window.
+
+    Sent by PvCtrlServer when an EPICS pvput changes a node parameter so the
+    visible spinbox/checkbox/combo in the NodeProcess window stays in sync.
+    The NodeProcess applies the update with blockSignals so no checkpoint is
+    echoed back to the flowchart.
+    """
+
+    def __init__(self, name, parameters):
+        super().__init__(name)
+        self.parameters = parameters  # {param: val} or {group: {param: val}}
+
+
 class NodeTermAdded(NodeMsg):
 
     def __init__(self, name, term, state):

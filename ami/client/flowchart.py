@@ -308,6 +308,11 @@ class NodeProcess(QtCore.QObject):
                 self.node.terminalDisconnected(msg)
             elif isinstance(msg, fcMsgs.NodeLabelChanged):
                 self.updateWindowTitle(msg.label)
+            elif isinstance(msg, fcMsgs.NodeCtrlUpdate):
+                if hasattr(self.node, "stateGroup") and self.node.stateGroup is not None:
+                    self.node.blockSignals(True)
+                    self.node.stateGroup.setState(msg.parameters)
+                    self.node.blockSignals(False)
             elif isinstance(msg, fcMsgs.CloseNode):
                 return
 
@@ -654,6 +659,15 @@ class MessageBroker(object):
 
             elif isinstance(msg, fcMsgs.NodeLabelChanged):
                 await self.forward_message_to_node(topic, msg)
+
+            elif isinstance(msg, fcMsgs.NodeCtrlUpdate):
+                # Forward directly to the NodeProcess without caching — it's a
+                # transient update, not a "last state" message.
+                async with self.lock:
+                    running = topic in self.widget_procs
+                if running:
+                    await self.broker_pub_sock.send_string(topic + ZMQ_TOPIC_DELIM, zmq.SNDMORE)
+                    await self.broker_pub_sock.send_pyobj(msg)
 
             elif isinstance(msg, fcMsgs.CloseNode):
                 await self.forward_message_to_node(topic, msg)

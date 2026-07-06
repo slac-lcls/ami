@@ -354,11 +354,13 @@ ami/
 ## Development Tips
 
 ### Adding New Graph Nodes
-1. **GUI Layer**: Create a class in `ami/flowchart/library/` that subclasses either `Node` or `CtrlNode`
+1. **GUI Layer**: Subclass `Node` or `CtrlNode`, add `nodeName` and a docstring, implement `to_operation()`
    - To define a node with a GUI, add a class variable `uiTemplate` that is parsed by `generateUi` in `WidgetGroup.py`
    - For custom widgets (e.g., plots), override the `display` method
-2. **Operation Layer**: Implement the `to_operation()` method to return an operation node from `ami/graph_nodes.py`
-3. **Testing**: Test with simple graph configuration
+2. **Registration**: Load your `.py` file via the **"Manage Library"** button in the flowchart toolbar — no need to edit the AMI package
+3. **Operation Layer**: Return the appropriate `ami/graph_nodes` type from `to_operation()` based on whether you need per-event transforms (`Map`) or distributed aggregation (`PickN`, `SumN`, `Accumulator`, `ReduceByKey`, `RollingBuffer`)
+4. **Testing**: Test with simple graph configuration
+- **See**: [Custom Node Implementation Guide](docs/CUSTOM_NODES.md) for full reference
 
 ### Debugging
 - Use `ami/forkedpdb.py` for multiprocess debugging
