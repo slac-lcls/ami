@@ -365,8 +365,8 @@ class NodeProcess(QtCore.QObject):
         # Window object is still created but not displayed
         if not self.headless:
             self.win.show()
-            if self.node.viewed:
-                self.win.activateWindow()
+            self.win.raise_()
+            self.win.activateWindow()
 
         self.node.viewed = True
 

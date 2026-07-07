@@ -332,7 +332,8 @@ class PlotWidget(QtWidgets.QWidget):
         if "Background" in STYLE:
             self.graphics_layout.setBackground(STYLE["Background"])
 
-        self.plot_view.showGrid(True, True)
+        _show_grid = STYLE.get(self.__class__.__name__, {}).get("ShowGrid", True)
+        self.plot_view.showGrid(_show_grid, _show_grid)
 
         ax = self.plot_view.getAxis("bottom")
         ax.enableAutoSIPrefix(enable=bool(self.units))
@@ -396,7 +397,7 @@ class PlotWidget(QtWidgets.QWidget):
             uiTemplate = [
                 ("Title", "text"),
                 ("Font Size", "intSpin", {"value": STYLE.get("FontSize", 9), "min": 1, "max": 72}),
-                ("Show Grid", "check", {"checked": True}),
+                ("Show Grid", "check", {"checked": _show_grid}),
                 # x axis
                 ("Label", "text", {"group": "X Axis"}),
                 ("Log Scale", "check", {"group": "X Axis", "checked": False}),
@@ -1076,7 +1077,7 @@ class ImageWidget(PlotWidget):
         uiTemplate = [
             ("Title", "text"),
             ("Font Size", "intSpin", {"value": STYLE.get("FontSize", 9), "min": 1, "max": 72}),
-            ("Show Grid", "check", {"checked": True}),
+            ("Show Grid", "check", {"checked": STYLE.get(self.__class__.__name__, {}).get("ShowGrid", True)}),
             # x axis
             ("Label", "text", {"group": "X Axis"}),
             ("Log Scale", "check", {"group": "X Axis", "checked": False}),

@@ -2760,6 +2760,8 @@ class FlowchartWidget(dockarea.DockArea):
 
     @asyncSlot()
     async def selectionChanged(self):
+        if QtWidgets.QApplication.keyboardModifiers() & QtCore.Qt.ControlModifier:
+            return
         # print "FlowchartWidget.selectionChanged called."
         items = self.scene().selectedItems()
 

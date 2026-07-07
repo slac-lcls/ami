@@ -716,10 +716,11 @@ class FlowchartViewBox(ViewBox):
         super().mousePressEvent(ev)
 
         if ev.button() == QtCore.Qt.LeftButton:
-            for node in self.selected_nodes:
-                node.recolor(None)
-                node.graphicsItem().setSelected(False)
-            self.selected_nodes = []
+            if not (ev.modifiers() & QtCore.Qt.ControlModifier):
+                for node in self.selected_nodes:
+                    node.recolor(None)
+                    node.graphicsItem().setSelected(False)
+                self.selected_nodes = []
 
         children = list(filter(lambda item: isinstance(item, NodeGraphicsItem), self.allChildren()))
         for id, comment in self.commentRects.items():

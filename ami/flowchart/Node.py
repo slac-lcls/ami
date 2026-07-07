@@ -808,6 +808,8 @@ class NodeGraphicsItem(GraphicsObject):
                         n.graphicsItem().setSelected(False)
                     vb.selected_nodes = []
                 sel = self.isSelected()
+                if sel:
+                    self.setSelected(False)
                 self.setSelected(True)
                 if not sel and self.isSelected():
                     self.update()
@@ -988,11 +990,11 @@ class NodeGraphicsItem(GraphicsObject):
                 self.menu.addAction("Add input", self.addInputFromMenu)
             if self.node._allowAddOutput:
                 self.menu.addAction("Add output", self.addOutputFromMenu)
-            self.menu.addAction("Copy\tCtrl+C", self._copyFromMenu)
-            self.menu.addAction("Cut\tCtrl+X", self._cutFromMenu)
             if self.node._allowRemove:
                 self.menu.addAction("Remove node", self.node.close)
             self.menu.addAction("View Source Code", self.viewSource)
+            self.menu.addAction("Copy\tCtrl+C", self._copyFromMenu)
+            self.menu.addAction("Cut\tCtrl+X", self._cutFromMenu)
         return self.menu
 
     def enabledFromMenu(self, checked):
