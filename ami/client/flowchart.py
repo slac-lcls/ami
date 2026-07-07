@@ -5,6 +5,7 @@ import json
 import logging
 import os
 import socket
+import struct
 import subprocess
 import sys
 import tempfile
@@ -186,20 +187,49 @@ class NodeWindow(QtWidgets.QMainWindow):
     def __init__(self, proc, parent=None):
         super().__init__(parent)
         self.proc = proc
+        self._restoring_geometry = False
+        self._geometry_timer = None
+
+    def _restart_geometry_timer(self):
+        """Restart the geometry-settle timer on each suppressed event.
+
+        Called from moveEvent/resizeEvent while _restoring_geometry is True so
+        that the finalize callback only fires 200ms after the LAST layout event,
+        regardless of how long the widget takes to settle.
+        """
+        if self._geometry_timer is not None:
+            self._geometry_timer.start(200)
+
+    def _save_geometry(self):
+        """Save window geometry using pos() and size() instead of saveGeometry().
+
+        Qt's saveGeometry() uses frameGeometry() internally, which is not correctly
+        updated by KDE/KWin under Wayland+XWayland. pos() and size() are reliable on
+        all platforms (X11, XWayland, native Wayland).
+        """
+        pos, sz = self.pos(), self.size()
+        data = struct.pack(">4siiii", b"AMIG", pos.x(), pos.y(), sz.width(), sz.height())
+        return QtCore.QByteArray(data)
 
     def moveEvent(self, event):
         super().moveEvent(event)
-        self.proc.node.geometry = self.saveGeometry()
-        self.proc.send_checkpoint(self.proc.node, "moveEvent")
+        if not self._restoring_geometry:
+            self.proc.node.geometry = self._save_geometry()
+            self.proc.send_checkpoint(self.proc.node, "moveEvent")
+        else:
+            self._restart_geometry_timer()
 
     def resizeEvent(self, event):
         super().resizeEvent(event)
-        self.proc.node.geometry = self.saveGeometry()
-        self.proc.send_checkpoint(self.proc.node, "resizeEvent")
+        if not self._restoring_geometry:
+            self.proc.node.geometry = self._save_geometry()
+            self.proc.send_checkpoint(self.proc.node, "resizeEvent")
+        else:
+            self._restart_geometry_timer()
 
     def closeEvent(self, event):
         self.proc.node.viewed = False
-        self.proc.node.geometry = self.saveGeometry()
+        self.proc.node.geometry = self._save_geometry()
         self.proc.send_checkpoint(self.proc.node, "closeEvent")
         self.proc.node.close()
         self.proc.widget = None
@@ -321,8 +351,10 @@ class NodeProcess(QtCore.QObject):
             self.node.close()
             self.widget = None
 
+        # Suppress intermediate geometry events (widget setup resizes, KWin initial
+        # placement) until restoreGeometry() fires with the correct position.
         if msg.geometry:
-            self.win.restoreGeometry(msg.geometry)
+            self.win._restoring_geometry = True
 
         if msg.terminals:
             self.node.restoreTerminals(msg.terminals)
@@ -366,12 +398,47 @@ class NodeProcess(QtCore.QObject):
         if msg.label:
             self.updateWindowTitle(msg.label)
 
+        # Apply saved geometry now, while _restoring_geometry is still True so
+        # that any synchronous events fired by move()/resize() are suppressed.
+        if msg.geometry:
+            data = bytes(msg.geometry)
+            if data[:4] == b"AMIG":
+                _, x, y, w, h = struct.unpack(">4siiii", data)
+                self.win.move(x, y)
+                self.win.resize(w, h)
+            else:
+                # Old Qt saveGeometry() blob from pre-existing .fc files
+                self.win.restoreGeometry(msg.geometry)
+
         # Skip showing window in headless mode (e.g., for automated tests)
         # Window object is still created but not displayed
         if not self.headless:
             self.win.show()
             self.win.raise_()
             self.win.activateWindow()
+
+        if msg.geometry:
+            # Record the geometry we restored so the flowchart process gets the
+            # correct value via checkpoint, regardless of what pos() reports
+            # before KWin confirms the move/resize asynchronously.
+            self.node.geometry = QtCore.QByteArray(bytes(msg.geometry))
+
+            # Use a restartable QTimer so that every suppressed move/resize event
+            # (from KWin ConfigureNotify or widget layout passes) resets the
+            # 200ms countdown via _restart_geometry_timer().  The flag only
+            # clears 200ms after the LAST such event, adapting automatically to
+            # however long the widget layout takes to settle.
+            timer = QtCore.QTimer()
+            timer.setSingleShot(True)
+            self.win._geometry_timer = timer
+
+            def finalize_geometry():
+                self.win._restoring_geometry = False
+                self.win._geometry_timer = None
+                self.send_checkpoint(self.node, "restore_geometry")
+
+            timer.timeout.connect(finalize_geometry)
+            timer.start(200)
 
         self.node.viewed = True
 

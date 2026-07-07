@@ -2171,6 +2171,10 @@ class Flowchart(QtCore.QObject):
 
             if restore_ctrl or restore_widget:
                 node.blockSignals(True)
+                # geometry is managed separately above; exclude it here so that
+                # restoreState cannot overwrite the just-updated node.geometry
+                # with the stale value captured in current_node_state.
+                current_node_state.pop("geometry", None)
                 node.restoreState(current_node_state)
                 node.blockSignals(False)
                 if node.isChanged(restore_ctrl, restore_widget):
