@@ -295,6 +295,7 @@ class Flowchart(QtCore.QObject):
         # Create SubgraphNode placeholder (visual only, not in self._graph)
         subgraphNode = SubgraphNode(name, children=nodes, flowchart=self)
         subgraphNode.sigClosed.connect(self.nodeClosed)
+        subgraphNode.sigNodeEnabled.connect(self.nodeEnabled)
         subgraphNode.setGraph(self._graph)
 
         # Switch to root view to ensure placeholder is added correctly
@@ -1733,11 +1734,36 @@ class Flowchart(QtCore.QObject):
     @asyncSlot(object)
     async def nodeEnabled(self, root):
         enabled = root._enabled
+        ctrl = self.widget()
+        views = []
+
+        if getattr(root, "is_visual_only", False):
+            inner_names = [n for n in self._subgraphs.get(root.name(), {}).get("nodes", []) if n in self._graph]
+            all_affected = set(inner_names)
+            for inner_name in inner_names:
+                all_affected.update(nx.algorithms.dag.descendants(self._graph, inner_name))
+            for node_name in all_affected:
+                node = self._graph.nodes[node_name].get("node")
+                if node is None:
+                    continue
+                node.nodeEnabled(enabled)
+                if not enabled:
+                    if hasattr(node, "to_operation"):
+                        self.deleted_nodes.append(node_name)
+                    elif node.viewable():
+                        for term, in_var in node.input_vars().items():
+                            discarded = await ctrl.features.discard(node_name, in_var)
+                            if discarded:
+                                views.append(in_var)
+                else:
+                    node.changed = True
+            if views:
+                await ctrl.graphCommHandler.unview(views)
+            await ctrl.applyClicked()
+            return
 
         outputs = [n for n, d in self._graph.out_degree() if d == 0]
         sources_targets = list(it.product([root.name()], outputs))
-        ctrl = self.widget()
-        views = []
 
         for s, t in sources_targets:
             paths = list(nx.algorithms.all_simple_paths(self._graph, s, t))
