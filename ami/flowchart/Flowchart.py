@@ -2310,7 +2310,7 @@ class FlowchartCtrlWidget(QtWidgets.QWidget):
     def _pvctrl_push_values(self, node=None):
         """Push current ctrl values to EPICS PVs when a node ctrl changes in the GUI."""
         if self.pvCtrlServer is not None:
-            self.pvCtrlServer.push_pv_values(self.chart)
+            self.pvCtrlServer.push_pv_values(node)
 
     @asyncSlot()
     async def applyClicked(self, build_views=True):

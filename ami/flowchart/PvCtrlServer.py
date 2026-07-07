@@ -271,26 +271,25 @@ class PvCtrlServer:
             self.provider.remove(apply_name)
             del self.pvs[apply_name]
 
-    def push_pv_values(self, chart):
+    def push_pv_values(self, node):
         """Post current ctrl values to PVs so EPICS readers stay in sync with the GUI.
 
-        Called on ``sigNodeChanged`` (a ctrl was changed in the GUI but Apply has not
-        been clicked yet).
+        Called on ``sigNodeChanged`` with the specific node that changed.
+        Only that node's PVs are updated — ``update_pvs`` handles the full
+        graph when Apply is clicked.
         """
-        if self.provider is None:
+        if self.provider is None or node is None:
             return
-        for node_name, node in chart._graph.nodes(data="node"):
-            if node is None:
+        if not hasattr(node, "stateGroup") or node.stateGroup is None:
+            return
+        node_name = node.name()
+        for param, group, _ptype, _opts in self._iter_node_params(node):
+            pv_name = self._param_pv_name(node_name, param, group)
+            if pv_name not in self.pvs:
                 continue
-            if not hasattr(node, "stateGroup") or node.stateGroup is None:
-                continue
-            for param, group, _ptype, _opts in self._iter_node_params(node):
-                pv_name = self._param_pv_name(node_name, param, group)
-                if pv_name not in self.pvs:
-                    continue
-                val = self._current_value(node, param, group)
-                if val is not None:
-                    self.pvs[pv_name].post(val)
+            val = self._current_value(node, param, group)
+            if val is not None:
+                self.pvs[pv_name].post(val)
 
     # ------------------------------------------------------------------
     # Helpers
