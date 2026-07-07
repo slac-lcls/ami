@@ -853,7 +853,8 @@ try:
                 args.append(rarg)
 
             args = ", ".join(args)
-            template = f"""
+            template = f"""import numpy as np
+
 class EventProcessor():
 
     def __init__(self):
