@@ -344,12 +344,11 @@ class PlotWidget(QtWidgets.QWidget):
         # ay.setZValue(100)
 
         _init_font_size = STYLE.get("FontSize", 9)
-        if _init_font_size != 9:
-            _font = QtGui.QFont()
-            _font.setPointSize(_init_font_size)
-            ax.textHeight = QtGui.QFontMetrics(_font).height()
-            ax.setStyle(tickFont=_font)
-            ay.setStyle(tickFont=_font)
+        _font = QtGui.QFont()
+        _font.setPointSize(_init_font_size)
+        ax.textHeight = QtGui.QFontMetrics(_font).height()
+        ax.setStyle(tickFont=_font)
+        ay.setStyle(tickFont=_font)
 
         self.plot_view.setMenuEnabled(False)
 
