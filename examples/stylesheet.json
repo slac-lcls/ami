@@ -1,4 +1,5 @@
 {
+    "FontSize": 12,
     "SourceTree":
     {
         "expand" : false
@@ -9,6 +10,7 @@
     },
     "WaveformWidget":
     {
+        "ShowGrid": true,
         "Point": {
             "symbol": "o",
             "Brush": [
@@ -32,6 +34,7 @@
     },
     "ScatterWidget":
     {
+        "ShowGrid": true,
         "Point": {
             "symbol": "p",
             "Brush": [
@@ -55,6 +58,7 @@
     },
     "HistogramWidget":
     {
+        "ShowGrid": true,
         "Brush": [
             0,
             255,
@@ -64,10 +68,12 @@
     },
     "ImageWidget":
     {
+        "ShowGrid": true,
         "gradient": "viridis"
     },
     "TimeWidget":
     {
+        "ShowGrid": true,
         "Point": {
             "symbol": "o",
             "Brush": [

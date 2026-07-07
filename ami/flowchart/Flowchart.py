@@ -15,7 +15,7 @@ from ami.flowchart.FlowchartGraphicsView import ViewManager
 from ami.flowchart.library import LIBRARY
 from ami.flowchart.library.common import CtrlNode, SourceNode
 from ami.flowchart.library.Editors import STYLE
-from ami.flowchart.Node import Node, NodeGraphicsItem, find_nearest
+from ami.flowchart.Node import Node, NodeGraphicsItem, find_free_pos, find_nearest
 from ami.flowchart.NodeLibrary import SourceLibrary
 from ami.flowchart.SourceConfiguration import SourceConfiguration
 from ami.flowchart.SubgraphLibrary import SubgraphLibrary, SubgraphTemplate
@@ -188,6 +188,8 @@ class Flowchart(QtCore.QObject):
         self.nextZVal += 1
         self.viewBox().addItem(item)
         pos = (find_nearest(pos[0]), find_nearest(pos[1]))
+        if item.scene():
+            pos = find_free_pos(item, pos[0], pos[1], item.scene())
         item.moveBy(*pos)
         subset = 1
         mod = node.__module__.split(".")[-1]
@@ -300,6 +302,7 @@ class Flowchart(QtCore.QObject):
         # Create SubgraphNode placeholder (visual only, not in self._graph)
         subgraphNode = SubgraphNode(name, children=nodes, flowchart=self)
         subgraphNode.sigClosed.connect(self.nodeClosed)
+        subgraphNode.sigNodeEnabled.connect(self.nodeEnabled)
         subgraphNode.setGraph(self._graph)
 
         # Switch to root view to ensure placeholder is added correctly
@@ -857,33 +860,23 @@ class Flowchart(QtCore.QObject):
         # Switch back to root view - user sees placeholder and can connect it
         self.viewManager().displayView(name="root")
 
-    def exportSubgraph(self, subgraph_name, fileName=None):
-        """Export an existing subgraph to a .fc file
+    def _getSubgraphExportState(self, subgraph_name, name=None, desc=None):
+        """Build and return the full export state dict for a subgraph with no dialogs or file I/O.
 
         Args:
             subgraph_name: Name of the subgraph in self._subgraphs
-            fileName: Path to save file (optional, shows dialog if None)
-        """
-        if subgraph_name not in self._subgraphs:
-            logger.error(f"Subgraph {subgraph_name} not found")
-            return
+            name: Export name to embed in metadata (defaults to subgraph_name)
+            desc: Description to embed in metadata (defaults to existing description)
 
-        # Get subgraph data
+        Returns:
+            state dict suitable for json.dump (with TypeEncoder) or direct use as a dict
+        """
         sg_data = self._subgraphs[subgraph_name]
 
-        # Show dialog for name/description (prefill with existing description)
-        existing_desc = sg_data.get("description", "")
-        name, desc = self._showExportDialog(subgraph_name, existing_desc)
-        if not name:
-            return
-
-        # Show file dialog if no filename provided
-        if fileName is None:
-            fileName, _ = FileDialog.getSaveFileName(
-                self.widget(), "Export Subgraph", f"{name}.fc", "Flowchart files (*.fc)"
-            )
-            if not fileName:
-                return
+        if name is None:
+            name = subgraph_name
+        if desc is None:
+            desc = sg_data.get("description", "")
 
         # Collect nodes in subgraph
         nodes = []
@@ -972,8 +965,7 @@ class Flowchart(QtCore.QObject):
                     }
                 )
 
-        # Create state dict
-        state = {
+        return {
             "subgraph_metadata": {
                 "name": name,
                 "description": desc,
@@ -984,6 +976,36 @@ class Flowchart(QtCore.QObject):
             "connects": connects,
             "views": {"root": sg_data["view"].viewBox().saveState()},
         }
+
+    def exportSubgraph(self, subgraph_name, fileName=None):
+        """Export an existing subgraph to a .fc file
+
+        Args:
+            subgraph_name: Name of the subgraph in self._subgraphs
+            fileName: Path to save file (optional, shows dialog if None)
+        """
+        if subgraph_name not in self._subgraphs:
+            logger.error(f"Subgraph {subgraph_name} not found")
+            return
+
+        # Get subgraph data
+        sg_data = self._subgraphs[subgraph_name]
+
+        # Show dialog for name/description (prefill with existing description)
+        existing_desc = sg_data.get("description", "")
+        name, desc = self._showExportDialog(subgraph_name, existing_desc)
+        if not name:
+            return
+
+        # Show file dialog if no filename provided
+        if fileName is None:
+            fileName, _ = FileDialog.getSaveFileName(
+                self.widget(), "Export Subgraph", f"{name}.fc", "Flowchart files (*.fc)"
+            )
+            if not fileName:
+                return
+
+        state = self._getSubgraphExportState(subgraph_name, name=name, desc=desc)
 
         # Save to file
         with open(fileName, "w") as f:
@@ -1719,11 +1741,36 @@ class Flowchart(QtCore.QObject):
     @asyncSlot(object)
     async def nodeEnabled(self, root):
         enabled = root._enabled
+        ctrl = self.widget()
+        views = []
+
+        if getattr(root, "is_visual_only", False):
+            inner_names = [n for n in self._subgraphs.get(root.name(), {}).get("nodes", []) if n in self._graph]
+            all_affected = set(inner_names)
+            for inner_name in inner_names:
+                all_affected.update(nx.algorithms.dag.descendants(self._graph, inner_name))
+            for node_name in all_affected:
+                node = self._graph.nodes[node_name].get("node")
+                if node is None:
+                    continue
+                node.nodeEnabled(enabled)
+                if not enabled:
+                    if hasattr(node, "to_operation"):
+                        self.deleted_nodes.append(node_name)
+                    elif node.viewable():
+                        for term, in_var in node.input_vars().items():
+                            discarded = await ctrl.features.discard(node_name, in_var)
+                            if discarded:
+                                views.append(in_var)
+                else:
+                    node.changed = True
+            if views:
+                await ctrl.graphCommHandler.unview(views)
+            await ctrl.applyClicked()
+            return
 
         outputs = [n for n, d in self._graph.out_degree() if d == 0]
         sources_targets = list(it.product([root.name()], outputs))
-        ctrl = self.widget()
-        views = []
 
         for s, t in sources_targets:
             paths = list(nx.algorithms.all_simple_paths(self._graph, s, t))
@@ -2285,6 +2332,14 @@ class FlowchartCtrlWidget(QtWidgets.QWidget):
         self.chart.sigFileLoaded.connect(self.setCurrentFile)
         self.chart.sigFileSaved.connect(self.setCurrentFile)
 
+        save_sc = QtWidgets.QShortcut(QtGui.QKeySequence("Ctrl+S"), self)
+        save_sc.setContext(QtCore.Qt.WidgetWithChildrenShortcut)
+        save_sc.activated.connect(self.saveClicked)
+
+        save_as_sc = QtWidgets.QShortcut(QtGui.QKeySequence("Ctrl+Shift+S"), self)
+        save_as_sc.setContext(QtCore.Qt.WidgetWithChildrenShortcut)
+        save_as_sc.activated.connect(self.saveAsClicked)
+
         self.sourceConfigure = SourceConfiguration(parent=self)
         self.sourceConfigure.sigApply.connect(self.configureApply)
 
@@ -2754,6 +2809,8 @@ class FlowchartWidget(dockarea.DockArea):
 
     @asyncSlot()
     async def selectionChanged(self):
+        if QtWidgets.QApplication.keyboardModifiers() & QtCore.Qt.ControlModifier:
+            return
         # print "FlowchartWidget.selectionChanged called."
         items = self.scene().selectedItems()
 

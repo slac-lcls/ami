@@ -332,7 +332,8 @@ class PlotWidget(QtWidgets.QWidget):
         if "Background" in STYLE:
             self.graphics_layout.setBackground(STYLE["Background"])
 
-        self.plot_view.showGrid(True, True)
+        _show_grid = STYLE.get(self.__class__.__name__, {}).get("ShowGrid", True)
+        self.plot_view.showGrid(_show_grid, _show_grid)
 
         ax = self.plot_view.getAxis("bottom")
         ax.enableAutoSIPrefix(enable=bool(self.units))
@@ -341,6 +342,13 @@ class PlotWidget(QtWidgets.QWidget):
         ay = self.plot_view.getAxis("left")
         ay.enableAutoSIPrefix(enable=bool(self.units))
         # ay.setZValue(100)
+
+        _init_font_size = STYLE.get("FontSize", 9)
+        _font = QtGui.QFont()
+        _font.setPointSize(_init_font_size)
+        ax.textHeight = QtGui.QFontMetrics(_font).height()
+        ax.setStyle(tickFont=_font)
+        ay.setStyle(tickFont=_font)
 
         self.plot_view.setMenuEnabled(False)
 
@@ -387,7 +395,8 @@ class PlotWidget(QtWidgets.QWidget):
         if uiTemplate is None:
             uiTemplate = [
                 ("Title", "text"),
-                ("Show Grid", "check", {"checked": True}),
+                ("Font Size", "intSpin", {"value": STYLE.get("FontSize", 9), "min": 1, "max": 72}),
+                ("Show Grid", "check", {"checked": _show_grid}),
                 # x axis
                 ("Label", "text", {"group": "X Axis"}),
                 ("Log Scale", "check", {"group": "X Axis", "checked": False}),
@@ -627,20 +636,31 @@ class PlotWidget(QtWidgets.QWidget):
             self.plot_view.vb.disableAutoRange(axis=axis_const)
 
     def apply_clicked(self):
+        font_size = self.plot_attrs.get("Font Size", 9)
+        if font_size != 9:
+            _font = QtGui.QFont()
+            _font.setPointSize(font_size)
+            ax = self.plot_view.getAxis("bottom")
+            ax.textHeight = QtGui.QFontMetrics(_font).height()
+            ax.setStyle(tickFont=_font)
+            self.plot_view.getAxis("left").setStyle(tickFont=_font)
+        font_size_css = {"font-size": f"{font_size}pt"} if font_size != 9 else {}
+        font_size_title = {"size": f"{font_size}pt"} if font_size != 9 else {}
+
         title = self.plot_attrs.get("Title", None)
         if title:
-            self.plot_view.setTitle(title)
+            self.plot_view.setTitle(title, **font_size_title)
 
         x_axis = self.plot_attrs.get("X Axis", {})
         y_axis = self.plot_attrs.get("Y Axis", {})
 
         x_lbl = x_axis.get("Label", None)
         if x_lbl:
-            self.plot_view.setLabel("bottom", x_lbl)
+            self.plot_view.setLabel("bottom", x_lbl, **font_size_css)
 
         y_lbl = y_axis.get("Label", None)
         if y_lbl:
-            self.plot_view.setLabel("left", y_lbl)
+            self.plot_view.setLabel("left", y_lbl, **font_size_css)
 
         xlog_scale = x_axis.get("Log Scale", False)
         ylog_scale = y_axis.get("Log Scale", False)
@@ -1055,7 +1075,8 @@ class ImageWidget(PlotWidget):
     def __init__(self, topics=None, terms=None, addr=None, parent=None, **kwargs):
         uiTemplate = [
             ("Title", "text"),
-            ("Show Grid", "check", {"checked": True}),
+            ("Font Size", "intSpin", {"value": STYLE.get("FontSize", 9), "min": 1, "max": 72}),
+            ("Show Grid", "check", {"checked": STYLE.get(self.__class__.__name__, {}).get("ShowGrid", True)}),
             # x axis
             ("Label", "text", {"group": "X Axis"}),
             ("Log Scale", "check", {"group": "X Axis", "checked": False}),
