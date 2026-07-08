@@ -14,6 +14,8 @@ from pyqtgraph.graphicsItems.GraphicsObject import GraphicsObject
 from pyqtgraph.Point import Point
 from qtpy import QtCore, QtGui, QtWidgets
 
+from ami.flowchart.library.Editors import STYLE
+
 # Terminal label truncation configuration
 LABEL_WIDTH_RATIO = 0.45  # 45% of node width per side
 MIN_LABEL_WIDTH = 30  # Minimum for readability (px)
@@ -43,8 +45,6 @@ def _hash_hue(key):
 
 
 def _assign_connection_color(conn_item, term1, term2):
-    from ami.flowchart.library.Editors import STYLE
-
     conn_style = STYLE.get("Connections", {})
     mode = conn_style.get("color_mode", "default")
     if mode == "default":

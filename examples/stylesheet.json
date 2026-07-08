@@ -1,7 +1,7 @@
 {
     "FontSize": 12,
     "Connections": {
-        "color_mode": "default"
+        "color_mode": "per_source"
     },
     "SourceTree":
     {

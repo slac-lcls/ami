@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-from collections import OrderedDict, defaultdict
+from collections import OrderedDict, defaultdict, deque
 from datetime import datetime
 
 from pyqtgraph import FileDialog
@@ -1865,16 +1865,15 @@ class Flowchart(QtCore.QObject):
             from_term = data["from_term"]
             to_term = data["to_term"]
             color = None
-            try:
-                node1 = self._graph.nodes[from_node]["node"]
-                node2 = self._graph.nodes[to_node]["node"]
-                t1 = node1.terminals[from_term]
-                t2 = node2.terminals[to_term]
-                ci = t1._connections.get(t2) or t2._connections.get(t1)
-                if ci and getattr(ci, "_custom_color", None):
-                    color = list(ci._custom_color)
-            except (KeyError, AttributeError):
-                pass
+
+            node1 = self._graph.nodes[from_node]["node"]
+            node2 = self._graph.nodes[to_node]["node"]
+            t1 = node1.terminals[from_term]
+            t2 = node2.terminals[to_term]
+            ci = t1._connections.get(t2) or t2._connections.get(t1)
+            if ci and getattr(ci, "_custom_color", None):
+                color = list(ci._custom_color)
+
             entry = [from_node, from_term, to_node, to_term]
             if color:
                 entry.append(color)
@@ -2540,7 +2539,7 @@ class FlowchartCtrlWidget(QtWidgets.QWidget):
         state = self.chart.saveState()
         state = json.dumps(state, indent=2, separators=(",", ": "), sort_keys=False, cls=TypeEncoder)
 
-        ts = datetime.now().strftime("%d%m%Y_%H%M%S")
+        ts = datetime.now().strftime("%m%d%Y_%H%M%S")
         with open(os.path.expanduser(f"~/.cache/ami/autosave_{ts}.fc"), "w") as f:
             f.write(state)
             f.write("\n")
@@ -2619,8 +2618,6 @@ class FlowchartCtrlWidget(QtWidgets.QWidget):
                 for successor in subgraph.successors(node):
                     layers[successor] = max(layers[successor], layers[node] + 1)
         except nx.NetworkXUnfeasible:
-            from collections import deque
-
             sources = [n for n in subgraph.nodes() if subgraph.in_degree(n) == 0]
             if not sources:
                 sources = list(subgraph.nodes())

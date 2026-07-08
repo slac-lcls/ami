@@ -1,3 +1,4 @@
+from pyqtgraph import functions as fn
 from pyqtgraph.Qt import QtWidgets
 
 from ami.flowchart.Node import Node, NodeGraphicsItem
@@ -124,8 +125,6 @@ class SubgraphNodeGraphicsItem(NodeGraphicsItem):
 
     def __init__(self, node, brush=None):
         if brush is None:
-            from pyqtgraph import functions as fn
-
             brush = fn.mkBrush(120, 80, 200, 220)
         super().__init__(node, brush=brush)
 
