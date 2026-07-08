@@ -1,6 +1,9 @@
 # -*- coding: utf-8 -*-
+import colorsys
+import hashlib
 import inspect
 import os
+import random
 import subprocess
 import tempfile
 import typing
@@ -16,6 +19,50 @@ LABEL_WIDTH_RATIO = 0.45  # 45% of node width per side
 MIN_LABEL_WIDTH = 30  # Minimum for readability (px)
 MAX_LABEL_WIDTH = 100  # Maximum even on huge nodes (px)
 TERMINAL_BOX_WIDTH = 10  # Terminal box width (px)
+
+
+_DEFAULT_PALETTE = [
+    (230, 100, 100),
+    (100, 200, 100),
+    (100, 140, 255),
+    (240, 190, 60),
+    (200, 100, 220),
+    (50, 210, 210),
+    (255, 150, 60),
+    (160, 230, 160),
+]
+
+
+def _hsv_color(h, s=0.85, v=0.88):
+    r, g, b = colorsys.hsv_to_rgb(h, s, v)
+    return (int(r * 255), int(g * 255), int(b * 255), 255)
+
+
+def _hash_hue(key):
+    return int(hashlib.md5(key.encode()).hexdigest()[:8], 16) / 0xFFFFFFFF
+
+
+def _assign_connection_color(conn_item, term1, term2):
+    from ami.flowchart.library.Editors import STYLE
+
+    conn_style = STYLE.get("Connections", {})
+    mode = conn_style.get("color_mode", "default")
+    if mode == "default":
+        return
+    out_term = term1 if term1.isOutput() else term2
+    key = f"{out_term.node().name()}.{out_term.name()}"
+    if mode == "random":
+        color = _hsv_color(random.random())
+    elif mode == "per_source":
+        color = _hsv_color(_hash_hue(key))
+    elif mode == "palette":
+        palette = conn_style.get("palette", _DEFAULT_PALETTE)
+        idx = int(_hash_hue(key) * len(palette)) % len(palette)
+        c = palette[idx]
+        color = (c[0], c[1], c[2], c[3] if len(c) > 3 else 255)
+    else:
+        return
+    conn_item.setCustomColor(color)
 
 
 class Terminal(QtCore.QObject):
@@ -145,7 +192,7 @@ class Terminal(QtCore.QObject):
         """Return the list of terms which receive input from this terminal."""
         return set([t for t in self.connections() if t.isInput()])
 
-    def connectTo(self, term, connectionItem=None, type_file=None, checked=[], signal=True, view=None):
+    def connectTo(self, term, connectionItem=None, type_file=None, checked=[], signal=True, view=None, color=None):
         try:
             if self.connectedTo(term):
                 raise Exception("Already connected")
@@ -187,6 +234,10 @@ class Terminal(QtCore.QObject):
                 view.addItem(connectionItem)
             else:
                 self.graphicsItem().getViewBox().addItem(connectionItem)
+            if color is not None:
+                connectionItem.setCustomColor(color)
+            elif signal:
+                _assign_connection_color(connectionItem, self, term)
         self._connections[term] = connectionItem
         term._connections[self] = connectionItem
 
@@ -580,6 +631,7 @@ class ConnectionItem(GraphicsObject):
             "selectedColor": (200, 200, 0),
             "selectedWidth": 3.0,
         }
+        self._custom_color = None
         self.source.getViewBox().addItem(self)
         self.updateLine()
         self.setZValue(0)
@@ -598,6 +650,10 @@ class ConnectionItem(GraphicsObject):
             self.updateLine()
         else:
             self.update()
+
+    def setCustomColor(self, color):
+        self._custom_color = color
+        self.update()
 
     def updateLine(self):
         start = Point(self.source.connectPoint())
@@ -678,7 +734,8 @@ class ConnectionItem(GraphicsObject):
             if self.hovered:
                 p.setPen(fn.mkPen(self.style["hoverColor"], width=self.style["hoverWidth"]))
             else:
-                p.setPen(fn.mkPen(self.style["color"], width=self.style["width"]))
+                color = self._custom_color if self._custom_color else self.style["color"]
+                p.setPen(fn.mkPen(color, width=self.style["width"]))
 
         p.drawPath(self.path)
 

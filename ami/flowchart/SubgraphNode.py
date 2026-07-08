@@ -122,6 +122,13 @@ class SubgraphNode(Node):
 
 class SubgraphNodeGraphicsItem(NodeGraphicsItem):
 
+    def __init__(self, node, brush=None):
+        if brush is None:
+            from pyqtgraph import functions as fn
+
+            brush = fn.mkBrush(120, 80, 200, 220)
+        super().__init__(node, brush=brush)
+
     def mouseDoubleClickEvent(self, ev):
         """Switch to subgraph view on double-click"""
         ev.accept()

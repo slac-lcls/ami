@@ -210,6 +210,7 @@ class Flowchart(QtCore.QObject):
         node.sigTerminalRemoved.connect(self.nodeTermRemoved)
         node.sigLabelChanged.connect(self.nodeLabelChanged)
         node.setGraph(self._graph)
+        node._flowchart = self
 
         # if the node is a source, connect the source kwargs interface to the manager
         if node.isSource():
@@ -537,6 +538,10 @@ class Flowchart(QtCore.QObject):
             subgraphNode.subgraphOutputs.graphicsItem().moveBy(output_pos.x(), output_pos.y())
 
         # NOW process boundary connections - create visual-only connections
+        # Track which root-level visual connections have been made to avoid duplicates.
+        # A source terminal connecting to multiple internal nodes shares one placeholder terminal,
+        # so the root visual (external → placeholder) only needs to be created once.
+        root_visuals_created = {}  # terminal_name -> root_visual ConnectionItem
 
         for bc in boundary_connections:
             # Disconnect original connection (signal=False preserves _input_vars and graph edges)
@@ -560,8 +565,12 @@ class Flowchart(QtCore.QObject):
                     )
 
                 # Create visual connection in root view: external → placeholder
-                # connectTo registers in _connections, creates ConnectionItem, and recolors automatically
-                root_visual = bc["external_term"].connectTo(placeholder_term, signal=False, view=self.viewBox())
+                # Only create once per terminal_name (same source may feed multiple internal nodes)
+                if bc["terminal_name"] not in root_visuals_created:
+                    root_visual = bc["external_term"].connectTo(placeholder_term, signal=False, view=self.viewBox())
+                    root_visuals_created[bc["terminal_name"]] = root_visual
+                else:
+                    root_visual = root_visuals_created[bc["terminal_name"]]
 
                 # Create visual connection in subgraph view: subgraph_input → internal
                 sg_visual = sg_input_term.connectTo(bc["internal_term"], signal=False, view=view.viewBox())
@@ -580,11 +589,17 @@ class Flowchart(QtCore.QObject):
                     )
 
                 # Create visual connection in root view: placeholder → external
-                # connectTo registers in _connections, creates ConnectionItem, and recolors automatically
+                # Always create for each external node — placeholder is an output terminal
+                # and can fan out to multiple external inputs
                 root_visual = placeholder_term.connectTo(bc["external_term"], signal=False, view=self.viewBox())
 
                 # Create visual connection in subgraph view: internal → subgraph_output
-                sg_visual = bc["internal_term"].connectTo(sg_output_term, signal=False, view=view.viewBox())
+                # Only create once — same internal_term appears in multiple boundary_connections
+                # when its output fans out to multiple external nodes
+                if bc["internal_term"].connectedTo(sg_output_term):
+                    sg_visual = bc["internal_term"]._connections[sg_output_term]
+                else:
+                    sg_visual = bc["internal_term"].connectTo(sg_output_term, signal=False, view=view.viewBox())
 
             # Store visual connection references
             bc["root_visual"] = root_visual
@@ -846,9 +861,10 @@ class Flowchart(QtCore.QObject):
                 sg_output_term = subgraphNode.subgraphOutputs.terminals[bc["terminal_name"]]
 
                 # Create visual-only connection (now that nodes are in the view)
-                internal_term.connectTo(sg_output_term, signal=False)
-
-                # Get the ConnectionItem that was just created
+                # Guard against duplicates: same (internal_term, sg_output_term) pair may appear
+                # more than once if the internal output fans out to multiple external nodes
+                if not internal_term.connectedTo(sg_output_term):
+                    internal_term.connectTo(sg_output_term, signal=False)
                 conn_item = internal_term.connections().get(sg_output_term)
                 if conn_item:
                     bc["subgraph_visual"] = conn_item
@@ -1230,24 +1246,34 @@ class Flowchart(QtCore.QObject):
         boundary_inputs = []
         boundary_outputs = []
 
+        seen_input_terminals = set()
+        seen_output_terminals = set()
         for bc in sg_data.get("boundary_connections", []):
             if bc["type"] == "input":
-                term = placeholder.terminals.get(bc["terminal_name"])
+                term_name = bc["terminal_name"]
+                if term_name in seen_input_terminals:
+                    continue
+                seen_input_terminals.add(term_name)
+                term = placeholder.terminals.get(term_name)
                 if term:
                     boundary_inputs.append(
                         {
-                            "placeholder_terminal": bc["terminal_name"],
+                            "placeholder_terminal": term_name,
                             "internal_node": bc["internal_node"].name(),
                             "internal_terminal": bc["internal_term"].name(),
                             "ttype": term.type(),
                         }
                     )
             else:  # output
-                term = placeholder.terminals.get(bc["terminal_name"])
+                term_name = bc["terminal_name"]
+                if term_name in seen_output_terminals:
+                    continue
+                seen_output_terminals.add(term_name)
+                term = placeholder.terminals.get(term_name)
                 if term:
                     boundary_outputs.append(
                         {
-                            "placeholder_terminal": bc["terminal_name"],
+                            "placeholder_terminal": term_name,
                             "internal_node": bc["internal_node"].name(),
                             "internal_terminal": bc["internal_term"].name(),
                             "ttype": term.type(),
@@ -1838,7 +1864,21 @@ class Flowchart(QtCore.QObject):
         for from_node, to_node, data in self._graph.edges(data=True):
             from_term = data["from_term"]
             to_term = data["to_term"]
-            state["connects"].append((from_node, from_term, to_node, to_term))
+            color = None
+            try:
+                node1 = self._graph.nodes[from_node]["node"]
+                node2 = self._graph.nodes[to_node]["node"]
+                t1 = node1.terminals[from_term]
+                t2 = node2.terminals[to_term]
+                ci = t1._connections.get(t2) or t2._connections.get(t1)
+                if ci and getattr(ci, "_custom_color", None):
+                    color = list(ci._custom_color)
+            except (KeyError, AttributeError):
+                pass
+            entry = [from_node, from_term, to_node, to_term]
+            if color:
+                entry.append(color)
+            state["connects"].append(entry)
 
         # NEW: Save subgraphs (visual-only metadata)
         state["subgraphs"] = []
@@ -1920,14 +1960,16 @@ class Flowchart(QtCore.QObject):
 
             nodes = self.nodes(data="node")
 
-            for n1, t1, n2, t2 in state["connects"]:
+            for conn in state["connects"]:
+                n1, t1, n2, t2 = conn[0], conn[1], conn[2], conn[3]
+                color = conn[4] if len(conn) > 4 else None
                 try:
                     node1 = nodes[n1]
                     term1 = node1[t1]
                     node2 = nodes[n2]
                     term2 = node2[t2]
 
-                    term1.connectTo(term2, type_file=type_file, checked=checked)
+                    term1.connectTo(term2, type_file=type_file, checked=checked, color=color)
                     if term1.isInput():
                         in_name = node1.name() + "_" + term1.name()
                         in_name = in_name.replace(".", "_")
@@ -2548,24 +2590,77 @@ class FlowchartCtrlWidget(QtWidgets.QWidget):
         self.viewBox().autoRange(items=children)
 
     def arrangeClicked(self):
-        sources = []
-        displays = []
-        for name, data in self.chart._graph.nodes(data=True):
-            if data.get("subset") == 0:
-                sources.append(name)
-            elif data.get("subset") == 2:
-                displays.append(name)
-        fixed = sources + displays
-        pos = nx.drawing.layout.multipartite_layout(self.chart._graph, scale=len(self.chart._graph.nodes()) * 75)
-        pos = nx.drawing.layout.spring_layout(nx.Graph(self.chart._graph), pos=pos, fixed=fixed, k=200)
-        for name in self.chart._graph.nodes():
-            if name not in pos:
-                continue
-            px = pos[name][0]
-            py = pos[name][1]
-            p = (find_nearest(px), find_nearest(py))
-            node = self.chart._graph.nodes[name]["node"]
-            node.graphicsItem().setPos(*p)
+        """Auto-arrange nodes using topological layered layout."""
+        vm = self.viewManager()
+        sg_name = vm._currentSubgraphName
+
+        if sg_name and sg_name in self.chart._subgraphs:
+            # Subgraph view
+            sg_data = self.chart._subgraphs[sg_name]
+            node_names = set(sg_data["nodes"])
+            subgraph = self.chart._graph.subgraph(node_names)
+            placeholder = sg_data["placeholder"]
+        else:
+            # Root view: exclude nodes inside subgraphs
+            subgraph_nodes = set()
+            for sg_data in self.chart._subgraphs.values():
+                subgraph_nodes.update(sg_data["nodes"])
+            root_nodes = set(self.chart._graph.nodes()) - subgraph_nodes
+            subgraph = self.chart._graph.subgraph(root_nodes)
+            placeholder = None
+
+        if len(subgraph.nodes()) == 0:
+            return
+
+        # Assign layers via longest path (topological sort)
+        layers = {node: 0 for node in subgraph.nodes()}
+        try:
+            for node in nx.topological_sort(subgraph):
+                for successor in subgraph.successors(node):
+                    layers[successor] = max(layers[successor], layers[node] + 1)
+        except nx.NetworkXUnfeasible:
+            from collections import deque
+
+            sources = [n for n in subgraph.nodes() if subgraph.in_degree(n) == 0]
+            if not sources:
+                sources = list(subgraph.nodes())
+            visited = set()
+            queue = deque((s, 0) for s in sources)
+            while queue:
+                node, depth = queue.popleft()
+                if node in visited:
+                    layers[node] = max(layers[node], depth)
+                    continue
+                visited.add(node)
+                layers[node] = depth
+                for succ in subgraph.successors(node):
+                    queue.append((succ, depth + 1))
+
+        # Group by layer and position nodes
+        layer_groups = {}
+        for node, layer in layers.items():
+            layer_groups.setdefault(layer, []).append(node)
+
+        x_spacing = 300
+        y_spacing = 200
+        for layer_idx, nodes in sorted(layer_groups.items()):
+            x = layer_idx * x_spacing
+            y_offset = -(len(nodes) - 1) * y_spacing / 2
+            for i, node_name in enumerate(nodes):
+                y = y_offset + i * y_spacing
+                p = (find_nearest(x), find_nearest(y))
+                node = self.chart._graph.nodes[node_name]["node"]
+                node.graphicsItem().setPos(*p)
+
+        # Position visual boundary nodes for subgraph views
+        if placeholder:
+            max_layer = max(layer_groups.keys()) if layer_groups else 0
+            if hasattr(placeholder, "subgraphInputs") and placeholder.subgraphInputs.graphicsItem().scene():
+                placeholder.subgraphInputs.graphicsItem().setPos(find_nearest(-x_spacing), find_nearest(0))
+            if hasattr(placeholder, "subgraphOutputs") and placeholder.subgraphOutputs.graphicsItem().scene():
+                placeholder.subgraphOutputs.graphicsItem().setPos(
+                    find_nearest((max_layer + 1) * x_spacing), find_nearest(0)
+                )
 
         children = self.viewBox().allChildren()
         self.viewBox().autoRange(items=children)

@@ -878,6 +878,22 @@ class NodeGraphicsItem(GraphicsObject):
             return self.menu
 
         graph = self.node._graph
+
+        # Build extended node list including subgraph placeholders in the same view.
+        # SubgraphNode placeholders are visual-only and not in self._graph, so we
+        # find them via _flowchart._subgraphs, filtered to the current scene so that
+        # only placeholders visible in the same view are included.
+        node_items = list(graph.nodes(data="node"))
+        flowchart = getattr(self.node, "_flowchart", None)
+        if flowchart and hasattr(flowchart, "_subgraphs"):
+            my_scene = self.scene()
+            for sg_name, sg_data in flowchart._subgraphs.items():
+                placeholder = sg_data.get("placeholder")
+                if placeholder is None or placeholder is self.node:
+                    continue
+                if placeholder.graphicsItem().scene() is my_scene:
+                    node_items.append((sg_name, placeholder))
+
         self.connectTo = QtWidgets.QMenu("Connect To")
         self.connectToSubMenus = []
 
@@ -894,7 +910,7 @@ class NodeGraphicsItem(GraphicsObject):
                 term_menu = QtWidgets.QMenu(self.node.name() + "." + name)
                 add_term_menu = False
 
-                for node_name, node in graph.nodes(data="node"):
+                for node_name, node in node_items:
                     if node == self.node:
                         continue
 
@@ -922,7 +938,7 @@ class NodeGraphicsItem(GraphicsObject):
                 term_menu = QtWidgets.QMenu(self.node.name() + "." + name)
                 add_term_menu = False
 
-                for node_name, node in graph.nodes(data="node"):
+                for node_name, node in node_items:
                     if node == self.node:
                         continue
 

@@ -424,13 +424,13 @@ class Ui_Toolbar(object):
             self.toolBar.insertSeparator(self.actionConfigure)
         else:
             self.toolBar.insertSeparator(self.actionApply)
-        # self.toolBar.addAction(self.actionArrange)
+        self.toolBar.addAction(self.actionArrange)
         self.toolBar.addAction(self.actionHome)
         self.toolBar.addAction(self.actionPan)
         self.toolBar.addAction(self.actionSelect)
         self.toolBar.addAction(self.actionComment)
         self.toolBar.addAction(self.actionInspector)
-        # self.toolBar.insertSeparator(self.actionArrange)
+        self.toolBar.insertSeparator(self.actionArrange)
         self.toolBar.insertSeparator(self.actionHome)
 
         widget = self.toolBar.widgetForAction(self.actionApply)

@@ -2,6 +2,9 @@
     "Theme": "dark",
     "FontSize": 12,
     "Background": [32, 33, 36],
+    "Connections": {
+        "color_mode": "default"
+    },
     "WaveformWidget":
     {
         "Point": {
