@@ -637,15 +637,7 @@ class PlotWidget(QtWidgets.QWidget):
 
     def apply_clicked(self):
         font_size = self.plot_attrs.get("Font Size", 9)
-        if font_size != 9:
-            _font = QtGui.QFont()
-            _font.setPointSize(font_size)
-            ax = self.plot_view.getAxis("bottom")
-            ax.textHeight = QtGui.QFontMetrics(_font).height()
-            ax.setStyle(tickFont=_font)
-            self.plot_view.getAxis("left").setStyle(tickFont=_font)
-        font_size_css = {"font-size": f"{font_size}pt"} if font_size != 9 else {}
-        font_size_title = {"size": f"{font_size}pt"} if font_size != 9 else {}
+        font_size_title = {"size": f"{font_size}pt"}
 
         title = self.plot_attrs.get("Title", None)
         if title:
@@ -656,11 +648,32 @@ class PlotWidget(QtWidgets.QWidget):
 
         x_lbl = x_axis.get("Label", None)
         if x_lbl:
-            self.plot_view.setLabel("bottom", x_lbl, **font_size_css)
+            # Mutate labelStyle directly so setLabel (called with no CSS kwargs)
+            # does not hit the `self.labelStyle = args` replacement on AxisItem.setLabel
+            # line 342, which would wipe the 'color' key set by setPen/setTextPen.
+            ax = self.plot_view.getAxis("bottom")
+            ax.labelStyle["font-size"] = f"{font_size}pt"
+            ax.labelStyle["color"] = ax.textPen().color().name()
+            self.plot_view.setLabel("bottom", x_lbl)
 
         y_lbl = y_axis.get("Label", None)
         if y_lbl:
-            self.plot_view.setLabel("left", y_lbl, **font_size_css)
+            ay = self.plot_view.getAxis("left")
+            ay.labelStyle["font-size"] = f"{font_size}pt"
+            ay.labelStyle["color"] = ay.textPen().color().name()
+            self.plot_view.setLabel("left", y_lbl)
+
+        # Apply tick font AFTER labels so that when setStyle triggers _updateHeight(),
+        # the label QGraphicsTextItem already has correct HTML and a valid bounding rect.
+        # Also set textHeight on both axes (left was previously missing).
+        _font = QtGui.QFont()
+        _font.setPointSize(font_size)
+        ax = self.plot_view.getAxis("bottom")
+        ax.textHeight = QtGui.QFontMetrics(_font).height()
+        ax.setStyle(tickFont=_font)
+        ay = self.plot_view.getAxis("left")
+        ay.textHeight = QtGui.QFontMetrics(_font).height()
+        ay.setStyle(tickFont=_font)
 
         xlog_scale = x_axis.get("Log Scale", False)
         ylog_scale = y_axis.get("Log Scale", False)
