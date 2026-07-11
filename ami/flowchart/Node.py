@@ -408,6 +408,23 @@ class Node(QtCore.QObject):
         """Return the name of this node."""
         return self._name
 
+    def display_name(self, term_name=None):
+        """Return a human-readable display string for use in UI only.
+
+        Never use for graph lookups, connections, saved state, or computation.
+
+        With no argument:   "label (NodeName)"  or  "NodeName"
+        With term_name:     "label.Out (NodeName.Out)"  or  "NodeName.Out"
+        """
+        if term_name:
+            if self._label:
+                return f"{self._label}.{term_name} ({self._name}.{term_name})"
+            return f"{self._name}.{term_name}"
+        else:
+            if self._label:
+                return f"{self._label} ({self._name})"
+            return self._name
+
     def __repr__(self):
         return "<Node %s @%x>" % (self.name(), id(self))
 
@@ -907,7 +924,7 @@ class NodeGraphicsItem(GraphicsObject):
 
         for name, from_term in self.node.terminals.items():
             if from_term.isInput() and not from_term.isConnected():
-                term_menu = QtWidgets.QMenu(self.node.name() + "." + name)
+                term_menu = QtWidgets.QMenu(self.node.display_name(name))
                 add_term_menu = False
 
                 for node_name, node in node_items:
@@ -915,7 +932,7 @@ class NodeGraphicsItem(GraphicsObject):
                         continue
 
                     added = False
-                    node_menu = QtWidgets.QMenu(node_name)
+                    node_menu = QtWidgets.QMenu(node.display_name())
 
                     for term_name, to_term in node.terminals.items():
                         if to_term.isOutput():
@@ -935,7 +952,7 @@ class NodeGraphicsItem(GraphicsObject):
                     self.connectToSubMenus.append(term_menu)
 
             if from_term.isOutput():
-                term_menu = QtWidgets.QMenu(self.node.name() + "." + name)
+                term_menu = QtWidgets.QMenu(self.node.display_name(name))
                 add_term_menu = False
 
                 for node_name, node in node_items:
@@ -943,7 +960,7 @@ class NodeGraphicsItem(GraphicsObject):
                         continue
 
                     added = False
-                    node_menu = QtWidgets.QMenu(node_name)
+                    node_menu = QtWidgets.QMenu(node.display_name())
 
                     for term_name, to_term in node.terminals.items():
                         if to_term.isInput() and not to_term.isConnected():

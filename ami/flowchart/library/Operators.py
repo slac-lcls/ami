@@ -741,13 +741,39 @@ try:
         def display(self, topics, terms, addr, win, **kwargs):
             if self.widget is None:
                 self.widget = CalculatorWidget(terms or self.input_vars(), win, self.values["operation"])
+                self.widget.node = self
                 self.widget.sigStateChanged.connect(self.state_changed)
+                if self._flowchart is not None:
+                    self._flowchart.sigNodeLabelChanged.connect(self.widget.onNodeLabelChanged)
 
             return self.widget
+
+        def _build_label_to_internal_map(self):
+            """Build {display_label: internal_name} mapping for translating expressions."""
+            mapping = {}
+            if not self._flowchart:
+                return mapping
+            for term_name, internal_var in self._input_vars.items():
+                for node_name, data in self._flowchart._graph.nodes(data=True):
+                    if internal_var == node_name or internal_var.startswith(f"{node_name}."):
+                        node_obj = data.get("node")
+                        if node_obj and node_obj._label:
+                            suffix = internal_var[len(node_name) :]
+                            display_name = f"{node_obj._label}{suffix}"
+                            if display_name != internal_var:
+                                mapping[display_name] = internal_var
+                        break
+            return mapping
 
         def to_operation(self, **kwargs):
             args = []
             expr = self.values["operation"]
+
+            # Translate label references back to internal names
+            label_map = self._build_label_to_internal_map()
+            if label_map:
+                for disp in sorted(label_map.keys(), key=len, reverse=True):
+                    expr = expr.replace(disp, label_map[disp])
 
             # sympy doesn't like symbols name likes Sum.0.Out, need to remove dots.
             for arg in list(self.input_vars().values())[
@@ -835,6 +861,13 @@ try:
         def isChanged(self, restore_ctrl, restore_widget):
             return restore_widget
 
+        def restoreState(self, state):
+            # Populate self.values["text"] before display() is called so that
+            # display() does not overwrite saved code with a blank template.
+            if self.widget is None and "widget" in state:
+                self.values["text"] = state["widget"].get("text", "")
+            super().restoreState(state)
+
         def display(self, topics, terms, addr, win, **kwargs):
             if self.widget is None:
                 if not self.values["text"]:
@@ -911,6 +944,8 @@ class EventProcessor():
             if self.widget is None:
                 self.widget = FilterWidget(terms or self.input_vars(), self.output_vars(), self, win)
                 self.widget.sigStateChanged.connect(self.state_changed)
+                if self._flowchart is not None:
+                    self._flowchart.sigNodeLabelChanged.connect(self.widget.onNodeLabelChanged)
 
             return self.widget
 
@@ -926,8 +961,41 @@ class EventProcessor():
             else:
                 self.values[group] = values[group]
 
+        def _build_label_to_internal_map(self):
+            """Build {display_label: internal_name} mapping for translating conditions."""
+            mapping = {}
+            if not self._flowchart:
+                return mapping
+            for term_name, internal_var in self._input_vars.items():
+                for node_name, data in self._flowchart._graph.nodes(data=True):
+                    if internal_var == node_name or internal_var.startswith(f"{node_name}."):
+                        node_obj = data.get("node")
+                        if node_obj and node_obj._label:
+                            suffix = internal_var[len(node_name) :]
+                            display_name = f"{node_obj._label}{suffix}"
+                            if display_name != internal_var:
+                                mapping[display_name] = internal_var
+                        break
+            return mapping
+
         def to_operation(self, inputs, outputs, **kwargs):
             values = self.values
+
+            # Translate label references in conditions back to internal names
+            label_map = self._build_label_to_internal_map()
+            if label_map:
+                import copy
+
+                values = copy.deepcopy(dict(values))
+                sorted_labels = sorted(label_map.keys(), key=len, reverse=True)
+                for group_name in list(values.keys()):
+                    group_vals = values[group_name]
+                    if isinstance(group_vals, dict):
+                        for key, val in list(group_vals.items()):
+                            if isinstance(val, str):
+                                for disp in sorted_labels:
+                                    val = val.replace(disp, label_map[disp])
+                                group_vals[key] = val
 
             inputs_for_func = {}
             for term, inp in inputs.items():

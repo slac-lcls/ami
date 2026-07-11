@@ -140,6 +140,7 @@ class CalculatorWidget(QtWidgets.QWidget):
         self.col = 0
 
         self.variables = {}
+        self._label_cache = {}
         self.variable_widget = QtWidgets.QWidget(parent=self)
         self.variable_layout = QtWidgets.QGridLayout()
         self.variable_widget.setLayout(self.variable_layout)
@@ -150,7 +151,9 @@ class CalculatorWidget(QtWidgets.QWidget):
             col = 0
 
             for term, variable in terms.items():
-                self.variables[term] = self.createButton(variable, self.operatorClicked)
+                btn = self.createButton(variable, self.operatorClicked)
+                btn.internal_var = variable
+                self.variables[term] = btn
                 self.variable_layout.addWidget(self.variables[term], row, col)
                 if col < 3:
                     col += 1
@@ -206,18 +209,40 @@ class CalculatorWidget(QtWidgets.QWidget):
             return
 
         term = nodeTermConnected.localTerm
-        if nodeTermConnected.remoteNodeIsSource:
-            variable = nodeTermConnected.remoteNode
-        else:
-            variable = nodeTermConnected.remoteNode + "." + nodeTermConnected.remoteTerm
+        graph = getattr(getattr(self, "node", None), "_flowchart", None)
+        internal_var = _derive_input_variable(nodeTermConnected)
+        display_text = _derive_input_display(nodeTermConnected, graph)
 
-        self.variables[term] = self.createButton(variable, self.operatorClicked)
+        btn = self.createButton(display_text, self.operatorClicked)
+        btn.internal_var = internal_var
+        self.variables[term] = btn
         self.variable_layout.addWidget(self.variables[term], self.row, self.col)
         if self.col < 3:
             self.col += 1
         else:
             self.col = 0
             self.row += 1
+
+    def onNodeLabelChanged(self, node_or_name, new_label):
+        """Update button face text and expression field when an upstream node's label changes."""
+        node_name = node_or_name if isinstance(node_or_name, str) else node_or_name.name()
+        old_label = self._label_cache.get(node_name, "")
+        self._label_cache[node_name] = new_label
+
+        for button in self.variables.values():
+            internal_var = getattr(button, "internal_var", None)
+            if not internal_var:
+                continue
+            if internal_var == node_name or internal_var.startswith(f"{node_name}."):
+                suffix = internal_var[len(node_name) :]  # "" or ".Out"
+                old_display = f"{old_label}{suffix}" if old_label else internal_var
+                new_display = f"{new_label}{suffix}" if new_label else internal_var
+                button.setText(new_display)
+                # Find-replace in expression field
+                if old_display != new_display:
+                    text = self.display.text()
+                    text = text.replace(old_display, new_display)
+                    self.display.setText(text)
 
     def terminalDisconnected(self, nodeTermDisconnected):
         if nodeTermDisconnected.localTermState["io"] == "out":
@@ -265,13 +290,16 @@ class FilterWidget(QtWidgets.QWidget):
         self.col = 0
 
         self.variables = {}
+        self._label_cache = {}
         self.variable_widget = QtWidgets.QWidget(parent=self)
         self.variable_layout = QtWidgets.QGridLayout()
         self.variable_widget.setLayout(self.variable_layout)
         self.layout.addRow(self.variable_widget)
         if self.inputs:
             for term, input_name in self.inputs.items():
-                self.variables[input_name] = self.createButton(input_name, self.operatorClicked)
+                btn = self.createButton(input_name, self.operatorClicked)
+                btn.internal_var = input_name
+                self.variables[input_name] = btn
 
             row = 0
             col = 0
@@ -329,6 +357,10 @@ class FilterWidget(QtWidgets.QWidget):
         self.layout.addWidget(ui)
         stateGroup.sigChanged.connect(self.state_changed)
 
+        # Apply cached labels to newly created combo boxes
+        for cached_node_name, cached_label in self._label_cache.items():
+            self._update_combo_labels(cached_node_name, cached_label)
+
         return ui, stateGroup, ctrls, attrs
 
     def add_else_condition(self, name=""):
@@ -355,6 +387,10 @@ class FilterWidget(QtWidgets.QWidget):
 
         self.layout.addWidget(ui)
         stateGroup.sigChanged.connect(self.state_changed)
+
+        # Apply cached labels to newly created combo boxes
+        for cached_node_name, cached_label in self._label_cache.items():
+            self._update_combo_labels(cached_node_name, cached_label)
 
         return ui, stateGroup, ctrls, attrs
 
@@ -417,6 +453,8 @@ class FilterWidget(QtWidgets.QWidget):
             layout.addRow(widget_name, widget)
             attrs["Else"][widget_name] = "None"
             stateGroup.widgetChanged(widget)
+        for cached_node_name, cached_label in self._label_cache.items():
+            self._update_combo_labels(cached_node_name, cached_label)
 
     def terminalRemoved(self, term):
         if term.isInput():
@@ -450,19 +488,28 @@ class FilterWidget(QtWidgets.QWidget):
         if nodeTermConnected.localTermState["io"] == "out":
             return
 
-        new_input = ""
-        if nodeTermConnected.remoteNodeIsSource:
-            new_input = nodeTermConnected.remoteNode
-        else:
-            new_input = f"{nodeTermConnected.remoteNode}.{nodeTermConnected.remoteTerm}"
+        graph = getattr(getattr(self, "node", None), "_flowchart", None)
+        new_input = _derive_input_variable(nodeTermConnected)
+        display_text = _derive_input_display(nodeTermConnected, graph)
 
         self.inputs[nodeTermConnected.localTerm] = new_input
 
-        self.variables[new_input] = self.createButton(new_input, self.operatorClicked)
+        if new_input in self.variables:
+            # Already configured from restoreState — just advance layout counters.
+            if self.col < 3:
+                self.col += 1
+            else:
+                self.col = 0
+                self.row += 1
+            return
+
+        btn = self.createButton(display_text, self.operatorClicked)
+        btn.internal_var = new_input
+        self.variables[new_input] = btn
         self.variable_layout.addWidget(self.variables[new_input], self.row, self.col)
         idx = len(self.inputs) - 1
 
-        if self.col == 0 and self.row == 0:  # if the connection is the first connection
+        if not self.condition_groups:  # no condition groups yet (first connection ever)
             self.add_elif_condition(name="If")
         else:
             # go through comboboxes and add entry
@@ -470,7 +517,7 @@ class FilterWidget(QtWidgets.QWidget):
                 ui, stateGroup, ctrls, attrs = group
                 for output in self.outputs:
                     widget = ctrls[name][output]
-                    widget.insertItem(idx, new_input, new_input)
+                    widget.insertItem(idx, display_text, new_input)
                     stateGroup.widgetChanged(widget)
 
         if self.col < 3:
@@ -478,6 +525,73 @@ class FilterWidget(QtWidgets.QWidget):
         else:
             self.col = 0
             self.row += 1
+
+    def onNodeLabelChanged(self, node_or_name, new_label):
+        """Update button face text, combo box items, and condition text when an upstream node's label changes."""
+        node_name = node_or_name if isinstance(node_or_name, str) else node_or_name.name()
+        old_label = self._label_cache.get(node_name, "")
+        self._label_cache[node_name] = new_label
+
+        # Update buttons
+        for internal_var, button in self.variables.items():
+            if internal_var == node_name or internal_var.startswith(f"{node_name}."):
+                suffix = internal_var[len(node_name) :]  # "" or ".Out"
+                button.setText(f"{new_label}{suffix}" if new_label else internal_var)
+
+        # Update combo box item texts
+        self._update_combo_labels(node_name, new_label)
+
+        # Find-replace in condition QLineEdit fields
+        self._update_condition_text(node_name, old_label, new_label)
+
+    def _update_combo_labels(self, node_name, new_label):
+        """Update combo box display text for items whose data matches node_name."""
+        for name, group in self.condition_groups.items():
+            ui, stateGroup, ctrls, attrs = group
+            for output in self.outputs:
+                if output in ctrls[name]:
+                    widget = ctrls[name][output]
+                    for i in range(widget.count()):
+                        data = widget.itemData(i)
+                        if data and (data == node_name or (isinstance(data, str) and data.startswith(f"{node_name}."))):
+                            suffix = data[len(node_name) :]
+                            widget.setItemText(i, f"{new_label}{suffix}" if new_label else data)
+        if self.else_condition:
+            ui, stateGroup, ctrls, attrs = self.else_condition
+            for output in self.outputs:
+                if output in ctrls["Else"]:
+                    widget = ctrls["Else"][output]
+                    for i in range(widget.count()):
+                        data = widget.itemData(i)
+                        if data and (data == node_name or (isinstance(data, str) and data.startswith(f"{node_name}."))):
+                            suffix = data[len(node_name) :]
+                            widget.setItemText(i, f"{new_label}{suffix}" if new_label else data)
+
+    def _update_condition_text(self, node_name, old_label, new_label):
+        """Find-replace label references in condition QLineEdit fields."""
+        replacements = []
+        for internal_var in self.variables:
+            if internal_var == node_name or internal_var.startswith(f"{node_name}."):
+                suffix = internal_var[len(node_name) :]  # "" or ".Out"
+                old_display = f"{old_label}{suffix}" if old_label else internal_var
+                new_display = f"{new_label}{suffix}" if new_label else internal_var
+                if old_display != new_display:
+                    replacements.append((old_display, new_display))
+
+        if not replacements:
+            return
+
+        # Sort by length (longest first) to avoid partial matches
+        replacements.sort(key=lambda x: len(x[0]), reverse=True)
+
+        for name, group in self.condition_groups.items():
+            ui, stateGroup, ctrls, attrs = group
+            condition_widget = ctrls[name].get("condition")
+            if condition_widget and hasattr(condition_widget, "text") and hasattr(condition_widget, "setText"):
+                text = condition_widget.text()
+                for old_disp, new_disp in replacements:
+                    text = text.replace(old_disp, new_disp)
+                condition_widget.setText(text)
 
     def terminalDisconnected(self, nodeTermDisconnected):
         if nodeTermDisconnected.localTermState["io"] == "out":
@@ -569,6 +683,36 @@ class FilterWidget(QtWidgets.QWidget):
 
         for name in deletions:
             self.remove_condition(name)
+
+
+def _derive_input_variable(msg):
+    """Return the internal variable name for a terminal connection message.
+
+    This is the name stored in self.inputs and used in generated computation
+    code — always an internal node name, never a label.
+    """
+    if msg.remoteNodeIsSource:
+        return msg.remoteNode
+    return f"{msg.remoteNode}.{msg.remoteTerm}"
+
+
+def _derive_input_display(msg, graph):
+    """Return the human-readable button-face string for a terminal connection.
+
+    Uses the upstream node's label if one is set, falling back to the internal
+    name.  The returned string is display-only: clicking the button inserts the
+    internal variable name (via the button's ``op`` attribute), not this string.
+    """
+    label = getattr(msg, "remoteNodeLabel", "") or ""
+    if not label and graph:
+        remote_node_obj = graph._graph.nodes.get(msg.remoteNode, {}).get("node")
+        if remote_node_obj:
+            label = remote_node_obj._label or ""
+    if label:
+        if msg.remoteNodeIsSource:
+            return label
+        return f"{label}.{msg.remoteTerm}"
+    return _derive_input_variable(msg)
 
 
 def extract_variables_from_condition(condition, return_sanitized=True):

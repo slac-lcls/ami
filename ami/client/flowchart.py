@@ -337,7 +337,12 @@ class NodeProcess(QtCore.QObject):
             elif isinstance(msg, fcMsgs.NodeTermDisconnected):
                 self.node.terminalDisconnected(msg)
             elif isinstance(msg, fcMsgs.NodeLabelChanged):
-                self.updateWindowTitle(msg.label)
+                if msg.name == self.name:
+                    self.updateWindowTitle(msg.label)
+                else:
+                    # Label changed on a connected upstream node — update widget buttons
+                    if self.widget and hasattr(self.widget, "onNodeLabelChanged"):
+                        self.widget.onNodeLabelChanged(msg.name, msg.label)
             elif isinstance(msg, fcMsgs.NodeCtrlUpdate):
                 if hasattr(self.node, "stateGroup") and self.node.stateGroup is not None:
                     self.node.blockSignals(True)
@@ -389,6 +394,16 @@ class NodeProcess(QtCore.QObject):
                 self.widget.blockSignals(True)
                 self.widget.restoreState(msg.state)
                 self.widget.blockSignals(False)
+
+            # Apply term labels from the DisplayNode message (Option B: fire handler at setup time)
+            if (
+                hasattr(msg, "term_labels")
+                and msg.term_labels
+                and self.widget
+                and hasattr(self.widget, "onNodeLabelChanged")
+            ):
+                for node_name, label in msg.term_labels.items():
+                    self.widget.onNodeLabelChanged(node_name, label)
 
             if not self.connected:
                 self.node.sigStateChanged.connect(self.send_checkpoint)

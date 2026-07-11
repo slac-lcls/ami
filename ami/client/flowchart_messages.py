@@ -56,7 +56,17 @@ class CloseNode(NodeMsg):
 class DisplayNode(NodeMsg):
 
     def __init__(
-        self, name, topics, terms, state={}, units={}, redisplay=False, geometry=None, terminals=None, label=None
+        self,
+        name,
+        topics,
+        terms,
+        state={},
+        units={},
+        redisplay=False,
+        geometry=None,
+        terminals=None,
+        label=None,
+        term_labels=None,
     ):
         super().__init__(name)
         self.topics = topics
@@ -67,6 +77,7 @@ class DisplayNode(NodeMsg):
         self.geometry = geometry
         self.terminals = terminals
         self.label = label
+        self.term_labels = term_labels or {}
 
     def __repr__(self):
         return f"""DisplayNode(name={self.name},
@@ -76,7 +87,8 @@ class DisplayNode(NodeMsg):
         redisplay={self.redisplay},
         geometry={self.geometry},
         terminals={self.geometry},
-        label={self.label})"""
+        label={self.label},
+        term_labels={self.term_labels})"""
 
 
 class NodeCheckpoint(NodeMsg):
@@ -128,6 +140,7 @@ class NodeTermConnected(NodeMsg):
         remoteNodeIsSource,
         remoteTerm,
         remoteTermState,
+        remoteNodeLabel="",
     ):
         super().__init__(localNode)
         self.localNode = localNode
@@ -138,6 +151,7 @@ class NodeTermConnected(NodeMsg):
         self.remoteNodeIsSource = remoteNodeIsSource
         self.remoteTerm = remoteTerm
         self.remoteTermState = remoteTermState
+        self.remoteNodeLabel = remoteNodeLabel
 
 
 class NodeTermDisconnected(NodeMsg):

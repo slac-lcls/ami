@@ -31,6 +31,7 @@ class UnifiedLibraryEditor(QtWidgets.QWidget):
 
     sigApplyClicked = QtCore.Signal()
     sigReloadClicked = QtCore.Signal(object)
+    sigLoadWarning = QtCore.Signal(str)
 
     def __init__(self, ctrlWidget, nodeLibrary, subgraphLibrary):
         super().__init__(parent=ctrlWidget)
@@ -132,7 +133,12 @@ class UnifiedLibraryEditor(QtWidgets.QWidget):
         for mod in pths:
             mod_name = os.path.basename(mod)
             mod_name = os.path.splitext(mod_name)[0]
-            mod = importlib.import_module(mod_name)
+            try:
+                mod = importlib.import_module(mod_name)
+            except ImportError as e:
+                self.node_paths.discard(mod)
+                self.sigLoadWarning.emit(f"WARNING: Could not load node module '{mod_name}': {e}")
+                continue
 
             if mod in self.modules:
                 continue
@@ -164,8 +170,12 @@ class UnifiedLibraryEditor(QtWidgets.QWidget):
         by_file = defaultdict(list)
 
         for pth in pths:
-            with open(pth, "r") as f:
-                state = json.load(f)
+            try:
+                with open(pth, "r") as f:
+                    state = json.load(f)
+            except (FileNotFoundError, json.JSONDecodeError) as e:
+                self.sigLoadWarning.emit(f"WARNING: Could not load subgraph file '{os.path.basename(pth)}': {e}")
+                continue
 
             # Extract metadata
             metadata = state.get("subgraph_metadata", {})

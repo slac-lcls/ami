@@ -20,7 +20,7 @@ from ami.flowchart.NodeLibrary import SourceLibrary
 from ami.flowchart.SourceConfiguration import SourceConfiguration
 from ami.flowchart.SubgraphLibrary import SubgraphLibrary, SubgraphTemplate
 from ami.flowchart.SubgraphNode import SubgraphNode
-from ami.flowchart.Terminal import ConnectionItem, Terminal, TerminalGraphicsItem
+from ami.flowchart.Terminal import ConnectionItem, Terminal, TerminalGraphicsItem, _assign_connection_color
 from ami.flowchart.TypeEncoder import TypeEncoder
 
 try:
@@ -66,6 +66,7 @@ class Flowchart(QtCore.QObject):
     sigFileSaved = QtCore.Signal(object)
     sigNodeCreated = QtCore.Signal(object)
     sigNodeChanged = QtCore.Signal(object)
+    sigNodeLabelChanged = QtCore.Signal(object, str)  # node, new_label
     # called when output is expected to have changed
 
     def __init__(
@@ -478,6 +479,13 @@ class Flowchart(QtCore.QObject):
                 subgraphNode.addInput(name=terminal_name, ttype=external_term.type())
                 inputs.add(terminal_name)
 
+                # Set label-based display name if the external feeding node has a label
+                if external_node._label:
+                    ph_term = subgraphNode.terminals.get(terminal_name)
+                    if ph_term:
+                        ph_term.display_name = f"{external_node._label}.{data['from_term']}"
+                        ph_term.graphicsItem().updateLabel()
+
                 if input_pos is None:
                     input_pos = external_node.graphicsItem().pos()
 
@@ -513,6 +521,13 @@ class Flowchart(QtCore.QObject):
                 # Add output terminal to placeholder
                 subgraphNode.addOutput(name=terminal_name, ttype=internal_term.type())
                 outputs.add(terminal_name)
+
+                # Set label-based display name if the internal source node has a label
+                if internal_node._label:
+                    ph_term = subgraphNode.terminals.get(terminal_name)
+                    if ph_term:
+                        ph_term.display_name = f"{internal_node._label}.{data['from_term']}"
+                        ph_term.graphicsItem().updateLabel()
 
                 if output_pos is None:
                     output_pos = external_node.graphicsItem().pos()
@@ -568,12 +583,14 @@ class Flowchart(QtCore.QObject):
                 # Only create once per terminal_name (same source may feed multiple internal nodes)
                 if bc["terminal_name"] not in root_visuals_created:
                     root_visual = bc["external_term"].connectTo(placeholder_term, signal=False, view=self.viewBox())
+                    _assign_connection_color(root_visual, bc["external_term"], placeholder_term)
                     root_visuals_created[bc["terminal_name"]] = root_visual
                 else:
                     root_visual = root_visuals_created[bc["terminal_name"]]
 
                 # Create visual connection in subgraph view: subgraph_input → internal
                 sg_visual = sg_input_term.connectTo(bc["internal_term"], signal=False, view=view.viewBox())
+                _assign_connection_color(sg_visual, sg_input_term, bc["internal_term"])
 
             else:  # output
                 # SubgraphOutput terminal should have same name as placeholder terminal
@@ -592,6 +609,7 @@ class Flowchart(QtCore.QObject):
                 # Always create for each external node — placeholder is an output terminal
                 # and can fan out to multiple external inputs
                 root_visual = placeholder_term.connectTo(bc["external_term"], signal=False, view=self.viewBox())
+                _assign_connection_color(root_visual, placeholder_term, bc["external_term"])
 
                 # Create visual connection in subgraph view: internal → subgraph_output
                 # Only create once — same internal_term appears in multiple boundary_connections
@@ -600,6 +618,7 @@ class Flowchart(QtCore.QObject):
                     sg_visual = bc["internal_term"]._connections[sg_output_term]
                 else:
                     sg_visual = bc["internal_term"].connectTo(sg_output_term, signal=False, view=view.viewBox())
+                    _assign_connection_color(sg_visual, bc["internal_term"], sg_output_term)
 
             # Store visual connection references
             bc["root_visual"] = root_visual
@@ -671,6 +690,32 @@ class Flowchart(QtCore.QObject):
                 return name
             n += 1
 
+    def _remap_node_names_in_state(self, state_dict, node_mapping):
+        """Recursively walk state_dict, replacing old node names with new in string values and keys.
+
+        Used when instantiating a subgraph from the library so that variable names
+        stored in Filter/Calculator widget state (e.g. "Filter.0.Out") are updated
+        to match the renamed nodes in the new instance (e.g. "Filter.1.Out").
+
+        Handles non-JSON-serializable values (e.g. class objects stored as ttype) by
+        passing them through unchanged rather than requiring a JSON round-trip.
+        """
+
+        def _remap(val):
+            if isinstance(val, str):
+                for old, new in node_mapping.items():
+                    val = val.replace(old, new)
+                return val
+            elif isinstance(val, dict):
+                return {_remap(k): _remap(v) for k, v in val.items()}
+            elif isinstance(val, list):
+                return [_remap(item) for item in val]
+            elif isinstance(val, tuple):
+                return tuple(_remap(item) for item in val)
+            return val
+
+        return _remap(state_dict)
+
     def _generateUniqueNodeName(self, base_name):
         """Generate unique node name
 
@@ -722,6 +767,8 @@ class Flowchart(QtCore.QObject):
         boundary_connections = []
 
         # Process boundary inputs
+        seen_input_terminals = set()
+
         for boundary_input in boundary_inputs:
             term_name = boundary_input["placeholder_terminal"]
 
@@ -729,8 +776,20 @@ class Flowchart(QtCore.QObject):
             ttype_str = boundary_input["ttype"]
             ttype = eval(ttype_str) if isinstance(ttype_str, str) else ttype_str
 
-            # Add input terminal to placeholder (also creates SubgraphInput terminal)
-            subgraphNode.addInput(name=term_name, ttype=ttype)
+            # Only create terminal once per unique name
+            if term_name not in seen_input_terminals:
+                # Add input terminal to placeholder (also creates SubgraphInput terminal)
+                subgraphNode.addInput(name=term_name, ttype=ttype)
+                seen_input_terminals.add(term_name)
+
+                # Restore persisted display name
+                display_name = boundary_input.get("display_name")
+                if display_name:
+                    ph_term = subgraphNode.terminals.get(term_name)
+                    if ph_term:
+                        ph_term.display_name = display_name
+                        ph_term.graphicsItem().updateLabel()
+
             sg_input_term = subgraphNode.subgraphInputs.terminals[term_name]
 
             # Check if this boundary should be visually connected to internal node
@@ -769,13 +828,27 @@ class Flowchart(QtCore.QObject):
                 )
 
         # Process boundary outputs (similar to inputs)
+        seen_output_terminals = set()
+
         for boundary_output in boundary_outputs:
             term_name = boundary_output["placeholder_terminal"]
             ttype_str = boundary_output["ttype"]
             ttype = eval(ttype_str) if isinstance(ttype_str, str) else ttype_str
 
-            # Add output terminal to placeholder (also creates SubgraphOutput terminal)
-            subgraphNode.addOutput(name=term_name, ttype=ttype)
+            # Only create terminal once per unique name
+            if term_name not in seen_output_terminals:
+                # Add output terminal to placeholder (also creates SubgraphOutput terminal)
+                subgraphNode.addOutput(name=term_name, ttype=ttype)
+                seen_output_terminals.add(term_name)
+
+                # Restore persisted display name
+                display_name = boundary_output.get("display_name")
+                if display_name:
+                    ph_term = subgraphNode.terminals.get(term_name)
+                    if ph_term:
+                        ph_term.display_name = display_name
+                        ph_term.graphicsItem().updateLabel()
+
             sg_output_term = subgraphNode.subgraphOutputs.terminals[term_name]
 
             internal_node_name = boundary_output.get("internal_node")
@@ -799,6 +872,13 @@ class Flowchart(QtCore.QObject):
                     continue
 
                 internal_term = internal_node.terminals[internal_term_name]
+
+                # Set label-based display name for the placeholder terminal
+                if internal_node._label:
+                    ph_term = subgraphNode.terminals.get(term_name)
+                    if ph_term:
+                        ph_term.display_name = f"{internal_node._label}.{internal_term_name}"
+                        ph_term.graphicsItem().updateLabel()
 
                 # Store boundary connection info (will create visual connection later)
                 boundary_connections.append(
@@ -855,6 +935,7 @@ class Flowchart(QtCore.QObject):
                 # Use signal=False so it doesn't create graph edges
                 # connectTo automatically recolors terminals
                 subgraph_visual = sg_input_term.connectTo(internal_term, signal=False)
+                _assign_connection_color(subgraph_visual, sg_input_term, internal_term)
                 bc["subgraph_visual"] = subgraph_visual
             else:  # output
                 # Internal → SubgraphOutput
@@ -864,7 +945,8 @@ class Flowchart(QtCore.QObject):
                 # Guard against duplicates: same (internal_term, sg_output_term) pair may appear
                 # more than once if the internal output fans out to multiple external nodes
                 if not internal_term.connectedTo(sg_output_term):
-                    internal_term.connectTo(sg_output_term, signal=False)
+                    conn_visual = internal_term.connectTo(sg_output_term, signal=False)
+                    _assign_connection_color(conn_visual, internal_term, sg_output_term)
                 conn_item = internal_term.connections().get(sg_output_term)
                 if conn_item:
                     bc["subgraph_visual"] = conn_item
@@ -872,6 +954,9 @@ class Flowchart(QtCore.QObject):
 
         # Step 6: Commit the subgraph (store metadata and add to library)
         self._commit_subgraph(name, subgraphNode, view, nodes, internal_connections, boundary_connections, description)
+
+        # Auto-range the subgraph view so nodes are visible when user opens the tab
+        view.viewBox().autoRange()
 
         # Switch back to root view - user sees placeholder and can connect it
         self.viewManager().displayView(name="root")
@@ -1060,6 +1145,10 @@ class Flowchart(QtCore.QObject):
         # Track skipped sources for boundary derivation
         skipped_sources = {}  # {old_name: {term_name: ttype, ...}}
 
+        # Pass 1: create all nodes and build the full old→new name mapping before
+        # restoring any state, so variable references in widget state (Filter inputs,
+        # Calculator expressions, etc.) can be remapped in one shot.
+        created_nodes = []  # list of (node, node_state)
         for node_state in state.get("nodes", []):
             old_name = node_state.get("name")
 
@@ -1079,16 +1168,24 @@ class Flowchart(QtCore.QObject):
 
             try:
                 node = self.createNode(node_state["class"], name=new_name, prompt=False)
-
                 if node:
                     node_mapping[old_name] = node.name()
-                    node.blockSignals(True)
-                    node.restoreState(node_state.get("state", {}))
-                    node.blockSignals(False)
-                    restored_nodes.append(node)
+                    created_nodes.append((node, node_state))
             except Exception:
                 printExc(f"Error creating node {old_name}: (continuing anyway)")
                 continue
+
+        # Pass 2: remap node-name references in saved state, force widget creation via
+        # display(), then restore state — mirroring Flowchart.restoreState() behaviour.
+        for node, node_state in created_nodes:
+            raw_state = node_state.get("state", {})
+            remapped_state = self._remap_node_names_in_state(raw_state, node_mapping)
+            node.blockSignals(True)
+            if hasattr(node, "display"):
+                node.display(topics=None, terms=None, addr=None, win=None)
+            node.restoreState(remapped_state)
+            node.blockSignals(False)
+            restored_nodes.append(node)
 
         # Auto-derive boundary inputs from skipped source connections
         auto_boundary_inputs = []
@@ -1246,14 +1343,9 @@ class Flowchart(QtCore.QObject):
         boundary_inputs = []
         boundary_outputs = []
 
-        seen_input_terminals = set()
-        seen_output_terminals = set()
         for bc in sg_data.get("boundary_connections", []):
             if bc["type"] == "input":
                 term_name = bc["terminal_name"]
-                if term_name in seen_input_terminals:
-                    continue
-                seen_input_terminals.add(term_name)
                 term = placeholder.terminals.get(term_name)
                 if term:
                     boundary_inputs.append(
@@ -1262,13 +1354,11 @@ class Flowchart(QtCore.QObject):
                             "internal_node": bc["internal_node"].name(),
                             "internal_terminal": bc["internal_term"].name(),
                             "ttype": term.type(),
+                            "display_name": getattr(term, "display_name", None),
                         }
                     )
             else:  # output
                 term_name = bc["terminal_name"]
-                if term_name in seen_output_terminals:
-                    continue
-                seen_output_terminals.add(term_name)
                 term = placeholder.terminals.get(term_name)
                 if term:
                     boundary_outputs.append(
@@ -1277,6 +1367,7 @@ class Flowchart(QtCore.QObject):
                             "internal_node": bc["internal_node"].name(),
                             "internal_terminal": bc["internal_term"].name(),
                             "ttype": term.type(),
+                            "display_name": getattr(term, "display_name", None),
                         }
                     )
 
@@ -1638,6 +1729,7 @@ class Flowchart(QtCore.QObject):
                 isinstance(remoteTerm.node(), SourceNode),
                 remoteTerm.name(),
                 remoteTerm.saveState(),
+                remoteNodeLabel=remoteTerm.node()._label,
             )
             localTerm.node().terminalConnected(msg)
             await self.broker.send_string(localNode, zmq.SNDMORE)
@@ -1652,6 +1744,7 @@ class Flowchart(QtCore.QObject):
                 isinstance(localTerm.node(), SourceNode),
                 localTerm.name(),
                 localTerm.saveState(),
+                remoteNodeLabel=localTerm.node()._label,
             )
             remoteTerm.node().terminalConnected(msg)
             await self.broker.send_string(remoteNode, zmq.SNDMORE)
@@ -1756,13 +1849,36 @@ class Flowchart(QtCore.QObject):
         node.changed = True
         self.sigNodeChanged.emit(node)
 
+    def _update_boundary_display_names(self, node, label):
+        """Refresh display_name on any subgraph placeholder terminal whose internal
+        name references the given node (i.e. starts with "nodename.").
+
+        Called when a node's label changes so that boundary terminals update live.
+        """
+        node_prefix = node.name() + "."
+        for sg_data in self._subgraphs.values():
+            placeholder = sg_data.get("placeholder")
+            if placeholder is None:
+                continue
+            for term_name, term in placeholder.terminals.items():
+                if term_name.startswith(node_prefix):
+                    term_suffix = term_name[len(node_prefix) :]
+                    term.display_name = f"{label}.{term_suffix}" if label else None
+                    term.graphicsItem().updateLabel()
+
     @asyncSlot(object, object)
     async def nodeLabelChanged(self, node, label):
         """Handle label change events from nodes and forward to NodeProcess"""
+        self.sigNodeLabelChanged.emit(node, label)
+        self._update_boundary_display_names(node, label)
         name = node.name()
         msg = fcMsgs.NodeLabelChanged(name, label)
         await self.broker.send_string(name, zmq.SNDMORE)
         await self.broker.send_pyobj(msg)
+        # Forward label change to downstream NodeProcesses so they can update buttons
+        for successor in self._graph.successors(name):
+            await self.broker.send_string(successor, zmq.SNDMORE)
+            await self.broker.send_pyobj(msg)
 
     @asyncSlot(object)
     async def nodeEnabled(self, root):
@@ -2299,8 +2415,10 @@ class Flowchart(QtCore.QObject):
                         node = self.nodes(data="node")[node_name]
                         if node.exception is None:
                             node.setException(msg, "warning")
-                            ctrl.chartWidget.updateStatus(f"WARNING: {source} {node.name()}: {msg}", color="orange")
-                            logger.warning(f"{source} {node.name()}: {msg}")
+                            ctrl.chartWidget.updateStatus(
+                                f"WARNING: {source} {node.display_name()}: {msg}", color="orange"
+                            )
+                            logger.warning(f"{source} {node.display_name()}: {msg}")
             elif topic == "error":
                 ctrl = self.widget()
                 if hasattr(msg, "node_name"):
@@ -2309,8 +2427,8 @@ class Flowchart(QtCore.QObject):
                     node_name = ctrl.metadata[msg.node_name]["parent"]
                     node = self.nodes(data="node")[node_name]
                     node.setException(msg)
-                    ctrl.chartWidget.updateStatus(f"ERROR: {source} {node.name()}: {msg}", color="red")
-                    logger.error(f"{source} {node.name()}: {msg}")
+                    ctrl.chartWidget.updateStatus(f"ERROR: {source} {node.display_name()}: {msg}", color="red")
+                    logger.error(f"{source} {node.display_name()}: {msg}")
                 else:
                     ctrl.chartWidget.updateStatus(f"ERROR: {source}: {msg}", color="red")
                     logger.error(f"{source}: {msg}")
@@ -2391,6 +2509,7 @@ class FlowchartCtrlWidget(QtWidgets.QWidget):
         self.libraryEditor = EditorTemplate.LibraryEditor(self, chart.library, chart.subgraph_library)
         self.libraryEditor.sigApplyClicked.connect(self.libraryUpdated)
         self.libraryEditor.sigReloadClicked.connect(self.libraryReloaded)
+        self.libraryEditor.sigLoadWarning.connect(lambda msg: self.chartWidget.updateStatus(msg, color="orange"))
         self.ui.libraryConfigure.clicked.connect(self.libraryEditor.show)
 
         self.ui.subgraph_tree.customContextMenuRequested.connect(self._onSubgraphTreeContextMenu)
@@ -2462,14 +2581,14 @@ class FlowchartCtrlWidget(QtWidgets.QWidget):
                             assert gnode.values["alias"]
                         except AssertionError:
                             gnode.setException(True)
-                            self.chartWidget.updateStatus(f"{gnode.name()} set alias!", color="red")
+                            self.chartWidget.updateStatus(f"{gnode.display_name()} set alias!", color="red")
                             continue
                         try:
                             assert gnode.values["alias"] != gnode.input_vars()["In"]
                         except AssertionError:
                             gnode.setException(True)
                             self.chartWidget.updateStatus(
-                                f"{gnode.name()} alias name cannot be same as input!", color="red"
+                                f"{gnode.display_name()} alias name cannot be same as input!", color="red"
                             )
                             continue
                         displays.add(gnode)
@@ -2492,8 +2611,8 @@ class FlowchartCtrlWidget(QtWidgets.QWidget):
                                 latched=node.latched,
                             )
                         except Exception as e:
-                            self.chartWidget.updateStatus(f"{node.name()} {e}!", color="red")
-                            printExc(f"{node.name()} raised exception! See console for stacktrace.")
+                            self.chartWidget.updateStatus(f"{node.display_name()} {e}!", color="red")
+                            printExc(f"{node.display_name()} raised exception! See console for stacktrace.")
                             node.setException(True)
                             failed_nodes.add(node)
                             continue
@@ -2510,7 +2629,7 @@ class FlowchartCtrlWidget(QtWidgets.QWidget):
 
         if disconnectedNodes:
             for node in disconnectedNodes:
-                self.chartWidget.updateStatus(f"{node.name()} disconnected!", color="red")
+                self.chartWidget.updateStatus(f"{node.display_name()} disconnected!", color="red")
                 node.setException(True)
             msg.show()
             return
@@ -3029,6 +3148,16 @@ class FlowchartWidget(dockarea.DockArea):
             elif isinstance(node, CtrlNode) and ctrl:
                 args["terms"] = node.input_vars()
                 args["topics"] = {}
+                # Build label map: {node_name: label} for upstream nodes that have labels
+                term_labels = {}
+                for var_name in (args["terms"] or {}).values():
+                    for gn_name, data in self.chart._graph.nodes(data=True):
+                        if var_name == gn_name or var_name.startswith(f"{gn_name}."):
+                            node_obj = data.get("node")
+                            if node_obj and node_obj._label:
+                                term_labels[gn_name] = node_obj._label
+                            break
+                args["term_labels"] = term_labels
 
             display_args.append(args)
 
@@ -3110,7 +3239,7 @@ class FlowchartWidget(dockarea.DockArea):
             for name, term in node.inputs().items():
                 term = term()
                 connections = []
-                connections.append(f"{node.name()}.{name}")
+                connections.append(node.display_name(name))
 
                 if term.unit():
                     connections.append(f"in {term.unit()}")
@@ -3121,7 +3250,7 @@ class FlowchartWidget(dockarea.DockArea):
                     connections.append(f"accepts type: {term.type()}")
 
                 for in_term in term.inputTerminals():
-                    connections.append(f"{in_term.node().name()}.{in_term.name()}")
+                    connections.append(in_term.node().display_name(in_term.name()))
                 text.append(" ".join(connections))
 
             if node.outputs():
@@ -3130,7 +3259,7 @@ class FlowchartWidget(dockarea.DockArea):
             for name, term in node.outputs().items():
                 term = term()
                 connections = []
-                connections.append(f"{node.name()}.{name}")
+                connections.append(node.display_name(name))
 
                 if term.unit():
                     connections.append(f"in {term.unit()}")
@@ -3141,7 +3270,7 @@ class FlowchartWidget(dockarea.DockArea):
                     connections.append(f"emits type: {term.type()}")
 
                 for in_term in term.dependentTerms():
-                    connections.append(f"{in_term.node().name()}.{in_term.name()}")
+                    connections.append(in_term.node().display_name(in_term.name()))
                 text.append(" ".join(connections))
 
             text = "\n".join(text)
@@ -3149,7 +3278,7 @@ class FlowchartWidget(dockarea.DockArea):
         elif isinstance(obj, Terminal):
             term = obj
             node = obj.node()
-            text = f"Term: {node.name()}.{term.name()}\nType: {term.type()}"
+            text = f"Term: {node.display_name(term.name())}\nType: {term.type()}"
 
             if term.unit():
                 text += f"\nUnit: {term.unit()}"
@@ -3164,7 +3293,7 @@ class FlowchartWidget(dockarea.DockArea):
             if terms:
                 connections = ["Connected to:"]
                 for in_term in terms:
-                    connections.append(f"{in_term.node().name()}.{in_term.name()}")
+                    connections.append(in_term.node().display_name(in_term.name()))
                 connections = " ".join(connections)
                 text = "\n".join([text, connections])
             # self.hoverLabel.setCursorPosition(0)
@@ -3179,11 +3308,13 @@ class FlowchartWidget(dockarea.DockArea):
                 target = connection.target.term
 
             if source and target:
-                prefix = f"from {source.node().name()}.{source.name()} to {target.node().name()}.{target.name()}\n"
-                from_node = f"\nfrom: {source.node().name()}.{source.name()} type: {source.type()}"
+                prefix = (
+                    f"from {source.node().display_name(source.name())} to {target.node().display_name(target.name())}\n"
+                )
+                from_node = f"\nfrom: {source.node().display_name(source.name())} type: {source.type()}"
                 if source.unit():
                     from_node += f" unit: {source.unit()}"
-                to_node = f"\nto: {target.node().name()}.{target.name()} type: {target.type()}"
+                to_node = f"\nto: {target.node().display_name(target.name())} type: {target.type()}"
                 if target.unit():
                     to_node += f" unit: {target.unit()}"
                 text = " ".join(["Connection", prefix, from_node, to_node])

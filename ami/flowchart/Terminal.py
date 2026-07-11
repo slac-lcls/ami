@@ -96,6 +96,7 @@ class Terminal(QtCore.QObject):
         self._allowOptional = optional or self._io == "in"
         self._optional = optional
         self._unit = unit
+        self.display_name = None  # if set, TerminalGraphicsItem shows this instead of _name
         self._graphicsItem = TerminalGraphicsItem(self, parent=self._node().graphicsItem())
 
         self.recolor()
@@ -326,22 +327,29 @@ class TerminalGraphicsItem(GraphicsObject):
         # Get appropriate max width based on terminal position and node size
         max_width = self._getMaxLabelWidth()
 
+        # Use display_name override if set (e.g. subgraph boundary terminals showing labels),
+        # otherwise fall back to the internal terminal name.
+        internal_name = self.term.name()
+        label_source = self.term.display_name or internal_name
+
         # Truncate label if needed (skip if max_width is None for nodes with few terminals)
-        full_name = self.term.name()
         if max_width is not None:
-            display_name, was_truncated = self._truncateLabel(full_name, max_width)
+            display_name, was_truncated = self._truncateLabel(label_source, max_width)
         else:
-            # No truncation needed - use full name
-            display_name = full_name
+            display_name = label_source
             was_truncated = False
 
         # Create label with (possibly truncated) text
         self.label = QtWidgets.QGraphicsTextItem(display_name, self)
         self.label.setTransform(self.label.transform().scale(0.7, 0.7))
 
-        # Add tooltip with full terminal name (only if truncated or for consistency)
-        if was_truncated:
-            self.label.setToolTip(full_name)
+        # Tooltip: show full qualified name when using a display_name override, or when
+        # the label was truncated.
+        if self.term.display_name and self.term.display_name != internal_name:
+            tooltip = f"{self.term.display_name} ({internal_name})"
+            self.label.setToolTip(tooltip)
+        elif was_truncated:
+            self.label.setToolTip(label_source)
 
         self.newConnection = None
         self.setFiltersChildEvents(True)  # to pick up mouse events on the rectitem
@@ -430,32 +438,30 @@ class TerminalGraphicsItem(GraphicsObject):
         return (best_truncated, True)
 
     def updateLabel(self):
-        """Update label text based on current terminal count.
+        """Update label text based on current terminal count or display_name change.
 
-        Called when terminals are added/removed to re-evaluate truncation.
+        Called when terminals are added/removed or when a boundary terminal's
+        display_name is updated (e.g. because an upstream node's label changed).
         """
-        # Get appropriate max width based on current terminal counts
         max_width = self._getMaxLabelWidth()
 
-        # Get full terminal name
-        full_name = self.term.name()
+        internal_name = self.term.name()
+        label_source = self.term.display_name or internal_name
 
-        # Truncate if needed (skip if max_width is None for nodes with few terminals)
         if max_width is not None:
-            display_name, was_truncated = self._truncateLabel(full_name, max_width)
+            display_name, was_truncated = self._truncateLabel(label_source, max_width)
         else:
-            # No truncation needed - use full name
-            display_name = full_name
+            display_name = label_source
             was_truncated = False
 
-        # Update label text
         self.label.setPlainText(display_name)
 
-        # Update tooltip (only if truncated)
-        if was_truncated:
-            self.label.setToolTip(full_name)
+        if self.term.display_name and self.term.display_name != internal_name:
+            self.label.setToolTip(f"{self.term.display_name} ({internal_name})")
+        elif was_truncated:
+            self.label.setToolTip(label_source)
         else:
-            self.label.setToolTip("")  # Clear tooltip if not truncated
+            self.label.setToolTip("")
 
     def setBrush(self, brush):
         self.brush = brush
