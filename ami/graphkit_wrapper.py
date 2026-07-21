@@ -232,7 +232,8 @@ class Graph:
 
     def reset(self):
         """
-        Resets the state of all StatefulTransmation nodes in the graph.
+        Resets the state of all StatefulTransmation nodes in the graph that
+        have reset_on_run enabled (default True).
         """
         nodes = list(
             filter(
@@ -240,7 +241,9 @@ class Graph:
                 self.graph.nodes,
             )
         )
-        list(map(lambda node: node.reset(), nodes))
+        for node in nodes:
+            if getattr(node, "reset_on_run", True):
+                node.reset()
         self.latch_cache = {}
 
     def heartbeat_finished(self):

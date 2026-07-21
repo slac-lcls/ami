@@ -117,6 +117,7 @@ class StatefulTransformation(Transformation):
         local_reduction = kwargs.pop("local_reduction", None)
         global_reduction = kwargs.pop("global_reduction", None)
         latched = kwargs.pop("latched", False)
+        reset_on_run = kwargs.pop("reset_on_run", True)
 
         kwargs.setdefault("func", None)
         super().__init__(**kwargs)
@@ -135,6 +136,7 @@ class StatefulTransformation(Transformation):
         self._local_reduction = local_reduction
         self._global_reduction = global_reduction
         self.latched = latched
+        self.reset_on_run = reset_on_run
 
     @abc.abstractmethod
     def __call__(self, *args, **kwargs):
@@ -201,7 +203,7 @@ class GlobalTransformation(StatefulTransformation):
             Dictionary of keyword arguments to pass when constructing the
             globally expanded version of this operation
         """
-        return {"parent": self.parent, "latched": self.latched}
+        return {"parent": self.parent, "latched": self.latched, "reset_on_run": self.reset_on_run}
 
 
 class ReduceByKey(GlobalTransformation):
