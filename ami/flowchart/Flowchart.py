@@ -707,7 +707,7 @@ class Flowchart(QtCore.QObject):
                     val = val.replace(old, new)
                 return val
             elif isinstance(val, dict):
-                return {_remap(k): _remap(v) for k, v in val.items()}
+                return {_remap(k): (v if k == "label" else _remap(v)) for k, v in val.items()}
             elif isinstance(val, list):
                 return [_remap(item) for item in val]
             elif isinstance(val, tuple):
@@ -733,6 +733,23 @@ class Flowchart(QtCore.QObject):
             name = f"{base_name}.{n}"
             if name not in self._graph.nodes():
                 return name
+            n += 1
+
+    def _generate_unique_label(self, base_label, exclude_node=None):
+        """Generate a unique label, appending .1, .2, etc. if base_label is taken."""
+        if not base_label:
+            return base_label
+        existing = set()
+        for _, node in self._graph.nodes(data="node"):
+            if node is not exclude_node and node._label:
+                existing.add(node._label)
+        if base_label not in existing:
+            return base_label
+        n = 0
+        while True:
+            candidate = f"{base_label}.{n}"
+            if candidate not in existing:
+                return candidate
             n += 1
 
     def _createSubgraphFromImport(
@@ -1186,6 +1203,14 @@ class Flowchart(QtCore.QObject):
             node.restoreState(remapped_state)
             node.blockSignals(False)
             restored_nodes.append(node)
+
+        # Enforce label uniqueness for imported nodes
+        for node, _ in created_nodes:
+            if node._label:
+                unique = self._generate_unique_label(node._label, exclude_node=node)
+                if unique != node._label:
+                    node._label = unique
+                    node.graphicsItem().labelItem.setPlainText(unique)
 
         # Auto-derive boundary inputs from skipped source connections
         auto_boundary_inputs = []
@@ -1720,35 +1745,36 @@ class Flowchart(QtCore.QObject):
         if not self._graph.has_edge(localNode, remoteNode, key=key):
             self._graph.add_edge(localNode, remoteNode, key=key, from_term=localTerm.name(), to_term=remoteTerm.name())
 
-            msg = fcMsgs.NodeTermConnected(
-                localNode,
-                isinstance(localTerm.node(), SourceNode),
-                localTerm.name(),
-                localTerm.saveState(),
-                remoteNode,
-                isinstance(remoteTerm.node(), SourceNode),
-                remoteTerm.name(),
-                remoteTerm.saveState(),
-                remoteNodeLabel=remoteTerm.node()._label,
-            )
-            localTerm.node().terminalConnected(msg)
-            await self.broker.send_string(localNode, zmq.SNDMORE)
-            await self.broker.send_pyobj(msg)
+        # Always send messages — delivers labels to NodeProcesses
+        msg = fcMsgs.NodeTermConnected(
+            localNode,
+            isinstance(localTerm.node(), SourceNode),
+            localTerm.name(),
+            localTerm.saveState(),
+            remoteNode,
+            isinstance(remoteTerm.node(), SourceNode),
+            remoteTerm.name(),
+            remoteTerm.saveState(),
+            remoteNodeLabel=remoteTerm.node()._label,
+        )
+        localTerm.node().terminalConnected(msg)
+        await self.broker.send_string(localNode, zmq.SNDMORE)
+        await self.broker.send_pyobj(msg)
 
-            msg = fcMsgs.NodeTermConnected(
-                remoteNode,
-                isinstance(remoteTerm.node(), SourceNode),
-                remoteTerm.name(),
-                remoteTerm.saveState(),
-                localNode,
-                isinstance(localTerm.node(), SourceNode),
-                localTerm.name(),
-                localTerm.saveState(),
-                remoteNodeLabel=localTerm.node()._label,
-            )
-            remoteTerm.node().terminalConnected(msg)
-            await self.broker.send_string(remoteNode, zmq.SNDMORE)
-            await self.broker.send_pyobj(msg)
+        msg = fcMsgs.NodeTermConnected(
+            remoteNode,
+            isinstance(remoteTerm.node(), SourceNode),
+            remoteTerm.name(),
+            remoteTerm.saveState(),
+            localNode,
+            isinstance(localTerm.node(), SourceNode),
+            localTerm.name(),
+            localTerm.saveState(),
+            remoteNodeLabel=localTerm.node()._label,
+        )
+        remoteTerm.node().terminalConnected(msg)
+        await self.broker.send_string(remoteNode, zmq.SNDMORE)
+        await self.broker.send_pyobj(msg)
 
         self.sigNodeChanged.emit(localTerm.node())
 
@@ -1869,6 +1895,13 @@ class Flowchart(QtCore.QObject):
     @asyncSlot(object, object)
     async def nodeLabelChanged(self, node, label):
         """Handle label change events from nodes and forward to NodeProcess"""
+        # Enforce label uniqueness
+        unique_label = self._generate_unique_label(label, exclude_node=node)
+        if unique_label != label:
+            node._label = unique_label
+            node.graphicsItem().labelItem.setPlainText(unique_label)
+            label = unique_label
+
         self.sigNodeLabelChanged.emit(node, label)
         self._update_boundary_display_names(node, label)
         name = node.name()
@@ -2146,6 +2179,18 @@ class Flowchart(QtCore.QObject):
                 localNode_remoteNode, key, localTerm, remoteTerm = edge
                 localNode, remoteNode = localNode_remoteNode
                 self._graph.add_edge(localNode, remoteNode, key=key, from_term=localTerm, to_term=remoteTerm)
+
+        # Enforce label uniqueness after all nodes are restored
+        seen_labels = {}
+        for _, node in self._graph.nodes(data="node"):
+            lbl = node._label
+            if not lbl:
+                continue
+            if lbl in seen_labels:
+                unique = self._generate_unique_label(lbl, exclude_node=node)
+                node._label = unique
+                node.graphicsItem().labelItem.setPlainText(unique)
+            seen_labels[node._label] = True
 
         # NEW: Restore subgraphs (MUST BE AFTER nodes and connections)
         if "subgraphs" in state:

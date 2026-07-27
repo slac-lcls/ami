@@ -213,6 +213,16 @@ class CalculatorWidget(QtWidgets.QWidget):
         internal_var = _derive_input_variable(nodeTermConnected)
         display_text = _derive_input_display(nodeTermConnected, graph)
 
+        if term in self.variables:
+            # Button exists — update display text with label
+            self.variables[term].setText(display_text)
+            if self.col < 3:
+                self.col += 1
+            else:
+                self.col = 0
+                self.row += 1
+            return
+
         btn = self.createButton(display_text, self.operatorClicked)
         btn.internal_var = internal_var
         self.variables[term] = btn
@@ -495,7 +505,8 @@ class FilterWidget(QtWidgets.QWidget):
         self.inputs[nodeTermConnected.localTerm] = new_input
 
         if new_input in self.variables:
-            # Already configured from restoreState — just advance layout counters.
+            # Button exists from restoreState — update display text with label
+            self.variables[new_input].setText(display_text)
             if self.col < 3:
                 self.col += 1
             else:
