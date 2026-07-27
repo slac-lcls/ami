@@ -197,6 +197,8 @@ class SubgraphNodeGraphicsItem(NodeGraphicsItem):
         if hasattr(self.node, "flowchart") and self.node.flowchart:
             export_action = menu.addAction("Export Subgraph...")
             export_action.triggered.connect(self.exportSubgraph)
+            auto_connect_action = menu.addAction("Auto-connect...")
+            auto_connect_action.triggered.connect(self._autoConnect)
 
         return menu
 
@@ -204,6 +206,108 @@ class SubgraphNodeGraphicsItem(NodeGraphicsItem):
         """Export this subgraph to a .fc file"""
         if hasattr(self.node, "flowchart") and self.node.flowchart:
             self.node.flowchart.exportSubgraph(self.node.name())
+
+    def _autoConnect(self):
+        """Open dialog to auto-connect unconnected SubgraphNode input terminals."""
+        # Gather all external nodes (not self.node, not subgraph placeholders)
+        external_nodes = []
+        for node_name, node in self.node._graph.nodes(data="node"):
+            if node is self.node:
+                continue
+            if getattr(node, "isSubgraph", False):
+                continue
+            external_nodes.append(node)
+
+        # Collect unconnected input terminals on this SubgraphNode
+        unconnected_inputs = []
+        for term_name, ref in self.node.inputs().items():
+            term = ref()
+            if term is None:
+                continue
+            if not term.isConnected():
+                unconnected_inputs.append((term_name, term))
+
+        if not unconnected_inputs:
+            QtWidgets.QMessageBox.information(None, "Auto-connect", "All inputs are already connected.")
+            return
+
+        # Collect all external output terminals as candidates
+        all_candidates = []
+        for node in external_nodes:
+            for out_term_name, out_ref in node.outputs().items():
+                out_term = out_ref() if callable(out_ref) else out_ref
+                if out_term is None:
+                    continue
+                all_candidates.append((node, out_term_name, out_term))
+
+        # Build input_rows for the dialog
+        input_rows = []
+        for term_name, sg_terminal in unconnected_inputs:
+            # Parse node_part and term_part from the terminal name
+            if "." in term_name:
+                node_part, term_part = term_name.rsplit(".", 1)
+            else:
+                node_part = term_name
+                term_part = None
+
+            # Look up internal node to get its label for display and matching
+            match_key = node_part  # default: use raw name for matching
+            display_label = term_name  # default: show raw terminal name
+            if node_part in self.node._graph.nodes:
+                internal_node = self.node._graph.nodes[node_part]["node"]
+                internal_label = getattr(internal_node, "_label", "") or ""
+                if internal_label:
+                    match_key = internal_label
+                display_label = internal_node.display_name(term_part) if term_part else internal_node.display_name()
+
+            # Score each candidate
+            scored = []
+            for node, out_term_name, out_term in all_candidates:
+                node_label = getattr(node, "_label", None) or ""
+                node_name_str = node.name()
+                label_match = node_label and node_label == match_key
+                name_match = node_name_str == match_key
+                term_ok = term_part is None or out_term_name == term_part
+
+                if label_match and term_ok:
+                    score = 2
+                elif name_match and term_ok:
+                    score = 1
+                else:
+                    score = 0
+
+                display_str = node.display_name(out_term_name)
+                scored.append((score, display_str, out_term))
+
+            # Sort by score descending, then alphabetically by display string
+            scored.sort(key=lambda x: (-x[0], x[1]))
+
+            # Build candidates list as (display_str, ext_term)
+            candidates = [(display_str, out_term) for _, display_str, out_term in scored]
+
+            # Find best match index
+            best_idx = -1
+            for i, (score, _, _) in enumerate(scored):
+                if score > 0:
+                    best_idx = i
+                    break
+
+            input_rows.append((display_label, sg_terminal, candidates, best_idx))
+
+        # Determine parent widget
+        try:
+            parent = self.node.graphicsItem().scene().views()[0]
+        except Exception:
+            parent = None
+
+        dialog = AutoConnectDialog(self.node.name(), input_rows, parent=parent)
+        if dialog.exec_() == QtWidgets.QDialog.Accepted:
+            for sg_terminal, ext_terminal in dialog.get_selections():
+                if ext_terminal is not None:
+                    try:
+                        ext_terminal.connectTo(sg_terminal)
+                    except Exception:
+                        pass
 
     def getMenu(self):
         """Override to rebuild input/output submenus dynamically on every right-click"""
@@ -481,3 +585,59 @@ class SubgraphNodeOutput(Node):
             return inputTerms[0]
 
         return None
+
+
+class AutoConnectDialog(QtWidgets.QDialog):
+    """Dialog for auto-connecting SubgraphNode input terminals to external sources."""
+
+    def __init__(self, node_name, input_rows, parent=None):
+        """
+        Args:
+            node_name: SubgraphNode name (for window title)
+            input_rows: list of tuples:
+                (term_name, sg_terminal, candidates, best_match_index)
+                where candidates is a list of (display_string, ext_terminal)
+                and best_match_index is the index into candidates for pre-selection (-1 for None)
+        """
+        super().__init__(parent)
+        self.setWindowTitle(f"Auto-connect: {node_name}")
+        self.setMinimumWidth(400)
+
+        layout = QtWidgets.QVBoxLayout(self)
+
+        # Header
+        header = QtWidgets.QLabel("Connect inputs from:")
+        layout.addWidget(header)
+
+        # Build combo boxes for each input terminal
+        self._combos = []  # list of (sg_terminal, QComboBox)
+
+        form = QtWidgets.QGridLayout()
+        for row_idx, (term_name, sg_terminal, candidates, best_idx) in enumerate(input_rows):
+            label = QtWidgets.QLabel(term_name)
+            combo = QtWidgets.QComboBox()
+            combo.addItem("None", None)
+            for display_str, ext_term in candidates:
+                combo.addItem(display_str, ext_term)
+            # Pre-select: best_idx is index into candidates list, combo index is +1 (because of "None" at 0)
+            if best_idx >= 0:
+                combo.setCurrentIndex(best_idx + 1)
+            form.addWidget(label, row_idx, 0)
+            form.addWidget(combo, row_idx, 1)
+            self._combos.append((sg_terminal, combo))
+
+        layout.addLayout(form)
+
+        # OK / Cancel buttons
+        buttons = QtWidgets.QDialogButtonBox(QtWidgets.QDialogButtonBox.Ok | QtWidgets.QDialogButtonBox.Cancel)
+        buttons.accepted.connect(self.accept)
+        buttons.rejected.connect(self.reject)
+        layout.addWidget(buttons)
+
+    def get_selections(self):
+        """Return list of (sg_terminal, selected_ext_terminal_or_None)."""
+        results = []
+        for sg_terminal, combo in self._combos:
+            ext_term = combo.currentData()
+            results.append((sg_terminal, ext_term))
+        return results
