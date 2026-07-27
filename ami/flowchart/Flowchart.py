@@ -350,11 +350,13 @@ class Flowchart(QtCore.QObject):
         for node in nodes:
             # Remove from root view scene (this automatically removes it)
             item = node.graphicsItem()
+            saved_pos = item.pos()
             if item.scene() is not None:
                 item.scene().removeItem(item)
 
             # Add to subgraph view (will be visible there)
             view.viewBox().addItem(item)
+            item.setPos(saved_pos)
 
             # Find internal connections (both endpoints inside subgraph)
             for term_name, term in node.terminals.items():
@@ -775,7 +777,7 @@ class Flowchart(QtCore.QObject):
         subgraphNode, view = self._create_subgraph_scaffold(name, nodes, pos)
 
         # Move restored nodes (and their internal connections) from root to subgraph view
-        self._move_items_to_subgraph_view(nodes, view)
+        internal_connections = self._move_items_to_subgraph_view(nodes, view)
 
         # Switch to subgraph view for creating helper nodes
         self.viewManager().displayView(name=name)
@@ -935,10 +937,7 @@ class Flowchart(QtCore.QObject):
         if subgraphNode.outputs():
             subgraphNode.subgraphOutputs.graphicsItem().updateTerminals()
 
-        # Step 4: Move nodes and internal connections to subgraph view
-        internal_connections = self._move_items_to_subgraph_view(nodes, view)
-
-        # Step 5: Create visual ConnectionItems for boundary connections
+        # Step 4: Create visual ConnectionItems for boundary connections
         # These are in the subgraph view connecting helpers to internal nodes
         # NOW we can create connections since everything is in the view
         for bc in boundary_connections:
@@ -2761,30 +2760,51 @@ class FlowchartCtrlWidget(QtWidgets.QWidget):
             # Subgraph view
             sg_data = self.chart._subgraphs[sg_name]
             node_names = set(sg_data["nodes"])
-            subgraph = self.chart._graph.subgraph(node_names)
+            layout_graph = self.chart._graph.subgraph(node_names).copy()
             placeholder = sg_data["placeholder"]
+            placeholder_nodes = {}
         else:
             # Root view: exclude nodes inside subgraphs
             subgraph_nodes = set()
             for sg_data in self.chart._subgraphs.values():
                 subgraph_nodes.update(sg_data["nodes"])
             root_nodes = set(self.chart._graph.nodes()) - subgraph_nodes
-            subgraph = self.chart._graph.subgraph(root_nodes)
+            layout_graph = self.chart._graph.subgraph(root_nodes).copy()
             placeholder = None
 
-        if len(subgraph.nodes()) == 0:
+            # Include SubgraphNode placeholders in layout
+            placeholder_nodes = {}
+            for ph_name, sg_data in self.chart._subgraphs.items():
+                ph = sg_data.get("placeholder")
+                if ph is None:
+                    continue
+                placeholder_nodes[ph_name] = ph
+                layout_graph.add_node(ph_name)
+                for term_name, term in ph.terminals.items():
+                    if term.isInput():
+                        for remote_term in term.connections():
+                            src = remote_term.node().name()
+                            if src in root_nodes:
+                                layout_graph.add_edge(src, ph_name)
+                    else:
+                        for remote_term in term.connections():
+                            dst = remote_term.node().name()
+                            if dst in root_nodes:
+                                layout_graph.add_edge(ph_name, dst)
+
+        if len(layout_graph.nodes()) == 0:
             return
 
         # Assign layers via longest path (topological sort)
-        layers = {node: 0 for node in subgraph.nodes()}
+        layers = {node: 0 for node in layout_graph.nodes()}
         try:
-            for node in nx.topological_sort(subgraph):
-                for successor in subgraph.successors(node):
+            for node in nx.topological_sort(layout_graph):
+                for successor in layout_graph.successors(node):
                     layers[successor] = max(layers[successor], layers[node] + 1)
         except nx.NetworkXUnfeasible:
-            sources = [n for n in subgraph.nodes() if subgraph.in_degree(n) == 0]
+            sources = [n for n in layout_graph.nodes() if layout_graph.in_degree(n) == 0]
             if not sources:
-                sources = list(subgraph.nodes())
+                sources = list(layout_graph.nodes())
             visited = set()
             queue = deque((s, 0) for s in sources)
             while queue:
@@ -2794,7 +2814,7 @@ class FlowchartCtrlWidget(QtWidgets.QWidget):
                     continue
                 visited.add(node)
                 layers[node] = depth
-                for succ in subgraph.successors(node):
+                for succ in layout_graph.successors(node):
                     queue.append((succ, depth + 1))
 
         # Group by layer and position nodes
@@ -2810,8 +2830,11 @@ class FlowchartCtrlWidget(QtWidgets.QWidget):
             for i, node_name in enumerate(nodes):
                 y = y_offset + i * y_spacing
                 p = (find_nearest(x), find_nearest(y))
-                node = self.chart._graph.nodes[node_name]["node"]
-                node.graphicsItem().setPos(*p)
+                if node_name in placeholder_nodes:
+                    placeholder_nodes[node_name].graphicsItem().setPos(*p)
+                else:
+                    node = self.chart._graph.nodes[node_name]["node"]
+                    node.graphicsItem().setPos(*p)
 
         # Position visual boundary nodes for subgraph views
         if placeholder:
