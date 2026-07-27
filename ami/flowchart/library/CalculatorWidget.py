@@ -501,7 +501,6 @@ class FilterWidget(QtWidgets.QWidget):
         graph = getattr(getattr(self, "node", None), "_flowchart", None)
         new_input = _derive_input_variable(nodeTermConnected)
         display_text = _derive_input_display(nodeTermConnected, graph)
-
         self.inputs[nodeTermConnected.localTerm] = new_input
 
         if new_input in self.variables:
@@ -664,6 +663,19 @@ class FilterWidget(QtWidgets.QWidget):
 
         self.inputs = state.get("inputs", {})
         self.outputs = state.get("outputs", [])
+
+        # Create variable buttons for restored inputs that don't already exist
+        for term, input_name in self.inputs.items():
+            if input_name not in self.variables:
+                btn = self.createButton(input_name, self.operatorClicked)
+                btn.internal_var = input_name
+                self.variables[input_name] = btn
+                self.variable_layout.addWidget(btn, self.row, self.col)
+                if self.col < 3:
+                    self.col += 1
+                else:
+                    self.col = 0
+                    self.row += 1
 
         for condition in range(0, conditions):
             if condition == 0:

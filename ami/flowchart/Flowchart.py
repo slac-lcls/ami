@@ -487,6 +487,11 @@ class Flowchart(QtCore.QObject):
                     if ph_term:
                         ph_term.display_name = f"{external_node._label}.{data['from_term']}"
                         ph_term.graphicsItem().updateLabel()
+                        # Also propagate display_name to SubgraphNodeInput terminal
+                        sg_in_term = subgraphNode.subgraphInputs.terminals.get(terminal_name)
+                        if sg_in_term:
+                            sg_in_term.display_name = f"{external_node._label}.{data['from_term']}"
+                            sg_in_term.graphicsItem().updateLabel()
 
                 if input_pos is None:
                     input_pos = external_node.graphicsItem().pos()
@@ -530,6 +535,11 @@ class Flowchart(QtCore.QObject):
                     if ph_term:
                         ph_term.display_name = f"{internal_node._label}.{data['from_term']}"
                         ph_term.graphicsItem().updateLabel()
+                        # Also propagate display_name to SubgraphNodeOutput terminal
+                        sg_out_term = subgraphNode.subgraphOutputs.terminals.get(terminal_name)
+                        if sg_out_term:
+                            sg_out_term.display_name = f"{internal_node._label}.{data['from_term']}"
+                            sg_out_term.graphicsItem().updateLabel()
 
                 if output_pos is None:
                     output_pos = external_node.graphicsItem().pos()
@@ -808,6 +818,11 @@ class Flowchart(QtCore.QObject):
                     if ph_term:
                         ph_term.display_name = display_name
                         ph_term.graphicsItem().updateLabel()
+                        # Also propagate display_name to SubgraphNodeInput terminal
+                        sg_in_term = subgraphNode.subgraphInputs.terminals.get(term_name)
+                        if sg_in_term:
+                            sg_in_term.display_name = display_name
+                            sg_in_term.graphicsItem().updateLabel()
 
             sg_input_term = subgraphNode.subgraphInputs.terminals[term_name]
 
@@ -867,6 +882,11 @@ class Flowchart(QtCore.QObject):
                     if ph_term:
                         ph_term.display_name = display_name
                         ph_term.graphicsItem().updateLabel()
+                        # Also propagate display_name to SubgraphNodeOutput terminal
+                        sg_out_term = subgraphNode.subgraphOutputs.terminals.get(term_name)
+                        if sg_out_term:
+                            sg_out_term.display_name = display_name
+                            sg_out_term.graphicsItem().updateLabel()
 
             sg_output_term = subgraphNode.subgraphOutputs.terminals[term_name]
 
@@ -953,6 +973,10 @@ class Flowchart(QtCore.QObject):
                 subgraph_visual = sg_input_term.connectTo(internal_term, signal=False)
                 _assign_connection_color(subgraph_visual, sg_input_term, internal_term)
                 bc["subgraph_visual"] = subgraph_visual
+                # Pre-set _input_vars so input_vars() includes boundary connections.
+                # Without this, subprocess widget display() misses boundary inputs and
+                # Filter/Calculator widgets are created with incomplete combo options.
+                internal_term.node()._input_vars[internal_term.name()] = bc["terminal_name"]
             else:  # output
                 # Internal → SubgraphOutput
                 sg_output_term = subgraphNode.subgraphOutputs.terminals[bc["terminal_name"]]

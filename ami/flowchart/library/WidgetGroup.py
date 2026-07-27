@@ -59,6 +59,11 @@ def setComboState(w, v):
             return
 
     idx = w.findText(str(v))
+    if idx == -1:
+        # Fallback: try finding by data (item text may have been relabeled)
+        idx = w.findData(v)
+    if idx < 0:
+        return  # Item not found, don't blank the combo
     if w.currentIndex() == idx:
         w.currentIndexChanged.emit(idx)
     else:
