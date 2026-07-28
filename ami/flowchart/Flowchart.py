@@ -1737,6 +1737,22 @@ class Flowchart(QtCore.QObject):
                         # CRITICAL: Update internal node's _input_vars
                         internal_node.connected(internal_term, localTerm)
 
+                        # Notify internal node's subprocess so widgets update
+                        msg = fcMsgs.NodeTermConnected(
+                            internal_node.name(),
+                            isinstance(internal_node, SourceNode),
+                            internal_term.name(),
+                            internal_term.saveState(),
+                            localNode,
+                            isinstance(localTerm.node(), SourceNode),
+                            localTerm.name(),
+                            localTerm.saveState(),
+                            remoteNodeLabel=localTerm.node()._label,
+                        )
+                        internal_node.terminalConnected(msg)
+                        await self.broker.send_string(internal_node.name(), zmq.SNDMORE)
+                        await self.broker.send_pyobj(msg)
+
                         self.sigNodeChanged.emit(localTerm.node())
                         return
 
@@ -1834,6 +1850,21 @@ class Flowchart(QtCore.QObject):
 
                         # Update internal node's _input_vars
                         internal_node.disconnected(internal_term, localTerm)
+
+                        # Notify internal node's subprocess so widgets update
+                        msg = fcMsgs.NodeTermDisconnected(
+                            internal_node.name(),
+                            isinstance(internal_node, SourceNode),
+                            internal_term.name(),
+                            internal_term.saveState(),
+                            localNode,
+                            isinstance(localTerm.node(), SourceNode),
+                            localTerm.name(),
+                            localTerm.saveState(),
+                        )
+                        internal_node.terminalDisconnected(msg)
+                        await self.broker.send_string(internal_node.name(), zmq.SNDMORE)
+                        await self.broker.send_pyobj(msg)
 
                         self.sigNodeChanged.emit(localTerm.node())
                         return
