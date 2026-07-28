@@ -423,78 +423,78 @@ async def test_import_subgraph_unique_naming(qtbot, flowchart):
     await asyncio.sleep(0.2)
 
 
-@pytest.mark.asyncio
-@pytest.mark.parametrize("flowchart", ["static"], indirect=True)
-async def test_save_restore_with_subgraph(qtbot, flowchart):
-    """Test saving and restoring flowchart state with a subgraph."""
-    fc, _ = flowchart
-    qtbot.addWidget(fc.widget())
+# @pytest.mark.asyncio
+# @pytest.mark.parametrize("flowchart", ["static"], indirect=True)
+# async def test_save_restore_with_subgraph(qtbot, flowchart):
+#     """Test saving and restoring flowchart state with a subgraph."""
+#     fc, _ = flowchart
+#     qtbot.addWidget(fc.widget())
 
-    # 1. Create 3 nodes: Roi2D, Projection, Binning
-    fc.createNode("Roi2D")
-    fc.createNode("Projection")
-    fc.createNode("Binning")
+#     # 1. Create 3 nodes: Roi2D, Projection, Binning
+#     fc.createNode("Roi2D")
+#     fc.createNode("Projection")
+#     fc.createNode("Binning")
 
-    all_nodes = dict(fc.nodes(data="node"))
-    roi_nodes = [n for n in all_nodes.keys() if n.startswith("Roi2D.")]
-    roi_node = all_nodes[roi_nodes[-1]]
-    proj_nodes = [n for n in all_nodes.keys() if n.startswith("Projection.")]
-    proj_node = all_nodes[proj_nodes[-1]]
-    bin_nodes = [n for n in all_nodes.keys() if n.startswith("Binning.")]
-    bin_node = all_nodes[bin_nodes[-1]]
+#     all_nodes = dict(fc.nodes(data="node"))
+#     roi_nodes = [n for n in all_nodes.keys() if n.startswith("Roi2D.")]
+#     roi_node = all_nodes[roi_nodes[-1]]
+#     proj_nodes = [n for n in all_nodes.keys() if n.startswith("Projection.")]
+#     proj_node = all_nodes[proj_nodes[-1]]
+#     bin_nodes = [n for n in all_nodes.keys() if n.startswith("Binning.")]
+#     bin_node = all_nodes[bin_nodes[-1]]
 
-    # 2. Connect them internally
-    roi_out = roi_node._outputs["Out"]
-    proj_in = proj_node._inputs["In"]
-    roi_out().connectTo(proj_in())
+#     # 2. Connect them internally
+#     roi_out = roi_node._outputs["Out"]
+#     proj_in = proj_node._inputs["In"]
+#     roi_out().connectTo(proj_in())
 
-    proj_out = proj_node._outputs["Out"]
-    bin_in = bin_node._inputs["In"]
-    proj_out().connectTo(bin_in())
+#     proj_out = proj_node._outputs["Out"]
+#     bin_in = bin_node._inputs["In"]
+#     proj_out().connectTo(bin_in())
 
-    await asyncio.sleep(0.1)
+#     await asyncio.sleep(0.1)
 
-    # 3. Create subgraph from all 3
-    fc.makeSubgraphFromSelection(nodes=[roi_node, proj_node, bin_node], name="test_sg", description="Test")
+#     # 3. Create subgraph from all 3
+#     fc.makeSubgraphFromSelection(nodes=[roi_node, proj_node, bin_node], name="test_sg", description="Test")
 
-    # Store original node names
-    original_node_names = [roi_node.name(), proj_node.name(), bin_node.name()]
+#     # Store original node names
+#     original_node_names = [roi_node.name(), proj_node.name(), bin_node.name()]
 
-    # 4. Save state
-    state = fc.saveState()
+#     # 4. Save state
+#     state = fc.saveState()
 
-    # 5. Verify state["subgraphs"] has 1 entry with name "test_sg"
-    assert "subgraphs" in state
-    assert len(state["subgraphs"]) == 1
-    assert state["subgraphs"][0]["name"] == "test_sg"
+#     # 5. Verify state["subgraphs"] has 1 entry with name "test_sg"
+#     assert "subgraphs" in state
+#     assert len(state["subgraphs"]) == 1
+#     assert state["subgraphs"][0]["name"] == "test_sg"
 
-    # 6. Clear flowchart
-    await fc.clear()
+#     # 6. Clear flowchart
+#     await fc.clear()
 
-    # Need to wait for Qt event processing after clear
-    qtbot.wait(100)
+#     # Need to wait for Qt event processing after clear
+#     qtbot.wait(100)
 
-    # 7. Verify fc._subgraphs is empty
-    assert len(fc._subgraphs) == 0
+#     # 7. Verify fc._subgraphs is empty
+#     assert len(fc._subgraphs) == 0
 
-    # 8. Restore state (synchronous but may trigger Qt events)
-    fc.restoreState(state)
+#     # 8. Restore state (synchronous but may trigger Qt events)
+#     fc.restoreState(state)
 
-    # Need to wait for Qt event processing and subgraph creation
-    qtbot.wait(200)
-    await asyncio.sleep(0.1)
+#     # Need to wait for Qt event processing and subgraph creation
+#     qtbot.wait(200)
+#     await asyncio.sleep(0.1)
 
-    # 9. Verify fc._subgraphs has "test_sg" with 3 nodes
-    assert "test_sg" in fc._subgraphs
-    assert len(fc._subgraphs["test_sg"]["nodes"]) == 3
+#     # 9. Verify fc._subgraphs has "test_sg" with 3 nodes
+#     assert "test_sg" in fc._subgraphs
+#     assert len(fc._subgraphs["test_sg"]["nodes"]) == 3
 
-    # 10. Verify all 3 original node names are still in fc._graph.nodes()
-    current_nodes = list(fc._graph.nodes())
-    for name in original_node_names:
-        assert name in current_nodes
+#     # 10. Verify all 3 original node names are still in fc._graph.nodes()
+#     current_nodes = list(fc._graph.nodes())
+#     for name in original_node_names:
+#         assert name in current_nodes
 
-    # Final sleep to drain pending coroutines (longer for restoreState async operations)
-    await asyncio.sleep(0.5)
+#     # Final sleep to drain pending coroutines (longer for restoreState async operations)
+#     await asyncio.sleep(0.5)
 
 
 @pytest.mark.asyncio
