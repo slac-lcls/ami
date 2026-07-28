@@ -1293,6 +1293,9 @@ class Histogram2DWidget(ImageWidget):
     def __init__(self, topics=None, terms=None, addr=None, parent=None, **kwargs):
         super().__init__(topics, terms, addr, parent, display=False, axis=True, **kwargs)
 
+        self.lock = False
+        self.view.setAspectLocked(False)
+
         self.xbins = None
         self.ybins = None
         self.transform = QtGui.QTransform()
@@ -1301,7 +1304,7 @@ class Histogram2DWidget(ImageWidget):
         pos = evt[0]
         pos = self.view.mapSceneToView(pos)
         inverse = self.transform.inverted()[0]
-        pos = pos * inverse
+        pos = inverse.map(pos)
 
         if self.imageItem.image is not None:
             shape = self.imageItem.image.shape
@@ -1324,8 +1327,8 @@ class Histogram2DWidget(ImageWidget):
         counts = data[counts]
         if self.log_scale_histogram:
             counts = np.log10(counts)
-        xscale = (self.xbins[-1] - self.xbins[0]) / self.xbins.shape
-        yscale = (self.ybins[-1] - self.ybins[0]) / self.ybins.shape
+        xscale = (self.xbins[-1] - self.xbins[0]) / self.xbins.shape[0]
+        yscale = (self.ybins[-1] - self.ybins[0]) / self.ybins.shape[0]
 
         self.imageItem.setImage(counts, autoLevels=self.auto_levels)
         self.transform = QtGui.QTransform(xscale, 0, 0, yscale, self.xbins[0], self.ybins[0])
