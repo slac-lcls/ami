@@ -206,6 +206,7 @@ class Flowchart(QtCore.QObject):
         node.sigTerminalDisconnected.connect(self.nodeTermDisconnected)
         node.sigNodeEnabled.connect(self.nodeEnabled)
         node.sigNodeLatched.connect(self.nodeLatched)
+        node.sigNodeResetOnRun.connect(self.nodeResetOnRun)
         node.sigTerminalOptional.connect(self.nodeTermOptional)
         node.sigTerminalAdded.connect(self.nodeTermAdded)
         node.sigTerminalRemoved.connect(self.nodeTermRemoved)
@@ -1935,6 +1936,10 @@ class Flowchart(QtCore.QObject):
         node.changed = True
         self.sigNodeChanged.emit(node)
 
+    def nodeResetOnRun(self, node):
+        node.changed = True
+        self.sigNodeChanged.emit(node)
+
     def _update_boundary_display_names(self, node, label):
         """Refresh display_name on any subgraph placeholder terminal whose internal
         name references the given node (i.e. starts with "nodename.").
@@ -2714,6 +2719,7 @@ class FlowchartCtrlWidget(QtWidgets.QWidget):
                                 outputs=node.output_vars(),
                                 parent=node.name(),
                                 latched=node.latched,
+                                reset_on_run=node.reset_on_run,
                             )
                         except Exception as e:
                             self.chartWidget.updateStatus(f"{node.display_name()} {e}!", color="red")

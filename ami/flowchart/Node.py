@@ -91,6 +91,7 @@ class Node(QtCore.QObject):
     sigTerminalOptional = QtCore.Signal(object, object)  # self, term
     sigNodeEnabled = QtCore.Signal(object)  # self
     sigNodeLatched = QtCore.Signal(object)  # self
+    sigNodeResetOnRun = QtCore.Signal(object)  # self
     sigLabelChanged = QtCore.Signal(object, object)  # self, label
 
     def __init__(self, name, **kwargs):
@@ -154,6 +155,7 @@ class Node(QtCore.QObject):
 
         self.global_op = kwargs.get("global_op", False)
         self.latched = False
+        self.reset_on_run = True
 
         self._input_vars = {}  # term:var
 
@@ -222,6 +224,14 @@ class Node(QtCore.QObject):
         self.graphicsItem().latch.blockSignals(True)
         self.graphicsItem().latch.setChecked(latched)
         self.graphicsItem().latch.blockSignals(False)
+
+    def nodeResetOnRun(self, reset_on_run):
+        self.reset_on_run = reset_on_run
+
+        # block signals to avoid recursive calls
+        self.graphicsItem().reset_on_run_action.blockSignals(True)
+        self.graphicsItem().reset_on_run_action.setChecked(reset_on_run)
+        self.graphicsItem().reset_on_run_action.blockSignals(False)
 
     def addInput(self, name="In", **kwargs):
         """Add a new input terminal to this Node with the given name. Extra
@@ -527,6 +537,7 @@ class Node(QtCore.QObject):
             "enabled": self._enabled,
             "viewed": self.viewed,
             "latched": self.latched,
+            "reset_on_run": self.reset_on_run,
             "label": self._label,
         }
         state["terminals"] = self.saveTerminals()
@@ -541,6 +552,7 @@ class Node(QtCore.QObject):
         self._enabled = state.get("enabled")
         self.viewed = state.get("viewed", False)
         self.nodeLatched(state.get("latched", False))
+        self.nodeResetOnRun(state.get("reset_on_run", True))
         if self._label:
             self.graphicsItem().setLabel(self._label)
         if "terminals" in state:
@@ -684,6 +696,7 @@ class NodeGraphicsItem(GraphicsObject):
         self.enabled = QtWidgets.QAction("Enabled", self.menu, checkable=True, checked=True)
         self.optional = QtWidgets.QAction("Optional Inputs", self.menu, checkable=True, checked=False)
         self.latch = QtWidgets.QAction("Latch Outputs", self.menu, checkable=True, checked=False)
+        self.reset_on_run_action = QtWidgets.QAction("Reset on Run", self.menu, checkable=True, checked=True)
         self.buildMenu()
 
     def setPen(self, *args, **kwargs):
@@ -1019,6 +1032,9 @@ class NodeGraphicsItem(GraphicsObject):
             if self.node.global_op:
                 self.latch.toggled.connect(self.latchedFromMenu)
                 self.menu.addAction(self.latch)
+            if self.node.global_op or self.node._buffered:
+                self.reset_on_run_action.toggled.connect(self.resetOnRunFromMenu)
+                self.menu.addAction(self.reset_on_run_action)
             if self.node._allowAddInput:
                 self.menu.addAction("Add input", self.addInputFromMenu)
             if self.node._allowAddOutput:
@@ -1045,6 +1061,10 @@ class NodeGraphicsItem(GraphicsObject):
     def latchedFromMenu(self, checked):
         self.node.nodeLatched(checked)
         self.node.sigNodeLatched.emit(self.node)
+
+    def resetOnRunFromMenu(self, checked):
+        self.node.nodeResetOnRun(checked)
+        self.node.sigNodeResetOnRun.emit(self.node)
 
     def addInputFromMenu(self):
         # called when add input is clicked in context menu
