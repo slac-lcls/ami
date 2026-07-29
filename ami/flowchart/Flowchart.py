@@ -1718,6 +1718,7 @@ class Flowchart(QtCore.QObject):
             if remoteTerm.isInput():
                 # External -> Placeholder Input
                 # Find matching boundary connection
+                matched = False
                 for bc in sg_data["boundary_connections"]:
                     if bc["terminal_name"] == remoteTerm.name() and bc["type"] == "input":
                         internal_node = bc["internal_node"]
@@ -1753,12 +1754,15 @@ class Flowchart(QtCore.QObject):
                         await self.broker.send_string(internal_node.name(), zmq.SNDMORE)
                         await self.broker.send_pyobj(msg)
 
-                        self.sigNodeChanged.emit(localTerm.node())
-                        return
+                        matched = True
+                if matched:
+                    self.sigNodeChanged.emit(localTerm.node())
+                    return
 
             elif remoteTerm.isOutput():
                 # Placeholder Output -> External
                 # Find matching boundary connection
+                matched = False
                 for bc in sg_data["boundary_connections"]:
                     if bc["terminal_name"] == remoteTerm.name() and bc["type"] == "output":
                         internal_node = bc["internal_node"]
@@ -1778,8 +1782,10 @@ class Flowchart(QtCore.QObject):
                         # Update external node's _input_vars
                         localTerm.node().connected(localTerm, internal_term)
 
-                        self.sigNodeChanged.emit(internal_node)
-                        return
+                        matched = True
+                if matched:
+                    self.sigNodeChanged.emit(internal_node)
+                    return
 
         if not self._graph.has_edge(localNode, remoteNode, key=key):
             self._graph.add_edge(localNode, remoteNode, key=key, from_term=localTerm.name(), to_term=remoteTerm.name())
