@@ -342,8 +342,8 @@ class MeanWaveformVsScan(CtrlNode):
     uiTemplate = [
         ("binned", "check", {"checked": False}),
         ("bins", "intSpin", {"value": 10, "min": 1}),
-        ("min", "intSpin", {"value": 0}),
-        ("max", "intSpin", {"value": 10}),
+        ("min", "doubleSpin", {"value": 0}),
+        ("max", "doubleSpin", {"value": 10}),
     ]
 
     def __init__(self, name):
