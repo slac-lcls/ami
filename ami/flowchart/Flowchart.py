@@ -1835,6 +1835,76 @@ class Flowchart(QtCore.QObject):
         remoteNode = remoteTerm.node().name()
         key = localNode + "." + localTerm.name() + "->" + remoteNode + "." + remoteTerm.name()
 
+        # Handle SubgraphNodeInput -> InternalNode disconnection (inside subgraph view)
+        if getattr(localTerm.node(), "isSubgraphInput", False):
+            external_term = localTerm.node().getInputTerm(localTerm)
+            if external_term is not None:
+                external_node = external_term.node()
+                edge_key = f"{external_node.name()}.{external_term.name()}" f"->{remoteNode}.{remoteTerm.name()}"
+                if self._graph.has_edge(external_node.name(), remoteNode, key=edge_key):
+                    self._graph.remove_edge(external_node.name(), remoteNode, key=edge_key)
+                remoteTerm.node().disconnected(remoteTerm, external_term)
+
+                sg_name = localTerm.node().rootNode.name()
+                if sg_name in self._subgraphs:
+                    sg_data = self._subgraphs[sg_name]
+                    terminal_name = localTerm.name()
+
+                    sg_data["boundary_connections"] = [
+                        bc
+                        for bc in sg_data["boundary_connections"]
+                        if not (
+                            bc["type"] == "input"
+                            and bc["terminal_name"] == terminal_name
+                            and bc["internal_node"] is remoteTerm.node()
+                            and bc["internal_term"] is remoteTerm
+                        )
+                    ]
+
+                    still_used = any(
+                        bc["terminal_name"] == terminal_name and bc["type"] == "input"
+                        for bc in sg_data["boundary_connections"]
+                    )
+                    if not still_used:
+                        placeholder = sg_data["placeholder"]
+                        if terminal_name in placeholder.terminals:
+                            placeholder.removeTerminal(terminal_name)
+
+                self.sigNodeChanged.emit(external_term.node())
+            return
+
+        # Handle InternalNode -> SubgraphNodeOutput disconnection (inside subgraph view)
+        if getattr(remoteTerm.node(), "isSubgraphOutput", False):
+            sg_name = remoteTerm.node().rootNode.name()
+            if sg_name in self._subgraphs:
+                sg_data = self._subgraphs[sg_name]
+                terminal_name = remoteTerm.name()
+
+                for bc in [
+                    b
+                    for b in sg_data["boundary_connections"]
+                    if b["terminal_name"] == terminal_name and b["type"] == "output"
+                ]:
+                    ext_node = bc["external_node"]
+                    ext_term = bc["external_term"]
+                    edge_key = f"{localNode}.{localTerm.name()}" f"->{ext_node.name()}.{ext_term.name()}"
+                    if self._graph.has_edge(localNode, ext_node.name(), key=edge_key):
+                        self._graph.remove_edge(localNode, ext_node.name(), key=edge_key)
+                    ext_term.node().disconnected(ext_term, localTerm)
+
+                sg_data["boundary_connections"] = [
+                    bc
+                    for bc in sg_data["boundary_connections"]
+                    if not (bc["type"] == "output" and bc["terminal_name"] == terminal_name)
+                ]
+
+                placeholder = sg_data["placeholder"]
+                if terminal_name in placeholder.terminals:
+                    placeholder.removeTerminal(terminal_name)
+
+                self.sigNodeChanged.emit(localTerm.node())
+            return
+
         # Check if disconnecting from a subgraph placeholder
         if hasattr(remoteTerm.node(), "isSubgraph") and remoteTerm.node().isSubgraph:
             subgraph = remoteTerm.node()
@@ -1844,9 +1914,14 @@ class Flowchart(QtCore.QObject):
 
             if remoteTerm.isInput():
                 # Disconnecting External -> Placeholder Input
-                # Find matching boundary connection
-                for bc in sg_data["boundary_connections"]:
-                    if bc["terminal_name"] == remoteTerm.name() and bc["type"] == "input":
+                # Collect ALL matching boundary connections (one source may feed multiple internal nodes)
+                matched_bcs = [
+                    bc
+                    for bc in sg_data["boundary_connections"]
+                    if bc["terminal_name"] == remoteTerm.name() and bc["type"] == "input"
+                ]
+                if matched_bcs:
+                    for bc in matched_bcs:
                         internal_node = bc["internal_node"]
                         internal_term = bc["internal_term"]
 
@@ -1873,14 +1948,29 @@ class Flowchart(QtCore.QObject):
                         await self.broker.send_string(internal_node.name(), zmq.SNDMORE)
                         await self.broker.send_pyobj(msg)
 
-                        self.sigNodeChanged.emit(localTerm.node())
-                        return
+                    terminal_name = remoteTerm.name()
+                    sg_data["boundary_connections"] = [
+                        bc
+                        for bc in sg_data["boundary_connections"]
+                        if not (bc["terminal_name"] == terminal_name and bc["type"] == "input")
+                    ]
+                    # Placeholder input terminal is now unused — remove it
+                    if terminal_name in sg_data["placeholder"].terminals:
+                        sg_data["placeholder"].removeTerminal(terminal_name)
+
+                    self.sigNodeChanged.emit(localTerm.node())
+                    return
 
             elif remoteTerm.isOutput():
                 # Disconnecting Placeholder Output -> External
-                # Find matching boundary connection
-                for bc in sg_data["boundary_connections"]:
-                    if bc["terminal_name"] == remoteTerm.name() and bc["type"] == "output":
+                # Match on both terminal_name and the specific external node being disconnected
+                terminal_name = remoteTerm.name()
+                for bc in [
+                    b
+                    for b in sg_data["boundary_connections"]
+                    if b["terminal_name"] == terminal_name and b["type"] == "output"
+                ]:
+                    if bc["external_node"].name() == localNode and bc["external_term"].name() == localTerm.name():
                         internal_node = bc["internal_node"]
                         internal_term = bc["internal_term"]
 
@@ -1891,6 +1981,17 @@ class Flowchart(QtCore.QObject):
 
                         # Update external node's _input_vars
                         localTerm.node().disconnected(localTerm, internal_term)
+
+                        sg_data["boundary_connections"].remove(bc)
+
+                        # If no more fan-outs on this placeholder output terminal, remove it
+                        remaining = [
+                            b
+                            for b in sg_data["boundary_connections"]
+                            if b["terminal_name"] == terminal_name and b["type"] == "output"
+                        ]
+                        if not remaining and terminal_name in sg_data["placeholder"].terminals:
+                            sg_data["placeholder"].removeTerminal(terminal_name)
 
                         self.sigNodeChanged.emit(internal_node)
                         return
