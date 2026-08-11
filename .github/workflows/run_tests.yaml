@@ -30,6 +30,7 @@ jobs:
         run: |
           git clone https://github.com/slac-lcls/lcls2.git
           cd lcls2
+          source setup_env.sh
           ./build_all.sh -d
           cd ..
 
