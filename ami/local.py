@@ -1,7 +1,9 @@
 import argparse
 import contextlib
 import functools
+import json as _json
 import logging
+import multiprocessing
 import multiprocessing.sharedctypes
 import os
 import re
@@ -82,7 +84,7 @@ def build_parser():
         help="the depth of contribution builder buffer in units of heartbeats (default: 1)",
     )
 
-    parser.add_argument("-b", "--heartbeat", type=int, default=10, help="the heartbeat period in ms (default: 10)")
+    parser.add_argument("-b", "--heartbeat", type=int, default=100, help="the heartbeat period in ms (default: 100)")
 
     parser.add_argument("-c", "--console", action="store_true", help="run in a console mode (no GUI)")
 
@@ -198,6 +200,50 @@ def cleanup(procs):
     return failed_proc
 
 
+def run_random_event_server(src_cfg, events_queue, bcast_queues):
+    from ami.data import RandomEventServer
+
+    server = RandomEventServer(src_cfg, events_queue, bcast_queues)
+    server.run()
+
+
+def _build_random_src_cfgs(src_cfg_tuple, num_workers, heartbeat_period):
+    """
+    Pre-loads the random source config, creates multiprocessing queues, and
+    returns per-worker src_cfg tuples with queues injected.
+
+    Returns: (server_cfg_dict, events_queue, bcast_queues, per_worker_src_cfgs)
+    """
+    src_type, src_body = src_cfg_tuple
+    if isinstance(src_body, str) and src_body.endswith(".json"):
+        with open(src_body) as f:
+            cfg_dict = _json.load(f)
+    elif isinstance(src_body, dict):
+        cfg_dict = dict(src_body)
+    else:
+        cfg_dict = {}
+
+    # Inject heartbeat_period from -b flag so server can read it
+    cfg_dict["heartbeat_period"] = heartbeat_period
+
+    # Ensure bound is set for queue-based pregen mode
+    if "bound" not in cfg_dict or cfg_dict.get("bound") in (None, float("inf")):
+        cfg_dict["bound"] = 100
+
+    queue_depth = cfg_dict.get("queue_depth", 10)
+    events_queue = multiprocessing.Queue(maxsize=queue_depth)
+    bcast_queues = [multiprocessing.Queue() for _ in range(num_workers)]
+
+    worker_cfgs = []
+    for i in range(num_workers):
+        wc = dict(cfg_dict)
+        wc["_events_queue"] = events_queue
+        wc["_bcast_queue"] = bcast_queues[i]
+        worker_cfgs.append((src_type, wc))
+
+    return cfg_dict, events_queue, bcast_queues, worker_cfgs
+
+
 def run_ami(args, queue=None):
     port = None
     xtcdir = None
@@ -281,7 +327,7 @@ def run_ami(args, queue=None):
             try:
                 # Generate worker config directly (returns tuple: source_type, config)
                 source_type, worker_config = generate_worker_json(
-                    args.load, num_events=1000, repeat=True, interval=0.01, init_time=0.1, source_type=args.source_type
+                    args.load, num_events=1000, repeat=True, rate=120, init_time=0.1, source_type=args.source_type
                 )
 
                 if not worker_config.get("config"):
@@ -326,6 +372,22 @@ def run_ami(args, queue=None):
             os.environ["AMI_TRACING_ENDPOINT"] = args.tracing_endpoint
             os.environ["AMI_TRACING_SESSION_ID"] = str(uuid.uuid4())
 
+        random_server_proc = None
+        per_worker_src_cfgs = [src_cfg] * args.num_workers
+
+        if src_cfg is not None and src_cfg[0] == "random":
+            cfg_dict, events_queue, bcast_queues, per_worker_src_cfgs = _build_random_src_cfgs(
+                src_cfg, args.num_workers, args.heartbeat
+            )
+            random_server_proc = mp.Process(
+                name="random-event-server",
+                target=functools.partial(_sys_exit, run_random_event_server),
+                args=(cfg_dict, events_queue, bcast_queues),
+            )
+            random_server_proc.daemon = True
+            random_server_proc.start()
+            procs.append(random_server_proc)
+
         for i in range(args.num_workers):
             proc = mp.Process(
                 name="worker%03d-n0" % i,
@@ -334,7 +396,7 @@ def run_ami(args, queue=None):
                     i,
                     args.num_workers,
                     args.heartbeat,
-                    src_cfg,
+                    per_worker_src_cfgs[i],
                     collector_addr,
                     graph_addr,
                     msg_addr,

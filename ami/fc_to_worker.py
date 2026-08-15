@@ -95,7 +95,7 @@ def map_amitypes_to_config(ttype, source_name=""):
         return default
 
 
-def generate_worker_json(fc_path, num_events=100, repeat=True, interval=0.01, init_time=0.1, source_type="random"):
+def generate_worker_json(fc_path, num_events=100, repeat=True, rate=120, init_time=0.1, source_type="random"):
     """
     Generate worker configuration from .fc file.
 
@@ -103,7 +103,7 @@ def generate_worker_json(fc_path, num_events=100, repeat=True, interval=0.01, in
         fc_path: Path to .fc file
         num_events: Number of events to generate (default: 100)
         repeat: Whether to loop events (default: True)
-        interval: Time between events in seconds (default: 0.01)
+        rate: Event generation rate in Hz (default: 120)
         init_time: Initial wait time in seconds (default: 0.1)
         source_type: Type of source - 'static' or 'random' (default: 'random')
 
@@ -117,7 +117,7 @@ def generate_worker_json(fc_path, num_events=100, repeat=True, interval=0.01, in
         print("The .fc file may not have any SourceNode entries.", file=sys.stderr)
 
     worker_json = {
-        "interval": interval,
+        "rate": rate,
         "init_time": init_time,
         "bound": num_events,
         "repeat": repeat,
@@ -161,7 +161,7 @@ Examples:
 
     parser.add_argument("--no-repeat", action="store_true", help="Do not loop events (stop after bound)")
 
-    parser.add_argument("--interval", type=float, default=0.01, help="Time between events in seconds (default: 0.01)")
+    parser.add_argument("--rate", type=float, default=120, help="Event generation rate in Hz (default: 120)")
 
     parser.add_argument("--init-time", type=float, default=0.1, help="Initial wait time in seconds (default: 0.1)")
 
@@ -205,7 +205,7 @@ Examples:
         fc_path,
         num_events=args.num_events,
         repeat=not args.no_repeat,
-        interval=args.interval,
+        rate=args.rate,
         init_time=args.init_time,
         source_type=args.source_type,
     )

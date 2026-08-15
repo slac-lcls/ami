@@ -1569,6 +1569,97 @@ class SimSource(Source):
             return self.num_workers * self.count + self.idnum, time.time()
 
 
+class RandomEventServer:
+    """
+    Standalone server process that generates random events at a fixed rate and
+    distributes them to workers via multiprocessing queues.
+
+    Events are sent round-robin via a shared events_queue.  Heartbeats and
+    transitions are broadcast to every worker via per-worker bcast_queues.
+    """
+
+    def __init__(self, src_cfg, events_queue, bcast_queues):
+        self.src_cfg = src_cfg
+        self.events_queue = events_queue
+        self.bcast_queues = bcast_queues
+        self.rate = src_cfg.get("rate", 120.0)
+        self.heartbeat_period_ms = src_cfg.get("heartbeat_period", 100)
+        self.init_time = src_cfg.get("init_time", 0)
+        self.dropped = 0
+
+    def _broadcast(self, msg):
+        for q in self.bcast_queues:
+            q.put(msg)
+
+    def run(self):
+        import queue as queue_module
+
+        time.sleep(self.init_time)
+
+        configure_msg = Message(
+            mtype=MsgTypes.Transition,
+            identity=0,
+            payload=Transition(ttype=Transitions.Configure, payload={}),
+        )
+        self._broadcast(configure_msg)
+
+        current_hb_id = int(time.time() * 1000 / self.heartbeat_period_ms)
+        next_event_t = time.monotonic()
+        event_counter = 0
+
+        try:
+            while True:
+                now = time.monotonic()
+
+                # Time-based heartbeat check
+                hb_id = int(time.time() * 1000 / self.heartbeat_period_ms)
+                if hb_id != current_hb_id:
+                    current_hb_id = hb_id
+                    hb_msg = Message(
+                        mtype=MsgTypes.Heartbeat,
+                        identity=0,
+                        payload=Heartbeat(hb_id, time.time()),
+                    )
+                    self._broadcast(hb_msg)
+
+                # Rate-limited event dispatch — catch-up loop
+                while next_event_t <= now:
+                    event_counter += 1
+
+                    msg = Message(
+                        mtype=MsgTypes.Datagram,
+                        identity=0,
+                        payload=event_counter,
+                        timestamp=event_counter,
+                        unix_ts=time.time(),
+                    )
+
+                    try:
+                        self.events_queue.put_nowait(msg)
+                    except queue_module.Full:
+                        self.dropped += 1
+                        if self.dropped % 100 == 1:
+                            logger.warning("RandomEventServer: dropped %d events (queue full)", self.dropped)
+
+                    next_event_t += 1.0 / self.rate
+
+                # Sleep efficiently — wake up slightly before next event
+                sleep_t = next_event_t - time.monotonic()
+                if sleep_t > 0.001:
+                    time.sleep(sleep_t * 0.9)
+
+        except KeyboardInterrupt:
+            pass
+        finally:
+            unconfigure_msg = Message(
+                mtype=MsgTypes.Transition,
+                identity=0,
+                payload=Transition(ttype=Transitions.Unconfigure, payload={}),
+            )
+            self._broadcast(unconfigure_msg)
+            logger.info("RandomEventServer: exiting. Total dropped events: %d", self.dropped)
+
+
 class RandomSource(SimSource):
     def __init__(self, idnum, num_workers, heartbeat_period, src_cfg, flags=None, timeout=None):
         super().__init__(idnum, num_workers, heartbeat_period, src_cfg, flags, timeout=timeout)
@@ -1577,6 +1668,24 @@ class RandomSource(SimSource):
         self.pregen = self.config.get("pregen", False)
         self.bound = self.config.get("bound", np.inf)
         self.generated_events = {}
+
+        # Register and type-cast new config keys that may arrive as strings via -f flags
+        self._cfgkey_types["rate"] = float
+        self._cfgkey_types["queue_depth"] = int
+        self._cfgkey_types["heartbeat_period"] = float
+        for key in ("rate", "queue_depth", "heartbeat_period"):
+            if key in self.config and isinstance(self.config[key], str):
+                self.config[key] = self._cfgkey_types[key](self.config[key])
+
+        # Queue objects injected by local.py for the distributed server path
+        self._events_queue = self.config.get("_events_queue", None)
+        self._bcast_queue = self.config.get("_bcast_queue", None)
+
+        # In queue mode, workers must pre-generate events locally (server sends only indices)
+        if self._events_queue is not None:
+            self.pregen = True
+            if self.bound is np.inf:
+                self.bound = 100
 
         if self.pregen:
             if self.bound is np.inf:
@@ -1608,29 +1717,63 @@ class RandomSource(SimSource):
                         self.generated_events[name] = events
 
     def events(self):
-        time.sleep(self.init_time)
-        yield self.configure()
-        if self.pregen:
-            it = self._pregened_events()
+        if self._events_queue is None:
+            # ── Fallback: original in-process path (tests, standalone use) ──
+            time.sleep(self.init_time)
+            yield self.configure()
+            if self.pregen:
+                it = self._pregened_events()
+            else:
+                it = self._random_events()
+            if self.timeout:
+                it = TimeoutIterator(it, self.timeout)
+            for evt in it:
+                eventid, timestamp = self.timestamp
+                if self.check_heartbeat_boundary(eventid):
+                    yield self.heartbeat_msg()
+                if isinstance(evt, Timeout):
+                    yield self.heartbeat_msg()
+                    continue
+                yield from self.event(eventid, timestamp, evt)
+            yield self.unconfigure()
         else:
-            it = self._random_events()
+            # ── Queue-based path: consume indices from RandomEventServer ──
+            import queue as queue_module
 
-        if self.timeout:
-            it = TimeoutIterator(it, self.timeout)
+            while True:
+                # Priority 1: broadcast queue (heartbeats + transitions)
+                try:
+                    msg = self._bcast_queue.get_nowait()
+                    if msg.mtype == MsgTypes.Heartbeat:
+                        self.old_heartbeat = self.heartbeat
+                        self.heartbeat = msg.payload
+                        if self.old_heartbeat is not None:
+                            yield self.heartbeat_msg()
+                    elif msg.mtype == MsgTypes.Transition:
+                        if msg.payload.ttype == Transitions.Configure:
+                            yield self.configure()
+                        elif msg.payload.ttype == Transitions.Unconfigure:
+                            yield self.unconfigure()
+                            return
+                except queue_module.Empty:
+                    pass
+                # Priority 2: event indices
+                try:
+                    msg = self._events_queue.get(timeout=0.005)
+                    idx = msg.payload  # int index from server
+                    evt = self._lookup_pregen_event(idx)
+                    yield from self.event(msg.timestamp, msg.unix_ts, evt)
+                except queue_module.Empty:
+                    pass
 
-        for evt in it:
-            eventid, timestamp = self.timestamp
-            if self.check_heartbeat_boundary(eventid):
-                yield self.heartbeat_msg()
-
-            if isinstance(evt, Timeout):
-                yield self.heartbeat_msg()
-                continue
-
-            yield from self.event(eventid, timestamp, evt)
-
-        # signal source has finished
-        yield self.unconfigure()
+    def _lookup_pregen_event(self, idx):
+        """Look up pre-generated event data by index."""
+        event = {}
+        event_num = idx % self.bound
+        for name in self.requested_data.names:
+            if name in self.generated_events:
+                event[name] = self.generated_events[name][event_num]
+        return event
 
     def _pregened_events(self):
         while True:
