@@ -377,6 +377,12 @@ class Ui_Toolbar(object):
             self.actionConsole.setIconText("Console")
             self.actionConsole.setObjectName("actionConsole")
 
+        # Agent (AI-assisted graph building via external harness)
+        self.actionAgent = QtWidgets.QAction(parent)
+        self.actionAgent.setIconText("Agent")
+        self.actionAgent.setObjectName("actionAgent")
+        self.actionAgent.setShortcut("Ctrl+Shift+A")
+
         # Arrange
         self.actionArrange = QtWidgets.QAction(parent)
         self.actionArrange.setIconText("Arrange")
@@ -429,6 +435,7 @@ class Ui_Toolbar(object):
         self.toolBar.addAction(self.actionReset)
         if HAS_QTCONSOLE:
             self.toolBar.addAction(self.actionConsole)
+        self.toolBar.addAction(self.actionAgent)
 
         if configure:
             self.toolBar.insertSeparator(self.actionConfigure)

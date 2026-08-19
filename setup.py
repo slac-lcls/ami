@@ -22,6 +22,7 @@ setup(
     author_email="ddamiani@slac.stanford.edu",
     url="https://confluence.slac.stanford.edu/display/PSDMInternal/AMI+Replacement",
     packages=find_packages(),
+    package_data={"ami": ["skills/**/*.md"]},
     install_requires=[
         "dill",
         "pyzmq",
@@ -36,6 +37,7 @@ setup(
         "setproctitle",
         "prometheus_client",
         "lark",
+        "mcp",
     ],
     tests_require=["pytest", "pytest-asyncio", "pytest-qt"],
     extras_require={
