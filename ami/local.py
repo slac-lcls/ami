@@ -1,7 +1,6 @@
 import argparse
 import contextlib
 import functools
-import json as _json
 import logging
 import multiprocessing
 import multiprocessing.sharedctypes
@@ -20,6 +19,7 @@ from ami.client import check_dir, run_client
 from ami.collector import run_global_collector, run_node_collector
 from ami.comm import GraphCommHandler, PlatformAction, Ports
 from ami.console import run_console
+from ami.data import build_random_src_cfgs, run_random_event_server
 from ami.fc_to_worker import generate_worker_json
 from ami.manager import run_manager
 from ami.multiproc import check_mp_start_method
@@ -84,7 +84,7 @@ def build_parser():
         help="the depth of contribution builder buffer in units of heartbeats (default: 1)",
     )
 
-    parser.add_argument("-b", "--heartbeat", type=int, default=100, help="the heartbeat period in ms (default: 100)")
+    parser.add_argument("-b", "--heartbeat", type=int, default=1000, help="the heartbeat period in ms (default: 1000)")
 
     parser.add_argument("-c", "--console", action="store_true", help="run in a console mode (no GUI)")
 
@@ -198,50 +198,6 @@ def cleanup(procs):
             logger.error("%s exited with non-zero status code: %d", proc.name, proc.exitcode)
 
     return failed_proc
-
-
-def run_random_event_server(src_cfg, events_queue, bcast_queues):
-    from ami.data import RandomEventServer
-
-    server = RandomEventServer(src_cfg, events_queue, bcast_queues)
-    server.run()
-
-
-def _build_random_src_cfgs(src_cfg_tuple, num_workers, heartbeat_period):
-    """
-    Pre-loads the random source config, creates multiprocessing queues, and
-    returns per-worker src_cfg tuples with queues injected.
-
-    Returns: (server_cfg_dict, events_queue, bcast_queues, per_worker_src_cfgs)
-    """
-    src_type, src_body = src_cfg_tuple
-    if isinstance(src_body, str) and src_body.endswith(".json"):
-        with open(src_body) as f:
-            cfg_dict = _json.load(f)
-    elif isinstance(src_body, dict):
-        cfg_dict = dict(src_body)
-    else:
-        cfg_dict = {}
-
-    # Inject heartbeat_period from -b flag so server can read it
-    cfg_dict["heartbeat_period"] = heartbeat_period
-
-    # Ensure bound is set for queue-based pregen mode
-    if "bound" not in cfg_dict or cfg_dict.get("bound") in (None, float("inf")):
-        cfg_dict["bound"] = 100
-
-    queue_depth = cfg_dict.get("queue_depth", 10)
-    events_queue = multiprocessing.Queue(maxsize=queue_depth)
-    bcast_queues = [multiprocessing.Queue() for _ in range(num_workers)]
-
-    worker_cfgs = []
-    for i in range(num_workers):
-        wc = dict(cfg_dict)
-        wc["_events_queue"] = events_queue
-        wc["_bcast_queue"] = bcast_queues[i]
-        worker_cfgs.append((src_type, wc))
-
-    return cfg_dict, events_queue, bcast_queues, worker_cfgs
 
 
 def run_ami(args, queue=None):
@@ -376,7 +332,7 @@ def run_ami(args, queue=None):
         per_worker_src_cfgs = [src_cfg] * args.num_workers
 
         if src_cfg is not None and src_cfg[0] == "random":
-            cfg_dict, events_queue, bcast_queues, per_worker_src_cfgs = _build_random_src_cfgs(
+            cfg_dict, events_queue, bcast_queues, per_worker_src_cfgs = build_random_src_cfgs(
                 src_cfg, args.num_workers, args.heartbeat
             )
             random_server_proc = mp.Process(

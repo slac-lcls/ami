@@ -568,7 +568,7 @@ def main():
 
     parser.add_argument("-N", "--node-num", type=int, default=0, help="node identification number (default: 0)")
 
-    parser.add_argument("-b", "--heartbeat", type=int, default=10, help="the heartbeat period (default: 10)")
+    parser.add_argument("-b", "--heartbeat", type=int, default=1000, help="the heartbeat period in ms (default: 1000)")
 
     parser.add_argument(
         "-f",

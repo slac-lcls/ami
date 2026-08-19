@@ -3,6 +3,7 @@ import datetime
 import inspect
 import json
 import logging
+import multiprocessing
 import os
 import pickle
 import queue
@@ -1658,6 +1659,49 @@ class RandomEventServer:
             )
             self._broadcast(unconfigure_msg)
             logger.info("RandomEventServer: exiting. Total dropped events: %d", self.dropped)
+
+
+def run_random_event_server(src_cfg, events_queue, bcast_queues):
+    """Entry point for the RandomEventServer subprocess."""
+    server = RandomEventServer(src_cfg, events_queue, bcast_queues)
+    server.run()
+
+
+def build_random_src_cfgs(src_cfg_tuple, num_workers, heartbeat_period):
+    """
+    Pre-loads the random source config, creates multiprocessing queues, and
+    returns per-worker src_cfg tuples with queues injected.
+
+    Returns: (server_cfg_dict, events_queue, bcast_queues, per_worker_src_cfgs)
+    """
+    src_type, src_body = src_cfg_tuple
+    if isinstance(src_body, str) and src_body.endswith(".json"):
+        with open(src_body) as f:
+            cfg_dict = json.load(f)
+    elif isinstance(src_body, dict):
+        cfg_dict = dict(src_body)
+    else:
+        cfg_dict = {}
+
+    # Inject heartbeat_period from -b flag so server can read it
+    cfg_dict["heartbeat_period"] = heartbeat_period
+
+    # Ensure bound is set for queue-based pregen mode
+    if "bound" not in cfg_dict or cfg_dict.get("bound") in (None, float("inf")):
+        cfg_dict["bound"] = 100
+
+    queue_depth = cfg_dict.get("queue_depth", 10)
+    events_queue = multiprocessing.Queue(maxsize=queue_depth)
+    bcast_queues = [multiprocessing.Queue() for _ in range(num_workers)]
+
+    worker_cfgs = []
+    for i in range(num_workers):
+        wc = dict(cfg_dict)
+        wc["_events_queue"] = events_queue
+        wc["_bcast_queue"] = bcast_queues[i]
+        worker_cfgs.append((src_type, wc))
+
+    return cfg_dict, events_queue, bcast_queues, worker_cfgs
 
 
 class RandomSource(SimSource):
