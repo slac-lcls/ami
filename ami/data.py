@@ -1744,9 +1744,12 @@ class RandomSource(SimSource):
                     else:
                         self.generated_events[name] = value
                 elif config["dtype"] == "Waveform" or config["dtype"] == "Image":
-                    self.generated_events[name] = np.random.normal(
-                        config["pedestal"], config["width"], [self.bound, *config["shape"]]
-                    )
+                    if config.get("binary", False):
+                        self.generated_events[name] = np.random.randint(0, 2, [self.bound, *config["shape"]])
+                    else:
+                        self.generated_events[name] = np.random.normal(
+                            config["pedestal"], config["width"], [self.bound, *config["shape"]]
+                        )
                 elif config["dtype"] == "List":
                     if config.get("type", "integer") == "integer":
                         events = []
