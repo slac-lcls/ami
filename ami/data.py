@@ -1639,8 +1639,8 @@ class RandomEventServer:
                         self.events_queue.put_nowait(msg)
                     except queue_module.Full:
                         self.dropped += 1
-                        if self.dropped % 100 == 1:
-                            logger.warning("RandomEventServer: dropped %d events (queue full)", self.dropped)
+                        # if self.dropped % 100 == 1:
+                        #     logger.warning("RandomEventServer: dropped %d events (queue full)", self.dropped)
 
                     next_event_t += 1.0 / self.rate
 
@@ -1721,6 +1721,13 @@ class RandomSource(SimSource):
             if key in self.config and isinstance(self.config[key], str):
                 self.config[key] = self._cfgkey_types[key](self.config[key])
 
+        self._subrate_probs = {}
+        self._subrate_masks = {}
+        _source_rate = self.config.get("rate", 120.0)
+        for _name, _cfg in self.config.get("config", {}).items():
+            if "rate" in _cfg and _cfg["rate"] < _source_rate:
+                self._subrate_probs[_name] = _cfg["rate"] / _source_rate
+
         # Queue objects injected by local.py for the distributed server path
         self._events_queue = self.config.get("_events_queue", None)
         self._bcast_queue = self.config.get("_bcast_queue", None)
@@ -1762,6 +1769,10 @@ class RandomSource(SimSource):
                                 )
                             )
                         self.generated_events[name] = events
+
+            for _name, _prob in self._subrate_probs.items():
+                _det_rng = np.random.default_rng(abs(hash(_name)) % 2**31)
+                self._subrate_masks[_name] = _det_rng.random(int(self.bound)) < _prob
 
     def events(self):
         if self._events_queue is None:
@@ -1819,7 +1830,10 @@ class RandomSource(SimSource):
         event_num = idx % self.bound
         for name in self.requested_data.names:
             if name in self.generated_events:
-                event[name] = self.generated_events[name][event_num]
+                if name not in self._subrate_masks or self._subrate_masks[name][event_num]:
+                    event[name] = self.generated_events[name][event_num]
+                else:
+                    event[name] = None
         return event
 
     def _pregened_events(self):
@@ -1829,7 +1843,11 @@ class RandomSource(SimSource):
             event_num = (eventid + int(10 * np.random.rand(1)[0])) % self.bound
 
             for name in self.requested_data.names:
-                event[name] = self.generated_events[name][event_num]
+                if name in self.generated_events:
+                    if name not in self._subrate_masks or self._subrate_masks[name][event_num]:
+                        event[name] = self.generated_events[name][event_num]
+                    else:
+                        event[name] = None
 
             yield event
 
@@ -1842,6 +1860,9 @@ class RandomSource(SimSource):
 
             for name, config in self.simulated.items():
                 if name in self.requested_data.names:
+                    if name in self._subrate_probs and np.random.rand() >= self._subrate_probs[name]:
+                        event[name] = None
+                        continue
                     if config["dtype"] == "Scalar":
                         value = config["range"][0] + (config["range"][1] - config["range"][0]) * np.random.rand(1)[0]
                         if config.get("integer", False):
