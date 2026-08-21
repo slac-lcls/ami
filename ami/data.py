@@ -3,6 +3,7 @@ import datetime
 import inspect
 import json
 import logging
+import multiprocessing
 import os
 import pickle
 import queue
@@ -1569,6 +1570,140 @@ class SimSource(Source):
             return self.num_workers * self.count + self.idnum, time.time()
 
 
+class RandomEventServer:
+    """
+    Standalone server process that generates random events at a fixed rate and
+    distributes them to workers via multiprocessing queues.
+
+    Events are sent round-robin via a shared events_queue.  Heartbeats and
+    transitions are broadcast to every worker via per-worker bcast_queues.
+    """
+
+    def __init__(self, src_cfg, events_queue, bcast_queues):
+        self.src_cfg = src_cfg
+        self.events_queue = events_queue
+        self.bcast_queues = bcast_queues
+        self.rate = src_cfg.get("rate", 120.0)
+        self.heartbeat_period_ms = src_cfg.get("heartbeat_period", 100)
+        self.init_time = src_cfg.get("init_time", 0)
+        self.dropped = 0
+
+    def _broadcast(self, msg):
+        for q in self.bcast_queues:
+            q.put(msg)
+
+    def run(self):
+        import queue as queue_module
+
+        time.sleep(self.init_time)
+
+        configure_msg = Message(
+            mtype=MsgTypes.Transition,
+            identity=0,
+            payload=Transition(ttype=Transitions.Configure, payload={}),
+        )
+        self._broadcast(configure_msg)
+
+        current_hb_id = int(time.time() * 1000 / self.heartbeat_period_ms)
+        next_event_t = time.monotonic()
+        event_counter = 0
+
+        try:
+            while True:
+                now = time.monotonic()
+
+                # Time-based heartbeat check
+                hb_id = int(time.time() * 1000 / self.heartbeat_period_ms)
+                if hb_id != current_hb_id:
+                    current_hb_id = hb_id
+                    hb_msg = Message(
+                        mtype=MsgTypes.Heartbeat,
+                        identity=0,
+                        payload=Heartbeat(hb_id, time.time()),
+                    )
+                    self._broadcast(hb_msg)
+
+                # Rate-limited event dispatch — catch-up loop
+                while next_event_t <= now:
+                    event_counter += 1
+
+                    msg = Message(
+                        mtype=MsgTypes.Datagram,
+                        identity=0,
+                        payload=event_counter,
+                        timestamp=event_counter,
+                        unix_ts=time.time(),
+                    )
+
+                    try:
+                        self.events_queue.put_nowait(msg)
+                    except queue_module.Full:
+                        self.dropped += 1
+                        # if self.dropped % 100 == 1:
+                        #     logger.warning("RandomEventServer: dropped %d events (queue full)", self.dropped)
+
+                    next_event_t += 1.0 / self.rate
+
+                # Sleep efficiently — wake up slightly before next event
+                sleep_t = next_event_t - time.monotonic()
+                if sleep_t > 0.001:
+                    time.sleep(sleep_t * 0.9)
+
+        except KeyboardInterrupt:
+            pass
+        finally:
+            unconfigure_msg = Message(
+                mtype=MsgTypes.Transition,
+                identity=0,
+                payload=Transition(ttype=Transitions.Unconfigure, payload={}),
+            )
+            self._broadcast(unconfigure_msg)
+            logger.info("RandomEventServer: exiting. Total dropped events: %d", self.dropped)
+
+
+def run_random_event_server(src_cfg, events_queue, bcast_queues):
+    """Entry point for the RandomEventServer subprocess."""
+    server = RandomEventServer(src_cfg, events_queue, bcast_queues)
+    server.run()
+
+
+def build_random_src_cfgs(src_cfg_tuple, num_workers, heartbeat_period):
+    """
+    Pre-loads the random source config, creates multiprocessing queues, and
+    returns per-worker src_cfg tuples with queues injected.
+
+    Returns: (server_cfg_dict, events_queue, bcast_queues, per_worker_src_cfgs)
+    """
+    src_type, src_body = src_cfg_tuple
+    if isinstance(src_body, str) and src_body.endswith(".json"):
+        with open(src_body) as f:
+            cfg_dict = json.load(f)
+    elif isinstance(src_body, dict):
+        cfg_dict = dict(src_body)
+    else:
+        cfg_dict = {}
+
+    # Inject heartbeat_period from -b flag so server can read it
+    cfg_dict["heartbeat_period"] = heartbeat_period
+
+    # Ensure bound is set for queue-based pregen mode
+    if "bound" not in cfg_dict or cfg_dict.get("bound") in (None, float("inf")):
+        cfg_dict["bound"] = 100
+
+    queue_depth = cfg_dict.get("queue_depth", 10)
+    events_queue = multiprocessing.Queue(maxsize=queue_depth)
+    bcast_queues = [multiprocessing.Queue() for _ in range(num_workers)]
+
+    worker_cfgs = []
+    for i in range(num_workers):
+        wc = dict(cfg_dict)
+        wc["_events_queue"] = events_queue
+        wc["_bcast_queue"] = bcast_queues[i]
+        worker_cfgs.append((src_type, wc))
+
+    return cfg_dict, events_queue, bcast_queues, worker_cfgs
+
+
 class RandomSource(SimSource):
     def __init__(self, idnum, num_workers, heartbeat_period, src_cfg, flags=None, timeout=None):
         super().__init__(idnum, num_workers, heartbeat_period, src_cfg, flags, timeout=timeout)
@@ -1577,6 +1712,31 @@ class RandomSource(SimSource):
         self.pregen = self.config.get("pregen", False)
         self.bound = self.config.get("bound", np.inf)
         self.generated_events = {}
+
+        # Register and type-cast new config keys that may arrive as strings via -f flags
+        self._cfgkey_types["rate"] = float
+        self._cfgkey_types["queue_depth"] = int
+        self._cfgkey_types["heartbeat_period"] = float
+        for key in ("rate", "queue_depth", "heartbeat_period"):
+            if key in self.config and isinstance(self.config[key], str):
+                self.config[key] = self._cfgkey_types[key](self.config[key])
+
+        self._subrate_probs = {}
+        self._subrate_masks = {}
+        _source_rate = self.config.get("rate", 120.0)
+        for _name, _cfg in self.config.get("config", {}).items():
+            if "rate" in _cfg and _cfg["rate"] < _source_rate:
+                self._subrate_probs[_name] = _cfg["rate"] / _source_rate
+
+        # Queue objects injected by local.py for the distributed server path
+        self._events_queue = self.config.get("_events_queue", None)
+        self._bcast_queue = self.config.get("_bcast_queue", None)
+
+        # In queue mode, workers must pre-generate events locally (server sends only indices)
+        if self._events_queue is not None:
+            self.pregen = True
+            if self.bound is np.inf:
+                self.bound = 100
 
         if self.pregen:
             if self.bound is np.inf:
@@ -1591,9 +1751,12 @@ class RandomSource(SimSource):
                     else:
                         self.generated_events[name] = value
                 elif config["dtype"] == "Waveform" or config["dtype"] == "Image":
-                    self.generated_events[name] = np.random.normal(
-                        config["pedestal"], config["width"], [self.bound, *config["shape"]]
-                    )
+                    if config.get("binary", False):
+                        self.generated_events[name] = np.random.randint(0, 2, [self.bound, *config["shape"]])
+                    else:
+                        self.generated_events[name] = np.random.normal(
+                            config["pedestal"], config["width"], [self.bound, *config["shape"]]
+                        )
                 elif config["dtype"] == "List":
                     if config.get("type", "integer") == "integer":
                         events = []
@@ -1607,30 +1770,71 @@ class RandomSource(SimSource):
                             )
                         self.generated_events[name] = events
 
+            for _name, _prob in self._subrate_probs.items():
+                _det_rng = np.random.default_rng(abs(hash(_name)) % 2**31)
+                self._subrate_masks[_name] = _det_rng.random(int(self.bound)) < _prob
+
     def events(self):
-        time.sleep(self.init_time)
-        yield self.configure()
-        if self.pregen:
-            it = self._pregened_events()
+        if self._events_queue is None:
+            # ── Fallback: original in-process path (tests, standalone use) ──
+            time.sleep(self.init_time)
+            yield self.configure()
+            if self.pregen:
+                it = self._pregened_events()
+            else:
+                it = self._random_events()
+            if self.timeout:
+                it = TimeoutIterator(it, self.timeout)
+            for evt in it:
+                eventid, timestamp = self.timestamp
+                if self.check_heartbeat_boundary(eventid):
+                    yield self.heartbeat_msg()
+                if isinstance(evt, Timeout):
+                    yield self.heartbeat_msg()
+                    continue
+                yield from self.event(eventid, timestamp, evt)
+            yield self.unconfigure()
         else:
-            it = self._random_events()
+            # ── Queue-based path: consume indices from RandomEventServer ──
+            import queue as queue_module
 
-        if self.timeout:
-            it = TimeoutIterator(it, self.timeout)
+            while True:
+                # Priority 1: broadcast queue (heartbeats + transitions)
+                try:
+                    msg = self._bcast_queue.get_nowait()
+                    if msg.mtype == MsgTypes.Heartbeat:
+                        self.old_heartbeat = self.heartbeat
+                        self.heartbeat = msg.payload
+                        if self.old_heartbeat is not None:
+                            yield self.heartbeat_msg()
+                    elif msg.mtype == MsgTypes.Transition:
+                        if msg.payload.ttype == Transitions.Configure:
+                            yield self.configure()
+                        elif msg.payload.ttype == Transitions.Unconfigure:
+                            yield self.unconfigure()
+                            return
+                except queue_module.Empty:
+                    pass
+                # Priority 2: event indices
+                try:
+                    msg = self._events_queue.get(timeout=0.005)
+                    idx = msg.payload  # int index from server
+                    evt = self._lookup_pregen_event(idx)
+                    yield from self.event(msg.timestamp, msg.unix_ts, evt)
+                except queue_module.Empty:
+                    pass
 
-        for evt in it:
-            eventid, timestamp = self.timestamp
-            if self.check_heartbeat_boundary(eventid):
-                yield self.heartbeat_msg()
-
-            if isinstance(evt, Timeout):
-                yield self.heartbeat_msg()
-                continue
-
-            yield from self.event(eventid, timestamp, evt)
-
-        # signal source has finished
-        yield self.unconfigure()
+    def _lookup_pregen_event(self, idx):
+        """Look up pre-generated event data by index."""
+        event = {}
+        event_num = idx % self.bound
+        for name in self.requested_data.names:
+            if name in self.generated_events:
+                if name not in self._subrate_masks or self._subrate_masks[name][event_num]:
+                    event[name] = self.generated_events[name][event_num]
+                else:
+                    event[name] = None
+        return event
 
     def _pregened_events(self):
         while True:
@@ -1639,7 +1843,11 @@ class RandomSource(SimSource):
             event_num = (eventid + int(10 * np.random.rand(1)[0])) % self.bound
 
             for name in self.requested_data.names:
-                event[name] = self.generated_events[name][event_num]
+                if name in self.generated_events:
+                    if name not in self._subrate_masks or self._subrate_masks[name][event_num]:
+                        event[name] = self.generated_events[name][event_num]
+                    else:
+                        event[name] = None
 
             yield event
 
@@ -1652,6 +1860,9 @@ class RandomSource(SimSource):
 
             for name, config in self.simulated.items():
                 if name in self.requested_data.names:
+                    if name in self._subrate_probs and np.random.rand() >= self._subrate_probs[name]:
+                        event[name] = None
+                        continue
                     if config["dtype"] == "Scalar":
                         value = config["range"][0] + (config["range"][1] - config["range"][0]) * np.random.rand(1)[0]
                         if config.get("integer", False):
