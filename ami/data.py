@@ -7,6 +7,7 @@ import multiprocessing
 import os
 import pickle
 import queue
+import random
 import sys
 import threading
 import time
@@ -1575,18 +1576,24 @@ class RandomEventServer:
     Standalone server process that generates random events at a fixed rate and
     distributes them to workers via multiprocessing queues.
 
-    Events are sent round-robin via a shared events_queue.  Heartbeats and
-    transitions are broadcast to every worker via per-worker bcast_queues.
+    Events are dispatched to per-worker events_queues; the ``"distribution"``
+    config key controls the strategy: ``"random"`` (default) picks a worker at
+    random each event, ``"roundrobin"`` cycles through workers sequentially.
+    Heartbeats and transitions are broadcast to every worker via per-worker
+    bcast_queues.
     """
 
-    def __init__(self, src_cfg, events_queue, bcast_queues):
+    def __init__(self, src_cfg, events_queues, bcast_queues):
         self.src_cfg = src_cfg
-        self.events_queue = events_queue
+        self.events_queues = events_queues
         self.bcast_queues = bcast_queues
         self.rate = src_cfg.get("rate", 120.0)
         self.heartbeat_period_ms = src_cfg.get("heartbeat_period", 100)
         self.init_time = src_cfg.get("init_time", 0)
+        self._worker_idx = 0
         self.dropped = 0
+        self._random_dist = src_cfg.get("distribution", "random") == "random"
+        self._rng = random.Random()
 
     def _broadcast(self, msg):
         for q in self.bcast_queues:
@@ -1635,8 +1642,13 @@ class RandomEventServer:
                         unix_ts=time.time(),
                     )
 
+                    if self._random_dist:
+                        q = self.events_queues[self._rng.randrange(len(self.events_queues))]
+                    else:
+                        q = self.events_queues[self._worker_idx % len(self.events_queues)]
+                        self._worker_idx += 1
                     try:
-                        self.events_queue.put_nowait(msg)
+                        q.put_nowait(msg)
                     except queue_module.Full:
                         self.dropped += 1
                         # if self.dropped % 100 == 1:
@@ -1661,9 +1673,9 @@ class RandomEventServer:
             logger.info("RandomEventServer: exiting. Total dropped events: %d", self.dropped)
 
 
-def run_random_event_server(src_cfg, events_queue, bcast_queues):
+def run_random_event_server(src_cfg, events_queues, bcast_queues):
     """Entry point for the RandomEventServer subprocess."""
-    server = RandomEventServer(src_cfg, events_queue, bcast_queues)
+    server = RandomEventServer(src_cfg, events_queues, bcast_queues)
     server.run()
 
 
@@ -1672,7 +1684,7 @@ def build_random_src_cfgs(src_cfg_tuple, num_workers, heartbeat_period):
     Pre-loads the random source config, creates multiprocessing queues, and
     returns per-worker src_cfg tuples with queues injected.
 
-    Returns: (server_cfg_dict, events_queue, bcast_queues, per_worker_src_cfgs)
+    Returns: (server_cfg_dict, events_queues, bcast_queues, per_worker_src_cfgs)
     """
     src_type, src_body = src_cfg_tuple
     if isinstance(src_body, str) and src_body.endswith(".json"):
@@ -1691,17 +1703,17 @@ def build_random_src_cfgs(src_cfg_tuple, num_workers, heartbeat_period):
         cfg_dict["bound"] = 100
 
     queue_depth = cfg_dict.get("queue_depth", 10)
-    events_queue = multiprocessing.Queue(maxsize=queue_depth)
+    events_queues = [multiprocessing.Queue(maxsize=queue_depth) for _ in range(num_workers)]
     bcast_queues = [multiprocessing.Queue() for _ in range(num_workers)]
 
     worker_cfgs = []
     for i in range(num_workers):
         wc = dict(cfg_dict)
-        wc["_events_queue"] = events_queue
+        wc["_events_queue"] = events_queues[i]
         wc["_bcast_queue"] = bcast_queues[i]
         worker_cfgs.append((src_type, wc))
 
-    return cfg_dict, events_queue, bcast_queues, worker_cfgs
+    return cfg_dict, events_queues, bcast_queues, worker_cfgs
 
 
 class RandomSource(SimSource):

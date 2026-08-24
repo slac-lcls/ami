@@ -332,13 +332,13 @@ def run_ami(args, queue=None):
         per_worker_src_cfgs = [src_cfg] * args.num_workers
 
         if src_cfg is not None and src_cfg[0] == "random":
-            cfg_dict, events_queue, bcast_queues, per_worker_src_cfgs = build_random_src_cfgs(
+            cfg_dict, events_queues, bcast_queues, per_worker_src_cfgs = build_random_src_cfgs(
                 src_cfg, args.num_workers, args.heartbeat
             )
             random_server_proc = mp.Process(
                 name="random-event-server",
                 target=functools.partial(_sys_exit, run_random_event_server),
-                args=(cfg_dict, events_queue, bcast_queues),
+                args=(cfg_dict, events_queues, bcast_queues),
             )
             random_server_proc.daemon = True
             random_server_proc.start()
