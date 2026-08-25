@@ -2,6 +2,7 @@ import argparse
 import contextlib
 import functools
 import logging
+import multiprocessing
 import multiprocessing.sharedctypes
 import os
 import re
@@ -18,6 +19,7 @@ from ami.client import check_dir, run_client
 from ami.collector import run_global_collector, run_node_collector
 from ami.comm import GraphCommHandler, PlatformAction, Ports
 from ami.console import run_console
+from ami.data import build_random_src_cfgs, run_random_event_server
 from ami.fc_to_worker import generate_worker_json
 from ami.manager import run_manager
 from ami.multiproc import check_mp_start_method
@@ -82,7 +84,7 @@ def build_parser():
         help="the depth of contribution builder buffer in units of heartbeats (default: 1)",
     )
 
-    parser.add_argument("-b", "--heartbeat", type=int, default=10, help="the heartbeat period in ms (default: 10)")
+    parser.add_argument("-b", "--heartbeat", type=int, default=1000, help="the heartbeat period in ms (default: 1000)")
 
     parser.add_argument("-c", "--console", action="store_true", help="run in a console mode (no GUI)")
 
@@ -281,7 +283,7 @@ def run_ami(args, queue=None):
             try:
                 # Generate worker config directly (returns tuple: source_type, config)
                 source_type, worker_config = generate_worker_json(
-                    args.load, num_events=1000, repeat=True, interval=0.01, init_time=0.1, source_type=args.source_type
+                    args.load, num_events=1000, repeat=True, rate=120, init_time=0.1, source_type=args.source_type
                 )
 
                 if not worker_config.get("config"):
@@ -326,6 +328,22 @@ def run_ami(args, queue=None):
             os.environ["AMI_TRACING_ENDPOINT"] = args.tracing_endpoint
             os.environ["AMI_TRACING_SESSION_ID"] = str(uuid.uuid4())
 
+        random_server_proc = None
+        per_worker_src_cfgs = [src_cfg] * args.num_workers
+
+        if src_cfg is not None and src_cfg[0] == "random":
+            cfg_dict, events_queues, bcast_queues, per_worker_src_cfgs = build_random_src_cfgs(
+                src_cfg, args.num_workers, args.heartbeat
+            )
+            random_server_proc = mp.Process(
+                name="random-event-server",
+                target=functools.partial(_sys_exit, run_random_event_server),
+                args=(cfg_dict, events_queues, bcast_queues),
+            )
+            random_server_proc.daemon = True
+            random_server_proc.start()
+            procs.append(random_server_proc)
+
         for i in range(args.num_workers):
             proc = mp.Process(
                 name="worker%03d-n0" % i,
@@ -334,7 +352,7 @@ def run_ami(args, queue=None):
                     i,
                     args.num_workers,
                     args.heartbeat,
-                    src_cfg,
+                    per_worker_src_cfgs[i],
                     collector_addr,
                     graph_addr,
                     msg_addr,

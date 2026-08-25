@@ -346,10 +346,14 @@ class SumN(GlobalTransformation):
 
         if self.res is None:
             if isinstance(value, np.ndarray):
-                value = value.astype(np.float32)
-            self.res = value
+                self.res = value.astype(np.float32, copy=False)
+            else:
+                self.res = value
         else:
-            self.res = np.add(self.res, value)
+            if isinstance(self.res, np.ndarray):
+                np.add(self.res, value, out=self.res)
+            else:
+                self.res = np.add(self.res, value)
 
         if self.count >= self.N:
             self.clear = True

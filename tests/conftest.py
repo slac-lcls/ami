@@ -279,7 +279,7 @@ def ami_backend(request, workerjson, ipc_dir):
         pass
 
     parser = build_parser()
-    args = parser.parse_args(["-n", "1", "-i", str(ipc_dir), "--headless", f"static://{workerjson}"])
+    args = parser.parse_args(["-n", "1", "-b", "10", "-i", str(ipc_dir), "--headless", f"static://{workerjson}"])
 
     queue = mp.Queue()
     ami_proc = mp.Process(name="ami_backend", target=run_ami, args=(args, queue))

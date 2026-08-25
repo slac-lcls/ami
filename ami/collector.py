@@ -13,7 +13,7 @@ import time
 import ami.multiproc as mp
 from ami import Defaults, LogConfig
 from ami.comm import Collector, Colors, EventBuilder, Node, PlatformAction, Ports, TransitionBuilder
-from ami.data import MsgTypes, Transitions
+from ami.data import MsgTypes, Transitions, build_random_src_cfgs, run_random_event_server
 from ami.tracing import get_trace_id, setup_tracing
 from ami.worker import parse_args, run_worker
 
@@ -451,7 +451,9 @@ def main(color, upstream_port, downstream_port):
         help="data source configuration (exampes: static://test.json, random://test.json, psana://exp=xcsdaq13:run=14)",
     )
 
-    worker_subparser.add_argument("-b", "--heartbeat", type=int, default=10, help="the heartbeat period (default: 10)")
+    worker_subparser.add_argument(
+        "-b", "--heartbeat", type=int, default=1000, help="the heartbeat period in ms (default: 1000)"
+    )
 
     worker_subparser.add_argument(
         "-f",
@@ -515,9 +517,20 @@ def main(color, upstream_port, downstream_port):
                 src_cfg = list(src_cfg)  # Make mutable
                 if args.use_supervisor and "supervisor=" not in src_cfg[1]:
                     src_cfg[1] = f"{src_cfg[1]},supervisor=1"
+                per_worker_src_cfgs = [src_cfg] * args.num_contribs
+                if src_cfg is not None and src_cfg[0] == "random":
+                    cfg_dict, events_queue, bcast_queues, per_worker_src_cfgs = build_random_src_cfgs(
+                        src_cfg, args.num_contribs, args.heartbeat
+                    )
+                    mp.Process(
+                        name="random-event-server",
+                        target=run_random_event_server,
+                        args=(cfg_dict, events_queue, bcast_queues),
+                        daemon=True,
+                    ).start()
                 for n in range(0, args.num_contribs):
                     if args.use_supervisor and n != 0:
-                        src_cfg[1] = src_cfg[1].replace("supervisor=1", "supervisor=0")
+                        per_worker_src_cfgs[n][1] = per_worker_src_cfgs[n][1].replace("supervisor=1", "supervisor=0")
                     worker = mp.Process(
                         name="worker",
                         target=run_worker,
@@ -525,7 +538,7 @@ def main(color, upstream_port, downstream_port):
                             args.node_num * args.num_contribs + n,
                             args.num_contribs,
                             args.heartbeat,
-                            src_cfg,
+                            per_worker_src_cfgs[n],
                             local_collector_addr,
                             graph_addr,
                             msg_addr,
