@@ -1588,7 +1588,7 @@ class RandomEventServer:
         self.events_queues = events_queues
         self.bcast_queues = bcast_queues
         self.rate = src_cfg.get("rate", 120.0)
-        self.heartbeat_period_ms = src_cfg.get("heartbeat_period", 100)
+        self.heartbeat_period_ms = src_cfg.get("heartbeat_period", 1000)
         self.init_time = src_cfg.get("init_time", 0)
         self._worker_idx = 0
         self.dropped = 0
@@ -1600,8 +1600,6 @@ class RandomEventServer:
             q.put(msg)
 
     def run(self):
-        import queue as queue_module
-
         time.sleep(self.init_time)
 
         configure_msg = Message(
@@ -1649,7 +1647,7 @@ class RandomEventServer:
                         self._worker_idx += 1
                     try:
                         q.put_nowait(msg)
-                    except queue_module.Full:
+                    except queue.Full:
                         self.dropped += 1
                         # if self.dropped % 100 == 1:
                         #     logger.warning("RandomEventServer: dropped %d events (queue full)", self.dropped)
@@ -1717,6 +1715,7 @@ def build_random_src_cfgs(src_cfg_tuple, num_workers, heartbeat_period):
 
 
 class RandomSource(SimSource):
+
     def __init__(self, idnum, num_workers, heartbeat_period, src_cfg, flags=None, timeout=None):
         super().__init__(idnum, num_workers, heartbeat_period, src_cfg, flags, timeout=timeout)
         np.random.seed([idnum])
@@ -1808,8 +1807,6 @@ class RandomSource(SimSource):
             yield self.unconfigure()
         else:
             # ── Queue-based path: consume indices from RandomEventServer ──
-            import queue as queue_module
-
             while True:
                 # Priority 1: broadcast queue (heartbeats + transitions)
                 try:
@@ -1825,7 +1822,7 @@ class RandomSource(SimSource):
                         elif msg.payload.ttype == Transitions.Unconfigure:
                             yield self.unconfigure()
                             return
-                except queue_module.Empty:
+                except queue.Empty:
                     pass
                 # Priority 2: event indices
                 try:
@@ -1833,7 +1830,7 @@ class RandomSource(SimSource):
                     idx = msg.payload  # int index from server
                     evt = self._lookup_pregen_event(idx)
                     yield from self.event(msg.timestamp, msg.unix_ts, evt)
-                except queue_module.Empty:
+                except queue.Empty:
                     pass
 
     def _lookup_pregen_event(self, idx):
