@@ -17,13 +17,14 @@ _enabled = False
 _tracer = None
 _id_generator = None
 _session_id = ""
+_trace_id_cache: tuple = (None, None)  # (key_str, trace_id_int)
 
 try:
     from opentelemetry import trace
     from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
     from opentelemetry.sdk.resources import Resource
     from opentelemetry.sdk.trace import TracerProvider
-    from opentelemetry.sdk.trace.export import ConsoleSpanExporter, SimpleSpanProcessor
+    from opentelemetry.sdk.trace.export import BatchSpanProcessor, ConsoleSpanExporter, SimpleSpanProcessor
     from opentelemetry.trace import StatusCode
 
     _OTEL_AVAILABLE = True
@@ -87,14 +88,18 @@ def setup_tracing(service_name, endpoint=None, session_id=None):
     resource = Resource.create({"service.name": service_name})
     provider = TracerProvider(resource=resource, id_generator=_id_generator)
 
-    # Configure exporter based on endpoint
+    # Configure exporter and processor based on endpoint
     if endpoint == "console":
         exporter = ConsoleSpanExporter()
+        processor = SimpleSpanProcessor(exporter)
     else:
         exporter = OTLPSpanExporter(endpoint=endpoint, insecure=True)
-
-    # Add span processor
-    processor = SimpleSpanProcessor(exporter)
+        processor = BatchSpanProcessor(
+            exporter,
+            max_queue_size=2048,
+            schedule_delay_millis=1000,
+            max_export_batch_size=512,
+        )
     provider.add_span_processor(processor)
 
     # Set as global provider
@@ -105,6 +110,18 @@ def setup_tracing(service_name, endpoint=None, session_id=None):
     _enabled = True
 
     logger.info(f"Tracing enabled for {service_name} (endpoint: {endpoint})")
+
+
+def _compute_trace_id(heartbeat_identity) -> int:
+    """Compute deterministic trace ID with single-entry cache to avoid redundant SHA-256."""
+    global _trace_id_cache
+    key = f"ami-heartbeat-{_session_id}-{heartbeat_identity}"
+    if _trace_id_cache[0] == key:
+        return _trace_id_cache[1]
+    digest = hashlib.sha256(key.encode()).digest()
+    trace_id = int.from_bytes(digest[:16], byteorder="big") or 1
+    _trace_id_cache = (key, trace_id)
+    return trace_id
 
 
 def heartbeat_context(heartbeat_identity):
@@ -121,17 +138,7 @@ def heartbeat_context(heartbeat_identity):
     if not _enabled or _id_generator is None:
         return None
 
-    # Generate deterministic trace ID from heartbeat identity
-    hash_input = f"ami-heartbeat-{_session_id}-{heartbeat_identity}".encode()
-    digest = hashlib.sha256(hash_input).digest()
-
-    # Use first 16 bytes for trace_id (128 bits)
-    trace_id = int.from_bytes(digest[:16], byteorder="big")
-
-    # Ensure non-zero (OTel requirement)
-    if trace_id == 0:
-        trace_id = 1
-
+    trace_id = _compute_trace_id(heartbeat_identity)
     _id_generator.set_trace_id(trace_id)
     return trace_id
 
@@ -229,8 +236,4 @@ def get_trace_id(heartbeat_identity):
     """
     if not _enabled:
         return None
-    digest = hashlib.sha256(f"ami-heartbeat-{_session_id}-{heartbeat_identity}".encode()).digest()
-    trace_id = int.from_bytes(digest[:16], byteorder="big")
-    if trace_id == 0:
-        trace_id = 1
-    return format(trace_id, "032x")
+    return format(_compute_trace_id(heartbeat_identity), "032x")
