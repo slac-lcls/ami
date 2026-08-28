@@ -2,7 +2,7 @@
 
 ## Overview
 
-AMI exports Prometheus metrics from workers, collectors, and the manager for monitoring system health and performance. Metrics are updated at heartbeat rate (~10 Hz) rather than per-event to minimize overhead at high data rates.
+AMI exports Prometheus metrics from workers, collectors, and the manager for monitoring system health and performance. Metrics are updated at heartbeat rate (configurable via `-b`, default 1 Hz) rather than per-event to minimize overhead at high data rates.
 
 ## Exported Metrics
 
@@ -13,7 +13,6 @@ AMI exports Prometheus metrics from workers, collectors, and the manager for mon
 | `ami_event_size_bytes` | Gauge | hutch, process | Workers, Collectors | Size of last heartbeat payload |
 | `ami_event_latency_secs` | Gauge | hutch, sender, process | Workers, Collectors | Data latency from source/sender |
 | `ami_heartbeat_duration_seconds` | Histogram | hutch, process | Workers, Collectors | Full heartbeat interval (wall clock) |
-| `ami_heartbeat_latency_seconds` | Histogram | hutch, sender, process | Collectors | End-to-end heartbeat latency |
 
 ### Event Count Types
 
@@ -49,7 +48,7 @@ AMI exports Prometheus metrics from workers, collectors, and the manager for mon
 
 ### Heartbeat Duration Histogram
 
-The `ami_heartbeat_duration_seconds` histogram measures the full wall clock time between heartbeats (the complete heartbeat interval). This represents the inverse of the actual heartbeat rate. At 10 Hz, values should be ~0.1s.
+The `ami_heartbeat_duration_seconds` histogram measures the full wall clock time between heartbeats (the complete heartbeat interval). This represents the inverse of the actual heartbeat rate. At the default 1 Hz, values should be ~1s.
 
 Buckets: 1ms, 5ms, 10ms, 25ms, 50ms, 100ms, 250ms, 500ms, 1s, 2.5s
 
@@ -72,7 +71,7 @@ The histogram supports exemplars linking to trace IDs when tracing is enabled.
 4. **Send Time**: `ami_event_time_secs{type="Send"}` — Time sending results downstream (indicates backpressure)
 5. **Heartbeat Interval**: `histogram_quantile(0.95, rate(ami_heartbeat_duration_seconds_bucket[1m]))` — p95 heartbeat interval
 6. **Input Latency**: `ami_event_latency_secs` — Time between event creation and processing
-7. **Heartbeat Rate**: `rate(ami_event_count{type="Heartbeat"}[1m])` — Heartbeats per second (should be ~10)
+7. **Heartbeat Rate**: `rate(ami_event_count{type="Heartbeat"}[1m])` — Heartbeats per second (should match configured rate, default ~1)
 
 ### Exemplars
 
@@ -89,8 +88,8 @@ An example Grafana dashboard is provided at `examples/grafana.json`. Import it i
 
 ## Performance Notes
 
-All metric updates are batched to heartbeat rate (~10 Hz). This means:
-- At 100K events/heartbeat, we make ~10 metric calls/second instead of ~1M
+All metric updates are batched to heartbeat rate (once per heartbeat interval, regardless of event count). This means:
+- At 100K events/heartbeat, we make one set of metric calls per heartbeat instead of per-event
 - Gauges show the last value or average for the heartbeat interval
 - Counters are incremented by the batch total
 

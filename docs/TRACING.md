@@ -27,6 +27,10 @@ AMI uses OpenTelemetry distributed tracing to provide end-to-end visibility into
    ami-local --tracing-endpoint console random://examples/worker.json
    ```
 
+### Export Processing
+
+When using an OTLP endpoint, traces are exported via `BatchSpanProcessor` which queues spans and flushes asynchronously (~1s interval), adding negligible overhead to the heartbeat loop. Console output (`--tracing-endpoint console`) uses `SimpleSpanProcessor` for immediate visibility during debugging.
+
 ### Deterministic Trace IDs
 
 All processes compute the same trace ID for a given heartbeat using:
@@ -253,11 +257,7 @@ The `collector.wait` span has different meanings depending on whether the heartb
 
 ## Prometheus Exemplars
 
-Trace IDs are attached as exemplars to the following Prometheus metrics:
-- `heartbeat_duration` (histogram) — time to process a heartbeat
-- `heartbeat_latency` (histogram) — age of heartbeat when completed
-
-This enables Grafana to provide direct links from metric spikes to corresponding traces, making it easy to investigate performance issues.
+Trace IDs are attached as exemplars to the `ami_heartbeat_duration_seconds` histogram. This enables Grafana to provide direct links from metric spikes to corresponding traces, making it easy to investigate performance issues.
 
 Example Prometheus scrape output:
 ```
