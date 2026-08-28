@@ -166,11 +166,6 @@ class GraphCollector(Node, Collector):
             latency = dt.datetime.now() - dt.datetime.fromtimestamp(msg.heartbeat.timestamp)
             self.event_latency.labels(self.hutch, self.sender % msg.identity, self.name).set(latency.total_seconds())
 
-            trace_id = get_trace_id(msg.heartbeat.identity)
-            self.heartbeat_latency.labels(self.hutch, self.sender % msg.identity, self.name).observe(
-                latency.total_seconds(),
-                exemplar={"TraceID": trace_id} if trace_id else None,
-            )
             datagram_start = time.time()
             self.store.update(msg.name, msg.heartbeat, self.eb_id(msg.identity), msg.version, msg.payload)
             if self.store.ready(msg.name, msg.heartbeat):

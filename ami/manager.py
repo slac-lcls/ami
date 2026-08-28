@@ -126,11 +126,6 @@ class Manager(Collector):
                 latency.total_seconds()
             )
 
-            trace_id = get_trace_id(msg.heartbeat.identity)
-            self.heartbeat_latency.labels(self.hutch, "globalCollector%03d" % msg.identity, self.name).observe(
-                latency.total_seconds(),
-                exemplar={"TraceID": trace_id} if trace_id else None,
-            )
             datagram_start = time.time()
             if msg.name not in self.feature_stores:
                 if msg.name in self.purged:
