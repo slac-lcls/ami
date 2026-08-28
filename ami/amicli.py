@@ -1,7 +1,15 @@
 """AmiCli - Graph manipulation API for MCP server and QtConsole."""
 
+import collections
+import json
 import logging
 import os
+import time
+from typing import Any
+
+from amitypes import Array1d, Array2d, Array3d
+
+from ami.flowchart.library.common import SourceNode
 
 logger = logging.getLogger(__name__)
 
@@ -256,8 +264,6 @@ class AmiCli:
                 raise Exception(f"Source '{source_name}' not available. " f"Available sources: {available_sources}")
 
             # Create source node (same approach as sourceMenuTriggered)
-            from ami.flowchart.library.common import SourceNode
-
             node_type = self.chart.source_library.getSourceType(source_name)
             node = SourceNode(name=source_name, terminals={"Out": {"io": "out", "ttype": node_type}})
             self.chart.addNode(node=node)
@@ -419,10 +425,8 @@ class AmiCli:
             if not os.path.exists(filename):
                 raise Exception(f"File '{filename}' not found")
 
-            import json as json_mod
-
             with open(filename, "r") as f:
-                state = json_mod.load(f)
+                state = json.load(f)
 
             # Clear existing nodes synchronously
             for name in list(self.graph.nodes()):
@@ -1000,7 +1004,6 @@ class AmiCli:
         Raises:
             Exception: If node doesn't exist, is a source, or is already in a subgraph
         """
-        from ami.flowchart.library.common import SourceNode
 
         if node_name not in self.graph.nodes():
             raise Exception(f"Node '{node_name}' not found")
@@ -1041,7 +1044,6 @@ class AmiCli:
         if data is None:
             # Try registering a view and retrying
             self.graphCommHandler.view(feature_name)
-            import time
 
             time.sleep(1.5)  # Wait for heartbeat
             data = self.graphCommHandler.fetch(feature_name)
@@ -1056,9 +1058,6 @@ class AmiCli:
             direction: 'in' or 'out'
             ttype: Type string ('Any', 'float', 'int', 'Array1d', 'Array2d', 'Array3d')
         """
-        from typing import Any
-
-        from amitypes import Array1d, Array2d, Array3d
 
         TYPE_MAP = {
             "Any": Any,
@@ -1191,8 +1190,6 @@ class AmiCli:
             raise ValueError(f"Node '{node_name}' is not a Filter (it's a {node.nodeName})")
 
         # Set the conditions
-        import collections
-
         node.values = collections.defaultdict(dict, conditions)
         node.changed = True
 

@@ -33,6 +33,16 @@ except ImportError:
     HAS_QTCONSOLE = False
 
 try:
+    import mcp  # noqa: F401
+
+    from ami.mcp_server import McpServerThread
+    from ami.qt_dispatch import QtDispatcher
+
+    HAS_MCP = True
+except ImportError:
+    HAS_MCP = False
+
+try:
     from ami.flowchart.PvCtrlServer import PvCtrlServer
 
     HAS_PVCTRL = True
@@ -46,6 +56,7 @@ import json
 import logging
 import os
 import re
+import shutil
 import socket
 import subprocess
 import tempfile
@@ -2892,6 +2903,7 @@ class FlowchartCtrlWidget(QtWidgets.QWidget):
         self.ui.actionReset.triggered.connect(self.resetClicked)
         if HAS_QTCONSOLE:
             self.ui.actionConsole.triggered.connect(self.consoleClicked)
+        if HAS_MCP:
             self.ui.actionAgent.triggered.connect(self.agentClicked)
 
         self.ui.actionHome.triggered.connect(self.homeClicked)
@@ -3289,10 +3301,6 @@ class FlowchartCtrlWidget(QtWidgets.QWidget):
 
         def agentClicked(self):
             """Spawn external agent harness connected to AMI's MCP server."""
-            import os
-            import shutil
-            import subprocess
-
             mcp_thread = getattr(self.chartWidget, "mcp_thread", None)
             if not mcp_thread or not hasattr(mcp_thread, "_tmpdir"):
                 logger.error("MCP server not running - cannot spawn agent")
@@ -3885,14 +3893,9 @@ class FlowchartWidget(dockarea.DockArea):
 
     def _start_mcp_server(self, amicli):
         """Start MCP server thread for AI-assisted graph building."""
-        import os
-
         if os.environ.get("AMI_DISABLE_MCP"):
             return
         try:
-            from ami.mcp_server import McpServerThread
-            from ami.qt_dispatch import QtDispatcher
-
             self.qt_dispatcher = QtDispatcher()
             self.mcp_thread = McpServerThread(amicli=amicli, qt_dispatch_fn=self.qt_dispatcher.dispatch)
             self.mcp_thread.start()

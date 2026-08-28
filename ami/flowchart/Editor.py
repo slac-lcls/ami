@@ -22,6 +22,13 @@ try:
 except ImportError:
     HAS_QTCONSOLE = False
 
+try:
+    import mcp  # noqa: F401
+
+    HAS_MCP = True
+except ImportError:
+    HAS_MCP = False
+
 
 logger = logging.getLogger(__name__)
 
@@ -377,11 +384,12 @@ class Ui_Toolbar(object):
             self.actionConsole.setIconText("Console")
             self.actionConsole.setObjectName("actionConsole")
 
-        # Agent (AI-assisted graph building via external harness)
-        self.actionAgent = QtWidgets.QAction(parent)
-        self.actionAgent.setIconText("Agent")
-        self.actionAgent.setObjectName("actionAgent")
-        self.actionAgent.setShortcut("Ctrl+Shift+A")
+        if HAS_MCP:
+            # Agent (AI-assisted graph building via external harness)
+            self.actionAgent = QtWidgets.QAction(parent)
+            self.actionAgent.setIconText("Agent")
+            self.actionAgent.setObjectName("actionAgent")
+            self.actionAgent.setShortcut("Ctrl+Shift+A")
 
         # Arrange
         self.actionArrange = QtWidgets.QAction(parent)
@@ -437,7 +445,8 @@ class Ui_Toolbar(object):
             self.toolBar.addAction(self.actionConsole)
             self.toolBar.insertSeparator(self.actionConsole)
 
-        self.toolBar.addAction(self.actionAgent)
+        if HAS_MCP:
+            self.toolBar.addAction(self.actionAgent)
 
         if configure:
             self.toolBar.insertSeparator(self.actionConfigure)
