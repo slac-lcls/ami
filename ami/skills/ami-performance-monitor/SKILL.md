@@ -19,37 +19,9 @@ NOT manipulate graphs — load the `ami-graph-builder` skill for that.
 
 ## Diagnosis Hierarchy
 
-Work top-to-bottom. Start with latency — it is the primary user-facing signal.
+Work top-to-bottom. Start with phase breakdown — it is the primary diagnostic signal.
 
-### 1. Latency — "How stale is the data?" (PRIMARY SIGNAL)
-
-`ami_heartbeat_latency_seconds` is a histogram measuring how old a heartbeat is when it
-completes at the collector. Growing latency means the system is falling behind, regardless
-of the configured heartbeat rate (which ranges 1–10 Hz).
-
-```
-grafana_query_prometheus_histogram(
-    datasourceUid=<prometheus_uid>,
-    metric="ami_heartbeat_latency_seconds",
-    percentile=95
-)
-```
-
-- Stable, low value → system is keeping up
-- Growing over time → system is falling behind; proceed to phase breakdown
-- Spike at a specific moment → use exemplar correlation to find the trace
-
-Also check per-hop latency:
-```
-grafana_query_prometheus(
-    datasourceUid=<prometheus_uid>,
-    expr='ami_event_latency_secs',
-    queryType="instant",
-    endTime="now"
-)
-```
-
-### 2. Phase Breakdown — "Where is the time going?"
+### 1. Phase Breakdown — "Where is the time going?" (PRIMARY)
 
 `ami_heartbeat_phase_pct` shows what fraction of each heartbeat interval is spent in
 each phase. Values always sum to 100% and are independent of heartbeat rate.
@@ -77,6 +49,30 @@ expr='ami_heartbeat_phase_pct{process=~"worker.*"}'
 
 # Collectors only
 expr='ami_heartbeat_phase_pct{process=~".*[Cc]ollector.*"}'
+```
+
+### 2. Heartbeat Health — "Is the heartbeat rate healthy?"
+
+`ami_heartbeat_duration_seconds` measures the wall clock time for each full heartbeat
+interval. A growing p95 means the system is slowing down; a value consistently above
+the configured heartbeat period means it's falling behind.
+
+```
+grafana_query_prometheus_histogram(
+    datasourceUid=<prometheus_uid>,
+    metric="ami_heartbeat_duration_seconds",
+    percentile=95
+)
+```
+
+Also check the heartbeat rate is matching configuration (~1 Hz default):
+```
+grafana_query_prometheus(
+    datasourceUid=<prometheus_uid>,
+    expr='rate(ami_event_count{type="Heartbeat"}[1m])',
+    queryType="instant",
+    endTime="now"
+)
 ```
 
 ### 3. Trace Deep Dive — "Pinpoint the exact bottleneck"
@@ -112,12 +108,22 @@ Workers are idle when the data source is not providing events fast enough.
 
 **Metric check:**
 ```
+# Step 1: confirm workers are idle
 grafana_query_prometheus(
     expr='ami_heartbeat_phase_pct{type="Idle", process=~"worker.*"}',
     queryType="instant", endTime="now"
 )
+
+# Step 2 (follow-up): check if data is also arriving stale
+grafana_query_prometheus(
+    expr='ami_event_latency_secs{process=~"worker.*"}',
+    queryType="instant", endTime="now"
+)
 ```
 High `Idle%` (>50%) on workers = source starvation.
+
+If `Idle%` is high but `ami_event_latency_secs` is low, data is infrequent (source rate
+issue). If both are high, data is both infrequent AND stale (network/upstream issue).
 
 **Trace check:**
 ```
@@ -226,19 +232,47 @@ optimize serialization.
 
 ---
 
+### E. Is the GUI display lagging?
+
+**When to check:** user reports plots are slow to update, or pipeline metrics look
+healthy but display feels unresponsive.
+
+**Metric check:**
+```python
+grafana_query_prometheus(
+    expr='ami_plot_latency_secs{hutch="$hutch"}',
+    queryType="instant", endTime="now"
+)
+grafana_query_prometheus(
+    expr='ami_plot_memory_mb{hutch="$hutch"}',
+    queryType="instant", endTime="now"
+)
+```
+
+**Interpretation:**
+- High `ami_plot_latency_secs` with healthy `ami_heartbeat_phase_pct` → bottleneck is
+  client-side, not the pipeline
+- High `ami_plot_memory_mb` alongside slow plot updates → large arrays being held in
+  display nodes
+
+**Action:** Reduce plot complexity, downsample or crop data before display nodes, check
+for accumulator nodes with unbounded growth.
+
+---
+
 ## Exemplar Correlation (Metric Spike → Trace)
 
-The `ami_heartbeat_duration_seconds` and `ami_heartbeat_latency_seconds` histograms
-support Prometheus exemplars with TraceID. When tracing is enabled, each histogram
-observation includes a `TraceID` exemplar for direct correlation in Grafana.
+The `ami_heartbeat_duration_seconds` histogram supports Prometheus exemplars with
+TraceID. When tracing is enabled, each histogram observation includes a `TraceID`
+exemplar for direct correlation in Grafana.
 
-Pattern for investigating a latency spike:
+Pattern for investigating a heartbeat duration spike:
 
-1. Find the time window when latency spiked:
+1. Find the time window when heartbeat duration spiked:
 ```
 grafana_query_prometheus_histogram(
     datasourceUid=<prometheus_uid>,
-    metric="ami_heartbeat_latency_seconds",
+    metric="ami_heartbeat_duration_seconds",
     percentile=99,
     startTime="now-15m", endTime="now"
 )
@@ -276,8 +310,9 @@ heartbeat — making it clear where time was lost.
 | `ami_event_size_bytes` | Gauge | hutch, process | Payload size of last heartbeat |
 | `ami_event_latency_secs` | Gauge | hutch, sender, process | Per-hop data latency (source→worker, worker→collector) |
 | `ami_heartbeat_duration_seconds` | Histogram | hutch, process | Full heartbeat interval wall clock time |
-| `ami_heartbeat_latency_seconds` | Histogram | hutch, sender, process | End-to-end heartbeat latency (age when completed) |
 | `ami_heartbeat_phase_pct` | Gauge | hutch, type, process | Phase % (Idle, Datagram, Send, Overhead — sum to 100%) |
+| `ami_plot_latency_secs` | Gauge | hutch, process | Client-side plot update latency |
+| `ami_plot_memory_mb` | Gauge | hutch, process | Client-side memory used by display nodes |
 
 **Notes:**
 - Heartbeat rate ranges 1–10 Hz depending on configuration
@@ -321,6 +356,7 @@ After diagnosis, tell the user:
 | Frequent collector pruning | Investigate slow workers in `missing_workers`; if systemic, system is overloaded |
 | Growing end-to-end latency | Work through phase breakdown to find the bottleneck |
 | Uneven worker performance | Compare `pct_graph_exec` across workers; check if one has heavier data |
+| High plot latency | Reduce display node complexity, downsample before plotting, check accumulator growth |
 
 ---
 
