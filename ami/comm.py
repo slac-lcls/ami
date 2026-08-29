@@ -20,7 +20,7 @@ import zmq.asyncio
 import ami.graph_nodes as gn
 from ami.data import CollectorMessage, Datagram, Deserializer, Heartbeat, Message, MsgTypes, Serializer, Transition
 from ami.graphkit_wrapper import Graph
-from ami.tracing import mark_span_error, start_child_span, start_span
+from ami.tracing import create_graph_node_spans, mark_span_error, start_child_span, start_span
 
 logger = logging.getLogger(__name__)
 ZMQ_TOPIC_DELIM = "\0"
@@ -688,6 +688,12 @@ class GraphBuilder(ContributionBuilder):
         else:
             self.pending[eb_key].clear()
 
+        aggregated_node_times = {}
+        for _, _, exec_time in times:
+            for node_name, dur in exec_time.items():
+                if isinstance(dur, (int, float)):
+                    aggregated_node_times[node_name] = aggregated_node_times.get(node_name, 0) + dur
+
         send_start_ns = time.time_ns()
         size = self.completion(eb_key, identity, self.pending[eb_key], drop)
         send_end_ns = time.time_ns()
@@ -781,6 +787,11 @@ class GraphBuilder(ContributionBuilder):
                     attributes={"collector.graph_exec_secs": round(graph_exec_secs, 6)},
                 )
                 if child:
+                    metadata = self.graph.metadata() if self.graph else {}
+                    graph_name = self.graph.name if self.graph else None
+                    create_graph_node_spans(
+                        child, aggregated_node_times, metadata, start_time_ns=graph_exec_start_ns, graph_name=graph_name
+                    )
                     child.end(end_time=graph_exec_end_ns)
 
             # Send child span

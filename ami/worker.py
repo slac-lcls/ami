@@ -18,7 +18,7 @@ from ami import Defaults, LogConfig
 from ami.comm import AutoExport, Colors, Node, PlatformAction, Ports, ResultStore
 from ami.data import MsgTypes, RequestedData, Source, Transitions
 from ami.graphkit_wrapper import Graph
-from ami.tracing import get_trace_id, setup_tracing, start_child_span, start_span
+from ami.tracing import create_graph_node_spans, get_trace_id, setup_tracing, start_child_span, start_span
 
 logger = logging.getLogger(__name__)
 
@@ -204,6 +204,7 @@ class Worker(Node):
         idle_stop = time.time()
         heartbeat_time = 0
         hb_graph_time = 0
+        hb_node_times = {}
         hb_num_datagrams = 0
         hb_interval_start_ns = time.time_ns()
         hb_idle_time = 0
@@ -327,6 +328,12 @@ class Worker(Node):
                                 },
                             )
                             if child:
+                                for graph_name, node_times in hb_node_times.items():
+                                    graph = self.graphs.get(graph_name)
+                                    metadata = graph.metadata() if graph else {}
+                                    create_graph_node_spans(
+                                        child, node_times, metadata, start_time_ns=t0 + idle_ns, graph_name=graph_name
+                                    )
                                 child.end(end_time=t0 + idle_ns + graph_ns)
 
                         # Send span (cumulative send placed after graph exec)
@@ -354,6 +361,7 @@ class Worker(Node):
 
                     heartbeat_time = 0
                     hb_graph_time = 0
+                    hb_node_times = {}
                     hb_num_datagrams = 0
                     hb_idle_time = 0
                     hb_partial_events = 0
@@ -380,6 +388,14 @@ class Worker(Node):
                                 stop = time.time()
 
                                 hb_graph_time += stop - start
+
+                                node_times = graph.times()
+                                if node_times:
+                                    if name not in hb_node_times:
+                                        hb_node_times[name] = {}
+                                    for node_name, dur in node_times.items():
+                                        if isinstance(dur, (int, float)):
+                                            hb_node_times[name][node_name] = hb_node_times[name].get(node_name, 0) + dur
 
                                 self.store.update(name, graph_result)
 

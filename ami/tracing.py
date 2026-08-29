@@ -207,6 +207,45 @@ def start_child_span(parent_span, name, start_time_ns=None, attributes=None):
     )
 
 
+def create_graph_node_spans(parent_span, node_times, metadata, start_time_ns=None, graph_name=None):
+    """Create child spans under parent_span for each graph node in node_times.
+
+    Args:
+        parent_span: The parent span to create children under
+        node_times: Dict of {node_name: duration_secs} from graph.times()
+        metadata: Dict of {node_name: {"parent": ami_name, "type": node_type}} from graph.metadata()
+        start_time_ns: Start time in nanoseconds for the first child span
+        graph_name: Optional graph name to include as the ``ami.graph`` attribute on each span
+    """
+    if not _enabled or parent_span is None or not node_times:
+        return
+
+    cursor_ns = start_time_ns if start_time_ns is not None else 0
+    for node_name, duration in node_times.items():
+        if not isinstance(duration, (int, float)):
+            continue
+        if duration <= 0:
+            continue
+        node_meta = metadata.get(node_name, {})
+        ami_name = node_meta.get("parent", node_name)
+        node_type = node_meta.get("type", "Unknown")
+        duration_ns = int(duration * 1e9)
+        child = start_child_span(
+            parent_span,
+            ami_name,
+            start_time_ns=cursor_ns,
+            attributes={
+                "ami.node": ami_name,
+                "ami.node_type": node_type,
+                "ami.duration_secs": float(duration),
+                "ami.graph": graph_name or "",
+            },
+        )
+        if child:
+            child.end(end_time=cursor_ns + duration_ns)
+        cursor_ns += duration_ns
+
+
 def is_enabled():
     """Returns whether tracing is currently enabled."""
     return _enabled

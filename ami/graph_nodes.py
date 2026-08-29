@@ -69,7 +69,11 @@ class Transformation(abc.ABC):
         Return NetworkFoX operation node.
         """
         return operation(
-            name=self.name, needs=self.inputs, provides=self.outputs, color=self.color, metadata={"parent": self.parent}
+            name=self.name,
+            needs=self.inputs,
+            provides=self.outputs,
+            color=self.color,
+            metadata={"parent": self.parent, "type": self.__class__.__name__},
         )(self.func)
 
     def begin_run(self, color=""):
@@ -165,7 +169,11 @@ class StatefulTransformation(Transformation):
 
     def to_operation(self):
         return operation(
-            name=self.name, needs=self.inputs, provides=self.outputs, color=self.color, metadata={"parent": self.parent}
+            name=self.name,
+            needs=self.inputs,
+            provides=self.outputs,
+            color=self.color,
+            metadata={"parent": self.parent, "type": self.__class__.__name__},
         )(self)
 
 
