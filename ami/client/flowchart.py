@@ -18,7 +18,7 @@ from qtpy import QtCore, QtWidgets
 
 import ami.multiproc as mp
 from ami import LogConfig
-from ami.asyncqt import QEventLoop, asyncSlot
+from ami.asyncqt import QEventLoop, asyncClose, asyncSlot
 from ami.client import flowchart_messages as fcMsgs
 from ami.comm import ZMQ_TOPIC_DELIM
 from ami.flowchart.Flowchart import Flowchart
@@ -167,7 +167,11 @@ def run_editor_window(
 
         win.show()
 
-        app.aboutToQuit.connect(fc.widget().clear)
+        @asyncClose
+        async def cleanup():
+            await fc.widget().graphCommHandler.destroy()
+
+        app.aboutToQuit.connect(cleanup)
 
         loop.create_task(fc.run(load))
         loop.run_forever()
