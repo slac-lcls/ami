@@ -263,10 +263,18 @@ def run_collector(
     hutch,
     hwm,
     timeout,
+    tracing_endpoint=None,
+    tracing_session_id=None,
+    tracing_sample_rate=10,
 ):
     logger.info("Starting collector on node # %d PID: %d", node_num, os.getpid())
 
-    setup_tracing(f"ami-{base_name % node_num}")
+    setup_tracing(
+        f"ami-{base_name % node_num}",
+        endpoint=tracing_endpoint,
+        session_id=tracing_session_id,
+        sample_rate=tracing_sample_rate,
+    )
 
     with GraphCollector(
         node_num,
@@ -302,6 +310,9 @@ def run_node_collector(
     hwm,
     timeout,
     cprofile,
+    tracing_endpoint=None,
+    tracing_session_id=None,
+    tracing_sample_rate=10,
 ):
     if cprofile:
         profiler = cProfile.Profile()
@@ -329,6 +340,9 @@ def run_node_collector(
         hutch,
         hwm,
         timeout,
+        tracing_endpoint=tracing_endpoint,
+        tracing_session_id=tracing_session_id,
+        tracing_sample_rate=tracing_sample_rate,
     )
 
 
@@ -346,6 +360,9 @@ def run_global_collector(
     hwm,
     timeout,
     cprofile,
+    tracing_endpoint=None,
+    tracing_session_id=None,
+    tracing_sample_rate=10,
 ):
     if cprofile:
         profiler = cProfile.Profile()
@@ -373,6 +390,9 @@ def run_global_collector(
         hutch,
         hwm,
         timeout,
+        tracing_endpoint=tracing_endpoint,
+        tracing_session_id=tracing_session_id,
+        tracing_sample_rate=tracing_sample_rate,
     )
 
 
@@ -443,6 +463,13 @@ def main(color, upstream_port, downstream_port):
         help="Shared session ID for trace correlation across processes (default: AMI_TRACING_SESSION_ID env var)",
     )
 
+    parser.add_argument(
+        "--tracing-sample-rate",
+        help="Trace every Nth heartbeat (default: 10)",
+        type=int,
+        default=10,
+    )
+
     subparsers = parser.add_subparsers(help="spawn workers", dest="worker")
     worker_subparser = subparsers.add_parser("worker", help="worker arguments")
 
@@ -471,11 +498,6 @@ def main(color, upstream_port, downstream_port):
     )
 
     args = parser.parse_args()
-
-    if args.tracing_endpoint:
-        os.environ["AMI_TRACING_ENDPOINT"] = args.tracing_endpoint
-    if args.tracing_session_id:
-        os.environ["AMI_TRACING_SESSION_ID"] = args.tracing_session_id
 
     # if an address for the downstream collector is not specified just use the manager address
     if args.collection_host is not None:
@@ -553,6 +575,9 @@ def main(color, upstream_port, downstream_port):
                             args.timeout,
                             args.cprofile,
                             (select_lock, select_dict, select_idx, select_hb, select_manager),
+                            args.tracing_endpoint,
+                            args.tracing_session_id,
+                            args.tracing_sample_rate,
                         ),
                         daemon=True,
                     )
@@ -572,6 +597,9 @@ def main(color, upstream_port, downstream_port):
                 args.hwm,
                 args.timeout,
                 args.cprofile,
+                tracing_endpoint=args.tracing_endpoint,
+                tracing_session_id=args.tracing_session_id,
+                tracing_sample_rate=args.tracing_sample_rate,
             )
         elif color == Colors.GlobalCollector:
             return run_global_collector(
@@ -588,6 +616,9 @@ def main(color, upstream_port, downstream_port):
                 args.hwm,
                 args.timeout,
                 args.cprofile,
+                tracing_endpoint=args.tracing_endpoint,
+                tracing_session_id=args.tracing_session_id,
+                tracing_sample_rate=args.tracing_sample_rate,
             )
         else:
             logger.critical("Invalid option collector color '%s' chosen!", color)

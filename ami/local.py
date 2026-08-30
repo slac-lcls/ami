@@ -167,6 +167,13 @@ def build_parser():
         default=None,
     )
 
+    parser.add_argument(
+        "--tracing-sample-rate",
+        help="Trace every Nth heartbeat (default: 10)",
+        type=int,
+        default=10,
+    )
+
     return parser
 
 
@@ -324,9 +331,7 @@ def run_ami(args, queue=None):
             select_hb = None
             select_idx = None
 
-        if args.tracing_endpoint:
-            os.environ["AMI_TRACING_ENDPOINT"] = args.tracing_endpoint
-            os.environ["AMI_TRACING_SESSION_ID"] = str(uuid.uuid4())
+        tracing_session_id = str(uuid.uuid4()) if args.tracing_endpoint else None
 
         random_server_proc = None
         per_worker_src_cfgs = [src_cfg] * args.num_workers
@@ -365,6 +370,9 @@ def run_ami(args, queue=None):
                     args.timeout,
                     args.cprofile,
                     (select_lock, select_dict, select_idx, select_hb, select_manager),
+                    args.tracing_endpoint,
+                    tracing_session_id,
+                    args.tracing_sample_rate,
                 ),
             )
             proc.daemon = True
@@ -388,6 +396,9 @@ def run_ami(args, queue=None):
                 args.hwm,
                 args.timeout,
                 args.cprofile,
+                args.tracing_endpoint,
+                tracing_session_id,
+                args.tracing_sample_rate,
             ),
         )
         collector_proc.daemon = True
@@ -411,6 +422,9 @@ def run_ami(args, queue=None):
                 args.hwm,
                 args.timeout,
                 args.cprofile,
+                args.tracing_endpoint,
+                tracing_session_id,
+                args.tracing_sample_rate,
             ),
         )
         globalcol_proc.daemon = True
@@ -435,6 +449,9 @@ def run_ami(args, queue=None):
                 args.hutch,
                 args.hwm,
                 args.cprofile,
+                args.tracing_endpoint,
+                tracing_session_id,
+                args.tracing_sample_rate,
             ),
         )
         manager_proc.daemon = True

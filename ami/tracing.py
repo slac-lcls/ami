@@ -7,7 +7,6 @@ Enable with: --tracing-endpoint <host:port> or --tracing-endpoint console
 
 import hashlib
 import logging
-import os
 import random
 
 logger = logging.getLogger(__name__)
@@ -18,6 +17,7 @@ _tracer = None
 _id_generator = None
 _session_id = ""
 _trace_id_cache: tuple = (None, None)  # (key_str, trace_id_int)
+_sample_rate = 10
 
 try:
     from opentelemetry import trace
@@ -54,34 +54,27 @@ class DeterministicTraceIdGenerator:
         return random.getrandbits(128)
 
 
-def setup_tracing(service_name, endpoint=None, session_id=None):
+def setup_tracing(service_name, endpoint=None, session_id=None, sample_rate=10):
     """
     Initialize OpenTelemetry tracing for AMI.
 
     Args:
         service_name: Name of the service (e.g. "ami-worker-0", "ami-manager")
         endpoint: OTLP endpoint (host:port) or "console" for stdout.
-                  If None, checks AMI_TRACING_ENDPOINT environment variable.
         session_id: Unique session identifier for trace correlation.
-                    If None, checks AMI_TRACING_SESSION_ID environment variable.
+        sample_rate: Trace every Nth heartbeat (default: 10).
     """
-    global _enabled, _tracer, _id_generator, _session_id
+    global _enabled, _tracer, _id_generator, _session_id, _sample_rate
 
     if not _OTEL_AVAILABLE:
         logger.info("OpenTelemetry not installed. Install with: pip install ami[tracing]")
         return
 
-    # Check environment variable if endpoint not provided
-    if endpoint is None:
-        endpoint = os.environ.get("AMI_TRACING_ENDPOINT")
-
     if not endpoint:
         return
 
-    # Resolve session ID: parameter → env var → empty string
-    if session_id is None:
-        session_id = os.environ.get("AMI_TRACING_SESSION_ID", "")
-    _session_id = session_id
+    _session_id = session_id or ""
+    _sample_rate = max(1, int(sample_rate))
 
     # Initialize TracerProvider with custom IdGenerator and Resource
     _id_generator = DeterministicTraceIdGenerator()
@@ -124,6 +117,13 @@ def _compute_trace_id(heartbeat_identity) -> int:
     return trace_id
 
 
+def should_trace(heartbeat_identity) -> bool:
+    """Return True if this heartbeat should be traced."""
+    if not _enabled:
+        return False
+    return int(heartbeat_identity) % _sample_rate == 0
+
+
 def heartbeat_context(heartbeat_identity):
     """
     Set the deterministic trace ID for the current heartbeat on the IdGenerator.
@@ -162,6 +162,9 @@ def start_span(name, heartbeat_identity, start_time_ns=None, attributes=None):
         Caller must call span.end() when done.
     """
     if not _enabled or _tracer is None:
+        return None
+
+    if not should_trace(heartbeat_identity):
         return None
 
     # Set deterministic trace ID on the generator
@@ -274,5 +277,7 @@ def get_trace_id(heartbeat_identity):
         32-character hex string trace ID, or None if tracing is disabled.
     """
     if not _enabled:
+        return None
+    if not should_trace(heartbeat_identity):
         return None
     return format(_compute_trace_id(heartbeat_identity), "032x")

@@ -768,10 +768,15 @@ def run_manager(
     hutch,
     hwm,
     cprofile,
+    tracing_endpoint=None,
+    tracing_session_id=None,
+    tracing_sample_rate=10,
 ):
     logger.info("Starting manager, controlling %d workers on %d nodes PID: %d", num_workers, num_nodes, os.getpid())
 
-    setup_tracing("ami-manager")
+    setup_tracing(
+        "ami-manager", endpoint=tracing_endpoint, session_id=tracing_session_id, sample_rate=tracing_sample_rate
+    )
 
     if cprofile:
         profiler = cProfile.Profile()
@@ -852,12 +857,14 @@ def main():
         help="Shared session ID for trace correlation across processes (default: AMI_TRACING_SESSION_ID env var)",
     )
 
-    args = parser.parse_args()
+    parser.add_argument(
+        "--tracing-sample-rate",
+        help="Trace every Nth heartbeat (default: 10)",
+        type=int,
+        default=10,
+    )
 
-    if args.tracing_endpoint:
-        os.environ["AMI_TRACING_ENDPOINT"] = args.tracing_endpoint
-    if args.tracing_session_id:
-        os.environ["AMI_TRACING_SESSION_ID"] = args.tracing_session_id
+    args = parser.parse_args()
 
     results_addr = "tcp://%s:%d" % (args.host, args.port + Ports.Results)
     graph_addr = "tcp://%s:%d" % (args.host, args.port + Ports.Graph)
@@ -891,6 +898,9 @@ def main():
             args.hutch,
             args.hwm,
             args.cprofile,
+            tracing_endpoint=args.tracing_endpoint,
+            tracing_session_id=args.tracing_session_id,
+            tracing_sample_rate=args.tracing_sample_rate,
         )
     except KeyboardInterrupt:
         logger.info("Manager killed by user...")

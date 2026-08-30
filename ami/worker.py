@@ -18,7 +18,7 @@ from ami import Defaults, LogConfig
 from ami.comm import AutoExport, Colors, Node, PlatformAction, Ports, ResultStore
 from ami.data import MsgTypes, RequestedData, Source, Transitions
 from ami.graphkit_wrapper import Graph
-from ami.tracing import create_graph_node_spans, get_trace_id, setup_tracing, start_child_span, start_span
+from ami.tracing import create_graph_node_spans, get_trace_id, setup_tracing, should_trace, start_child_span, start_span
 
 logger = logging.getLogger(__name__)
 
@@ -361,7 +361,7 @@ class Worker(Node):
 
                     heartbeat_time = 0
                     hb_graph_time = 0
-                    hb_node_times = {}
+                    hb_node_times = {} if should_trace(msg.payload.identity + 1) else None
                     hb_num_datagrams = 0
                     hb_idle_time = 0
                     hb_partial_events = 0
@@ -390,7 +390,7 @@ class Worker(Node):
                                 hb_graph_time += stop - start
 
                                 node_times = graph.times()
-                                if node_times:
+                                if hb_node_times is not None:
                                     if name not in hb_node_times:
                                         hb_node_times[name] = {}
                                     for node_name, dur in node_times.items():
@@ -481,11 +481,16 @@ def run_worker(
     timeout=None,
     cprofile=False,
     select_manager=(None, None, None, None, None),
+    tracing_endpoint=None,
+    tracing_session_id=None,
+    tracing_sample_rate=10,
 ):
 
     logger.info("Starting worker # %d, sending to collector at %s PID: %d", num, collector_addr, os.getpid())
 
-    setup_tracing(f"ami-worker-{num}")
+    setup_tracing(
+        f"ami-worker-{num}", endpoint=tracing_endpoint, session_id=tracing_session_id, sample_rate=tracing_sample_rate
+    )
 
     if cprofile:
         profiler = cProfile.Profile()
