@@ -394,7 +394,7 @@ heartbeat — making it clear where time was lost.
 | Metric | Type | Labels | What it measures |
 |--------|------|--------|-----------------|
 | `ami_event_count` | Counter | hutch, type, process | Events by type (Heartbeat, Datagram, Partial, Transition) |
-| `ami_event_time_secs` | Gauge | hutch, type, process | Time in seconds (Heartbeat, Idle, Datagram, Send) |
+| `ami_event_time_secs` | Gauge | hutch, type, process | Time in seconds per heartbeat interval. `Heartbeat` = total wall clock interval (idle + datagram + send + overhead, ~1s at 1 Hz); `Datagram` = total graph execution time; `Idle` = total wait time; `Send` = total send time; `Overhead` = time not accounted for by Idle, Datagram, or Send |
 | `ami_event_size_bytes` | Gauge | hutch, process | Payload size of last heartbeat |
 | `ami_event_latency_secs` | Gauge | hutch, sender, process | Per-hop data latency (source→worker, worker→collector) |
 | `ami_heartbeat_duration_seconds` | Histogram | hutch, process | Full heartbeat interval wall clock time |

@@ -564,6 +564,7 @@ class GraphBuilder(ContributionBuilder):
         self.last_idle_secs = 0
         self.last_graph_exec_secs = 0
         self.last_send_secs = 0
+        self.last_total_secs = 0
         self.last_pct_idle = 0
         self.last_pct_graph_exec = 0
         self.last_pct_send = 0
@@ -721,6 +722,7 @@ class GraphBuilder(ContributionBuilder):
         self.last_idle_secs = wait_secs
         self.last_graph_exec_secs = graph_exec_secs
         self.last_send_secs = send_secs
+        self.last_total_secs = total_secs
         self.last_pct_idle = pct_idle
         self.last_pct_graph_exec = pct_graph_exec
         self.last_pct_send = pct_send
@@ -929,11 +931,11 @@ class EventBuilder(ZmqHandler):
         self.builders[name].update(eb_key, eb_id, ver_key, data)
 
     def phase_times(self, name):
-        """Return (idle_secs, graph_exec_secs, send_secs) for last completed heartbeat."""
+        """Return (idle_secs, graph_exec_secs, send_secs, total_secs) for last completed heartbeat."""
         builder = self.builders.get(name)
         if builder:
-            return builder.last_idle_secs, builder.last_graph_exec_secs, builder.last_send_secs
-        return 0, 0, 0
+            return builder.last_idle_secs, builder.last_graph_exec_secs, builder.last_send_secs, builder.last_total_secs
+        return 0, 0, 0, 0
 
     def phase_pcts(self, name):
         """Return (pct_idle, pct_graph_exec, pct_send, pct_overhead) for last completed heartbeat."""
@@ -1225,7 +1227,7 @@ class Collector(abc.ABC):
             "ami_heartbeat_duration_seconds",
             "Heartbeat processing duration",
             ["hutch", "process"],
-            buckets=[0.001, 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5],
+            buckets=[0.05, 0.1, 0.15, 0.2, 0.25, 0.5, 0.75, 0.9, 1.0, 1.1, 1.25, 1.5, 2.0, 5.0],
         )
         self.phase_pct = pc.Gauge("ami_heartbeat_phase_pct", "Heartbeat phase percentage", ["hutch", "type", "process"])
 

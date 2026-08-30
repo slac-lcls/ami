@@ -28,10 +28,11 @@ AMI exports Prometheus metrics from workers, collectors, and the manager for mon
 
 | Type | Description | Workers | Collectors |
 |------|-------------|---------|------------|
-| `Heartbeat` | Total non-idle processing time (datagrams + heartbeat handling) | ✓ | ✓ |
+| `Heartbeat` | Total heartbeat interval wall clock time — the sum of Idle, Datagram, Send, and Overhead phases. At 1 Hz this should be approximately 1 second. | ✓ | ✓ |
 | `Idle` | Time spent waiting for input (source data for workers, contributions for collectors) | ✓ | ✓ |
-| `Datagram` | Graph execution time (per-event average for workers, total reduction for collectors) | ✓ | ✓ |
+| `Datagram` | Total graph execution time across all events in the heartbeat interval | ✓ | ✓ |
 | `Send` | Time spent sending results downstream | ✓ | ✓ |
+| `Overhead` | Heartbeat interval time not accounted for by Idle, Datagram, or Send — Python loop overhead, metric publishing, message deserialization, tracing. | ✓ | ✓ |
 
 ### Heartbeat Phase Percentages
 
@@ -67,7 +68,7 @@ The histogram supports exemplars linking to trace IDs when tracing is enabled.
 
 1. **Event Rate**: `rate(ami_event_count{type="Datagram"}[1m])` — Events processed per second
 2. **Idle Time**: `ami_event_time_secs{type="Idle"}` — Time waiting for input (workers: source data, collectors: contributions)
-3. **Graph Execution Time**: `ami_event_time_secs{type="Datagram"}` — Graph processing time (workers: per-event avg, collectors: reduction)
+3. **Graph Execution Time**: `ami_event_time_secs{type="Datagram"}` — Total graph execution time across all events in the heartbeat. Directly comparable to the Datagram% in `ami_heartbeat_phase_pct`.
 4. **Send Time**: `ami_event_time_secs{type="Send"}` — Time sending results downstream (indicates backpressure)
 5. **Heartbeat Interval**: `histogram_quantile(0.95, rate(ami_heartbeat_duration_seconds_bucket[1m]))` — p95 heartbeat interval
 6. **Input Latency**: `ami_event_latency_secs` — Time between event creation and processing
@@ -90,7 +91,7 @@ An example Grafana dashboard is provided at `examples/grafana.json`. Import it i
 
 All metric updates are batched to heartbeat rate (once per heartbeat interval, regardless of event count). This means:
 - At 100K events/heartbeat, we make one set of metric calls per heartbeat instead of per-event
-- Gauges show the last value or average for the heartbeat interval
+- Gauges show the last value or cumulative total for the heartbeat interval
 - Counters are incremented by the batch total
 
 This design ensures Prometheus instrumentation adds negligible overhead even at maximum data rates.

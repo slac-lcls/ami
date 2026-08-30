@@ -196,13 +196,12 @@ class Worker(Node):
             "ami_heartbeat_duration_seconds",
             "Heartbeat processing duration",
             ["hutch", "process"],
-            buckets=[0.001, 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5],
+            buckets=[0.05, 0.1, 0.15, 0.2, 0.25, 0.5, 0.75, 0.9, 1.0, 1.1, 1.25, 1.5, 2.0, 5.0],
         )
         phase_pct = pc.Gauge("ami_heartbeat_phase_pct", "Heartbeat phase percentage", ["hutch", "type", "process"])
 
         idle_start = time.time()
         idle_stop = time.time()
-        heartbeat_time = 0
         hb_graph_time = 0
         hb_node_times = {}
         hb_num_datagrams = 0
@@ -218,8 +217,6 @@ class Worker(Node):
 
                 # check to see if the graph has been reconfigured after update
                 if msg.mtype == MsgTypes.Heartbeat:
-                    heartbeat_start = time.time()
-
                     send_start = time.time()
                     size = self.collect(msg.payload)
                     send_time = time.time() - send_start
@@ -252,17 +249,12 @@ class Worker(Node):
                     if self.pending_src:
                         break
 
-                    heartbeat_stop = time.time()
-                    heartbeat_time += heartbeat_stop - heartbeat_start
-                    event_time.labels(self.hutch, "Heartbeat", self.name).set(heartbeat_time)
                     event_size.labels(self.hutch, self.name).set(size)
 
                     # Batched metric updates at heartbeat rate
                     event_counter.labels(self.hutch, "Datagram", self.name).inc(hb_num_datagrams)
                     event_time.labels(self.hutch, "Idle", self.name).set(hb_idle_time)
-                    event_time.labels(self.hutch, "Datagram", self.name).set(
-                        hb_graph_time / hb_num_datagrams if hb_num_datagrams > 0 else 0
-                    )
+                    event_time.labels(self.hutch, "Datagram", self.name).set(hb_graph_time)
                     event_time.labels(self.hutch, "Send", self.name).set(send_time)
                     event_latency.labels(self.hutch, "Source", self.name).set(hb_max_input_latency)
                     if hb_partial_events > 0:
@@ -271,7 +263,9 @@ class Worker(Node):
                     trace_id = get_trace_id(msg.payload.identity)
                     hb_end_ns = time.time_ns()
                     full_interval_secs = (hb_end_ns - hb_interval_start_ns) / 1e9
+                    event_time.labels(self.hutch, "Heartbeat", self.name).set(full_interval_secs)
                     overhead_secs = full_interval_secs - hb_idle_time - hb_graph_time - send_time
+                    event_time.labels(self.hutch, "Overhead", self.name).set(max(0, overhead_secs))
                     heartbeat_duration.labels(self.hutch, self.name).observe(
                         full_interval_secs,
                         exemplar={"TraceID": trace_id} if trace_id else None,
@@ -359,7 +353,6 @@ class Worker(Node):
 
                         parent.end(end_time=hb_end_ns)
 
-                    heartbeat_time = 0
                     hb_graph_time = 0
                     hb_node_times = {} if should_trace(msg.payload.identity + 1) else None
                     hb_num_datagrams = 0
@@ -369,7 +362,6 @@ class Worker(Node):
                     hb_interval_start_ns = time.time_ns()
 
                 elif msg.mtype == MsgTypes.Datagram:
-                    datagram_start = time.time()
                     input_latency = dt.datetime.now() - dt.datetime.fromtimestamp(msg.unix_ts)
                     hb_max_input_latency = max(hb_max_input_latency, input_latency.total_seconds())
 
@@ -424,8 +416,6 @@ class Worker(Node):
 
                     self.num_events += 1
                     hb_num_datagrams += 1
-                    datagram_duration = time.time() - datagram_start
-                    heartbeat_time += datagram_duration
 
                 elif msg.mtype == MsgTypes.Transition:
                     if msg.payload.ttype == Transitions.Configure:

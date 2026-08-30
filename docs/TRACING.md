@@ -16,16 +16,29 @@ AMI uses OpenTelemetry distributed tracing to provide end-to-end visibility into
    ami-local --tracing-endpoint localhost:4317 random://examples/worker.json
    ```
 
-   Or use environment variable:
-   ```bash
-   export AMI_TRACING_ENDPOINT=localhost:4317
-   ami-local random://examples/worker.json
-   ```
-
 3. **Console output for debugging:**
    ```bash
    ami-local --tracing-endpoint console random://examples/worker.json
    ```
+
+### Trace Sampling
+
+By default, AMI traces every 10th heartbeat to reduce Tempo storage and overhead:
+
+```bash
+# Default: trace every 10th heartbeat
+ami-local --tracing-endpoint localhost:4317 random://examples/worker.json
+
+# Trace every heartbeat (maximum visibility, higher overhead)
+ami-local --tracing-endpoint localhost:4317 --tracing-sample-rate 1 random://examples/worker.json
+
+# Trace every 100th heartbeat (minimal overhead for long runs)
+ami-local --tracing-endpoint localhost:4317 --tracing-sample-rate 100 random://examples/worker.json
+```
+
+A heartbeat with identity `k` is traced if `k % N == 0` where N is the sample rate. All processes independently compute the same sampling decision, so traces are always complete (all workers + collectors + manager) when they do appear.
+
+Non-sampled heartbeats have zero tracing overhead — span creation and node time accumulation are both skipped entirely.
 
 ### Export Processing
 
@@ -73,30 +86,13 @@ All processes in a deployment must share the same session ID. Generate one sessi
 
 ```bash
 # Generate a shared session ID (once per deployment)
-export AMI_TRACING_SESSION_ID=$(uuidgen)
-export AMI_TRACING_ENDPOINT=tempo.example.com:4317
+SESSION_ID=$(uuidgen)
 
-# Start all processes with the same session ID
-ami-manager --tracing-endpoint $AMI_TRACING_ENDPOINT --tracing-session-id $AMI_TRACING_SESSION_ID &
-ami-node    --tracing-endpoint $AMI_TRACING_ENDPOINT --tracing-session-id $AMI_TRACING_SESSION_ID worker psana://... &
-ami-global  --tracing-endpoint $AMI_TRACING_ENDPOINT --tracing-session-id $AMI_TRACING_SESSION_ID &
+# Start all processes with the same endpoint, session ID, and sample rate
+ami-manager --tracing-endpoint tempo.example.com:4317 --tracing-session-id $SESSION_ID --tracing-sample-rate 10 &
+ami-node    --tracing-endpoint tempo.example.com:4317 --tracing-session-id $SESSION_ID --tracing-sample-rate 10 worker psana://... &
+ami-global  --tracing-endpoint tempo.example.com:4317 --tracing-session-id $SESSION_ID --tracing-sample-rate 10 &
 ```
-
-**Alternative: Using Environment Variables Only:**
-
-If the environment variables are already set (e.g., by SLURM or deployment scripts), CLI args are optional:
-
-```bash
-export AMI_TRACING_ENDPOINT=tempo.example.com:4317
-export AMI_TRACING_SESSION_ID=$(uuidgen)
-
-# CLI args are optional when env vars are set
-ami-manager &
-ami-node worker psana://... &
-ami-global &
-```
-
-**Note:** CLI arguments override environment variables if both are provided.
 
 ## Span Reference
 
@@ -105,12 +101,14 @@ ami-global &
 | `worker.heartbeat` | root | worker | Full heartbeat interval from start of event processing to heartbeat completion | `heartbeat`, `worker.id`, `worker.num_datagrams`, `worker.data_size_bytes`, `worker.source_idle_secs`, `worker.pct_idle`, `worker.pct_graph_exec`, `worker.pct_send` |
 | `worker.idle` | child | worker | Cumulative idle time within the heartbeat interval. Placed at interval start, duration equals total time spent waiting for data | none |
 | `worker.graph_exec` | child | worker | Cumulative graph execution time across all datagrams, placed sequentially after idle span | `worker.graph_exec_secs`, `worker.num_datagrams` |
+| `<node name>` | child | worker | Per-graph-node execution span under `worker.graph_exec`. One span per node that executed during the heartbeat. Duration is the cumulative total across all events in the heartbeat. | `ami.node`, `ami.node_type`, `ami.duration_secs`, `ami.graph` |
 | `worker.send` | child | worker | Serialize and send results to collector, placed sequentially after graph_exec span | `worker.send_secs`, `worker.data_size_bytes` |
 | `worker.overhead` | child | worker | Processing overhead (ZMQ polling, metric updates, tracing, GC), placed sequentially after send span to fill remaining interval | none |
 | `{color}.heartbeat` | root | collector | Completed heartbeat at collector (color = localCollector or globalCollector) | `heartbeat`, `collector.pruned`, `collector.num_contribs`, `collector.data_size_bytes`, `collector.pct_idle`, `collector.pct_graph_exec`, `collector.pct_send`, `collector.pct_overhead` |
 | `{color}.prune` | root | collector | Pruned incomplete heartbeat due to timeout or missing contributions (marked as ERROR, includes child spans) | `heartbeat`, `collector.pruned`, `collector.contrib_ratio`, `collector.num_present`, `collector.num_contribs`, `collector.prune_age`, `collector.missing_workers`, `collector.data_size_bytes`, `collector.pct_idle`, `collector.pct_graph_exec`, `collector.pct_send`, `collector.pct_overhead` |
 | `collector.wait` | child | collector | Waiting for all contributions from downstream workers/collectors (real wall clock timestamps, present in both normal and prune spans) | `collector.wait_secs` |
 | `collector.graph_exec` | child | collector | Executing reduction graph on aggregated data (real wall clock timestamps, present in both normal and prune spans) | `collector.graph_exec_secs` |
+| `<node name>` | child | collector | Per-graph-node execution span under `collector.graph_exec`. Duration is the cumulative total for the reduction. | `ami.node`, `ami.node_type`, `ami.duration_secs`, `ami.graph` |
 | `collector.send` | child | collector | Sending aggregated results upstream to next collector or manager (real wall clock timestamps, present in both normal and prune spans) | `collector.data_size_bytes` |
 | `manager.heartbeat` | root | manager | Manager processed heartbeat and broadcast notification to clients | `heartbeat`, `manager.graph` |
 
@@ -122,6 +120,9 @@ A typical trace for a single heartbeat shows spans from all processes involved:
 worker.heartbeat ─────────────────────────────────────────────
   ├─ worker.idle ━━━━━━━━━━
   ├─ worker.graph_exec     ━━━━━━━━━━━━━━━━━━━━━━━━
+      ├─ Roi2D.0      ━━━━━━
+      ├─ Threshold.0        ━━━━━━━━━━
+      └─ PythonEditor.1               ━━━━━━━━
   ├─ worker.send                                   ━━━
   └─ worker.overhead                                  ━━
 
@@ -326,12 +327,3 @@ For production deployments, configure Grafana Tempo as the OTLP receiver:
    ami-collector --tracing-endpoint tempo-host:4317
    ami-worker --tracing-endpoint tempo-host:4317
    ```
-
-### Environment Variable Configuration
-
-For production deployments, use the environment variable to avoid passing flags to every command:
-```bash
-export AMI_TRACING_ENDPOINT=tempo-host:4317
-```
-
-All AMI processes will automatically pick up this configuration.
