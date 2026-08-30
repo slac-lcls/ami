@@ -11,9 +11,68 @@ NOT manipulate graphs — load the `ami-graph-builder` skill for that.
 
 ## Discovery (always start here)
 
-1. `grafana_list_datasources` — find Prometheus and Tempo datasource UIDs
-2. `grafana_list_prometheus_metric_names(datasourceUid=..., regex="ami_")` — confirm AMI metrics are flowing
-3. `grafana_search_dashboards(query="AMI")` — find pre-built dashboard (importable from `examples/grafana.json`)
+Known UIDs — use these directly, skip discovery tool calls:
+
+| Resource | Name | UID |
+|----------|------|-----|
+| Prometheus | prom_psdm | `afjrx1j1815vkf` |
+| Tempo | tempo | `fflvjve0ust1cd` |
+| Dashboard | AMI-SDF | `mgG9RzcaG` |
+
+If a query fails with "datasource not found", fall back to `grafana_list_datasources` to re-discover UIDs.
+
+### Step 0: Detect active hutch (ALWAYS DO THIS FIRST)
+
+Fire this query before anything else. It returns which hutches currently have
+active AMI metrics. Use it to set `{hutch="<value>"}` on all subsequent queries.
+
+```python
+grafana_list_prometheus_label_values(
+    datasourceUid="afjrx1j1815vkf",
+    labelName="hutch",
+    matches=[{"filters": [{"name": "__name__", "value": "ami_heartbeat_phase_pct", "type": "="}]}]
+)
+```
+
+- **One result** → use it automatically, tell the user "Monitoring hutch: xpp" (or whichever)
+- **Multiple results** → ask the user which hutch to investigate before proceeding
+- **No results** → AMI is not running or metrics are not flowing; check connectivity
+
+### Step 1: Confirm metrics are flowing and load the dashboard
+
+Fire these in parallel (single message, multiple tool calls):
+
+```python
+# Confirm metrics flowing for detected hutch
+grafana_query_prometheus(
+    datasourceUid="afjrx1j1815vkf",
+    expr='ami_heartbeat_phase_pct{hutch="<hutch>"}',
+    queryType="instant",
+    endTime="now"
+)
+
+# Load dashboard panel queries for context
+grafana_get_dashboard_panel_queries(uid="mgG9RzcaG")
+```
+
+> **Parallel query rule:** Always fire independent Grafana queries in a single message.
+> The phase breakdown, heartbeat rate, event time, and event size queries are all
+> independent — send them together, not sequentially.
+
+> **Default time ranges:**
+>
+> | Query type | Window | Parameters |
+> |---|---|---|
+> | Prometheus instant (current state) | now only | `endTime="now"`, no `startTime` |
+> | Prometheus range (recent trend) | 15 minutes | `startTime="now-15m"`, `endTime="now"`, `stepSeconds=15` |
+> | Tempo search (current state) | 5 minutes | `start=<now-5min RFC3339>`, `end=<now RFC3339>` |
+> | Tempo search (past event) | ±2 minutes | centre the window on the event timestamp |
+>
+> Start with the narrowest window that answers the question — widen only if you need
+> more history. At the default `--tracing-sample-rate 10` with 1 Hz heartbeat, a
+> 5-minute Tempo window contains ~30 traces, which is enough to see current behaviour.
+> A 1-hour window returns 360 traces but the search API caps at 20 results, so you
+> may miss recent ones.
 
 ---
 
@@ -40,7 +99,7 @@ grafana_query_prometheus(
 | `Idle` | Waiting for input (source data for workers; contributions for collectors) | >70% = starved |
 | `Datagram` | Executing graph computations | >70% = graph bottleneck |
 | `Send` | Sending results downstream | >20% = backpressure |
-| `Overhead` | ZMQ polling, metrics, GC | >20% = system overhead |
+| `Overhead` | ZMQ polling, metrics, GC, span creation | >20% = system overhead |
 
 Filter by component to isolate where the problem is:
 ```
@@ -96,7 +155,16 @@ grafana_tempo_get-trace(
 )
 ```
 
-Trace spans flow: `worker.heartbeat` → `localCollector.heartbeat` → `globalCollector.heartbeat` → `manager.heartbeat`
+> **Sampling:** By default, AMI emits one trace every 10 heartbeats (`--tracing-sample-rate 10`).
+> At 1 Hz this means one trace every ~10 seconds. A specific heartbeat identity `k` has a trace
+> only if `k % N == 0` (where N is the sample rate). If you cannot find a trace for a specific
+> heartbeat, it was likely not sampled.
+
+Trace spans flow:
+`worker.heartbeat` → `worker.idle`, `worker.graph_exec` → `<per-node spans>`, `worker.send`, `worker.overhead`
+
+All worker traces share a deterministic `trace_id` with the collector and manager traces
+for the same heartbeat, enabling cross-process correlation in Grafana.
 
 ---
 
@@ -187,11 +255,31 @@ grafana_query_prometheus(
 ```
 
 **Trace check:**
+
+Step 1 — find heartbeats where graph execution is slow:
 ```
 grafana_tempo_traceql-search(
-    query='{ name="worker.graph_exec" } | duration > 50ms'
+    datasourceUid="fflvjve0ust1cd",
+    query='{ name="worker.graph_exec" && span.worker.graph_exec_secs > 0.05 }',
+    start=<rfc3339>,
+    end=<rfc3339>
 )
 ```
+
+Step 2 — within a slow trace, identify the specific bottleneck node using per-node child spans:
+```
+grafana_tempo_traceql-search(
+    datasourceUid="fflvjve0ust1cd",
+    query='{ span.ami.node != "" } | sort(desc, duration)',
+    start=<rfc3339>,
+    end=<rfc3339>
+)
+```
+
+Each `worker.graph_exec` and `collector.graph_exec` span has child spans for every
+graph node. Sort by duration descending to find the slowest node. The `ami.node_type`
+attribute shows whether it is a `Map`, `PickN`, `Accumulator`, etc.
+
 Compare `worker.graph_exec` duration across workers — uneven durations suggest one
 worker has more data or a more expensive operation.
 
@@ -331,6 +419,8 @@ heartbeat — making it clear where time was lost.
 | `worker.graph_exec` | worker | `graph_exec_secs`, `num_datagrams` | Long = expensive graph |
 | `worker.send` | worker | `send_secs`, `data_size_bytes` | Long = backpressure |
 | `worker.overhead` | worker | (fills remaining interval) | Long = GC/ZMQ pressure |
+| `<node name>` (child of `worker.graph_exec`) | worker | `ami.node`, `ami.node_type`, `ami.duration_secs`, `ami.graph` | Long duration = that specific node is the bottleneck |
+| `<node name>` (child of `collector.graph_exec`) | collector | `ami.node`, `ami.node_type`, `ami.duration_secs`, `ami.graph` | Long duration = reduction is expensive |
 | `{color}.heartbeat` | collector | `pct_idle`, `pct_graph_exec`, `pct_send`, `num_contribs`, `data_size_bytes` | High pct values |
 | `{color}.prune` | collector | `missing_workers`, `contrib_ratio`, `prune_age`, `num_present`, `num_contribs` | ERROR status = data loss |
 | `collector.wait` | collector | `wait_secs` | Long = slow workers upstream |

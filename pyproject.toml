@@ -111,6 +111,9 @@ ami-fc-to-source = "ami.fc_to_worker:main"
 [tool.setuptools]
 script-files = ["ami/ami-mpi"]
 
+[tool.setuptools.packages.find]
+include = ["ami*"]
+
 [tool.setuptools.package-data]
 ami = ["skills/**/*.md"]
 
