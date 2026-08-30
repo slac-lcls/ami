@@ -2,20 +2,20 @@
   "apiVersion": "dashboard.grafana.app/v2",
   "kind": "Dashboard",
   "metadata": {
-    "name": "mgG9RzcGk",
+    "name": "mgG9RzcaG",
     "namespace": "default",
-    "uid": "vizsXXZlOlEe5ACRKaPTEhwVj0vq6PxUcPPx0xRyaDMX",
-    "resourceVersion": "1788098874297984",
-    "generation": 18,
-    "creationTimestamp": "2024-12-12T05:41:03Z",
+    "uid": "608780d1-f0ed-4448-ac01-6e318d753aa2",
+    "resourceVersion": "1788119642724985",
+    "generation": 13,
+    "creationTimestamp": "2026-05-29T22:51:49Z",
     "labels": {
-      "grafana.app/deprecatedInternalID": "1"
+      "grafana.app/deprecatedInternalID": "2349318881443840"
     },
     "annotations": {
-      "grafana.app/createdBy": "user:ee6o0z7qunbi8d",
+      "grafana.app/createdBy": "user:u000000004",
       "grafana.app/saved-from-ui": "Grafana v13.2.0 (f681b1359f)",
-      "grafana.app/updatedBy": "user:ee6o0z7qunbi8d",
-      "grafana.app/updatedTimestamp": "2026-08-30T14:07:54Z"
+      "grafana.app/updatedBy": "user:u000000165",
+      "grafana.app/updatedTimestamp": "2026-08-30T19:54:02Z"
     }
   },
   "spec": {
@@ -49,14 +49,15 @@
       }
     ],
     "cursorSync": "Off",
+    "description": "AMI using the Prometheus data-source on eb011 that has access to /cds/ and /sdf/",
     "editable": true,
     "elements": {
       "panel-10": {
         "kind": "Panel",
         "spec": {
           "id": 10,
-          "title": "Heartbeat Time",
-          "description": "",
+          "title": "Overhead Time",
+          "description": "Time per heartbeat not accounted for by Idle, Datagram, or Send — includes Python loop\n     overhead, metric publishing, message deserialization, and tracing.",
           "links": [],
           "data": {
             "kind": "QueryGroup",
@@ -70,12 +71,14 @@
                       "group": "prometheus",
                       "version": "v0",
                       "datasource": {
-                        "name": "ee6o1i84smo74e"
+                        "name": "afjrx1j1815vkf"
                       },
                       "spec": {
-                        "expr": "ami_event_time_secs{hutch=\"$hutch\", type=\"Heartbeat\"}",
+                        "editorMode": "code",
+                        "expr": "ami_event_time_secs{hutch=\"$hutch\", type=\"Overhead\"}",
                         "interval": "",
-                        "legendFormat": "{{instance}} {{process}}"
+                        "legendFormat": "{{instance}} {{process}}",
+                        "range": true
                       }
                     },
                     "refId": "A",
@@ -94,6 +97,10 @@
             "spec": {
               "options": {
                 "alertThreshold": true,
+                "annotations": {
+                  "clustering": -1,
+                  "multiLane": false
+                },
                 "legend": {
                   "calcs": [],
                   "displayMode": "table",
@@ -171,7 +178,7 @@
         "spec": {
           "id": 12,
           "title": "Datagram Time",
-          "description": "",
+          "description": "Total graph execution time across all events in the heartbeat interval.",
           "links": [],
           "data": {
             "kind": "QueryGroup",
@@ -185,14 +192,12 @@
                       "group": "prometheus",
                       "version": "v0",
                       "datasource": {
-                        "name": "ee6o1i84smo74e"
+                        "name": "afjrx1j1815vkf"
                       },
                       "spec": {
-                        "editorMode": "code",
                         "expr": "ami_event_time_secs{hutch=\"$hutch\", type=\"Datagram\"}",
                         "interval": "",
-                        "legendFormat": "{{instance}} {{process}}",
-                        "range": true
+                        "legendFormat": "{{instance}} {{process}}"
                       }
                     },
                     "refId": "A",
@@ -210,6 +215,10 @@
             "version": "13.2.0",
             "spec": {
               "options": {
+                "annotations": {
+                  "clustering": -1,
+                  "multiLane": false
+                },
                 "legend": {
                   "calcs": [],
                   "displayMode": "table",
@@ -287,7 +296,7 @@
         "spec": {
           "id": 14,
           "title": "Pruned Heartbeats/Sec",
-          "description": "",
+          "description": "Rate of heartbeats processed with incomplete worker contributions due to timeout.",
           "links": [],
           "data": {
             "kind": "QueryGroup",
@@ -301,7 +310,7 @@
                       "group": "prometheus",
                       "version": "v0",
                       "datasource": {
-                        "name": "ee6o1i84smo74e"
+                        "name": "afjrx1j1815vkf"
                       },
                       "spec": {
                         "editorMode": "code",
@@ -327,6 +336,10 @@
             "spec": {
               "options": {
                 "alertThreshold": true,
+                "annotations": {
+                  "clustering": -1,
+                  "multiLane": false
+                },
                 "legend": {
                   "calcs": [],
                   "displayMode": "table",
@@ -406,7 +419,7 @@
         "spec": {
           "id": 16,
           "title": "Latency",
-          "description": "",
+          "description": "Data latency per hop (source→worker, worker→collector).",
           "links": [],
           "data": {
             "kind": "QueryGroup",
@@ -420,12 +433,14 @@
                       "group": "prometheus",
                       "version": "v0",
                       "datasource": {
-                        "name": "ee6o1i84smo74e"
+                        "name": "afjrx1j1815vkf"
                       },
                       "spec": {
+                        "editorMode": "code",
                         "expr": "ami_event_latency_secs{hutch=\"$hutch\"}",
                         "interval": "",
-                        "legendFormat": "{{ sender }} to {{ process }}"
+                        "legendFormat": "{{ sender }} to {{ process }}",
+                        "range": true
                       }
                     },
                     "refId": "A",
@@ -444,6 +459,10 @@
             "spec": {
               "options": {
                 "alertThreshold": true,
+                "annotations": {
+                  "clustering": -1,
+                  "multiLane": false
+                },
                 "legend": {
                   "calcs": [],
                   "displayMode": "table",
@@ -521,7 +540,7 @@
         "spec": {
           "id": 18,
           "title": "Datagram Size",
-          "description": "",
+          "description": "Result payload size sent from workers to collectors per heartbeat.",
           "links": [],
           "data": {
             "kind": "QueryGroup",
@@ -535,7 +554,7 @@
                       "group": "prometheus",
                       "version": "v0",
                       "datasource": {
-                        "name": "ee6o1i84smo74e"
+                        "name": "afjrx1j1815vkf"
                       },
                       "spec": {
                         "expr": "ami_event_size_bytes{hutch=\"$hutch\"}",
@@ -559,6 +578,10 @@
             "spec": {
               "options": {
                 "alertThreshold": true,
+                "annotations": {
+                  "clustering": -1,
+                  "multiLane": false
+                },
                 "legend": {
                   "calcs": [],
                   "displayMode": "table",
@@ -636,7 +659,7 @@
         "spec": {
           "id": 19,
           "title": "Graph Version",
-          "description": "",
+          "description": "Currently loaded computation graph version. Increments on each graph modification.",
           "links": [],
           "data": {
             "kind": "QueryGroup",
@@ -650,7 +673,7 @@
                       "group": "prometheus",
                       "version": "v0",
                       "datasource": {
-                        "name": "ee6o1i84smo74e"
+                        "name": "afjrx1j1815vkf"
                       },
                       "spec": {
                         "expr": "ami_graph_version{hutch=\"$hutch\"}",
@@ -674,6 +697,10 @@
             "spec": {
               "options": {
                 "alertThreshold": true,
+                "annotations": {
+                  "clustering": -1,
+                  "multiLane": false
+                },
                 "legend": {
                   "calcs": [],
                   "displayMode": "table",
@@ -753,7 +780,7 @@
         "spec": {
           "id": 2,
           "title": "Datagrams/Sec",
-          "description": "",
+          "description": "Events processed per second per worker. \"Total Rate\" is the sum across all workers. ",
           "links": [],
           "data": {
             "kind": "QueryGroup",
@@ -767,7 +794,7 @@
                       "group": "prometheus",
                       "version": "v0",
                       "datasource": {
-                        "name": "ee6o1i84smo74e"
+                        "name": "afjrx1j1815vkf"
                       },
                       "spec": {
                         "editorMode": "code",
@@ -789,7 +816,7 @@
                       "group": "prometheus",
                       "version": "v0",
                       "datasource": {
-                        "name": "ee6o1i84smo74e"
+                        "name": "afjrx1j1815vkf"
                       },
                       "spec": {
                         "editorMode": "code",
@@ -815,6 +842,10 @@
             "spec": {
               "options": {
                 "alertThreshold": true,
+                "annotations": {
+                  "clustering": -1,
+                  "multiLane": false
+                },
                 "legend": {
                   "calcs": [],
                   "displayMode": "table",
@@ -917,7 +948,7 @@
         "spec": {
           "id": 23,
           "title": "Transitions",
-          "description": "",
+          "description": "Cumulative system state transitions (Configure, Enable, Disable, etc.).",
           "links": [],
           "data": {
             "kind": "QueryGroup",
@@ -931,7 +962,7 @@
                       "group": "prometheus",
                       "version": "v0",
                       "datasource": {
-                        "name": "ee6o1i84smo74e"
+                        "name": "afjrx1j1815vkf"
                       },
                       "spec": {
                         "expr": "ami_event_count_total{hutch=\"$hutch\", type=\"Transition\"}",
@@ -955,6 +986,10 @@
             "spec": {
               "options": {
                 "alertThreshold": true,
+                "annotations": {
+                  "clustering": -1,
+                  "multiLane": false
+                },
                 "legend": {
                   "calcs": [],
                   "displayMode": "table",
@@ -1032,7 +1067,7 @@
         "spec": {
           "id": 24,
           "title": "Plot Latency",
-          "description": "",
+          "description": "End-to-end latency from heartbeat creation at the data source to display in the GUI client.",
           "links": [],
           "data": {
             "kind": "QueryGroup",
@@ -1046,7 +1081,7 @@
                       "group": "prometheus",
                       "version": "v0",
                       "datasource": {
-                        "name": "ee6o1i84smo74e"
+                        "name": "afjrx1j1815vkf"
                       },
                       "spec": {
                         "editorMode": "code",
@@ -1070,6 +1105,248 @@
             "version": "13.2.0",
             "spec": {
               "options": {
+                "annotations": {
+                  "clustering": -1,
+                  "multiLane": false
+                },
+                "legend": {
+                  "calcs": [],
+                  "displayMode": "table",
+                  "placement": "right",
+                  "showLegend": true
+                },
+                "tooltip": {
+                  "hideZeros": false,
+                  "mode": "multi",
+                  "sort": "none"
+                }
+              },
+              "fieldConfig": {
+                "defaults": {
+                  "unit": "s",
+                  "thresholds": {
+                    "mode": "absolute",
+                    "steps": [
+                      {
+                        "value": 0,
+                        "color": "green"
+                      },
+                      {
+                        "value": 80,
+                        "color": "red"
+                      }
+                    ]
+                  },
+                  "color": {
+                    "mode": "palette-classic"
+                  },
+                  "custom": {
+                    "axisBorderShow": false,
+                    "axisCenteredZero": false,
+                    "axisColorMode": "text",
+                    "axisLabel": "Time",
+                    "axisPlacement": "auto",
+                    "barAlignment": 0,
+                    "barWidthFactor": 0.6,
+                    "drawStyle": "line",
+                    "fillOpacity": 10,
+                    "gradientMode": "none",
+                    "hideFrom": {
+                      "legend": false,
+                      "tooltip": false,
+                      "viz": false
+                    },
+                    "insertNulls": false,
+                    "lineInterpolation": "linear",
+                    "lineWidth": 1,
+                    "pointSize": 1,
+                    "scaleDistribution": {
+                      "type": "linear"
+                    },
+                    "showPoints": "auto",
+                    "showValues": false,
+                    "spanNulls": false,
+                    "stacking": {
+                      "group": "A",
+                      "mode": "none"
+                    },
+                    "thresholdsStyle": {
+                      "mode": "off"
+                    }
+                  }
+                },
+                "overrides": []
+              }
+            }
+          }
+        }
+      },
+      "panel-25": {
+        "kind": "Panel",
+        "spec": {
+          "id": 25,
+          "title": "Plot RSS",
+          "description": "Memory used by the AMI GUI process for display nodes.",
+          "links": [],
+          "data": {
+            "kind": "QueryGroup",
+            "spec": {
+              "queries": [
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "query": {
+                      "kind": "DataQuery",
+                      "group": "prometheus",
+                      "version": "v0",
+                      "datasource": {
+                        "name": "afjrx1j1815vkf"
+                      },
+                      "spec": {
+                        "editorMode": "code",
+                        "expr": "ami_plot_memory_mb{hutch=\"$hutch\"}",
+                        "legendFormat": "{{instance}} {{process}}",
+                        "range": true
+                      }
+                    },
+                    "refId": "A",
+                    "hidden": false
+                  }
+                }
+              ],
+              "transformations": [],
+              "queryOptions": {}
+            }
+          },
+          "vizConfig": {
+            "kind": "VizConfig",
+            "group": "timeseries",
+            "version": "13.2.0",
+            "spec": {
+              "options": {
+                "annotations": {
+                  "clustering": -1,
+                  "multiLane": false
+                },
+                "legend": {
+                  "calcs": [],
+                  "displayMode": "table",
+                  "placement": "right",
+                  "showLegend": true
+                },
+                "tooltip": {
+                  "hideZeros": false,
+                  "mode": "multi",
+                  "sort": "none"
+                }
+              },
+              "fieldConfig": {
+                "defaults": {
+                  "unit": "decmbytes",
+                  "thresholds": {
+                    "mode": "absolute",
+                    "steps": [
+                      {
+                        "value": 0,
+                        "color": "green"
+                      },
+                      {
+                        "value": 80,
+                        "color": "red"
+                      }
+                    ]
+                  },
+                  "color": {
+                    "mode": "palette-classic"
+                  },
+                  "custom": {
+                    "axisBorderShow": false,
+                    "axisCenteredZero": false,
+                    "axisColorMode": "text",
+                    "axisLabel": "RSS (MB)",
+                    "axisPlacement": "auto",
+                    "barAlignment": 0,
+                    "barWidthFactor": 0.6,
+                    "drawStyle": "line",
+                    "fillOpacity": 10,
+                    "gradientMode": "none",
+                    "hideFrom": {
+                      "legend": false,
+                      "tooltip": false,
+                      "viz": false
+                    },
+                    "insertNulls": false,
+                    "lineInterpolation": "linear",
+                    "lineWidth": 1,
+                    "pointSize": 5,
+                    "scaleDistribution": {
+                      "type": "linear"
+                    },
+                    "showPoints": "never",
+                    "showValues": false,
+                    "spanNulls": false,
+                    "stacking": {
+                      "group": "A",
+                      "mode": "none"
+                    },
+                    "thresholdsStyle": {
+                      "mode": "off"
+                    }
+                  }
+                },
+                "overrides": []
+              }
+            }
+          }
+        }
+      },
+      "panel-26": {
+        "kind": "Panel",
+        "spec": {
+          "id": 26,
+          "title": "Send Time",
+          "description": "Time spent serializing and transmitting results downstream per heartbeat.",
+          "links": [],
+          "data": {
+            "kind": "QueryGroup",
+            "spec": {
+              "queries": [
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "query": {
+                      "kind": "DataQuery",
+                      "group": "prometheus",
+                      "version": "v0",
+                      "datasource": {
+                        "name": "afjrx1j1815vkf"
+                      },
+                      "spec": {
+                        "editorMode": "code",
+                        "expr": "ami_event_time_secs{hutch=\"$hutch\", type=\"Send\"}",
+                        "legendFormat": "{{instance}} {{process}}",
+                        "range": true
+                      }
+                    },
+                    "refId": "A",
+                    "hidden": false
+                  }
+                }
+              ],
+              "transformations": [],
+              "queryOptions": {}
+            }
+          },
+          "vizConfig": {
+            "kind": "VizConfig",
+            "group": "timeseries",
+            "version": "13.2.0",
+            "spec": {
+              "options": {
+                "annotations": {
+                  "clustering": -1,
+                  "multiLane": false
+                },
                 "legend": {
                   "calcs": [],
                   "displayMode": "table",
@@ -1142,360 +1419,12 @@
           }
         }
       },
-      "panel-25": {
-        "kind": "Panel",
-        "spec": {
-          "id": 25,
-          "title": "Plot RSS",
-          "description": "",
-          "links": [],
-          "data": {
-            "kind": "QueryGroup",
-            "spec": {
-              "queries": [
-                {
-                  "kind": "PanelQuery",
-                  "spec": {
-                    "query": {
-                      "kind": "DataQuery",
-                      "group": "prometheus",
-                      "version": "v0",
-                      "datasource": {
-                        "name": "ee6o1i84smo74e"
-                      },
-                      "spec": {
-                        "editorMode": "code",
-                        "expr": "ami_plot_memory_mb{hutch=\"$hutch\"}",
-                        "legendFormat": "{{instance}} {{process}}",
-                        "range": true
-                      }
-                    },
-                    "refId": "A",
-                    "hidden": false
-                  }
-                }
-              ],
-              "transformations": [],
-              "queryOptions": {}
-            }
-          },
-          "vizConfig": {
-            "kind": "VizConfig",
-            "group": "timeseries",
-            "version": "13.2.0",
-            "spec": {
-              "options": {
-                "legend": {
-                  "calcs": [],
-                  "displayMode": "table",
-                  "placement": "right",
-                  "showLegend": true
-                },
-                "tooltip": {
-                  "hideZeros": false,
-                  "mode": "multi",
-                  "sort": "none"
-                }
-              },
-              "fieldConfig": {
-                "defaults": {
-                  "unit": "decmbytes",
-                  "thresholds": {
-                    "mode": "absolute",
-                    "steps": [
-                      {
-                        "value": 0,
-                        "color": "green"
-                      },
-                      {
-                        "value": 80,
-                        "color": "red"
-                      }
-                    ]
-                  },
-                  "color": {
-                    "mode": "palette-classic"
-                  },
-                  "custom": {
-                    "axisBorderShow": false,
-                    "axisCenteredZero": false,
-                    "axisColorMode": "text",
-                    "axisLabel": "RSS",
-                    "axisPlacement": "auto",
-                    "barAlignment": 0,
-                    "barWidthFactor": 0.6,
-                    "drawStyle": "line",
-                    "fillOpacity": 10,
-                    "gradientMode": "none",
-                    "hideFrom": {
-                      "legend": false,
-                      "tooltip": false,
-                      "viz": false
-                    },
-                    "insertNulls": false,
-                    "lineInterpolation": "linear",
-                    "lineWidth": 1,
-                    "pointSize": 5,
-                    "scaleDistribution": {
-                      "type": "linear"
-                    },
-                    "showPoints": "never",
-                    "showValues": false,
-                    "spanNulls": false,
-                    "stacking": {
-                      "group": "A",
-                      "mode": "none"
-                    },
-                    "thresholdsStyle": {
-                      "mode": "off"
-                    }
-                  }
-                },
-                "overrides": []
-              }
-            }
-          }
-        }
-      },
       "panel-27": {
         "kind": "Panel",
         "spec": {
           "id": 27,
-          "title": "Tempo Timelines",
-          "description": "",
-          "links": [],
-          "data": {
-            "kind": "QueryGroup",
-            "spec": {
-              "queries": [
-                {
-                  "kind": "PanelQuery",
-                  "spec": {
-                    "query": {
-                      "kind": "DataQuery",
-                      "group": "prometheus",
-                      "version": "v0",
-                      "datasource": {
-                        "name": "ee6o1i84smo74e"
-                      },
-                      "spec": {
-                        "editorMode": "code",
-                        "exemplar": true,
-                        "expr": "histogram_quantile(0.99, rate(ami_heartbeat_duration_seconds_bucket{hutch=\"$hutch\"}[30s]))",
-                        "format": "time_series",
-                        "interval": "",
-                        "legendFormat": "{{process}}",
-                        "range": true
-                      }
-                    },
-                    "refId": "A",
-                    "hidden": false
-                  }
-                }
-              ],
-              "transformations": [],
-              "queryOptions": {}
-            }
-          },
-          "vizConfig": {
-            "kind": "VizConfig",
-            "group": "timeseries",
-            "version": "13.2.0",
-            "spec": {
-              "options": {
-                "legend": {
-                  "calcs": [],
-                  "displayMode": "table",
-                  "placement": "right",
-                  "showLegend": false
-                },
-                "tooltip": {
-                  "hideZeros": false,
-                  "mode": "none",
-                  "sort": "none"
-                }
-              },
-              "fieldConfig": {
-                "defaults": {
-                  "unit": "s",
-                  "thresholds": {
-                    "mode": "absolute",
-                    "steps": [
-                      {
-                        "value": 0,
-                        "color": "green"
-                      },
-                      {
-                        "value": 80,
-                        "color": "red"
-                      }
-                    ]
-                  },
-                  "color": {
-                    "mode": "palette-classic"
-                  },
-                  "custom": {
-                    "axisBorderShow": false,
-                    "axisCenteredZero": false,
-                    "axisColorMode": "text",
-                    "axisLabel": "",
-                    "axisPlacement": "auto",
-                    "barAlignment": 0,
-                    "barWidthFactor": 0.6,
-                    "drawStyle": "line",
-                    "fillOpacity": 0,
-                    "gradientMode": "none",
-                    "hideFrom": {
-                      "legend": false,
-                      "tooltip": false,
-                      "viz": false
-                    },
-                    "insertNulls": false,
-                    "lineInterpolation": "linear",
-                    "lineWidth": 0,
-                    "pointSize": 5,
-                    "scaleDistribution": {
-                      "type": "linear"
-                    },
-                    "showPoints": "never",
-                    "showValues": false,
-                    "spanNulls": false,
-                    "stacking": {
-                      "group": "A",
-                      "mode": "none"
-                    },
-                    "thresholdsStyle": {
-                      "mode": "off"
-                    }
-                  }
-                },
-                "overrides": []
-              }
-            }
-          }
-        }
-      },
-      "panel-29": {
-        "kind": "Panel",
-        "spec": {
-          "id": 29,
-          "title": "Send Time",
-          "description": "",
-          "links": [],
-          "data": {
-            "kind": "QueryGroup",
-            "spec": {
-              "queries": [
-                {
-                  "kind": "PanelQuery",
-                  "spec": {
-                    "query": {
-                      "kind": "DataQuery",
-                      "group": "prometheus",
-                      "version": "v0",
-                      "datasource": {
-                        "name": "ee6o1i84smo74e"
-                      },
-                      "spec": {
-                        "editorMode": "code",
-                        "expr": "ami_event_time_secs{hutch=\"$hutch\", type=\"Send\"}",
-                        "legendFormat": "{{instance}} {{process}}",
-                        "range": true
-                      }
-                    },
-                    "refId": "A",
-                    "hidden": false
-                  }
-                }
-              ],
-              "transformations": [],
-              "queryOptions": {}
-            }
-          },
-          "vizConfig": {
-            "kind": "VizConfig",
-            "group": "timeseries",
-            "version": "13.2.0",
-            "spec": {
-              "options": {
-                "legend": {
-                  "calcs": [],
-                  "displayMode": "table",
-                  "placement": "right",
-                  "showLegend": true
-                },
-                "tooltip": {
-                  "hideZeros": false,
-                  "mode": "multi",
-                  "sort": "none"
-                }
-              },
-              "fieldConfig": {
-                "defaults": {
-                  "unit": "s",
-                  "thresholds": {
-                    "mode": "absolute",
-                    "steps": [
-                      {
-                        "value": 0,
-                        "color": "green"
-                      },
-                      {
-                        "value": 80,
-                        "color": "red"
-                      }
-                    ]
-                  },
-                  "color": {
-                    "mode": "palette-classic"
-                  },
-                  "custom": {
-                    "axisBorderShow": false,
-                    "axisCenteredZero": false,
-                    "axisColorMode": "text",
-                    "axisLabel": "",
-                    "axisPlacement": "auto",
-                    "barAlignment": 0,
-                    "barWidthFactor": 0.6,
-                    "drawStyle": "line",
-                    "fillOpacity": 10,
-                    "gradientMode": "none",
-                    "hideFrom": {
-                      "legend": false,
-                      "tooltip": false,
-                      "viz": false
-                    },
-                    "insertNulls": false,
-                    "lineInterpolation": "linear",
-                    "lineWidth": 1,
-                    "pointSize": 5,
-                    "scaleDistribution": {
-                      "type": "linear"
-                    },
-                    "showPoints": "never",
-                    "showValues": false,
-                    "spanNulls": false,
-                    "stacking": {
-                      "group": "A",
-                      "mode": "none"
-                    },
-                    "thresholdsStyle": {
-                      "mode": "off"
-                    }
-                  }
-                },
-                "overrides": []
-              }
-            }
-          }
-        }
-      },
-      "panel-30": {
-        "kind": "Panel",
-        "spec": {
-          "id": 30,
           "title": "Heartbeat Budget $process",
-          "description": "",
+          "description": "Heartbeat interval breakdown by phase — Idle, Datagram (graph execution), Send,\n     and Overhead — as percentages summing to 100%.",
           "links": [],
           "data": {
             "kind": "QueryGroup",
@@ -1509,7 +1438,7 @@
                       "group": "prometheus",
                       "version": "v0",
                       "datasource": {
-                        "name": "ee6o1i84smo74e"
+                        "name": "afjrx1j1815vkf"
                       },
                       "spec": {
                         "editorMode": "code",
@@ -1530,7 +1459,7 @@
                       "group": "prometheus",
                       "version": "v0",
                       "datasource": {
-                        "name": "ee6o1i84smo74e"
+                        "name": "afjrx1j1815vkf"
                       },
                       "spec": {
                         "editorMode": "code",
@@ -1552,7 +1481,7 @@
                       "group": "prometheus",
                       "version": "v0",
                       "datasource": {
-                        "name": "ee6o1i84smo74e"
+                        "name": "afjrx1j1815vkf"
                       },
                       "spec": {
                         "editorMode": "code",
@@ -1574,7 +1503,7 @@
                       "group": "prometheus",
                       "version": "v0",
                       "datasource": {
-                        "name": "ee6o1i84smo74e"
+                        "name": "afjrx1j1815vkf"
                       },
                       "spec": {
                         "editorMode": "code",
@@ -1607,7 +1536,9 @@
                   "calcs": [],
                   "displayMode": "table",
                   "placement": "right",
-                  "showLegend": true
+                  "showLegend": true,
+                  "sortBy": "Name",
+                  "sortDesc": true
                 },
                 "orientation": "horizontal",
                 "showValue": "never",
@@ -1666,12 +1597,12 @@
           }
         }
       },
-      "panel-4": {
+      "panel-28": {
         "kind": "Panel",
         "spec": {
-          "id": 4,
-          "title": "Idle Time",
-          "description": "",
+          "id": 28,
+          "title": "Heartbeat Duration",
+          "description": "P99 heartbeat duration with exemplar markers linking sampled heartbeats to distributed\n     Tempo traces. Each dot represents one traced heartbeat.",
           "links": [],
           "data": {
             "kind": "QueryGroup",
@@ -1685,7 +1616,128 @@
                       "group": "prometheus",
                       "version": "v0",
                       "datasource": {
-                        "name": "ee6o1i84smo74e"
+                        "name": "afjrx1j1815vkf"
+                      },
+                      "spec": {
+                        "editorMode": "code",
+                        "exemplar": true,
+                        "expr": "histogram_quantile(0.99, rate(ami_heartbeat_duration_seconds_bucket{hutch=\"$hutch\"}[30s]))",
+                        "format": "time_series",
+                        "legendFormat": "{{instance}} {{process}}",
+                        "range": true
+                      }
+                    },
+                    "refId": "A",
+                    "hidden": false
+                  }
+                }
+              ],
+              "transformations": [],
+              "queryOptions": {}
+            }
+          },
+          "vizConfig": {
+            "kind": "VizConfig",
+            "group": "timeseries",
+            "version": "13.2.0",
+            "spec": {
+              "options": {
+                "annotations": {
+                  "clustering": -1,
+                  "multiLane": false
+                },
+                "legend": {
+                  "calcs": [],
+                  "displayMode": "table",
+                  "placement": "right",
+                  "showLegend": true
+                },
+                "tooltip": {
+                  "hideZeros": false,
+                  "mode": "multi",
+                  "sort": "none"
+                }
+              },
+              "fieldConfig": {
+                "defaults": {
+                  "unit": "s",
+                  "thresholds": {
+                    "mode": "absolute",
+                    "steps": [
+                      {
+                        "value": 0,
+                        "color": "green"
+                      },
+                      {
+                        "value": 80,
+                        "color": "red"
+                      }
+                    ]
+                  },
+                  "color": {
+                    "mode": "palette-classic"
+                  },
+                  "custom": {
+                    "axisBorderShow": false,
+                    "axisCenteredZero": false,
+                    "axisColorMode": "text",
+                    "axisLabel": "Time",
+                    "axisPlacement": "auto",
+                    "barAlignment": 0,
+                    "barWidthFactor": 0.6,
+                    "drawStyle": "line",
+                    "fillOpacity": 0,
+                    "gradientMode": "none",
+                    "hideFrom": {
+                      "legend": false,
+                      "tooltip": false,
+                      "viz": false
+                    },
+                    "insertNulls": false,
+                    "lineInterpolation": "linear",
+                    "lineWidth": 1,
+                    "pointSize": 5,
+                    "scaleDistribution": {
+                      "type": "linear"
+                    },
+                    "showPoints": "never",
+                    "showValues": false,
+                    "spanNulls": false,
+                    "stacking": {
+                      "group": "A",
+                      "mode": "none"
+                    },
+                    "thresholdsStyle": {
+                      "mode": "off"
+                    }
+                  }
+                },
+                "overrides": []
+              }
+            }
+          }
+        }
+      },
+      "panel-4": {
+        "kind": "Panel",
+        "spec": {
+          "id": 4,
+          "title": "Idle Time",
+          "description": "Time workers spent waiting for the next event, or collectors waiting for upstream contributions.",
+          "links": [],
+          "data": {
+            "kind": "QueryGroup",
+            "spec": {
+              "queries": [
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "query": {
+                      "kind": "DataQuery",
+                      "group": "prometheus",
+                      "version": "v0",
+                      "datasource": {
+                        "name": "afjrx1j1815vkf"
                       },
                       "spec": {
                         "expr": "ami_event_time_secs{hutch=\"$hutch\", type=\"Idle\"}",
@@ -1709,6 +1761,10 @@
             "spec": {
               "options": {
                 "alertThreshold": true,
+                "annotations": {
+                  "clustering": -1,
+                  "multiLane": false
+                },
                 "legend": {
                   "calcs": [],
                   "displayMode": "table",
@@ -1786,7 +1842,7 @@
         "spec": {
           "id": 6,
           "title": "Heartbeats/Sec",
-          "description": "",
+          "description": "Heartbeat boundary rate per process. Should match the configured heartbeat frequency (default 1 Hz).",
           "links": [],
           "data": {
             "kind": "QueryGroup",
@@ -1800,7 +1856,7 @@
                       "group": "prometheus",
                       "version": "v0",
                       "datasource": {
-                        "name": "ee6o1i84smo74e"
+                        "name": "afjrx1j1815vkf"
                       },
                       "spec": {
                         "expr": "rate(ami_event_count_total{hutch=\"$hutch\",type=\"Heartbeat\"}[30s])",
@@ -1824,6 +1880,10 @@
             "spec": {
               "options": {
                 "alertThreshold": true,
+                "annotations": {
+                  "clustering": -1,
+                  "multiLane": false
+                },
                 "legend": {
                   "calcs": [],
                   "displayMode": "table",
@@ -1901,7 +1961,7 @@
         "spec": {
           "id": 8,
           "title": "Partial Events/Sec",
-          "description": "",
+          "description": "Events processed with incomplete detector contributions.",
           "links": [],
           "data": {
             "kind": "QueryGroup",
@@ -1915,7 +1975,7 @@
                       "group": "prometheus",
                       "version": "v0",
                       "datasource": {
-                        "name": "ee6o1i84smo74e"
+                        "name": "afjrx1j1815vkf"
                       },
                       "spec": {
                         "expr": "rate(ami_event_count_total{hutch=\"$hutch\",type=\"Partial\"}[30s])",
@@ -1939,6 +1999,10 @@
             "spec": {
               "options": {
                 "alertThreshold": true,
+                "annotations": {
+                  "clustering": -1,
+                  "multiLane": false
+                },
                 "legend": {
                   "calcs": [],
                   "displayMode": "table",
@@ -2064,7 +2128,7 @@
               "height": 8,
               "element": {
                 "kind": "ElementReference",
-                "name": "panel-10"
+                "name": "panel-26"
               }
             }
           },
@@ -2090,7 +2154,7 @@
               "height": 8,
               "element": {
                 "kind": "ElementReference",
-                "name": "panel-29"
+                "name": "panel-10"
               }
             }
           },
@@ -2168,7 +2232,7 @@
               "height": 8,
               "element": {
                 "kind": "ElementReference",
-                "name": "panel-25"
+                "name": "panel-23"
               }
             }
           },
@@ -2194,7 +2258,7 @@
               "height": 8,
               "element": {
                 "kind": "ElementReference",
-                "name": "panel-23"
+                "name": "panel-25"
               }
             }
           },
@@ -2207,7 +2271,7 @@
               "height": 8,
               "element": {
                 "kind": "ElementReference",
-                "name": "panel-30"
+                "name": "panel-27"
               }
             }
           },
@@ -2220,7 +2284,7 @@
               "height": 8,
               "element": {
                 "kind": "ElementReference",
-                "name": "panel-27"
+                "name": "panel-28"
               }
             }
           }
@@ -2236,7 +2300,7 @@
     ],
     "timeSettings": {
       "timezone": "browser",
-      "from": "now-5m",
+      "from": "now-2d",
       "to": "now",
       "autoRefresh": "5s",
       "autoRefreshIntervals": [
@@ -2254,49 +2318,18 @@
       "hideTimepicker": false,
       "fiscalYearStartMonth": 0
     },
-    "title": "AMI",
+    "title": "AMI-SDF",
     "variables": [
       {
         "kind": "CustomVariable",
         "spec": {
           "name": "hutch",
-          "query": "local,tmo,tst,rix_first,ued,cxi",
+          "query": "local,tmo,tst,rix_first,ued,cxi,mfx_first,xpp",
           "current": {
-            "text": "local",
-            "value": "local"
+            "text": "xpp",
+            "value": "xpp"
           },
-          "options": [
-            {
-              "selected": true,
-              "text": "local",
-              "value": "local"
-            },
-            {
-              "selected": false,
-              "text": "tmo",
-              "value": "tmo"
-            },
-            {
-              "selected": false,
-              "text": "tst",
-              "value": "tst"
-            },
-            {
-              "selected": false,
-              "text": "rix_first",
-              "value": "rix_first"
-            },
-            {
-              "selected": false,
-              "text": "ued",
-              "value": "ued"
-            },
-            {
-              "selected": false,
-              "text": "cxi",
-              "value": "cxi"
-            }
-          ],
+          "options": [],
           "multi": false,
           "includeAll": false,
           "hide": "dontHide",
@@ -2310,8 +2343,8 @@
         "spec": {
           "name": "process",
           "current": {
-            "text": "worker000",
-            "value": "worker000"
+            "text": "localCollector000",
+            "value": "localCollector000"
           },
           "hide": "dontHide",
           "refresh": "onTimeRangeChanged",
@@ -2321,7 +2354,7 @@
             "group": "prometheus",
             "version": "v0",
             "datasource": {
-              "name": "ee6o1i84smo74e"
+              "name": "afjrx1j1815vkf"
             },
             "spec": {
               "qryType": 1,
