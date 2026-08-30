@@ -5,8 +5,8 @@
     "name": "mgG9RzcGk",
     "namespace": "default",
     "uid": "vizsXXZlOlEe5ACRKaPTEhwVj0vq6PxUcPPx0xRyaDMX",
-    "resourceVersion": "1787904657109987",
-    "generation": 17,
+    "resourceVersion": "1788098874297984",
+    "generation": 18,
     "creationTimestamp": "2024-12-12T05:41:03Z",
     "labels": {
       "grafana.app/deprecatedInternalID": "1"
@@ -15,7 +15,7 @@
       "grafana.app/createdBy": "user:ee6o0z7qunbi8d",
       "grafana.app/saved-from-ui": "Grafana v13.2.0 (f681b1359f)",
       "grafana.app/updatedBy": "user:ee6o0z7qunbi8d",
-      "grafana.app/updatedTimestamp": "2026-08-28T08:10:57Z"
+      "grafana.app/updatedTimestamp": "2026-08-30T14:07:54Z"
     }
   },
   "spec": {
@@ -770,12 +770,36 @@
                         "name": "ee6o1i84smo74e"
                       },
                       "spec": {
+                        "editorMode": "code",
                         "expr": "rate(ami_event_count_total{hutch=\"$hutch\",type=\"Datagram\"}[30s])",
                         "interval": "",
-                        "legendFormat": "{{instance}} {{process}}"
+                        "legendFormat": "{{instance}} {{process}}",
+                        "range": true
                       }
                     },
                     "refId": "A",
+                    "hidden": false
+                  }
+                },
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "query": {
+                      "kind": "DataQuery",
+                      "group": "prometheus",
+                      "version": "v0",
+                      "datasource": {
+                        "name": "ee6o1i84smo74e"
+                      },
+                      "spec": {
+                        "editorMode": "code",
+                        "expr": "sum(rate(ami_event_count_total{hutch=\"$hutch\",type=\"Datagram\"}[30s]))",
+                        "instant": false,
+                        "legendFormat": "Total Rate",
+                        "range": true
+                      }
+                    },
+                    "refId": "B",
                     "hidden": false
                   }
                 }
@@ -857,7 +881,32 @@
                     }
                   }
                 },
-                "overrides": []
+                "overrides": [
+                  {
+                    "__systemRef": "hideSeriesFrom",
+                    "matcher": {
+                      "id": "byNames",
+                      "options": {
+                        "mode": "exclude",
+                        "names": [
+                          "Total Rate"
+                        ],
+                        "prefix": "All except:",
+                        "readOnly": true
+                      }
+                    },
+                    "properties": [
+                      {
+                        "id": "custom.hideFrom",
+                        "value": {
+                          "legend": false,
+                          "tooltip": true,
+                          "viz": true
+                        }
+                      }
+                    ]
+                  }
+                ]
               }
             }
           }
@@ -1212,7 +1261,7 @@
         "kind": "Panel",
         "spec": {
           "id": 27,
-          "title": "Heartbeat Duration",
+          "title": "Tempo Timelines",
           "description": "",
           "links": [],
           "data": {
@@ -1258,11 +1307,11 @@
                   "calcs": [],
                   "displayMode": "table",
                   "placement": "right",
-                  "showLegend": true
+                  "showLegend": false
                 },
                 "tooltip": {
                   "hideZeros": false,
-                  "mode": "multi",
+                  "mode": "none",
                   "sort": "none"
                 }
               },
@@ -1303,7 +1352,7 @@
                     },
                     "insertNulls": false,
                     "lineInterpolation": "linear",
-                    "lineWidth": 1,
+                    "lineWidth": 0,
                     "pointSize": 5,
                     "scaleDistribution": {
                       "type": "linear"
