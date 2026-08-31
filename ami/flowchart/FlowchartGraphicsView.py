@@ -56,6 +56,7 @@ class CommentRect(GraphicsWidget):
         if view:
             self.view = view
             self.view.addItem(self)
+            self.view.chart.sigNodeCreated.connect(self.nodeCreated)
 
     def collidesWithItem(self, item):
         # Use center-point containment: node moves with box if its center is inside
@@ -99,7 +100,7 @@ class CommentRect(GraphicsWidget):
         except (TypeError, RuntimeError):
             pass
         self.view.removeItem(self)
-        del self.view.commentRects[self.id]
+        self.view.commentRects.pop(self.id, None)
 
     def nodeCreated(self, node):
         item = node.graphicsItem()
@@ -695,7 +696,7 @@ class FlowchartViewBox(ViewBox):
             if ev.isStart() and self.commentRect is None:
                 pos = clamp(self.mapToView(ev.buttonDownPos()))
                 self.commentRect = CommentRect(self, pos, self.commentId)
-                self.chart.sigNodeCreated.connect(self.commentRect.nodeCreated)
+                self.commentRects[self.commentId] = self.commentRect
                 self.commentId += 1
 
             if self.commentRect:
@@ -703,8 +704,6 @@ class FlowchartViewBox(ViewBox):
                 self.commentRect.setDragPoint(pos)
 
             if ev.isFinish():
-                self.commentRects[self.commentRect.id] = self.commentRect
-
                 for item in self.allChildren():
                     if isinstance(item, NodeGraphicsItem) and self.commentRect.collidesWithItem(item):
                         self.commentRect.childNodes.add(item)

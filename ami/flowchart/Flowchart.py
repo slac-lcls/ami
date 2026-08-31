@@ -2365,8 +2365,6 @@ class Flowchart(QtCore.QObject):
         state = {}
         state["nodes"] = []
         state["connects"] = []
-        state["viewbox"] = self.viewBox().saveState()
-
         # Save regular nodes (skip visual-only nodes like SubgraphNode)
         for name, node in self.nodes(data="node"):
             # Skip if node is None (shouldn't happen, but be defensive)
@@ -2436,7 +2434,7 @@ class Flowchart(QtCore.QObject):
             self.widget().libraryEditor.restoreState(lib_cfg)
             self.widget().libraryEditor.applyClicked()
 
-        if "viewbox" in state:
+        if "viewbox" in state and not ("views" in state and "root" in state["views"]):
             self.viewBox().restoreState(state["viewbox"])
 
         nodes = state["nodes"]
