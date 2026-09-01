@@ -27,12 +27,16 @@ from ami.flowchart.library.common import SourceNode
 from ami.flowchart.library.Editors import STYLE
 from ami.flowchart.NodeLibrary import isNodeClass
 
-try:
-    import qdarktheme
+THEME = STYLE.get("Theme", None)
 
-    THEME = STYLE.get("Theme", None)
-except ModuleNotFoundError:
-    THEME = None
+
+def _apply_theme(app, theme):
+    if theme not in ("dark", "light"):
+        return
+    qss_path = os.path.join(os.path.dirname(__file__), "themes", f"{theme}.qss")
+    with open(qss_path) as f:
+        app.setStyleSheet(f.read())
+
 
 logger = logging.getLogger(LogConfig.get_package_name(__name__))
 
@@ -120,7 +124,7 @@ def run_editor_window(
     app = QtWidgets.QApplication([])
 
     if THEME:
-        qdarktheme.setup_theme(THEME)
+        _apply_theme(app, THEME)
 
     loop = QEventLoop(app)
     asyncio.set_event_loop(loop)
@@ -264,7 +268,7 @@ class NodeProcess(QtCore.QObject):
             self.app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
 
             if THEME:
-                qdarktheme.setup_theme(THEME)
+                _apply_theme(self.app, THEME)
 
             loop = QEventLoop(self.app)
 

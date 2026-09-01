@@ -115,7 +115,7 @@ script-files = ["ami/ami-mpi"]
 include = ["ami*"]
 
 [tool.setuptools.package-data]
-ami = ["skills/**/*.md"]
+ami = ["skills/**/*.md", "client/themes/*.qss"]
 
 [tool.pytest.ini_options]
 asyncio_mode = "strict"
