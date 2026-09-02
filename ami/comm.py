@@ -1220,16 +1220,20 @@ class Collector(abc.ABC):
         self.hutch = hutch
 
         self.event_counter = pc.Counter("ami_event_count", "Event Counter", ["hutch", "type", "process"])
-        self.event_time = pc.Gauge("ami_event_time_secs", "Event Time", ["hutch", "type", "process"])
-        self.event_size = pc.Gauge("ami_event_size_bytes", "Event Size", ["hutch", "process"])
-        self.event_latency = pc.Gauge("ami_event_latency_secs", "Event Latency", ["hutch", "sender", "process"])
+        self.event_time = pc.Counter("ami_event_time_seconds", "Event Time", ["hutch", "type", "process"])
+        self.event_size = pc.Counter("ami_event_size_bytes", "Event Size", ["hutch", "process"])
+        self.event_latency = pc.Histogram(
+            "ami_event_latency_seconds",
+            "Event Latency",
+            ["hutch", "sender", "process"],
+            buckets=[0.05, 0.1, 0.15, 0.2, 0.25, 0.5, 0.75, 0.9, 1.0, 1.1, 1.25, 1.5, 2.0, 5.0],
+        )
         self.heartbeat_duration = pc.Histogram(
             "ami_heartbeat_duration_seconds",
             "Heartbeat processing duration",
             ["hutch", "process"],
             buckets=[0.05, 0.1, 0.15, 0.2, 0.25, 0.5, 0.75, 0.9, 1.0, 1.1, 1.25, 1.5, 2.0, 5.0],
         )
-        self.phase_pct = pc.Gauge("ami_heartbeat_phase_pct", "Heartbeat phase percentage", ["hutch", "type", "process"])
 
     def register(self, sock, handler):
         """
@@ -1283,17 +1287,12 @@ class Collector(abc.ABC):
         Returns:
             The current value of the exitcode attribute of the class.
         """
-        idle_start = time.time()
-        reset_idle = False
         while self.running:
             received = False
 
             for sock, flag in self.poller.poll(timeout=self.timeout):
                 if flag != zmq.POLLIN:
                     continue
-
-                self.event_time.labels(self.hutch, "Idle", self.name).set(time.time() - idle_start)
-                reset_idle = True
 
                 if sock is self.collector:
                     msg = self.collector.recv_serialized(self.deserializer, copy=False)
@@ -1305,10 +1304,6 @@ class Collector(abc.ABC):
 
             if not received and self.timeout:
                 self.poll_timeout()
-
-            if reset_idle:
-                reset_idle = False
-                idle_start = time.time()
 
         return self.exitcode
 

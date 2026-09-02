@@ -146,7 +146,7 @@ class GraphCollector(Node, Collector):
             pruned_times, pruned_size = self.store.prune(name, self.node)
             if pruned_size:
                 self.event_counter.labels(self.hutch, "Pruned Heartbeat", self.name).inc()
-                self.event_size.labels(self.hutch, self.name).set(pruned_size)
+                self.event_size.labels(self.hutch, self.name).inc(pruned_size)
 
     def process_msg(self, msg):
         if msg.mtype == MsgTypes.Transition:
@@ -167,7 +167,9 @@ class GraphCollector(Node, Collector):
             self.event_counter.labels(self.hutch, "Transition", self.name).inc()
         elif msg.mtype == MsgTypes.Datagram:
             latency = dt.datetime.now() - dt.datetime.fromtimestamp(msg.heartbeat.timestamp)
-            self.event_latency.labels(self.hutch, self.sender % msg.identity, self.name).set(latency.total_seconds())
+            self.event_latency.labels(self.hutch, self.sender % msg.identity, self.name).observe(
+                latency.total_seconds()
+            )
 
             self.store.update(msg.name, msg.heartbeat, self.eb_id(msg.identity), msg.version, msg.payload)
             if self.store.ready(msg.name, msg.heartbeat):
@@ -178,29 +180,23 @@ class GraphCollector(Node, Collector):
 
                     if pruned_size:
                         self.event_counter.labels(self.hutch, "Pruned Heartbeat", self.name).inc()
-                        self.event_size.labels(self.hutch, self.name).set(pruned_size)
+                        self.event_size.labels(self.hutch, self.name).inc(pruned_size)
 
                     # complete the current heartbeat
                     times, size = self.store.complete(msg.name, msg.heartbeat, self.node)
 
                     self.event_counter.labels(self.hutch, "Heartbeat", self.name).inc()
-                    self.event_size.labels(self.hutch, self.name).set(size)
+                    self.event_size.labels(self.hutch, self.name).inc(size)
 
                     # Export phase times
                     idle_s, graph_s, send_s, total_s = self.store.phase_times(msg.name)
-                    self.event_time.labels(self.hutch, "Heartbeat", self.name).set(total_s)
-                    self.event_time.labels(self.hutch, "Idle", self.name).set(idle_s)
-                    self.event_time.labels(self.hutch, "Datagram", self.name).set(graph_s)
-                    self.event_time.labels(self.hutch, "Send", self.name).set(send_s)
-                    self.event_time.labels(self.hutch, "Overhead", self.name).set(
+                    self.event_time.labels(self.hutch, "Heartbeat", self.name).inc(total_s)
+                    self.event_time.labels(self.hutch, "Idle", self.name).inc(idle_s)
+                    self.event_time.labels(self.hutch, "Datagram", self.name).inc(graph_s)
+                    self.event_time.labels(self.hutch, "Send", self.name).inc(send_s)
+                    self.event_time.labels(self.hutch, "Overhead", self.name).inc(
                         max(0, total_s - idle_s - graph_s - send_s)
                     )
-
-                    pct_idle, pct_graph, pct_send, pct_overhead = self.store.phase_pcts(msg.name)
-                    self.phase_pct.labels(self.hutch, "Idle", self.name).set(pct_idle)
-                    self.phase_pct.labels(self.hutch, "Datagram", self.name).set(pct_graph)
-                    self.phase_pct.labels(self.hutch, "Send", self.name).set(pct_send)
-                    self.phase_pct.labels(self.hutch, "Overhead", self.name).set(pct_overhead)
 
                     trace_id = get_trace_id(msg.heartbeat.identity)
                     self.heartbeat_duration.labels(self.hutch, self.name).observe(
@@ -227,23 +223,17 @@ class GraphCollector(Node, Collector):
                 if pruned_size:
                     self.event_counter.labels(self.hutch, "Pruned Heartbeat", self.name).inc()
                     self.event_counter.labels(self.hutch, "Heartbeat", self.name).inc()
-                    self.event_size.labels(self.hutch, self.name).set(pruned_size)
+                    self.event_size.labels(self.hutch, self.name).inc(pruned_size)
 
                     # Export phase times for pruned heartbeat
                     idle_s, graph_s, send_s, total_s = self.store.phase_times(msg.name)
-                    self.event_time.labels(self.hutch, "Heartbeat", self.name).set(total_s)
-                    self.event_time.labels(self.hutch, "Idle", self.name).set(idle_s)
-                    self.event_time.labels(self.hutch, "Datagram", self.name).set(graph_s)
-                    self.event_time.labels(self.hutch, "Send", self.name).set(send_s)
-                    self.event_time.labels(self.hutch, "Overhead", self.name).set(
+                    self.event_time.labels(self.hutch, "Heartbeat", self.name).inc(total_s)
+                    self.event_time.labels(self.hutch, "Idle", self.name).inc(idle_s)
+                    self.event_time.labels(self.hutch, "Datagram", self.name).inc(graph_s)
+                    self.event_time.labels(self.hutch, "Send", self.name).inc(send_s)
+                    self.event_time.labels(self.hutch, "Overhead", self.name).inc(
                         max(0, total_s - idle_s - graph_s - send_s)
                     )
-
-                    pct_idle, pct_graph, pct_send, pct_overhead = self.store.phase_pcts(msg.name)
-                    self.phase_pct.labels(self.hutch, "Idle", self.name).set(pct_idle)
-                    self.phase_pct.labels(self.hutch, "Datagram", self.name).set(pct_graph)
-                    self.phase_pct.labels(self.hutch, "Send", self.name).set(pct_send)
-                    self.phase_pct.labels(self.hutch, "Overhead", self.name).set(pct_overhead)
 
 
 def run_collector(

@@ -308,6 +308,6 @@ patterns — diagnosing whether graph execution time, send backpressure, or work
 starvation is the bottleneck using Prometheus metrics and Tempo distributed traces.
 That guidance is available via the `ami-performance-monitor` skill.
 
-Key signal after `apply_graph`: if `ami_event_time_secs{type="Datagram"}` or
+Key signal after `apply_graph`: if `rate(ami_event_time_seconds_total{type="Datagram"}[30s])` or
 `ami_heartbeat_latency_seconds` increases significantly, the new graph operations may
 be too expensive.

@@ -57,7 +57,7 @@
         "spec": {
           "id": 10,
           "title": "Overhead Time",
-          "description": "Time per heartbeat not accounted for by Idle, Datagram, or Send — includes Python loop\n     overhead, metric publishing, message deserialization, and tracing.",
+          "description": "Time per heartbeat not accounted for by Idle, Datagram, or Send \u2014 includes Python loop\n     overhead, metric publishing, message deserialization, and tracing.",
           "links": [],
           "data": {
             "kind": "QueryGroup",
@@ -75,7 +75,7 @@
                       },
                       "spec": {
                         "editorMode": "code",
-                        "expr": "ami_event_time_secs{hutch=\"$hutch\", type=\"Overhead\"}",
+                        "expr": "rate(ami_event_time_seconds_total{hutch=\"$hutch\", type=\"Overhead\"}[30s])",
                         "interval": "",
                         "legendFormat": "{{instance}} {{process}}",
                         "range": true
@@ -195,7 +195,7 @@
                         "name": "afjrx1j1815vkf"
                       },
                       "spec": {
-                        "expr": "ami_event_time_secs{hutch=\"$hutch\", type=\"Datagram\"}",
+                        "expr": "rate(ami_event_time_seconds_total{hutch=\"$hutch\", type=\"Datagram\"}[30s])",
                         "interval": "",
                         "legendFormat": "{{instance}} {{process}}"
                       }
@@ -419,7 +419,7 @@
         "spec": {
           "id": 16,
           "title": "Latency",
-          "description": "Data latency per hop (source→worker, worker→collector).",
+          "description": "Data latency per hop (source\u2192worker, worker\u2192collector).",
           "links": [],
           "data": {
             "kind": "QueryGroup",
@@ -437,7 +437,7 @@
                       },
                       "spec": {
                         "editorMode": "code",
-                        "expr": "ami_event_latency_secs{hutch=\"$hutch\"}",
+                        "expr": "rate(ami_event_latency_seconds_sum{hutch=\"$hutch\"}[30s]) / rate(ami_event_latency_seconds_count{hutch=\"$hutch\"}[30s])",
                         "interval": "",
                         "legendFormat": "{{ sender }} to {{ process }}",
                         "range": true
@@ -557,7 +557,7 @@
                         "name": "afjrx1j1815vkf"
                       },
                       "spec": {
-                        "expr": "ami_event_size_bytes{hutch=\"$hutch\"}",
+                        "expr": "rate(ami_event_size_bytes_total{hutch=\"$hutch\"}[30s])",
                         "interval": "",
                         "legendFormat": "{{ instance }} {{ process }}"
                       }
@@ -1323,7 +1323,7 @@
                       },
                       "spec": {
                         "editorMode": "code",
-                        "expr": "ami_event_time_secs{hutch=\"$hutch\", type=\"Send\"}",
+                        "expr": "rate(ami_event_time_seconds_total{hutch=\"$hutch\", type=\"Send\"}[30s])",
                         "legendFormat": "{{instance}} {{process}}",
                         "range": true
                       }
@@ -1424,7 +1424,7 @@
         "spec": {
           "id": 27,
           "title": "Heartbeat Budget $process",
-          "description": "Heartbeat interval breakdown by phase — Idle, Datagram (graph execution), Send,\n     and Overhead — as percentages summing to 100%.",
+          "description": "Heartbeat interval breakdown by phase \u2014 Idle, Datagram (graph execution), Send,\n     and Overhead \u2014 as percentages summing to 100%.",
           "links": [],
           "data": {
             "kind": "QueryGroup",
@@ -1442,7 +1442,7 @@
                       },
                       "spec": {
                         "editorMode": "code",
-                        "expr": "ami_heartbeat_phase_pct{hutch=\"$hutch\", process=\"$process\", type=\"Idle\"}",
+                        "expr": "rate(ami_event_time_seconds_total{hutch=\"$hutch\", process=\"$process\", type=\"Idle\"}[30s]) / ignoring(type) rate(ami_event_time_seconds_total{hutch=\"$hutch\", process=\"$process\", type=\"Heartbeat\"}[30s]) * 100",
                         "legendFormat": "{{type}}",
                         "range": true
                       }
@@ -1463,7 +1463,7 @@
                       },
                       "spec": {
                         "editorMode": "code",
-                        "expr": "ami_heartbeat_phase_pct{hutch=\"$hutch\", process=\"$process\", type=\"Datagram\"}",
+                        "expr": "rate(ami_event_time_seconds_total{hutch=\"$hutch\", process=\"$process\", type=\"Datagram\"}[30s]) / ignoring(type) rate(ami_event_time_seconds_total{hutch=\"$hutch\", process=\"$process\", type=\"Heartbeat\"}[30s]) * 100",
                         "instant": false,
                         "legendFormat": "{{type}}",
                         "range": true
@@ -1485,7 +1485,7 @@
                       },
                       "spec": {
                         "editorMode": "code",
-                        "expr": "ami_heartbeat_phase_pct{hutch=\"$hutch\", process=\"$process\", type=\"Send\"}",
+                        "expr": "rate(ami_event_time_seconds_total{hutch=\"$hutch\", process=\"$process\", type=\"Send\"}[30s]) / ignoring(type) rate(ami_event_time_seconds_total{hutch=\"$hutch\", process=\"$process\", type=\"Heartbeat\"}[30s]) * 100",
                         "instant": false,
                         "legendFormat": "{{type}}",
                         "range": true
@@ -1507,7 +1507,7 @@
                       },
                       "spec": {
                         "editorMode": "code",
-                        "expr": "ami_heartbeat_phase_pct{hutch=\"$hutch\", process=\"$process\", type=\"Overhead\"}",
+                        "expr": "rate(ami_event_time_seconds_total{hutch=\"$hutch\", process=\"$process\", type=\"Overhead\"}[30s]) / ignoring(type) rate(ami_event_time_seconds_total{hutch=\"$hutch\", process=\"$process\", type=\"Heartbeat\"}[30s]) * 100",
                         "instant": false,
                         "legendFormat": "{{type}}",
                         "range": true
@@ -1740,7 +1740,7 @@
                         "name": "afjrx1j1815vkf"
                       },
                       "spec": {
-                        "expr": "ami_event_time_secs{hutch=\"$hutch\", type=\"Idle\"}",
+                        "expr": "rate(ami_event_time_seconds_total{hutch=\"$hutch\", type=\"Idle\"}[30s])",
                         "interval": "",
                         "legendFormat": "{{instance}} {{process}}"
                       }
@@ -2358,14 +2358,14 @@
             },
             "spec": {
               "qryType": 1,
-              "query": "label_values(ami_event_time_secs,process)",
+              "query": "label_values(ami_event_time_seconds_total,process)",
               "refId": "PrometheusVariableQueryEditor-VariableQuery"
             }
           },
           "regex": "",
           "regexApplyTo": "value",
           "sort": "disabled",
-          "definition": "label_values(ami_event_time_secs,process)",
+          "definition": "label_values(ami_event_time_seconds_total,process)",
           "options": [],
           "multi": false,
           "includeAll": false,

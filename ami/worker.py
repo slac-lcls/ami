@@ -189,16 +189,20 @@ class Worker(Node):
             self.graph_comm.recv(True)
 
         event_counter = pc.Counter("ami_event_count", "Event Counter", ["hutch", "type", "process"])
-        event_time = pc.Gauge("ami_event_time_secs", "Event Time", ["hutch", "type", "process"])
-        event_size = pc.Gauge("ami_event_size_bytes", "Event Size", ["hutch", "process"])
-        event_latency = pc.Gauge("ami_event_latency_secs", "Event Latency", ["hutch", "sender", "process"])
+        event_time = pc.Counter("ami_event_time_seconds", "Event Time", ["hutch", "type", "process"])
+        event_size = pc.Counter("ami_event_size_bytes", "Event Size", ["hutch", "process"])
+        event_latency = pc.Histogram(
+            "ami_event_latency_seconds",
+            "Event Latency",
+            ["hutch", "sender", "process"],
+            buckets=[0.05, 0.1, 0.15, 0.2, 0.25, 0.5, 0.75, 0.9, 1.0, 1.1, 1.25, 1.5, 2.0, 5.0],
+        )
         heartbeat_duration = pc.Histogram(
             "ami_heartbeat_duration_seconds",
             "Heartbeat processing duration",
             ["hutch", "process"],
             buckets=[0.05, 0.1, 0.15, 0.2, 0.25, 0.5, 0.75, 0.9, 1.0, 1.1, 1.25, 1.5, 2.0, 5.0],
         )
-        phase_pct = pc.Gauge("ami_heartbeat_phase_pct", "Heartbeat phase percentage", ["hutch", "type", "process"])
 
         idle_start = time.time()
         idle_stop = time.time()
@@ -249,23 +253,23 @@ class Worker(Node):
                     if self.pending_src:
                         break
 
-                    event_size.labels(self.hutch, self.name).set(size)
+                    event_size.labels(self.hutch, self.name).inc(size)
 
                     # Batched metric updates at heartbeat rate
                     event_counter.labels(self.hutch, "Datagram", self.name).inc(hb_num_datagrams)
-                    event_time.labels(self.hutch, "Idle", self.name).set(hb_idle_time)
-                    event_time.labels(self.hutch, "Datagram", self.name).set(hb_graph_time)
-                    event_time.labels(self.hutch, "Send", self.name).set(send_time)
-                    event_latency.labels(self.hutch, "Source", self.name).set(hb_max_input_latency)
+                    event_time.labels(self.hutch, "Idle", self.name).inc(hb_idle_time)
+                    event_time.labels(self.hutch, "Datagram", self.name).inc(hb_graph_time)
+                    event_time.labels(self.hutch, "Send", self.name).inc(send_time)
+                    event_latency.labels(self.hutch, "Source", self.name).observe(hb_max_input_latency)
                     if hb_partial_events > 0:
                         event_counter.labels(self.hutch, "Partial", self.name).inc(hb_partial_events)
 
                     trace_id = get_trace_id(msg.payload.identity)
                     hb_end_ns = time.time_ns()
                     full_interval_secs = (hb_end_ns - hb_interval_start_ns) / 1e9
-                    event_time.labels(self.hutch, "Heartbeat", self.name).set(full_interval_secs)
+                    event_time.labels(self.hutch, "Heartbeat", self.name).inc(full_interval_secs)
                     overhead_secs = full_interval_secs - hb_idle_time - hb_graph_time - send_time
-                    event_time.labels(self.hutch, "Overhead", self.name).set(max(0, overhead_secs))
+                    event_time.labels(self.hutch, "Overhead", self.name).inc(max(0, overhead_secs))
                     heartbeat_duration.labels(self.hutch, self.name).observe(
                         full_interval_secs,
                         exemplar={"TraceID": trace_id} if trace_id else None,
@@ -277,11 +281,6 @@ class Worker(Node):
                     )
                     pct_send = round((send_time / full_interval_secs) * 100, 1) if full_interval_secs > 0 else 0
                     pct_overhead = round((overhead_secs / full_interval_secs) * 100, 1) if full_interval_secs > 0 else 0
-
-                    phase_pct.labels(self.hutch, "Idle", self.name).set(pct_idle)
-                    phase_pct.labels(self.hutch, "Datagram", self.name).set(pct_graph_exec)
-                    phase_pct.labels(self.hutch, "Send", self.name).set(pct_send)
-                    phase_pct.labels(self.hutch, "Overhead", self.name).set(pct_overhead)
 
                     parent = start_span(
                         "worker.heartbeat",

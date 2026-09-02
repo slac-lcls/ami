@@ -109,6 +109,7 @@ class Manager(Collector):
         self.register(self.view_comm, self.view_request)
 
         self.prometheus_dir = prometheus_dir
+        self._last_activity = time.time()
 
     def __enter__(self):
         return self
@@ -120,9 +121,11 @@ class Manager(Collector):
         self.ctx.destroy()
 
     def process_msg(self, msg):
+        now = time.time()
+        self.event_time.labels(self.hutch, "Idle", self.name).inc(now - self._last_activity)
         if msg.mtype == MsgTypes.Datagram:
             latency = dt.datetime.now() - dt.datetime.fromtimestamp(msg.heartbeat.timestamp)
-            self.event_latency.labels(self.hutch, "globalCollector%03d" % msg.identity, self.name).set(
+            self.event_latency.labels(self.hutch, "globalCollector%03d" % msg.identity, self.name).observe(
                 latency.total_seconds()
             )
 
@@ -175,13 +178,14 @@ class Manager(Collector):
                     span.end()
 
             self.event_counter.labels(self.hutch, "Heartbeat", self.name).inc()
-            self.event_time.labels(self.hutch, "Heartbeat", self.name).set(time.time() - datagram_start)
+            self.event_time.labels(self.hutch, "Heartbeat", self.name).inc(time.time() - datagram_start)
 
             trace_id = get_trace_id(msg.heartbeat.identity)
             self.heartbeat_duration.labels(self.hutch, self.name).observe(
                 time.time() - datagram_start,
                 exemplar={"TraceID": trace_id} if trace_id else None,
             )
+            self._last_activity = time.time()
         elif (msg.mtype == MsgTypes.Transition) and (msg.payload.ttype == Transitions.Configure):
             changed = msg.payload.payload != self.partition
             self.partition = msg.payload.payload
@@ -191,6 +195,7 @@ class Manager(Collector):
                 self.publish_message("sources", "manager", dill.dumps(self.partition))
             # export the partition info to epics
             self.export_config()
+        self._last_activity = time.time()
 
     @property
     def compiler_args(self):
@@ -639,7 +644,7 @@ class Manager(Collector):
         response = self.serializer(response)
         self.view_comm.send_multipart(response, copy=False, flags=zmq.NOBLOCK)
         size = self.serializer.sizeof(response)
-        self.event_size.labels(self.hutch, self.name).set(size)
+        self.event_size.labels(self.hutch, self.name).inc(size)
 
     def view_front_forward(self):
         req = self.view_comm_frontend.recv_multipart()
@@ -655,7 +660,7 @@ class Manager(Collector):
         for key, value in self.feature_stores[name].namespace.items():
             if key in keys:
                 size += self.publish_view("view:%s:%s" % (name, key), self.heartbeats[name], value)
-        self.event_size.labels(self.hutch, self.name).set(size)
+        self.event_size.labels(self.hutch, self.name).inc(size)
 
     def export_request(self):
         request = self.export.recv_string()

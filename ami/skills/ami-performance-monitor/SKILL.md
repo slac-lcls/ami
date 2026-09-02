@@ -30,7 +30,7 @@ active AMI metrics. Use it to set `{hutch="<value>"}` on all subsequent queries.
 grafana_list_prometheus_label_values(
     datasourceUid="afjrx1j1815vkf",
     labelName="hutch",
-    matches=[{"filters": [{"name": "__name__", "value": "ami_heartbeat_phase_pct", "type": "="}]}]
+    matches=[{"filters": [{"name": "__name__", "value": "ami_event_time_seconds_total", "type": "="}]}]
 )
 ```
 
@@ -46,7 +46,7 @@ Fire these in parallel (single message, multiple tool calls):
 # Confirm metrics flowing for detected hutch
 grafana_query_prometheus(
     datasourceUid="afjrx1j1815vkf",
-    expr='ami_heartbeat_phase_pct{hutch="<hutch>"}',
+    expr='rate(ami_event_time_seconds_total{hutch="<hutch>"}[30s])',
     queryType="instant",
     endTime="now"
 )
@@ -82,13 +82,15 @@ Work top-to-bottom. Start with phase breakdown — it is the primary diagnostic 
 
 ### 1. Phase Breakdown — "Where is the time going?" (PRIMARY)
 
-`ami_heartbeat_phase_pct` shows what fraction of each heartbeat interval is spent in
-each phase. Values always sum to 100% and are independent of heartbeat rate.
+Phase percentages are derived from Counter rates: divide the phase time rate by the
+Heartbeat time rate, then multiply by 100. Values always sum to 100% and are
+independent of heartbeat rate.
 
 ```
+# All phases, all processes
 grafana_query_prometheus(
     datasourceUid=<prometheus_uid>,
-    expr='ami_heartbeat_phase_pct',
+    expr='rate(ami_event_time_seconds_total[30s]) / ignoring(type) rate(ami_event_time_seconds_total{type="Heartbeat"}[30s]) * 100',
     queryType="instant",
     endTime="now"
 )
@@ -104,10 +106,12 @@ grafana_query_prometheus(
 Filter by component to isolate where the problem is:
 ```
 # Workers only
-expr='ami_heartbeat_phase_pct{process=~"worker.*"}'
+expr='rate(ami_event_time_seconds_total{process=~"worker.*", type="Idle"}[30s])
+      / ignoring(type) rate(ami_event_time_seconds_total{process=~"worker.*", type="Heartbeat"}[30s]) * 100'
 
 # Collectors only
-expr='ami_heartbeat_phase_pct{process=~".*[Cc]ollector.*"}'
+expr='rate(ami_event_time_seconds_total{process=~".*[Cc]ollector.*", type="Idle"}[30s])
+      / ignoring(type) rate(ami_event_time_seconds_total{process=~".*[Cc]ollector.*", type="Heartbeat"}[30s]) * 100'
 ```
 
 ### 2. Heartbeat Health — "Is the heartbeat rate healthy?"
@@ -128,7 +132,7 @@ Also check the heartbeat rate is matching configuration (~1 Hz default):
 ```
 grafana_query_prometheus(
     datasourceUid=<prometheus_uid>,
-    expr='rate(ami_event_count{type="Heartbeat"}[1m])',
+    expr='rate(ami_event_count_total{type="Heartbeat"}[1m])',
     queryType="instant",
     endTime="now"
 )
@@ -178,19 +182,20 @@ Workers are idle when the data source is not providing events fast enough.
 ```
 # Step 1: confirm workers are idle
 grafana_query_prometheus(
-    expr='ami_heartbeat_phase_pct{type="Idle", process=~"worker.*"}',
+    expr='rate(ami_event_time_seconds_total{type="Idle", process=~"worker.*"}[30s])
+          / ignoring(type) rate(ami_event_time_seconds_total{type="Heartbeat", process=~"worker.*"}[30s]) * 100',
     queryType="instant", endTime="now"
 )
 
 # Step 2 (follow-up): check if data is also arriving stale
 grafana_query_prometheus(
-    expr='ami_event_latency_secs{process=~"worker.*"}',
+    expr='rate(ami_event_latency_seconds_sum{process=~"worker.*"}[30s]) / rate(ami_event_latency_seconds_count{process=~"worker.*"}[30s])',
     queryType="instant", endTime="now"
 )
 ```
 High `Idle%` (>50%) on workers = source starvation.
 
-If `Idle%` is high but `ami_event_latency_secs` is low, data is infrequent (source rate
+If `Idle%` is high but latency average is low, data is infrequent (source rate
 issue). If both are high, data is both infrequent AND stale (network/upstream issue).
 
 **Trace check:**
@@ -241,15 +246,16 @@ heartbeat interval budget.
 
 **Metric check:**
 ```
-# Absolute graph execution time
+# Absolute graph execution time rate
 grafana_query_prometheus(
-    expr='ami_event_time_secs{type="Datagram"}',
+    expr='rate(ami_event_time_seconds_total{type="Datagram"}[30s])',
     queryType="instant", endTime="now"
 )
 
 # As fraction of heartbeat interval
 grafana_query_prometheus(
-    expr='ami_heartbeat_phase_pct{type="Datagram"}',
+    expr='rate(ami_event_time_seconds_total{type="Datagram"}[30s])
+          / ignoring(type) rate(ami_event_time_seconds_total{type="Heartbeat"}[30s]) * 100',
     queryType="instant", endTime="now"
 )
 ```
@@ -297,13 +303,14 @@ serializing and transmitting large payloads.
 ```
 # Send as fraction of heartbeat interval
 grafana_query_prometheus(
-    expr='ami_heartbeat_phase_pct{type="Send"}',
+    expr='rate(ami_event_time_seconds_total{type="Send"}[30s])
+          / ignoring(type) rate(ami_event_time_seconds_total{type="Heartbeat"}[30s]) * 100',
     queryType="instant", endTime="now"
 )
 
-# Payload size
+# Payload throughput
 grafana_query_prometheus(
-    expr='ami_event_size_bytes',
+    expr='rate(ami_event_size_bytes_total[30s])',
     queryType="instant", endTime="now"
 )
 ```
@@ -338,7 +345,7 @@ grafana_query_prometheus(
 ```
 
 **Interpretation:**
-- High `ami_plot_latency_secs` with healthy `ami_heartbeat_phase_pct` → bottleneck is
+- High `ami_plot_latency_secs` with healthy phase percentages → bottleneck is
   client-side, not the pipeline
 - High `ami_plot_memory_mb` alongside slow plot updates → large arrays being held in
   display nodes
@@ -394,11 +401,10 @@ heartbeat — making it clear where time was lost.
 | Metric | Type | Labels | What it measures |
 |--------|------|--------|-----------------|
 | `ami_event_count` | Counter | hutch, type, process | Events by type (Heartbeat, Datagram, Partial, Transition) |
-| `ami_event_time_secs` | Gauge | hutch, type, process | Time in seconds per heartbeat interval. `Heartbeat` = total wall clock interval (idle + datagram + send + overhead, ~1s at 1 Hz); `Datagram` = total graph execution time; `Idle` = total wait time; `Send` = total send time; `Overhead` = time not accounted for by Idle, Datagram, or Send |
-| `ami_event_size_bytes` | Gauge | hutch, process | Payload size of last heartbeat |
-| `ami_event_latency_secs` | Gauge | hutch, sender, process | Per-hop data latency (source→worker, worker→collector) |
-| `ami_heartbeat_duration_seconds` | Histogram | hutch, process | Full heartbeat interval wall clock time |
-| `ami_heartbeat_phase_pct` | Gauge | hutch, type, process | Phase % (Idle, Datagram, Send, Overhead — sum to 100%) |
+| `ami_event_time_seconds` | Counter | hutch, type, process | Cumulative time in each phase. Use `rate()` to get sec/sec utilization. Types: Heartbeat (total interval), Idle, Datagram (graph exec), Send, Overhead |
+| `ami_event_size_bytes` | Counter | hutch, process | Cumulative bytes processed. Use `rate()` to get bytes/sec throughput |
+| `ami_event_latency_seconds` | Histogram | hutch, sender, process | Per-hop data latency. Use `rate(_sum) / rate(_count)` for average |
+| `ami_heartbeat_duration_seconds` | Histogram | hutch, process | Full heartbeat interval wall clock time. Supports exemplars linking to Tempo traces |
 | `ami_plot_latency_secs` | Gauge | hutch, process | Client-side plot update latency |
 | `ami_plot_memory_mb` | Gauge | hutch, process | Client-side memory used by display nodes |
 
@@ -407,6 +413,7 @@ heartbeat — making it clear where time was lost.
 - All metrics are batched at heartbeat rate (~10 updates/sec max) to minimize overhead
 - `hutch` label identifies the experimental hutch (e.g., "rix", "tmo", "cxi")
 - `process` label identifies the specific worker or collector instance
+- Counter metrics are exposed with a `_total` suffix (e.g., `ami_event_count_total`)
 
 ---
 
