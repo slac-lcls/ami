@@ -5,8 +5,8 @@
     "name": "mgG9RzcaG",
     "namespace": "default",
     "uid": "608780d1-f0ed-4448-ac01-6e318d753aa2",
-    "resourceVersion": "1788119642724985",
-    "generation": 13,
+    "resourceVersion": "1788394610082994",
+    "generation": 15,
     "creationTimestamp": "2026-05-29T22:51:49Z",
     "labels": {
       "grafana.app/deprecatedInternalID": "2349318881443840"
@@ -15,7 +15,7 @@
       "grafana.app/createdBy": "user:u000000004",
       "grafana.app/saved-from-ui": "Grafana v13.2.0 (f681b1359f)",
       "grafana.app/updatedBy": "user:u000000165",
-      "grafana.app/updatedTimestamp": "2026-08-30T19:54:02Z"
+      "grafana.app/updatedTimestamp": "2026-09-03T00:16:50Z"
     }
   },
   "spec": {
@@ -57,7 +57,7 @@
         "spec": {
           "id": 10,
           "title": "Overhead Time",
-          "description": "Time per heartbeat not accounted for by Idle, Datagram, or Send \u2014 includes Python loop\n     overhead, metric publishing, message deserialization, and tracing.",
+          "description": "Time per heartbeat not accounted for by Idle, Datagram, or Send — includes Python loop\n     overhead, metric publishing, message deserialization, and tracing.",
           "links": [],
           "data": {
             "kind": "QueryGroup",
@@ -195,9 +195,11 @@
                         "name": "afjrx1j1815vkf"
                       },
                       "spec": {
+                        "editorMode": "code",
                         "expr": "rate(ami_event_time_seconds_total{hutch=\"$hutch\", type=\"Datagram\"}[30s])",
                         "interval": "",
-                        "legendFormat": "{{instance}} {{process}}"
+                        "legendFormat": "{{instance}} {{process}}",
+                        "range": true
                       }
                     },
                     "refId": "A",
@@ -419,7 +421,7 @@
         "spec": {
           "id": 16,
           "title": "Latency",
-          "description": "Data latency per hop (source\u2192worker, worker\u2192collector).",
+          "description": "Data latency per hop (source→worker, worker→collector).",
           "links": [],
           "data": {
             "kind": "QueryGroup",
@@ -437,7 +439,7 @@
                       },
                       "spec": {
                         "editorMode": "code",
-                        "expr": "rate(ami_event_latency_seconds_sum{hutch=\"$hutch\"}[30s]) / rate(ami_event_latency_seconds_count{hutch=\"$hutch\"}[30s])",
+                        "expr": "rate(ami_event_latency_seconds_sum{hutch=\"$hutch\"}[30s])/rate(ami_event_latency_seconds_count{hutch=\"$hutch\"}[30s])",
                         "interval": "",
                         "legendFormat": "{{ sender }} to {{ process }}",
                         "range": true
@@ -539,7 +541,7 @@
         "kind": "Panel",
         "spec": {
           "id": 18,
-          "title": "Datagram Size",
+          "title": "Datagram Bytes/Heartbeat",
           "description": "Result payload size sent from workers to collectors per heartbeat.",
           "links": [],
           "data": {
@@ -557,9 +559,11 @@
                         "name": "afjrx1j1815vkf"
                       },
                       "spec": {
-                        "expr": "rate(ami_event_size_bytes_total{hutch=\"$hutch\"}[30s])",
+                        "editorMode": "code",
+                        "expr": "rate(ami_event_size_bytes_total{hutch=\"$hutch\"}[30s])/rate(ami_heartbeat_duration_seconds_count{hutch=\"$hutch\"}[30s])",
                         "interval": "",
-                        "legendFormat": "{{ instance }} {{ process }}"
+                        "legendFormat": "{{ instance }} {{ process }}",
+                        "range": true
                       }
                     },
                     "refId": "A",
@@ -1424,7 +1428,7 @@
         "spec": {
           "id": 27,
           "title": "Heartbeat Budget $process",
-          "description": "Heartbeat interval breakdown by phase \u2014 Idle, Datagram (graph execution), Send,\n     and Overhead \u2014 as percentages summing to 100%.",
+          "description": "Heartbeat interval breakdown by phase — Idle, Datagram (graph execution), Send,\n     and Overhead — as percentages summing to 100%.",
           "links": [],
           "data": {
             "kind": "QueryGroup",
@@ -1442,8 +1446,8 @@
                       },
                       "spec": {
                         "editorMode": "code",
-                        "expr": "rate(ami_event_time_seconds_total{hutch=\"$hutch\", process=\"$process\", type=\"Idle\"}[30s]) / ignoring(type) rate(ami_event_time_seconds_total{hutch=\"$hutch\", process=\"$process\", type=\"Heartbeat\"}[30s]) * 100",
-                        "legendFormat": "{{type}}",
+                        "expr": "rate(ami_event_time_seconds_total{hutch=\"$hutch\", process=\"$process\", type=\"Idle\"}[30s])/ignoring(type)rate(ami_event_time_seconds_total{hutch=\"$hutch\", process=\"$process\", type=\"Heartbeat\"}[30s])*100",
+                        "legendFormat": "Idle",
                         "range": true
                       }
                     },
@@ -1463,9 +1467,9 @@
                       },
                       "spec": {
                         "editorMode": "code",
-                        "expr": "rate(ami_event_time_seconds_total{hutch=\"$hutch\", process=\"$process\", type=\"Datagram\"}[30s]) / ignoring(type) rate(ami_event_time_seconds_total{hutch=\"$hutch\", process=\"$process\", type=\"Heartbeat\"}[30s]) * 100",
+                        "expr": "rate(ami_event_time_seconds_total{hutch=\"$hutch\", process=\"$process\", type=\"Datagram\"}[30s])/ignoring(type)rate(ami_event_time_seconds_total{hutch=\"$hutch\", process=\"$process\", type=\"Heartbeat\"}[30s])*100",
                         "instant": false,
-                        "legendFormat": "{{type}}",
+                        "legendFormat": "Datagram",
                         "range": true
                       }
                     },
@@ -1485,9 +1489,9 @@
                       },
                       "spec": {
                         "editorMode": "code",
-                        "expr": "rate(ami_event_time_seconds_total{hutch=\"$hutch\", process=\"$process\", type=\"Send\"}[30s]) / ignoring(type) rate(ami_event_time_seconds_total{hutch=\"$hutch\", process=\"$process\", type=\"Heartbeat\"}[30s]) * 100",
+                        "expr": "rate(ami_event_time_seconds_total{hutch=\"$hutch\", process=\"$process\", type=\"Send\"}[30s])/ignoring(type)rate(ami_event_time_seconds_total{hutch=\"$hutch\", process=\"$process\", type=\"Heartbeat\"}[30s])*100",
                         "instant": false,
-                        "legendFormat": "{{type}}",
+                        "legendFormat": "Send",
                         "range": true
                       }
                     },
@@ -1507,9 +1511,9 @@
                       },
                       "spec": {
                         "editorMode": "code",
-                        "expr": "rate(ami_event_time_seconds_total{hutch=\"$hutch\", process=\"$process\", type=\"Overhead\"}[30s]) / ignoring(type) rate(ami_event_time_seconds_total{hutch=\"$hutch\", process=\"$process\", type=\"Heartbeat\"}[30s]) * 100",
+                        "expr": "rate(ami_event_time_seconds_total{hutch=\"$hutch\", process=\"$process\", type=\"Overhead\"}[30s])/ignoring(type)rate(ami_event_time_seconds_total{hutch=\"$hutch\", process=\"$process\", type=\"Heartbeat\"}[30s])*100",
                         "instant": false,
-                        "legendFormat": "{{type}}",
+                        "legendFormat": "Overhead",
                         "range": true
                       }
                     },
@@ -1538,7 +1542,7 @@
                   "placement": "right",
                   "showLegend": true,
                   "sortBy": "Name",
-                  "sortDesc": true
+                  "sortDesc": false
                 },
                 "orientation": "horizontal",
                 "showValue": "never",
@@ -1553,6 +1557,7 @@
               },
               "fieldConfig": {
                 "defaults": {
+                  "unit": "percent",
                   "thresholds": {
                     "mode": "absolute",
                     "steps": [
@@ -1601,8 +1606,8 @@
         "kind": "Panel",
         "spec": {
           "id": 28,
-          "title": "Heartbeat Duration",
-          "description": "P99 heartbeat duration with exemplar markers linking sampled heartbeats to distributed\n     Tempo traces. Each dot represents one traced heartbeat.",
+          "title": "Exemplars",
+          "description": "Exemplar markers linking sampled heartbeats to distributed Tempo traces. Each dot represents one traced heartbeat.",
           "links": [],
           "data": {
             "kind": "QueryGroup",
@@ -1650,11 +1655,11 @@
                   "calcs": [],
                   "displayMode": "table",
                   "placement": "right",
-                  "showLegend": true
+                  "showLegend": false
                 },
                 "tooltip": {
                   "hideZeros": false,
-                  "mode": "multi",
+                  "mode": "none",
                   "sort": "none"
                 }
               },
@@ -1695,7 +1700,7 @@
                     },
                     "insertNulls": false,
                     "lineInterpolation": "linear",
-                    "lineWidth": 1,
+                    "lineWidth": 0,
                     "pointSize": 5,
                     "scaleDistribution": {
                       "type": "linear"
@@ -1740,9 +1745,11 @@
                         "name": "afjrx1j1815vkf"
                       },
                       "spec": {
+                        "editorMode": "code",
                         "expr": "rate(ami_event_time_seconds_total{hutch=\"$hutch\", type=\"Idle\"}[30s])",
                         "interval": "",
-                        "legendFormat": "{{instance}} {{process}}"
+                        "legendFormat": "{{instance}} {{process}}",
+                        "range": true
                       }
                     },
                     "refId": "A",
@@ -1831,7 +1838,63 @@
                     }
                   }
                 },
-                "overrides": []
+                "overrides": [
+                  {
+                    "__systemRef": "hideSeriesFrom",
+                    "matcher": {
+                      "id": "byNames",
+                      "options": {
+                        "mode": "exclude",
+                        "names": [
+                          "drp-srcf-mon008:9301 localCollector000",
+                          "drp-srcf-mon008:9302 worker001",
+                          "drp-srcf-mon008:9303 worker000",
+                          "drp-srcf-mon008:9304 worker002",
+                          "drp-srcf-mon008:9305 worker003",
+                          "drp-srcf-mon008:9306 worker004",
+                          "drp-srcf-mon008:9307 worker005",
+                          "drp-srcf-mon008:9308 worker006",
+                          "drp-srcf-mon008:9309 worker007",
+                          "drp-srcf-mon008:9310 worker008",
+                          "drp-srcf-mon008:9311 worker009",
+                          "drp-srcf-mon008:9312 worker010",
+                          "drp-srcf-mon008:9313 worker011",
+                          "drp-srcf-mon008:9314 worker012",
+                          "drp-srcf-mon008:9315 worker013",
+                          "drp-srcf-mon008:9316 worker014",
+                          "drp-srcf-mon008:9317 worker015",
+                          "drp-srcf-mon008:9318 worker016",
+                          "drp-srcf-mon008:9319 worker017",
+                          "drp-srcf-mon008:9320 worker018",
+                          "drp-srcf-mon008:9321 worker019",
+                          "drp-srcf-mon008:9322 worker020",
+                          "drp-srcf-mon008:9323 worker021",
+                          "drp-srcf-mon008:9324 worker022",
+                          "drp-srcf-mon008:9325 worker023",
+                          "drp-srcf-mon008:9326 worker024",
+                          "drp-srcf-mon008:9327 worker025",
+                          "drp-srcf-mon008:9328 worker028",
+                          "drp-srcf-mon008:9329 worker026",
+                          "drp-srcf-mon008:9330 worker029",
+                          "drp-srcf-mon008:9331 worker027",
+                          "drp-srcf-mon008:9333 globalCollector000"
+                        ],
+                        "prefix": "All except:",
+                        "readOnly": true
+                      }
+                    },
+                    "properties": [
+                      {
+                        "id": "custom.hideFrom",
+                        "value": {
+                          "legend": false,
+                          "tooltip": true,
+                          "viz": true
+                        }
+                      }
+                    ]
+                  }
+                ]
               }
             }
           }
