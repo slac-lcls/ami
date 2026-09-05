@@ -60,6 +60,7 @@ import shutil
 import socket
 import subprocess
 import tempfile
+import time
 import typing  # noqa
 
 import amitypes
@@ -2800,23 +2801,28 @@ class Flowchart(QtCore.QObject):
                     ctrl = self.widget()
                     compiler_args = await ctrl.graphCommHandler.compilerArgs
                     num_workers = compiler_args["num_workers"]
-                    events_per_second = [None] * num_workers
+                    events_this_round = [None] * num_workers
                     total_events = [None] * num_workers
+                    last_round_time = time.time()
 
                 if ctrl.graph_name not in msg:
                     continue
                 time_per_event = msg[ctrl.graph_name]
                 worker = int(re.search(r"(\d)+", source).group())
-                events_per_second[worker] = len(time_per_event) / (time_per_event[-1][1] - time_per_event[0][0])
+                events_this_round[worker] = len(time_per_event)
                 total_events[worker] = msg["num_events"]
 
-                if all(events_per_second):
-                    events_per_second = int(np.average(events_per_second))
+                if all(v is not None for v in events_this_round):
+                    now = time.time()
+                    elapsed = now - last_round_time
+                    total_events_this_round = sum(events_this_round)
+                    events_per_second = int(total_events_this_round / elapsed) if elapsed > 0 else 0
                     total_num_events = int(np.sum(total_events))
                     ctrl = self.widget()
-                    ctrl.ui.rateLbl.setText(f"Num Events: {total_num_events} Avg Events/Sec: {events_per_second}")
-                    events_per_second = [None] * num_workers
+                    ctrl.ui.rateLbl.setText(f"Num Events: {total_num_events} Total Events/Sec: {events_per_second}")
+                    events_this_round = [None] * num_workers
                     total_events = [None] * num_workers
+                    last_round_time = now
             elif topic == "warning":
                 ctrl = self.widget()
                 if hasattr(msg, "node_name"):
