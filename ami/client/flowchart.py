@@ -101,7 +101,7 @@ def run_editor_window(
     load=None,
     prometheus_dir=None,
     prometheus_port=None,
-    hutch=None,
+    hutch="",
     configure=False,
     save_dir=None,
 ):

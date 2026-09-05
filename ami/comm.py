@@ -996,7 +996,7 @@ class Node(abc.ABC):
         ctx=None,
         prometheus_dir=None,
         prometheus_port=None,
-        hutch=None,
+        hutch="",
     ):
         self.node = node
         if ctx is None:
@@ -1201,7 +1201,7 @@ class Collector(abc.ABC):
             passed it creates one.
     """
 
-    def __init__(self, addr, ctx=None, hutch=None, hwm=None, timeout=None):
+    def __init__(self, addr, ctx=None, hutch="", hwm=None, timeout=None):
         if ctx is None:
             self.ctx = zmq.Context(io_threads=2)
         else:

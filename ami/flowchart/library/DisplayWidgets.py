@@ -307,7 +307,7 @@ class PlotWidget(QtWidgets.QWidget):
         super().__init__(parent)
         self.node = kwargs.get("node", None)
         self.units = kwargs.get("units", {})
-        self.hutch = kwargs.get("hutch", None)
+        self.hutch = kwargs.get("hutch", "")
         self.name = kwargs.get("name", None)
 
         self.fetcher = None

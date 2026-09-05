@@ -433,7 +433,7 @@ def main(color, upstream_port, downstream_port):
 
     parser.add_argument("--prometheus-dir", help="directory for prometheus configuration", default=None)
 
-    parser.add_argument("--hutch", help="hutch for prometheus label", default=None)
+    parser.add_argument("--hutch", help="hutch for prometheus label", default="")
 
     parser.add_argument("--hwm", help="zmq HWM for push/pull sockets (default: 1)", type=int, default=1)
 

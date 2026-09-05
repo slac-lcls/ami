@@ -73,7 +73,7 @@ def build_parser():
 
     parser.add_argument("--prometheus-dir", help="directory for prometheus configuration", default=None)
 
-    parser.add_argument("--hutch", help="hutch for prometheus label", default=None)
+    parser.add_argument("--hutch", help="hutch for prometheus label", default="")
 
     return parser
 
