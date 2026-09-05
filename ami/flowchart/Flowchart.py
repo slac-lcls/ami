@@ -2903,6 +2903,8 @@ class FlowchartCtrlWidget(QtWidgets.QWidget):
             self.ui.actionConsole.triggered.connect(self.consoleClicked)
         if HAS_MCP:
             self.ui.actionAgent.triggered.connect(self.agentClicked)
+            self._agent_proc = None
+            QtWidgets.QApplication.instance().aboutToQuit.connect(self._cleanup_agent_proc)
 
         self.ui.actionHome.triggered.connect(self.homeClicked)
         self.ui.actionArrange.triggered.connect(self.arrangeClicked)
@@ -3299,6 +3301,10 @@ class FlowchartCtrlWidget(QtWidgets.QWidget):
 
         def agentClicked(self):
             """Spawn external agent harness connected to AMI's MCP server."""
+            if self._agent_proc is not None and self._agent_proc.poll() is None:
+                logger.info("Agent terminal is already running; not spawning another")
+                return
+
             mcp_thread = getattr(self.chartWidget, "mcp_thread", None)
             if not mcp_thread or not hasattr(mcp_thread, "_tmpdir"):
                 logger.error("MCP server not running - cannot spawn agent")
@@ -3315,12 +3321,14 @@ class FlowchartCtrlWidget(QtWidgets.QWidget):
             terminals = [
                 [
                     "xfce4-terminal",
+                    "--disable-server",
                     "--title=AMI Agent",
                     "-e",
                     f"{shell} -l -c 'opencode {work_dir}'",
                 ],
                 [
                     "gnome-terminal",
+                    "--wait",
                     "--title=AMI Agent",
                     "--",
                     shell,
@@ -3360,13 +3368,18 @@ class FlowchartCtrlWidget(QtWidgets.QWidget):
             for cmd in terminals:
                 if shutil.which(cmd[0]):
                     try:
-                        subprocess.Popen(cmd)
+                        self._agent_proc = subprocess.Popen(cmd)
                         logger.info(f"Spawned agent in {work_dir}")
                     except Exception as e:
                         logger.error(f"Failed to spawn agent terminal: {e}")
                     return
 
             logger.error("No terminal emulator found (tried xfce4-terminal, gnome-terminal, konsole, xterm)")
+
+        def _cleanup_agent_proc(self):
+            """Terminate the spawned agent terminal (if any) when the app quits."""
+            if self._agent_proc is not None and self._agent_proc.poll() is None:
+                self._agent_proc.terminate()
 
     @asyncSlot(object)
     async def configureApply(self, src_cfg):
@@ -3893,15 +3906,11 @@ class FlowchartWidget(dockarea.DockArea):
         """Start MCP server thread for AI-assisted graph building."""
         if os.environ.get("AMI_DISABLE_MCP"):
             return
-        try:
+        if HAS_MCP:
             self.qt_dispatcher = QtDispatcher()
             self.mcp_thread = McpServerThread(amicli=amicli, qt_dispatch_fn=self.qt_dispatcher.dispatch)
             self.mcp_thread.start()
             self._mcp_port = self.mcp_thread.port
-        except ImportError:
-            logger.info("MCP package not installed - AI agent support disabled")
-        except Exception as e:
-            logger.warning(f"Could not start MCP server: {e}")
 
 
 class Features(object):

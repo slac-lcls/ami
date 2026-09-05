@@ -441,12 +441,13 @@ class Ui_Toolbar(object):
             self.toolBar.addAction(self.actionConfigure)
         self.toolBar.addAction(self.actionApply)
         self.toolBar.addAction(self.actionReset)
-        if HAS_QTCONSOLE:
-            self.toolBar.addAction(self.actionConsole)
-            self.toolBar.insertSeparator(self.actionConsole)
 
         if HAS_MCP:
             self.toolBar.addAction(self.actionAgent)
+            self.toolBar.insertSeparator(self.actionAgent)
+
+        if HAS_QTCONSOLE:
+            self.toolBar.addAction(self.actionConsole)
 
         if configure:
             self.toolBar.insertSeparator(self.actionConfigure)
