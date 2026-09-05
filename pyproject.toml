@@ -42,7 +42,7 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-mcp = ["mcp"]
+mcp = ["mcp>=2,<3"]
 pva = [
     "p4p",
     "caproto",

@@ -8,12 +8,12 @@ import socket
 import tempfile
 import threading
 
-from mcp.server.fastmcp import FastMCP
+from mcp.server.mcpserver import MCPServer
 
 logger = logging.getLogger(__name__)
 
 # MCP server instance
-mcp = FastMCP("ami", log_level="WARNING")
+mcp = MCPServer("ami", log_level="WARNING")
 
 # Global references (set by McpServerThread)
 _amicli = None
@@ -900,8 +900,6 @@ class McpServerThread(threading.Thread):
         logging.getLogger("mcp").setLevel(logging.WARNING)
 
         try:
-            mcp.settings.host = self.host
-            mcp.settings.port = self.port
-            mcp.run(transport="streamable-http")
+            mcp.run(transport="streamable-http", host=self.host, port=self.port)
         except Exception as e:
             logger.exception(f"MCP server error: {e}")
