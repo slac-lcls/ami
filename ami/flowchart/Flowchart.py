@@ -2856,6 +2856,66 @@ class Flowchart(QtCore.QObject):
         await asyncio.gather(*tasks)
 
 
+class GraphTopologyCollector:
+    """Prometheus custom Collector that yields one ami_graph_node sample per
+    flowchart node and one ami_graph_edge sample per connection.
+
+    State is cached as a plain dict so collect() — which runs in the Prometheus
+    HTTP server's background thread — never touches Qt objects directly.
+    The cache is written from the main (GUI) thread in applyClicked().
+    """
+
+    def __init__(self, hutch, graph_name):
+        self._hutch = hutch
+        self._graph_name = graph_name
+        self._cache = None  # {"nodes": [...], "connects": [...]}
+
+    def describe(self):
+        # Return empty list so prometheus_client skips pre-registration checks.
+        # This avoids duplicate-metric errors if the collector is re-registered
+        # after a graph reload.
+        return []
+
+    def collect(self):
+        from prometheus_client.metrics_core import GaugeMetricFamily
+
+        cache = self._cache
+        if not cache:
+            return
+
+        node_family = GaugeMetricFamily(
+            "ami_graph_node",
+            "AMI flowchart node (topology). One sample per node; data carried in labels.",
+            labels=["hutch", "graph_name", "id", "title", "subtitle"],
+        )
+        for node in cache.get("nodes", []):
+            node_id = node["name"]
+            node_class = node["class"]
+            node_state = node.get("state", {})
+            # Use the user-assigned label if set; fall back to the instance name.
+            display_title = node_state.get("label") or node_id
+            node_family.add_metric(
+                [self._hutch, self._graph_name, node_id, display_title, node_class],
+                1.0,
+            )
+        yield node_family
+
+        edge_family = GaugeMetricFamily(
+            "ami_graph_edge",
+            "AMI flowchart edge (topology). One sample per connection; data carried in labels.",
+            labels=["hutch", "graph_name", "id", "source", "target"],
+        )
+        for conn in cache.get("connects", []):
+            from_node, from_term, to_node, to_term = conn[:4]
+            # Composite ID that is unique within a graph.
+            edge_id = f"{from_node}__{from_term}__{to_node}__{to_term}"
+            edge_family.add_metric(
+                [self._hutch, self._graph_name, edge_id, from_node, to_node],
+                1.0,
+            )
+        yield edge_family
+
+
 class FlowchartCtrlWidget(QtWidgets.QWidget):
     """
     The widget that contains the list of all the nodes in a flowchart and their controls,
@@ -2935,6 +2995,8 @@ class FlowchartCtrlWidget(QtWidgets.QWidget):
         self.ipython_widget = None
         self.graph_info = pc.Info("ami_graph", "AMI Client graph", ["hutch", "name"])
         self.graph_version = pc.Gauge("ami_graph_version", "AMI Client graph version", ["hutch", "name"])
+        self._topology_collector = GraphTopologyCollector(self.chart.hutch, self.graph_name)
+        pc.REGISTRY.register(self._topology_collector)
 
         graphCommHandler = GraphCommHandler(self.graphmgr_addr.name, self.graphmgr_addr.comm)
         self.amicli = AmiCli(self, self.chartWidget, self.chart, graphCommHandler)
@@ -3081,6 +3143,10 @@ class FlowchartCtrlWidget(QtWidgets.QWidget):
         self.ui.setPendingClear()
         version = str(await self.graphCommHandler.graphVersion)
         state = self.chart.saveState()
+        self._topology_collector._cache = {
+            "nodes": state["nodes"],
+            "connects": state["connects"],
+        }
         state = json.dumps(state, indent=2, separators=(",", ": "), sort_keys=False, cls=TypeEncoder)
 
         ts = datetime.now().strftime("%m%d%Y_%H%M%S")
