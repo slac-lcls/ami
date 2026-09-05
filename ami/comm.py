@@ -22,6 +22,15 @@ from ami.data import CollectorMessage, Datagram, Deserializer, Heartbeat, Messag
 from ami.graphkit_wrapper import Graph
 from ami.tracing import create_graph_node_spans, mark_span_error, start_child_span, start_span
 
+_node_exec_counter = pc.Counter(
+    "ami_graph_node_exec_seconds_total",
+    "Per-node cumulative graph execution time. "
+    "Increment by the per-heartbeat execution time each heartbeat. "
+    "Use rate() to get per-second execution time; divide by heartbeat rate "
+    "to get seconds-per-heartbeat.",
+    ["hutch", "graph_name", "id", "title", "subtitle", "color"],
+)
+
 logger = logging.getLogger(__name__)
 ZMQ_TOPIC_DELIM = "\0"
 
@@ -569,6 +578,9 @@ class GraphBuilder(ContributionBuilder):
         self.last_pct_graph_exec = 0
         self.last_pct_send = 0
         self.last_pct_overhead = 0
+        self.last_node_times = {}
+        self.last_node_metadata = {}
+        self.last_node_graph_name = None
 
     def _init(self, name):
         if self.graph is None:
@@ -694,6 +706,10 @@ class GraphBuilder(ContributionBuilder):
             for node_name, dur in exec_time.items():
                 if isinstance(dur, (int, float)):
                     aggregated_node_times[node_name] = aggregated_node_times.get(node_name, 0) + dur
+
+        self.last_node_times = aggregated_node_times
+        self.last_node_metadata = self.graph.metadata() if self.graph else {}
+        self.last_node_graph_name = self.graph.name if self.graph else None
 
         send_start_ns = time.time_ns()
         size = self.completion(eb_key, identity, self.pending[eb_key], drop)
@@ -943,6 +959,13 @@ class EventBuilder(ZmqHandler):
         if builder:
             return builder.last_pct_idle, builder.last_pct_graph_exec, builder.last_pct_send, builder.last_pct_overhead
         return 0, 0, 0, 0
+
+    def node_exec_times(self, name):
+        """Return (node_times, node_metadata, graph_name) for the last completed heartbeat."""
+        builder = self.builders.get(name)
+        if builder:
+            return builder.last_node_times, builder.last_node_metadata, builder.last_node_graph_name
+        return {}, {}, None
 
     def contribs(self, name):
         return self.builders[name].contribs

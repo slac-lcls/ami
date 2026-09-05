@@ -15,10 +15,10 @@ import prometheus_client as pc
 import zmq
 
 from ami import Defaults, LogConfig
-from ami.comm import AutoExport, Colors, Node, PlatformAction, Ports, ResultStore
+from ami.comm import AutoExport, Colors, Node, PlatformAction, Ports, ResultStore, _node_exec_counter
 from ami.data import MsgTypes, RequestedData, Source, Transitions
 from ami.graphkit_wrapper import Graph
-from ami.tracing import create_graph_node_spans, get_trace_id, setup_tracing, should_trace, start_child_span, start_span
+from ami.tracing import create_graph_node_spans, get_trace_id, setup_tracing, start_child_span, start_span
 
 logger = logging.getLogger(__name__)
 
@@ -203,6 +203,7 @@ class Worker(Node):
             ["hutch", "process"],
             buckets=[0.05, 0.1, 0.15, 0.2, 0.25, 0.5, 0.75, 0.9, 1.0, 1.1, 1.25, 1.5, 2.0, 5.0],
         )
+        node_exec_counter = _node_exec_counter
 
         idle_start = time.time()
         idle_stop = time.time()
@@ -352,8 +353,29 @@ class Worker(Node):
 
                         parent.end(end_time=hb_end_ns)
 
+                    # Emit per-node execution timing to Prometheus
+                    for _graph_name, _node_times in hb_node_times.items():
+                        _graph = self.graphs.get(_graph_name)
+                        if not _graph:
+                            continue
+                        _metadata = _graph.metadata()
+                        for _node_name, _duration in _node_times.items():
+                            if not isinstance(_duration, (int, float)):
+                                continue
+                            _meta = _metadata.get(_node_name, {})
+                            _ami_name = _meta.get("parent", _node_name)
+                            _node_type = _meta.get("type", "Unknown")
+                            node_exec_counter.labels(
+                                hutch=self.hutch,
+                                graph_name=_graph_name,
+                                id=_ami_name,
+                                title=_ami_name,
+                                subtitle=_node_type,
+                                color="worker",
+                            ).inc(_duration)
+
                     hb_graph_time = 0
-                    hb_node_times = {} if should_trace(msg.payload.identity + 1) else None
+                    hb_node_times = {}
                     hb_num_datagrams = 0
                     hb_idle_time = 0
                     hb_partial_events = 0

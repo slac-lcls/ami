@@ -11,7 +11,7 @@ import traceback
 
 import ami.multiproc as mp
 from ami import Defaults, LogConfig
-from ami.comm import Collector, Colors, EventBuilder, Node, PlatformAction, Ports, TransitionBuilder
+from ami.comm import Collector, Colors, EventBuilder, Node, PlatformAction, Ports, TransitionBuilder, _node_exec_counter
 from ami.data import MsgTypes, Transitions, build_random_src_cfgs, run_random_event_server
 from ami.tracing import get_trace_id, setup_tracing
 from ami.worker import parse_args, run_worker
@@ -52,6 +52,7 @@ class GraphCollector(Node, Collector):
         self.transitions = TransitionBuilder(self.num_workers, downstream_addr, self.ctx, hwm)
         self.store = EventBuilder(self.num_workers, eb_depth, color, downstream_addr, self.ctx, hwm)
         self.sender = "worker%03d" if color == "localCollector" else "localCollector%03d"
+        self.color = color
         self.pickers = {}
         self.strategies = {}
 
@@ -115,12 +116,6 @@ class GraphCollector(Node, Collector):
 
     def eb_id(self, identity):
         return identity - (self.node * self.num_workers)
-
-    def report_times(self, times, name, heartbeat):
-        if times:
-            self.report(
-                "profile", {"graph": name, "heartbeat": heartbeat, "times": times, "version": self.store.version(name)}
-            )
 
     def recv_graph(self, name, version, args, graph):
         self.store.set_graph(name, version, args, graph)
@@ -198,6 +193,21 @@ class GraphCollector(Node, Collector):
                         max(0, total_s - idle_s - graph_s - send_s)
                     )
 
+                    node_times, node_meta, graph_name = self.store.node_exec_times(msg.name)
+                    if node_times and graph_name:
+                        for node_name, duration in node_times.items():
+                            meta = node_meta.get(node_name, {})
+                            ami_name = meta.get("parent", node_name)
+                            node_type = meta.get("type", "Unknown")
+                            _node_exec_counter.labels(
+                                hutch=self.hutch,
+                                graph_name=graph_name,
+                                id=ami_name,
+                                title=ami_name,
+                                subtitle=node_type,
+                                color=self.color,
+                            ).inc(duration)
+
                     trace_id = get_trace_id(msg.heartbeat.identity)
                     self.heartbeat_duration.labels(self.hutch, self.name).observe(
                         total_s,
@@ -234,6 +244,21 @@ class GraphCollector(Node, Collector):
                     self.event_time.labels(self.hutch, "Overhead", self.name).inc(
                         max(0, total_s - idle_s - graph_s - send_s)
                     )
+
+                    node_times, node_meta, graph_name = self.store.node_exec_times(msg.name)
+                    if node_times and graph_name:
+                        for node_name, duration in node_times.items():
+                            meta = node_meta.get(node_name, {})
+                            ami_name = meta.get("parent", node_name)
+                            node_type = meta.get("type", "Unknown")
+                            _node_exec_counter.labels(
+                                hutch=self.hutch,
+                                graph_name=graph_name,
+                                id=ami_name,
+                                title=ami_name,
+                                subtitle=node_type,
+                                color=self.color,
+                            ).inc(duration)
 
 
 def run_collector(
