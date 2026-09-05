@@ -264,7 +264,7 @@ def run_ami(args, queue=None):
     if args.log_file is not None:
         log_handlers.append(logging.FileHandler(args.log_file))
     log_level = getattr(logging, args.log_level.upper(), logging.INFO)
-    logging.basicConfig(format=LogConfig.FullFormat, level=log_level, handlers=log_handlers)
+    logging.basicConfig(format=LogConfig.FullFormat, level=log_level, handlers=log_handlers, force=True)
 
     try:
         for flag in args.flags:

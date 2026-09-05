@@ -87,7 +87,7 @@ def main():
         file_handler.setFormatter(file_fmt)
         log_handlers.append(file_handler)
     log_level = getattr(logging, args.log_level.upper(), logging.INFO)
-    logging.basicConfig(format=LogConfig.BasicFormat, level=log_level, handlers=log_handlers)
+    logging.basicConfig(format=LogConfig.BasicFormat, level=log_level, handlers=log_handlers, force=True)
 
     if args.ipc:
         ipc_list = glob.glob(tempfile.gettempdir() + "/*/comm")

@@ -503,9 +503,9 @@ def main(color, upstream_port, downstream_port):
         log_handlers.append(logging.FileHandler(args.log_file))
     log_level = getattr(logging, args.log_level.upper(), logging.INFO)
     if args.worker:
-        logging.basicConfig(format=LogConfig.FullFormat, level=log_level, handlers=log_handlers)
+        logging.basicConfig(format=LogConfig.FullFormat, level=log_level, handlers=log_handlers, force=True)
     else:
-        logging.basicConfig(format=LogConfig.Format, level=log_level, handlers=log_handlers)
+        logging.basicConfig(format=LogConfig.Format, level=log_level, handlers=log_handlers, force=True)
 
     try:
         if color == Colors.LocalCollector:

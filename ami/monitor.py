@@ -550,7 +550,7 @@ def main():
     if args.log_file is not None:
         log_handlers.append(logging.FileHandler(args.log_file))
     log_level = getattr(logging, args.log_level.upper(), logging.INFO)
-    logging.basicConfig(format=LogConfig.Format, level=log_level, handlers=log_handlers)
+    logging.basicConfig(format=LogConfig.Format, level=log_level, handlers=log_handlers, force=True)
 
     try:
         return run_monitor(graph, export_addr, view_addr, address, http_port)
