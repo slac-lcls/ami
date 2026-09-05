@@ -13,6 +13,9 @@ AMI exports Prometheus metrics from workers, collectors, and the manager for mon
 | `ami_event_size_bytes` | Counter | hutch, process | Workers, Collectors, Manager | Cumulative bytes processed. Exposed as `ami_event_size_bytes_total`. Use `rate()` to get throughput. |
 | `ami_event_latency_seconds` | Histogram | hutch, sender, process | Workers, Collectors, Manager | Data latency from source/sender. Use `rate(_sum)/rate(_count)` for average latency. |
 | `ami_heartbeat_duration_seconds` | Histogram | hutch, process | Workers, Collectors | Full heartbeat interval (wall clock). Supports exemplars for Tempo trace correlation. |
+| `ami_graph_node_exec_seconds` | Counter | hutch, graph_name, id, title, subtitle, color | Workers, Local/Global Collectors | Per-node cumulative graph execution time (breaks the Datagram phase down per graph node). Exposed as `ami_graph_node_exec_seconds_total`. Use `rate()` to get per-node seconds/sec. |
+| `ami_graph_node` | Gauge | hutch, graph_name, id, title, subtitle | Client | Flowchart topology: one sample (value 1.0) per node, refreshed when the graph is applied. |
+| `ami_graph_edge` | Gauge | hutch, graph_name, id, source, target | Client | Flowchart topology: one sample (value 1.0) per connection, refreshed when the graph is applied. |
 
 ### Event Count Types
 
@@ -44,12 +47,40 @@ The histogram supports exemplars linking to trace IDs when tracing is enabled.
 
 The `ami_event_latency_seconds` histogram uses the same bucket set.
 
+### Per-Node Execution Time & Topology
+
+`ami_graph_node_exec_seconds_total` breaks graph execution time down per node, labeled
+with the node's `id`/`title` (display name) and `subtitle` (node type/class).
+
+`color` distinguishes which tier recorded the time: `worker`, `localCollector`, or
+`globalCollector` — each independently executes or reduces the graph.
+
+Unlike Tempo's per-node child spans (sampled at `--tracing-sample-rate`), this metric
+is recorded every heartbeat, making it a more reliable signal for finding a
+consistently-slow node when trace sampling might miss it.
+
+`ami_graph_node` and `ami_graph_edge` expose flowchart topology (node/edge metadata)
+from the GUI Client, refreshed only when the graph is applied — they are stale or
+absent if the client isn't running or the graph hasn't been re-applied since restart.
+
+The `id` label is shared between `ami_graph_node` and `ami_graph_node_exec_seconds_total`,
+allowing them to be joined in PromQL to label per-node execution time with a
+human-readable, currently-assigned node title:
+
+```
+ami_graph_node * on(id, graph_name, hutch) group_right rate(ami_graph_node_exec_seconds_total[30s])
+```
+
 ## Labels
 
 - **hutch**: The experimental hutch identifier (e.g., "rix", "tmo", "cxi")
 - **type**: Sub-category for the metric (see tables above)
 - **process**: Worker process name identifier
 - **sender**: Source identifier for latency measurements
+- **graph_name**: The name of the computation graph
+- **id**: Stable identifier for a graph node (`ami_graph_node`, `ami_graph_node_exec_seconds`) or edge (`ami_graph_edge`)
+- **color**: Which processing tier recorded a per-node metric — `worker`, `localCollector`, or `globalCollector`
+- **source** / **target**: The node names on each end of a flowchart connection (`ami_graph_edge` only)
 
 ## Grafana Integration
 
@@ -64,6 +95,7 @@ The `ami_event_latency_seconds` histogram uses the same bucket set.
 7. **Heartbeat Rate**: `rate(ami_event_count_total{type="Heartbeat"}[30s])` — Heartbeats per second (should match configured rate, default ~1)
 8. **Phase Percentage**: `rate(ami_event_time_seconds_total{type="Idle"}[30s]) / ignoring(type) rate(ami_event_time_seconds_total{type="Heartbeat"}[30s]) * 100` — Percentage of heartbeat interval in Idle phase (replace `Idle` with `Datagram`, `Send`, or `Overhead` for other phases)
 9. **Throughput**: `rate(ami_event_size_bytes_total[30s])` — Bytes processed per second
+10. **Slowest Graph Nodes**: `topk(5, sum by (title, subtitle, color) (rate(ami_graph_node_exec_seconds_total[30s])))` — top 5 slowest graph nodes across all tiers
 
 ### Why Counters Instead of Gauges
 
