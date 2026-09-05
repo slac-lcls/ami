@@ -3,6 +3,7 @@
 import json
 import logging
 import os
+import re
 import shutil
 import socket
 import tempfile
@@ -813,6 +814,19 @@ def use_subgraph(template_name: str, source: str = "") -> str:
         template_name: Name of the subgraph template
         source: Data source to connect (optional)
     """
+    if not template_name or re.fullmatch(r"\$\w+", template_name.strip()):
+        try:
+            available = _qt_dispatch(lambda: _amicli.list_subgraph_templates())
+            names = [t["name"] for t in available] if available else []
+        except Exception:
+            names = []
+        return (
+            "No subgraph template specified yet. "
+            f"Available templates: {names}. "
+            "Call this prompt again with a real template_name, "
+            "or use list_subgraph_templates() to explore options."
+        )
+
     try:
         template_info = _qt_dispatch(lambda: _amicli.subgraph_info(template_name))
 
