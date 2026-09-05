@@ -260,6 +260,26 @@ grafana_query_prometheus(
 )
 ```
 
+**Metric check (per-node, no trace sampling required):**
+
+`ami_graph_node_exec_seconds_total` breaks graph execution time down per node and is
+recorded every heartbeat (unlike Tempo spans, which are subject to
+`--tracing-sample-rate`). Use this first when you need a reliable per-node breakdown,
+or when trace sampling might have missed the slow heartbeat you're investigating.
+
+```
+# Top 5 slowest graph nodes, broken down by processing tier
+topk(5, sum by (title, subtitle, color) (rate(ami_graph_node_exec_seconds_total{hutch="<hutch>"}[30s])))
+```
+
+`color` tells you whether the cost is on workers (`worker`) or during collector-side
+reduction (`localCollector`/`globalCollector`). If you need human-readable, currently
+assigned node titles joined to this data, `ami_graph_node` (topology, refreshed on
+Apply) shares the same `id` label and can be joined:
+```
+ami_graph_node * on(id, graph_name, hutch) group_right rate(ami_graph_node_exec_seconds_total[30s])
+```
+
 **Trace check:**
 
 Step 1 — find heartbeats where graph execution is slow:
@@ -407,6 +427,9 @@ heartbeat — making it clear where time was lost.
 | `ami_heartbeat_duration_seconds` | Histogram | hutch, process | Full heartbeat interval wall clock time. Supports exemplars linking to Tempo traces |
 | `ami_plot_latency_secs` | Gauge | hutch, process | Client-side plot update latency |
 | `ami_plot_memory_mb` | Gauge | hutch, process | Client-side memory used by display nodes |
+| `ami_graph_node_exec_seconds_total` | Counter | hutch, graph_name, id, title, subtitle, color | Per-node graph execution time, recorded every heartbeat (not sampled). `color` = worker/localCollector/globalCollector |
+| `ami_graph_node` | Gauge | hutch, graph_name, id, title, subtitle | Flowchart topology (node metadata), refreshed on Apply. Client-side only |
+| `ami_graph_edge` | Gauge | hutch, graph_name, id, source, target | Flowchart topology (connection metadata), refreshed on Apply. Client-side only |
 
 **Notes:**
 - Heartbeat rate ranges 1–10 Hz depending on configuration
