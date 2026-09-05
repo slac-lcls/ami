@@ -25,14 +25,16 @@ try:
     from opentelemetry.sdk.resources import Resource
     from opentelemetry.sdk.trace import TracerProvider
     from opentelemetry.sdk.trace.export import BatchSpanProcessor, ConsoleSpanExporter, SimpleSpanProcessor
+    from opentelemetry.sdk.trace.id_generator import IdGenerator
     from opentelemetry.trace import StatusCode
 
     _OTEL_AVAILABLE = True
 except ImportError:
     _OTEL_AVAILABLE = False
+    IdGenerator = object
 
 
-class DeterministicTraceIdGenerator:
+class DeterministicTraceIdGenerator(IdGenerator):
     """
     Custom OTel IdGenerator that returns a deterministic trace_id
     set by the caller, making spans true root spans while sharing
