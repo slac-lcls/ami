@@ -24,7 +24,7 @@ else
 fi
 
 # to build ami with setuptools
-pip install --no-deps --prefix=$INSTDIR $pipOptions .
+pip install --no-index --no-build-isolation --no-deps --prefix=$INSTDIR $pipOptions .
 
 # The removeal of site.py in setup 49.0.0 breaks "develop" installations
 # which are outside the normal system directories: /usr, /usr/local,

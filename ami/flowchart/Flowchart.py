@@ -2999,8 +2999,8 @@ class FlowchartCtrlWidget(QtWidgets.QWidget):
         self.ui.subgraph_tree.customContextMenuRequested.connect(self._onSubgraphTreeContextMenu)
 
         self.ipython_widget = None
-        self.graph_info = pc.Info("ami_graph", "AMI Client graph", ["hutch", "name"])
-        self.graph_version = pc.Gauge("ami_graph_version", "AMI Client graph version", ["hutch", "name"])
+        self.graph_info = pc.Info("ami_graph", "AMI Client graph", ["hutch", "graph_name"])
+        self.graph_version = pc.Gauge("ami_graph_version", "AMI Client graph version", ["hutch", "graph_name"])
         self._topology_collector = GraphTopologyCollector(self.chart.hutch, self.graph_name)
         pc.REGISTRY.register(self._topology_collector)
 

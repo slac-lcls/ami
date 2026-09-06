@@ -300,8 +300,8 @@ class CSVDialog(QtWidgets.QWidget):
 
 
 class PlotWidget(QtWidgets.QWidget):
-    latency = pc.Gauge("ami_plot_latency_secs", "Plot Latency", ["hutch", "process"])
-    memory = pc.Gauge("ami_plot_memory_mb", "Plot Memory", ["hutch", "process"])
+    latency = pc.Gauge("ami_plot_latency_secs", "Plot Latency", ["hutch", "graph_name", "process"])
+    memory = pc.Gauge("ami_plot_memory_mb", "Plot Memory", ["hutch", "graph_name", "process"])
 
     def __init__(self, topics=None, terms=None, addr=None, uiTemplate=None, parent=None, **kwargs):
         super().__init__(parent)
@@ -309,6 +309,7 @@ class PlotWidget(QtWidgets.QWidget):
         self.units = kwargs.get("units", {})
         self.hutch = kwargs.get("hutch", "")
         self.name = kwargs.get("name", None)
+        self.graph_name = addr.name if addr else ""
 
         self.fetcher = None
         if addr:
@@ -860,8 +861,8 @@ class PlotWidget(QtWidgets.QWidget):
                 status_text += f" | Screenshots: {self.screenshot_counter:,}"
             self.last_updated.setText(status_text)
 
-            self.latency.labels(self.hutch, self.name).set(latency.total_seconds())
-            self.memory.labels(self.hutch, self.name).set(rss)
+            self.latency.labels(self.hutch, self.graph_name, self.name).set(latency.total_seconds())
+            self.memory.labels(self.hutch, self.graph_name, self.name).set(rss)
 
     def _dump_screenshot(self):
         """
