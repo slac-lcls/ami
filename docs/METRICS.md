@@ -16,6 +16,10 @@ AMI exports Prometheus metrics from workers, collectors, and the manager for mon
 | `ami_graph_node_exec_seconds` | Counter | hutch, graph_name, id, title, subtitle, color | Workers, Local/Global Collectors | Per-node cumulative graph execution time (breaks the Datagram phase down per graph node). Exposed as `ami_graph_node_exec_seconds_total`. Use `rate()` to get per-node seconds/sec. |
 | `ami_graph_node` | Gauge | hutch, graph_name, id, title, subtitle | Client | Flowchart topology: one sample (value 1.0) per node, refreshed when the graph is applied. |
 | `ami_graph_edge` | Gauge | hutch, graph_name, id, source, target | Client | Flowchart topology: one sample (value 1.0) per connection, refreshed when the graph is applied. |
+| `ami_graph_info` | Info | hutch, graph_name | Client | Current graph state and version info, refreshed when the graph is applied. Exposed as `ami_graph_info`. |
+| `ami_graph_version` | Gauge | hutch, graph_name | Client | Current graph version number, refreshed when the graph is applied. |
+| `ami_plot_latency_secs` | Gauge | hutch, graph_name, process | Client | Client-side plot update latency, reported per display/plot widget. |
+| `ami_plot_memory_mb` | Gauge | hutch, graph_name, process | Client | Client-side memory (RSS) used by a display/plot widget. |
 
 ### Event Count Types
 
@@ -70,6 +74,14 @@ human-readable, currently-assigned node title:
 ```
 ami_graph_node * on(id, graph_name, hutch) group_right rate(ami_graph_node_exec_seconds_total[30s])
 ```
+
+### Graph State & Client-Side Plot Metrics
+
+`ami_graph_info` and `ami_graph_version` expose the currently-applied graph's state
+and version number, refreshed by the GUI Client whenever a graph is applied.
+
+`ami_plot_latency_secs` and `ami_plot_memory_mb` are per-plot-widget client metrics
+reporting update latency and RSS memory for each display node.
 
 ## Labels
 

@@ -425,8 +425,8 @@ heartbeat — making it clear where time was lost.
 | `ami_event_size_bytes` | Counter | hutch, process | Cumulative bytes processed. Use `rate()` to get bytes/sec throughput |
 | `ami_event_latency_seconds` | Histogram | hutch, sender, process | Per-hop data latency. Use `rate(_sum) / rate(_count)` for average |
 | `ami_heartbeat_duration_seconds` | Histogram | hutch, process | Full heartbeat interval wall clock time. Supports exemplars linking to Tempo traces |
-| `ami_plot_latency_secs` | Gauge | hutch, process | Client-side plot update latency |
-| `ami_plot_memory_mb` | Gauge | hutch, process | Client-side memory used by display nodes |
+| `ami_plot_latency_secs` | Gauge | hutch, graph_name, process | Client-side plot update latency |
+| `ami_plot_memory_mb` | Gauge | hutch, graph_name, process | Client-side memory used by display nodes |
 | `ami_graph_node_exec_seconds_total` | Counter | hutch, graph_name, id, title, subtitle, color | Per-node graph execution time, recorded every heartbeat (not sampled). `color` = worker/localCollector/globalCollector |
 | `ami_graph_node` | Gauge | hutch, graph_name, id, title, subtitle | Flowchart topology (node metadata), refreshed on Apply. Client-side only |
 | `ami_graph_edge` | Gauge | hutch, graph_name, id, source, target | Flowchart topology (connection metadata), refreshed on Apply. Client-side only |
