@@ -2,6 +2,7 @@
 from collections import OrderedDict, defaultdict, deque
 from datetime import datetime
 
+from prometheus_client.metrics_core import GaugeMetricFamily
 from pyqtgraph import FileDialog
 from pyqtgraph import dockarea as dockarea
 from pyqtgraph.debug import printExc
@@ -2883,8 +2884,6 @@ class GraphTopologyCollector:
         return []
 
     def collect(self):
-        from prometheus_client.metrics_core import GaugeMetricFamily
-
         cache = self._cache
         if not cache:
             return
