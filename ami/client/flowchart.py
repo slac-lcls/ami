@@ -31,11 +31,14 @@ THEME = STYLE.get("Theme", None)
 
 
 def _apply_theme(app, theme):
-    if theme not in ("dark", "light"):
+    if theme not in ("dark",):
+        logger.warning("Unrecognized theme %r; only 'dark' is available. Using default Qt style.", theme)
         return
     qss_path = os.path.join(os.path.dirname(__file__), "themes", f"{theme}.qss")
+    icons_dir = os.path.join(os.path.dirname(__file__), "themes", "icons")
     with open(qss_path) as f:
-        app.setStyleSheet(f.read())
+        qss = f.read().replace("AMI_ICONS_DIR", icons_dir)
+    app.setStyleSheet(qss)
 
 
 logger = logging.getLogger(LogConfig.get_package_name(__name__))
