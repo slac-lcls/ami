@@ -1,5 +1,6 @@
 """AMI MCP Server - exposes graph manipulation via Model Context Protocol."""
 
+import importlib.util
 import json
 import logging
 import os
@@ -8,6 +9,7 @@ import shutil
 import socket
 import tempfile
 import threading
+from pathlib import Path
 
 from mcp.server.mcpserver import MCPServer
 
@@ -32,6 +34,53 @@ def _find_free_port(start=9100, max_tries=100):
             except OSError:
                 continue
     raise RuntimeError(f"No free port in range {start}-{start + max_tries}")
+
+
+def _discover_skill_dirs(package_names):
+    """Discover opencode skills shipped inside installed packages.
+
+    For each name in `package_names`, locates a `skills/` directory directly
+    under that package's directory (e.g. `<package_dir>/skills/<skill_name>/SKILL.md`)
+    and collects one entry per skill found there. Packages are located via
+    `importlib.util.find_spec()` rather than `import`, so that packages with
+    import-time side effects (e.g. psana loading C extensions) are never
+    actually imported just to check whether they ship skills.
+
+    Args:
+        package_names: Iterable of package names to check, e.g. ("ami", "psana").
+            Order determines first-seen-wins precedence when the same skill
+            name is shipped by more than one package.
+
+    Returns:
+        dict mapping skill_name -> (skill_dir_path, source_package_name).
+    """
+    discovered = {}
+    for pkg_name in package_names:
+        try:
+            spec = importlib.util.find_spec(pkg_name)
+        except (ImportError, ModuleNotFoundError):
+            logger.debug(f"Skill discovery: package '{pkg_name}' not found, skipping")
+            continue
+        if spec is None or not spec.submodule_search_locations:
+            logger.debug(f"Skill discovery: package '{pkg_name}' has no locatable directory, skipping")
+            continue
+
+        for pkg_dir in spec.submodule_search_locations:
+            skills_dir = Path(pkg_dir) / "skills"
+            if not skills_dir.is_dir():
+                continue
+            for skill_md in sorted(skills_dir.glob("*/SKILL.md")):
+                skill_name = skill_md.parent.name
+                if skill_name in discovered:
+                    logger.warning(
+                        f"Skill discovery: duplicate skill '{skill_name}' found in package "
+                        f"'{pkg_name}' ({skill_md.parent}), keeping first one from "
+                        f"'{discovered[skill_name][1]}'"
+                    )
+                    continue
+                discovered[skill_name] = (skill_md.parent, pkg_name)
+
+    return discovered
 
 
 def _summarize_data(data):
@@ -894,17 +943,20 @@ class McpServerThread(threading.Thread):
         with open(config_path, "w") as f:
             json.dump(config, f, indent=2)
 
-        # Copy skills into .opencode/skills/<name>/ so they are both always-loaded
-        # (via instructions) and discoverable by name via the skill tool.
-        # Skills live in ami/skills/ inside the package so they are accessible
-        # in both development and installed environments.
-        pkg_skills_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "skills")
-        for skill_name in ("ami-graph-builder", "ami-performance-monitor"):
-            src = os.path.join(pkg_skills_dir, skill_name, "SKILL.md")
-            dst_dir = os.path.join(self._tmpdir.name, ".opencode", "skills", skill_name)
-            if os.path.exists(src):
-                os.makedirs(dst_dir, exist_ok=True)
-                shutil.copy2(src, os.path.join(dst_dir, "SKILL.md"))
+        # Discover skills shipped by any installed provider package (currently
+        # "ami" and "psana") and copy each one's whole skill directory into
+        # .opencode/skills/<name>/ so it is discoverable on-demand via the skill
+        # tool. Only the skills explicitly listed in `instructions` above are
+        # always-loaded into context; all other discovered skills are copied
+        # too, but stay dormant until the agent invokes the skill tool by name.
+        discovered_skills = _discover_skill_dirs(("ami", "psana"))
+        dst_skills_root = os.path.join(self._tmpdir.name, ".opencode", "skills")
+        for skill_name, (src_dir, source_pkg) in discovered_skills.items():
+            dst_dir = os.path.join(dst_skills_root, skill_name)
+            os.makedirs(os.path.dirname(dst_dir), exist_ok=True)
+            shutil.copytree(src_dir, dst_dir, dirs_exist_ok=True)
+            logger.debug(f"Copied skill '{skill_name}' from package '{source_pkg}' ({src_dir}) to {dst_dir}")
+        logger.info(f"Discovered {len(discovered_skills)} skill(s): {sorted(discovered_skills)}")
 
     def run(self):
         """Run MCP server (blocks in this thread)."""

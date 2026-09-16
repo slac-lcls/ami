@@ -362,6 +362,30 @@ ami/
 4. **Testing**: Test with simple graph configuration
 - **See**: [Custom Node Implementation Guide](docs/CUSTOM_NODES.md) for full reference
 
+### AI Agent Skills
+
+The "Agent" button spawns an opencode session whose skills are discovered
+dynamically by `ami/mcp_server.py` (`McpServerThread`), not hardcoded per-package:
+
+- Skills live at `<package>/skills/<skill-name>/SKILL.md` for any package AMI's
+  MCP server is configured to scan (currently `ami` and `psana`). Adding a new
+  skill to one of these packages makes it available automatically — no changes
+  to `mcp_server.py` are needed.
+- Each `SKILL.md` **must** have YAML frontmatter with `name` and `description`
+  fields, or opencode's `skill` tool won't be able to discover/load it.
+- All discovered skills are copied into the spawned agent's `.opencode/skills/`
+  and are loadable on-demand via the `skill` tool.
+- Only skills explicitly listed in the `instructions` array in
+  `ami/mcp_server.py`'s generated `opencode.jsonc` are always-loaded into
+  context on every agent session. Reserve this for lightweight,
+  broadly-applicable skills (currently `ami-graph-builder` and
+  `ami-performance-monitor`) since it costs context on every session
+  regardless of relevance.
+- Some skills (e.g. `psana-daq-monitor`) require external MCP servers (e.g. a
+  Grafana MCP server) to be configured in the user's opencode config to
+  function. This is not currently guaranteed for all users/configs — it's a
+  known gap.
+
 ### Debugging
 - Use `ami/forkedpdb.py` for multiprocess debugging
 - Check logs from worker, manager, and collector
