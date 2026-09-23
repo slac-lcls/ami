@@ -385,6 +385,18 @@ dynamically by `ami/mcp_server.py` (`McpServerThread`), not hardcoded per-packag
   Grafana MCP server) to be configured in the user's opencode config to
   function. This is not currently guaranteed for all users/configs — it's a
   known gap.
+- **`psana-daq` (the DAQ diagnostic entry point) is deliberately NOT in the
+  always-loaded `instructions` array**, even though it is broadly relevant
+  to AMI-spawned sessions running against a live DAQ. It absorbed the
+  now-merged `psana-daq-snapshot` autonomous-sweep skill and grew to 496
+  lines — too large to justify always-loading under the "lightweight"
+  criterion above. Instead, `ami-performance-monitor/SKILL.md` carries an
+  explicit pointer at the AMI/DAQ (MEB) seam, so an agent investigating an
+  AMI performance issue that turns out to be DAQ-side still discovers
+  `psana-daq` via the `skill` tool without needing it preloaded. This is a
+  judgment call, not a settled fact — reconsider if `psana-daq` shrinks
+  substantially, or if discovery-without-preloading proves insufficient in
+  practice.
 
 ### Debugging
 - Use `ami/forkedpdb.py` for multiprocess debugging

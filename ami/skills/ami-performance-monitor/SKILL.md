@@ -9,6 +9,15 @@ You are diagnosing performance of AMI (LCLS-II online analysis system) using Gra
 MCP tools. You query Prometheus for metrics and Tempo for distributed traces. You do
 NOT manipulate graphs — load the `ami-graph-builder` skill for that.
 
+**DAQ/AMI seam:** AMI is a shared-memory client of the MEB (Monitoring Event
+Builder). If AMI isn't updating and phase breakdown / heartbeat health below
+don't explain why, the cause may be upstream of AMI entirely — check whether
+the MEB is delivering events at all before assuming a graph or worker
+problem. That is DAQ-side, not AMI-side: load the `psana-daq` skill (from
+the `psana`/`lcls2` skill set) if it's discovered in this session — it owns
+DAQ component failures, state transitions, deadtime, damage, and
+configuration, and can run a full diagnostic sweep if the report is vague.
+
 ## Discovery (always start here)
 
 Known UIDs — use these directly, skip discovery tool calls:
