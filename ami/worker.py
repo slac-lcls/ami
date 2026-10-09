@@ -320,7 +320,7 @@ class Worker(Node):
                                     "worker.num_datagrams": hb_num_datagrams,
                                 },
                             )
-                            if child:
+                            if child and hb_node_times:
                                 for graph_name, node_times in hb_node_times.items():
                                     graph = self.graphs.get(graph_name)
                                     metadata = graph.metadata() if graph else {}
@@ -328,7 +328,8 @@ class Worker(Node):
                                         child, node_times, metadata, start_time_ns=t0 + idle_ns, graph_name=graph_name
                                     )
                                 child.end(end_time=t0 + idle_ns + graph_ns)
-
+                            elif hb_node_times is None:
+                                hb_node_times = {}
                         # Send span (cumulative send placed after graph exec)
                         if send_ns > 0:
                             child = start_child_span(
