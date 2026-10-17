@@ -12,9 +12,6 @@ import tempfile
 import threading
 import time
 
-# Disable MCP server before any AMI imports
-os.environ["AMI_DISABLE_MCP"] = "1"
-
 import pytest  # noqa: E402
 
 from ami.client.flowchart import MessageBroker  # noqa: E402
@@ -90,6 +87,24 @@ def flowchart_module(ami_backend, broker_module, dmypy):
     future.result(timeout=10)
 
     yield fc
+
+    # Unregister Prometheus metrics if the widget was created, otherwise they
+    # leak into the global registry and cause "Duplicated timeseries" errors
+    # the next time a FlowchartCtrlWidget is constructed in this process.
+    try:
+        import prometheus_client as pc
+
+        if fc._widget is not None:
+            try:
+                pc.REGISTRY.unregister(fc._widget.graph_info)
+            except Exception:
+                pass
+            try:
+                pc.REGISTRY.unregister(fc._widget.graph_version)
+            except Exception:
+                pass
+    except Exception as e:
+        print(f"Warning: Failed to unregister prometheus metrics: {e}")
 
     fc.close()
 

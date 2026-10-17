@@ -28,7 +28,7 @@ class EventProcessor:
 
 
 class threshold_detector(Node):
-    """ """
+    """Zero out pixels below threshold (50)."""
 
     nodeName = "threshold_detector"
 

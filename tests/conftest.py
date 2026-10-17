@@ -14,7 +14,17 @@ import numpy as np
 import pytest
 import pytest_asyncio
 
-import ami.multiproc as mp
+# Disable MCP server before any AMI imports. The MCP server thread leaks
+# across tests and can deadlock at interpreter shutdown (zmq context
+# termination racing with the logging module's lock), so it must stay off
+# for every test run regardless of which files are collected.
+os.environ["AMI_DISABLE_MCP"] = "1"
+
+# Run Qt headless by default so GUI tests don't depend on a working X display.
+# setdefault lets developers override it (e.g. QT_QPA_PLATFORM=xcb) to watch the windows.
+os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+
+import ami.multiproc as mp  # noqa: E402
 
 try:
     import psana
@@ -33,16 +43,16 @@ try:
 except ImportError:
     h5py = None
 
-import time
+import time  # noqa: E402
 
-from ami.asyncqt import QEventLoop
-from ami.client import GraphMgrAddress
-from ami.comm import GraphCommHandler
-from ami.flowchart.library.Operators import MeanVsScan
-from ami.graph_nodes import Map, PickN
-from ami.graphkit_wrapper import Graph
-from ami.local import build_parser, run_ami
-from ami.multiproc import check_mp_start_method
+from ami.asyncqt import QEventLoop  # noqa: E402
+from ami.client import GraphMgrAddress  # noqa: E402
+from ami.comm import GraphCommHandler  # noqa: E402
+from ami.flowchart.library.Operators import MeanVsScan  # noqa: E402
+from ami.graph_nodes import Map, PickN  # noqa: E402
+from ami.graphkit_wrapper import Graph  # noqa: E402
+from ami.local import build_parser, run_ami  # noqa: E402
+from ami.multiproc import check_mp_start_method  # noqa: E402
 
 psanatest = pytest.mark.skipif(psana is None or hasattr(psana, "_psana"), reason="psana not avaliable")
 
@@ -351,7 +361,7 @@ def start_ami(request, workerjson, ami_backend, ipc_dir):
         psana_ipc_dir = tempfile.mkdtemp(prefix="ami_psana_")
 
         parser = build_parser()
-        args = parser.parse_args(["-n", "1", "-i", psana_ipc_dir, "--headless", f"psana://{workerjson}"])
+        args = parser.parse_args(["-n", "1", "-b", "10", "-i", psana_ipc_dir, "--headless", f"psana://{workerjson}"])
 
         queue = mp.Queue()
         ami = mp.Process(name="ami_psana", target=run_ami, args=(args, queue))
