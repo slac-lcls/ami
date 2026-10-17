@@ -8,6 +8,7 @@ without requiring a running AMI backend (no data execution).
 import asyncio  # noqa: E402
 import os
 import shutil
+import sys
 import tempfile
 import threading
 import time
@@ -328,6 +329,10 @@ async def test_validate_graph_disconnected(amicli):
     assert any("Roi2D.0" in issue for issue in issues)
 
 
+@pytest.mark.skipif(
+    sys.version_info < (3, 10),
+    reason="asyncio.Lock binds to the event loop it was created on in Python 3.9",
+)
 @pytest.mark.asyncio
 async def test_save_load_graph(amicli, tmp_path):
     """Test saving and loading a graph preserves state."""

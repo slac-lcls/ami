@@ -25,8 +25,17 @@ def test_complex_graph(complex_graph_file, start_ami):
         if end - start > 20:
             raise TimeoutError
 
-    bins = comm_handler.fetch("BinningOn.Bins")
-    counts = comm_handler.fetch("BinningOn.Counts")
+    # graphVersion == featuresVersion only means one message at the new version
+    # has arrived; it may not contain BinningOn's output yet, so poll for it too.
+    names = ["BinningOn.Bins", "BinningOn.Counts"]
+    results = comm_handler.fetch(names)
+    while results is None or any(r is None for r in results):
+        if time.time() - start > 20:
+            raise TimeoutError("BinningOn results never appeared in the feature store")
+        time.sleep(0.1)
+        results = comm_handler.fetch(names)
+
+    bins, counts = results
     np.testing.assert_equal(bins, np.array([1]))
     np.testing.assert_equal(counts, np.array([10000.0]))
 
