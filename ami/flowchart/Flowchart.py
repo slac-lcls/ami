@@ -145,6 +145,8 @@ class Flowchart(QtCore.QObject):
             sock.close(linger=0)
         if self._widget is not None:
             self._widget.graphCommHandler.close()
+            if self._widget.amicli is not None:
+                self._widget.amicli.graphCommHandler.close()
         self.ctx.term()
 
     def start_prometheus(self, port):

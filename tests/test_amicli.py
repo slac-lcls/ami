@@ -8,12 +8,10 @@ without requiring a running AMI backend (no data execution).
 import asyncio  # noqa: E402
 import os
 import shutil
+import sys
 import tempfile
 import threading
 import time
-
-# Disable MCP server before any AMI imports
-os.environ["AMI_DISABLE_MCP"] = "1"
 
 import pytest  # noqa: E402
 
@@ -90,6 +88,24 @@ def flowchart_module(ami_backend, broker_module, dmypy):
     future.result(timeout=10)
 
     yield fc
+
+    # Unregister Prometheus metrics if the widget was created, otherwise they
+    # leak into the global registry and cause "Duplicated timeseries" errors
+    # the next time a FlowchartCtrlWidget is constructed in this process.
+    try:
+        import prometheus_client as pc
+
+        if fc._widget is not None:
+            try:
+                pc.REGISTRY.unregister(fc._widget.graph_info)
+            except Exception:
+                pass
+            try:
+                pc.REGISTRY.unregister(fc._widget.graph_version)
+            except Exception:
+                pass
+    except Exception as e:
+        print(f"Warning: Failed to unregister prometheus metrics: {e}")
 
     fc.close()
 
@@ -313,6 +329,10 @@ async def test_validate_graph_disconnected(amicli):
     assert any("Roi2D.0" in issue for issue in issues)
 
 
+@pytest.mark.skipif(
+    sys.version_info < (3, 10),
+    reason="asyncio.Lock binds to the event loop it was created on in Python 3.9",
+)
 @pytest.mark.asyncio
 async def test_save_load_graph(amicli, tmp_path):
     """Test saving and loading a graph preserves state."""
