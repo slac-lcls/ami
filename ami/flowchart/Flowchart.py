@@ -2722,6 +2722,11 @@ class Flowchart(QtCore.QObject):
         while True:
             await self.checkpoint.recv_string()
             msg = await self.checkpoint.recv_pyobj()
+
+            if isinstance(msg, fcMsgs.NodeScreenshotReply):
+                self.widget().amicli.resolve_screenshot_request(msg.request_id, png=msg.png, error=msg.error)
+                continue
+
             node_name = msg.name
             new_node_state = msg.state
 

@@ -1,17 +1,29 @@
 """AmiCli - Graph manipulation API for MCP server and QtConsole."""
 
+import ast
+import asyncio
 import collections
+import concurrent.futures
 import json
 import logging
 import os
 import time
 from typing import Any
 
+import numpy as np
+import zmq
 from amitypes import Array1d, Array2d, Array3d
+from qtpy import QtCore
 
 from ami.flowchart.library.common import SourceNode
+from ami.flowchart.Node import find_free_pos, find_nearest
 
 logger = logging.getLogger(__name__)
+
+
+def node_type(node):
+    """Return a node's type name. Source nodes have no nodeName, so fall back to the class name."""
+    return getattr(node, "nodeName", type(node).__name__)
 
 
 class AmiCli:
@@ -32,6 +44,15 @@ class AmiCli:
         self.chartWidget = chartWidget
         self.chart = chart
         self.graphCommHandler = graphCommHandler
+        # Nodes created through this API that have not been positioned yet, mapped to
+        # the position they spawned at. They get placed next to the first node they are
+        # connected to, so editing an existing graph never re-arranges the user's layout.
+        self._unplaced = {}
+        # Pending render_plot screenshot requests: request_id -> concurrent.futures.Future.
+        # Populated by request_screenshot (Qt thread), resolved by resolve_screenshot_request
+        # (also Qt thread, called from Flowchart.updateState on a NodeScreenshotReply).
+        self._screenshot_requests = {}
+        self._screenshot_request_counter = 0
 
     @property
     def graph(self):
@@ -55,6 +76,7 @@ class AmiCli:
             if label:
                 node._label = label
                 node.graphicsItem().setLabel(label)
+            self._mark_unplaced(node)
             return node
         except Exception as e:
             logger.error(f"Failed to create node {node_type}: {e}")
@@ -73,6 +95,7 @@ class AmiCli:
             raise Exception(f"Node '{node_name}' not found")
         node = self.graph.nodes[node_name]["node"]
         node.close()
+        self._unplaced.pop(node, None)
 
     def connect_nodes(self, src_name, src_term, dst_name, dst_term):
         """Connect two node terminals. Automatically handles subgraph boundary crossing.
@@ -118,6 +141,7 @@ class AmiCli:
             if src_sg == dst_sg:
                 # Same context (both root, or both in same subgraph): normal connect
                 src_terminal.connectTo(dst_terminal)
+                self._place_connected(src_node, dst_node)
             else:
                 # Cross-boundary: route through placeholder
                 self._connect_across_boundary(
@@ -135,6 +159,42 @@ class AmiCli:
         except Exception as e:
             logger.error(f"Failed to connect {src_name}.{src_term} -> {dst_name}.{dst_term}: {e}")
             raise
+
+    def _mark_unplaced(self, node):
+        pos = node.graphicsItem().pos()
+        self._unplaced[node] = (pos.x(), pos.y())
+
+    def _is_unplaced(self, node):
+        """True if node was created by this API and has not been moved since (by us or the user)."""
+        if node not in self._unplaced:
+            return False
+        pos = node.graphicsItem().pos()
+        if (pos.x(), pos.y()) != self._unplaced[node]:
+            del self._unplaced[node]
+            return False
+        return True
+
+    def _place_connected(self, src_node, dst_node):
+        """Position newly created nodes relative to the node they were just connected to.
+
+        Downstream nodes go to the right of their source, upstream nodes to the left
+        of their destination. Nodes that are already placed are never moved.
+        """
+        if self._is_unplaced(dst_node):
+            self._unplaced.pop(src_node, None)
+            self._place_near(dst_node, src_node, 300)
+            del self._unplaced[dst_node]
+        elif self._is_unplaced(src_node):
+            self._place_near(src_node, dst_node, -300)
+            del self._unplaced[src_node]
+
+    def _place_near(self, node, anchor, dx):
+        item = node.graphicsItem()
+        pos = anchor.graphicsItem().pos()
+        x, y = find_nearest(pos.x() + dx), find_nearest(pos.y())
+        if item.scene() is not None:
+            x, y = find_free_pos(item, x, y, item.scene())
+        item.setPos(x, y)
 
     def _find_subgraph_for_node(self, node_name):
         """Return subgraph name if node is inside one, else None."""
@@ -267,6 +327,7 @@ class AmiCli:
             node_type = self.chart.source_library.getSourceType(source_name)
             node = SourceNode(name=source_name, terminals={"Out": {"io": "out", "ttype": node_type}})
             self.chart.addNode(node=node)
+            self._mark_unplaced(node)
             return node.name()
         except Exception as e:
             logger.error(f"Failed to ensure source '{source_name}': {e}")
@@ -326,6 +387,10 @@ class AmiCli:
     def set_node_parameters(self, node_name, parameters):
         """Set parameters on a node.
 
+        If the node's display window is open (e.g. an Roi2D box), it's pushed there too, so
+        the window reflects the change immediately and doesn't later send a stale checkpoint
+        that would silently revert it.
+
         Args:
             node_name: Node name (e.g., 'GaussianFilter1D.0')
             parameters: Dict of parameter name -> value (e.g., {"sigma": 2.0})
@@ -349,6 +414,11 @@ class AmiCli:
                     node.values[k] = v
             # Emit signal so graph picks up new parameters
             node.sigStateChanged.emit(node)
+
+            from ami.client import flowchart_messages as fcMsgs
+
+            self._publish_to_node(node, fcMsgs.NodeCtrlUpdate(node_name, parameters))
+
             return node.stateGroup.state()
         except Exception as e:
             logger.error(f"Failed to set parameters on '{node_name}': {e}")
@@ -435,6 +505,7 @@ class AmiCli:
 
             # Restore state synchronously
             self.chart.restoreState(state)
+            self._unplaced.clear()
         except Exception as e:
             logger.error(f"Failed to load graph from '{filename}': {e}")
             raise
@@ -444,6 +515,7 @@ class AmiCli:
 
         This is fire-and-forget. The clear runs asynchronously via the UI action.
         """
+        self._unplaced.clear()
         self.ctrl.ui.actionNew.trigger()
 
     def auto_layout(self):
@@ -456,6 +528,7 @@ class AmiCli:
             # Trigger the arrange action
             if hasattr(self.ctrl, "arrangeClicked"):
                 self.ctrl.arrangeClicked()
+                self._unplaced.clear()
             else:
                 logger.warning("Auto layout not available")
         except Exception as e:
@@ -521,13 +594,22 @@ class AmiCli:
     def list_node_types(self):
         """Get all registered node types with descriptions, terminal specs, and parameters.
 
+        Terminal specs come from Node.describe_class(), which reads a class's static terminals
+        without instantiating it (see its docstring for why: building ~90 real GUI nodes just to
+        inspect them left temp nodes for Python's garbage collector to free on the wrong thread,
+        which could segfault the Qt main thread). A few node types add terminals themselves after
+        construction (e.g. via a user-facing "add input" prompt) rather than declaring them
+        statically; those report empty inputs/outputs here but "can_add_inputs"/"can_add_outputs"
+        is true, so an empty list isn't mistaken for "this node takes no input".
+
         Returns:
-            List of dicts with type, description, inputs, outputs, and parameters.
+            List of dicts with type, description, inputs, outputs, parameters, viewable,
+            can_add_inputs, can_add_outputs.
             Example: [{"type": "Roi2D", "description": "Region of Interest of image.",
                        "inputs": {"In": {"type": "Array2d", "optional": false}},
                        "outputs": {"Out": {"type": "Array2d"}, "Roi_Coordinates": {"type": "Array1d"}},
-                       "parameters": [{"name": "origin x", "type": "intSpin", "value": 0, "min": 0}, ...]
-                      }]
+                       "parameters": [{"name": "origin x", "type": "intSpin", "value": 0, "min": 0}],
+                       "viewable": true, "can_add_inputs": false, "can_add_outputs": false}]
         """
         try:
             types = []
@@ -545,28 +627,20 @@ class AmiCli:
                             p.update(param[2])
                         params.append(p)
 
-                # Get terminal info (requires instantiation)
-                inputs = {}
-                outputs = {}
-                try:
-                    sample = node_class("_temp_")
-                    for name, term_ref in sample.inputs().items():
-                        term = term_ref() if callable(term_ref) else term_ref
-                        if term is None:
-                            continue
-                        inputs[name] = {
-                            "type": str(term.type()),
-                            "optional": term.optional(),
-                        }
-                    for name, term_ref in sample.outputs().items():
-                        term = term_ref() if callable(term_ref) else term_ref
-                        if term is None:
-                            continue
-                        outputs[name] = {
-                            "type": str(term.type()),
-                        }
-                except Exception:
-                    pass
+                spec = node_class.describe_class()
+                inputs, outputs = {}, {}
+                viewable = can_add_inputs = can_add_outputs = False
+                if spec is not None:
+                    for name, opts in spec["terminals"].items():
+                        entry = {"type": str(opts.get("ttype"))}
+                        if opts.get("io") == "in":
+                            entry["optional"] = bool(opts.get("optional", False))
+                            inputs[name] = entry
+                        elif opts.get("io") == "out":
+                            outputs[name] = entry
+                    viewable = spec["viewable"]
+                    can_add_inputs = spec["allowAddInput"]
+                    can_add_outputs = spec["allowAddOutput"]
 
                 types.append(
                     {
@@ -575,6 +649,9 @@ class AmiCli:
                         "inputs": inputs,
                         "outputs": outputs,
                         "parameters": params,
+                        "viewable": viewable,
+                        "can_add_inputs": can_add_inputs,
+                        "can_add_outputs": can_add_outputs,
                     }
                 )
             return types
@@ -1049,6 +1126,304 @@ class AmiCli:
             data = self.graphCommHandler.fetch(feature_name)
         return data
 
+    def _pending_upstream_changes(self, node_name):
+        """Names of upstream nodes (inclusive) with unapplied changes, same check the GUI makes
+        before opening a node's window (see FlowchartWidget.selectionChanged).
+        """
+        import networkx as nx
+
+        if node_name not in self.graph.nodes():
+            raise Exception(f"Node '{node_name}' not found")
+        pending = set()
+        for ancestor in nx.ancestors(self.graph, node_name) | {node_name}:
+            gnode = self.graph.nodes[ancestor]
+            path_node = gnode.get("node")
+            if path_node is not None and getattr(path_node, "changed", False) and hasattr(path_node, "to_operation"):
+                pending.add(ancestor)
+        return pending
+
+    def open_view(self, node_name):
+        """Open a node's display window if it isn't already open, same as clicking it in the GUI.
+
+        Must run in the Qt thread. Raises if the node isn't found, isn't viewable/buffered, or
+        has unapplied upstream changes (apply_graph() first, as the GUI requires before viewing).
+        """
+        if node_name not in self.graph.nodes():
+            if node_name in self.list_sources():
+                raise Exception(
+                    f"Node '{node_name}' not found. It's a known source — call ensure_source('{node_name}') first."
+                )
+            raise Exception(f"Node '{node_name}' not found")
+        node = self.graph.nodes[node_name]["node"]
+        # "buffered" nodes (ScalarPlot, ScatterPlot, TimePlot, ScatterRoi, ...) show a window of
+        # recent events rather than the latest value, but the GUI opens a window for them the
+        # same way (see FlowchartWidget.build_views' separate buffered-node branch).
+        if not hasattr(node, "display") or not (node.viewable() or node.buffered()):
+            raise Exception(
+                f"Node '{node_name}' ({node_type(node)}) has no plot window to screenshot; "
+                "use fetch_data, or connect a viewer node"
+            )
+        if node.viewed:
+            return
+        pending = self._pending_upstream_changes(node_name)
+        if pending:
+            raise Exception(f"Pending changes for {', '.join(sorted(pending))}; call apply_graph() first")
+        asyncio.ensure_future(self.chartWidget.build_views([node], ctrl=True))
+
+    def request_screenshot(self, node_name):
+        """Request a PNG screenshot of node_name's open display window.
+
+        Must run in the Qt thread; opens the window first via open_view() if needed. Returns a
+        concurrent.futures.Future, resolved from Flowchart.updateState when the window's reply
+        arrives (or left pending forever if the window never answers — callers must apply their
+        own timeout via future.result(timeout=...)).
+        """
+        from ami.client import flowchart_messages as fcMsgs
+
+        self.open_view(node_name)
+        node = self.graph.nodes[node_name]["node"]
+
+        self._screenshot_request_counter += 1
+        request_id = self._screenshot_request_counter
+        future = concurrent.futures.Future()
+        future.request_id = request_id  # so a timed-out caller can abandon_screenshot_request(future)
+        self._screenshot_requests[request_id] = future
+
+        def send_once_viewed():
+            # The window subscribes to its topic before setting viewed=True (NodeProcess.display,
+            # called synchronously from its message loop), so this can't race a dropped request.
+            if not future.done():
+                if node.viewed:
+                    self._publish_to_node(node, fcMsgs.NodeScreenshotRequest(node_name, request_id))
+                else:
+                    QtCore.QTimer.singleShot(50, send_once_viewed)
+
+        send_once_viewed()
+        return future
+
+    def abandon_screenshot_request(self, future):
+        """Drop a request_screenshot() future the caller gave up waiting on (e.g. after its own
+        timeout), so a late reply has nothing left to resolve. Must run in the Qt thread.
+
+        Also cancels the future (a no-op if the window already replied): request_screenshot's
+        send_once_viewed polls "not future.done()" to decide whether to keep re-scheduling
+        itself, so if the window never opens/views, cancelling here is what stops it from
+        polling forever after the caller has given up.
+        """
+        self._screenshot_requests.pop(getattr(future, "request_id", None), None)
+        future.cancel()
+
+    def resolve_screenshot_request(self, request_id, png=None, error=None):
+        """Complete the future from request_screenshot() with the window's reply.
+
+        Called from Flowchart.updateState on the Qt thread when a NodeScreenshotReply arrives.
+        """
+        future = self._screenshot_requests.pop(request_id, None)
+        if future is None or future.done():
+            return  # already timed out and abandoned by the caller
+        if error is not None:
+            future.set_exception(Exception(error))
+        else:
+            future.set_result(png)
+
+    # Plot node types that take_reference/compare_to_reference support, mapped to their (x, y) input terminals.
+    # x is None when the plot draws y against its index.
+    REFERENCE_PLOTS = {"LinePlot": ("X", "Y"), "WaveformViewer": (None, "In")}
+    REFERENCE_DIR = os.path.expanduser("~/.cache/ami/references")
+
+    def is_reference_plot(self, name):
+        """True if name is a LinePlot/WaveformViewer node (False for sources, features, other nodes)."""
+        return name in self.graph.nodes() and node_type(self.graph.nodes[name]["node"]) in self.REFERENCE_PLOTS
+
+    def plot_traces(self, node_name):
+        """Return the traces of a LinePlot/WaveformViewer as {legend name: {"x": feature or None, "y": feature}}.
+
+        Legend names match the plot window: "<y> vs <x>" for LinePlot, "<y>" for WaveformViewer.
+        Traces with unconnected inputs are skipped. Must run in the Qt thread.
+        """
+        if node_name not in self.graph.nodes():
+            raise Exception(f"Node '{node_name}' not found")
+        node = self.graph.nodes[node_name]["node"]
+        if node_type(node) not in self.REFERENCE_PLOTS:
+            raise Exception(
+                f"Node '{node_name}' ({node_type(node)}) is not supported; use one of {list(self.REFERENCE_PLOTS)}"
+            )
+        xterm, yterm = self.REFERENCE_PLOTS[node_type(node)]
+        input_vars = node.input_vars()
+        traces = {}
+        # extra traces use terminals "Y.1"/"X.1", "In.1", ... (see Node.nextTerminalName)
+        for term in input_vars:
+            if term != yterm and not term.startswith(yterm + "."):
+                continue
+            suffix = term[len(yterm) :]
+            x = input_vars.get(xterm + suffix) if xterm else None
+            if xterm and x is None:
+                continue
+            y = input_vars[term]
+            traces[f"{y} vs {x}" if xterm else y] = {"x": x, "y": y}
+        if not traces:
+            raise Exception(f"Node '{node_name}' has no connected traces")
+        return traces
+
+    def plot_features(self, node_name, trace=""):
+        """Return the features of one trace of a LinePlot/WaveformViewer as {"x": ..., "y": ...}.
+
+        Args:
+            node_name: Plot node name
+            trace: Legend name of the trace (see plot_traces); optional if the plot has only one trace
+
+        Must run in the Qt thread. Fetch the data with fetch_xy() (which may block) from the caller.
+        """
+        traces = self.plot_traces(node_name)
+        if trace:
+            if trace not in traces:
+                raise Exception(f"Trace '{trace}' not found on '{node_name}'. Traces: {list(traces)}")
+            return traces[trace]
+        if len(traces) > 1:
+            raise Exception(f"'{node_name}' has {len(traces)} traces; pass trace= one of {list(traces)}")
+        return next(iter(traces.values()))
+
+    def fetch_xy(self, features):
+        """Fetch live (x, y) arrays for the features returned by plot_features(). Blocks; not for the Qt thread."""
+        y = self.fetch_data(features["y"])
+        if y is None:
+            raise Exception(f"No data for '{features['y']}' yet. Check connections and apply_graph.")
+        y = np.asarray(y, dtype=float)
+        if y.ndim != 1:
+            raise Exception(f"'{features['y']}' is {y.ndim}D; references need 1D data")
+        if features["x"] is None:
+            return np.arange(len(y), dtype=float), y
+        x = self.fetch_data(features["x"])
+        if x is None:
+            raise Exception(f"No data for '{features['x']}' yet.")
+        x = np.asarray(x, dtype=float)
+        if x.shape != y.shape:
+            raise Exception(f"X {x.shape} and Y {y.shape} have different shapes")
+        return x, y
+
+    def write_reference_csv(self, node_name, x, y, name=""):
+        """Write x, y to a CSV in REFERENCE_DIR and return its path."""
+        os.makedirs(self.REFERENCE_DIR, exist_ok=True)
+        stamp = time.strftime("%Y%m%d-%H%M%S")
+        base = "".join(c if c.isalnum() or c in "-_." else "_" for c in (name or node_name))
+        path = os.path.join(self.REFERENCE_DIR, f"{base}_{stamp}.csv")
+        np.savetxt(path, np.column_stack([x, y]), delimiter=",", header="x,y", comments="")
+        return path
+
+    def reference_xy(self, node_name, name):
+        """Return the (x, y) arrays of an existing reference overlay. Must run in the Qt thread."""
+        _, widget = self._plot_widget(node_name)
+        if name not in widget.reference_traces:
+            raise Exception(f"Reference '{name}' not found on '{node_name}'. Available: {list(widget.csv_references)}")
+        x, y = widget.reference_traces[name].getData()
+        return np.asarray(x, dtype=float), np.asarray(y, dtype=float)
+
+    def _plot_widget(self, node_name):
+        """Return the flowchart-side plot widget of a node, creating it if needed."""
+        if node_name not in self.graph.nodes():
+            raise Exception(f"Node '{node_name}' not found")
+        node = self.graph.nodes[node_name]["node"]
+        widget = None
+        if hasattr(node, "display"):
+            widget = node.display(topics=None, terms=None, addr=None, win=None)
+        if widget is None or not hasattr(widget, "load_csv_reference"):
+            raise Exception(f"Node '{node_name}' ({type(node).__name__}) is not a plot and does not support references")
+        return node, widget
+
+    def _publish_to_node(self, node, msg):
+        """Publish msg on node's topic over the chart broker.
+
+        The MessageBroker only forwards it to a running NodeProcess (the display window); if
+        none is running, it's silently dropped. Low-level: does not mark the node as changed.
+        """
+
+        async def send():
+            await self.chart.broker.send_string(node.name(), zmq.SNDMORE)
+            await self.chart.broker.send_pyobj(msg)
+
+        asyncio.ensure_future(send())
+
+    def _send_to_node_window(self, node, msg):
+        """Push msg to node's display window, if open, and refresh the state panel.
+
+        Used for updates made directly through this API (agent/MCP calls) that need to reach an
+        already-open NodeProcess window, bypassing the normal checkpoint/restore path.
+        """
+        self._publish_to_node(node, msg)
+        node.sigStateChanged.emit(node)
+
+    def _push_references(self, node, widget):
+        """Sync reference overlays to the node's display window (if open) and refresh the state panel."""
+        from ami.client import flowchart_messages as fcMsgs
+
+        self._send_to_node_window(node, fcMsgs.NodeReferencesUpdate(node.name(), dict(widget.csv_references)))
+
+    def list_references(self, node_name):
+        """Return the CSV reference overlays of a plot node.
+
+        Args:
+            node_name: Plot node name (e.g., 'LinePlot.0')
+
+        Returns:
+            Dict of reference name -> CSV file path
+        """
+        _, widget = self._plot_widget(node_name)
+        return dict(widget.csv_references)
+
+    def set_reference(self, node_name, path, name=""):
+        """Overlay a CSV file as a reference trace on a plot node.
+
+        Same as "Add CSV Reference" in the plot's CSV dialog. The CSV is either two
+        columns (x, y) or a single column (y, plotted against its index), with an
+        optional header row. Setting a name that already exists replaces it.
+
+        Args:
+            node_name: Plot node name (e.g., 'LinePlot.0')
+            path: Path to the CSV file
+            name: Reference name (defaults to the file name without extension)
+
+        Returns:
+            Name of the reference that was set
+        """
+        try:
+            node, widget = self._plot_widget(node_name)
+            path = os.path.abspath(os.path.expanduser(path))
+            if not os.path.isfile(path):
+                raise Exception(f"File '{path}' not found")
+            # Resolve the default name (matches load_csv_reference's own default) before the
+            # replace check, so a second call with no explicit name replaces rather than adding
+            # "<name>_1".
+            name = name or os.path.splitext(os.path.basename(path))[0]
+            if name in widget.csv_references:
+                widget.remove_csv_reference(name)
+            name = widget.load_csv_reference(path, name=name)
+            if name is None:
+                raise Exception(f"Could not parse '{path}' as a CSV reference (expected x,y or y columns)")
+            self._push_references(node, widget)
+            return name
+        except Exception as e:
+            logger.error(f"Failed to set reference on '{node_name}': {e}")
+            raise
+
+    def remove_reference(self, node_name, name):
+        """Remove a CSV reference overlay from a plot node.
+
+        Args:
+            node_name: Plot node name (e.g., 'LinePlot.0')
+            name: Reference name (see list_references)
+        """
+        try:
+            node, widget = self._plot_widget(node_name)
+            if name not in widget.csv_references:
+                raise Exception(
+                    f"Reference '{name}' not found on '{node_name}'. Available: {list(widget.csv_references)}"
+                )
+            widget.remove_csv_reference(name)
+            self._push_references(node, widget)
+        except Exception as e:
+            logger.error(f"Failed to remove reference '{name}' from '{node_name}': {e}")
+            raise
+
     def add_terminal(self, node_name, terminal_name, direction, ttype="Any"):
         """Add a terminal to a node that supports it.
 
@@ -1144,8 +1519,8 @@ class AmiCli:
             raise Exception(f"Node '{node_name}' not found")
         node = self.graph.nodes[node_name]["node"]
 
-        if node.nodeName != "Calculator":
-            raise ValueError(f"Node '{node_name}' is not a Calculator (it's a {node.nodeName})")
+        if node_type(node) != "Calculator":
+            raise ValueError(f"Node '{node_name}' is not a Calculator (it's a {node_type(node)})")
 
         # Get available vars using built-in method
         input_vars = node.input_vars()
@@ -1165,6 +1540,95 @@ class AmiCli:
             "expression": expression,
             "available_vars": list(input_vars.values()),
         }
+
+    def _python_editor(self, node_name):
+        if node_name not in self.graph.nodes():
+            raise Exception(f"Node '{node_name}' not found")
+        node = self.graph.nodes[node_name]["node"]
+        if node_type(node) != "PythonEditor":
+            raise ValueError(f"Node '{node_name}' is not a PythonEditor (it's a {node_type(node)})")
+        return node
+
+    def get_python_code(self, node_name):
+        """Get the code of a PythonEditor node.
+
+        Args:
+            node_name: PythonEditor node name (e.g., 'PythonEditor.0')
+
+        Returns:
+            Dict with the code and the node's input/output terminals in call/return order.
+            If no code has been set yet, returns the default template.
+        """
+        node = self._python_editor(node_name)
+        code = node.values["text"] or node.generate_template(node.inputs().keys(), node.outputs().keys())
+        return {
+            "node": node_name,
+            "code": code,
+            "inputs": list(node.inputs().keys()),
+            "outputs": list(node.outputs().keys()),
+        }
+
+    def set_python_code(self, node_name, code):
+        """Set the code of a PythonEditor node.
+
+        The code must define ``class EventProcessor`` with an ``on_event(self, <inputs>, *args, **kwargs)``
+        method taking one argument per input terminal and returning one value per output terminal, plus the
+        begin_run/end_run/begin_step/end_step hooks (the workers call all of them).
+        The code is only checked for syntax and structure here, not executed; runtime errors show up
+        in get_graph_errors() after apply_graph().
+
+        If the node's editor window is already open, its text is overwritten too, discarding any
+        unsaved edits made directly in that window — the caller is expected to have shown the code
+        to the user first.
+
+        Args:
+            node_name: PythonEditor node name (e.g., 'PythonEditor.0')
+            code: Python source
+
+        Returns:
+            Dict with node name, inputs, and outputs
+
+        Raises:
+            Exception: If the node is not a PythonEditor or the code is invalid
+        """
+        node = self._python_editor(node_name)
+        try:
+            tree = ast.parse(code)
+        except SyntaxError as e:
+            raise ValueError(f"Syntax error on line {e.lineno}: {e.msg}")
+
+        proc = next((n for n in tree.body if isinstance(n, ast.ClassDef) and n.name == "EventProcessor"), None)
+        if proc is None:
+            raise ValueError("Code must define a top-level 'class EventProcessor' with an on_event method")
+        methods = {n.name: n for n in proc.body if isinstance(n, ast.FunctionDef)}
+        on_event = methods.get("on_event")
+        if on_event is None:
+            raise ValueError("EventProcessor must define on_event(self, <inputs>, *args, **kwargs)")
+        missing = [m for m in ("begin_run", "end_run", "begin_step", "end_step") if m not in methods]
+        if missing:
+            raise ValueError(f"EventProcessor is missing {missing}; the workers call these (use 'pass' if unneeded)")
+
+        inputs = list(node.inputs().keys())
+        nargs = len(on_event.args.args) - 1  # minus self
+        # named args beyond the inputs would never be filled; fewer is only ok if *args takes the rest
+        if nargs > len(inputs) or (nargs < len(inputs) and on_event.args.vararg is None):
+            raise ValueError(
+                f"on_event takes {nargs} argument(s) besides self, but the node has {len(inputs)} input(s): {inputs}"
+            )
+
+        node.values["text"] = code
+        if node.widget is not None:
+            node.widget.restoreState({"text": code})
+        node.changed = True
+        self.chart.sigNodeChanged.emit(node)
+
+        # Also reach the editor window if it's open in its own NodeProcess (a separate process
+        # from this one, so node.widget above is never set there).
+        from ami.client import flowchart_messages as fcMsgs
+
+        self._send_to_node_window(node, fcMsgs.NodeWidgetStateUpdate(node.name(), {"text": code}))
+
+        return {"node": node_name, "inputs": inputs, "outputs": list(node.outputs().keys())}
 
     def set_filter_conditions(self, node_name, conditions):
         """Set filter conditions for a Filter node.
@@ -1186,8 +1650,8 @@ class AmiCli:
             raise Exception(f"Node '{node_name}' not found")
         node = self.graph.nodes[node_name]["node"]
 
-        if node.nodeName != "Filter":
-            raise ValueError(f"Node '{node_name}' is not a Filter (it's a {node.nodeName})")
+        if node_type(node) != "Filter":
+            raise ValueError(f"Node '{node_name}' is not a Filter (it's a {node_type(node)})")
 
         # Set the conditions
         node.values = collections.defaultdict(dict, conditions)

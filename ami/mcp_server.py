@@ -1,5 +1,6 @@
 """AMI MCP Server - exposes graph manipulation via Model Context Protocol."""
 
+import concurrent.futures
 import json
 import logging
 import os
@@ -9,7 +10,7 @@ import socket
 import tempfile
 import threading
 
-from mcp.server.mcpserver import MCPServer
+from mcp.server.mcpserver import Image, MCPServer
 
 logger = logging.getLogger(__name__)
 
@@ -34,11 +35,47 @@ def _find_free_port(start=9100, max_tries=100):
     raise RuntimeError(f"No free port in range {start}-{start + max_tries}")
 
 
-def _summarize_data(data):
+def _round(arr):
+    """Round floats to 4 significant figures and turn NaN/inf into None so they stay valid JSON."""
+    import numpy as np
+
+    arr = np.asarray(arr, dtype=float)
+    out = [float(f"{v:.4g}") if np.isfinite(v) else None for v in arr.ravel()]
+    return np.array(out, dtype=object).reshape(arr.shape).tolist()
+
+
+def _downsample_1d(data, points):
+    """Min/max-per-bin downsample so narrow peaks survive. Returns (x_bin_start, min, max)."""
+    import numpy as np
+
+    n = len(data)
+    if n <= points:
+        idx = np.arange(n)
+        return idx.tolist(), _round(data), _round(data)
+    edges = np.linspace(0, n, points + 1).astype(int)
+    mins = [np.nanmin(data[a:b]) if np.isfinite(data[a:b]).any() else np.nan for a, b in zip(edges[:-1], edges[1:])]
+    maxs = [np.nanmax(data[a:b]) if np.isfinite(data[a:b]).any() else np.nan for a, b in zip(edges[:-1], edges[1:])]
+    return edges[:-1].tolist(), _round(mins), _round(maxs)
+
+
+def _block_means(data, blocks):
+    """Coarse grid of block means for a 2D array."""
+    import numpy as np
+
+    rows = np.array_split(np.arange(data.shape[0]), min(blocks, data.shape[0]))
+    cols = np.array_split(np.arange(data.shape[1]), min(blocks, data.shape[1]))
+    with np.errstate(all="ignore"):
+        grid = [[np.nanmean(data[np.ix_(r, c)]) for c in cols] for r in rows]
+    return _round(grid)
+
+
+def _summarize_data(data, detail="summary"):
     """Convert fetched data to LLM-friendly JSON summary.
 
     Args:
         data: Data from feature store (scalar, ndarray, dict, or None)
+        detail: 'summary' (statistics only), 'normal' (+ peak, NaN count, ~200-point curve or
+                16x16 block means and projections) or 'full' (+ larger curve/grid)
 
     Returns:
         Dict with type, shape, statistics suitable for JSON serialization
@@ -50,7 +87,7 @@ def _summarize_data(data):
     elif isinstance(data, (int, float, bool)):
         return {"type": "scalar", "value": float(data) if isinstance(data, (int, float)) else data}
     elif isinstance(data, np.ndarray):
-        return {
+        summary = {
             "type": f"Array{data.ndim}d",
             "shape": list(data.shape),
             "dtype": str(data.dtype),
@@ -59,11 +96,31 @@ def _summarize_data(data):
             "mean": float(np.nanmean(data)),
             "std": float(np.nanstd(data)),
         }
+        if detail == "summary" or data.size == 0 or not np.issubdtype(data.dtype, np.number):
+            return summary
+        values = data.astype(float)
+        finite = np.isfinite(values)
+        summary["nan_count"] = int(np.isnan(values).sum())
+        summary["inf_count"] = int(np.isinf(values).sum())
+        if finite.any():
+            peak = np.unravel_index(np.nanargmax(np.where(finite, values, np.nan)), values.shape)
+            summary["peak"] = {"index": [int(i) for i in peak], "value": float(values[peak])}
+        if values.ndim == 1:
+            idx, mins, maxs = _downsample_1d(values, 200 if detail == "normal" else 1000)
+            summary["curve"] = {"index": idx, "min": mins, "max": maxs}
+        elif values.ndim == 2:
+            with np.errstate(all="ignore"):
+                summary["blocks"] = _block_means(values, 16 if detail == "normal" else 64)
+                for axis, key in ((0, "column_means"), (1, "row_means")):
+                    proj = np.nanmean(values, axis=axis)
+                    idx, mins, maxs = _downsample_1d(proj, 200 if detail == "normal" else 1000)
+                    summary[key] = {"index": idx, "min": mins, "max": maxs}
+        return summary
     elif isinstance(data, dict):
         # Recursively summarize dict values
         summary = {}
         for k, v in data.items():
-            summary[k] = _summarize_data(v)
+            summary[k] = _summarize_data(v, detail)
         return {"type": "dict", "keys": list(data.keys()), "values": summary}
     else:
         return {"type": type(data).__name__, "repr": repr(data)[:200]}
@@ -80,7 +137,7 @@ def create_node(node_type: str, label: str = "") -> str:
     Create a node in the AMI flowchart.
 
     Args:
-        node_type: Type of node (e.g., 'BinningNode', 'ScatterPlot')
+        node_type: Type of node (e.g., 'Binning', 'ScatterPlot')
         label: Optional descriptive label
 
     Returns:
@@ -132,7 +189,7 @@ def connect_nodes(source_node: str, source_terminal: str, dest_node: str, dest_t
     Args:
         source_node: Source node name (e.g., 'cspad')
         source_terminal: Source terminal name (e.g., 'cspad' for source nodes, 'Out' for others)
-        dest_node: Destination node name (e.g., 'BinningNode.0')
+        dest_node: Destination node name (e.g., 'Binning.0')
         dest_terminal: Destination terminal name (e.g., 'In')
 
     Returns:
@@ -561,10 +618,199 @@ def clear_graph() -> str:
 
 @mcp.tool()
 def auto_layout() -> str:
-    """Auto-arrange node positions."""
+    """
+    Re-arrange ALL node positions in the current view.
+
+    This discards the user's own layout. Only call it for a graph you built from
+    scratch, or when the user asks for it. Nodes created with create_node are
+    already placed next to whatever they get connected to.
+    """
     try:
         _qt_dispatch(lambda: _amicli.auto_layout())
         return json.dumps({"status": "arranged"})
+    except Exception as e:
+        return json.dumps({"error": str(e)})
+
+
+@mcp.tool()
+def list_references(node_name: str) -> str:
+    """
+    List the CSV reference overlays on a plot node.
+
+    Args:
+        node_name: Plot node name (e.g., 'LinePlot.0', 'WaveformViewer.0')
+
+    Returns:
+        JSON with references {name: csv_path} or error
+    """
+    try:
+        refs = _qt_dispatch(lambda: _amicli.list_references(node_name))
+        return json.dumps({"node": node_name, "references": refs})
+    except Exception as e:
+        return json.dumps({"error": str(e)})
+
+
+@mcp.tool()
+def set_reference(node_name: str, path: str, name: str = "") -> str:
+    """
+    Overlay a CSV file as a reference trace on a plot node.
+
+    The CSV must have two columns (x, y) or one column (y, plotted against index),
+    with an optional header row. Setting an existing name replaces that reference.
+    Takes effect immediately; apply_graph is not needed.
+
+    Args:
+        node_name: Plot node name (e.g., 'LinePlot.0', 'WaveformViewer.0')
+        path: Path to the CSV file
+        name: Reference name shown in the legend (defaults to the file name)
+
+    Returns:
+        JSON with the reference name and all references on the node, or error
+    """
+    try:
+        ref_name = _qt_dispatch(lambda: _amicli.set_reference(node_name, path, name))
+        refs = _qt_dispatch(lambda: _amicli.list_references(node_name))
+        return json.dumps({"node": node_name, "reference": ref_name, "references": refs})
+    except Exception as e:
+        return json.dumps({"error": str(e)})
+
+
+@mcp.tool()
+def remove_reference(node_name: str, name: str) -> str:
+    """
+    Remove a CSV reference overlay from a plot node.
+
+    Args:
+        node_name: Plot node name (e.g., 'LinePlot.0')
+        name: Reference name (see list_references)
+
+    Returns:
+        JSON with the remaining references, or error
+    """
+    try:
+        _qt_dispatch(lambda: _amicli.remove_reference(node_name, name))
+        refs = _qt_dispatch(lambda: _amicli.list_references(node_name))
+        return json.dumps({"node": node_name, "removed": name, "references": refs})
+    except Exception as e:
+        return json.dumps({"error": str(e)})
+
+
+@mcp.tool()
+def list_plot_traces(node_name: str) -> str:
+    """
+    List the live traces of a LinePlot or WaveformViewer by their legend names.
+
+    Use these names as the `trace` argument of take_reference / compare_to_reference.
+
+    Args:
+        node_name: Plot node name (e.g., 'LinePlot.0')
+
+    Returns:
+        JSON with {legend name: {"x": feature or null, "y": feature}}, or error
+    """
+    try:
+        traces = _qt_dispatch(lambda: _amicli.plot_traces(node_name))
+        return json.dumps({"node": node_name, "traces": traces})
+    except Exception as e:
+        return json.dumps({"error": str(e)})
+
+
+@mcp.tool()
+def take_reference(node_name: str, name: str = "", trace: str = "") -> str:
+    """
+    Capture the current live data of a LinePlot or WaveformViewer as a reference overlay.
+
+    The data is written to a CSV under ~/.cache/ami/references/ and set with set_reference,
+    so it shows in open plot windows and is saved with the graph.
+
+    Args:
+        node_name: Plot node name (e.g., 'LinePlot.0', 'WaveformViewer.0')
+        name: Reference name shown in the legend (defaults to node name + timestamp)
+        trace: Which trace to capture, by its legend name (see list_plot_traces). Required when
+               the plot has more than one trace; if omitted then, the error lists the traces —
+               ask the user which one they mean.
+
+    Returns:
+        JSON with the reference name, trace, CSV path, number of points, and all references, or error
+    """
+    try:
+        features = _qt_dispatch(lambda: _amicli.plot_features(node_name, trace))
+        x, y = _amicli.fetch_xy(features)
+        path = _amicli.write_reference_csv(node_name, x, y, name)
+        ref_name = _qt_dispatch(lambda: _amicli.set_reference(node_name, path, name))
+        refs = _qt_dispatch(lambda: _amicli.list_references(node_name))
+        return json.dumps(
+            {
+                "node": node_name,
+                "reference": ref_name,
+                "trace": trace or features["y"],
+                "path": path,
+                "points": len(y),
+                "references": refs,
+            }
+        )
+    except Exception as e:
+        return json.dumps({"error": str(e)})
+
+
+@mcp.tool()
+def compare_to_reference(node_name: str, name: str, trace: str = "") -> str:
+    """
+    Compare a LinePlot/WaveformViewer's current live data with one of its reference overlays.
+
+    The reference is interpolated onto the live x values where they overlap.
+
+    Args:
+        node_name: Plot node name (e.g., 'LinePlot.0')
+        name: Reference name (see list_references)
+        trace: Which live trace to compare, by legend name (see list_plot_traces). Required when the
+               plot has more than one trace.
+
+    Returns:
+        JSON with overlap points, RMS and max-abs difference, mean offset, correlation,
+        live vs reference peak position/value and peak shift, and a ~200-point summary
+        of the residual (live - reference), or error
+    """
+    import numpy as np
+
+    try:
+        features = _qt_dispatch(lambda: _amicli.plot_features(node_name, trace))
+        rx, ry = _qt_dispatch(lambda: _amicli.reference_xy(node_name, name))
+        x, y = _amicli.fetch_xy(features)
+
+        finite_ref = np.isfinite(rx) & np.isfinite(ry)
+        rx, ry = rx[finite_ref], ry[finite_ref]
+        if len(rx) < 2:
+            raise ValueError(f"Reference '{name}' has fewer than 2 finite points")
+        order = np.argsort(rx)
+        rx, ry = rx[order], ry[order]
+        overlap = (x >= rx[0]) & (x <= rx[-1]) & np.isfinite(y)
+        if overlap.sum() < 2:
+            raise ValueError(
+                f"Live x range [{x.min():.4g}, {x.max():.4g}] does not overlap reference [{rx[0]:.4g}, {rx[-1]:.4g}]"
+            )
+        xo, yo = x[overlap], y[overlap]
+        ref = np.interp(xo, rx, ry)
+        diff = yo - ref
+        live_peak, ref_peak = int(np.nanargmax(yo)), int(np.nanargmax(ref))
+        corr = float(np.corrcoef(yo, ref)[0, 1]) if np.std(yo) > 0 and np.std(ref) > 0 else None
+        _, rmin, rmax = _downsample_1d(diff, 200)
+        return json.dumps(
+            {
+                "node": node_name,
+                "reference": name,
+                "overlap_points": int(overlap.sum()),
+                "live_points": int(len(x)),
+                "rms_diff": float(np.sqrt(np.mean(diff**2))),
+                "max_abs_diff": float(np.max(np.abs(diff))),
+                "mean_offset": float(np.mean(diff)),
+                "correlation": corr,
+                "live_peak": {"x": float(xo[live_peak]), "y": float(yo[live_peak])},
+                "reference_peak": {"x": float(xo[ref_peak]), "y": float(ref[ref_peak])},
+                "peak_shift": float(xo[live_peak] - xo[ref_peak]),
+                "residual": {"min": rmin, "max": rmax},
+            }
+        )
     except Exception as e:
         return json.dumps({"error": str(e)})
 
@@ -575,8 +821,13 @@ def list_node_types() -> str:
     List all available node types with their terminal specifications.
 
     Returns:
-        JSON array of node types with inputs and outputs
-        Example: [{"type": "ScatterPlot", "inputs": ["X", "Y"], "outputs": []}, ...]
+        JSON array of node types with type, description, inputs, outputs, parameters, viewable
+        (whether render_plot opens a window for it), and can_add_inputs/can_add_outputs (true for
+        the few node types - e.g. SumN, PythonEditor - whose terminals aren't fixed; their
+        "inputs"/"outputs" here are empty, not "takes no input").
+        Example: [{"type": "ScatterPlot", "inputs": {"X": {"type": "float", "optional": false},
+                  "Y": {"type": "float", "optional": false}}, "outputs": {}, "parameters": [],
+                  "viewable": true, "can_add_inputs": false, "can_add_outputs": false}, ...]
     """
     try:
         types = _qt_dispatch(lambda: _amicli.list_node_types())
@@ -644,6 +895,54 @@ def get_node_inputs(node_name: str) -> str:
     try:
         result = _qt_dispatch(lambda: _amicli.get_node_inputs(node_name))
         return json.dumps(result, indent=2, default=str)
+    except Exception as e:
+        return json.dumps({"error": str(e)})
+
+
+@mcp.tool()
+def get_python_code(node_name: str) -> str:
+    """
+    Get the code of a PythonEditor node, plus its input/output terminals.
+
+    Returns the default template if no code has been set yet.
+
+    Args:
+        node_name: PythonEditor node name (e.g., 'PythonEditor.0')
+
+    Returns:
+        JSON with code, inputs (on_event argument order), and outputs (return order), or error
+    """
+    try:
+        result = _qt_dispatch(lambda: _amicli.get_python_code(node_name))
+        return json.dumps(result)
+    except Exception as e:
+        return json.dumps({"error": str(e)})
+
+
+@mcp.tool()
+def set_python_code(node_name: str, code: str) -> str:
+    """
+    Set the code of a PythonEditor node.
+
+    The code must define `class EventProcessor` with
+    `on_event(self, <one arg per input terminal>, *args, **kwargs)` returning one value per
+    output terminal (a tuple if there are several), plus begin_run(self), end_run(self),
+    begin_step(self, step) and end_step(self, step) (use `pass` if unneeded).
+    Add terminals and connect inputs first.
+    If the node's editor window is already open, this overwrites its text too, discarding any
+    unsaved edits made directly in that window.
+    Show the code to the user before calling apply_graph(); then check get_graph_errors().
+
+    Args:
+        node_name: PythonEditor node name (e.g., 'PythonEditor.0')
+        code: Python source
+
+    Returns:
+        JSON with node, inputs, and outputs, or error (e.g. syntax error with line number)
+    """
+    try:
+        result = _qt_dispatch(lambda: _amicli.set_python_code(node_name, code))
+        return json.dumps(result)
     except Exception as e:
         return json.dumps({"error": str(e)})
 
@@ -728,7 +1027,7 @@ def resource_sources() -> str:
 
 @mcp.resource("ami://node-types")
 def resource_node_types() -> str:
-    """All available node types with terminal specifications."""
+    """All available node types with terminal specifications. Same content as list_node_types()."""
     try:
         types = _qt_dispatch(lambda: _amicli.list_node_types())
         return json.dumps(types, indent=2)
@@ -756,7 +1055,7 @@ def list_features() -> str:
 
 
 @mcp.tool()
-def fetch_data(feature_name: str) -> str:
+def fetch_data(feature_name: str, detail: str = "summary") -> str:
     """
     Fetch computed data from the graph's feature store.
 
@@ -764,20 +1063,59 @@ def fetch_data(feature_name: str) -> str:
     isn't in the store yet, a temporary view is registered automatically
     and data is fetched after waiting for one heartbeat.
 
-    For arrays, returns shape and statistics (min, max, mean, std) rather
-    than raw data to keep responses compact.
+    Arrays are summarized rather than returned raw, to keep responses compact.
 
     Args:
         feature_name: Feature name (e.g., 'ScalarPlot.0.Y', 'Roi2D.0.Out', 'cspad')
+        detail: 'summary' - shape and min/max/mean/std (default; use to check data is flowing)
+                'normal'  - also peak position/value, NaN/inf counts, and for 1D a ~200-point
+                            min/max-per-bin curve; for 2D 16x16 block means plus row/column means
+                'full'    - like 'normal' with ~1000 points / 64x64 blocks (much larger response)
 
     Returns:
-        JSON with data type, shape, and statistics.
+        JSON with data type, shape, statistics, and the requested detail.
     """
     try:
+        if detail not in ("summary", "normal", "full"):
+            raise ValueError("detail must be 'summary', 'normal' or 'full'")
         data = _amicli.fetch_data(feature_name)
-        return json.dumps(_summarize_data(data))
+        return json.dumps(_summarize_data(data, detail))
     except Exception as e:
         return json.dumps({"error": str(e)})
+
+
+@mcp.tool()
+def render_plot(node_name: str, timeout: float = 30) -> Image:
+    """
+    Screenshot a node's display window as a PNG so you can look at it.
+
+    Opens the window if it isn't already open (same as clicking the node in the GUI; the window
+    is left open afterwards), waits for its next live update, and returns exactly what the user
+    sees: the plot, colour scale/legend, and any ROI box drawn on top. Works for any node with a
+    window — display nodes (LinePlot, ImageViewer, WaveformViewer, ...), ROI nodes (Roi2D, Roi1D,
+    RoiArch, ScatterRoi), and source nodes. A bare output feature with no window of its own (e.g.
+    'Roi2D.0.Out') needs a viewer node connected to it first — use fetch_data for numbers instead.
+
+    Prefer fetch_data(detail='normal') for numbers; use this when the shape of the data matters
+    (images, peak shapes, an ROI box's position, comparing to a reference).
+
+    Args:
+        node_name: Node name (e.g., 'ImageViewer.0', 'Roi2D.0')
+        timeout: Max seconds to wait for the window to open and produce a screenshot (default 30;
+                 a window that's busy rendering a large image, or waiting for the next heartbeat,
+                 can take a while)
+
+    Returns:
+        PNG image, or an error raised as a tool error (e.g. "apply_graph() first" if upstream
+        nodes have unapplied changes, or a timeout if no data is flowing)
+    """
+    future = _qt_dispatch(lambda: _amicli.request_screenshot(node_name))
+    try:
+        png = future.result(timeout=timeout)
+    except concurrent.futures.TimeoutError:
+        _qt_dispatch(lambda: _amicli.abandon_screenshot_request(future))
+        raise TimeoutError(f"No screenshot from '{node_name}' within {timeout}s; is data flowing?")
+    return Image(data=png, format="png")
 
 
 @mcp.resource("ami://graph/validation")
@@ -844,8 +1182,7 @@ Steps:
 3. Connect source to the subgraph's boundary input(s)
 """
         prompt += """4. Optionally connect boundary outputs to display nodes
-5. Call auto_layout() to arrange
-6. Call validate_graph() to check for issues"""
+5. Call validate_graph() to check for issues"""
 
         return prompt
     except Exception as e:

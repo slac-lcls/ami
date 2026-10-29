@@ -11,7 +11,8 @@ NOT manipulate graphs — load the `ami-graph-builder` skill for that.
 
 ## Discovery (always start here)
 
-Known UIDs — use these directly, skip discovery tool calls:
+Known UIDs — use these directly, skip discovery tool calls. **AMI-SDF is the only AMI dashboard
+to use** — do not search for or use other dashboards.
 
 | Resource | Name | UID |
 |----------|------|-----|
@@ -201,7 +202,7 @@ issue). If both are high, data is both infrequent AND stale (network/upstream is
 **Trace check:**
 ```
 grafana_tempo_traceql-search(
-    query='{ name="worker.heartbeat" && span.worker.pct_idle > 50 }'
+    query='{ name="worker.heartbeat" && span.worker.pct_idle > 50.0 }'
 )
 ```
 Look at `worker.pct_idle` attribute on the `worker.heartbeat` span. A visible gap before
@@ -296,14 +297,15 @@ Step 2 — within a slow trace, identify the specific bottleneck node using per-
 ```
 grafana_tempo_traceql-search(
     datasourceUid="fflvjve0ust1cd",
-    query='{ span.ami.node != "" } | sort(desc, duration)',
+    query='{ span.ami.node != "" && duration > 10ms }',
     start=<rfc3339>,
     end=<rfc3339>
 )
 ```
 
 Each `worker.graph_exec` and `collector.graph_exec` span has child spans for every
-graph node. Sort by duration descending to find the slowest node. The `ami.node_type`
+graph node. Raise or lower the duration threshold until only the slowest nodes match
+(TraceQL search has no sort; results are capped at 20 traces). The `ami.node_type`
 attribute shows whether it is a `Map`, `PickN`, `Accumulator`, etc.
 
 Compare `worker.graph_exec` duration across workers — uneven durations suggest one
@@ -338,7 +340,7 @@ grafana_query_prometheus(
 **Trace check:**
 ```
 grafana_tempo_traceql-search(
-    query='{ name="worker.send" } | duration > 50ms'
+    query='{ name="worker.send" && duration > 50ms }'
 )
 ```
 
@@ -397,7 +399,7 @@ grafana_query_prometheus_histogram(
 ```
 grafana_tempo_traceql-search(
     datasourceUid=<tempo_uid>,
-    query='{ name="worker.heartbeat" } | duration > 200ms',
+    query='{ name="worker.heartbeat" && duration > 200ms }',
     start=<spike_start_rfc3339>,
     end=<spike_end_rfc3339>
 )
@@ -420,7 +422,7 @@ heartbeat — making it clear where time was lost.
 
 | Metric | Type | Labels | What it measures |
 |--------|------|--------|-----------------|
-| `ami_event_count` | Counter | hutch, type, process | Events by type (Heartbeat, Datagram, Partial, Transition) |
+| `ami_event_count` | Counter | hutch, type, process | Events by type (Heartbeat, Datagram, Partial, Pruned Heartbeat, Transition, Other) |
 | `ami_event_time_seconds` | Counter | hutch, type, process | Cumulative time in each phase. Use `rate()` to get sec/sec utilization. Types: Heartbeat (total interval), Idle, Datagram (graph exec), Send, Overhead |
 | `ami_event_size_bytes` | Counter | hutch, process | Cumulative bytes processed. Use `rate()` to get bytes/sec throughput |
 | `ami_event_latency_seconds` | Histogram | hutch, sender, process | Per-hop data latency. Use `rate(_sum) / rate(_count)` for average |
@@ -439,6 +441,19 @@ heartbeat — making it clear where time was lost.
 - Counter metrics are exposed with a `_total` suffix (e.g., `ami_event_count_total`)
 
 ---
+
+## TraceQL Gotchas
+
+These are verified against the SLAC Tempo server — queries that break them fail or silently match nothing:
+
+- **Compare float attributes with a float literal.** `pct_*` and `*_secs` attributes are doubles;
+  `span.worker.pct_idle > 50` matches nothing, `span.worker.pct_idle > 50.0` works.
+- **Put `duration` inside the braces.** `{ name="worker.send" && duration > 50ms }` works;
+  `{ name="worker.send" } | duration > 50ms` is a parse error.
+- **No `sort()`.** Filter with a duration threshold instead.
+- **Search range is limited to 168h (7 days).** Keep `start`/`end` within a week.
+- **TraceQL metrics (`traceql-metrics-instant/range`, e.g. `| rate()`) only cover recent data**
+  and fail with "empty ring" when no recent traces exist. Fall back to `traceql-search` and count spans.
 
 ## Trace Span Reference
 
@@ -482,13 +497,15 @@ After diagnosis, tell the user:
 
 ## Dashboard & Visualization
 
+Always use the AMI-SDF dashboard (`mgG9RzcaG`). Don't search for other dashboards.
+
 ```
-# Find the pre-built AMI dashboard
-grafana_search_dashboards(query="AMI")
+# List panel IDs and titles
+grafana_get_dashboard_summary(uid="mgG9RzcaG")
 
 # Render a panel as an image
 grafana_get_panel_image(
-    dashboardUid=<uid>,
+    dashboardUid="mgG9RzcaG",
     panelId=<id>,
     timeRange={"from": "now-15m", "to": "now"}
 )
@@ -496,10 +513,10 @@ grafana_get_panel_image(
 # Generate a shareable link
 grafana_generate_deeplink(
     resourceType="dashboard",
-    dashboardUid=<uid>,
+    dashboardUid="mgG9RzcaG",
     timeRange={"from": "now-15m", "to": "now"}
 )
 ```
 
-An example dashboard is provided at `examples/grafana.json` — import it into Grafana
-and configure the Prometheus and Tempo data sources to use it.
+`examples/grafana.json` in the AMI repo is an exportable copy of this dashboard for other
+Grafana instances; it is not something to load during diagnosis.
