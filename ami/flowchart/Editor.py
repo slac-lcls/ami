@@ -442,7 +442,9 @@ class Ui_Toolbar(object):
         self.toolBar.addAction(self.actionApply)
         self.toolBar.addAction(self.actionReset)
 
-        if HAS_MCP:
+        # The agent (opencode) needs a TCP port, so there is no Agent button when the MCP server is
+        # on a Unix socket. Left out of the toolbar, its Ctrl+Shift+A shortcut is inactive too.
+        if HAS_MCP and not os.environ.get("AMI_MCP_UDS"):
             self.toolBar.addAction(self.actionAgent)
             self.toolBar.insertSeparator(self.actionAgent)
 

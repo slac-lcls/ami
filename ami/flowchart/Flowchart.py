@@ -4022,7 +4022,11 @@ class FlowchartWidget(dockarea.DockArea):
             return
         if HAS_MCP:
             self.qt_dispatcher = QtDispatcher()
-            self.mcp_thread = McpServerThread(amicli=amicli, qt_dispatch_fn=self.qt_dispatcher.dispatch)
+            # AMI_MCP_UDS serves on that Unix socket instead of a loopback port, for a TLS front
+            # such as ghostunnel in the hutch MCP tunnel.
+            self.mcp_thread = McpServerThread(
+                amicli=amicli, qt_dispatch_fn=self.qt_dispatcher.dispatch, uds=os.environ.get("AMI_MCP_UDS")
+            )
             self.mcp_thread.start()
             self._mcp_port = self.mcp_thread.port
 
