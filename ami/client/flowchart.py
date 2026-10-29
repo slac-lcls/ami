@@ -359,6 +359,18 @@ class NodeProcess(QtCore.QObject):
                     self.node.blockSignals(True)
                     self.node.stateGroup.setState(msg.parameters)
                     self.node.blockSignals(False)
+            elif isinstance(msg, fcMsgs.NodeReferencesUpdate):
+                if self.widget is not None and hasattr(self.widget, "set_csv_references"):
+                    self.widget.set_csv_references(msg.references)
+                    self.send_checkpoint(self.node, "references")
+            elif isinstance(msg, fcMsgs.NodeWidgetStateUpdate):
+                # Signals are left on (unlike NodeCtrlUpdate) so the widget's own on-change
+                # handler fires and checkpoints the new state back to the flowchart, keeping
+                # this window's node in sync with what's now on screen.
+                if self.widget is not None and hasattr(self.widget, "restoreState"):
+                    self.widget.restoreState(msg.state)
+            elif isinstance(msg, fcMsgs.NodeScreenshotRequest):
+                self.handle_screenshot_request(msg.request_id)
             elif isinstance(msg, fcMsgs.CloseNode):
                 return
 
@@ -468,6 +480,13 @@ class NodeProcess(QtCore.QObject):
 
         self.node.viewed = True
 
+        if not msg.geometry:
+            # No saved geometry (e.g. a freshly created node's first display): nothing else
+            # triggers a checkpoint here, but AmiCli.request_screenshot polls node.viewed on the
+            # GUI-process node, which only updates from a checkpoint — so send one now rather
+            # than waiting on some unrelated future state change.
+            self.send_checkpoint(self.node, "viewed")
+
     def reloadLibrary(self, msg):
         for mod in msg.mods:
             mod = sys.modules[mod]
@@ -491,6 +510,30 @@ class NodeProcess(QtCore.QObject):
 
         msg = fcMsgs.NodeCheckpoint(node.name(), state=state, event=event)
         await self.checkpoint.send_string(node.name() + ZMQ_TOPIC_DELIM, zmq.SNDMORE)
+        await self.checkpoint.send_pyobj(msg)
+
+    def handle_screenshot_request(self, request_id):
+        """Answer a NodeScreenshotRequest (ami/mcp_server.py render_plot) with the window's own
+        screenshot export, taken after the next data update so it's never blank/stale.
+        """
+        if self.widget is None or not hasattr(self.widget, "request_screenshot"):
+            self._send_screenshot_reply(request_id, error=f"'{self.name}' has no exportable plot")
+            return
+        try:
+            self.widget.request_screenshot(
+                lambda png=None, error=None: self._send_screenshot_reply(request_id, png=png, error=error)
+            )
+        except Exception as e:
+            self._send_screenshot_reply(request_id, error=str(e))
+
+    def _send_screenshot_reply(self, request_id, png=None, error=None):
+        # Not a Qt slot: request_screenshot's callback runs synchronously from update(), on the
+        # Qt thread but outside any signal dispatch, so schedule the send directly.
+        asyncio.ensure_future(self._send_screenshot_reply_async(request_id, png, error))
+
+    async def _send_screenshot_reply_async(self, request_id, png, error):
+        msg = fcMsgs.NodeScreenshotReply(self.name, request_id, png=png, error=error)
+        await self.checkpoint.send_string(self.name + ZMQ_TOPIC_DELIM, zmq.SNDMORE)
         await self.checkpoint.send_pyobj(msg)
 
     def start_prometheus(self):
@@ -645,8 +688,12 @@ class MessageBroker(object):
             topic = topic.rstrip(ZMQ_TOPIC_DELIM)
             msg = await self.checkpoint_sub_sock.recv_pyobj()
 
-            async with self.lock:
-                self.checkpoints[topic] = msg
+            # NodeScreenshotReply is a one-off reply to a specific request, not a "last state"
+            # to restore a crashed window from — caching it would make monitor_processes replay
+            # a stale screenshot reply as if it were the node's state.
+            if not isinstance(msg, fcMsgs.NodeScreenshotReply):
+                async with self.lock:
+                    self.checkpoints[topic] = msg
 
             await self.checkpoint_pub_sock.send_string(topic + ZMQ_TOPIC_DELIM)
             await self.checkpoint_pub_sock.send_pyobj(msg)
@@ -753,9 +800,20 @@ class MessageBroker(object):
             elif isinstance(msg, fcMsgs.NodeLabelChanged):
                 await self.forward_message_to_node(topic, msg)
 
-            elif isinstance(msg, fcMsgs.NodeCtrlUpdate):
+            elif isinstance(
+                msg,
+                (
+                    fcMsgs.NodeCtrlUpdate,
+                    fcMsgs.NodeReferencesUpdate,
+                    fcMsgs.NodeWidgetStateUpdate,
+                    fcMsgs.NodeScreenshotRequest,
+                ),
+            ):
                 # Forward directly to the NodeProcess without caching — it's a
-                # transient update, not a "last state" message.
+                # transient update, not a "last state" message. If the window isn't running,
+                # a NodeScreenshotRequest is silently dropped; AmiCli only sends one once
+                # node.viewed is true, so this only matters if the window crashes mid-request —
+                # the MCP tool's own timeout surfaces that as an error instead of hanging.
                 async with self.lock:
                     running = topic in self.widget_procs
                 if running:
