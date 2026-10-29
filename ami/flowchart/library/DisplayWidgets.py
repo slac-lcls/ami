@@ -380,6 +380,11 @@ class PlotWidget(QtWidgets.QWidget):
         self.screenshot_dir = "./screenshots"
         self.screenshot_counter = 0
 
+        # Pending render_plot request (ami/mcp_server.py via NodeScreenshotRequest), answered
+        # from the next data_updated in update() so the image always has live data in it.
+        # callback(png=..., error=...) — exactly one of the two is given.
+        self._screenshot_callback = None
+
         self.last_updated = QtWidgets.QLabel(parent=self)
         self.pixel_value = QtWidgets.QLabel(parent=self)
 
@@ -849,6 +854,15 @@ class PlotWidget(QtWidgets.QWidget):
             # Dump screenshot after data update
             self._dump_screenshot()
 
+            # Answer any pending render_plot screenshot request (ami/mcp_server.py) now that
+            # there's fresh data on screen, rather than mid-update with a blank/stale plot.
+            if self._screenshot_callback is not None:
+                callback, self._screenshot_callback = self._screenshot_callback, None
+                try:
+                    callback(png=self.screenshot_png())
+                except Exception as e:
+                    callback(error=str(e))
+
             now = dt.datetime.now()
             now = now.strftime("%T")
             ru = resource.getrusage(resource.RUSAGE_SELF)
@@ -863,6 +877,27 @@ class PlotWidget(QtWidgets.QWidget):
 
             self.latency.labels(self.hutch, self.graph_name, self.name).set(latency.total_seconds())
             self.memory.labels(self.hutch, self.graph_name, self.name).set(rss)
+
+    def screenshot_png(self):
+        """Render the current plot (including any ROI/overlay items) to PNG bytes.
+
+        Same ImageExporter used by _dump_screenshot and the GUI's own export button, so the
+        image matches exactly what the window shows. Raises if the scene can't be rendered.
+        """
+        image = ImageExporter(self.plot_view.vb.scene()).export(toBytes=True)
+        buf = QtCore.QBuffer()
+        buf.open(QtCore.QIODevice.OpenModeFlag.WriteOnly)
+        image.save(buf, "PNG")
+        return bytes(buf.data())
+
+    def request_screenshot(self, callback):
+        """Request a PNG of the next data_updated frame.
+
+        callback is invoked with either png=<bytes> or error=<str> (never both), from the Qt
+        thread, the next time this widget redraws. Only one request is tracked at a time; a
+        newer request replaces an older, not-yet-answered one.
+        """
+        self._screenshot_callback = callback
 
     def _dump_screenshot(self):
         """
@@ -884,9 +919,8 @@ class PlotWidget(QtWidgets.QWidget):
             filename = f"{timestamp}_{node_name}.png"
             filepath = os.path.join(self.screenshot_dir, filename)
 
-            # Export using pyqtgraph ImageExporter
-            exporter = ImageExporter(self.plot_view.vb.scene())
-            exporter.export(filepath)
+            with open(filepath, "wb") as f:
+                f.write(self.screenshot_png())
 
             self.screenshot_counter += 1
             logger.debug(f"Screenshot saved: {filepath} (count: {self.screenshot_counter})")
@@ -963,6 +997,16 @@ class PlotWidget(QtWidgets.QWidget):
         self.ref_editors[name] = editor
         if self.legend:
             self.legend.addItem(trace, name)
+        return name
+
+    def set_csv_references(self, references):
+        """Make the reference overlays match references ({ name : filepath })."""
+        for name, path in list(self.csv_references.items()):
+            if references.get(name) != path:
+                self.remove_csv_reference(name)
+        for name, path in references.items():
+            if name not in self.csv_references:
+                self.load_csv_reference(path, name=name)
 
     def remove_csv_reference(self, name):
         """Remove a CSV reference overlay trace from the plot."""
