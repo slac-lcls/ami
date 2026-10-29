@@ -4,6 +4,7 @@ import logging
 import typing  # noqa
 import weakref
 from collections import OrderedDict
+from contextvars import ContextVar
 
 import amitypes  # noqa
 from lark import Lark, Transformer
@@ -17,6 +18,19 @@ from ami.data import RequestedData
 from ami.flowchart.Terminal import Terminal
 
 logger = logging.getLogger(__name__)
+
+# Set by Node.describe_class() while probing a subclass's __init__ kwargs (terminals, viewable,
+# etc.) without building any Qt object. Node.__init__ checks this before calling super().__init__()
+# and raises _SpecCaptured instead of constructing anything, so describe_class never creates the
+# QObject/graphics items that a real instance would.
+_describing = ContextVar("_describing", default=False)
+
+
+class _SpecCaptured(Exception):
+    """Raised by Node.__init__ when _describing is set, carrying the kwargs it was called with."""
+
+    def __init__(self, kwargs):
+        self.kwargs = kwargs
 
 
 def find_nearest(x):
@@ -126,6 +140,11 @@ class Node(QtCore.QObject):
         ==============  ============================================================
 
         """
+        if _describing.get():
+            # describe_class() wants these kwargs, not a real node: stop before any QObject or
+            # Qt graphics item gets created. Subclasses that do their own setup before calling
+            # super().__init__() (none currently do) would still run that part.
+            raise _SpecCaptured(kwargs)
         super().__init__()
         self._name = name
         self._label = ""
@@ -165,6 +184,53 @@ class Node(QtCore.QObject):
 
         for name, opts in terminals.items():
             self.addTerminal(name, **opts)
+
+    @classmethod
+    def describe_class(cls):
+        """Read a Node subclass's static terminal spec and flags without instantiating it.
+
+        Calling cls("_probe_") for real builds a full NodeGraphicsItem (and, for CtrlNode
+        subclasses, control widgets) just to inspect self.terminals/self._viewable etc. Doing
+        that for every node type (as list_node_types used to) leaves temp nodes to be freed by
+        Python's cycle collector on whatever thread triggers it, which crashed AMI's Qt thread
+        with a segfault when the collector ran during a different node's construction.
+
+        Instead, _describing is set so Node.__init__ raises _SpecCaptured with its kwargs before
+        calling super().__init__() - no QObject or graphics item is ever created. This only sees
+        terminals passed to __init__ (the pattern used by all node types as of this writing); a
+        node that adds terminals itself afterward (e.g. via addTerminal in a later method call)
+        would not show them here - see allowAddInput/allowAddOutput for that case instead.
+
+        Returns:
+            Dict with "terminals" (the raw kwarg, name -> {"io": ..., "ttype": ..., ...}),
+            "allowAddInput", "allowAddOutput", "viewable", "buffered", "global_op".
+            None if the class's __init__ doesn't reach Node.__init__ in the expected way (e.g. it
+            raises before then, or never calls super().__init__() at all).
+        """
+        token = _describing.set(True)
+        try:
+            cls("_probe_")
+        except _SpecCaptured as captured:
+            kwargs = captured.kwargs
+            return {
+                "terminals": kwargs.get("terminals", {}),
+                "allowAddInput": kwargs.get("allowAddInput", False),
+                "allowAddOutput": kwargs.get("allowAddOutput", False),
+                "viewable": kwargs.get("viewable", False),
+                "buffered": kwargs.get("buffered", False),
+                "global_op": kwargs.get("global_op", False),
+            }
+        except Exception:
+            logger.exception(f"describe_class({cls.__name__}) failed before reaching Node.__init__")
+            return None
+        else:
+            # __init__ returned without raising _SpecCaptured - e.g. the class overrides
+            # __init__ and never calls super().__init__(name, **kwargs). The instance it built
+            # is a real QObject/graphics item; drop it immediately rather than leaving it to gc.
+            logger.warning(f"describe_class({cls.__name__}): __init__ never reached Node.__init__")
+            return None
+        finally:
+            _describing.reset(token)
 
     def nextGroupName(self):
         group = "group.%d"

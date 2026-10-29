@@ -14,6 +14,7 @@ import threading
 import time
 
 import pytest  # noqa: E402
+from amitypes import Array2d  # noqa: E402
 
 from ami.client.flowchart import MessageBroker  # noqa: E402
 
@@ -394,15 +395,100 @@ async def test_save_load_graph(amicli, tmp_path):
 
 
 @pytest.mark.asyncio
-async def test_list_node_types(amicli):
-    """Test listing available node types."""
+async def test_list_node_types(amicli, monkeypatch):
+    """Test listing available node types, and that it creates no real node/graphics-item
+    instances - regression test for a segfault where instantiating every node type (~90) just
+    to read its terminals left temp nodes for Python's garbage collector to free on whatever
+    thread triggered it, crashing the Qt main thread when that wasn't the Qt thread.
+    """
+    from ami.flowchart.Node import NodeGraphicsItem
+
+    created = []
+    orig_init = NodeGraphicsItem.__init__
+
+    def counting_init(self, *args, **kwargs):
+        created.append(1)
+        return orig_init(self, *args, **kwargs)
+
+    monkeypatch.setattr(NodeGraphicsItem, "__init__", counting_init)
+
     types = amicli.list_node_types()
+
+    assert created == [], "list_node_types must not instantiate any node (no NodeGraphicsItem)"
     assert len(types) > 0
 
-    type_names = [t["type"] for t in types]
-    assert "Roi2D" in type_names
-    assert "Projection" in type_names
-    assert "Binning" in type_names
+    by_name = {t["type"]: t for t in types}
+    assert set(("Roi2D", "Projection", "Binning")) <= by_name.keys()
+
+    roi2d = by_name["Roi2D"]
+    assert roi2d["inputs"] == {"In": {"type": str(Array2d), "optional": False}}
+    assert roi2d["outputs"]["Out"]["type"] == str(Array2d)
+    assert roi2d["viewable"] is True
+
+    # SumN/Accumulator/ReduceByKey/PythonEditor add terminals themselves (a user-facing
+    # "add input" prompt) rather than declaring them statically, so describe_class() can't see
+    # them; can_add_inputs/outputs says so instead of a misleading empty "takes no input".
+    sumn = by_name["SumN"]
+    assert sumn["inputs"] == {} and sumn["outputs"] == {}
+    python_editor = by_name["PythonEditor"]
+    assert python_editor["can_add_inputs"] is True and python_editor["can_add_outputs"] is True
+
+
+@pytest.mark.asyncio
+async def test_describe_class_matches_real_instantiation(amicli):
+    """Node.describe_class() (no instantiation) must agree with actually instantiating each
+    library node type and reading its real terminals - regression test for the introspection
+    approach replacing direct instantiation in list_node_types.
+    """
+    from qtpy import QtWidgets
+
+    from ami.flowchart.Node import Node
+
+    library = amicli.chart.library
+    checked = 0
+    for node_type in library.nodeList.keys():
+        node_class = library.getNodeType(node_type)
+        spec = node_class.describe_class()
+        assert spec is not None, f"{node_type}.describe_class() returned None"
+
+        real = node_class("_describe_class_check_")
+        try:
+            real_inputs = {}
+            for name, ref in real.inputs().items():
+                term = ref() if callable(ref) else ref
+                if term is not None:
+                    real_inputs[name] = (str(term.type()), term.optional())
+            real_outputs = {}
+            for name, ref in real.outputs().items():
+                term = ref() if callable(ref) else ref
+                if term is not None:
+                    real_outputs[name] = str(term.type())
+
+            spec_inputs = {
+                name: (str(opts.get("ttype")), bool(opts.get("optional", False)))
+                for name, opts in spec["terminals"].items()
+                if opts.get("io") == "in"
+            }
+            spec_outputs = {
+                name: str(opts.get("ttype")) for name, opts in spec["terminals"].items() if opts.get("io") == "out"
+            }
+            assert spec_inputs == real_inputs, f"{node_type}: input mismatch"
+            assert spec_outputs == real_outputs, f"{node_type}: output mismatch"
+            assert spec["viewable"] == real._viewable, f"{node_type}: viewable mismatch"
+            assert spec["buffered"] == real._buffered, f"{node_type}: buffered mismatch"
+            assert spec["allowAddInput"] == real._allowAddInput, f"{node_type}: allowAddInput mismatch"
+            assert spec["allowAddOutput"] == real._allowAddOutput, f"{node_type}: allowAddOutput mismatch"
+            checked += 1
+        finally:
+            real.close(emit=False)
+    assert checked > 80, f"expected to check most of the ~90 node types, only checked {checked}"
+    # Node.__init__ uses a module-level ContextVar guard; confirm real instantiation still works
+    # normally after many describe_class() probes (the guard must always be reset).
+    sanity = library.getNodeType("Roi2D")("_sanity_check_")
+    assert hasattr(sanity, "_graphicsItem") and sanity._graphicsItem is not None
+    sanity.close(emit=False)
+    assert isinstance(sanity, Node)
+    assert QtWidgets.QApplication.instance() is not None
 
 
 @pytest.mark.asyncio
