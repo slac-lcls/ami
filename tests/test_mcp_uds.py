@@ -11,6 +11,7 @@ import subprocess
 import sys
 import tempfile
 import time
+from unittest import mock
 
 import pytest
 
@@ -122,3 +123,24 @@ def test_never_deletes_a_regular_file(sock_dir):
     assert "Address already in use" in proc.stderr.read().decode()
     with open(path) as f:
         assert f.read() == "keep"
+
+
+@pytest.mark.parametrize("uds, has_button", [(None, True), ("/tmp/mcp.sock", False)])
+def test_agent_button_only_without_socket(qtbot, monkeypatch, uds, has_button):
+    # The agent (opencode) needs a TCP port, so a Unix socket server gets no Agent button.
+    from pyqtgraph.dockarea import DockArea
+    from qtpy import QtWidgets
+
+    from ami.flowchart.Editor import Ui_Toolbar
+
+    if uds:
+        monkeypatch.setenv("AMI_MCP_UDS", uds)
+    else:
+        monkeypatch.delenv("AMI_MCP_UDS", raising=False)
+    parent = QtWidgets.QWidget()
+    qtbot.addWidget(parent)
+    area = DockArea()
+    area.chart = mock.MagicMock()  # the flowchart, which setupUi only connects signals to
+    ui = Ui_Toolbar()
+    ui.setupUi(parent, area)
+    assert (ui.actionAgent in ui.toolBar.actions()) == has_button

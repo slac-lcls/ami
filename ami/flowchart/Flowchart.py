@@ -3384,9 +3384,6 @@ class FlowchartCtrlWidget(QtWidgets.QWidget):
             if not mcp_thread or not hasattr(mcp_thread, "_tmpdir"):
                 logger.error("MCP server not running - cannot spawn agent")
                 return
-            if mcp_thread.port is None:
-                logger.error("MCP server is on a Unix socket (AMI_MCP_UDS) - the agent needs a TCP port")
-                return
 
             # Use the user's preferred login shell so PATH, conda, etc. are sourced
             shell = os.environ.get("SHELL", "/bin/sh")
