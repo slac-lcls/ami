@@ -3384,6 +3384,9 @@ class FlowchartCtrlWidget(QtWidgets.QWidget):
             if not mcp_thread or not hasattr(mcp_thread, "_tmpdir"):
                 logger.error("MCP server not running - cannot spawn agent")
                 return
+            if mcp_thread.port is None:
+                logger.error("MCP server is on a Unix socket (AMI_MCP_UDS) - the agent needs a TCP port")
+                return
 
             # Use the user's preferred login shell so PATH, conda, etc. are sourced
             shell = os.environ.get("SHELL", "/bin/sh")
@@ -4020,7 +4023,11 @@ class FlowchartWidget(dockarea.DockArea):
             return
         if HAS_MCP:
             self.qt_dispatcher = QtDispatcher()
-            self.mcp_thread = McpServerThread(amicli=amicli, qt_dispatch_fn=self.qt_dispatcher.dispatch)
+            # AMI_MCP_UDS serves on that Unix socket instead of a loopback port, for a TLS front
+            # such as ghostunnel in the hutch MCP tunnel.
+            self.mcp_thread = McpServerThread(
+                amicli=amicli, qt_dispatch_fn=self.qt_dispatcher.dispatch, uds=os.environ.get("AMI_MCP_UDS")
+            )
             self.mcp_thread.start()
             self._mcp_port = self.mcp_thread.port
 

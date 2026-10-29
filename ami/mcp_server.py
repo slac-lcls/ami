@@ -6,6 +6,7 @@ import os
 import re
 import shutil
 import socket
+import stat
 import tempfile
 import threading
 
@@ -32,6 +33,22 @@ def _find_free_port(start=9100, max_tries=100):
             except OSError:
                 continue
     raise RuntimeError(f"No free port in range {start}-{start + max_tries}")
+
+
+def _remove_stale_socket(path):
+    """Remove a socket left by an earlier run; refuse if a server still answers on it."""
+    try:
+        if not stat.S_ISSOCK(os.lstat(path).st_mode):
+            return  # never delete a non-socket; bind() then fails with "Address already in use"
+    except FileNotFoundError:
+        return
+    with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as probe:
+        try:
+            probe.connect(path)
+        except ConnectionRefusedError:
+            os.unlink(path)
+            return
+    raise RuntimeError(f"another server is listening on {path}")
 
 
 def _summarize_data(data):
@@ -860,19 +877,21 @@ Steps:
 class McpServerThread(threading.Thread):
     """Runs MCP HTTP server in a background daemon thread."""
 
-    def __init__(self, amicli, qt_dispatch_fn, host="127.0.0.1"):
+    def __init__(self, amicli, qt_dispatch_fn, host="127.0.0.1", uds=None):
         """
         Args:
             amicli: AmiCli instance for graph manipulation
             qt_dispatch_fn: QtDispatcher.dispatch function
             host: Server host (default localhost)
+            uds: Unix socket path to serve on instead of a TCP port (port is then None)
         """
         super().__init__(daemon=True, name="ami-mcp-server")
         global _amicli, _qt_dispatch
         _amicli = amicli
         _qt_dispatch = qt_dispatch_fn
         self.host = host
-        self.port = _find_free_port()
+        self.uds = uds
+        self.port = None if uds else _find_free_port()
 
         # Create temp dir with opencode.jsonc
         self._tmpdir = tempfile.TemporaryDirectory(prefix="ami-mcp-")
@@ -908,12 +927,35 @@ class McpServerThread(threading.Thread):
 
     def run(self):
         """Run MCP server (blocks in this thread)."""
-        logger.info(f"AMI MCP server on http://{self.host}:{self.port}/mcp, config dir: {self._tmpdir.name}")
-
         # Suppress noisy MCP library request logging
         logging.getLogger("mcp").setLevel(logging.WARNING)
 
         try:
-            mcp.run(transport="streamable-http", host=self.host, port=self.port)
+            if self.uds:
+                self._run_uds()
+            else:
+                logger.info(f"AMI MCP server on http://{self.host}:{self.port}/mcp, config dir: {self._tmpdir.name}")
+                mcp.run(transport="streamable-http", host=self.host, port=self.port)
         except Exception as e:
             logger.exception(f"MCP server error: {e}")
+
+    def _run_uds(self):
+        """Serve on a Unix socket only this account can open, for a TLS front such as ghostunnel."""
+        import uvicorn
+        from mcp.server.transport_security import TransportSecuritySettings
+
+        # Requests forwarded by agentgateway carry its target's name as Host, which the DNS
+        # rebinding check refuses with 421. That check protects loopback ports from web pages in
+        # a local browser, and a browser cannot open a Unix socket.
+        app = mcp.streamable_http_app(
+            transport_security=TransportSecuritySettings(enable_dns_rebinding_protection=False)
+        )
+
+        _remove_stale_socket(self.uds)
+        sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        sock.bind(self.uds)
+        # uvicorn's own uds option makes the socket writable by every account; restrict it
+        # before uvicorn calls listen(), so no other account can ever connect.
+        os.chmod(self.uds, 0o600)
+        logger.info(f"AMI MCP server on unix:{self.uds} at /mcp")
+        uvicorn.Server(uvicorn.Config(app, log_level=mcp.settings.log_level.lower())).run(sockets=[sock])
