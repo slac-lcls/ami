@@ -594,13 +594,22 @@ class AmiCli:
     def list_node_types(self):
         """Get all registered node types with descriptions, terminal specs, and parameters.
 
+        Terminal specs come from Node.describe_class(), which reads a class's static terminals
+        without instantiating it (see its docstring for why: building ~90 real GUI nodes just to
+        inspect them left temp nodes for Python's garbage collector to free on the wrong thread,
+        which could segfault the Qt main thread). A few node types add terminals themselves after
+        construction (e.g. via a user-facing "add input" prompt) rather than declaring them
+        statically; those report empty inputs/outputs here but "can_add_inputs"/"can_add_outputs"
+        is true, so an empty list isn't mistaken for "this node takes no input".
+
         Returns:
-            List of dicts with type, description, inputs, outputs, and parameters.
+            List of dicts with type, description, inputs, outputs, parameters, viewable,
+            can_add_inputs, can_add_outputs.
             Example: [{"type": "Roi2D", "description": "Region of Interest of image.",
                        "inputs": {"In": {"type": "Array2d", "optional": false}},
                        "outputs": {"Out": {"type": "Array2d"}, "Roi_Coordinates": {"type": "Array1d"}},
-                       "parameters": [{"name": "origin x", "type": "intSpin", "value": 0, "min": 0}, ...]
-                      }]
+                       "parameters": [{"name": "origin x", "type": "intSpin", "value": 0, "min": 0}],
+                       "viewable": true, "can_add_inputs": false, "can_add_outputs": false}]
         """
         try:
             types = []
@@ -618,28 +627,20 @@ class AmiCli:
                             p.update(param[2])
                         params.append(p)
 
-                # Get terminal info (requires instantiation)
-                inputs = {}
-                outputs = {}
-                try:
-                    sample = node_class("_temp_")
-                    for name, term_ref in sample.inputs().items():
-                        term = term_ref() if callable(term_ref) else term_ref
-                        if term is None:
-                            continue
-                        inputs[name] = {
-                            "type": str(term.type()),
-                            "optional": term.optional(),
-                        }
-                    for name, term_ref in sample.outputs().items():
-                        term = term_ref() if callable(term_ref) else term_ref
-                        if term is None:
-                            continue
-                        outputs[name] = {
-                            "type": str(term.type()),
-                        }
-                except Exception:
-                    pass
+                spec = node_class.describe_class()
+                inputs, outputs = {}, {}
+                viewable = can_add_inputs = can_add_outputs = False
+                if spec is not None:
+                    for name, opts in spec["terminals"].items():
+                        entry = {"type": str(opts.get("ttype"))}
+                        if opts.get("io") == "in":
+                            entry["optional"] = bool(opts.get("optional", False))
+                            inputs[name] = entry
+                        elif opts.get("io") == "out":
+                            outputs[name] = entry
+                    viewable = spec["viewable"]
+                    can_add_inputs = spec["allowAddInput"]
+                    can_add_outputs = spec["allowAddOutput"]
 
                 types.append(
                     {
@@ -648,6 +649,9 @@ class AmiCli:
                         "inputs": inputs,
                         "outputs": outputs,
                         "parameters": params,
+                        "viewable": viewable,
+                        "can_add_inputs": can_add_inputs,
+                        "can_add_outputs": can_add_outputs,
                     }
                 )
             return types

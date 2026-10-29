@@ -821,8 +821,13 @@ def list_node_types() -> str:
     List all available node types with their terminal specifications.
 
     Returns:
-        JSON array of node types with inputs and outputs
-        Example: [{"type": "ScatterPlot", "inputs": ["X", "Y"], "outputs": []}, ...]
+        JSON array of node types with type, description, inputs, outputs, parameters, viewable
+        (whether render_plot opens a window for it), and can_add_inputs/can_add_outputs (true for
+        the few node types - e.g. SumN, PythonEditor - whose terminals aren't fixed; their
+        "inputs"/"outputs" here are empty, not "takes no input").
+        Example: [{"type": "ScatterPlot", "inputs": {"X": {"type": "float", "optional": false},
+                  "Y": {"type": "float", "optional": false}}, "outputs": {}, "parameters": [],
+                  "viewable": true, "can_add_inputs": false, "can_add_outputs": false}, ...]
     """
     try:
         types = _qt_dispatch(lambda: _amicli.list_node_types())
@@ -1022,7 +1027,7 @@ def resource_sources() -> str:
 
 @mcp.resource("ami://node-types")
 def resource_node_types() -> str:
-    """All available node types with terminal specifications."""
+    """All available node types with terminal specifications. Same content as list_node_types()."""
     try:
         types = _qt_dispatch(lambda: _amicli.list_node_types())
         return json.dumps(types, indent=2)
