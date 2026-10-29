@@ -3374,6 +3374,8 @@ class FlowchartCtrlWidget(QtWidgets.QWidget):
             win.setCentralWidget(self.ipython_widget)
             win.show()
 
+    if HAS_MCP:
+
         def agentClicked(self):
             """Spawn external agent harness connected to AMI's MCP server."""
             if self._agent_proc is not None and self._agent_proc.poll() is None:
