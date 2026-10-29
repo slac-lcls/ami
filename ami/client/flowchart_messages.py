@@ -113,6 +113,59 @@ class NodeCtrlUpdate(NodeMsg):
         self.parameters = parameters  # {param: val} or {group: {param: val}}
 
 
+class NodeReferencesUpdate(NodeMsg):
+    """Push the CSV reference overlays of a plot node to a running NodeProcess window.
+
+    Sent by AmiCli when an agent sets or removes a reference. references is the
+    complete desired set ({name: path}); the NodeProcess adds/removes overlays to
+    match and checkpoints the new widget state back to the flowchart.
+    """
+
+    def __init__(self, name, references):
+        super().__init__(name)
+        self.references = references
+
+
+class NodeWidgetStateUpdate(NodeMsg):
+    """Push a widget.restoreState() update to a running NodeProcess window.
+
+    Sent by AmiCli when an agent changes a node's widget-level state directly (e.g. PythonEditor
+    code via set_python_code). Unlike NodeCtrlUpdate, this is applied with signals left on, so the
+    NodeProcess's own on-change handlers fire and a checkpoint is sent back to the flowchart —
+    keeping the open window's node state in sync with what's now on screen. This intentionally
+    overwrites any unsaved edits the user made directly in the open window.
+    """
+
+    def __init__(self, name, state):
+        super().__init__(name)
+        self.state = state  # passed to widget.restoreState(state)
+
+
+class NodeScreenshotRequest(NodeMsg):
+    """Ask a running NodeProcess window to export its plot as a PNG.
+
+    Sent by AmiCli (render_plot) to a node whose window is already open. The NodeProcess answers
+    after its next data_updated, so the image always has live data in it, not a blank plot.
+    request_id lets the GUI process match the reply to the caller that's waiting on it.
+    """
+
+    def __init__(self, name, request_id):
+        super().__init__(name)
+        self.request_id = request_id
+
+
+class NodeScreenshotReply(NodeMsg):
+    """Reply to NodeScreenshotRequest, sent on the checkpoint socket (not cached — see
+    MessageBroker.handle_checkpoint) directly back to the GUI process.
+    """
+
+    def __init__(self, name, request_id, png=None, error=None):
+        super().__init__(name)
+        self.request_id = request_id
+        self.png = png  # PNG bytes, or None on error
+        self.error = error  # error string, or None on success
+
+
 class NodeTermAdded(NodeMsg):
 
     def __init__(self, name, term, state):
