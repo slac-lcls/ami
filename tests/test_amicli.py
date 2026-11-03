@@ -219,6 +219,33 @@ async def test_disconnect_nodes(amicli):
 
 
 @pytest.mark.asyncio
+async def test_disconnect_nodes_stale_terminal_logs_warning_not_error(amicli, caplog):
+    """A terminal that's already been removed (e.g. by a prior remove_terminal call) is a
+    normal, recoverable condition, not a bug -- regression test for a KeyError that used to
+    surface as two stacked ERROR-level logs (one from amicli, one re-logged with a full
+    traceback by qt_dispatch's generic exception handler), which looked exactly like a crash
+    in AMI's log even though the agent recovered from it immediately every time.
+    """
+    import logging
+
+    amicli.create_node("PythonEditor")
+    amicli.add_terminal("PythonEditor.0", "fbase", "in", "Array1d")
+    amicli.create_node("Calculator")
+
+    amicli.connect_nodes("Calculator.0", "Out", "PythonEditor.0", "fbase")
+    await asyncio.sleep(0.1)
+
+    amicli.remove_terminal("PythonEditor.0", "fbase")
+
+    with caplog.at_level(logging.WARNING, logger="ami.amicli"):
+        with pytest.raises(Exception, match="fbase.*not found.*already removed"):
+            amicli.disconnect_nodes("Calculator.0", "Out", "PythonEditor.0", "fbase")
+
+    assert any(r.levelno == logging.WARNING for r in caplog.records)
+    assert not any(r.levelno == logging.ERROR for r in caplog.records)
+
+
+@pytest.mark.asyncio
 async def test_get_node_parameters(amicli):
     """Test getting node parameters."""
     amicli.create_node("GaussianFilter1D")
@@ -279,6 +306,44 @@ async def test_set_node_parameters_combo(amicli):
 
     node = amicli.graph.nodes["PeakFit.0"]["node"]
     assert node.values["Model"] == "Lorentzian"
+
+
+@pytest.mark.asyncio
+async def test_get_set_node_flags(amicli):
+    """Test get/set of latched/reset_on_run flags on a stateful (global_op) node."""
+    amicli.create_node("MeanVsScan")
+
+    flags = amicli.get_node_flags("MeanVsScan.0")
+    assert flags == {"latched": False, "reset_on_run": True, "stateful": True}
+
+    node = amicli.graph.nodes["MeanVsScan.0"]["node"]
+    node.changed = False
+
+    result = amicli.set_node_flags("MeanVsScan.0", reset_on_run=False)
+    assert result == {"latched": False, "reset_on_run": False}
+    assert node.reset_on_run is False
+    assert node.changed is True
+
+    node.changed = False
+    result = amicli.set_node_flags("MeanVsScan.0", latched=True)
+    assert result == {"latched": True, "reset_on_run": False}
+    assert node.latched is True
+    assert node.changed is True
+
+    flags = amicli.get_node_flags("MeanVsScan.0")
+    assert flags == {"latched": True, "reset_on_run": False, "stateful": True}
+
+
+@pytest.mark.asyncio
+async def test_set_node_flags_rejects_non_stateful(amicli):
+    """Test that set_node_flags raises a clear error on a non-stateful (non-global_op) node."""
+    amicli.create_node("Filter")
+
+    flags = amicli.get_node_flags("Filter.0")
+    assert flags["stateful"] is False
+
+    with pytest.raises(Exception, match="not a stateful"):
+        amicli.set_node_flags("Filter.0", reset_on_run=False)
 
 
 @pytest.mark.asyncio
