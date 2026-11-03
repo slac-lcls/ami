@@ -261,14 +261,28 @@ class AmiCli:
         Raises:
             Exception: If nodes/terminals don't exist or aren't connected
         """
-        try:
-            if src_name not in self.graph.nodes():
-                raise Exception(f"Source node '{src_name}' not found")
-            if dst_name not in self.graph.nodes():
-                raise Exception(f"Destination node '{dst_name}' not found")
+        if src_name not in self.graph.nodes():
+            raise Exception(f"Source node '{src_name}' not found")
+        if dst_name not in self.graph.nodes():
+            raise Exception(f"Destination node '{dst_name}' not found")
 
-            src_node = self.graph.nodes[src_name]["node"]
-            dst_node = self.graph.nodes[dst_name]["node"]
+        src_node = self.graph.nodes[src_name]["node"]
+        dst_node = self.graph.nodes[dst_name]["node"]
+
+        # A terminal that's already gone (e.g. removed by a prior remove_node_terminal call, or
+        # never existed) is a normal, recoverable condition -- not a bug -- so it's logged at
+        # warning with a clear message, and raised before the generic try/except below so it
+        # doesn't also get logged a second time at error there.
+        if src_term not in src_node.terminals:
+            msg = f"Terminal '{src_term}' not found on node '{src_name}' -- already removed?"
+            logger.warning(f"Failed to disconnect {src_name}.{src_term} -> {dst_name}.{dst_term}: {msg}")
+            raise Exception(msg)
+        if dst_term not in dst_node.terminals:
+            msg = f"Terminal '{dst_term}' not found on node '{dst_name}' -- already removed?"
+            logger.warning(f"Failed to disconnect {src_name}.{src_term} -> {dst_name}.{dst_term}: {msg}")
+            raise Exception(msg)
+
+        try:
             src_terminal = src_node.terminals[src_term]
             dst_terminal = dst_node.terminals[dst_term]
 
@@ -422,6 +436,73 @@ class AmiCli:
             return node.stateGroup.state()
         except Exception as e:
             logger.error(f"Failed to set parameters on '{node_name}': {e}")
+            raise
+
+    def get_node_flags(self, node_name):
+        """Get the current latched/reset_on_run flags for a node.
+
+        Args:
+            node_name: Node name (e.g., 'MeanVsScan.0')
+
+        Returns:
+            Dict with "latched", "reset_on_run", and "stateful" (whether these flags are
+            actually meaningful for this node -- i.e. node.global_op)
+
+        Raises:
+            Exception: If node doesn't exist
+        """
+        try:
+            if node_name not in self.graph.nodes():
+                raise Exception(f"Node '{node_name}' not found")
+            node = self.graph.nodes[node_name]["node"]
+            return {
+                "latched": node.latched,
+                "reset_on_run": node.reset_on_run,
+                "stateful": node.global_op,
+            }
+        except Exception as e:
+            logger.error(f"Failed to get flags for '{node_name}': {e}")
+            raise
+
+    def set_node_flags(self, node_name, latched=None, reset_on_run=None):
+        """Set latched/reset_on_run flags on a stateful (global_op) node.
+
+        Only meaningful on nodes whose to_operation() returns a GlobalTransformation (e.g.
+        MeanVsScan, Accumulator, PickN, SumN, ReduceByKey, RollingBuffer) -- these are exactly
+        the nodes with global_op=True. Requires apply_graph() afterward to take effect; this
+        only updates the in-memory flag and marks the node changed, matching the GUI's own
+        "Reset on Run" / "Latch Outputs" context-menu toggles.
+
+        Args:
+            node_name: Node name (e.g., 'MeanVsScan.0')
+            latched: If set, cache this node's last output and keep reporting it on
+                heartbeats where its input is missing (e.g. a one-time reference/calibration
+                value). Does NOT help a value survive a repeat=true loop restart by itself.
+            reset_on_run: If set to False, this node's accumulated state is NOT wiped when a
+                run/loop restarts (e.g. let a MeanVsScan keep its per-step means across a
+                repeat=true wraparound instead of starting over every pass).
+
+        Returns:
+            Dict with the resulting "latched"/"reset_on_run" values
+
+        Raises:
+            Exception: If node doesn't exist, or is not a stateful (global_op) node
+        """
+        try:
+            if node_name not in self.graph.nodes():
+                raise Exception(f"Node '{node_name}' not found")
+            node = self.graph.nodes[node_name]["node"]
+            if not node.global_op:
+                raise Exception(f"'{node_name}' is not a stateful/global node -- latched/reset_on_run have no effect")
+            if latched is not None:
+                node.nodeLatched(latched)
+                node.changed = True
+            if reset_on_run is not None:
+                node.nodeResetOnRun(reset_on_run)
+                node.changed = True
+            return {"latched": node.latched, "reset_on_run": node.reset_on_run}
+        except Exception as e:
+            logger.error(f"Failed to set flags on '{node_name}': {e}")
             raise
 
     def get_graph_errors(self):

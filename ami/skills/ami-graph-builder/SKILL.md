@@ -97,6 +97,7 @@ in the graph until you do), then either tell them to click it in the GUI or call
 | Mean of signal | Average0D / Average1D / Average2D | In (match dimensionality) |
 | Scan analysis (mean vs step) | MeanVsScan | Bin (float), Value (float) |
 | Per-event numpy/scipy logic no built-in node covers | PythonEditor | terminals you add (see PythonEditor section) |
+| Is a source producing data every heartbeat? | Monitor | terminals you add, one per source (see Looking at Data) |
 
 When unsure which node to use, call `list_node_types()` (or read `ami://node-types`) for the full
 list with terminal specs: `[{"type": "ScatterPlot", "inputs": ["X", "Y"], "outputs": []}, ...]`.
@@ -415,6 +416,54 @@ Pick the cheapest tool that answers the question:
 - `render_plot` fails with an "apply_graph() first" error if upstream nodes have unapplied
   changes, and times out after 30s if no data is flowing (check `get_graph_errors()`).
 - All of these show **one heartbeat** of data, not a history.
+- **A coarse numeric summary can hide a small, spatially localized signal inside a larger
+  array** — e.g. a few-percent shift confined to a narrow pixel sub-range of a long waveform or
+  image. `detail="normal"`'s ~200-point curve or 16×16 block means are built for spotting sharp
+  peaks, not necessarily for a localized feature that's small relative to the array's overall
+  shape. If a summary looks flat/featureless but the question implies a localized effect,
+  `render_plot` the raw signal visually before concluding there's nothing there, and consider
+  trying a sub-region sum/ROI instead of the full array.
+- **Is a source actually producing data every heartbeat?** Connect candidate sources to a
+  `Monitor` node's optional inputs (`add_node_terminal` to add as many as needed), then
+  `render_plot` on it. It shows a scatter/category plot of which named inputs had data arrive in
+  each of the last N heartbeats (`Num Points` parameter) — useful for diagnosing an intermittent,
+  sparse, or dead source before building further graph logic on top of it. This answers "is data
+  arriving at all," a different question from what the signal looks like once it's there (see
+  above).
+
+## Surviving a Loop Restart (`reset_on_run` / `latched`)
+
+An offline source with `repeat=true` wraps around and replays from the start once it finishes —
+and by default, **every stateful node (`MeanVsScan`, `Accumulator`, `PickN`, `SumN`,
+`ReduceByKey`, `RollingBuffer`, ...) resets its accumulated state on that restart**, same as it
+would on a real run boundary. If you're mid-analysis when that happens, you lose everything
+accumulated so far and have to wait for another full pass.
+
+`get_node_flags(node_name)` / `set_node_flags(node_name, ...)` expose two independent flags that
+can change this — don't confuse them:
+
+- **`reset_on_run=False`**: keep this node's accumulated state across the restart instead of
+  wiping it. Use this for a long-running accumulation (e.g. a `MeanVsScan` binning by delay step)
+  that you want to survive multiple loop passes rather than restarting from zero every time.
+- **`latched=True`**: a *different* mechanism — keep reporting this node's last output on
+  heartbeats where its input is currently missing (e.g. a one-time calibration/reference value
+  whose source has since stopped producing). This does **not** by itself help a value survive a
+  loop restart.
+
+Only meaningful on **stateful/global** nodes — check a node's `"stateful"` field from
+`get_node_flags`, or check `global_op` on a node type's entry from `list_node_types()`/
+`ami://node-types` *before* creating one, to know in advance whether it'll accept these flags.
+Calling `set_node_flags` on a non-stateful node (e.g. `Filter`, `PythonEditor`, any plain
+per-event `Map`) raises a clear error rather than silently doing nothing.
+
+**`apply_graph()` is required afterward** for the flag change to actually reach the running
+backend — `set_node_flags` only updates the flag and marks the node changed, the same as toggling
+it from the GUI's own right-click context menu.
+
+```
+set_node_flags("MeanVsScan.0", reset_on_run=False)
+apply_graph()
+```
 
 ## Graph Management
 
