@@ -1086,7 +1086,19 @@ class PsanaSource(HierarchicalDataSource):
             raise NotImplementedError("psana is not available!")
 
     def _timestamp(self, evt):
-        return self.ts_converter(evt.timestamp, epics_epoch=self.epics_epoch)
+        raw_ts, heartbeat, unix_ts = self.ts_converter(evt.timestamp, epics_epoch=self.epics_epoch)
+        if "shmem" not in self.config:
+            # exp=/run= and files= are offline replay of historical data: the DAQ-embedded
+            # timestamp is not wall-clock time (it can be days/months old, and under
+            # repeat=true it resets to the start of the file every loop), which breaks the
+            # latency metrics in manager.py/collector.py/worker.py/DisplayWidgets.py/monitor.py
+            # and the heartbeat-timestamp monotonicity the GUI client's AsyncFetcher and
+            # monitor.py rely on to know a new value has arrived. Use wall-clock time instead,
+            # matching SimSource.timestamp's existing behavior for non-live sources. shmem= is
+            # the one genuinely live psana source, where the real DAQ timestamp is the correct
+            # latency reference and repeat=true loop restarts don't apply.
+            unix_ts = time.time()
+        return raw_ts, heartbeat, unix_ts
 
     @property
     def ds(self):
