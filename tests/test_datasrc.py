@@ -1,3 +1,4 @@
+import time
 import typing
 
 import amitypes as at
@@ -932,6 +933,53 @@ def test_psana_source(xtcwriter):
 
     # check the number of events we processed
     assert count == heartbeat_period
+
+
+def test_psana_source_timestamp_offline_vs_live(xtcwriter):
+    """PsanaSource._timestamp() should use wall-clock time for offline replay
+    (files=/exp=/run=, no shmem), since the DAQ-embedded timestamp from a historical
+    run is not a meaningful "how stale is this" reference and is not monotonic across
+    a repeat=true loop restart - see 04-agent-gap-fixes.md item 8. shmem= sources are
+    genuinely live, so they should keep the real DAQ timestamp.
+    """
+    psana_src_cls = Source.find_source("psana")
+
+    offline_cfg = {
+        "type": "psana",
+        "interval": 0,
+        "init_time": 0,
+        "files": [str(xtcwriter)],
+    }
+    offline_source = psana_src_cls(0, 1, 10, offline_cfg)
+
+    live_cfg = dict(offline_cfg)
+    live_cfg["shmem"] = "fakeshmem"
+    live_source = psana_src_cls(0, 1, 10, live_cfg)
+
+    class FakeEvt:
+        # A fixed raw timestamp (encoded the same way TimestampConverter does: seconds
+        # since the EPICS epoch in the high 32 bits, nanoseconds in the low 32 bits)
+        # standing in for a historical DAQ-embedded event time - 2020-01-01 00:00:00 UTC,
+        # far from "now" either way this test happens to run.
+        timestamp = (946_684_800 << 32) | 0
+
+    before = time.time()
+    offline_raw_ts, offline_heartbeat, offline_unix_ts = offline_source._timestamp(FakeEvt())
+    live_raw_ts, live_heartbeat, live_unix_ts = live_source._timestamp(FakeEvt())
+    after = time.time()
+
+    # Offline: unix_ts is wall-clock "now", not the historical DAQ timestamp.
+    assert before <= offline_unix_ts <= after
+
+    # Live (shmem=): unix_ts is the real DAQ-embedded timestamp, unchanged.
+    assert live_unix_ts != offline_unix_ts
+    assert not (before <= live_unix_ts <= after)
+
+    # raw_ts/heartbeat (used for -b heartbeat-period boundary math) are untouched by
+    # this fix in both cases - only unix_ts (the wall-clock-latency field) changes.
+    assert offline_raw_ts == FakeEvt.timestamp
+    assert live_raw_ts == FakeEvt.timestamp
+    assert offline_heartbeat == live_heartbeat
 
 
 def test_static_source(sim_src_cfg):
