@@ -11,6 +11,7 @@ import tempfile
 import threading
 
 from mcp.server.mcpserver import Image, MCPServer
+from mcp.server.mcpserver.exceptions import ToolError
 
 logger = logging.getLogger(__name__)
 
@@ -282,6 +283,64 @@ def set_node_parameters(node_name: str, parameters: dict) -> str:
     try:
         result = _qt_dispatch(lambda: _amicli.set_node_parameters(node_name, parameters))
         return json.dumps({"node": node_name, "parameters": result})
+    except Exception as e:
+        return json.dumps({"error": str(e)})
+
+
+@mcp.tool()
+def get_node_flags(node_name: str) -> str:
+    """
+    Get the latched/reset_on_run flags for a node.
+
+    These are only meaningful on stateful/global nodes (e.g. MeanVsScan, Accumulator, PickN,
+    SumN, ReduceByKey, RollingBuffer) -- the response's "stateful" field tells you whether this
+    node is one of those. See set_node_flags for what each flag does.
+
+    Args:
+        node_name: Node name (e.g., 'MeanVsScan.0')
+
+    Returns:
+        JSON with "latched", "reset_on_run", and "stateful" (bool), or error
+    """
+    try:
+        result = _qt_dispatch(lambda: _amicli.get_node_flags(node_name))
+        return json.dumps({"node": node_name, **result})
+    except Exception as e:
+        return json.dumps({"error": str(e)})
+
+
+@mcp.tool()
+def set_node_flags(node_name: str, latched: bool = None, reset_on_run: bool = None) -> str:
+    """
+    Set latched/reset_on_run flags on a stateful (global_op) node.
+
+    Only works on nodes whose to_operation() returns a GlobalTransformation (e.g. MeanVsScan,
+    Accumulator, PickN, SumN, ReduceByKey, RollingBuffer) -- fails with a clear error on any
+    other node type (e.g. Filter, PythonEditor, Map-based nodes).
+
+    These two flags solve different problems -- don't confuse them:
+    - reset_on_run=False: keep this node's accumulated state across a run/loop restart (e.g. a
+      repeat=true offline source wrapping around) instead of losing it every pass. Use this for
+      a long-running accumulation like a scan histogram you want to survive multiple loop passes.
+    - latched=True: keep reporting this node's last output on heartbeats where its input is
+      currently missing (e.g. a one-time calibration/reference measurement whose source has
+      since stopped producing). Does NOT by itself help a value survive a loop restart.
+
+    Requires apply_graph() afterward to take effect -- this only updates the flag and marks the
+    node changed, matching the GUI's own "Reset on Run" / "Latch Outputs" context-menu toggles.
+
+    Args:
+        node_name: Node name (e.g., 'MeanVsScan.0')
+        latched: If set, enable/disable output latching (see above)
+        reset_on_run: If set, enable/disable resetting this node's state on a run restart
+            (reset_on_run=False keeps accumulated state across repeat=true loop restarts)
+
+    Returns:
+        JSON with the resulting "latched"/"reset_on_run" values, or error
+    """
+    try:
+        result = _qt_dispatch(lambda: _amicli.set_node_flags(node_name, latched, reset_on_run))
+        return json.dumps({"node": node_name, **result})
     except Exception as e:
         return json.dumps({"error": str(e)})
 
@@ -1114,7 +1173,11 @@ def render_plot(node_name: str, timeout: float = 30) -> Image:
         png = future.result(timeout=timeout)
     except concurrent.futures.TimeoutError:
         _qt_dispatch(lambda: _amicli.abandon_screenshot_request(future))
-        raise TimeoutError(f"No screenshot from '{node_name}' within {timeout}s; is data flowing?")
+        # ToolError (not a bare TimeoutError): this is an anticipated failure -- a window
+        # that hasn't produced a heartbeat yet, not a crash. The MCP framework logs ToolError
+        # at INFO with no traceback, vs. ERROR + full traceback for anything else, so this
+        # doesn't get mistaken for a real crash in AMI's log (see AGENTS.md note on this).
+        raise ToolError(f"No screenshot from '{node_name}' within {timeout}s; is data flowing?")
     return Image(data=png, format="png")
 
 
