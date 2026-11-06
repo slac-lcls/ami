@@ -427,8 +427,7 @@ class Graph:
                 elif color == "globalCollector":
                     self.inputs[color].update(local_collector_outputs)
 
-                    N = getattr(node, "N", 1)
-                    N = max((N // num_workers) * num_workers, 1)
+                    N = max(getattr(node, "N", 1), 1)
 
                     global_collector_node = NewNode(
                         name=node.name + "_globalCollector",

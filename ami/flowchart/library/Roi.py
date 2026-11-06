@@ -27,7 +27,8 @@ try:
             self.mask_arc = None
 
         def __call__(self, img, mask=None):
-            logger.debug("in PolarHistogram.__call__ %s" % info_ndarr(img, "image"))
+            if logger.isEnabledFor(logging.DEBUG):
+                logger.debug("in PolarHistogram.__call__ %s" % info_ndarr(img, "image"))
             cx, cy, ro, ri, ao, ai, nr, na = self.args
             if self.hpolar is None:
                 logger.info(
@@ -53,14 +54,15 @@ try:
             ranpix.shape = (oabins.nbins(), orbins.nbins())
             ranpix = np.transpose(ranpix)
 
-            logger.debug(
-                info_ndarr(ra2d, "\n  ra2d")
-                + info_ndarr(ranpix, "\n  ranpix")
-                + info_ndarr(orbins.bincenters(), "\n  orbins")
-                + info_ndarr(oabins.bincenters(), "\n  oabins")
-                + info_ndarr(rproj, "\n  radial  projection")
-                + info_ndarr(aproj, "\n  angular projection")
-            )
+            if logger.isEnabledFor(logging.DEBUG):
+                logger.debug(
+                    info_ndarr(ra2d, "\n  ra2d")
+                    + info_ndarr(ranpix, "\n  ranpix")
+                    + info_ndarr(orbins.bincenters(), "\n  orbins")
+                    + info_ndarr(oabins.bincenters(), "\n  oabins")
+                    + info_ndarr(rproj, "\n  radial  projection")
+                    + info_ndarr(aproj, "\n  angular projection")
+                )
 
             return (
                 orbins.bincenters(),
