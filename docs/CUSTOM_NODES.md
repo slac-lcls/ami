@@ -790,6 +790,24 @@ See `ami/flowchart/library/Roi.py:237` (`Roi2D`) for a complete implementation.
 
 12. **Per-worker vs per-heartbeat execution.** `Map` and the `_worker` clone of `GlobalTransformation` nodes run on every raw event. The `_localCollector` and `_globalCollector` clones run once per heartbeat after all contributions arrive. Design your reduction functions accordingly — they are not called at event rate.
 
+13. **Never mutate an input value in place — always return a new object.** AMI's execution
+    engine (`networkfox`, via `ami/graphkit_wrapper.py`) passes every value by reference,
+    not by copy. If your `Map` function, `Accumulator`/`ReduceByKey` reduction, or
+    `PythonEditor`/`Filter` code mutates an input array/list/dict in place (`arr += 1`,
+    `arr[0] = 0`, `mylist.append(x)`, `mydict[k] = v`), you are mutating the exact object
+    another node, a stateful node's own cached state, or the original data source may
+    still hold a reference to — not a private copy. This is true even if your function
+    doesn't explicitly return the mutated object; the corruption happens at the moment of
+    mutation, regardless of what you return. `Threshold1D` (Pattern B above) shows the
+    correct pattern: `result = arr.copy(); result[mask] = 0; return result`. If you're
+    writing a stateful reduction (`Accumulator`/`ReduceByKey`), the same rule applies to
+    your running state: build and return a new object each call rather than mutating
+    `res`/`cv` in place, unless you're certain nothing else can be holding a reference to
+    it (AMI itself does not guarantee this — see
+    `.opencode/plans/node-input-aliasing/research/aliasing-audit-2026-11-06.md` for the
+    full analysis, including two cases this bit in AMI's own built-in nodes: `SumN` and
+    `ReduceByKey`).
+
 ---
 
 ## 7. Registration via Manage Library

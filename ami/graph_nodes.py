@@ -1,4 +1,5 @@
 import abc
+import copy
 import operator
 
 import numpy as np
@@ -228,7 +229,7 @@ class ReduceByKey(GlobalTransformation):
             if k in self.res:
                 self.res[k] = self.reduction(self.res[k], v)
             else:
-                self.res[k] = v
+                self.res[k] = copy.copy(v)
         else:
             # localCollector, globalCollector
             for r in args:
@@ -236,7 +237,7 @@ class ReduceByKey(GlobalTransformation):
                     if k in self.res:
                         self.res[k] = self.reduction(self.res[k], v)
                     else:
-                        self.res[k] = v
+                        self.res[k] = copy.copy(v)
         return self.res
 
     def reset(self):
@@ -356,7 +357,7 @@ class SumN(GlobalTransformation):
 
         if self.res is None:
             if isinstance(value, np.ndarray):
-                self.res = value.astype(np.float32, copy=False)
+                self.res = value.astype(np.float32, copy=True)
             else:
                 self.res = value
         else:

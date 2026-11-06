@@ -1,8 +1,9 @@
 import itertools
 
+import numpy as np
 import pytest
 
-from ami.graph_nodes import PickN, RollingBuffer, SumN
+from ami.graph_nodes import PickN, ReduceByKey, RollingBuffer, SumN
 from ami.graphkit_wrapper import Graph
 
 
@@ -215,6 +216,46 @@ def test_sumN(sumN_graph):
         assert globalCollector == {"cspad_counts": count4, "cspad_sum": sum4}
     else:
         assert not globalCollector
+
+
+def test_sumN_does_not_mutate_input_array():
+    # Regression test for global-op-n-splitting/active/03-sumn-aliasing-copy.md:
+    # SumN used to store the first event's array via astype(..., copy=False), which
+    # returns the same object (no copy) when the dtype already matches (float32). The
+    # next event's np.add(self.res, value, out=self.res) then mutated that first event's
+    # original array in place instead of a private copy.
+    node = SumN(name="s", N=3, inputs=["x"], outputs=["c", "v"])
+    a = np.ones(2, dtype=np.float32)
+    a_before = a.copy()
+    b = np.ones(2, dtype=np.float32)
+
+    node(a)
+    node(b)
+
+    assert np.array_equal(a, a_before)
+
+
+def test_reduceByKey_does_not_mutate_input_value():
+    # Regression test for global-op-n-splitting/active/04-reducebykey-aliasing-copy.md:
+    # ReduceByKey used to store a new key's value directly (self.res[k] = v, no copy).
+    # If the reduction mutates its first argument in place instead of returning a new
+    # object (e.g. StatsVsScan's `cv.extend(v); return cv` in
+    # ami/flowchart/library/Operators.py), the next event for the same key mutates the
+    # caller's original value object, not a private copy -- the same aliasing bug class
+    # as SumN above, applied to ReduceByKey's dict values instead of SumN's array.
+    def extend_reduction(cv, v):
+        cv.extend(v)
+        return cv
+
+    node = ReduceByKey(name="r", inputs=["k", "v"], outputs=["out"], reduction=extend_reduction, color="worker")
+    v1 = [10]
+    v1_before = list(v1)
+    v2 = [20]
+
+    node(1, v1)
+    node(1, v2)
+
+    assert v1 == v1_before
 
 
 @pytest.fixture(scope="function")
