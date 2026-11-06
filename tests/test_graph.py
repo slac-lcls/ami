@@ -448,6 +448,139 @@ def test_global_replace_both_mismatched():
     assert "test_pickN_globalCollector" in worker_names
 
 
+def test_global_replace_unexpanded_global_op_with_pick1_sibling():
+    """
+    Regression test for a crash seen with TimePlot nodes downstream of a global operation
+    (e.g. Average0D -> TimePlot). The TimePlot's RollingBuffer has one input that comes from a
+    global operation and one raw input, so _collect_global_inputs inserts a PickN ("pick1") under
+    the same parent name. Because the RollingBuffer itself is never split into worker/
+    localCollector/globalCollector parts (it only runs on the globalCollector), replacing it used
+    to incorrectly take the "already expanded" code path and crash with
+    "Operation may only be added once".
+    """
+    parent = "TimePlot.0"
+
+    def build(n):
+        return [
+            Accumulator(
+                name="Average0D.0_accumulated",
+                inputs=["delta_t"],
+                outputs=["Average0D.0.Out"],
+                reduction=lambda res, *rest, count, reset: res,
+                parent="Average0D.0",
+            ),
+            RollingBuffer(
+                name=parent + "_buffer",
+                N=n,
+                inputs=["timestamp", "Average0D.0.Out"],
+                outputs=[parent + "_count", parent + "_buffered"],
+                parent=parent,
+            ),
+            Map(
+                name=parent + "_operation",
+                inputs=[parent + "_count", parent + "_buffered"],
+                outputs=[parent + ".X", parent + ".Y"],
+                func=lambda count, data: zip(*data),
+                parent=parent,
+            ),
+        ]
+
+    graph = Graph(name="graph")
+    graph.add(build(100))
+    graph.compile(num_workers=1, num_local_collectors=1)
+
+    # the pick1 helper for the raw "timestamp" input shares the TimePlot.0 parent name
+    assert parent in graph.children_of_global_operations
+    pick1_names = {child.name for child in graph.children_of_global_operations[parent]}
+    assert "timestamp_pick1_worker" in pick1_names
+
+    # replacing the buffer (e.g. the user changes "Num Points") must not crash
+    graph.add(build(200)[1:])
+    graph.compile(num_workers=1, num_local_collectors=1)
+
+    node_names = [n.name for n in graph.graph.nodes if hasattr(n, "name")]
+    assert node_names.count(parent + "_buffer") == 1
+    buffer_node = next(n for n in graph.graph.nodes if getattr(n, "name", None) == parent + "_buffer")
+    assert buffer_node.N == 200
+
+    # the pick1 helper siblings must survive the replace
+    assert parent in graph.children_of_global_operations
+    pick1_names = {child.name for child in graph.children_of_global_operations[parent]}
+    assert "timestamp_pick1_worker" in pick1_names
+
+
+def test_global_replace_unexpanded_global_op_input_change():
+    """
+    Same setup as above, but the replacement RollingBuffer drops the raw "timestamp" input
+    entirely. This should compile cleanly without crashing.
+    """
+    parent = "TimePlot.0"
+
+    graph = Graph(name="graph")
+    graph.add(
+        [
+            Accumulator(
+                name="Average0D.0_accumulated",
+                inputs=["delta_t"],
+                outputs=["Average0D.0.Out"],
+                reduction=lambda res, *rest, count, reset: res,
+                parent="Average0D.0",
+            ),
+            RollingBuffer(
+                name=parent + "_buffer",
+                N=100,
+                inputs=["timestamp", "Average0D.0.Out"],
+                outputs=[parent + "_count", parent + "_buffered"],
+                parent=parent,
+            ),
+        ]
+    )
+    graph.compile(num_workers=1, num_local_collectors=1)
+
+    graph.add(
+        RollingBuffer(
+            name=parent + "_buffer",
+            N=100,
+            inputs=["Average0D.0.Out"],
+            outputs=[parent + "_count", parent + "_buffered"],
+            parent=parent,
+        )
+    )
+    graph.compile(num_workers=1, num_local_collectors=1)
+
+    node_names = [n.name for n in graph.graph.nodes if hasattr(n, "name")]
+    assert node_names.count(parent + "_buffer") == 1
+
+
+def test_global_replace_path_a_preserves_sibling_children():
+    """
+    Two global operations sharing the same parent name should each be replaceable
+    independently: replacing one with mismatched inputs must not remove the other's
+    expanded worker/localCollector/globalCollector nodes.
+    """
+    graph = Graph(name="graph")
+    graph.add(
+        [
+            PickN(name="first", N=1, inputs=["cspad"], outputs=["first_out"], parent="shared"),
+            PickN(name="second", N=1, inputs=["laser"], outputs=["second_out"], parent="shared"),
+        ]
+    )
+    graph.compile(num_workers=4, num_local_collectors=2)
+
+    node_names = {n.name for n in graph.graph.nodes if hasattr(n, "name")}
+    assert "second_worker" in node_names
+    assert "second_globalCollector" in node_names
+
+    graph.replace(PickN(name="first", N=1, inputs=["cspad", "delta_t"], outputs=["first_out"], parent="shared"))
+    graph.compile(num_workers=4, num_local_collectors=2)
+
+    node_names = {n.name for n in graph.graph.nodes if hasattr(n, "name")}
+    assert "second_worker" in node_names
+    assert "second_globalCollector" in node_names
+    assert "first_worker" in node_names
+    assert "first_globalCollector" in node_names
+
+
 def test_global_replace_matching_fast_path():
     """Test that matching inputs/outputs still uses fast path (backward compatibility)"""
     graph = Graph(name="graph")

@@ -194,29 +194,42 @@ class Graph:
         Args:
             new_node (Transformation): New node to replace existing node with.
         """
-        if new_node.is_global_operation and new_node.parent in self.children_of_global_operations:
-            descendants = set()
-            ancestors = set()
-            worker_node = None
-            global_collector_node = None
+        worker_node = None
+        global_collector_node = None
 
+        if new_node.is_global_operation and new_node.parent in self.children_of_global_operations:
             for child in self.children_of_global_operations[new_node.parent]:
                 if child.name == "%s_worker" % new_node.name:
                     worker_node = child
-                    descendants.add(child)
-                    descendants.update(nx.dag.descendants(self.graph, child))
                 if child.name == "%s_globalCollector" % new_node.name:
                     global_collector_node = child
-                    ancestors.add(child)
-                    ancestors.update(nx.dag.ancestors(self.graph, child))
+
+        # Only take the expanded-global-operation path if this node was actually split into
+        # worker/localCollector/globalCollector parts. A node's parent may already be present in
+        # children_of_global_operations because of a sibling operation (e.g. a PickN inserted by
+        # _collect_global_inputs) even though this particular node was never expanded.
+        if worker_node is not None or global_collector_node is not None:
+            descendants = set()
+            ancestors = set()
+            if worker_node is not None:
+                descendants.add(worker_node)
+                descendants.update(nx.dag.descendants(self.graph, worker_node))
+            if global_collector_node is not None:
+                ancestors.add(global_collector_node)
+                ancestors.update(nx.dag.ancestors(self.graph, global_collector_node))
 
             # Detect input/output mismatches
             inputs_match = worker_node and set(worker_node.inputs) == set(new_node.inputs)
             outputs_match = global_collector_node and set(global_collector_node.outputs) == set(new_node.outputs)
 
             if not inputs_match or not outputs_match:
-                # Path A: Mismatch - remove all expanded children and re-add
-                nodes_to_remove = set(self.children_of_global_operations[new_node.parent])
+                # Path A: Mismatch - remove this operation's expanded children (not its siblings
+                # under the same parent) and re-add
+                nodes_to_remove = {
+                    child
+                    for child in self.children_of_global_operations[new_node.parent]
+                    if child.name.startswith(new_node.name + "_")
+                }
 
                 # If outputs changed, also remove downstream dependents
                 if not outputs_match and global_collector_node:
@@ -230,7 +243,9 @@ class Graph:
                     if node in self.expanded_global_operations:
                         self.expanded_global_operations.remove(node)
 
-                del self.children_of_global_operations[new_node.parent]
+                self.children_of_global_operations[new_node.parent].difference_update(nodes_to_remove)
+                if not self.children_of_global_operations[new_node.parent]:
+                    del self.children_of_global_operations[new_node.parent]
             else:
                 # Path B: Match - use optimized fast path (original logic)
                 nodes_to_remove = descendants.intersection(ancestors)
