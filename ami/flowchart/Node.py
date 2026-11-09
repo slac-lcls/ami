@@ -203,7 +203,8 @@ class Node(QtCore.QObject):
 
         Returns:
             Dict with "terminals" (the raw kwarg, name -> {"io": ..., "ttype": ..., ...}),
-            "allowAddInput", "allowAddOutput", "viewable", "buffered", "global_op".
+            "allowAddInput", "allowAddOutput", "viewable", "buffered", "global_op",
+            "exportable".
             None if the class's __init__ doesn't reach Node.__init__ in the expected way (e.g. it
             raises before then, or never calls super().__init__() at all).
         """
@@ -219,6 +220,7 @@ class Node(QtCore.QObject):
                 "viewable": kwargs.get("viewable", False),
                 "buffered": kwargs.get("buffered", False),
                 "global_op": kwargs.get("global_op", False),
+                "exportable": kwargs.get("exportable", False),
             }
         except Exception:
             logger.exception(f"describe_class({cls.__name__}) failed before reaching Node.__init__")
