@@ -891,13 +891,21 @@ def list_node_types() -> str:
     List all available node types with their terminal specifications.
 
     Returns:
-        JSON array of node types with type, description, inputs, outputs, parameters, viewable
-        (whether render_plot opens a window for it), and can_add_inputs/can_add_outputs (true for
-        the few node types - e.g. SumN, PythonEditor - whose terminals aren't fixed; their
-        "inputs"/"outputs" here are empty, not "takes no input").
+        JSON array of node types with type, description, inputs, outputs, parameters, viewable,
+        buffered, global_op, exportable, and can_add_inputs/can_add_outputs.
+        "viewable" or "buffered" being true means render_plot/open_view opens a window for it
+        (buffered nodes like ScalarPlot/ScatterPlot show a window of recent events rather than
+        the latest value -- check both, not just "viewable"). "global_op" being true means the
+        node accepts get_node_flags/set_node_flags (latched/reset_on_run) -- check this before
+        creating a node if you need those flags. "exportable" being true means the node
+        participates in AMI's named-alias export system (e.g. ExportToWorker, PvExport).
+        can_add_inputs/can_add_outputs is true for the few node types - e.g. SumN, PythonEditor -
+        whose terminals aren't fixed; their "inputs"/"outputs" here are empty, not "takes no
+        input".
         Example: [{"type": "ScatterPlot", "inputs": {"X": {"type": "float", "optional": false},
                   "Y": {"type": "float", "optional": false}}, "outputs": {}, "parameters": [],
-                  "viewable": true, "can_add_inputs": false, "can_add_outputs": false}, ...]
+                  "viewable": true, "buffered": false, "global_op": false, "exportable": false,
+                  "can_add_inputs": false, "can_add_outputs": false}, ...]
     """
     try:
         types = _qt_dispatch(lambda: _amicli.list_node_types())

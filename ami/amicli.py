@@ -685,12 +685,20 @@ class AmiCli:
 
         Returns:
             List of dicts with type, description, inputs, outputs, parameters, viewable,
-            can_add_inputs, can_add_outputs.
+            buffered, global_op, exportable, can_add_inputs, can_add_outputs.
+            "viewable" or "buffered" being true means render_plot/open_view will open a display
+            window for the node (buffered nodes like ScalarPlot/ScatterPlot show a window of
+            recent events rather than the latest value; neither flag alone is sufficient).
+            "global_op" being true means the node accepts get_node_flags/set_node_flags
+            (latched/reset_on_run) -- see those tools' docstrings. "exportable" being true means
+            the node participates in AMI's named-alias export system (e.g. ExportToWorker,
+            PvExport).
             Example: [{"type": "Roi2D", "description": "Region of Interest of image.",
                        "inputs": {"In": {"type": "Array2d", "optional": false}},
                        "outputs": {"Out": {"type": "Array2d"}, "Roi_Coordinates": {"type": "Array1d"}},
                        "parameters": [{"name": "origin x", "type": "intSpin", "value": 0, "min": 0}],
-                       "viewable": true, "can_add_inputs": false, "can_add_outputs": false}]
+                       "viewable": true, "buffered": false, "global_op": false,
+                       "exportable": false, "can_add_inputs": false, "can_add_outputs": false}]
         """
         try:
             types = []
@@ -710,7 +718,7 @@ class AmiCli:
 
                 spec = node_class.describe_class()
                 inputs, outputs = {}, {}
-                viewable = can_add_inputs = can_add_outputs = False
+                viewable = buffered = global_op = exportable = can_add_inputs = can_add_outputs = False
                 if spec is not None:
                     for name, opts in spec["terminals"].items():
                         entry = {"type": str(opts.get("ttype"))}
@@ -720,6 +728,9 @@ class AmiCli:
                         elif opts.get("io") == "out":
                             outputs[name] = entry
                     viewable = spec["viewable"]
+                    buffered = spec["buffered"]
+                    global_op = spec["global_op"]
+                    exportable = spec["exportable"]
                     can_add_inputs = spec["allowAddInput"]
                     can_add_outputs = spec["allowAddOutput"]
 
@@ -731,6 +742,9 @@ class AmiCli:
                         "outputs": outputs,
                         "parameters": params,
                         "viewable": viewable,
+                        "buffered": buffered,
+                        "global_op": global_op,
+                        "exportable": exportable,
                         "can_add_inputs": can_add_inputs,
                         "can_add_outputs": can_add_outputs,
                     }

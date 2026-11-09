@@ -489,6 +489,8 @@ async def test_list_node_types(amicli, monkeypatch):
     assert roi2d["inputs"] == {"In": {"type": str(Array2d), "optional": False}}
     assert roi2d["outputs"]["Out"]["type"] == str(Array2d)
     assert roi2d["viewable"] is True
+    assert roi2d["global_op"] is False
+    assert roi2d["exportable"] is False
 
     # SumN/Accumulator/ReduceByKey/PythonEditor add terminals themselves (a user-facing
     # "add input" prompt) rather than declaring them statically, so describe_class() can't see
@@ -497,6 +499,22 @@ async def test_list_node_types(amicli, monkeypatch):
     assert sumn["inputs"] == {} and sumn["outputs"] == {}
     python_editor = by_name["PythonEditor"]
     assert python_editor["can_add_inputs"] is True and python_editor["can_add_outputs"] is True
+
+    # global_op gates get_node_flags/set_node_flags (latched/reset_on_run) -- MeanVsScan has
+    # static terminals (unlike SumN/Accumulator above) so it's a clean positive case.
+    mean_vs_scan = by_name["MeanVsScan"]
+    assert mean_vs_scan["global_op"] is True
+
+    # buffered nodes (ScalarPlot, ScatterPlot, ...) show a window of recent events rather than
+    # the latest value; render_plot/open_view checks viewable() OR buffered(), so "viewable"
+    # alone would wrongly suggest these have no display window - regression test for that gap.
+    scalar_plot = by_name["ScalarPlot"]
+    assert scalar_plot["viewable"] is False
+    assert scalar_plot["buffered"] is True
+
+    # exportable marks nodes participating in AMI's named-alias export system.
+    export_to_worker = by_name["ExportToWorker"]
+    assert export_to_worker["exportable"] is True
 
 
 @pytest.mark.asyncio
@@ -541,6 +559,8 @@ async def test_describe_class_matches_real_instantiation(amicli):
             assert spec_outputs == real_outputs, f"{node_type}: output mismatch"
             assert spec["viewable"] == real._viewable, f"{node_type}: viewable mismatch"
             assert spec["buffered"] == real._buffered, f"{node_type}: buffered mismatch"
+            assert spec["global_op"] == real.global_op, f"{node_type}: global_op mismatch"
+            assert spec["exportable"] == real._exportable, f"{node_type}: exportable mismatch"
             assert spec["allowAddInput"] == real._allowAddInput, f"{node_type}: allowAddInput mismatch"
             assert spec["allowAddOutput"] == real._allowAddOutput, f"{node_type}: allowAddOutput mismatch"
             checked += 1
