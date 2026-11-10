@@ -133,6 +133,8 @@ def amicli(flowchart_module):
         if node is not None:
             node.close(emit=False)
     cli.chart._graph = nx.MultiDiGraph()
+    cli.chart.message_log.clear()
+    cli.chart._apply_seq = cli.chart._message_seq
     return cli
 
 
@@ -176,7 +178,7 @@ async def test_ensure_source_idempotent(amicli):
 @pytest.mark.asyncio
 async def test_ensure_source_invalid(amicli):
     """Test that ensure_source raises for non-existent source."""
-    with pytest.raises(Exception):
+    with pytest.raises(KeyError):
         amicli.ensure_source("nonexistent_source_xyz")
 
 
@@ -198,7 +200,7 @@ async def test_connect_nodes_invalid_terminal(amicli):
     amicli.ensure_source("cspad")
     amicli.create_node("Roi2D")
 
-    with pytest.raises(Exception):
+    with pytest.raises(KeyError):
         amicli.connect_nodes("cspad", "NonExistent", "Roi2D.0", "In")
 
 
@@ -238,7 +240,7 @@ async def test_disconnect_nodes_stale_terminal_logs_warning_not_error(amicli, ca
     amicli.remove_terminal("PythonEditor.0", "fbase")
 
     with caplog.at_level(logging.WARNING, logger="ami.amicli"):
-        with pytest.raises(Exception, match="fbase.*not found.*already removed"):
+        with pytest.raises(KeyError, match="fbase.*not found.*already removed"):
             amicli.disconnect_nodes("Calculator.0", "Out", "PythonEditor.0", "fbase")
 
     assert any(r.levelno == logging.WARNING for r in caplog.records)
@@ -342,7 +344,7 @@ async def test_set_node_flags_rejects_non_stateful(amicli):
     flags = amicli.get_node_flags("Filter.0")
     assert flags["stateful"] is False
 
-    with pytest.raises(Exception, match="not a stateful"):
+    with pytest.raises(TypeError, match="not a stateful"):
         amicli.set_node_flags("Filter.0", reset_on_run=False)
 
 
@@ -356,6 +358,20 @@ async def test_node_info(amicli):
     assert "In" in info["inputs"]
     assert "Out" in info["outputs"]
     assert "state" in info
+
+
+@pytest.mark.asyncio
+async def test_node_info_not_found(amicli):
+    """node_info raises KeyError (not a bare Exception) for an unknown node name."""
+    with pytest.raises(KeyError, match="not found"):
+        amicli.node_info("NoSuchNode.0")
+
+
+@pytest.mark.asyncio
+async def test_delete_node_not_found(amicli):
+    """delete_node raises KeyError (not a bare Exception) for an unknown node name."""
+    with pytest.raises(KeyError, match="not found"):
+        amicli.delete_node("NoSuchNode.0")
 
 
 @pytest.mark.asyncio
@@ -401,6 +417,204 @@ async def test_get_graph_errors_with_exception(amicli):
     assert errors[0]["node"] == "Roi2D.0"
     assert errors[0]["error"] == "test error message"
     assert errors[0]["exception_type"] == "str"
+
+
+def _worker_exception(cls, text, ctrl, node_name=None, graph_name=None):
+    """Build an exception shaped like the ones workers/collectors report on the info socket."""
+    exc = cls(text)
+    exc.graph_name = ctrl.graph_name if graph_name is None else graph_name
+    exc.traceback_str = f"Traceback (most recent call last):\n{cls.__name__}: {text}\n"
+    if node_name is not None:
+        exc.node_name = node_name
+    return exc
+
+
+@pytest.mark.asyncio
+async def test_unattributed_worker_error_reaches_agent(amicli):
+    """A worker error with no node_name (status bar: 'ERROR: worker000: ...') is visible to the agent."""
+    ctrl = amicli.ctrl
+    text = "The truth value of an empty array is ambiguous."
+    amicli.chart._handle_info_message("error", "worker000", _worker_exception(ValueError, text, ctrl))
+
+    errors = amicli.get_graph_errors()
+    assert len(errors) == 1
+    assert errors[0]["node"] is None
+    assert errors[0]["source"] == "worker000"
+    assert errors[0]["error"] == text
+    assert errors[0]["exception_type"] == "ValueError"
+    assert errors[0]["graph_purged"] is True
+    assert "ValueError" in errors[0]["traceback"]
+
+    result = amicli.get_messages()
+    assert len(result["messages"]) == 1
+    assert result["messages"][0]["message"] == text
+    assert result["last_seq"] == result["messages"][0]["seq"]
+
+
+@pytest.mark.asyncio
+async def test_string_error_without_graph_name_recorded(amicli):
+    """Graph-update failures arrive as plain strings; they're logged but not marked purged."""
+    amicli.chart._handle_info_message("error", "localCollector000", "Failure updating graph: boom")
+
+    errors = amicli.get_graph_errors()
+    assert len(errors) == 1
+    assert errors[0]["node"] is None
+    assert errors[0]["error"] == "Failure updating graph: boom"
+    assert errors[0]["exception_type"] is None
+    assert errors[0]["graph_purged"] is False
+
+
+@pytest.mark.asyncio
+async def test_attributed_worker_error_marks_node(amicli, monkeypatch):
+    """An error whose node_name resolves via metadata marks the GUI node and is logged."""
+    ctrl = amicli.ctrl
+    amicli.create_node("Roi2D")
+    monkeypatch.setattr(ctrl, "metadata", {"Roi2D.0_operation": {"parent": "Roi2D.0"}}, raising=False)
+
+    exc = _worker_exception(TypeError, "bad roi", ctrl, node_name="Roi2D.0_operation")
+    amicli.chart._handle_info_message("error", "worker001", exc)
+
+    node = amicli.graph.nodes["Roi2D.0"]["node"]
+    assert node.exception is exc
+    errors = amicli.get_graph_errors()
+    assert len(errors) == 1
+    assert errors[0]["node"] == "Roi2D.0"
+    assert errors[0]["source"] == "worker001"
+    assert errors[0]["level"] == "error"
+    assert errors[0]["graph_purged"] is True
+    assert amicli.get_messages()["messages"][0]["node"] == "Roi2D.0"
+
+
+@pytest.mark.asyncio
+async def test_unknown_node_name_does_not_crash(amicli, monkeypatch):
+    """A node_name missing from metadata used to raise KeyError and kill the info loop."""
+    ctrl = amicli.ctrl
+    monkeypatch.setattr(ctrl, "metadata", {}, raising=False)
+
+    exc = _worker_exception(ValueError, "gone", ctrl, node_name="Deleted.0_operation")
+    amicli.chart._handle_info_message("error", "worker000", exc)
+
+    errors = amicli.get_graph_errors()
+    assert len(errors) == 1
+    assert errors[0]["node"] is None
+    assert errors[0]["error"] == "gone"
+
+
+@pytest.mark.asyncio
+async def test_error_for_other_graph_ignored(amicli):
+    """Errors tagged with another client's graph_name are not recorded."""
+    ctrl = amicli.ctrl
+    exc = _worker_exception(ValueError, "not mine", ctrl, graph_name=ctrl.graph_name + "_other")
+    amicli.chart._handle_info_message("error", "worker000", exc)
+
+    assert amicli.get_graph_errors() == []
+    assert amicli.get_messages()["messages"] == []
+
+
+@pytest.mark.asyncio
+async def test_get_messages_filters(amicli):
+    """since_seq and level filter the message history; old errors drop out of get_graph_errors after apply."""
+    ctrl = amicli.ctrl
+    chart = amicli.chart
+    chart._handle_info_message("error", "worker000", _worker_exception(ValueError, "first", ctrl))
+    chart._handle_info_message("warning", "worker000", _worker_exception(UserWarning, "careful", ctrl))
+    chart._handle_info_message("error", "worker001", _worker_exception(ValueError, "second", ctrl))
+
+    all_msgs = amicli.get_messages()
+    assert [m["message"] for m in all_msgs["messages"]] == ["first", "careful", "second"]
+    assert all_msgs["messages"][1]["level"] == "warning"
+    assert all_msgs["messages"][1]["graph_purged"] is False
+
+    errors_only = amicli.get_messages(level="error")
+    assert [m["message"] for m in errors_only["messages"]] == ["first", "second"]
+
+    first_seq = all_msgs["messages"][0]["seq"]
+    newer = amicli.get_messages(since_seq=first_seq)
+    assert [m["message"] for m in newer["messages"]] == ["careful", "second"]
+
+    with pytest.raises(ValueError):
+        amicli.get_messages(level="bogus")
+
+    # Simulate an Apply: errors from before it are stale for get_graph_errors but stay in history
+    chart._apply_seq = chart._message_seq
+    assert amicli.get_graph_errors() == []
+    assert len(amicli.get_messages()["messages"]) == 3
+
+
+@pytest.mark.asyncio
+async def test_message_log_is_bounded(amicli):
+    """The message history keeps only the most recent entries."""
+    ctrl = amicli.ctrl
+    maxlen = amicli.chart.message_log.maxlen
+    for i in range(maxlen + 5):
+        amicli.chart._handle_info_message("error", "worker000", _worker_exception(ValueError, f"e{i}", ctrl))
+
+    messages = amicli.get_messages()["messages"]
+    assert len(messages) == maxlen
+    assert messages[0]["message"] == "e5"
+    assert messages[-1]["message"] == f"e{maxlen + 4}"
+
+
+@pytest.mark.asyncio
+async def test_get_messages_traceback_opt_in(amicli):
+    """Tracebacks are omitted from get_messages unless requested."""
+    ctrl = amicli.ctrl
+    amicli.chart._handle_info_message("error", "worker000", _worker_exception(ValueError, "boom", ctrl))
+
+    assert "traceback" not in amicli.get_messages()["messages"][0]
+    assert "_key" not in amicli.get_messages()["messages"][0]
+    assert "ValueError" in amicli.get_messages(include_traceback=True)["messages"][0]["traceback"]
+
+
+@pytest.mark.asyncio
+async def test_repeated_errors_from_workers_deduped(amicli):
+    """The same error from several workers is one entry with sources and count."""
+    ctrl = amicli.ctrl
+    for src in ("worker000", "worker001", "worker002"):
+        amicli.chart._handle_info_message("error", src, _worker_exception(ValueError, "same", ctrl))
+
+    errors = amicli.get_graph_errors()
+    assert len(errors) == 1
+    assert errors[0]["count"] == 3
+    assert errors[0]["sources"] == ["worker000", "worker001", "worker002"]
+    assert len(amicli.get_messages()["messages"]) == 1
+
+
+@pytest.mark.asyncio
+async def test_repeated_warnings_collapse_and_advance_seq(amicli, monkeypatch):
+    """Warnings re-reported every heartbeat by every worker update one entry and bump its seq."""
+    ctrl = amicli.ctrl
+    amicli.create_node("Roi2D")
+    monkeypatch.setattr(ctrl, "metadata", {"Roi2D.0_operation": {"parent": "Roi2D.0"}}, raising=False)
+
+    def warn(src):
+        exc = _worker_exception(UserWarning, "fit failed", ctrl, node_name="Roi2D.0_operation")
+        amicli.chart._handle_info_message("warning", src, exc)
+
+    warn("worker000")
+    first_seq = amicli.get_messages()["last_seq"]
+    for _ in range(5):
+        for src in ("worker000", "worker001", "worker002"):
+            warn(src)
+
+    assert len(amicli.chart.message_log) == 1
+    messages = amicli.get_messages()["messages"]
+    assert messages[0]["count"] == 16
+    assert messages[0]["sources"] == ["worker000", "worker001", "worker002"]
+    # still recurring -> visible to a poller that already saw the first report
+    assert len(amicli.get_messages(since_seq=first_seq)["messages"]) == 1
+
+    errors = amicli.get_graph_errors()
+    assert len(errors) == 1
+    assert errors[0]["node"] == "Roi2D.0"
+    assert errors[0]["level"] == "warning"
+    assert errors[0]["count"] == 16
+
+    # after an apply the same problem starts a fresh entry
+    amicli.chart._apply_seq = amicli.chart._message_seq
+    warn("worker000")
+    assert len(amicli.chart.message_log) == 2
+    assert amicli.get_messages()["messages"][-1]["count"] == 1
 
 
 @pytest.mark.asyncio
@@ -457,6 +671,13 @@ async def test_save_load_graph(amicli, tmp_path):
     assert "cspad" in node_names
     assert "Roi2D.0" in node_names
     assert len(state["connections"]) == 1
+
+
+@pytest.mark.asyncio
+async def test_load_graph_missing_file(amicli, tmp_path):
+    """load_graph raises FileNotFoundError (not a bare Exception) for a nonexistent path."""
+    with pytest.raises(FileNotFoundError, match="not found"):
+        amicli.load_graph(str(tmp_path / "does_not_exist.fc"))
 
 
 @pytest.mark.asyncio
@@ -641,7 +862,7 @@ async def test_set_remove_reference(amicli, tmp_path):
     amicli.remove_reference("LinePlot.0", "good_spectrum")
     assert amicli.list_references("LinePlot.0") == {"Run 12": str(csv)}
 
-    with pytest.raises(Exception):
+    with pytest.raises(KeyError):
         amicli.remove_reference("LinePlot.0", "good_spectrum")
 
 
@@ -653,9 +874,9 @@ async def test_set_reference_errors(amicli, tmp_path):
     csv = tmp_path / "ref.csv"
     csv.write_text("0,1\n1,2\n")
 
-    with pytest.raises(Exception, match="does not support references"):
+    with pytest.raises(TypeError, match="does not support references"):
         amicli.set_reference("Projection.0", str(csv))
-    with pytest.raises(Exception, match="not found"):
+    with pytest.raises(FileNotFoundError, match="not found"):
         amicli.set_reference("LinePlot.0", str(tmp_path / "missing.csv"))
 
 
@@ -930,18 +1151,18 @@ async def test_tools_on_source_node(amicli, monkeypatch):
 @pytest.mark.asyncio
 async def test_open_view_errors(amicli):
     """Test open_view's error cases: missing node, no-plot node, pending upstream changes."""
-    with pytest.raises(Exception, match="not found"):
+    with pytest.raises(KeyError, match="not found"):
         amicli.open_view("NoSuchNode.0")
 
     amicli.create_node("Calculator")
-    with pytest.raises(Exception, match="no plot window"):
+    with pytest.raises(TypeError, match="no plot window"):
         amicli.open_view("Calculator.0")  # Calculator has no display window at all
 
     amicli.create_node("WaveformViewer")
     amicli.connect_nodes("Calculator.0", "Out", "WaveformViewer.0", "In")
     await asyncio.sleep(0.1)  # graph edge is added by an async Qt slot (nodeTermConnected)
     # Calculator.0 is freshly created (changed=True by default) and never applied
-    with pytest.raises(Exception, match="apply_graph"):
+    with pytest.raises(RuntimeError, match="apply_graph"):
         amicli.open_view("WaveformViewer.0")
 
     amicli.graph.nodes["Calculator.0"]["node"].changed = False
@@ -955,7 +1176,7 @@ async def test_open_view_hints_ensure_source_for_unadded_source(amicli):
     regression test for an agent calling render_plot("cspad") before ensure_source("cspad").
     """
     assert "cspad" not in amicli.graph.nodes()
-    with pytest.raises(Exception, match="ensure_source"):
+    with pytest.raises(KeyError, match="ensure_source"):
         amicli.open_view("cspad")
 
 
@@ -973,7 +1194,7 @@ async def test_open_view_accepts_buffered_nodes(amicli):
     await asyncio.sleep(0.1)  # graph edge is added by an async Qt slot (nodeTermConnected)
     # Same pending-changes check as a viewable node: both nodes are freshly created, never applied
     # (ScalarPlot.0 has its own to_operation, buffering outputs, so it counts too, not just Calculator.0).
-    with pytest.raises(Exception, match="apply_graph"):
+    with pytest.raises(RuntimeError, match="apply_graph"):
         amicli.open_view("ScalarPlot.0")
 
     amicli.graph.nodes["Calculator.0"]["node"].changed = False
@@ -1144,7 +1365,7 @@ def test_plot_widget_request_screenshot_reports_export_errors(qapp, monkeypatch)
 @pytest.mark.asyncio
 async def test_request_screenshot_not_found(amicli):
     """Test that request_screenshot surfaces open_view's "not found" error synchronously."""
-    with pytest.raises(Exception, match="not found"):
+    with pytest.raises(KeyError, match="not found"):
         amicli.request_screenshot("NoSuchNode.0")
 
 
@@ -1158,3 +1379,49 @@ async def test_request_screenshot_not_found(amicli):
 # cache/no-cache split, PlotWidget.screenshot_png/request_screenshot); the full round trip
 # needs manual verification: open a node's window from the Agent, call render_plot, confirm
 # the image matches the window.
+
+
+def _status_lines(amicli, monkeypatch):
+    lines = []
+    monkeypatch.setattr(amicli.chartWidget, "updateStatus", lambda text, color="black": lines.append(text))
+    return lines
+
+
+@pytest.mark.asyncio
+async def test_status_shows_each_problem_once(amicli, monkeypatch):
+    """Repeated warnings/errors (every worker, every heartbeat) give one status line per Apply."""
+    ctrl = amicli.ctrl
+    lines = _status_lines(amicli, monkeypatch)
+    amicli.create_node("Roi2D")
+    monkeypatch.setattr(ctrl, "metadata", {"Roi2D.0_operation": {"parent": "Roi2D.0"}}, raising=False)
+
+    def warn(src, text="fit failed", events=1):
+        exc = _worker_exception(UserWarning, text, ctrl, node_name="Roi2D.0_operation")
+        exc.event_count = events
+        amicli.chart._handle_info_message("warning", src, exc)
+
+    for _ in range(5):
+        for src in ("worker000", "worker001", "worker002"):
+            warn(src, events=4)
+    assert lines == ["WARNING: worker000 Roi2D.0: fit failed"]
+    assert amicli.get_graph_errors()[0]["events"] == 60
+
+    warn("worker000", text="different problem")
+    assert len(lines) == 2
+
+    for src in ("worker000", "worker001"):
+        amicli.chart._handle_info_message("error", src, _worker_exception(ValueError, "boom", ctrl))
+    assert lines[2:] == ["ERROR: worker000: boom"]
+
+    # after an Apply the same problem is shown again
+    amicli.chart._apply_seq = amicli.chart._message_seq
+    warn("worker001")
+    assert lines[-1] == "WARNING: worker001 Roi2D.0: fit failed"
+
+
+@pytest.mark.asyncio
+async def test_unattributed_warning_shown(amicli, monkeypatch):
+    """Warnings that can't be attributed to a node still reach the status log."""
+    lines = _status_lines(amicli, monkeypatch)
+    amicli.chart._handle_info_message("warning", "worker000", _worker_exception(UserWarning, "hmm", amicli.ctrl))
+    assert lines == ["WARNING: worker000: hmm"]

@@ -2,7 +2,6 @@ import numpy as np
 import scipy.ndimage as ndimage
 import scipy.stats as stats
 from amitypes import Array1d, Array2d
-from pyqtgraph.debug import printExc
 
 import ami.graph_nodes as gn
 from ami.flowchart.library.common import CtrlNode
@@ -212,10 +211,8 @@ try:
             try:
                 popt, covar = optimize.curve_fit(self.func, x, y, p0=self.p0)
                 return self.func(x, *popt), popt, covar
-            except RuntimeError:
-                printExc()
-
-            return np.array([])
+            except Exception as e:  # catch a number of fitting errors
+                raise gn.AMIWarning(e)
 
     class CurveFit(CtrlNode):
         """

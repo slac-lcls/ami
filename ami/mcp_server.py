@@ -3,7 +3,6 @@
 import concurrent.futures
 import json
 import logging
-import numpy as np
 import os
 import re
 import shutil
@@ -11,8 +10,9 @@ import socket
 import stat
 import tempfile
 import threading
-import uvicorn
 
+import numpy as np
+import uvicorn
 from mcp.server.mcpserver import Image, MCPServer
 from mcp.server.mcpserver.exceptions import ToolError
 from mcp.server.transport_security import TransportSecuritySettings
@@ -363,6 +363,14 @@ def get_graph_errors() -> str:
     """
     Get runtime errors from all nodes in the graph.
 
+    Also includes errors reported by workers/collectors since the last apply_graph that
+    couldn't be attributed to a node (node is null, e.g. "worker000: <message>"). An entry
+    with graph_purged=true means the worker/collector dropped the graph after the error: it
+    produces no data until the problem is fixed and apply_graph is called again. The same
+    problem from several workers is one entry with "sources", "count" (reports) and "events"
+    (events affected; a warning report covers a whole heartbeat); "traceback" is the
+    full worker-side traceback.
+
     Returns:
         JSON with list of node errors (empty if no errors)
     """
@@ -376,12 +384,41 @@ def get_graph_errors() -> str:
 
 
 @mcp.tool()
+def get_messages(since_seq: int = 0, level: str = "", include_traceback: bool = False) -> str:
+    """
+    Get the history of error/warning messages from workers/collectors (the GUI status bar's
+    ERROR/WARNING lines), most recently seen last, bounded to the 200 most recent distinct
+    problems. Repeats (e.g. a warning re-reported every heartbeat by every worker) update one
+    entry's sources/count/last_time and give it a new seq.
+
+    Args:
+        since_seq: Only return messages with seq > since_seq. Pass the previous last_seq to
+                   poll for new or still-recurring messages.
+        level: Optional filter: "error" or "warning" (default: both)
+        include_traceback: Include worker-side tracebacks (long; get_graph_errors has them too)
+
+    Returns:
+        JSON with "messages" (seq, first_time, last_time, level, source, sources, count, events,
+        graph_name, node, message, exception_type, graph_purged[, traceback]) and "last_seq"
+    """
+    try:
+        result = _qt_dispatch(
+            lambda: _amicli.get_messages(since_seq=since_seq, level=level or None, include_traceback=include_traceback)
+        )
+        return json.dumps(result)
+    except Exception as e:
+        return json.dumps({"error": str(e)})
+
+
+@mcp.tool()
 def apply_graph() -> str:
     """
     Apply the current graph (submit to workers for execution).
 
-    This is fire-and-forget. The apply runs asynchronously.
-    Call get_graph_errors after a few seconds to check for issues.
+    This is fire-and-forget. The apply runs asynchronously, and runtime errors from
+    workers/collectors arrive later. Call get_graph_errors (or get_messages) after a few
+    seconds to check for issues; an error with graph_purged=true means the graph stopped
+    running and must be fixed and re-applied.
 
     Returns:
         JSON with status

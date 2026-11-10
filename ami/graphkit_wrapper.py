@@ -12,6 +12,39 @@ def skip(n):
     return type(n) is str or type(n) is modifiers.optional
 
 
+def attribute_exception(exc):
+    """Set exc.node_name from the innermost networkfox Operation frame in its traceback.
+
+    networkfox only sets node_name for exceptions raised inside an operation's function; errors
+    raised in its own code around that call (e.g. checking an operation's return value) arrive
+    without one, so the client can't tell which node failed. This is best-effort and never raises.
+
+    Args:
+        exc: The exception caught while executing a graph
+
+    Returns:
+        The same exception, possibly with node_name/metadata set
+    """
+    if getattr(exc, "node_name", None) is not None:
+        return exc
+    try:
+        from networkfox.base import Control, NetworkOperation, Operation
+
+        op = None
+        tb = exc.__traceback__
+        while tb is not None:
+            candidate = tb.tb_frame.f_locals.get("self")
+            if isinstance(candidate, Operation) and not isinstance(candidate, (NetworkOperation, Control)):
+                op = candidate
+            tb = tb.tb_next
+        if op is not None:
+            exc.node_name = op.name
+            exc.metadata = getattr(op, "metadata", None)
+    except Exception:
+        pass
+    return exc
+
+
 class Graph:
     def __init__(self, name):
         """
@@ -532,6 +565,7 @@ class Graph:
 
         self.outputs["globalCollector"].update(outputs)
         self.graphkit = compose(name=self.name)(*body)
+        self._pending_warnings = {}
 
     def nxplot(self, filename=None):
         A = nx.nx_agraph.to_agraph(self.graph)
@@ -583,6 +617,7 @@ class Graph:
                         # print("LATCHING:", output)
                         args[0][output] = self.latch_cache[output]
         result = self.graphkit(*args, **kwargs)
+        self._accumulate_warnings()
         if color == "globalCollector":
             for node, names in self.latched_names.items():
                 inputs, outputs = names
@@ -599,9 +634,29 @@ class Graph:
         assert self.graphkit is not None, "call compile first"
         return self.graphkit.times()
 
+    def _accumulate_warnings(self):
+        # networkfox resets its warnings on every call, so keep them until warnings() is read
+        pending = getattr(self, "_pending_warnings", None)
+        if pending is None:
+            pending = self._pending_warnings = {}
+        for node_name, warning in self.graphkit.warnings().items():
+            if node_name in pending:
+                pending[node_name].event_count = getattr(pending[node_name], "event_count", 1) + 1
+            else:
+                warning.event_count = 1
+                pending[node_name] = warning
+
     def warnings(self):
+        """
+        Return the warnings raised since the last call, keyed by networkfox node name, and clear them.
+
+        Each warning is the first one a node raised in that period; its event_count attribute is the
+        number of events (graph calls) in which the node warned.
+        """
         assert self.graphkit is not None, "call compile first"
-        return self.graphkit.warnings()
+        pending = getattr(self, "_pending_warnings", None) or {}
+        self._pending_warnings = {}
+        return pending
 
     def metadata(self):
         """

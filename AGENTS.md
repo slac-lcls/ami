@@ -84,6 +84,41 @@ Unnecessary formatting changes create noisy diffs that make pull requests diffic
 
 ---
 
+## Exception Handling
+
+### Avoid Raising Generic `Exception`
+
+When adding new code, raise the most specific exception type that fits, not a bare
+`Exception`. This lets callers catch failure categories selectively and keeps
+`Raises:` docstrings meaningful instead of just saying "Exception" (which tells
+the caller nothing).
+
+Prefer builtins where they fit:
+- `KeyError` — a named thing (node, subgraph, terminal, feature, ...) wasn't found in a
+  lookup/collection
+- `FileNotFoundError` — a path on disk doesn't exist
+- `ValueError` — malformed/invalid input, or a conflicting state (e.g. "already exists")
+- `TypeError` — the wrong kind of object/node for the requested operation
+- `RuntimeError` — called out of order / wrong state (e.g. before `apply_graph()`)
+
+Only define a custom exception class when no builtin captures the semantics and
+callers would meaningfully benefit from catching it specifically -- this should be
+rare; don't reach for a custom class as the default pattern.
+
+**❌ WRONG:**
+```python
+if node_name not in self.graph.nodes():
+    raise Exception(f"Node '{node_name}' not found")
+```
+
+**✅ CORRECT:**
+```python
+if node_name not in self.graph.nodes():
+    raise KeyError(f"Node '{node_name}' not found")
+```
+
+---
+
 ## CRITICAL: Testing and Commit Policy
 
 ### ABSOLUTE RULE: Never Commit Untested Code

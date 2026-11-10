@@ -13,6 +13,7 @@ import ami.multiproc as mp
 from ami import Defaults, LogConfig
 from ami.comm import Collector, Colors, EventBuilder, Node, PlatformAction, Ports, TransitionBuilder, _node_exec_counter
 from ami.data import MsgTypes, Transitions, build_random_src_cfgs, run_random_event_server
+from ami.graphkit_wrapper import attribute_exception
 from ami.tracing import get_trace_id, setup_tracing
 from ami.worker import parse_args, run_worker
 
@@ -220,6 +221,7 @@ class GraphCollector(Node, Collector):
                             self.report("warning", warning)
 
                 except Exception as e:
+                    attribute_exception(e)
                     e.graph_name = msg.name
                     e.traceback_str = traceback.format_exc()
                     logger.exception("%s: Failure encountered while executing graph %s:", self.name, msg.name)

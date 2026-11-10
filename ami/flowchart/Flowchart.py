@@ -129,6 +129,12 @@ class Flowchart(QtCore.QObject):
 
         self.deleted_nodes = []
 
+        # Bounded history of error/warning messages from workers/collectors (the status bar text
+        # is GUI-only), readable by the agent via AmiCli.get_messages()/get_graph_errors().
+        self.message_log = deque(maxlen=200)
+        self._message_seq = 0
+        self._apply_seq = 0  # value of _message_seq at the last Apply
+
         self.prometheus_dir = prometheus_dir
         self.hutch = hutch
 
@@ -2833,35 +2839,102 @@ class Flowchart(QtCore.QObject):
                     events_this_round = [None] * num_workers
                     total_events = [None] * num_workers
                     last_round_time = now
-            elif topic == "warning":
-                ctrl = self.widget()
-                if hasattr(msg, "node_name"):
-                    if msg.graph_name != ctrl.graph_name:
-                        continue
-                    node_name = ""
-                    if msg.node_name in ctrl.metadata:
-                        node_name = ctrl.metadata[msg.node_name]["parent"]
-                    if node_name in self.nodes(data="node"):
-                        node = self.nodes(data="node")[node_name]
-                        if node.exception is None:
-                            node.setException(msg, "warning")
-                            ctrl.chartWidget.updateStatus(
-                                f"WARNING: {source} {node.display_name()}: {msg}", color="orange"
-                            )
-                            logger.warning(f"{source} {node.display_name()}: {msg}")
-            elif topic == "error":
-                ctrl = self.widget()
-                if hasattr(msg, "node_name"):
-                    if msg.graph_name != ctrl.graph_name:
-                        continue
-                    node_name = ctrl.metadata[msg.node_name]["parent"]
-                    node = self.nodes(data="node")[node_name]
-                    node.setException(msg)
-                    ctrl.chartWidget.updateStatus(f"ERROR: {source} {node.display_name()}: {msg}", color="red")
-                    logger.error(f"{source} {node.display_name()}: {msg}")
-                else:
-                    ctrl.chartWidget.updateStatus(f"ERROR: {source}: {msg}", color="red")
-                    logger.error(f"{source}: {msg}")
+            elif topic in ("warning", "error"):
+                try:
+                    self._handle_info_message(topic, source, msg)
+                except Exception:
+                    # Never let one bad message kill the info loop (it also carries sources/rates)
+                    logger.exception(f"Failed to handle {topic} message from {source}: {msg}")
+
+    def _resolve_message_node(self, msg):
+        """Map an exception's internal networkfox node_name to the GUI node, or None."""
+        ctrl = self.widget()
+        node_name = getattr(msg, "node_name", None)
+        metadata = getattr(ctrl, "metadata", None) or {}
+        if node_name is None or node_name not in metadata:
+            return None
+        parent = metadata[node_name].get("parent")
+        if parent not in self._graph.nodes():
+            return None
+        return self._graph.nodes[parent]["node"]
+
+    def _record_message(self, level, source, msg, node=None):
+        """Record an error/warning in the bounded message log and return the entry.
+
+        Repeats of the same problem since the last Apply (every worker re-reports graph warnings
+        each heartbeat) update the existing entry -- sources, count, events, last_time, and a fresh
+        seq, moving it to the end -- instead of flooding the log. entry["count"] == 1 means the
+        problem is new since the last Apply.
+        """
+        self._message_seq += 1
+        now = datetime.now().strftime("%H:%M:%S")
+        graph_name = getattr(msg, "graph_name", None)
+        node_name = node.name() if node is not None else None
+        exception_type = type(msg).__name__ if isinstance(msg, BaseException) else None
+        message = str(msg)
+        key = (level, graph_name, node_name, exception_type, message)
+        # warnings carry how many events raised them during the heartbeat (Graph.warnings())
+        events = getattr(msg, "event_count", 1)
+
+        for existing in self.message_log:
+            if existing["seq"] > self._apply_seq and existing["_key"] == key:
+                self.message_log.remove(existing)
+                if source not in existing["sources"]:
+                    existing["sources"].append(source)
+                existing["count"] += 1
+                existing["events"] += events
+                existing["seq"] = self._message_seq
+                existing["last_time"] = now
+                if existing["traceback"] is None:
+                    existing["traceback"] = getattr(msg, "traceback_str", None)
+                self.message_log.append(existing)
+                return existing
+
+        entry = {
+            "seq": self._message_seq,
+            "first_time": now,
+            "last_time": now,
+            "level": level,
+            "source": source,
+            "sources": [source],
+            "count": 1,
+            "events": events,
+            "graph_name": graph_name,
+            "node": node_name,
+            "message": message,
+            "exception_type": exception_type,
+            "traceback": getattr(msg, "traceback_str", None),
+            # workers/collectors purge the graph right after reporting a graph execution error
+            "graph_purged": level == "error" and graph_name is not None,
+            "_key": key,
+        }
+        self.message_log.append(entry)
+        return entry
+
+    def _handle_info_message(self, topic, source, msg):
+        """Handle a 'warning'/'error' message published by the manager on the info socket."""
+        ctrl = self.widget()
+        graph_name = getattr(msg, "graph_name", None)
+        if graph_name is not None and graph_name != ctrl.graph_name:
+            return
+
+        node = self._resolve_message_node(msg)
+
+        level = "warning" if topic == "warning" else "error"
+        entry = self._record_message(level, source, msg, node)
+        if node is not None and (level == "error" or node.exception is None):
+            node.setException(msg, "warning" if level == "warning" else "exception")
+
+        # Show each distinct problem once per Apply; repeats only update the message log
+        if entry["count"] > 1:
+            return
+        label = f"{source} {node.display_name()}" if node is not None else source
+        if level == "warning":
+            ctrl.chartWidget.updateStatus(f"WARNING: {label}: {msg}", color="orange")
+            logger.warning(f"{label}: {msg}")
+        else:
+            ctrl.chartWidget.updateStatus(f"ERROR: {label}: {msg}", color="red")
+            logger.error(f"{label}: {msg}")
 
     async def run(self, load=None):
         tasks = [asyncio.create_task(self.updateState()), asyncio.create_task(self.updateSources())]
@@ -3040,6 +3113,9 @@ class FlowchartCtrlWidget(QtWidgets.QWidget):
         msg = QtWidgets.QMessageBox(parent=self)
         msg.setText("Failed to submit graph! See status.")
 
+        # errors received before this apply are stale for AmiCli.get_graph_errors()
+        self.chart._apply_seq = self.chart._message_seq
+
         if self.chart.deleted_nodes:
             await self.graphCommHandler.remove(self.chart.deleted_nodes)
             self.chart.deleted_nodes = []
@@ -3080,7 +3156,7 @@ class FlowchartCtrlWidget(QtWidgets.QWidget):
                         try:
                             assert gnode.values["alias"]
                         except AssertionError:
-                            gnode.setException(True)
+                            gnode.setException("set alias!")
                             self.chartWidget.updateStatus(f"{gnode.display_name()} set alias!", color="red")
                             continue
                         try:
