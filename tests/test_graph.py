@@ -468,3 +468,54 @@ def test_global_replace_matching_fast_path():
     # Verify the fast path was used by checking that children_of_global_operations still exists
     # (mismatch path deletes it, fast path updates it)
     assert len(graph.children_of_global_operations) > 0
+
+
+def _run_single_map(func, outputs):
+    graph = Graph(name="attribution")
+    graph.add(Map(name="Bad_operation", inputs=["x"], outputs=outputs, func=func, parent="Bad.0"))
+    graph.compile(num_workers=1, num_local_collectors=1)
+    return graph({"x": 1}, color="worker")
+
+
+def test_attribute_exception_outside_fn():
+    """networkfox raises outside the op's fn (here: truth value of an empty array returned for
+    multiple outputs) without node_name; attribute_exception recovers it from the traceback."""
+    from ami.graphkit_wrapper import attribute_exception
+
+    try:
+        _run_single_map(lambda x: np.array([]), ["a", "b"])
+    except ValueError as e:
+        assert getattr(e, "node_name", None) is None
+        attribute_exception(e)
+        assert e.node_name == "Bad_operation"
+        assert e.metadata["parent"] == "Bad.0"
+    else:
+        raise AssertionError("expected ValueError")
+
+
+def test_attribute_exception_keeps_existing():
+    """An exception raised inside the op's fn already has node_name from networkfox."""
+    from ami.graphkit_wrapper import attribute_exception
+
+    def boom(x):
+        raise KeyError("boom")
+
+    try:
+        _run_single_map(boom, ["a"])
+    except KeyError as e:
+        e.node_name = "Original"
+        assert attribute_exception(e).node_name == "Original"
+    else:
+        raise AssertionError("expected KeyError")
+
+
+def test_attribute_exception_no_op_frame():
+    """Exceptions not raised from a graph are left alone and don't make the helper raise."""
+    from ami.graphkit_wrapper import attribute_exception
+
+    try:
+        raise RuntimeError("plain")
+    except RuntimeError as e:
+        attribute_exception(e)
+        assert not hasattr(e, "node_name")
+    assert not hasattr(attribute_exception(ValueError("no traceback")), "node_name")

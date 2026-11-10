@@ -17,7 +17,7 @@ import zmq
 from ami import Defaults, LogConfig
 from ami.comm import AutoExport, Colors, Node, PlatformAction, Ports, ResultStore, _node_exec_counter
 from ami.data import MsgTypes, RequestedData, Source, Transitions
-from ami.graphkit_wrapper import Graph
+from ami.graphkit_wrapper import Graph, attribute_exception
 from ami.tracing import create_graph_node_spans, get_trace_id, setup_tracing, start_child_span, start_span
 
 logger = logging.getLogger(__name__)
@@ -422,6 +422,7 @@ class Worker(Node):
                                 # self.times[name].append((start, stop, graph.times()))
 
                         except Exception as e:
+                            attribute_exception(e)
                             e.graph_name = name
                             e.traceback_str = traceback.format_exc()
                             logger.exception(

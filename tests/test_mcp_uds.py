@@ -45,6 +45,7 @@ def sock_dir():
 def start_server(path):
     env = dict(os.environ)
     env.pop("AMI_DISABLE_MCP", None)
+    env["COLUMNS"] = "1000"  # the log handler wraps to the terminal width; keep messages on one line
     return subprocess.Popen([sys.executable, "-c", SERVE, path], env=env, stderr=subprocess.PIPE)
 
 

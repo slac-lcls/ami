@@ -28,9 +28,15 @@ Call `validate_graph()`. It returns:
 Call `apply_graph()`. This submits the graph to AMI workers for execution. It is fire-and-forget and returns `{"status": "applied"}`.
 
 ### 3. Check runtime errors
-Call `get_graph_errors()`. It returns:
+Wait a few seconds after `apply_graph()` (runtime errors arrive asynchronously from workers), then call `get_graph_errors()`. It returns:
 - `{"ok": true, "errors": []}` → graph is running cleanly
 - `{"ok": false, "errors": [...]}` → runtime issues (type mismatches, missing data, node exceptions). Fix and re-apply.
+  - `"node": null` → a worker/collector error that couldn't be pinned to a node (e.g. `worker000: The truth value of an empty array is ambiguous`). Read `traceback` to find the culprit — often a Filter condition or PythonEditor code.
+  - `"graph_purged": true` → the worker/collector dropped the graph after the error. Nothing produces data until you fix it and call `apply_graph()` again.
+  - `"level": "warning"` (node shown yellow, e.g. a CurveFit/PeakFit that didn't converge) → that node skipped its outputs for those events, but the graph keeps running.
+  - The same problem from several workers is one entry with `sources`, `count` (reports) and `events` (events affected — e.g. a fit failing on 37 of every 100 events); `traceback` is the full worker-side traceback.
+
+`get_messages(since_seq=0, level="", include_traceback=false)` returns the recent error/warning history (what the GUI status bar shows), one entry per distinct problem, with a `last_seq` you can pass back to poll for new or still-recurring messages. Use it when `get_graph_errors()` is empty but data isn't flowing, or to see errors from before the last apply.
 
 ### 4. Layout — do NOT auto-arrange existing graphs
 New nodes are placed automatically next to the node they are first connected to,

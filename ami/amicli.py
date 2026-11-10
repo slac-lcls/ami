@@ -89,10 +89,10 @@ class AmiCli:
             node_name: Node name (e.g., 'Average.0', 'Roi2D.0')
 
         Raises:
-            Exception: If node doesn't exist
+            KeyError: If node doesn't exist
         """
         if node_name not in self.graph.nodes():
-            raise Exception(f"Node '{node_name}' not found")
+            raise KeyError(f"Node '{node_name}' not found")
         node = self.graph.nodes[node_name]["node"]
         node.close()
         self._unplaced.pop(node, None)
@@ -107,15 +107,13 @@ class AmiCli:
             dst_term: Destination terminal name (e.g., 'In')
 
         Raises:
-            Exception: If nodes don't exist or connection fails
+            KeyError: If nodes or terminals don't exist
         """
         try:
             if src_name not in self.graph.nodes():
-                raise Exception(
-                    f"Source node '{src_name}' not found. " f"Available: {list(self.graph.nodes())[:10]}..."
-                )
+                raise KeyError(f"Source node '{src_name}' not found. " f"Available: {list(self.graph.nodes())[:10]}...")
             if dst_name not in self.graph.nodes():
-                raise Exception(
+                raise KeyError(
                     f"Destination node '{dst_name}' not found. " f"Available: {list(self.graph.nodes())[:10]}..."
                 )
 
@@ -123,11 +121,11 @@ class AmiCli:
             dst_node = self.graph.nodes[dst_name]["node"]
 
             if src_term not in src_node.terminals:
-                raise Exception(
+                raise KeyError(
                     f"Terminal '{src_term}' not found on '{src_name}'. " f"Available: {list(src_node.terminals.keys())}"
                 )
             if dst_term not in dst_node.terminals:
-                raise Exception(
+                raise KeyError(
                     f"Terminal '{dst_term}' not found on '{dst_name}'. " f"Available: {list(dst_node.terminals.keys())}"
                 )
 
@@ -245,7 +243,7 @@ class AmiCli:
             placeholder_out_term.connectTo(dst_terminal, view=root_view.viewBox())
 
         else:
-            raise Exception(
+            raise ValueError(
                 f"Connecting between two different subgraphs ('{src_sg}' → '{dst_sg}') " f"is not supported"
             )
 
@@ -259,12 +257,13 @@ class AmiCli:
             dst_term: Destination terminal name
 
         Raises:
-            Exception: If nodes/terminals don't exist or aren't connected
+            KeyError: If nodes or terminals don't exist
+            ValueError: If disconnecting across two different subgraphs
         """
         if src_name not in self.graph.nodes():
-            raise Exception(f"Source node '{src_name}' not found")
+            raise KeyError(f"Source node '{src_name}' not found")
         if dst_name not in self.graph.nodes():
-            raise Exception(f"Destination node '{dst_name}' not found")
+            raise KeyError(f"Destination node '{dst_name}' not found")
 
         src_node = self.graph.nodes[src_name]["node"]
         dst_node = self.graph.nodes[dst_name]["node"]
@@ -276,11 +275,11 @@ class AmiCli:
         if src_term not in src_node.terminals:
             msg = f"Terminal '{src_term}' not found on node '{src_name}' -- already removed?"
             logger.warning(f"Failed to disconnect {src_name}.{src_term} -> {dst_name}.{dst_term}: {msg}")
-            raise Exception(msg)
+            raise KeyError(msg)
         if dst_term not in dst_node.terminals:
             msg = f"Terminal '{dst_term}' not found on node '{dst_name}' -- already removed?"
             logger.warning(f"Failed to disconnect {src_name}.{src_term} -> {dst_name}.{dst_term}: {msg}")
-            raise Exception(msg)
+            raise KeyError(msg)
 
         try:
             src_terminal = src_node.terminals[src_term]
@@ -309,7 +308,7 @@ class AmiCli:
                     placeholder_out_term = subgraphNode.terminals[terminal_name]
                     placeholder_out_term.disconnectFrom(dst_terminal)
             else:
-                raise Exception("Disconnecting between two different subgraphs is not supported")
+                raise ValueError("Disconnecting between two different subgraphs is not supported")
 
         except Exception as e:
             logger.error(f"Failed to disconnect {src_name}.{src_term} -> {dst_name}.{dst_term}: {e}")
@@ -325,7 +324,7 @@ class AmiCli:
             Source node name (same as source_name)
 
         Raises:
-            Exception: If source doesn't exist in available sources
+            KeyError: If source doesn't exist in available sources
         """
         try:
             # Check if already exists
@@ -335,7 +334,7 @@ class AmiCli:
             # Check if source is available
             available_sources = self.list_sources()
             if source_name not in available_sources:
-                raise Exception(f"Source '{source_name}' not available. " f"Available sources: {available_sources}")
+                raise KeyError(f"Source '{source_name}' not available. " f"Available sources: {available_sources}")
 
             # Create source node (same approach as sourceMenuTriggered)
             node_type = self.chart.source_library.getSourceType(source_name)
@@ -357,11 +356,11 @@ class AmiCli:
             Dict with keys: node, type, inputs, outputs, state
 
         Raises:
-            Exception: If node doesn't exist
+            KeyError: If node doesn't exist
         """
         try:
             if name not in self.graph.nodes():
-                raise Exception(f"Node '{name}' not found")
+                raise KeyError(f"Node '{name}' not found")
 
             node = self.graph.nodes[name]["node"]
             return {
@@ -385,11 +384,11 @@ class AmiCli:
             Dict of parameter name -> current value
 
         Raises:
-            Exception: If node doesn't exist
+            KeyError: If node doesn't exist
         """
         try:
             if node_name not in self.graph.nodes():
-                raise Exception(f"Node '{node_name}' not found")
+                raise KeyError(f"Node '{node_name}' not found")
             node = self.graph.nodes[node_name]["node"]
             if not hasattr(node, "stateGroup") or node.stateGroup is None:
                 return {}
@@ -413,14 +412,15 @@ class AmiCli:
             Dict of all current parameter values after update
 
         Raises:
-            Exception: If node doesn't exist or doesn't support parameters
+            KeyError: If node doesn't exist
+            TypeError: If node doesn't support parameters
         """
         try:
             if node_name not in self.graph.nodes():
-                raise Exception(f"Node '{node_name}' not found")
+                raise KeyError(f"Node '{node_name}' not found")
             node = self.graph.nodes[node_name]["node"]
             if not hasattr(node, "stateGroup") or node.stateGroup is None:
-                raise Exception(f"Node '{node_name}' does not have configurable parameters")
+                raise TypeError(f"Node '{node_name}' does not have configurable parameters")
             node.stateGroup.setState(parameters)
             # Update node.values to stay in sync
             for k, v in parameters.items():
@@ -449,11 +449,11 @@ class AmiCli:
             actually meaningful for this node -- i.e. node.global_op)
 
         Raises:
-            Exception: If node doesn't exist
+            KeyError: If node doesn't exist
         """
         try:
             if node_name not in self.graph.nodes():
-                raise Exception(f"Node '{node_name}' not found")
+                raise KeyError(f"Node '{node_name}' not found")
             node = self.graph.nodes[node_name]["node"]
             return {
                 "latched": node.latched,
@@ -486,14 +486,15 @@ class AmiCli:
             Dict with the resulting "latched"/"reset_on_run" values
 
         Raises:
-            Exception: If node doesn't exist, or is not a stateful (global_op) node
+            KeyError: If node doesn't exist
+            TypeError: If node is not a stateful (global_op) node
         """
         try:
             if node_name not in self.graph.nodes():
-                raise Exception(f"Node '{node_name}' not found")
+                raise KeyError(f"Node '{node_name}' not found")
             node = self.graph.nodes[node_name]["node"]
             if not node.global_op:
-                raise Exception(f"'{node_name}' is not a stateful/global node -- latched/reset_on_run have no effect")
+                raise TypeError(f"'{node_name}' is not a stateful/global node -- latched/reset_on_run have no effect")
             if latched is not None:
                 node.nodeLatched(latched)
                 node.changed = True
@@ -508,12 +509,24 @@ class AmiCli:
     def get_graph_errors(self):
         """Get errors/warnings from all nodes in the graph.
 
+        Also includes errors reported by workers/collectors since the last apply that could not
+        be attributed to a node (e.g. "worker000: <msg>" in the status bar); those have
+        node=None. graph_purged=True means the worker/collector dropped the graph after the
+        error, so it stops producing data until it's fixed and re-applied. The same problem
+        reported by several workers (or repeatedly) is one entry, with "sources" and "count".
+
         Returns:
             List of dicts with node name, type, error message, and traceback if available.
             Empty list if no errors.
         """
         errors = []
         try:
+            since = getattr(self.chart, "_apply_seq", 0)
+            recent = [e for e in getattr(self.chart, "message_log", ()) if e["seq"] > since]
+            by_node = {}
+            for e in recent:
+                if e["node"] is not None:
+                    by_node.setdefault(e["node"], []).append(e)
             for name, node in self.chart.nodes(data="node"):
                 if node is None:
                     continue
@@ -527,17 +540,82 @@ class AmiCli:
                         error_info["exception_type"] = type(exc).__name__
                         if hasattr(exc, "traceback_str"):
                             error_info["traceback"] = exc.traceback_str
+                    entries = by_node.get(name, [])
+                    # prefer the log entry for the exception the node is showing
+                    matching = [e for e in entries if e["message"] == error_info["error"]]
+                    entry = (matching or entries or [None])[-1]
+                    if entry is not None:
+                        error_info["level"] = entry["level"]
+                        error_info["source"] = entry["source"]
+                        error_info["sources"] = list(entry["sources"])
+                        error_info["count"] = entry["count"]
+                        error_info["events"] = entry["events"]
+                        error_info["graph_purged"] = entry["graph_purged"]
+                        if "traceback" not in error_info and entry["traceback"]:
+                            error_info["traceback"] = entry["traceback"]
                     errors.append(error_info)
+            for entry in recent:
+                if entry["node"] is None and entry["level"] == "error":
+                    errors.append(
+                        {
+                            "node": None,
+                            "level": "error",
+                            "source": entry["source"],
+                            "sources": list(entry["sources"]),
+                            "count": entry["count"],
+                            "events": entry["events"],
+                            "error": entry["message"],
+                            "exception_type": entry["exception_type"],
+                            "traceback": entry["traceback"],
+                            "graph_purged": entry["graph_purged"],
+                        }
+                    )
             return errors
         except Exception as e:
             logger.error(f"Failed to get graph errors: {e}")
             raise
 
+    def get_messages(self, since_seq=0, level=None, include_traceback=False):
+        """Get error/warning messages reported by workers/collectors (most recently seen last).
+
+        This is the history behind the GUI status bar's ERROR/WARNING lines, bounded to the
+        most recent 200 distinct problems. Repeats of a problem since the last apply update one
+        entry (sources, count, last_time) and give it a new seq, so polling with since_seq shows
+        problems that are still occurring.
+
+        Args:
+            since_seq: Only return entries with seq > since_seq (pass the previous last_seq to poll)
+            level: Optional filter, 'error' or 'warning'
+            include_traceback: Include each entry's worker-side traceback (can be long)
+
+        Returns:
+            Dict with "messages" (list of dicts with seq, first_time, last_time, level, source,
+            sources, count, events, graph_name, node, message, exception_type, graph_purged,
+            and traceback if requested) and "last_seq". count is the number of reports; events is
+            the number of events affected (a warning report covers a whole heartbeat).
+
+        Raises:
+            ValueError: If level is not 'error', 'warning', or None
+        """
+        if level not in (None, "", "error", "warning"):
+            raise ValueError(f"Invalid level '{level}'; use 'error' or 'warning'")
+        log = list(getattr(self.chart, "message_log", ()))
+        messages = []
+        for e in log:
+            if e["seq"] <= since_seq or (level and e["level"] != level):
+                continue
+            m = {k: v for k, v in e.items() if not k.startswith("_")}
+            m["sources"] = list(e["sources"])
+            if not include_traceback:
+                m.pop("traceback", None)
+            messages.append(m)
+        return {"messages": messages, "last_seq": getattr(self.chart, "_message_seq", 0)}
+
     def apply_graph(self):
         """Trigger graph apply (same as clicking Apply button).
 
         This is fire-and-forget. The apply runs asynchronously.
-        Check get_graph_errors() after a short delay to see results.
+        Check get_graph_errors() (or get_messages()) after a short delay to see results.
         """
         self.ctrl.ui.actionApply.trigger()
 
@@ -570,11 +648,11 @@ class AmiCli:
             filename: Path to .fc file
 
         Raises:
-            Exception: If file doesn't exist or load fails
+            FileNotFoundError: If file doesn't exist
         """
         try:
             if not os.path.exists(filename):
-                raise Exception(f"File '{filename}' not found")
+                raise FileNotFoundError(f"File '{filename}' not found")
 
             with open(filename, "r") as f:
                 state = json.load(f)
@@ -790,7 +868,7 @@ class AmiCli:
             Dict with name, boundary_inputs, boundary_outputs
 
         Raises:
-            Exception: If template not found or import fails
+            KeyError: If template not found
         """
         try:
             # Check if it's a file path
@@ -799,7 +877,7 @@ class AmiCli:
             elif self.chart.subgraph_library.hasSubgraph(template_name_or_path):
                 result = self.chart.instantiateSubgraphFromLibrary(template_name_or_path, pos=pos)
             else:
-                raise Exception(
+                raise KeyError(
                     f"Subgraph template '{template_name_or_path}' not found. "
                     f"Available: {self.chart.subgraph_library.getNames()}"
                 )
@@ -825,14 +903,14 @@ class AmiCli:
             Subgraph name
 
         Raises:
-            Exception: If nodes don't exist or creation fails
+            KeyError: If a node doesn't exist
         """
         try:
             # Get node objects
             nodes = []
             for node_name in node_names:
                 if node_name not in self.graph.nodes():
-                    raise Exception(f"Node '{node_name}' not found")
+                    raise KeyError(f"Node '{node_name}' not found")
                 nodes.append(self.graph.nodes[node_name]["node"])
 
             # Create subgraph
@@ -850,11 +928,11 @@ class AmiCli:
             filename: Path to save file
 
         Raises:
-            Exception: If subgraph doesn't exist or export fails
+            KeyError: If subgraph doesn't exist
         """
         try:
             if subgraph_name not in self.chart._subgraphs:
-                raise Exception(f"Subgraph '{subgraph_name}' not found")
+                raise KeyError(f"Subgraph '{subgraph_name}' not found")
 
             self.chart.exportSubgraph(subgraph_name, filename)
         except Exception as e:
@@ -892,11 +970,11 @@ class AmiCli:
             Dict with inputs, outputs, description
 
         Raises:
-            Exception: If template doesn't exist
+            KeyError: If template doesn't exist
         """
         try:
             if not self.chart.subgraph_library.hasSubgraph(template_name):
-                raise Exception(
+                raise KeyError(
                     f"Template '{template_name}' not found. " f"Available: {self.chart.subgraph_library.getNames()}"
                 )
 
@@ -950,11 +1028,11 @@ class AmiCli:
             external connection, and internal connections
 
         Raises:
-            Exception: If subgraph doesn't exist
+            KeyError: If subgraph doesn't exist
         """
         try:
             if subgraph_name not in self.chart._subgraphs:
-                raise Exception(f"Subgraph '{subgraph_name}' not found")
+                raise KeyError(f"Subgraph '{subgraph_name}' not found")
 
             sg_data = self.chart._subgraphs[subgraph_name]
             placeholder = sg_data["placeholder"]
@@ -1046,26 +1124,28 @@ class AmiCli:
             Terminal name that was created
 
         Raises:
-            Exception: If subgraph/nodes don't exist or source is inside subgraph
+            KeyError: If subgraph, source node, or source terminal doesn't exist
+            ValueError: If source node is inside the subgraph, or the input terminal already
+                exists
         """
         if subgraph_name not in self.chart._subgraphs:
-            raise Exception(f"Subgraph '{subgraph_name}' not found")
+            raise KeyError(f"Subgraph '{subgraph_name}' not found")
         if source_node not in self.graph.nodes():
-            raise Exception(f"Source node '{source_node}' not found")
+            raise KeyError(f"Source node '{source_node}' not found")
 
         sg_data = self.chart._subgraphs[subgraph_name]
         if source_node in sg_data["nodes"]:
-            raise Exception(f"Source node '{source_node}' is inside the subgraph")
+            raise ValueError(f"Source node '{source_node}' is inside the subgraph")
 
         subgraphNode = sg_data["placeholder"]
         ext_node = self.graph.nodes[source_node]["node"]
         if source_term not in ext_node.terminals:
-            raise Exception(f"Terminal '{source_term}' not found on node '{source_node}'")
+            raise KeyError(f"Terminal '{source_term}' not found on node '{source_node}'")
         ext_term = ext_node.terminals[source_term]
         terminal_name = f"{source_node}.{source_term}"
 
         if terminal_name in subgraphNode.inputs():
-            raise Exception(f"Input terminal '{terminal_name}' already exists on subgraph")
+            raise ValueError(f"Input terminal '{terminal_name}' already exists on subgraph")
 
         # Delegate to existing GUI method — handles terminal pair creation,
         # visual wiring, SubgraphInputs scene placement, graphics updates
@@ -1080,16 +1160,16 @@ class AmiCli:
             terminal_name: Terminal name to remove (e.g., 'jungfrau1M:raw:image.Out')
 
         Raises:
-            Exception: If subgraph or terminal doesn't exist
+            KeyError: If subgraph or terminal doesn't exist
         """
         if subgraph_name not in self.chart._subgraphs:
-            raise Exception(f"Subgraph '{subgraph_name}' not found")
+            raise KeyError(f"Subgraph '{subgraph_name}' not found")
 
         sg_data = self.chart._subgraphs[subgraph_name]
         subgraphNode = sg_data["placeholder"]
 
         if terminal_name not in subgraphNode.inputs():
-            raise Exception(
+            raise KeyError(
                 f"Input terminal '{terminal_name}' not found on subgraph '{subgraph_name}'. "
                 f"Available: {list(subgraphNode.inputs().keys())}"
             )
@@ -1109,30 +1189,32 @@ class AmiCli:
             Terminal name that was created
 
         Raises:
-            Exception: If subgraph doesn't exist or internal_node is not a child
+            KeyError: If subgraph, internal_node, or internal_term doesn't exist, or
+                internal_node is not a child of the subgraph
+            ValueError: If the output terminal already exists
         """
         if subgraph_name not in self.chart._subgraphs:
-            raise Exception(f"Subgraph '{subgraph_name}' not found")
+            raise KeyError(f"Subgraph '{subgraph_name}' not found")
 
         sg_data = self.chart._subgraphs[subgraph_name]
         if internal_node not in sg_data["nodes"]:
-            raise Exception(
+            raise KeyError(
                 f"Node '{internal_node}' is not in subgraph '{subgraph_name}'. "
                 f"Nodes in subgraph: {sg_data['nodes']}"
             )
 
         if internal_node not in self.graph.nodes():
-            raise Exception(f"Node '{internal_node}' not found in graph")
+            raise KeyError(f"Node '{internal_node}' not found in graph")
 
         subgraphNode = sg_data["placeholder"]
         int_node = self.graph.nodes[internal_node]["node"]
         if internal_term not in int_node.terminals:
-            raise Exception(f"Terminal '{internal_term}' not found on node '{internal_node}'")
+            raise KeyError(f"Terminal '{internal_term}' not found on node '{internal_node}'")
         int_term = int_node.terminals[internal_term]
         terminal_name = f"{internal_node}.{internal_term}"
 
         if terminal_name in subgraphNode.outputs():
-            raise Exception(f"Output terminal '{terminal_name}' already exists on subgraph")
+            raise ValueError(f"Output terminal '{terminal_name}' already exists on subgraph")
 
         # Delegate to existing GUI method — handles terminal pair creation,
         # visual wiring, SubgraphOutputs scene placement, graphics updates
@@ -1147,16 +1229,16 @@ class AmiCli:
             terminal_name: Terminal name to remove (e.g., 'Calculator.0.Out')
 
         Raises:
-            Exception: If subgraph or terminal doesn't exist
+            KeyError: If subgraph or terminal doesn't exist
         """
         if subgraph_name not in self.chart._subgraphs:
-            raise Exception(f"Subgraph '{subgraph_name}' not found")
+            raise KeyError(f"Subgraph '{subgraph_name}' not found")
 
         sg_data = self.chart._subgraphs[subgraph_name]
         subgraphNode = sg_data["placeholder"]
 
         if terminal_name not in subgraphNode.outputs():
-            raise Exception(
+            raise KeyError(
                 f"Output terminal '{terminal_name}' not found on subgraph '{subgraph_name}'. "
                 f"Available: {list(subgraphNode.outputs().keys())}"
             )
@@ -1174,22 +1256,24 @@ class AmiCli:
             Dict with new boundary terminals created
 
         Raises:
-            Exception: If node doesn't exist, is a source, or is already in a subgraph
+            KeyError: If node or subgraph doesn't exist
+            TypeError: If node is a source node
+            ValueError: If node is already in a subgraph
         """
 
         if node_name not in self.graph.nodes():
-            raise Exception(f"Node '{node_name}' not found")
+            raise KeyError(f"Node '{node_name}' not found")
 
         node_obj = self.graph.nodes[node_name]["node"]
         if isinstance(node_obj, SourceNode):
-            raise Exception(f"Cannot move source node '{node_name}' into subgraph")
+            raise TypeError(f"Cannot move source node '{node_name}' into subgraph")
 
         for sg_name, sg_data in self.chart._subgraphs.items():
             if node_name in sg_data["nodes"]:
-                raise Exception(f"Node '{node_name}' is already in subgraph '{sg_name}'")
+                raise ValueError(f"Node '{node_name}' is already in subgraph '{sg_name}'")
 
         if subgraph_name not in self.chart._subgraphs:
-            raise Exception(f"Subgraph '{subgraph_name}' not found")
+            raise KeyError(f"Subgraph '{subgraph_name}' not found")
 
         # Delegate all logic to Flowchart
         return self.chart.moveNodeToSubgraph(node_name, subgraph_name)
@@ -1224,11 +1308,14 @@ class AmiCli:
     def _pending_upstream_changes(self, node_name):
         """Names of upstream nodes (inclusive) with unapplied changes, same check the GUI makes
         before opening a node's window (see FlowchartWidget.selectionChanged).
+
+        Raises:
+            KeyError: If node doesn't exist
         """
         import networkx as nx
 
         if node_name not in self.graph.nodes():
-            raise Exception(f"Node '{node_name}' not found")
+            raise KeyError(f"Node '{node_name}' not found")
         pending = set()
         for ancestor in nx.ancestors(self.graph, node_name) | {node_name}:
             gnode = self.graph.nodes[ancestor]
@@ -1242,19 +1329,24 @@ class AmiCli:
 
         Must run in the Qt thread. Raises if the node isn't found, isn't viewable/buffered, or
         has unapplied upstream changes (apply_graph() first, as the GUI requires before viewing).
+
+        Raises:
+            KeyError: If node doesn't exist
+            TypeError: If node has no plot window
+            RuntimeError: If node has unapplied upstream changes
         """
         if node_name not in self.graph.nodes():
             if node_name in self.list_sources():
-                raise Exception(
+                raise KeyError(
                     f"Node '{node_name}' not found. It's a known source — call ensure_source('{node_name}') first."
                 )
-            raise Exception(f"Node '{node_name}' not found")
+            raise KeyError(f"Node '{node_name}' not found")
         node = self.graph.nodes[node_name]["node"]
         # "buffered" nodes (ScalarPlot, ScatterPlot, TimePlot, ScatterRoi, ...) show a window of
         # recent events rather than the latest value, but the GUI opens a window for them the
         # same way (see FlowchartWidget.build_views' separate buffered-node branch).
         if not hasattr(node, "display") or not (node.viewable() or node.buffered()):
-            raise Exception(
+            raise TypeError(
                 f"Node '{node_name}' ({node_type(node)}) has no plot window to screenshot; "
                 "use fetch_data, or connect a viewer node"
             )
@@ -1262,7 +1354,7 @@ class AmiCli:
             return
         pending = self._pending_upstream_changes(node_name)
         if pending:
-            raise Exception(f"Pending changes for {', '.join(sorted(pending))}; call apply_graph() first")
+            raise RuntimeError(f"Pending changes for {', '.join(sorted(pending))}; call apply_graph() first")
         asyncio.ensure_future(self.chartWidget.build_views([node], ctrl=True))
 
     def request_screenshot(self, node_name):
@@ -1335,12 +1427,17 @@ class AmiCli:
 
         Legend names match the plot window: "<y> vs <x>" for LinePlot, "<y>" for WaveformViewer.
         Traces with unconnected inputs are skipped. Must run in the Qt thread.
+
+        Raises:
+            KeyError: If node doesn't exist
+            TypeError: If node is not a supported plot type
+            RuntimeError: If node has no connected traces
         """
         if node_name not in self.graph.nodes():
-            raise Exception(f"Node '{node_name}' not found")
+            raise KeyError(f"Node '{node_name}' not found")
         node = self.graph.nodes[node_name]["node"]
         if node_type(node) not in self.REFERENCE_PLOTS:
-            raise Exception(
+            raise TypeError(
                 f"Node '{node_name}' ({node_type(node)}) is not supported; use one of {list(self.REFERENCE_PLOTS)}"
             )
         xterm, yterm = self.REFERENCE_PLOTS[node_type(node)]
@@ -1357,7 +1454,7 @@ class AmiCli:
             y = input_vars[term]
             traces[f"{y} vs {x}" if xterm else y] = {"x": x, "y": y}
         if not traces:
-            raise Exception(f"Node '{node_name}' has no connected traces")
+            raise RuntimeError(f"Node '{node_name}' has no connected traces")
         return traces
 
     def plot_features(self, node_name, trace=""):
@@ -1368,32 +1465,41 @@ class AmiCli:
             trace: Legend name of the trace (see plot_traces); optional if the plot has only one trace
 
         Must run in the Qt thread. Fetch the data with fetch_xy() (which may block) from the caller.
+
+        Raises:
+            KeyError: If trace doesn't exist
+            ValueError: If trace= is required (multiple traces) but not given
         """
         traces = self.plot_traces(node_name)
         if trace:
             if trace not in traces:
-                raise Exception(f"Trace '{trace}' not found on '{node_name}'. Traces: {list(traces)}")
+                raise KeyError(f"Trace '{trace}' not found on '{node_name}'. Traces: {list(traces)}")
             return traces[trace]
         if len(traces) > 1:
-            raise Exception(f"'{node_name}' has {len(traces)} traces; pass trace= one of {list(traces)}")
+            raise ValueError(f"'{node_name}' has {len(traces)} traces; pass trace= one of {list(traces)}")
         return next(iter(traces.values()))
 
     def fetch_xy(self, features):
-        """Fetch live (x, y) arrays for the features returned by plot_features(). Blocks; not for the Qt thread."""
+        """Fetch live (x, y) arrays for the features returned by plot_features(). Blocks; not for the Qt thread.
+
+        Raises:
+            RuntimeError: If data isn't available yet
+            ValueError: If data is the wrong shape/dimensionality
+        """
         y = self.fetch_data(features["y"])
         if y is None:
-            raise Exception(f"No data for '{features['y']}' yet. Check connections and apply_graph.")
+            raise RuntimeError(f"No data for '{features['y']}' yet. Check connections and apply_graph.")
         y = np.asarray(y, dtype=float)
         if y.ndim != 1:
-            raise Exception(f"'{features['y']}' is {y.ndim}D; references need 1D data")
+            raise ValueError(f"'{features['y']}' is {y.ndim}D; references need 1D data")
         if features["x"] is None:
             return np.arange(len(y), dtype=float), y
         x = self.fetch_data(features["x"])
         if x is None:
-            raise Exception(f"No data for '{features['x']}' yet.")
+            raise RuntimeError(f"No data for '{features['x']}' yet.")
         x = np.asarray(x, dtype=float)
         if x.shape != y.shape:
-            raise Exception(f"X {x.shape} and Y {y.shape} have different shapes")
+            raise ValueError(f"X {x.shape} and Y {y.shape} have different shapes")
         return x, y
 
     def write_reference_csv(self, node_name, x, y, name=""):
@@ -1406,23 +1512,32 @@ class AmiCli:
         return path
 
     def reference_xy(self, node_name, name):
-        """Return the (x, y) arrays of an existing reference overlay. Must run in the Qt thread."""
+        """Return the (x, y) arrays of an existing reference overlay. Must run in the Qt thread.
+
+        Raises:
+            KeyError: If reference doesn't exist
+        """
         _, widget = self._plot_widget(node_name)
         if name not in widget.reference_traces:
-            raise Exception(f"Reference '{name}' not found on '{node_name}'. Available: {list(widget.csv_references)}")
+            raise KeyError(f"Reference '{name}' not found on '{node_name}'. Available: {list(widget.csv_references)}")
         x, y = widget.reference_traces[name].getData()
         return np.asarray(x, dtype=float), np.asarray(y, dtype=float)
 
     def _plot_widget(self, node_name):
-        """Return the flowchart-side plot widget of a node, creating it if needed."""
+        """Return the flowchart-side plot widget of a node, creating it if needed.
+
+        Raises:
+            KeyError: If node doesn't exist
+            TypeError: If node is not a plot
+        """
         if node_name not in self.graph.nodes():
-            raise Exception(f"Node '{node_name}' not found")
+            raise KeyError(f"Node '{node_name}' not found")
         node = self.graph.nodes[node_name]["node"]
         widget = None
         if hasattr(node, "display"):
             widget = node.display(topics=None, terms=None, addr=None, win=None)
         if widget is None or not hasattr(widget, "load_csv_reference"):
-            raise Exception(f"Node '{node_name}' ({type(node).__name__}) is not a plot and does not support references")
+            raise TypeError(f"Node '{node_name}' ({type(node).__name__}) is not a plot and does not support references")
         return node, widget
 
     def _publish_to_node(self, node, msg):
@@ -1479,12 +1594,16 @@ class AmiCli:
 
         Returns:
             Name of the reference that was set
+
+        Raises:
+            FileNotFoundError: If path doesn't exist
+            ValueError: If the file can't be parsed as a CSV reference
         """
         try:
             node, widget = self._plot_widget(node_name)
             path = os.path.abspath(os.path.expanduser(path))
             if not os.path.isfile(path):
-                raise Exception(f"File '{path}' not found")
+                raise FileNotFoundError(f"File '{path}' not found")
             # Resolve the default name (matches load_csv_reference's own default) before the
             # replace check, so a second call with no explicit name replaces rather than adding
             # "<name>_1".
@@ -1493,7 +1612,7 @@ class AmiCli:
                 widget.remove_csv_reference(name)
             name = widget.load_csv_reference(path, name=name)
             if name is None:
-                raise Exception(f"Could not parse '{path}' as a CSV reference (expected x,y or y columns)")
+                raise ValueError(f"Could not parse '{path}' as a CSV reference (expected x,y or y columns)")
             self._push_references(node, widget)
             return name
         except Exception as e:
@@ -1506,11 +1625,14 @@ class AmiCli:
         Args:
             node_name: Plot node name (e.g., 'LinePlot.0')
             name: Reference name (see list_references)
+
+        Raises:
+            KeyError: If node or reference doesn't exist
         """
         try:
             node, widget = self._plot_widget(node_name)
             if name not in widget.csv_references:
-                raise Exception(
+                raise KeyError(
                     f"Reference '{name}' not found on '{node_name}'. Available: {list(widget.csv_references)}"
                 )
             widget.remove_csv_reference(name)
@@ -1527,6 +1649,11 @@ class AmiCli:
             terminal_name: Name for the new terminal (e.g., 'In.1', 'Out.1')
             direction: 'in' or 'out'
             ttype: Type string ('Any', 'float', 'int', 'Array1d', 'Array2d', 'Array3d')
+
+        Raises:
+            KeyError: If node doesn't exist
+            ValueError: If node doesn't allow adding this kind of terminal, or direction is
+                invalid
         """
 
         TYPE_MAP = {
@@ -1539,7 +1666,7 @@ class AmiCli:
         }
 
         if node_name not in self.graph.nodes():
-            raise Exception(f"Node '{node_name}' not found")
+            raise KeyError(f"Node '{node_name}' not found")
         node = self.graph.nodes[node_name]["node"]
         resolved_type = TYPE_MAP.get(ttype, Any)
 
@@ -1567,12 +1694,15 @@ class AmiCli:
         Args:
             node_name: Node name
             terminal_name: Terminal to remove
+
+        Raises:
+            KeyError: If node or terminal doesn't exist
         """
         if node_name not in self.graph.nodes():
-            raise Exception(f"Node '{node_name}' not found")
+            raise KeyError(f"Node '{node_name}' not found")
         node = self.graph.nodes[node_name]["node"]
         if terminal_name not in node.terminals:
-            raise ValueError(f"Terminal '{terminal_name}' not found on node '{node_name}'")
+            raise KeyError(f"Terminal '{terminal_name}' not found on node '{node_name}'")
         node.removeTerminal(terminal_name)
         return {"node": node_name, "removed": terminal_name}
 
@@ -1584,9 +1714,12 @@ class AmiCli:
             - output_terminals: list of output terminal names
             - expression_vars: list of available variable names for expressions
             - current_config: current expression/conditions if applicable
+
+        Raises:
+            KeyError: If node doesn't exist
         """
         if node_name not in self.graph.nodes():
-            raise Exception(f"Node '{node_name}' not found")
+            raise KeyError(f"Node '{node_name}' not found")
         node = self.graph.nodes[node_name]["node"]
 
         # Use built-in methods
@@ -1609,9 +1742,13 @@ class AmiCli:
             node_name: Calculator node name (e.g., 'Calculator.0')
             expression: Math expression using connected wire names as variables
                        (e.g., 'cspad.Out * 2 + 5', 'cspad.Out / laser.Out')
+
+        Raises:
+            KeyError: If node doesn't exist
+            ValueError: If node is not a Calculator
         """
         if node_name not in self.graph.nodes():
-            raise Exception(f"Node '{node_name}' not found")
+            raise KeyError(f"Node '{node_name}' not found")
         node = self.graph.nodes[node_name]["node"]
 
         if node_type(node) != "Calculator":
@@ -1637,8 +1774,14 @@ class AmiCli:
         }
 
     def _python_editor(self, node_name):
+        """Return the node if it's a PythonEditor.
+
+        Raises:
+            KeyError: If node doesn't exist
+            ValueError: If node is not a PythonEditor
+        """
         if node_name not in self.graph.nodes():
-            raise Exception(f"Node '{node_name}' not found")
+            raise KeyError(f"Node '{node_name}' not found")
         node = self.graph.nodes[node_name]["node"]
         if node_type(node) != "PythonEditor":
             raise ValueError(f"Node '{node_name}' is not a PythonEditor (it's a {node_type(node)})")
@@ -1684,7 +1827,8 @@ class AmiCli:
             Dict with node name, inputs, and outputs
 
         Raises:
-            Exception: If the node is not a PythonEditor or the code is invalid
+            KeyError: If node doesn't exist
+            ValueError: If node is not a PythonEditor, or the code is invalid
         """
         node = self._python_editor(node_name)
         try:
@@ -1740,9 +1884,13 @@ class AmiCli:
                         "Filter.0.Out": "None"
                     }
                 }
+
+        Raises:
+            KeyError: If node doesn't exist
+            ValueError: If node is not a Filter
         """
         if node_name not in self.graph.nodes():
-            raise Exception(f"Node '{node_name}' not found")
+            raise KeyError(f"Node '{node_name}' not found")
         node = self.graph.nodes[node_name]["node"]
 
         if node_type(node) != "Filter":
