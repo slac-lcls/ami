@@ -107,6 +107,7 @@ ami-export = "ami.export:main"
 ami-syncer = "ami.sync:main"
 ami-monitor = "ami.monitor:main"
 ami-fc-to-source = "ami.fc_to_worker:main"
+ami-mcp-connect = "ami.mcp_connect:main"
 
 [tool.setuptools]
 script-files = ["ami/ami-mpi"]
