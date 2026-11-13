@@ -1,15 +1,15 @@
 """AMI MCP Server - exposes graph manipulation via Model Context Protocol."""
 
+import atexit
 import concurrent.futures
 import json
 import logging
 import os
 import re
-import shutil
 import socket
 import stat
-import tempfile
 import threading
+from datetime import datetime, timezone
 
 import numpy as np
 import uvicorn
@@ -25,6 +25,52 @@ mcp = MCPServer("ami", log_level="WARNING")
 # Global references (set by McpServerThread)
 _amicli = None
 _qt_dispatch = None
+
+# Where McpServerThread publishes the currently-running TCP server's connection info, so an
+# independently-launched harness (e.g. via ami-mcp-connect) can find it without AMI launching
+# anything itself. Each launch overwrites it; the most recently started AMI instance wins.
+CONNECTION_FILE = os.path.expanduser("~/.config/ami/mcp-server.json")
+
+
+def _write_connection_file(host, port):
+    """Publish the live MCP server's connection info for ami-mcp-connect to discover.
+
+    Writes to a temp file in the same directory and renames it into place, so a concurrent
+    reader never observes a partially-written file.
+    """
+    try:
+        os.makedirs(os.path.dirname(CONNECTION_FILE), exist_ok=True)
+        payload = {
+            "host": host,
+            "port": port,
+            "pid": os.getpid(),
+            "started_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+        }
+        tmp_path = f"{CONNECTION_FILE}.tmp{os.getpid()}"
+        with open(tmp_path, "w") as f:
+            json.dump(payload, f)
+        os.chmod(tmp_path, 0o600)
+        os.replace(tmp_path, CONNECTION_FILE)
+    except OSError:
+        logger.exception(f"Failed to write MCP connection file at {CONNECTION_FILE}")
+
+
+def _remove_connection_file_if_ours():
+    """Remove the connection file, but only if it still names this process.
+
+    Guards against a slow-exiting instance deleting a later instance's file after that later
+    instance has already overwritten it.
+    """
+    try:
+        with open(CONNECTION_FILE) as f:
+            data = json.load(f)
+    except (FileNotFoundError, json.JSONDecodeError, OSError):
+        return
+    if data.get("pid") == os.getpid():
+        try:
+            os.remove(CONNECTION_FILE)
+        except OSError:
+            pass
 
 
 def _find_free_port(start=9100, max_tries=100):
@@ -1332,37 +1378,13 @@ class McpServerThread(threading.Thread):
         self.uds = uds
         self.port = None if uds else _find_free_port()
 
-        # Create temp dir with opencode.jsonc
-        self._tmpdir = tempfile.TemporaryDirectory(prefix="ami-mcp-")
-        config = {
-            "$schema": "https://opencode.ai/config.json",
-            "mcp": {
-                "ami": {
-                    "type": "remote",
-                    "url": f"http://localhost:{self.port}/mcp",
-                    "enabled": True,
-                }
-            },
-            "instructions": [
-                ".opencode/skills/ami-graph-builder/SKILL.md",
-                ".opencode/skills/ami-performance-monitor/SKILL.md",
-            ],
-        }
-        config_path = os.path.join(self._tmpdir.name, "opencode.jsonc")
-        with open(config_path, "w") as f:
-            json.dump(config, f, indent=2)
-
-        # Copy skills into .opencode/skills/<name>/ so they are both always-loaded
-        # (via instructions) and discoverable by name via the skill tool.
-        # Skills live in ami/skills/ inside the package so they are accessible
-        # in both development and installed environments.
-        pkg_skills_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "skills")
-        for skill_name in ("ami-graph-builder", "ami-performance-monitor"):
-            src = os.path.join(pkg_skills_dir, skill_name, "SKILL.md")
-            dst_dir = os.path.join(self._tmpdir.name, ".opencode", "skills", skill_name)
-            if os.path.exists(src):
-                os.makedirs(dst_dir, exist_ok=True)
-                shutil.copy2(src, os.path.join(dst_dir, "SKILL.md"))
+        # Publish the connection file so an independently-launched harness (via
+        # ami-mcp-connect) can find this server. Not meaningful in UDS mode: there's no
+        # TCP port to describe, and that mode is for a TLS front such as ghostunnel, not a
+        # harness reaching the socket directly (see _run_uds).
+        if not self.uds:
+            _write_connection_file(self.host, self.port)
+            atexit.register(_remove_connection_file_if_ours)
 
     def run(self):
         """Run MCP server (blocks in this thread)."""
@@ -1373,7 +1395,7 @@ class McpServerThread(threading.Thread):
             if self.uds:
                 self._run_uds()
             else:
-                logger.info(f"AMI MCP server on http://{self.host}:{self.port}/mcp, config dir: {self._tmpdir.name}")
+                logger.info(f"AMI MCP server on http://{self.host}:{self.port}/mcp")
                 mcp.run(transport="streamable-http", host=self.host, port=self.port)
         except Exception as e:
             logger.exception(f"MCP server error: {e}")

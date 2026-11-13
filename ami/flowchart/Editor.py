@@ -22,13 +22,6 @@ try:
 except ImportError:
     HAS_QTCONSOLE = False
 
-try:
-    import mcp  # noqa: F401
-
-    HAS_MCP = True
-except ImportError:
-    HAS_MCP = False
-
 
 logger = logging.getLogger(__name__)
 
@@ -384,13 +377,6 @@ class Ui_Toolbar(object):
             self.actionConsole.setIconText("Console")
             self.actionConsole.setObjectName("actionConsole")
 
-        if HAS_MCP:
-            # Agent (AI-assisted graph building via external harness)
-            self.actionAgent = QtWidgets.QAction(parent)
-            self.actionAgent.setIconText("Agent")
-            self.actionAgent.setObjectName("actionAgent")
-            self.actionAgent.setShortcut("Ctrl+Shift+A")
-
         # Arrange
         self.actionArrange = QtWidgets.QAction(parent)
         self.actionArrange.setIconText("Arrange")
@@ -441,12 +427,6 @@ class Ui_Toolbar(object):
             self.toolBar.addAction(self.actionConfigure)
         self.toolBar.addAction(self.actionApply)
         self.toolBar.addAction(self.actionReset)
-
-        # The agent (opencode) needs a TCP port, so there is no Agent button when the MCP server is
-        # on a Unix socket. Left out of the toolbar, its Ctrl+Shift+A shortcut is inactive too.
-        if HAS_MCP and not os.environ.get("AMI_MCP_UDS"):
-            self.toolBar.addAction(self.actionAgent)
-            self.toolBar.insertSeparator(self.actionAgent)
 
         if HAS_QTCONSOLE:
             self.toolBar.addAction(self.actionConsole)

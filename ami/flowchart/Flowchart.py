@@ -52,14 +52,11 @@ except ImportError:
 
 import asyncio
 import collections
-import getpass
 import itertools as it
 import json
 import logging
 import os
 import re
-import shlex
-import shutil
 import socket
 import subprocess
 import tempfile
@@ -3048,10 +3045,6 @@ class FlowchartCtrlWidget(QtWidgets.QWidget):
         self.ui.actionReset.triggered.connect(self.resetClicked)
         if HAS_QTCONSOLE:
             self.ui.actionConsole.triggered.connect(self.consoleClicked)
-        if HAS_MCP:
-            self.ui.actionAgent.triggered.connect(self.agentClicked)
-            self._agent_proc = None
-            QtWidgets.QApplication.instance().aboutToQuit.connect(self._cleanup_agent_proc)
 
         self.ui.actionHome.triggered.connect(self.homeClicked)
         self.ui.actionArrange.triggered.connect(self.arrangeClicked)
@@ -3454,127 +3447,6 @@ class FlowchartCtrlWidget(QtWidgets.QWidget):
             win = QtWidgets.QMainWindow(parent=self)
             win.setCentralWidget(self.ipython_widget)
             win.show()
-
-    if HAS_MCP:
-
-        def agentClicked(self):
-            """Spawn external agent harness connected to AMI's MCP server."""
-            if self._agent_proc is not None and self._agent_proc.poll() is None:
-                logger.info("Agent terminal is already running; not spawning another")
-                return
-
-            mcp_thread = getattr(self.chartWidget, "mcp_thread", None)
-            if not mcp_thread or not hasattr(mcp_thread, "_tmpdir"):
-                logger.error("MCP server not running - cannot spawn agent")
-                return
-
-            # Use the user's preferred login shell so PATH, conda, etc. are sourced
-            shell = os.environ.get("SHELL", "/bin/sh")
-            work_dir = mcp_thread._tmpdir.name
-
-            # opencode keeps a WAL-mode SQLite DB under XDG_DATA_HOME. $HOME is wekafs (a network
-            # FS shared across SDF nodes) where the mmap()ed WAL -shm region is not coherent
-            # between hosts, so concurrent opencode processes on different nodes corrupt the DB.
-            # Pin the data dir to node-local /lscratch instead. It must be stable and shared
-            # per-host: same-host concurrency is safe via SQLite locking, and a fresh dir would
-            # re-download ~73MB of cached language servers on every launch. Mode 0700 because
-            # /lscratch is world-writable and the DB holds session history and tool output.
-            data_dir = os.path.join("/lscratch", getpass.getuser(), "ami-opencode-data")
-            try:
-                os.makedirs(data_dir, mode=0o700, exist_ok=True)
-            except OSError as e:
-                logger.error(f"Failed to create agent data dir {data_dir}: {e}")
-                data_dir = None
-
-            # Every spawn path runs through a login shell, which re-sources the user's profile
-            # and could clobber inherited env, so the variable is prefixed inline in the command.
-            if data_dir is not None:
-                opencode_cmd = f"XDG_DATA_HOME={shlex.quote(data_dir)} opencode {shlex.quote(work_dir)}"
-            else:
-                opencode_cmd = f"opencode {work_dir}"
-
-            # Optional per-user Xresources file to customize the xterm agent terminal.
-            xresources_path = os.path.expanduser("~/.config/ami/Xresources")
-            has_custom_xresources = os.path.exists(xresources_path)
-            if has_custom_xresources:
-                logger.info(f"Using custom Xresources for agent terminal: {xresources_path}")
-
-            # xterm gets explicit font/scrollback flags for a better out-of-the-box appearance,
-            # unless the user supplies a custom Xresources file to control that themselves.
-            if has_custom_xresources:
-                xterm_cmd = ["xterm", "-title", "AMI Agent", "-e", shell, "-l", "-c", opencode_cmd]
-            else:
-                xterm_cmd = [
-                    "xterm",
-                    "-title",
-                    "AMI Agent",
-                    "-fa",
-                    "Monospace",
-                    "-fs",
-                    "16",
-                    "-e",
-                    shell,
-                    "-l",
-                    "-c",
-                    opencode_cmd,
-                ]
-
-            # Per-emulator commands. Each wraps opencode in a login shell.
-            # Note: xfce4-terminal parses its -e argument as a shell string, so it needs a
-            # single quoted value; the others accept the command as separate argv elements.
-            terminals = [
-                [
-                    "xfce4-terminal",
-                    "--disable-server",
-                    "--title=AMI Agent",
-                    "-e",
-                    f"{shell} -l -c {shlex.quote(opencode_cmd)}",
-                ],
-                [
-                    "gnome-terminal",
-                    "--wait",
-                    "--title=AMI Agent",
-                    "--",
-                    shell,
-                    "-l",
-                    "-c",
-                    opencode_cmd,
-                ],
-                [
-                    "konsole",
-                    "--title",
-                    "AMI Agent",
-                    "--hide-menubar",
-                    "-e",
-                    shell,
-                    "-l",
-                    "-c",
-                    opencode_cmd,
-                ],
-                xterm_cmd,
-            ]
-
-            env = os.environ.copy()
-            if data_dir is not None:
-                env["XDG_DATA_HOME"] = data_dir
-            if has_custom_xresources:
-                env["XENVIRONMENT"] = xresources_path
-
-            for cmd in terminals:
-                if shutil.which(cmd[0]):
-                    try:
-                        self._agent_proc = subprocess.Popen(cmd, env=env)
-                        logger.info(f"Spawned agent in {work_dir} (XDG_DATA_HOME={data_dir})")
-                    except Exception as e:
-                        logger.error(f"Failed to spawn agent terminal: {e}")
-                    return
-
-            logger.error("No terminal emulator found (tried xfce4-terminal, gnome-terminal, konsole, xterm)")
-
-        def _cleanup_agent_proc(self):
-            """Terminate the spawned agent terminal (if any) when the app quits."""
-            if self._agent_proc is not None and self._agent_proc.poll() is None:
-                self._agent_proc.terminate()
 
     @asyncSlot(object)
     async def configureApply(self, src_cfg):
