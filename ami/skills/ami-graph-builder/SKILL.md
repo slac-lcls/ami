@@ -60,6 +60,32 @@ Call `list_features()` to see what outputs have live data, then `fetch_data("Fea
 Flowing isn't the same as correct. To check a result (e.g. that a normalization peaks at 1.0, or an ROI
 sum moves with the detector), look at the data itself — see **Looking at Data** below.
 
+### Optional: Check performance impact (expensive changes only)
+
+Run this only when the change just applied added or modified one of these:
+- A **PythonEditor** node (new or edited code)
+- A **stateful/global** node: Accumulator, Average0D/1D/2D, PickN, SumN, MeanVsScan,
+  ReduceByKey, RollingBuffer
+
+Skip this step entirely for simple additions (plots, Calculator, Filter, ROI geometry changes, etc.) —
+it's not worth the round-trip for changes that can't meaningfully add per-event cost.
+
+If triggered, and the `ami-performance-monitor` skill / Grafana MCP tools are available:
+
+1. Use the hutch already reported at session start (see that skill's updated Step 0). If it said
+   "none configured," **skip silently** — don't even attempt a Grafana call.
+2. Run the phase breakdown instant query for that hutch (that skill's "Phase Breakdown" query).
+3. Compare against the existing thresholds: Idle>70%, Datagram>70%, Send>20%, Overhead>20%.
+4. If any Grafana call errors for any reason (datasource missing, no metrics, etc.), **skip
+   silently** — never block or fail the graph-building task over this.
+
+Report in the final summary to the user only if relevant:
+- All healthy → one line: "Performance check: nominal."
+- Something over threshold → flag which phase and tell the user to ask for a deeper
+  investigation (load the `ami-performance-monitor` skill, which has the full diagnosis
+  hierarchy and trace-level drill-down).
+- Check didn't run (not triggered, or skipped) → say nothing; don't mention it at all.
+
 ## Source Terminal Naming (CRITICAL)
 
 Source node terminals are always named "Out".
@@ -543,8 +569,10 @@ Always `validate_graph()` after making corrections to confirm the issue is resol
 
 ## Performance Monitoring
 
-If a graph change causes performance degradation (GUI updates slowing, latency growing,
-high processing time), refer to the AMI Performance Monitor skill for Grafana MCP tool
+For expensive node types (PythonEditor, Accumulator, Average*, etc.), also see the proactive
+"Optional: Check performance impact" step above, which runs a quick check immediately after
+`apply_graph()`. If a graph change causes performance degradation (GUI updates slowing, latency
+growing, high processing time), refer to the AMI Performance Monitor skill for Grafana MCP tool
 patterns — diagnosing whether graph execution time, send backpressure, or worker
 starvation is the bottleneck using Prometheus metrics and Tempo distributed traces.
 That guidance is available via the `ami-performance-monitor` skill.

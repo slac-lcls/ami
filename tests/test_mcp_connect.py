@@ -8,6 +8,7 @@ the server thread cannot be stopped and conftest keeps it out of the test proces
 import json
 import os
 import selectors
+import socket
 import subprocess
 import sys
 import time
@@ -144,6 +145,63 @@ def test_find_ami_server_live_pid(connection_file):
     assert mcp_connect.find_ami_server() == payload
 
 
+def test_find_ami_server_same_machine_dead_pid_is_rejected(connection_file):
+    # host matches this machine's own FQDN -- the pid-liveness check must still apply.
+    payload = {"host": socket.getfqdn(), "port": 9999, "pid": 2**30, "started_at": "x"}
+    with open(connection_file, "w") as f:
+        json.dump(payload, f)
+    assert mcp_connect.find_ami_server() is None
+
+
+def test_find_ami_server_different_host_skips_pid_check(connection_file):
+    # A pid that would fail the liveness check on this machine must be ignored entirely when
+    # the file names a different host -- os.kill() can't tell us anything about a remote pid.
+    payload = {"host": "some-other-node.sdf.slac.stanford.edu", "port": 9999, "pid": 2**30, "started_at": "x"}
+    with open(connection_file, "w") as f:
+        json.dump(payload, f)
+    assert mcp_connect.find_ami_server() == payload
+
+
+def test_find_ami_server_different_host_live_pid_still_returned(connection_file):
+    payload = {
+        "host": "some-other-node.sdf.slac.stanford.edu",
+        "port": 9999,
+        "pid": os.getpid(),
+        "started_at": "x",
+    }
+    with open(connection_file, "w") as f:
+        json.dump(payload, f)
+    assert mcp_connect.find_ami_server() == payload
+
+
+def test_find_ami_server_localhost_alias_still_checks_pid(connection_file):
+    # Legacy connection files (written before this host-matching change) may say "localhost"
+    # rather than an FQDN; that must still count as "this machine" for backward compat.
+    payload = {"host": "localhost", "port": 9999, "pid": 2**30, "started_at": "x"}
+    with open(connection_file, "w") as f:
+        json.dump(payload, f)
+    assert mcp_connect.find_ami_server() is None
+
+
+# ──────────────────────────────────────────────────────────────────────
+# _hutch_note
+# ──────────────────────────────────────────────────────────────────────
+
+
+def test_hutch_note_with_hutch_configured():
+    assert mcp_connect._hutch_note("rix") == "AMI hutch: rix"
+
+
+def test_hutch_note_without_hutch():
+    note = mcp_connect._hutch_note("")
+    assert note.startswith("AMI hutch: none configured")
+
+
+def test_hutch_note_none_value():
+    note = mcp_connect._hutch_note(None)
+    assert note.startswith("AMI hutch: none configured")
+
+
 # ──────────────────────────────────────────────────────────────────────
 # Instructions-note relay logic
 # ──────────────────────────────────────────────────────────────────────
@@ -163,7 +221,7 @@ class _FakeItem:
         self.message = message
 
 
-async def _run_pumps_and_collect(harness_items, ami_items, skills_changed):
+async def _run_pumps_and_collect(harness_items, ami_items, notes):
     to_ami_send, to_ami_recv = anyio.create_memory_object_stream(max_buffer_size=10)
     to_harness_send, to_harness_recv = anyio.create_memory_object_stream(max_buffer_size=10)
     harness_read_send, harness_read_recv = anyio.create_memory_object_stream(max_buffer_size=10)
@@ -186,7 +244,7 @@ async def _run_pumps_and_collect(harness_items, ami_items, skills_changed):
     await mcp_connect._pump_to_ami(harness_read_recv, to_ami_send, pending_initialize_ids, pending_request_ids)
     to_ami_send.close()
     await mcp_connect._pump_to_harness(
-        ami_read_recv, to_harness_send, pending_initialize_ids, pending_request_ids, skills_changed
+        ami_read_recv, to_harness_send, pending_initialize_ids, pending_request_ids, notes
     )  # closes to_harness_send itself, same as the real bridge
 
     collected_to_ami = [item async for item in to_ami_recv]
@@ -198,7 +256,7 @@ def test_instructions_note_added_when_skills_changed():
     init_request = _FakeItem(_FakeMessage(id=1, method="initialize"))
     init_reply = _FakeItem(_FakeMessage(id=1, result={"serverInfo": {}}))
 
-    to_harness, _ = anyio.run(_run_pumps_and_collect, [init_request], [init_reply], True)
+    to_harness, _ = anyio.run(_run_pumps_and_collect, [init_request], [init_reply], [mcp_connect.SKILLS_UPDATED_NOTE])
 
     assert len(to_harness) == 1
     assert mcp_connect.SKILLS_UPDATED_NOTE in to_harness[0].message.result["instructions"]
@@ -208,27 +266,40 @@ def test_instructions_note_appended_not_overwritten():
     init_request = _FakeItem(_FakeMessage(id=1, method="initialize"))
     init_reply = _FakeItem(_FakeMessage(id=1, result={"instructions": "existing text"}))
 
-    to_harness, _ = anyio.run(_run_pumps_and_collect, [init_request], [init_reply], True)
+    to_harness, _ = anyio.run(_run_pumps_and_collect, [init_request], [init_reply], [mcp_connect.SKILLS_UPDATED_NOTE])
 
     result = to_harness[0].message.result["instructions"]
     assert "existing text" in result
     assert mcp_connect.SKILLS_UPDATED_NOTE in result
 
 
-def test_no_note_when_skills_unchanged():
+def test_no_note_when_notes_empty():
     init_request = _FakeItem(_FakeMessage(id=1, method="initialize"))
     init_reply = _FakeItem(_FakeMessage(id=1, result={"serverInfo": {}}))
 
-    to_harness, _ = anyio.run(_run_pumps_and_collect, [init_request], [init_reply], False)
+    to_harness, _ = anyio.run(_run_pumps_and_collect, [init_request], [init_reply], [])
 
     assert "instructions" not in to_harness[0].message.result
+
+
+def test_multiple_notes_joined():
+    init_request = _FakeItem(_FakeMessage(id=1, method="initialize"))
+    init_reply = _FakeItem(_FakeMessage(id=1, result={"serverInfo": {}}))
+
+    to_harness, _ = anyio.run(
+        _run_pumps_and_collect, [init_request], [init_reply], ["AMI hutch: rix", mcp_connect.SKILLS_UPDATED_NOTE]
+    )
+
+    result = to_harness[0].message.result["instructions"]
+    assert "AMI hutch: rix" in result
+    assert mcp_connect.SKILLS_UPDATED_NOTE in result
 
 
 def test_unrelated_replies_pass_through_unchanged():
     other_request = _FakeItem(_FakeMessage(id=2, method="tools/list"))
     other_reply = _FakeItem(_FakeMessage(id=2, result={"tools": ["create_node"]}))
 
-    to_harness, _ = anyio.run(_run_pumps_and_collect, [other_request], [other_reply], True)
+    to_harness, _ = anyio.run(_run_pumps_and_collect, [other_request], [other_reply], [mcp_connect.SKILLS_UPDATED_NOTE])
 
     assert to_harness[0].message.result == {"tools": ["create_node"]}
 
@@ -252,9 +323,7 @@ async def _pump_one_item_each_way(harness_item, ami_item):
     if ami_item is not None:
         await ami_read_send.send(ami_item)
     ami_read_send.close()
-    await mcp_connect._pump_to_harness(
-        ami_read_recv, to_harness_send, pending_initialize_ids, pending_request_ids, False
-    )
+    await mcp_connect._pump_to_harness(ami_read_recv, to_harness_send, pending_initialize_ids, pending_request_ids, [])
     return pending_request_ids
 
 
@@ -285,7 +354,7 @@ def test_pending_request_ids_ignores_notifications():
 SERVE = """
 import sys
 from ami.mcp_server import McpServerThread
-t = McpServerThread(amicli=None, qt_dispatch_fn=None)
+t = McpServerThread(amicli=None, qt_dispatch_fn=None, hutch="testhutch")
 sys.stdout.write(str(t.port) + "\\n")
 sys.stdout.flush()
 t.start()
@@ -376,7 +445,10 @@ def test_connection_file_matches_running_server(running_ami_server):
     with open(conn_file) as f:
         data = json.load(f)
     assert data["port"] == port
-    assert data["host"] == "127.0.0.1"
+    # Advertised host is the real, externally-reachable FQDN -- not the 0.0.0.0 bind address.
+    assert data["host"] == socket.getfqdn()
+    assert data["hutch"] == "testhutch"
+    assert data["token"]  # non-empty: every TCP launch generates one
 
 
 def _spawn_bridge(ami_home):
@@ -401,8 +473,10 @@ def test_bridge_relays_real_tool_list(running_ami_server, ami_home):
         proc.stdin.flush()
         init_reply = json.loads(_readline_with_timeout(proc.stdout, 15))
         assert init_reply["id"] == 1
+        instructions = init_reply["result"].get("instructions", "")
         # this run installed the skill links (fresh ami_home), so the note must be present
-        assert mcp_connect.SKILLS_UPDATED_NOTE in init_reply["result"].get("instructions", "")
+        assert mcp_connect.SKILLS_UPDATED_NOTE in instructions
+        assert "AMI hutch: testhutch" in instructions
 
         proc.stdin.write(INITIALIZED_NOTIFICATION)
         proc.stdin.write(TOOLS_LIST)
@@ -473,4 +547,29 @@ def test_bridge_reports_no_server_running(tmp_path):
     )
     assert proc.returncode != 0
     assert "no running AMI instance found" in proc.stderr
+    assert proc.stdout == ""
+
+
+def test_bridge_reports_rejected_token(running_ami_server, ami_home):
+    """A connection file with the wrong token (e.g. AMI was restarted since it was written)
+    must fail fast with a specific message, not hang or produce a confusing generic error.
+    """
+    _, conn_file = running_ami_server
+    with open(conn_file) as f:
+        data = json.load(f)
+    data["token"] = "not-the-real-token"
+    with open(conn_file, "w") as f:
+        json.dump(data, f)
+
+    proc = subprocess.run(
+        [sys.executable, "-m", "ami.mcp_connect"],
+        input="",
+        env={**os.environ, "HOME": ami_home},
+        capture_output=True,
+        text=True,
+        timeout=30,
+        cwd=os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+    )
+    assert proc.returncode != 0
+    assert "AMI rejected our token (401)" in proc.stderr
     assert proc.stdout == ""

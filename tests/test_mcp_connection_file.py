@@ -9,11 +9,13 @@ test_mcp_connect.py::test_connection_file_matches_running_server, and its UDS-mo
 
 import json
 import os
+import socket
 import stat
 
 import pytest
 
 pytest.importorskip("mcp.server.mcpserver")
+anyio = pytest.importorskip("anyio")
 
 from ami import mcp_server  # noqa: E402
 
@@ -26,13 +28,23 @@ def connection_file(tmp_path, monkeypatch):
 
 
 def test_write_creates_expected_shape(connection_file):
-    mcp_server._write_connection_file("127.0.0.1", 9142)
+    mcp_server._write_connection_file("some.host.example.com", 9142, hutch="rix", token="abc123")
     with open(connection_file) as f:
         data = json.load(f)
-    assert data["host"] == "127.0.0.1"
+    assert data["host"] == "some.host.example.com"
     assert data["port"] == 9142
     assert data["pid"] == os.getpid()
     assert "started_at" in data
+    assert data["hutch"] == "rix"
+    assert data["token"] == "abc123"
+
+
+def test_write_defaults_hutch_and_token_to_empty_string(connection_file):
+    mcp_server._write_connection_file("127.0.0.1", 9142)
+    with open(connection_file) as f:
+        data = json.load(f)
+    assert data["hutch"] == ""
+    assert data["token"] == ""
 
 
 def test_write_is_0600(connection_file):
@@ -81,3 +93,43 @@ def test_remove_if_ours_leaves_a_later_instance_alone(connection_file):
 
 def test_remove_if_ours_on_missing_file_does_not_raise(connection_file):
     mcp_server._remove_connection_file_if_ours()  # file was never written; must be a no-op
+
+
+# ──────────────────────────────────────────────────────────────────────
+# _find_free_port: probes the same address McpServerThread actually binds to
+# ──────────────────────────────────────────────────────────────────────
+
+
+def test_find_free_port_returns_a_port_bindable_on_all_interfaces():
+    port = mcp_server._find_free_port()
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+        s.bind(("0.0.0.0", port))  # must not raise -- this is the address McpServerThread binds
+
+
+# ──────────────────────────────────────────────────────────────────────
+# _set_auth / _TcpBearerTokenVerifier: the TCP-mode bearer token check
+# ──────────────────────────────────────────────────────────────────────
+
+
+def test_token_verifier_accepts_matching_token():
+    verifier = mcp_server._TcpBearerTokenVerifier("correct-token")
+    result = anyio.run(verifier.verify_token, "correct-token")
+    assert result is not None
+    assert result.token == "correct-token"
+
+
+def test_token_verifier_rejects_wrong_token():
+    verifier = mcp_server._TcpBearerTokenVerifier("correct-token")
+    assert anyio.run(verifier.verify_token, "wrong-token") is None
+
+
+def test_token_verifier_rejects_empty_token():
+    verifier = mcp_server._TcpBearerTokenVerifier("correct-token")
+    assert anyio.run(verifier.verify_token, "") is None
+
+
+def test_set_auth_wires_token_verifier_onto_module_singleton():
+    mcp_server._set_auth("fresh-token")
+    assert mcp_server.mcp.settings.auth is not None
+    assert isinstance(mcp_server.mcp._token_verifier, mcp_server._TcpBearerTokenVerifier)
+    assert mcp_server.mcp._token_verifier._token == "fresh-token"

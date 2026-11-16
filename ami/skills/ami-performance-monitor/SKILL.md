@@ -24,8 +24,16 @@ If a query fails with "datasource not found", fall back to `grafana_list_datasou
 
 ### Step 0: Detect active hutch (ALWAYS DO THIS FIRST)
 
-Fire this query before anything else. It returns which hutches currently have
-active AMI metrics. Use it to set `{hutch="<value>"}` on all subsequent queries.
+Before querying Grafana, check whether the session's `initialize` response (relayed by
+`ami-mcp-connect`, if that's how this MCP server was reached) already included a line like
+`AMI hutch: <value>` or `AMI hutch: none configured — ...` in its instructions.
+
+- **Note present with a hutch value** → use it directly to set `{hutch="<value>"}` on all
+  subsequent queries. Skip the Grafana discovery query below entirely.
+- **Note present saying "none configured"** → tell the user there is no active hutch and
+  **stop** — do not call Grafana at all.
+- **No such note present** (e.g. a non-AMI-provided MCP transport, or an older
+  `ami-mcp-connect` without this feature) → fall back to the original discovery query:
 
 ```python
 grafana_list_prometheus_label_values(

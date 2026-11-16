@@ -114,6 +114,26 @@ def test_refuses_socket_another_server_holds(server):
     assert post_initialize(server, "localhost").status_code == 200
 
 
+def test_no_connection_file_written(sock_dir, tmp_path):
+    # UDS mode has no TCP port to describe and no per-launch token -- the connection file
+    # ami-mcp-connect reads must never appear, unlike TCP mode (see test_mcp_connect.py's
+    # test_connection_file_matches_running_server).
+    path = os.path.join(sock_dir, "mcp.sock")
+    home = tmp_path / "home"
+    home.mkdir()
+    env = dict(os.environ)
+    env.pop("AMI_DISABLE_MCP", None)
+    env["COLUMNS"] = "1000"
+    env["HOME"] = str(home)
+    proc = subprocess.Popen([sys.executable, "-c", SERVE, path], env=env, stderr=subprocess.PIPE)
+    try:
+        wait_listening(proc, path)
+        assert not os.path.exists(home / ".config" / "ami" / "mcp-server.json")
+    finally:
+        proc.kill()
+        proc.wait()
+
+
 def test_never_deletes_a_regular_file(sock_dir):
     path = os.path.join(sock_dir, "mcp.sock")
     with open(path, "w") as f:

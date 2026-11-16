@@ -202,30 +202,41 @@ Even if user says "commit when done" at the start of a task:
 
 This protects both the user and the codebase.
 
-### Running Tests Yourself: Ask Which Conda Environment First
+### Running Python Yourself: Ask Which Conda Environment First
 
-Before running `pytest` or any test/verification command, **ask the user
-which environment-setup script to source** — do not guess, and do not
-assume the repo's own `setup_env.sh` or `setup_env_lcls1.sh` is correct for
-the current task.
+Before running `pytest`, any test/verification command, **or any ad-hoc `python`/`python3`
+invocation** (e.g. to inspect an installed library's source, check a package version, or try
+an import) — **ask the user which environment-setup script to source**. Do not guess, and do
+not assume the repo's own `setup_env.sh` or `setup_env_lcls1.sh` is correct for the current
+task, and do not fall back to a bare `python3` on `PATH`.
 
-**Why this matters:** `ami` depends on `psana`, and discovering a working
-`psana` environment is not reliably possible by searching this repo alone.
-During one session, both `setup_env.sh` and `setup_env_lcls1.sh` activated
-conda environments that raised `ModuleNotFoundError: No module named
-'psana'` on import — neither worked. The environment that did work
-(`/sdf/home/s/seshu/dev/lcls2/setup_env_ana.sh`) lives in a **separate
-checkout outside this repo entirely**, points at a different conda
-environments directory (`conda2-v6`, not this repo's scripts' `conda2`), and
-sets `PYTHONPATH` to that other checkout's own `install/lib/.../
-site-packages` — none of which is discoverable from inside the `ami` repo.
-Different users/machines may have different working setups (different
-`lcls2` checkout paths, different psana versions), so there is no single
-correct default to assume.
+**Why this matters:** `ami` depends on `psana`, and discovering a working `psana` environment
+is not reliably possible by searching this repo alone. During one session, both
+`setup_env.sh` and `setup_env_lcls1.sh` activated conda environments that raised
+`ModuleNotFoundError: No module named 'psana'` on import — neither worked. The environment
+that did work (`/sdf/home/s/seshu/dev/lcls2/setup_env_ana.sh`) lives in a **separate checkout
+outside this repo entirely**, points at a different conda environments directory
+(`conda2-v6`, not this repo's scripts' `conda2`), and sets `PYTHONPATH` to that other
+checkout's own `install/lib/.../site-packages` — none of which is discoverable from inside
+the `ami` repo. Different users/machines may have different working setups (different
+`lcls2` checkout paths, different psana versions), so there is no single correct default to
+assume.
 
-**What to do instead:** ask the user directly, e.g. "Which environment setup
-script should I source to get a working `psana` for running tests?" Once
-confirmed, also check whether `QT_QPA_PLATFORM=offscreen` is needed for
+The same applies to any one-off `python -c "..."` check, not just test runs — a bare `python3`
+is just as likely to resolve to an unrelated personal environment with nothing relevant
+installed.
+
+**Run `source` and the Python command together in one invocation.** `conda activate`'s
+effects (and especially its shell *functions*, like `conda deactivate` itself) only apply
+within the shell process that sourced it. If your tool runs each command as a separate
+invocation, `source env.sh` in one call followed by `python ...` in a later, separate call can
+leave you in a stale, inconsistent state — e.g. leftover `CONDA_*` environment variables
+without the matching `PATH`/shell functions. Chain them instead: `source <env-script> &&
+python -c "..."` in a single command.
+
+**What to do instead:** ask the user directly, e.g. "Which environment setup script should I
+source to get a working `psana` for running tests?" or "Which environment has `<package>`
+installed?" Once confirmed, also check whether `QT_QPA_PLATFORM=offscreen` is needed for
 headless Qt test runs (several `ami` GUI/widget tests require it).
 
 ---

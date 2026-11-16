@@ -2,10 +2,12 @@
 
 import atexit
 import concurrent.futures
+import hmac
 import json
 import logging
 import os
 import re
+import secrets
 import socket
 import stat
 import threading
@@ -13,6 +15,8 @@ from datetime import datetime, timezone
 
 import numpy as np
 import uvicorn
+from mcp.server.auth.provider import AccessToken, TokenVerifier
+from mcp.server.auth.settings import AuthSettings
 from mcp.server.mcpserver import Image, MCPServer
 from mcp.server.mcpserver.exceptions import ToolError
 from mcp.server.transport_security import TransportSecuritySettings
@@ -32,7 +36,7 @@ _qt_dispatch = None
 CONNECTION_FILE = os.path.expanduser("~/.config/ami/mcp-server.json")
 
 
-def _write_connection_file(host, port):
+def _write_connection_file(host, port, hutch="", token=""):
     """Publish the live MCP server's connection info for ami-mcp-connect to discover.
 
     Writes to a temp file in the same directory and renames it into place, so a concurrent
@@ -45,6 +49,8 @@ def _write_connection_file(host, port):
             "port": port,
             "pid": os.getpid(),
             "started_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+            "hutch": hutch,
+            "token": token,
         }
         tmp_path = f"{CONNECTION_FILE}.tmp{os.getpid()}"
         with open(tmp_path, "w") as f:
@@ -73,13 +79,13 @@ def _remove_connection_file_if_ours():
             pass
 
 
-def _find_free_port(start=9100, max_tries=100):
-    """Find first available port starting from `start`."""
+def _find_free_port(start=19100, max_tries=100):
+    """Find first available port starting from `start`, probing the same address we bind to."""
     for offset in range(max_tries):
         port = start + offset
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
             try:
-                s.bind(("127.0.0.1", port))
+                s.bind(("0.0.0.0", port))
                 return port
             except OSError:
                 continue
@@ -1354,6 +1360,41 @@ Steps:
         return f"Error loading template info: {e}"
 
 
+class _TcpBearerTokenVerifier(TokenVerifier):
+    """Checks inbound bearer tokens against the token generated for one TCP server launch.
+
+    Only used in TCP mode (see McpServerThread.__init__/_set_auth below); UDS mode has no auth
+    at all, unchanged from before this token was introduced.
+    """
+
+    def __init__(self, token):
+        self._token = token
+
+    async def verify_token(self, token: str) -> AccessToken | None:
+        if not hmac.compare_digest(token, self._token):
+            return None
+        return AccessToken(token=token, client_id="ami-mcp-connect", scopes=[])
+
+
+def _set_auth(token):
+    """Configure the module-level `mcp` singleton to require this bearer token (TCP mode only).
+
+    AuthSettings/token_verifier are only read at request time -- MCPServer.streamable_http_app
+    reads self.settings.auth and self._token_verifier fresh on every call, rather than freezing
+    them at construction (confirmed by inspecting the installed mcp library's source) -- so this
+    mutates those attributes directly on the existing singleton instead of recreating MCPServer
+    and re-registering every @mcp.tool()-decorated function in this file.
+    """
+    mcp.settings.auth = AuthSettings(
+        # issuer_url/resource_server_url are required by AuthSettings' own validation but never
+        # actually traversed: ami-mcp-connect always sends the bearer token directly and never
+        # performs OAuth discovery against these URLs, so they are unused placeholders.
+        issuer_url="http://localhost/unused-oauth-issuer",
+        resource_server_url="http://localhost/unused-oauth-resource",
+    )
+    mcp._token_verifier = _TcpBearerTokenVerifier(token)
+
+
 # ──────────────────────────────────────────────────────────────────────
 # SERVER THREAD
 # ──────────────────────────────────────────────────────────────────────
@@ -1362,13 +1403,16 @@ Steps:
 class McpServerThread(threading.Thread):
     """Runs MCP HTTP server in a background daemon thread."""
 
-    def __init__(self, amicli, qt_dispatch_fn, host="127.0.0.1", uds=None):
+    def __init__(self, amicli, qt_dispatch_fn, host="0.0.0.0", uds=None, hutch=""):
         """
         Args:
             amicli: AmiCli instance for graph manipulation
             qt_dispatch_fn: QtDispatcher.dispatch function
-            host: Server host (default localhost)
+            host: Address to bind the TCP listener on (default all interfaces; see module docs
+                  on why a bearer token is always required rather than restricting to loopback)
             uds: Unix socket path to serve on instead of a TCP port (port is then None)
+            hutch: Active hutch name, published in the connection file so a harness can report
+                   it (see ami.mcp_connect); empty string if none configured
         """
         super().__init__(daemon=True, name="ami-mcp-server")
         global _amicli, _qt_dispatch
@@ -1376,14 +1420,24 @@ class McpServerThread(threading.Thread):
         _qt_dispatch = qt_dispatch_fn
         self.host = host
         self.uds = uds
+        self.hutch = hutch
         self.port = None if uds else _find_free_port()
+        self.token = None
 
         # Publish the connection file so an independently-launched harness (via
         # ami-mcp-connect) can find this server. Not meaningful in UDS mode: there's no
         # TCP port to describe, and that mode is for a TLS front such as ghostunnel, not a
         # harness reaching the socket directly (see _run_uds).
         if not self.uds:
-            _write_connection_file(self.host, self.port)
+            # We bind self.host ("0.0.0.0" by default) but must advertise an address a remote
+            # harness can actually dial back into, hence socket.getfqdn() here rather than
+            # self.host. Every TCP launch requires a bearer token -- including local/loopback
+            # connections -- since binding all interfaces means a loopback-only exemption would
+            # no longer mean "only this machine", and any user on a shared login node could
+            # otherwise reach another user's port.
+            self.token = secrets.token_urlsafe(32)
+            _set_auth(self.token)
+            _write_connection_file(socket.getfqdn(), self.port, hutch=self.hutch, token=self.token)
             atexit.register(_remove_connection_file_if_ours)
 
     def run(self):

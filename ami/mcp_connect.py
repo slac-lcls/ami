@@ -14,10 +14,12 @@ this script is installed alongside.
 import json
 import logging
 import os
+import socket
 import sys
 
 import anyio
-from mcp.client.streamable_http import streamable_http_client
+import httpx
+from mcp.client.streamable_http import create_mcp_http_client, streamable_http_client
 from mcp.server.stdio import stdio_server
 
 logger = logging.getLogger(__name__)
@@ -42,6 +44,17 @@ SKILLS_UPDATED_NOTE = (
     "updated by ami-mcp-connect. If they are not in your available skills, tell the user to "
     "restart this harness session so they load. AMI's MCP tools work either way."
 )
+
+
+def _hutch_note(hutch):
+    """Build the "AMI hutch: ..." line appended to the initialize reply's instructions.
+
+    Lets the ami-performance-monitor skill's Step 0 use this value directly instead of
+    querying Grafana to discover it (see that skill's SKILL.md).
+    """
+    if hutch:
+        return f"AMI hutch: {hutch}"
+    return "AMI hutch: none configured — no active-hutch Grafana metrics to check"
 
 
 def _package_skills_dir():
@@ -90,23 +103,32 @@ def install_skill_links():
 
 
 def find_ami_server():
-    """Read the connection file ami-local writes, with a liveness pre-check.
+    """Read the connection file ami-local writes, with a liveness pre-check where that's possible.
 
     This is a fast pre-check, not the authoritative test -- a pid can be reused by an unrelated
     process after a crash, which this can't detect. The actual HTTP connection attempt in
     bridge() is what really decides whether AMI is reachable.
 
+    The pid-liveness check only means anything when the file names a process on this machine:
+    os.kill(pid, 0) can't tell us anything about a pid on a different host. So it's skipped
+    (not treated as failure) whenever the file's host isn't this machine -- e.g. AMI running on
+    a SLURM batch node, reached by hostname from a login node. "This machine" also accepts
+    127.0.0.1/localhost for connection files written before this check existed.
+
     Returns:
-        The parsed connection dict ({"host", "port", "pid", "started_at"}), or None if the file
-        is missing, malformed, or names a pid that is no longer running.
+        The parsed connection dict ({"host", "port", "pid", "started_at", "hutch", "token"}),
+        or None if the file is missing, malformed, or (same-machine only) names a pid that is
+        no longer running.
     """
     try:
         with open(CONNECTION_FILE) as f:
             data = json.load(f)
     except (FileNotFoundError, json.JSONDecodeError, OSError):
         return None
+    host = data.get("host")
+    same_machine = host in (None, "127.0.0.1", "localhost", socket.getfqdn())
     pid = data.get("pid")
-    if pid is not None:
+    if same_machine and pid is not None:
         try:
             os.kill(pid, 0)
         except (OSError, ProcessLookupError):
@@ -138,13 +160,13 @@ async def _pump_to_ami(read_stream, write_stream, pending_initialize_ids, pendin
         await write_stream.send(item)
 
 
-async def _pump_to_harness(read_stream, write_stream, pending_initialize_ids, pending_request_ids, skills_changed):
-    """Forward AMI -> harness, appending a restart note to the matching `initialize` reply.
+async def _pump_to_harness(read_stream, write_stream, pending_initialize_ids, pending_request_ids, notes):
+    """Forward AMI -> harness, appending `notes` to the matching `initialize` reply.
 
     Only ever touches the one reply whose id matches a request _pump_to_ami saw go by, and only
-    when install_skill_links() actually changed something this run -- every other message
-    passes through completely unmodified. Closes write_stream (the harness's side) when
-    read_stream ends, same reasoning as _pump_to_ami.
+    when `notes` is non-empty -- every other message passes through completely unmodified.
+    Closes write_stream (the harness's side) when read_stream ends, same reasoning as
+    _pump_to_ami.
     """
     async with write_stream:
         async for item in read_stream:
@@ -155,11 +177,12 @@ async def _pump_to_harness(read_stream, write_stream, pending_initialize_ids, pe
             is_reply = hasattr(item.message, "result") or hasattr(item.message, "error")
             if is_reply:
                 pending_request_ids.discard(message_id)
-            if skills_changed and message_id in pending_initialize_ids and hasattr(item.message, "result"):
+            if notes and message_id in pending_initialize_ids and hasattr(item.message, "result"):
                 pending_initialize_ids.discard(message_id)
                 existing = item.message.result.get("instructions") or ""
-                note = f"{existing}\n\n{SKILLS_UPDATED_NOTE}" if existing else SKILLS_UPDATED_NOTE
-                item.message.result["instructions"] = note
+                note_text = "\n\n".join(notes)
+                instructions = f"{existing}\n\n{note_text}" if existing else note_text
+                item.message.result["instructions"] = instructions
             await write_stream.send(item)
 
 
@@ -168,43 +191,75 @@ async def _pump_to_harness(read_stream, write_stream, pending_initialize_ids, pe
 SHUTDOWN_GRACE_SECONDS = 5
 
 
-async def bridge(url, skills_changed):
+async def bridge(url, skills_changed, hutch_note, token):
     """Relay MCP messages between the harness's stdio transport and AMI's Streamable-HTTP one."""
-    async with stdio_server() as (harness_read, harness_write):
-        async with streamable_http_client(url) as (ami_read, ami_write):
-            pending_initialize_ids = set()
-            pending_request_ids = set()
+    # create_mcp_http_client is the same factory streamable_http_client would use by default
+    # (SSE-friendly long read timeout, follow_redirects) -- used explicitly here only so a
+    # bearer token can be added, when AMI's connection file has one (TCP mode always does; a
+    # missing token means either UDS mode or an older AMI that predates this feature).
+    headers = {"Authorization": f"Bearer {token}"} if token else None
+    async with create_mcp_http_client(headers=headers) as http_client:
+        async with stdio_server() as (harness_read, harness_write):
+            async with streamable_http_client(url, http_client=http_client) as (ami_read, ami_write):
+                pending_initialize_ids = set()
+                pending_request_ids = set()
+                notes = [hutch_note] if hutch_note else []
+                if skills_changed:
+                    notes.append(SKILLS_UPDATED_NOTE)
 
-            async with anyio.create_task_group() as tg:
+                async with anyio.create_task_group() as tg:
 
-                async def _run_to_ami():
-                    try:
-                        await _pump_to_ami(harness_read, ami_write, pending_initialize_ids, pending_request_ids)
-                    finally:
-                        # The harness has nothing more to send. Give any requests it already
-                        # sent a bounded window to be answered -- _run_to_harness is still
-                        # running and will deliver them -- before closing ami_write. Closing it
-                        # any earlier would end the HTTP client's post_writer task, which also
-                        # closes the reply channel any still-in-flight request's answer needs,
-                        # dropping that reply outright rather than just failing to wait for it.
-                        with anyio.move_on_after(SHUTDOWN_GRACE_SECONDS):
-                            while pending_request_ids:
-                                await anyio.sleep(0.05)
-                        await ami_write.aclose()
-                        tg.cancel_scope.cancel()
+                    async def _run_to_ami():
+                        try:
+                            await _pump_to_ami(harness_read, ami_write, pending_initialize_ids, pending_request_ids)
+                        finally:
+                            # The harness has nothing more to send. Give any requests it already
+                            # sent a bounded window to be answered -- _run_to_harness is still
+                            # running and will deliver them -- before closing ami_write. Closing
+                            # it any earlier would end the HTTP client's post_writer task, which
+                            # also closes the reply channel any still-in-flight request's answer
+                            # needs, dropping that reply outright rather than just failing to
+                            # wait for it.
+                            with anyio.move_on_after(SHUTDOWN_GRACE_SECONDS):
+                                while pending_request_ids:
+                                    await anyio.sleep(0.05)
+                            await ami_write.aclose()
+                            tg.cancel_scope.cancel()
 
-                async def _run_to_harness():
-                    try:
-                        await _pump_to_harness(
-                            ami_read, harness_write, pending_initialize_ids, pending_request_ids, skills_changed
-                        )
-                    finally:
-                        # AMI's side ended (or was cancelled by _run_to_ami above); either way
-                        # there is nothing left to relay, so end the bridge immediately.
-                        tg.cancel_scope.cancel()
+                    async def _run_to_harness():
+                        try:
+                            await _pump_to_harness(
+                                ami_read, harness_write, pending_initialize_ids, pending_request_ids, notes
+                            )
+                        finally:
+                            # AMI's side ended (or was cancelled by _run_to_ami above); either
+                            # way there is nothing left to relay, so end the bridge immediately.
+                            tg.cancel_scope.cancel()
 
-                tg.start_soon(_run_to_ami)
-                tg.start_soon(_run_to_harness)
+                    tg.start_soon(_run_to_ami)
+                    tg.start_soon(_run_to_harness)
+
+
+def _token_rejected(url, token):
+    """True if `token` is rejected (401) by the MCP server at `url`, False if accepted.
+
+    A dedicated preflight request, not exception handling inside bridge(): the mcp client
+    library (mcp.client.streamable_http.StreamableHTTPTransport._handle_post_request) turns a
+    401 into a normal JSON-RPC error reply delivered through the message stream rather than
+    raising, so there is nothing for the `except Exception` around anyio.run(bridge, ...) below
+    to catch -- confirmed by driving a real server+client through this exact path, not just
+    reading the source. This is the only way to tell the user specifically that their token was
+    rejected, rather than have the harness receive a generic, unexplained tool error.
+
+    Returns:
+        True if the server answered 401, False for any other response or if it could not be
+        reached at all (connection errors are left for bridge()'s own attempt to report).
+    """
+    try:
+        response = httpx.post(url, json={}, headers={"Authorization": f"Bearer {token}"}, timeout=10)
+    except httpx.HTTPError:
+        return False
+    return response.status_code == 401
 
 
 def main():
@@ -225,8 +280,19 @@ def main():
         sys.exit(1)
 
     url = f"http://{server_info['host']}:{server_info['port']}/mcp"
+    token = server_info.get("token")
+    if token and _token_rejected(url, token):
+        print(
+            "ami-mcp-connect: AMI rejected our token (401) -- if AMI was restarted, reconnect "
+            'this MCP server to pick up the new token (e.g. reconnect the "ami" MCP server '
+            "from /mcps).",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+
+    hutch_note = _hutch_note(server_info.get("hutch"))
     try:
-        anyio.run(bridge, url, skills_changed)
+        anyio.run(bridge, url, skills_changed, hutch_note, token)
     except Exception as e:
         print(f"ami-mcp-connect: lost connection to AMI's MCP server at {url}: {e}", file=sys.stderr)
         sys.exit(1)
