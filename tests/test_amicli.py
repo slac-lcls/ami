@@ -19,6 +19,22 @@ from amitypes import Array2d  # noqa: E402
 from ami.client.flowchart import MessageBroker  # noqa: E402
 
 
+def _make_png(w, h, alpha=255):
+    """A real, decodable PNG of random opaque RGBA noise -- the worst case for render_plot's
+    JPEG re-encoding (#226): real screenshots compress far better than random noise does.
+    """
+    import numpy as np
+    from qtpy import QtCore, QtGui
+
+    pixels = np.random.randint(0, 256, (h, w, 4), dtype=np.uint8)
+    pixels[..., 3] = alpha
+    image = QtGui.QImage(pixels.data, w, h, 4 * w, QtGui.QImage.Format.Format_ARGB32).copy()
+    buf = QtCore.QBuffer()
+    buf.open(QtCore.QIODevice.OpenModeFlag.WriteOnly)
+    image.save(buf, "PNG")
+    return bytes(buf.data())
+
+
 @pytest.fixture(scope="module")
 def broker_module(ami_backend):
     """Module-scoped MessageBroker - one for all tests in this file."""
@@ -1131,12 +1147,14 @@ async def test_tools_on_source_node(amicli, monkeypatch):
 
     assert not amicli.is_reference_plot("cspad")
     # The open_view/screenshot round trip (a real window, a real subprocess reply) is exercised
-    # end to end by test_render_plot_screenshot_roundtrip; here, stub it to keep this test cheap.
+    # end to end elsewhere; here, stub it to keep this test cheap. render_plot always re-encodes
+    # to JPEG (see test_to_jpeg_* below), so request_screenshot's stubbed reply still needs to
+    # be a real, decodable PNG.
     done = concurrent.futures.Future()
-    done.set_result(b"\x89PNGfake")
+    done.set_result(_make_png(8, 8))
     monkeypatch.setattr(amicli, "request_screenshot", lambda node_name: done)
     image = mcp_server.render_plot("cspad")
-    assert image.data[:4] == b"\x89PNG"
+    assert image._mime_type == "image/jpeg"
 
     assert "not supported" in json.loads(mcp_server.take_reference("cspad"))["error"]
     for call in (
@@ -1316,6 +1334,133 @@ def test_broker_does_not_cache_screenshot_replies(broker_module):
     assert received.png == b"data"
     # ...but it did NOT overwrite/clear the cached checkpoint.
     assert cached_after_reply is cached_after_checkpoint
+
+
+# ──────────────────────────────────────────────────────────────────────
+# mcp_server._to_jpeg (issue #226: render_plot's screenshots must fit MCP's ~1 MiB SSE limit)
+# ──────────────────────────────────────────────────────────────────────
+
+
+def test_to_jpeg_small_image_unchanged_dimensions(qapp):
+    """A screenshot that already fits comfortably is only reformatted, not resized."""
+    from qtpy import QtGui
+
+    import ami.mcp_server as mcp_server
+
+    png = _make_png(100, 90)
+    data, note = mcp_server._to_jpeg(png, mcp_server.RENDER_PLOT_MAX_BYTES)
+
+    assert note is None
+    assert len(data) <= mcp_server.RENDER_PLOT_MAX_BYTES
+    image = QtGui.QImage.fromData(data, "JPEG")
+    assert (image.width(), image.height()) == (100, 90)
+
+
+def test_to_jpeg_downscales_oversized_image(qapp):
+    """A screenshot too big to fit even as JPEG gets downscaled (and the caller is told so)."""
+    from qtpy import QtGui
+
+    import ami.mcp_server as mcp_server
+
+    png = _make_png(2000, 1800)  # random noise compresses poorly; a real screenshot this size
+    # would likely need no downscaling at all, but this exercises the fallback regardless.
+    data, note = mcp_server._to_jpeg(png, mcp_server.RENDER_PLOT_MAX_BYTES)
+
+    assert len(data) <= mcp_server.RENDER_PLOT_MAX_BYTES
+    image = QtGui.QImage.fromData(data, "JPEG")
+    assert image.width() < 2000 and image.height() < 1800
+    assert abs(image.width() / image.height() - 2000 / 1800) < 0.01  # aspect ratio kept
+    assert note is not None and "2000x1800" in note and f"{image.width()}x{image.height()}" in note
+
+
+def test_to_jpeg_caps_huge_screenshot_quickly(qapp):
+    """A 16-megapixel screenshot (e.g. a maximized window on a large/HiDPI display) still fits
+    under the transport limit, and the RENDER_PLOT_MAX_SIDE cap keeps this fast."""
+    import time
+
+    import ami.mcp_server as mcp_server
+
+    png = _make_png(4096, 4096)
+    start = time.monotonic()
+    data, note = mcp_server._to_jpeg(png, mcp_server.RENDER_PLOT_MAX_BYTES)
+    elapsed = time.monotonic() - start
+
+    assert len(data) <= mcp_server.RENDER_PLOT_MAX_BYTES
+    assert elapsed < 5  # generous; a regression to re-encoding at full 16MP would be much slower
+    assert note is not None and "4096x4096" in note
+
+
+def test_to_jpeg_raises_when_budget_too_small(qapp):
+    """A max_bytes budget too small to ever satisfy raises a clear ToolError, not a crash."""
+    from mcp.server.mcpserver.exceptions import ToolError
+
+    import ami.mcp_server as mcp_server
+
+    png = _make_png(780, 760)
+    with pytest.raises(ToolError, match="fetch_data"):
+        mcp_server._to_jpeg(png, 1000)
+
+
+def test_render_plot_resize_note_is_relayed_as_a_second_content_item(amicli, qapp, monkeypatch):
+    """When render_plot has to downscale, it returns [Image, note] so the agent is told; when it
+    doesn't, it returns a bare Image (same as before #226), not a one-item list.
+
+    qapp is requested explicitly (not just via amicli/flowchart_module) so a QApplication is
+    guaranteed to exist before _make_png runs, regardless of what order tests in this module
+    happen to run in -- every other amicli-using test here is async, which gets a QApplication
+    via pytest-asyncio's qapp-dependent event_loop_policy fixture; these two are not.
+    """
+    import concurrent.futures
+
+    import ami.mcp_server as mcp_server
+
+    monkeypatch.setattr(mcp_server, "_amicli", amicli)
+    monkeypatch.setattr(mcp_server, "_qt_dispatch", lambda fn: fn())
+    amicli.ensure_source("cspad")
+
+    def screenshot_future(png):
+        future = concurrent.futures.Future()
+        future.set_result(png)
+        return future
+
+    monkeypatch.setattr(amicli, "request_screenshot", lambda node_name: screenshot_future(_make_png(50, 50)))
+    small = mcp_server.render_plot("cspad")
+    assert small._mime_type == "image/jpeg"
+
+    monkeypatch.setattr(amicli, "request_screenshot", lambda node_name: screenshot_future(_make_png(4096, 4096)))
+    resized = mcp_server.render_plot("cspad")
+    assert isinstance(resized, list) and len(resized) == 2
+    assert resized[0]._mime_type == "image/jpeg"
+    assert isinstance(resized[1], str) and "4096x4096" in resized[1]
+
+
+def test_render_plot_max_size_argument(amicli, qapp, monkeypatch):
+    """max_size lets a caller ask for a smaller image, but can't be used to exceed the transport
+    limit, and a non-positive value is rejected outright. See the qapp note above."""
+    import concurrent.futures
+
+    from mcp.server.mcpserver.exceptions import ToolError
+
+    import ami.mcp_server as mcp_server
+
+    monkeypatch.setattr(mcp_server, "_amicli", amicli)
+    monkeypatch.setattr(mcp_server, "_qt_dispatch", lambda fn: fn())
+    amicli.ensure_source("cspad")
+
+    # Random noise this size needs downscaling even at the full 700 KB budget (see
+    # test_to_jpeg_caps_huge_screenshot_quickly), so asking for 10x that budget here only
+    # proves the clamp if it's actually enforced -- a real screenshot this size would likely
+    # fit well under 700 KB on its own, making the assertion below pass regardless.
+    done = concurrent.futures.Future()
+    done.set_result(_make_png(4096, 4096))
+    monkeypatch.setattr(amicli, "request_screenshot", lambda node_name: done)
+
+    result = mcp_server.render_plot("cspad", max_size=mcp_server.RENDER_PLOT_MAX_BYTES * 10)
+    image = result[0] if isinstance(result, list) else result
+    assert len(image.data) <= mcp_server.RENDER_PLOT_MAX_BYTES  # clamped, not 10x larger
+
+    with pytest.raises(ToolError, match="positive"):
+        mcp_server.render_plot("cspad", max_size=0)
 
 
 def test_plot_widget_screenshot_png_and_request_screenshot(qapp):

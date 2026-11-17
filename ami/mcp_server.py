@@ -20,6 +20,7 @@ from mcp.server.auth.settings import AuthSettings
 from mcp.server.mcpserver import Image, MCPServer
 from mcp.server.mcpserver.exceptions import ToolError
 from mcp.server.transport_security import TransportSecuritySettings
+from qtpy import QtCore, QtGui
 
 logger = logging.getLogger(__name__)
 
@@ -1251,10 +1252,92 @@ def fetch_data(feature_name: str, detail: str = "summary") -> str:
         return json.dumps({"error": str(e)})
 
 
-@mcp.tool()
-def render_plot(node_name: str, timeout: float = 30) -> Image:
+# render_plot sends its screenshot as a single MCP message; mcp's StreamableHTTP client (via
+# httpx2) caps a single SSE event at 1 MiB, and base64-encoding the image adds ~1/3 on top of its
+# raw byte count. A busy or maximized window's screenshot can exceed that easily once encoded --
+# the client then swallows the resulting SSEError and reports only a bare, unhelpful "SSE stream
+# ended without a response" (see #226). RENDER_PLOT_MAX_BYTES leaves headroom under the 1 MiB
+# limit for the JSON-RPC envelope and that base64 overhead.
+RENDER_PLOT_MAX_BYTES = 700_000
+
+# Long edge, in pixels, a screenshot is downscaled to before _to_jpeg even looks at the size
+# budget above. This is close to the resolution some MCP clients (e.g. Claude) downscale images
+# to before a model ever sees them, so capping here first loses no visible detail while keeping
+# the retry loop below fast even for a huge (e.g. 16-megapixel, maximized-window) screenshot.
+RENDER_PLOT_MAX_SIDE = 1568
+
+# Shortest edge, in pixels, below which a screenshot stops being useful to look at; _to_jpeg
+# gives up and raises rather than shrink past this.
+RENDER_PLOT_MIN_SIDE = 200
+
+
+def _to_jpeg(png, max_bytes):
+    """Re-encode a screenshot PNG as JPEG, downscaled as needed to fit under `max_bytes`.
+
+    Always converts to JPEG, even when the PNG already fits under `max_bytes` -- so render_plot's
+    output is a single, predictable format rather than "PNG normally, except sometimes JPEG" (see
+    #226 for why PNG alone doesn't reliably fit MCP's transport limit).
+
+    Returns:
+        (jpeg_bytes, note) -- `note` is None if no downscaling was needed beyond the initial
+        RENDER_PLOT_MAX_SIDE cap, else a one-line description of the resize for the caller to
+        relay to the agent (compression artifacts and/or a changed pixel scale may be present).
+
+    Raises:
+        ToolError: the image still doesn't fit under `max_bytes` even at RENDER_PLOT_MIN_SIDE.
     """
-    Screenshot a node's display window as a PNG so you can look at it.
+    image = QtGui.QImage.fromData(png, "PNG")
+    orig_size = (image.width(), image.height())
+
+    def scale_to(img, side_cap):
+        if max(img.width(), img.height()) <= side_cap:
+            return img
+        return img.scaled(
+            side_cap,
+            side_cap,
+            QtCore.Qt.AspectRatioMode.KeepAspectRatio,
+            QtCore.Qt.TransformationMode.SmoothTransformation,
+        )
+
+    def encode(img):
+        buf = QtCore.QBuffer()
+        buf.open(QtCore.QIODevice.OpenModeFlag.WriteOnly)
+        img.save(buf, "JPEG", 85)
+        return bytes(buf.data())
+
+    image = scale_to(image, RENDER_PLOT_MAX_SIDE)
+    data = encode(image)
+
+    side_cap = max(image.width(), image.height())
+    for _ in range(4):
+        if len(data) <= max_bytes or side_cap <= RENDER_PLOT_MIN_SIDE:
+            break
+        # 0.9 guards against rounding leaving side_cap (and so the re-encoded size) unchanged.
+        side_cap = max(RENDER_PLOT_MIN_SIDE, int(side_cap * (max_bytes / len(data)) ** 0.5 * 0.9))
+        image = scale_to(image, side_cap)
+        data = encode(image)
+
+    if len(data) > max_bytes:
+        raise ToolError(
+            f"Screenshot is {len(data) / 1000:.0f} KB and can't be shrunk under the "
+            f"{max_bytes / 1000:.0f} KB MCP transport limit; try fetch_data instead."
+        )
+
+    if (image.width(), image.height()) == orig_size:
+        return data, None
+    note = (
+        f"resized {orig_size[0]}x{orig_size[1]} -> {image.width()}x{image.height()} to fit the "
+        f"{max_bytes // 1000} KB MCP transport limit"
+    )
+    return data, note
+
+
+@mcp.tool()
+def render_plot(
+    node_name: str, timeout: float = 30, max_size: int = RENDER_PLOT_MAX_BYTES
+) -> Image | list[Image | str]:
+    """
+    Screenshot a node's display window as a JPEG so you can look at it.
 
     Opens the window if it isn't already open (same as clicking the node in the GUI; the window
     is left open afterwards), waits for its next live update, and returns exactly what the user
@@ -1266,16 +1349,27 @@ def render_plot(node_name: str, timeout: float = 30) -> Image:
     Prefer fetch_data(detail='normal') for numbers; use this when the shape of the data matters
     (images, peak shapes, an ROI box's position, comparing to a reference).
 
+    Large or busy screenshots are downscaled and/or compressed to fit MCP's transport limit
+    (see #226); when that happens, a second text item is returned alongside the image noting
+    the resize, since axis-scale/pixel-detail judgements should account for it.
+
     Args:
         node_name: Node name (e.g., 'ImageViewer.0', 'Roi2D.0')
         timeout: Max seconds to wait for the window to open and produce a screenshot (default 30;
                  a window that's busy rendering a large image, or waiting for the next heartbeat,
                  can take a while)
+        max_size: Max size in bytes of the returned image (default and hard cap ~700 KB, MCP's
+                  own transport limit); a smaller value saves tokens
 
     Returns:
-        PNG image, or an error raised as a tool error (e.g. "apply_graph() first" if upstream
-        nodes have unapplied changes, or a timeout if no data is flowing)
+        JPEG image (plus a text note if it had to be resized to fit), or an error raised as a
+        tool error (e.g. "apply_graph() first" if upstream nodes have unapplied changes, a
+        timeout if no data is flowing, or the image still being too large even at a small size)
     """
+    if max_size <= 0:
+        raise ToolError("max_size must be positive")
+    max_size = min(max_size, RENDER_PLOT_MAX_BYTES)
+
     future = _qt_dispatch(lambda: _amicli.request_screenshot(node_name))
     try:
         png = future.result(timeout=timeout)
@@ -1286,7 +1380,12 @@ def render_plot(node_name: str, timeout: float = 30) -> Image:
         # at INFO with no traceback, vs. ERROR + full traceback for anything else, so this
         # doesn't get mistaken for a real crash in AMI's log (see AGENTS.md note on this).
         raise ToolError(f"No screenshot from '{node_name}' within {timeout}s; is data flowing?")
-    return Image(data=png, format="png")
+
+    jpeg, note = _to_jpeg(png, max_size)
+    if note:
+        logger.info(f"render_plot('{node_name}'): {note}")
+        return [Image(data=jpeg, format="jpeg"), note]
+    return Image(data=jpeg, format="jpeg")
 
 
 @mcp.resource("ami://graph/validation")
