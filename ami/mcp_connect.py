@@ -32,7 +32,8 @@ SKILL_NAMES = ("ami-graph-builder", "ami-performance-monitor")
 # personal location and one of opencode V2's documented compatibility paths; ~/.config/opencode
 # /skills is opencode V2's own global path; ~/.opencode/skills covers opencode V1, which (per
 # manual testing during planning) reads skills from there instead -- not from any path in V2's
-# documented discovery list.
+# documented discovery list. ~/.claude/skills is kept even when CLAUDE_CONFIG_DIR (below) is set,
+# since opencode still reads it as a compatibility path regardless of that variable.
 SKILL_TARGET_DIRS = (
     os.path.expanduser("~/.claude/skills"),
     os.path.expanduser("~/.config/opencode/skills"),
@@ -61,6 +62,33 @@ def _package_skills_dir():
     return os.path.join(os.path.dirname(os.path.abspath(__file__)), "skills")
 
 
+def _skill_target_dirs():
+    """SKILL_TARGET_DIRS, plus $CLAUDE_CONFIG_DIR/skills when CLAUDE_CONFIG_DIR is set.
+
+    When CLAUDE_CONFIG_DIR is set, Claude Code reads personal skills from
+    $CLAUDE_CONFIG_DIR/skills instead of ~/.claude/skills -- e.g. SLAC's claude-lcls launcher
+    sets CLAUDE_CONFIG_DIR=~/.claude-lcls, so without this, claude-lcls users never see AMI's
+    skills no matter how many times they restart (see issue #228). Read at call time rather
+    than module import time, so tests can monkeypatch the environment.
+
+    Returns:
+        SKILL_TARGET_DIRS with $CLAUDE_CONFIG_DIR/skills appended when applicable, duplicates
+        (by normalized path) removed while preserving order.
+    """
+    dirs = list(SKILL_TARGET_DIRS)
+    claude_config_dir = os.environ.get("CLAUDE_CONFIG_DIR")
+    if claude_config_dir:
+        dirs.append(os.path.join(os.path.expanduser(claude_config_dir), "skills"))
+    seen = set()
+    unique = []
+    for d in dirs:
+        key = os.path.normpath(d)
+        if key not in seen:
+            seen.add(key)
+            unique.append(d)
+    return unique
+
+
 def install_skill_links():
     """Symlink this package's bundled skills into the directories common harnesses search.
 
@@ -74,7 +102,7 @@ def install_skill_links():
     """
     pkg_skills_dir = _package_skills_dir()
     changed = False
-    for target_dir in SKILL_TARGET_DIRS:
+    for target_dir in _skill_target_dirs():
         for skill_name in SKILL_NAMES:
             expected_target = os.path.join(pkg_skills_dir, skill_name)
             if not os.path.isdir(expected_target):
