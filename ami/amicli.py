@@ -428,6 +428,8 @@ class AmiCli:
                     node.values[k] = v
             # Emit signal so graph picks up new parameters
             node.sigStateChanged.emit(node)
+            node.changed = True
+            self.chart.sigNodeChanged.emit(node)
 
             from ami.client import flowchart_messages as fcMsgs
 
