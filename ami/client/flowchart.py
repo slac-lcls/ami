@@ -111,7 +111,11 @@ def run_editor_window(
     dmypy_file = tempfile.NamedTemporaryFile(mode="w", delete=False)
     os.environ["DMYPY_STATUS_FILE"] = dmypy_file.name
     logger.debug(f"dmypy status file: {dmypy_file.name}")
-    subprocess.run(["dmypy", "--status-file", dmypy_file.name, "start"])
+    # Not `dmypy start`: that double-forks its server and detaches it (setsid()), so it
+    # reparents to init and is orphaned if this editor dies by signal instead of reaching
+    # the `dmypy stop` below (see #227). mp.start_dmypy_daemon runs the same server as our
+    # own direct child, with PR_SET_PDEATHSIG so it's killed when we are.
+    dmypy_proc = mp.start_dmypy_daemon(dmypy_file.name)
     check_file = None
     with tempfile.NamedTemporaryFile(mode="w", delete=False) as f:
         f.write("from typing import *\n")
@@ -189,6 +193,12 @@ def run_editor_window(
     except subprocess.CalledProcessError:
         subprocess.run(["dmypy", "--status-file", dmypy_file.name, "kill"])
     finally:
+        # Safety net: `dmypy stop`/`kill` above talk to the server over its status file and
+        # should already have made it exit; this only does anything if that somehow didn't
+        # work, since dmypy_proc is our own direct child now (see start_dmypy_daemon).
+        if dmypy_proc.poll() is None:
+            dmypy_proc.kill()
+            dmypy_proc.wait()
         if check_file:
             os.remove(check_file)
 
