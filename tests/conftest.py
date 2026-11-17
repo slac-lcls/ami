@@ -370,10 +370,17 @@ def start_ami(request, workerjson, ami_backend, ipc_dir):
         try:
             comm_addr = "ipc://%s/comm" % psana_ipc_dir
             with GraphCommHandler(args.graph_name, comm_addr) as comm_handler:
-                # Wait for backend to be ready
-                for _ in range(50):  # 5 second timeout
+                # Wait for backend to be ready. Unlike the static backend, this one
+                # imports psana, which starts MPI, and looks up calibration constants
+                # for each detector over the network (LCLS_CALIB_HTTP) -- slower and
+                # more variable than the static backend's local-only startup, so give
+                # it longer than the 5s static wait.
+                deadline = time.monotonic() + 30
+                while time.monotonic() < deadline:
                     if comm_handler.sources:
                         break
+                    if not ami.is_alive():
+                        pytest.fail(f"psana backend exited early with code {ami.exitcode}.")
                     time.sleep(0.1)
                 else:
                     pytest.fail("Timeout waiting for psana backend to start.")
