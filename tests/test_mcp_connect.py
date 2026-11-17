@@ -27,9 +27,15 @@ from ami import mcp_connect  # noqa: E402
 
 @pytest.fixture
 def skill_dirs(tmp_path, monkeypatch):
-    """Point SKILL_TARGET_DIRS at three fresh tmp_path subdirectories."""
+    """Point SKILL_TARGET_DIRS at three fresh tmp_path subdirectories.
+
+    Also strips CLAUDE_CONFIG_DIR from the environment, so these tests aren't affected by
+    (and don't write into) whatever real directory it names when the test runner itself is
+    launched under a harness that sets it (e.g. claude-lcls).
+    """
     dirs = [str(tmp_path / f"target{i}") for i in range(3)]
     monkeypatch.setattr(mcp_connect, "SKILL_TARGET_DIRS", tuple(dirs))
+    monkeypatch.delenv("CLAUDE_CONFIG_DIR", raising=False)
     return dirs
 
 
@@ -106,6 +112,51 @@ def test_unwritable_target_warns_but_others_still_installed(skill_dirs, caplog):
     assert "Could not install skill link" in caplog.text
     assert not os.path.islink(_link_path(blocked_dir))
     assert os.path.islink(_link_path(skill_dirs[1]))
+
+
+# ──────────────────────────────────────────────────────────────────────
+# _skill_target_dirs / CLAUDE_CONFIG_DIR (issue #228)
+# ──────────────────────────────────────────────────────────────────────
+
+
+def test_claude_config_dir_gets_links_too(skill_dirs, tmp_path, monkeypatch):
+    claude_config_dir = tmp_path / "claude-lcls"
+    monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(claude_config_dir))
+    changed = mcp_connect.install_skill_links()
+    assert changed is True
+    for name in mcp_connect.SKILL_NAMES:
+        link = _link_path(str(claude_config_dir / "skills"), name)
+        assert os.path.islink(link)
+        assert os.readlink(link) == _expected_target(name)
+    # the base dirs still get linked too, same as without CLAUDE_CONFIG_DIR
+    for d in skill_dirs:
+        assert os.path.islink(_link_path(d))
+
+
+@pytest.mark.parametrize("value", [None, ""])
+def test_unset_or_empty_claude_config_dir_only_uses_base_dirs(skill_dirs, monkeypatch, value):
+    if value is None:
+        monkeypatch.delenv("CLAUDE_CONFIG_DIR", raising=False)
+    else:
+        monkeypatch.setenv("CLAUDE_CONFIG_DIR", value)
+    assert mcp_connect._skill_target_dirs() == list(skill_dirs)
+
+
+def test_claude_config_dir_matching_a_base_dir_is_not_duplicated(tmp_path, monkeypatch):
+    # One base dir is already .../claude-lcls/skills; CLAUDE_CONFIG_DIR=.../claude-lcls/ (note
+    # the trailing slash, so it's a different string) names the exact same directory.
+    base_skills_dir = tmp_path / "claude-lcls" / "skills"
+    monkeypatch.setattr(mcp_connect, "SKILL_TARGET_DIRS", (str(base_skills_dir),))
+    monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(tmp_path / "claude-lcls") + os.sep)
+
+    dirs = mcp_connect._skill_target_dirs()
+    assert len(dirs) == 1
+    assert os.path.normpath(dirs[0]) == os.path.normpath(str(base_skills_dir))
+
+    changed = mcp_connect.install_skill_links()
+    assert changed is True
+    changed_again = mcp_connect.install_skill_links()
+    assert changed_again is False
 
 
 # ──────────────────────────────────────────────────────────────────────
@@ -454,6 +505,10 @@ def test_connection_file_matches_running_server(running_ami_server):
 def _spawn_bridge(ami_home):
     env = dict(os.environ)
     env["HOME"] = ami_home
+    # This subprocess runs ami.mcp_connect for real, which calls install_skill_links(). Drop
+    # CLAUDE_CONFIG_DIR so a test run launched from inside a harness that sets it (e.g.
+    # claude-lcls) can't write symlinks into that real directory.
+    env.pop("CLAUDE_CONFIG_DIR", None)
     return subprocess.Popen(
         [sys.executable, "-m", "ami.mcp_connect"],
         stdin=subprocess.PIPE,
