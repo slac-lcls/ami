@@ -14,6 +14,7 @@ from pyqtgraph.graphicsItems.GraphicsObject import GraphicsObject
 from pyqtgraph.Point import Point
 from qtpy import QtCore, QtGui, QtWidgets
 
+import ami.multiproc as mp
 from ami.flowchart.library.Editors import STYLE
 
 # Terminal label truncation configuration
@@ -806,7 +807,8 @@ def checkType(terminals, type_file=None, checked=[]):
             dmypy_status = os.environ["DMYPY_STATUS_FILE"]
             status = subprocess.call(["dmypy", "--status-file", dmypy_status, "check", f.name])
             if status == 2:
-                subprocess.call(["dmypy", "--status-file", dmypy_status, "start"])
+                # Not `dmypy start`: see the comment on mp.start_dmypy_daemon (#227).
+                mp.start_dmypy_daemon(dmypy_status)
                 status = subprocess.call(["dmypy", "--status-file", dmypy_status, "check", f.name])
             return status == 0
 
