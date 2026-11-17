@@ -3,6 +3,7 @@ on:
   push:
     branches:
       - master
+  pull_request:
   schedule:
     - cron: '0 5 * * *'  # once per day at midnight ET
   workflow_dispatch:
@@ -10,6 +11,11 @@ on:
 jobs:
   run_tests:
     runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      # psana's default calib server is SDF-internal and unreachable from a
+      # GitHub-hosted runner.
+      LCLS_CALIB_HTTP: "https://pswww.slac.stanford.edu/calib_ws/"
     defaults:
       run:
         shell: bash -el {0}
@@ -18,27 +24,33 @@ jobs:
       - name: Checkout repo with submodules
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
 
+      # .psana_20260904.txt is an explicit export of the S3DF conda env
+      # psana_20260904 (the env the DAQs actually run AMI in), so this workflow
+      # tests against the same package versions -- PySide6, mcp, meson, etc. --
+      # instead of a from-scratch dependency solve.
       - name: Set up Conda
         uses: conda-incubator/setup-miniconda@8ee1f361103df19b6f8c8655fd3967a8ecb162d5 # v4.0.1
         with:
           auto-update-conda: true
           activate-environment: build-conda-env
           channels: lcls-ii, conda-forge
-          environment-file: .daq_20250402_r9.txt
+          environment-file: .psana_20260904.txt
 
-      - name: Clone and Build LCLS2
+      - name: Clone and build psana (lcls2 features/splitenvs)
         run: |
-          git clone https://github.com/slac-lcls/lcls2.git
+          # features/splitenvs separates ami's analysis-only env (this workflow's
+          # .psana_20260904.txt, matching the S3DF psana_20260904 env) from the
+          # DAQ build, and build_psana.sh builds just xtcdata/psalg/psana with
+          # Meson, writing an install_psana/activate.sh -- instead of
+          # build_all.sh's full ENV_TYPE=legacy DAQ+analysis build on master.
+          #
+          # Tracks the branch head rather than a pinned commit: a splitenvs
+          # push can break this workflow, but that's accepted in exchange for
+          # not needing to bump a SHA by hand. Revisit if that proves too
+          # disruptive.
+          git clone --depth 1 -b features/splitenvs https://github.com/slac-lcls/lcls2.git
           cd lcls2
-          # build_all.sh requires ENV_TYPE to be set before it will run at
-          # all (normally done by sourcing setup_env.sh, which is S3DF/CDS
-          # specific and won't work on a GitHub-hosted runner). "legacy" is
-          # the same value setup_env.sh itself sets.
-          # Deliberately NOT passing -d here: -d turns the DAQ build ON,
-          # and this workflow only needs psana, so the DAQ build stays off.
-          export ENV_TYPE=legacy
-          ./build_all.sh
-          cd ..
+          ./build_psana.sh -j 4
 
       - name: Build AMI
         run: |
@@ -56,6 +68,7 @@ jobs:
 
       - name: Test AMI
         run: |
+          source lcls2/install_psana/activate.sh
           export PYTEST_QT_API=pyside6
           export QT_API=pyside6
-          xvfb-run pytest
+          xvfb-run pytest -v
