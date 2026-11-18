@@ -9,6 +9,8 @@ import struct
 import subprocess
 import sys
 import tempfile
+import time
+import traceback
 
 import prometheus_client as pc
 import pyqtgraph as pg
@@ -337,6 +339,9 @@ class NodeProcess(QtCore.QObject):
 
         self.start_prometheus()
 
+        self._last_widget_error_sent = {}  # (exception_type, message) -> monotonic time
+        self._install_widget_exception_hook()
+
         with loop:
             loop.run_until_complete(self.process())
 
@@ -546,6 +551,49 @@ class NodeProcess(QtCore.QObject):
         await self.checkpoint.send_string(self.name + ZMQ_TOPIC_DELIM, zmq.SNDMORE)
         await self.checkpoint.send_pyobj(msg)
 
+    def _install_widget_exception_hook(self):
+        """Catch unhandled exceptions raised inside Qt slots -- this is where
+        PlotWidget.update()/data_updated() and any pyqtgraph-internal callback it triggers run
+        -- and report them back to the editor process instead of letting them vanish into this
+        subprocess's own stderr (PySide6/PyQt5's default behavior: print via sys.excepthook and
+        otherwise carry on, which is why render_plot's screenshot request just times out rather
+        than erroring).
+        """
+        default_hook = sys.excepthook
+
+        def hook(exc_type, exc_value, exc_tb):
+            default_hook(exc_type, exc_value, exc_tb)  # still print, same as before
+            try:
+                self.report_widget_error(exc_type, exc_value, exc_tb)
+            except Exception:
+                pass  # never let the error hook itself raise
+
+        sys.excepthook = hook
+
+    def report_widget_error(self, exc_type, exc_value, exc_tb):
+        message = str(exc_value)
+        key = (exc_type.__name__, message)
+        now = time.monotonic()
+        # a broken plot fails the same way on every heartbeat; report each distinct problem at
+        # most once a second rather than flooding the message log
+        if now - self._last_widget_error_sent.get(key, 0) < 1.0:
+            return
+        self._last_widget_error_sent[key] = now
+        traceback_str = "".join(traceback.format_exception(exc_type, exc_value, exc_tb))
+        asyncio.ensure_future(self._send_widget_error_async(message, exc_type.__name__, traceback_str))
+
+        # answer any pending render_plot screenshot request with this error now, rather than
+        # leaving it to time out after 30s with no indication of why
+        callback = getattr(self.widget, "_screenshot_callback", None)
+        if callback is not None:
+            self.widget._screenshot_callback = None
+            callback(error=f"{exc_type.__name__}: {message}")
+
+    async def _send_widget_error_async(self, message, exception_type, traceback_str):
+        msg = fcMsgs.NodeWidgetError(self.name, message, exception_type, traceback_str)
+        await self.checkpoint.send_string(self.name + ZMQ_TOPIC_DELIM, zmq.SNDMORE)
+        await self.checkpoint.send_pyobj(msg)
+
     def start_prometheus(self):
         port = self.prometheus_port
 
@@ -700,8 +748,9 @@ class MessageBroker(object):
 
             # NodeScreenshotReply is a one-off reply to a specific request, not a "last state"
             # to restore a crashed window from — caching it would make monitor_processes replay
-            # a stale screenshot reply as if it were the node's state.
-            if not isinstance(msg, fcMsgs.NodeScreenshotReply):
+            # a stale screenshot reply as if it were the node's state. NodeWidgetError is the
+            # same: a one-off report of a display-widget exception, not state to restore.
+            if not isinstance(msg, (fcMsgs.NodeScreenshotReply, fcMsgs.NodeWidgetError)):
                 async with self.lock:
                     self.checkpoints[topic] = msg
 

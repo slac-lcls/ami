@@ -400,8 +400,16 @@ class RollingBuffer(GlobalTransformation):
             if len(args) == 1:
                 args = args[0]
             # all inputs are optional
-            elif len(args) == 0 and len(kwargs) > 0:
-                args = list(kwargs.values())
+            elif len(args) == 0:
+                # none of the optional inputs arrived this event (e.g. an upstream node was
+                # skipped entirely): short-circuit instead of storing an empty row, which would
+                # otherwise desync every other input's history from it once unzipped downstream.
+                if not kwargs:
+                    return None
+                # build the row in the buffer's own input order, filling in None for any
+                # optional input that didn't arrive, so a partially-missing event can't shift
+                # values into the wrong slot.
+                args = [kwargs.get(i.mapped_name) for i in self.inputs]
             elif len(args) > 0 and len(kwargs) > 0:
                 raise Exception("RollingBuffer currently does not support mixing required and optional arguments.")
 

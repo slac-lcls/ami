@@ -13,6 +13,7 @@ from typing import Any
 import numpy as np
 import zmq
 from amitypes import Array1d, Array2d, Array3d
+from networkfox import modifiers
 from qtpy import QtCore
 
 from ami.flowchart.library.common import SourceNode
@@ -539,7 +540,12 @@ class AmiCli:
                         error_info["error"] = "Unknown error (check GUI status bar)"
                     else:
                         error_info["error"] = str(exc)
-                        error_info["exception_type"] = type(exc).__name__
+                        # NodeWidgetError (a display-widget exception reported from its own
+                        # subprocess) isn't the original exception instance itself -- it carries
+                        # the original exception's type name as a plain string instead, since
+                        # the real exception/traceback may not be picklable (e.g. holding a Qt
+                        # object). Prefer that over NodeWidgetError's own class name.
+                        error_info["exception_type"] = getattr(exc, "exception_type", None) or type(exc).__name__
                         if hasattr(exc, "traceback_str"):
                             error_info["traceback"] = exc.traceback_str
                     entries = by_node.get(name, [])
@@ -1708,6 +1714,42 @@ class AmiCli:
         node.removeTerminal(terminal_name)
         return {"node": node_name, "removed": terminal_name}
 
+    def set_terminal_optional(self, node_name, terminal_name, optional):
+        """Mark an input terminal as optional (or required), the same as the GUI's per-terminal
+        right-click "Optional" toggle.
+
+        A required (non-optional) input missing on a given heartbeat short-circuits the node --
+        it doesn't run at all that heartbeat, and neither does anything downstream of it. An
+        optional input missing on a given heartbeat is simply left out; the node still runs with
+        whichever of its optional inputs are present. This matters for nodes like ScatterPlot,
+        ScalarPlot, TimePlot, and Monitor that keep a rolling history across heartbeats -- marking
+        their inputs optional lets you feed them several mutually-exclusive series (e.g. a laser
+        on/off split from a Filter, where the inactive branch's output is None each heartbeat)
+        without one series' absence blocking the others from ever being recorded.
+
+        Args:
+            node_name: Node name (e.g., 'ScatterPlot.0')
+            terminal_name: Input terminal name (e.g., 'X', 'X.1')
+            optional: True to mark the terminal optional, False to mark it required
+
+        Returns:
+            Dict with the resulting "optional" value for that terminal
+
+        Raises:
+            KeyError: If node or terminal doesn't exist
+            ValueError: If the terminal is an output (only inputs can be optional)
+        """
+        if node_name not in self.graph.nodes():
+            raise KeyError(f"Node '{node_name}' not found")
+        node = self.graph.nodes[node_name]["node"]
+        if terminal_name not in node.terminals:
+            raise KeyError(f"Terminal '{terminal_name}' not found on node '{node_name}'")
+        term = node.terminals[terminal_name]
+        if not term.isInput():
+            raise ValueError(f"Terminal '{terminal_name}' on '{node_name}' is an output; only inputs can be optional")
+        term.setOptional(bool(optional))
+        return {"node": node_name, "terminal": terminal_name, "optional": term.optional()}
+
     def get_node_inputs(self, node_name):
         """Get connected variable names and current config for a node.
 
@@ -1724,16 +1766,29 @@ class AmiCli:
             raise KeyError(f"Node '{node_name}' not found")
         node = self.graph.nodes[node_name]["node"]
 
-        # Use built-in methods
-        input_vars_map = node.input_vars()  # Dict of terminal_name -> variable_name
+        # Use built-in methods. Terminals marked optional (set_terminal_optional, or the GUI's
+        # right-click "Optional" toggle) come back wrapped in networkfox.modifiers.optional --
+        # unwrap to the plain connected wire name (what Calculator/Filter expressions use) and
+        # report which terminals were optional separately, rather than leaking the wrapper's repr.
+        raw_input_vars = node.input_vars()  # Dict of terminal_name -> variable_name (or optional(...))
+        input_vars_map = {}
+        optional_terminals = []
+        for term_name, var in raw_input_vars.items():
+            if isinstance(var, modifiers.optional):
+                input_vars_map[term_name] = var.name
+                optional_terminals.append(term_name)
+            else:
+                input_vars_map[term_name] = var
 
-        # Get current config based on node type
+        # Get current config based on node type (some nodes with no ui controls have
+        # node.values == None rather than a dict, e.g. WaveformViewer)
         current_config = {}
-        if hasattr(node, "values"):
+        if hasattr(node, "values") and node.values is not None:
             current_config = dict(node.values)
 
         return {
             "input_vars": input_vars_map,
+            "optional_terminals": optional_terminals,
             "current_config": current_config,
         }
 

@@ -1047,6 +1047,41 @@ def remove_node_terminal(node_name: str, terminal_name: str) -> str:
 
 
 @mcp.tool()
+def set_terminal_optional(node_name: str, terminal_name: str, optional: bool) -> str:
+    """
+    Mark an input terminal as optional (or required), the same as the GUI's per-terminal
+    right-click "Optional" toggle.
+
+    A required (non-optional) input missing on a given heartbeat short-circuits the node -- it
+    doesn't run at all that heartbeat, and neither does anything downstream of it. An optional
+    input missing on a given heartbeat is simply left out; the node still runs with whichever of
+    its optional inputs are present.
+
+    This matters for nodes that keep a rolling history across heartbeats -- ScatterPlot,
+    ScalarPlot, TimePlot, Monitor. Marking their inputs optional lets you feed them several
+    mutually-exclusive series (e.g. a laser on/off split from a Filter, where the inactive
+    branch's output is None each heartbeat) without one series' absence blocking the others from
+    ever being recorded. Required inputs are the right choice when a node should produce nothing
+    at all unless every one of its inputs is actually present that heartbeat.
+
+    Requires apply_graph() afterward to take effect.
+
+    Args:
+        node_name: Node name (e.g., 'ScatterPlot.0')
+        terminal_name: Input terminal name (e.g., 'X', 'X.1')
+        optional: True to mark the terminal optional, False to mark it required
+
+    Returns:
+        JSON with the resulting "optional" value for that terminal, or error
+    """
+    try:
+        result = _qt_dispatch(lambda: _amicli.set_terminal_optional(node_name, terminal_name, optional))
+        return json.dumps(result)
+    except Exception as e:
+        return json.dumps({"error": str(e)})
+
+
+@mcp.tool()
 def get_node_inputs(node_name: str) -> str:
     """
     Get connected variable names and current configuration for a node.
@@ -1058,7 +1093,10 @@ def get_node_inputs(node_name: str) -> str:
         node_name: Node name (e.g., 'Calculator.0', 'Filter.0')
 
     Returns:
-        JSON with input_terminals, output_terminals, expression_vars, and current_config
+        JSON with "input_vars" (terminal name -> connected wire name), "optional_terminals"
+        (which of those terminal names are marked optional -- see set_terminal_optional for what
+        that means), and "current_config" (node-specific values, e.g. a Filter's conditions or a
+        Calculator's expression)
     """
     try:
         result = _qt_dispatch(lambda: _amicli.get_node_inputs(node_name))
@@ -1380,6 +1418,12 @@ def render_plot(
         # at INFO with no traceback, vs. ERROR + full traceback for anything else, so this
         # doesn't get mistaken for a real crash in AMI's log (see AGENTS.md note on this).
         raise ToolError(f"No screenshot from '{node_name}' within {timeout}s; is data flowing?")
+    except Exception as e:
+        # The window itself crashed rendering this node (NodeProcess.report_widget_error
+        # resolves any pending screenshot request with the error instead of leaving it to time
+        # out) -- also an anticipated failure, not a bug in this tool, so ToolError here too.
+        # get_graph_errors()/get_messages() have the full traceback.
+        raise ToolError(f"'{node_name}' failed to render: {e}")
 
     jpeg, note = _to_jpeg(png, max_size)
     if note:

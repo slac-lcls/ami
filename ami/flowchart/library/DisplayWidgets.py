@@ -1391,8 +1391,11 @@ class ScatterWidget(PlotWidget):
             y = self.terms[f"Y.{i}" if i > 0 else "Y"]
             name = " vs ".join((y, x))
 
-            x = data[x]
-            y = data[y]
+            # buffered rows may contain None (e.g. a point whose paired series wasn't active
+            # that event); convert to a plain float array so pyqtgraph gets NaN instead of an
+            # object-dtype array mixing None with numbers, which it can't plot.
+            x = np.asarray(data[x], dtype=float)
+            y = np.asarray(data[y], dtype=float)
 
             if name not in self.plot:
                 symbol, color = symbols_colors[i]
@@ -1475,10 +1478,15 @@ class LineWidget(PlotWidget):
             if x not in data or y not in data:
                 continue
 
-            x = data[x]
-            y = data[y]
+            # buffered rows may contain None (e.g. a point whose paired series wasn't active
+            # that event, as with TimePlot/LinePlot inputs marked optional) -- drop those before
+            # sorting, since None can't be compared against a number, and a hole here would
+            # otherwise break the line into disconnected segments.
+            pairs = [(a, b) for a, b in zip(data[x], data[y]) if a is not None and b is not None]
+            if not pairs:
+                continue
             # sort the data using the x-axis, otherwise the drawn line is messed up
-            x, y = zip(*sorted(zip(x, y)))
+            x, y = zip(*sorted(pairs))
 
             if name not in self.plot:
                 _, color = symbols_colors[i]

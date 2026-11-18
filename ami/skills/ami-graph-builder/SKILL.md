@@ -463,6 +463,53 @@ Pick the cheapest tool that answers the question:
   arriving at all," a different question from what the signal looks like once it's there (see
   above).
 
+## Optional Inputs (`set_terminal_optional`)
+
+Every input terminal is **required** by default: if it has no value on a given heartbeat (e.g.
+a `Filter` branch that didn't match, so that output is `None`), the node it feeds doesn't run at
+all that heartbeat — this is the normal way to short-circuit a branch of the graph. Marking a
+terminal **optional** changes that: the node still runs using whichever of its optional inputs
+are actually present, instead of being skipped because one is missing.
+
+```
+set_terminal_optional("ScatterPlot.0", "X.1", True)   # mark one terminal optional
+apply_graph()                                          # required for the change to take effect
+```
+
+**When to use it:** feeding several mutually-exclusive series into one buffered node that keeps
+a rolling history across heartbeats — `ScatterPlot`, `ScalarPlot`, `TimePlot`, `Monitor` (whose
+terminals are optional by default, see above). The classic case is comparing two states of a
+gating variable on one plot, e.g. laser on vs laser off:
+
+```
+Filter.1: If laser == 0: Out=delta_t, Out.1=Sum.0.Out, Out.2=None,    Out.3=None
+          Elif laser == 1: Out=None,  Out.1=None,      Out.2=delta_t, Out.3=Sum.0.Out
+connect: Filter.1.Out->ScatterPlot.0.X, Out.1->Y, Out.2->X.1, Out.3->Y.1
+set_terminal_optional("ScatterPlot.0", "X", True)      # mark every one of the 4 terminals
+set_terminal_optional("ScatterPlot.0", "Y", True)      # optional, not just X.1/Y.1 -- otherwise
+set_terminal_optional("ScatterPlot.0", "X.1", True)    # the other required pair being None on
+set_terminal_optional("ScatterPlot.0", "Y.1", True)    # the same heartbeat blocks the node too
+apply_graph()
+```
+
+Each heartbeat, exactly one pair is a real number and the other is `None` — with the terminals
+optional, both series still accumulate correctly across heartbeats into two separate traces
+(laser-off points and laser-on points). `ScatterPlot`/`ScalarPlot` convert stored `None`s to NaN
+before plotting (so they just don't draw that point); `TimePlot`/`LinePlot` drop them before
+sorting (so the line connects only its own real points, with no gap). An event where *none* of
+a node's optional inputs arrived (e.g. its own upstream node was skipped that heartbeat) isn't
+stored at all, so it can't throw off the alignment of a later point's inputs or waste a slot in
+the rolling window.
+
+**Required is still the right choice** when a node should produce nothing at all unless every
+one of its inputs is actually present that heartbeat — e.g. a plain `Calculator`/`Filter`/`Sum`
+combining several per-event signals, where a partial set of inputs would be meaningless.
+
+Only input terminals can be optional (`set_terminal_optional` raises `ValueError` on an output).
+`validate_graph()` never flags an unconnected *optional* input as an issue — only unconnected
+*required* ones. `get_node_inputs()` reports which of a node's terminals are currently optional
+in its `"optional_terminals"` field.
+
 ## Surviving a Loop Restart (`reset_on_run` / `latched`)
 
 An offline source with `repeat=true` wraps around and replays from the start once it finishes —

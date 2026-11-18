@@ -166,6 +166,30 @@ class NodeScreenshotReply(NodeMsg):
         self.error = error  # error string, or None on success
 
 
+class NodeWidgetError(NodeMsg):
+    """Report an unhandled exception raised while rendering this node's display widget (e.g.
+    inside PlotWidget.update()/data_updated(), or a pyqtgraph-internal callback triggered by
+    it) back to the editor process, sent on the checkpoint socket (not cached -- see
+    MessageBroker.handle_checkpoint) like NodeScreenshotReply.
+
+    Display widgets run in their own subprocess (NodeProcess) with their own copy of the node,
+    so without this, such an exception only ever reaches that subprocess's own stderr --
+    invisible to get_graph_errors()/get_messages(), which only see backend (worker/collector)
+    errors and exceptions raised in the main editor process during Apply. NodeProcess installs
+    a sys.excepthook that sends this, rate-limited, so a plot that fails every heartbeat
+    doesn't flood the message log.
+    """
+
+    def __init__(self, name, message, exception_type=None, traceback_str=None):
+        super().__init__(name)
+        self.message = message
+        self.exception_type = exception_type
+        self.traceback_str = traceback_str
+
+    def __str__(self):
+        return self.message
+
+
 class NodeTermAdded(NodeMsg):
 
     def __init__(self, name, term, state):

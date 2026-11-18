@@ -2730,6 +2730,10 @@ class Flowchart(QtCore.QObject):
                 self.widget().amicli.resolve_screenshot_request(msg.request_id, png=msg.png, error=msg.error)
                 continue
 
+            if isinstance(msg, fcMsgs.NodeWidgetError):
+                self._handle_widget_error(msg)
+                continue
+
             node_name = msg.name
             new_node_state = msg.state
 
@@ -2867,7 +2871,14 @@ class Flowchart(QtCore.QObject):
         now = datetime.now().strftime("%H:%M:%S")
         graph_name = getattr(msg, "graph_name", None)
         node_name = node.name() if node is not None else None
-        exception_type = type(msg).__name__ if isinstance(msg, BaseException) else None
+        if isinstance(msg, BaseException):
+            exception_type = type(msg).__name__
+        else:
+            # e.g. NodeWidgetError: not an exception instance itself (a display-widget
+            # exception can't always be pickled/forwarded as-is, e.g. if its traceback frames
+            # hold a Qt object), just the original exception's type name and message as plain
+            # strings
+            exception_type = getattr(msg, "exception_type", None)
         message = str(msg)
         key = (level, graph_name, node_name, exception_type, message)
         # warnings carry how many events raised them during the heartbeat (Graph.warnings())
@@ -2932,6 +2943,29 @@ class Flowchart(QtCore.QObject):
         else:
             ctrl.chartWidget.updateStatus(f"ERROR: {label}: {msg}", color="red")
             logger.error(f"{label}: {msg}")
+
+    def _handle_widget_error(self, msg):
+        """Handle a NodeWidgetError sent by a node's own display-widget subprocess over the
+        checkpoint socket -- the counterpart to _handle_info_message, but for an exception
+        raised rendering a node's display rather than one reported by a worker/collector.
+        Unlike _handle_info_message, the node is already known directly from msg.name, so no
+        networkfox-metadata resolution is needed.
+        """
+        node_name = msg.name
+        if node_name not in self._graph.nodes:
+            return
+        node = self._graph.nodes[node_name]["node"]
+
+        entry = self._record_message("error", "display", msg, node)
+        node.setException(msg, "exception")
+
+        # Show each distinct problem once per Apply; repeats only update the message log
+        if entry["count"] > 1:
+            return
+        ctrl = self.widget()
+        label = f"display {node.display_name()}"
+        ctrl.chartWidget.updateStatus(f"ERROR: {label}: {msg.message}", color="red")
+        logger.error(f"{label}: {msg.message}")
 
     async def run(self, load=None):
         tasks = [asyncio.create_task(self.updateState()), asyncio.create_task(self.updateSources())]

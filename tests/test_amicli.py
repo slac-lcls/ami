@@ -12,11 +12,14 @@ import sys
 import tempfile
 import threading
 import time
+import types
 
+import numpy as np
 import pytest  # noqa: E402
 from amitypes import Array2d  # noqa: E402
 
-from ami.client.flowchart import MessageBroker  # noqa: E402
+from ami.client import flowchart_messages as fcMsgs  # noqa: E402
+from ami.client.flowchart import MessageBroker, NodeProcess  # noqa: E402
 
 
 def _make_png(w, h, alpha=255):
@@ -365,6 +368,48 @@ async def test_set_node_flags_rejects_non_stateful(amicli):
 
 
 @pytest.mark.asyncio
+async def test_set_terminal_optional(amicli):
+    """Test marking an input terminal optional and back to required, its error cases (bad
+    node, bad terminal, an output terminal), and that get_node_inputs reports it correctly
+    (including for a node with no ui controls, where node.values is None rather than a dict --
+    regression: this used to make get_node_inputs raise 'TypeError: NoneType object is not
+    iterable' instead of returning current_config={})."""
+    amicli.ensure_source("cspad")
+    amicli.create_node("Roi2D")
+    amicli.connect_nodes("cspad", "Out", "Roi2D.0", "In")
+    await asyncio.sleep(0.1)
+
+    term = amicli.graph.nodes["Roi2D.0"]["node"].terminals["In"]
+    assert term.optional() is False
+
+    result = amicli.set_terminal_optional("Roi2D.0", "In", True)
+    assert result == {"node": "Roi2D.0", "terminal": "In", "optional": True}
+    assert term.optional() is True
+
+    # get_node_inputs reports connected wire names and which terminals are optional -- the
+    # connected wire name is unwrapped from networkfox.modifiers.optional, not its repr.
+    result = amicli.get_node_inputs("Roi2D.0")
+    assert result["input_vars"] == {"In": "cspad"}
+    assert result["optional_terminals"] == ["In"]
+
+    result = amicli.set_terminal_optional("Roi2D.0", "In", False)
+    assert result == {"node": "Roi2D.0", "terminal": "In", "optional": False}
+    assert term.optional() is False
+    assert amicli.get_node_inputs("Roi2D.0")["optional_terminals"] == []
+
+    with pytest.raises(KeyError, match="not found"):
+        amicli.set_terminal_optional("NoSuchNode.0", "In", True)
+    with pytest.raises(KeyError, match="not found"):
+        amicli.set_terminal_optional("Roi2D.0", "NoSuchTerminal", True)
+    # Only input terminals can be marked optional -- an output terminal has no such thing.
+    with pytest.raises(ValueError, match="output"):
+        amicli.set_terminal_optional("Roi2D.0", "Out", True)
+
+    amicli.create_node("WaveformViewer")
+    assert amicli.get_node_inputs("WaveformViewer.0")["current_config"] == {}
+
+
+@pytest.mark.asyncio
 async def test_node_info(amicli):
     """Test getting node info including inputs/outputs."""
     amicli.create_node("Roi2D")
@@ -433,6 +478,96 @@ async def test_get_graph_errors_with_exception(amicli):
     assert errors[0]["node"] == "Roi2D.0"
     assert errors[0]["error"] == "test error message"
     assert errors[0]["exception_type"] == "str"
+
+
+@pytest.mark.asyncio
+async def test_widget_error_reaches_graph_errors(amicli):
+    """A NodeWidgetError sent by a display-widget subprocess (see
+    NodeProcess.report_widget_error) reaches get_graph_errors()/get_messages() the same way a
+    worker-reported error does, with the *original* exception's type name reported (not
+    NodeWidgetError's own class name) and without marking the graph purged -- a display crash
+    doesn't stop the backend graph from running. A NodeWidgetError for a node that's since
+    been deleted/renamed is dropped quietly instead."""
+    amicli.create_node("Roi2D")
+    node = amicli.graph.nodes["Roi2D.0"]["node"]
+
+    msg = fcMsgs.NodeWidgetError(
+        "Roi2D.0", "boom", exception_type="TypeError", traceback_str="Traceback...\nTypeError: boom\n"
+    )
+    amicli.chart._handle_widget_error(msg)
+
+    assert node.exception is msg
+
+    errors = amicli.get_graph_errors()
+    assert len(errors) == 1
+    assert errors[0]["node"] == "Roi2D.0"
+    assert errors[0]["error"] == "boom"
+    assert errors[0]["exception_type"] == "TypeError"
+    assert errors[0]["source"] == "display"
+    assert errors[0]["graph_purged"] is False
+    assert "TypeError" in errors[0]["traceback"]
+
+    result = amicli.get_messages()
+    assert len(result["messages"]) == 1
+    assert result["messages"][0]["message"] == "boom"
+
+    amicli.chart._handle_widget_error(fcMsgs.NodeWidgetError("NoSuchNode.0", "boom"))  # must not raise
+    assert len(amicli.get_graph_errors()) == 1  # unchanged -- the unknown-node report was dropped
+
+
+class _FakeNodeProcess:
+    """Minimal stand-in for exercising NodeProcess.report_widget_error without constructing a
+    real NodeProcess, which opens real zmq sockets and blocks forever running its own Qt event
+    loop -- see the note above test_request_screenshot_not_found on why a real NodeProcess
+    isn't spun up in this test file."""
+
+    def __init__(self):
+        self.name = "Roi2D.0"
+        self._last_widget_error_sent = {}
+        self.widget = None
+        self.sent = []  # list of (message, exception_type, traceback_str)
+
+    async def _send_widget_error_async(self, message, exception_type, traceback_str):
+        self.sent.append((message, exception_type, traceback_str))
+
+
+def _raise_and_report(proc, exc_type, text):
+    try:
+        raise exc_type(text)
+    except exc_type:
+        NodeProcess.report_widget_error(proc, *sys.exc_info())
+
+
+@pytest.mark.asyncio
+async def test_report_widget_error_sends_and_rate_limits(qapp):
+    """report_widget_error sends the error, rate-limits an identical repeat (a broken plot
+    fails the same way every heartbeat and shouldn't flood the message log) but not a
+    different one, and resolves any render_plot screenshot request pending when the widget
+    crashes immediately instead of leaving it to time out after 30s with no indication why."""
+    proc = _FakeNodeProcess()
+    results = []
+    proc.widget = types.SimpleNamespace(_screenshot_callback=lambda error=None, png=None: results.append(error))
+
+    _raise_and_report(proc, TypeError, "boom")
+    await asyncio.sleep(0)  # let the task scheduled by asyncio.ensure_future run
+    assert len(proc.sent) == 1
+    message, exception_type, traceback_str = proc.sent[0]
+    assert message == "boom"
+    assert exception_type == "TypeError"
+    assert "TypeError: boom" in traceback_str
+    assert results == ["TypeError: boom"]
+    assert proc.widget._screenshot_callback is None
+
+    # the same error happening again right away (e.g. the next heartbeat) is suppressed -- a
+    # broken plot fails the same way every heartbeat and shouldn't flood the message log
+    _raise_and_report(proc, TypeError, "boom")
+    await asyncio.sleep(0)
+    assert len(proc.sent) == 1
+
+    # a *different* error is not suppressed
+    _raise_and_report(proc, ValueError, "different")
+    await asyncio.sleep(0)
+    assert len(proc.sent) == 2
 
 
 def _worker_exception(cls, text, ctrl, node_name=None, graph_name=None):
@@ -1463,6 +1598,33 @@ def test_render_plot_max_size_argument(amicli, qapp, monkeypatch):
         mcp_server.render_plot("cspad", max_size=0)
 
 
+def test_render_plot_reports_widget_crash_as_tool_error(amicli, qapp, monkeypatch):
+    """A window that crashes rendering this node (NodeProcess.report_widget_error resolves a
+    pending screenshot request with the error -- see test_report_widget_error_resolves_pending_screenshot)
+    must surface as a clean ToolError with the real message, not an unhandled exception that
+    only `except concurrent.futures.TimeoutError` can't catch (regression: this used to escape
+    render_plot entirely, logged as an unexpected crash with no usable message)."""
+    import concurrent.futures
+
+    from mcp.server.mcpserver.exceptions import ToolError
+
+    import ami.mcp_server as mcp_server
+
+    monkeypatch.setattr(mcp_server, "_amicli", amicli)
+    monkeypatch.setattr(mcp_server, "_qt_dispatch", lambda fn: fn())
+    amicli.ensure_source("cspad")
+
+    def crashed(node_name):
+        future = concurrent.futures.Future()
+        future.set_exception(Exception("len(X) must be len(Y)+1 since stepMode=True (got (1024,) and (1024,))"))
+        return future
+
+    monkeypatch.setattr(amicli, "request_screenshot", crashed)
+
+    with pytest.raises(ToolError, match="len\\(X\\) must be len\\(Y\\)\\+1"):
+        mcp_server.render_plot("cspad", timeout=5)
+
+
 def test_plot_widget_screenshot_png_and_request_screenshot(qapp):
     """Test PlotWidget.screenshot_png()/request_screenshot() directly, without a fetcher/process."""
     import numpy as np
@@ -1505,6 +1667,33 @@ def test_plot_widget_request_screenshot_reports_export_errors(qapp, monkeypatch)
         callback(error=str(e))
 
     assert results == [(None, "no scene")]
+
+
+def test_line_widget_drops_none_pairs(qapp):
+    """A TimePlot/LinePlot fed by a Filter whose inactive branch returns None (e.g. a laser
+    on/off split) ends up with None mixed into its buffered x/y lists. LineWidget.data_updated
+    must drop those points rather than let sorted(zip(x, y)) raise comparing None to a number."""
+    from ami.flowchart.library.DisplayWidgets import LineWidget
+
+    widget = LineWidget(terms={"X": "x", "Y": "y"}, name="test", hutch="")
+
+    # laser-off events interleaved with laser-on (None) events, out of x order
+    x = (3, None, 1, None, 5)
+    y = (30, None, 10, None, 50)
+    widget.data_updated({"x": x, "y": y})  # must not raise
+
+    name = "y vs x"
+    assert name in widget.plot
+    item = widget.plot[name]
+    xData, yData = item.getData()
+    np.testing.assert_array_equal(xData, [1, 3, 5])
+    np.testing.assert_array_equal(yData, [10, 30, 50])
+
+    # an update where every pair is None (e.g. this series' laser state never fired yet) must
+    # not raise and must leave the existing line alone rather than clearing it
+    widget.data_updated({"x": (None,), "y": (None,)})
+    xData, yData = item.getData()
+    np.testing.assert_array_equal(xData, [1, 3, 5])
 
 
 @pytest.mark.asyncio

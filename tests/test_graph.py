@@ -1,5 +1,6 @@
 import dill
 import numpy as np
+from networkfox.modifiers import optional
 
 from ami.graph_nodes import Accumulator, Map, PickN, RollingBuffer, SumN
 from ami.graphkit_wrapper import Graph
@@ -149,6 +150,72 @@ def test_rolling_buffer():
         "scatter_x": (8, 10, 12, 14, 16, 18, 20, 22),
         "scatter_y": (9, 11, 13, 15, 17, 19, 21, 23),
     }
+
+
+def test_rolling_buffer_optional_inputs():
+    """
+    A RollingBuffer whose inputs are all optional (e.g. a ScatterPlot/ScalarPlot/TimePlot node
+    fed by a Filter that routes one of several series to None, or marks its own inputs optional
+    to tolerate an upstream node that doesn't always run) must:
+
+    - keep every row the same length, in a fixed slot order, so a partially-missing event can't
+      shift a later input's value into an earlier input's slot once the buffer is unzipped
+    - not store anything at all for an event where none of its inputs arrived (e.g. the upstream
+      node that feeds it was skipped entirely), rather than storing an empty row that would
+      desync every other input's history from it once unzipped downstream
+    """
+    graph = Graph(name="graph")
+    graph.add(
+        RollingBuffer(
+            name="ScatterPlot",
+            inputs=[optional("x", mapped_name="X"), optional("y", mapped_name="Y")],
+            outputs=["count", "scatter"],
+            N=8,
+        )
+    )
+    graph.add(
+        Map(
+            name="ScatterUnzip",
+            inputs=["count", "scatter"],
+            outputs=["scatter_x", "scatter_y"],
+            func=lambda c, a: zip(*a),
+        )
+    )
+    graph.compile(num_workers=1, num_local_collectors=1)
+
+    def worker_buffer():
+        for node in graph.graph.nodes():
+            if getattr(node, "name", None) == "ScatterPlot_worker":
+                return node
+        raise AssertionError("ScatterPlot_worker not found")
+
+    buf = worker_buffer()
+
+    worker = graph({"x": 5, "y": 7}, color="worker")
+    assert buf.res == [[5, 7]]
+    assert worker == {"scatter_worker": [[5, 7]], "count_worker": 1}
+
+    # only x arrived this event (e.g. the node providing y wasn't run) -- y's slot is None,
+    # not dropped, so it doesn't shift into x's slot
+    worker = graph({"x": 9}, color="worker")
+    assert buf.res == [[5, 7], [9, None]]
+    assert worker == {"scatter_worker": [[5, 7], [9, None]], "count_worker": 2}
+
+    # only y arrived -- x's slot is None
+    worker = graph({"y": 11}, color="worker")
+    assert buf.res == [[5, 7], [9, None], [None, 11]]
+    assert worker == {"scatter_worker": [[5, 7], [9, None], [None, 11]], "count_worker": 3}
+
+    # neither arrived (the upstream node was skipped entirely) -- nothing stored, and this
+    # operation produces no output for this event, so the downstream unzip is skipped too
+    worker = graph({}, color="worker")
+    assert buf.res == [[5, 7], [9, None], [None, 11]]
+    assert worker == {}
+
+    # buffer keeps accumulating correctly afterward
+    worker = graph({"x": 1, "y": 2}, color="worker")
+    assert buf.res == [[5, 7], [9, None], [None, 11], [1, 2]]
+    assert worker == {"scatter_worker": [[5, 7], [9, None], [None, 11], [1, 2]], "count_worker": 4}
 
 
 def test_global_replace():
