@@ -6,6 +6,7 @@ without requiring a running AMI backend (no data execution).
 """
 
 import asyncio  # noqa: E402
+import json
 import os
 import shutil
 import sys
@@ -13,6 +14,7 @@ import tempfile
 import threading
 import time
 import types
+from unittest.mock import MagicMock
 
 import numpy as np
 import pytest  # noqa: E402
@@ -542,11 +544,16 @@ def _raise_and_report(proc, exc_type, text):
 async def test_report_widget_error_sends_and_rate_limits(qapp):
     """report_widget_error sends the error, rate-limits an identical repeat (a broken plot
     fails the same way every heartbeat and shouldn't flood the message log) but not a
-    different one, and resolves any render_plot screenshot request pending when the widget
-    crashes immediately instead of leaving it to time out after 30s with no indication why."""
+    different one, and resolves any render_plot screenshot request *and* any pending
+    get_plot_config/set_plot_config/set_trace_style request immediately when the widget
+    crashes, instead of leaving either to time out after 30s with no indication why."""
     proc = _FakeNodeProcess()
     results = []
-    proc.widget = types.SimpleNamespace(_screenshot_callback=lambda error=None, png=None: results.append(error))
+    widget_results = []
+    proc.widget = types.SimpleNamespace(
+        _screenshot_callback=lambda error=None, png=None: results.append(error),
+        _widget_request_queue=[("get_config", {}, lambda result=None, error=None: widget_results.append(error))],
+    )
 
     _raise_and_report(proc, TypeError, "boom")
     await asyncio.sleep(0)  # let the task scheduled by asyncio.ensure_future run
@@ -557,6 +564,8 @@ async def test_report_widget_error_sends_and_rate_limits(qapp):
     assert "TypeError: boom" in traceback_str
     assert results == ["TypeError: boom"]
     assert proc.widget._screenshot_callback is None
+    assert widget_results == ["TypeError: boom"]
+    assert proc.widget._widget_request_queue == []
 
     # the same error happening again right away (e.g. the next heartbeat) is suppressed -- a
     # broken plot fails the same way every heartbeat and shouldn't flood the message log
@@ -568,6 +577,40 @@ async def test_report_widget_error_sends_and_rate_limits(qapp):
     _raise_and_report(proc, ValueError, "different")
     await asyncio.sleep(0)
     assert len(proc.sent) == 2
+
+
+def test_handle_widget_request(qapp):
+    """NodeProcess.handle_widget_request forwards to the live widget's request_widget_op and
+    sends the reply back over the checkpoint socket (via _send_widget_reply); a node whose
+    widget doesn't support plot configuration (e.g. ObjectViewer, or no window open at all)
+    gets a clear error reply instead of an AttributeError."""
+    proc = _FakeNodeProcess()
+    calls = []
+
+    class FakeWidget:
+        def request_widget_op(self, op, args, callback):
+            calls.append((op, args))
+            callback(result={"ok": True})
+
+    proc.widget = FakeWidget()
+    sent = []
+    proc._send_widget_reply = lambda request_id, result=None, error=None: sent.append((request_id, result, error))
+
+    NodeProcess.handle_widget_request(proc, 7, "get_config", {})
+
+    assert calls == [("get_config", {})]
+    assert sent == [(7, {"ok": True}, None)]
+
+    proc.widget = None
+    sent.clear()
+
+    NodeProcess.handle_widget_request(proc, 9, "get_config", {})
+
+    assert len(sent) == 1
+    request_id, result, error = sent[0]
+    assert request_id == 9
+    assert result is None
+    assert "does not support" in error
 
 
 def _worker_exception(cls, text, ctrl, node_name=None, graph_name=None):
@@ -797,7 +840,19 @@ async def test_validate_graph_disconnected(amicli):
 )
 @pytest.mark.asyncio
 async def test_save_load_graph(amicli, tmp_path):
-    """Test saving and loading a graph preserves state."""
+    """Test saving and loading a graph preserves state.
+
+    Reload happens with the saved nodes still live in the graph (the normal case -- that's
+    what load_graph() itself must clear) rather than manually pre-clearing first, which used
+    to mask a real bug: node.close()'s default emit=True only *queues* the async
+    Flowchart.nodeClosed handler (self._graph.remove_node(name) + sending CloseNode to any
+    open window) rather than running it immediately. That queued handler used to run on the
+    event loop *after* restoreState() had already added the reloaded nodes back under the
+    same names -- deleting those new nodes from self._graph, and leaving restoreState's own
+    queued edge-addition handlers to recreate bare node-graph entries with no "node"
+    attribute. get_graph_state()/open_view()/Flowchart.saveState() (and so applyClicked())
+    then raised KeyError('node') on them.
+    """
     amicli.ensure_source("cspad")
     amicli.create_node("Roi2D")
     amicli.connect_nodes("cspad", "Out", "Roi2D.0", "In")
@@ -807,14 +862,8 @@ async def test_save_load_graph(amicli, tmp_path):
     amicli.save_graph(filepath)
     assert os.path.exists(filepath)
 
-    import networkx as nx
-
-    for name, node in list(amicli.chart._graph.nodes(data="node")):
-        if node is not None:
-            node.close(emit=False)
-    amicli.chart._graph = nx.MultiDiGraph()
-    assert amicli.get_graph_state()["nodes"] == []
-
+    # No manual clear -- load_graph() alone must leave the graph consistent, with no async
+    # handler left over from the old (still-live) nodes to run later and corrupt the new ones.
     amicli.load_graph(filepath)
 
     state = amicli.get_graph_state()
@@ -822,6 +871,16 @@ async def test_save_load_graph(amicli, tmp_path):
     assert "cspad" in node_names
     assert "Roi2D.0" in node_names
     assert len(state["connections"]) == 1
+
+    # Every node in the graph has a real "node" object (the KeyError('node') crash site).
+    for name in amicli.chart._graph.nodes():
+        assert amicli.chart._graph.nodes[name].get("node") is not None, f"{name} lost its node"
+
+    amicli.chart.saveState()
+
+    # The old nodes being "closed" during load must not still be queued for removal from the
+    # workers now that nodes with the same names are live again.
+    assert amicli.chart.deleted_nodes == []
 
 
 @pytest.mark.asyncio
@@ -1639,6 +1698,112 @@ async def test_abandon_screenshot_request(amicli):
     amicli.resolve_screenshot_request(5, png=b"late")  # no future to resolve; must not raise
 
 
+@pytest.mark.asyncio
+async def test_resolve_and_abandon_widget_request(amicli):
+    """resolve_widget_request completes the right future and ignores stale ids, sets the
+    future's exception instead of its result for an error reply, and abandon_widget_request
+    drops the pending entry and cancels the future so a late reply is a no-op -- the
+    get_plot_config/set_plot_config/set_trace_style counterparts to
+    test_resolve/abandon_screenshot_request. request_widget also surfaces open_view's "not
+    found" error synchronously, same as test_request_screenshot_not_found."""
+    import concurrent.futures
+
+    future = concurrent.futures.Future()
+    amicli._widget_requests[42] = future
+
+    amicli.resolve_widget_request(99, result="ignored")  # unknown id: no-op, future untouched
+    assert not future.done()
+
+    amicli.resolve_widget_request(42, result={"plot": {}, "traces": {}})
+    assert future.result(timeout=0) == {"plot": {}, "traces": {}}
+    assert 42 not in amicli._widget_requests
+
+    amicli.resolve_widget_request(42, result="late")  # arriving twice mustn't raise
+
+    error_future = concurrent.futures.Future()
+    amicli._widget_requests[7] = error_future
+    amicli.resolve_widget_request(7, error="No trace named 'nope'")
+    with pytest.raises(Exception, match="No trace named 'nope'"):
+        error_future.result(timeout=0)
+
+    abandoned = concurrent.futures.Future()
+    abandoned.request_id = 5
+    amicli._widget_requests[5] = abandoned
+
+    amicli.abandon_widget_request(abandoned)
+    assert 5 not in amicli._widget_requests
+    assert abandoned.cancelled()
+    assert abandoned.done()
+
+    amicli.resolve_widget_request(5, result="late")  # no future to resolve; must not raise
+
+    with pytest.raises(KeyError, match="not found"):
+        amicli.request_widget("NoSuchNode.0", "get_config")
+
+
+@pytest.mark.asyncio
+async def test_get_set_plot_config_and_set_trace_style_wrappers(amicli, monkeypatch):
+    """get_plot_config/set_plot_config/set_trace_style (ami/amicli.py) are thin wrappers over
+    request_widget; verify each shapes its op/args correctly rather than exercising the full
+    request/reply round trip (covered by test_resolve_and_abandon_widget_request and the
+    DisplayWidgets-level tests)."""
+    calls = []
+    monkeypatch.setattr(amicli, "request_widget", lambda node_name, op, args=None: calls.append((node_name, op, args)))
+
+    amicli.get_plot_config("ScatterPlot.0")
+    assert calls[-1] == ("ScatterPlot.0", "get_config", None)
+
+    amicli.set_plot_config("ScatterPlot.0", {"Title": "Foo"})
+    assert calls[-1] == ("ScatterPlot.0", "set_config", {"settings": {"Title": "Foo"}})
+
+    amicli.set_trace_style("ScatterPlot.0", "b vs a", label="Laser Off", style={"Point": {"Brush": [255, 0, 0]}})
+    assert calls[-1] == (
+        "ScatterPlot.0",
+        "set_trace",
+        {"trace": "b vs a", "label": "Laser Off", "style": {"Point": {"Brush": [255, 0, 0]}}},
+    )
+
+
+def test_get_set_plot_config_and_set_trace_style_tools(amicli, qapp, monkeypatch):
+    """get_plot_config/set_plot_config/set_trace_style (ami/mcp_server.py) return the amicli
+    wrapper's result as JSON, time out cleanly (ToolError, not a bare TimeoutError, and
+    abandoning the request so a late reply has nothing to resolve) when the window never
+    replies, and surface an in-flight error (e.g. PlotWidget._set_trace_style's unknown-trace
+    message) as a ToolError too."""
+    import concurrent.futures
+
+    from mcp.server.mcpserver.exceptions import ToolError
+
+    import ami.mcp_server as mcp_server
+
+    monkeypatch.setattr(mcp_server, "_amicli", amicli)
+    monkeypatch.setattr(mcp_server, "_qt_dispatch", lambda fn: fn())
+
+    config = {"plot": {"Title": "My Title"}, "traces": {"b vs a": {"label": "b vs a", "style": {}}}}
+    monkeypatch.setattr(amicli, "get_plot_config", lambda node_name: _resolved_future(result=config))
+    assert json.loads(mcp_server.get_plot_config("ScatterPlot.0")) == config
+
+    never_resolves = concurrent.futures.Future()
+    monkeypatch.setattr(amicli, "set_plot_config", lambda node_name, settings: never_resolves)
+    abandoned = []
+    monkeypatch.setattr(amicli, "abandon_widget_request", lambda future: abandoned.append(future))
+
+    with pytest.raises(ToolError, match="No reply from 'ScatterPlot.0'"):
+        mcp_server.set_plot_config("ScatterPlot.0", {"Title": "Foo"}, timeout=0.05)
+    assert abandoned == [never_resolves]
+
+    monkeypatch.setattr(
+        amicli,
+        "set_trace_style",
+        lambda node_name, trace, label=None, style=None: _resolved_future(
+            error="No trace named 'nope' on this plot; available traces (data name: label): {'b vs a': 'b vs a'}"
+        ),
+    )
+
+    with pytest.raises(ToolError, match="No trace named 'nope'"):
+        mcp_server.set_trace_style("ScatterPlot.0", "nope", label="x")
+
+
 def test_broker_does_not_cache_screenshot_replies(broker_module):
     """Test MessageBroker.handle_checkpoint end to end over real ZMQ sockets: an ordinary
     checkpoint is cached (monitor_processes uses this to restore a crashed window), but a
@@ -1700,6 +1865,95 @@ def test_broker_does_not_cache_screenshot_replies(broker_module):
     assert received.png == b"data"
     # ...but it did NOT overwrite/clear the cached checkpoint.
     assert cached_after_reply is cached_after_checkpoint
+
+
+def test_broker_forwards_widget_and_screenshot_requests_to_open_window(broker_module):
+    """Test MessageBroker.process_messages end to end over real ZMQ sockets: a
+    NodeScreenshotRequest/NodeWidgetRequest sent on the broker's sub socket (what AmiCli
+    publishes to via _publish_to_node) is forwarded, as-is, to subscribers on the broker's pub
+    socket (what a NodeProcess window subscribes to) -- but only for a topic the broker
+    considers "running" (present in self.widget_procs); any other topic is silently dropped,
+    the documented behavior for a window that's crashed or never opened.
+
+    Regression test: NodeWidgetRequest was handled by NodeProcess.process() and sent by
+    AmiCli.request_widget, but never added to process_messages' forwarding allowlist here --
+    get_plot_config/set_plot_config/set_trace_style silently dropped every request and timed
+    out, even with the window open and actively receiving data.
+    """
+    import zmq
+    import zmq.asyncio
+
+    async def run():
+        ctx = zmq.asyncio.Context()
+        # Stand in for AmiCli._publish_to_node: publishes on the broker's sub socket.
+        fake_amicli = ctx.socket(zmq.PUB)
+        fake_amicli.connect(broker_module.broker_sub_addr)
+        # Stand in for a NodeProcess window: subscribes to what the broker forwards.
+        fake_window = ctx.socket(zmq.SUB)
+        fake_window.setsockopt_string(zmq.SUBSCRIBE, "")
+        fake_window.connect(broker_module.broker_pub_addr)
+        await asyncio.sleep(0.2)  # let PUB/SUB connections settle (slow joiner)
+
+        try:
+            # monitor_processes() polls every widget_procs entry's proc.is_alive() every
+            # 0.25s regardless of this test's timing, so the dummy "proc" needs that (and
+            # terminate()/join(), used by close()) to behave like a live process, not None.
+            fake_proc = MagicMock()
+            fake_proc.is_alive.return_value = True
+            async with broker_module.lock:
+                broker_module.widget_procs["RunningNode"] = ("ScatterPlot", fake_proc)
+                broker_module.widget_procs.pop("NotRunningNode", None)
+
+            # AmiCli._publish_to_node sends the bare node name as the topic, with no
+            # delimiter -- the broker's broker_sub_sock subscribes to "" (matches anything)
+            # and only appends ZMQ_TOPIC_DELIM itself when forwarding on to broker_pub_sock,
+            # which is what a real NodeProcess subscribes to (name + ZMQ_TOPIC_DELIM).
+            screenshot_req = fcMsgs.NodeScreenshotRequest("RunningNode", request_id=1)
+            await fake_amicli.send_string("RunningNode", zmq.SNDMORE)
+            await fake_amicli.send_pyobj(screenshot_req)
+            await asyncio.wait_for(fake_window.recv_string(), timeout=5)
+            received_screenshot = await asyncio.wait_for(fake_window.recv_pyobj(), timeout=5)
+
+            widget_req = fcMsgs.NodeWidgetRequest("RunningNode", request_id=2, op="get_config", args={})
+            await fake_amicli.send_string("RunningNode", zmq.SNDMORE)
+            await fake_amicli.send_pyobj(widget_req)
+            await asyncio.wait_for(fake_window.recv_string(), timeout=5)
+            received_widget = await asyncio.wait_for(fake_window.recv_pyobj(), timeout=5)
+
+            # A topic with no running window: silently dropped, not forwarded. Prove it by
+            # sending one more RunningNode request right after and checking THAT'S what shows
+            # up next (not the dropped one, which would have arrived first if forwarded).
+            dropped_req = fcMsgs.NodeWidgetRequest("NotRunningNode", request_id=3, op="get_config", args={})
+            await fake_amicli.send_string("NotRunningNode", zmq.SNDMORE)
+            await fake_amicli.send_pyobj(dropped_req)
+            sentinel_req = fcMsgs.NodeWidgetRequest("RunningNode", request_id=4, op="get_config", args={})
+            await fake_amicli.send_string("RunningNode", zmq.SNDMORE)
+            await fake_amicli.send_pyobj(sentinel_req)
+            await asyncio.wait_for(fake_window.recv_string(), timeout=5)
+            received_sentinel = await asyncio.wait_for(fake_window.recv_pyobj(), timeout=5)
+
+            return received_screenshot, received_widget, received_sentinel
+        finally:
+            async with broker_module.lock:
+                broker_module.widget_procs.pop("RunningNode", None)
+            fake_amicli.close()
+            fake_window.close()
+            ctx.term()
+
+    received_screenshot, received_widget, received_sentinel = asyncio.run_coroutine_threadsafe(
+        run(), broker_module._test_loop
+    ).result(timeout=10)
+
+    assert isinstance(received_screenshot, fcMsgs.NodeScreenshotRequest)
+    assert received_screenshot.request_id == 1
+
+    assert isinstance(received_widget, fcMsgs.NodeWidgetRequest)
+    assert received_widget.request_id == 2
+    assert received_widget.op == "get_config"
+
+    # request_id is 4, not 3 -- the dropped NotRunningNode request (id 3) never arrived.
+    assert isinstance(received_sentinel, fcMsgs.NodeWidgetRequest)
+    assert received_sentinel.request_id == 4
 
 
 # ──────────────────────────────────────────────────────────────────────
@@ -1856,6 +2110,51 @@ def test_render_plot_reports_widget_crash_as_tool_error(amicli, qapp, monkeypatc
         mcp_server.render_plot("cspad", timeout=5)
 
 
+def _resolved_future(result=None, error=None):
+    import concurrent.futures
+
+    future = concurrent.futures.Future()
+    if error is not None:
+        future.set_exception(Exception(error))
+    else:
+        future.set_result(result)
+    return future
+
+
+def test_missing_or_non_plot_node_is_a_tool_error_not_opaque(amicli, qapp, monkeypatch):
+    """render_plot/get_plot_config/set_plot_config/set_trace_style all start by dispatching to
+    AmiCli.open_view() (via request_screenshot/request_widget) *before* any future exists --
+    a KeyError (node not found) or TypeError (node has no plot window) raised there used to
+    escape as a raw, opaque "Error executing tool ..." with no message at all, rather than the
+    clear ToolError these tools otherwise give for every other failure mode (timeout,
+    in-flight error, widget crash). Covers all 4 tools for "not found" (does each actually
+    reach _dispatch_or_tool_error?), and render_plot + one more for "no plot window" (a real
+    node, e.g. a Calculator, that's just not viewable/buffered)."""
+    from mcp.server.mcpserver.exceptions import ToolError
+
+    import ami.mcp_server as mcp_server
+
+    monkeypatch.setattr(mcp_server, "_amicli", amicli)
+    monkeypatch.setattr(mcp_server, "_qt_dispatch", lambda fn: fn())
+
+    for call_tool in (
+        lambda name: mcp_server.render_plot(name),
+        lambda name: mcp_server.get_plot_config(name),
+        lambda name: mcp_server.set_plot_config(name, {"Title": "x"}),
+        lambda name: mcp_server.set_trace_style(name, "a vs b", label="x"),
+    ):
+        with pytest.raises(ToolError, match="not found"):
+            call_tool("NoSuchNode.0")
+
+    amicli.create_node("Calculator")
+
+    with pytest.raises(ToolError, match="no plot window"):
+        mcp_server.render_plot("Calculator.0")
+
+    with pytest.raises(ToolError, match="no plot window"):
+        mcp_server.get_plot_config("Calculator.0")
+
+
 def test_plot_widget_screenshot_png_and_request_screenshot(qapp):
     """Test PlotWidget.screenshot_png()/request_screenshot() directly, without a fetcher/process."""
     import numpy as np
@@ -1925,6 +2224,111 @@ def test_line_widget_drops_none_pairs(qapp):
     widget.data_updated({"x": (None,), "y": (None,)})
     xData, yData = item.getData()
     np.testing.assert_array_equal(xData, [1, 3, 5])
+
+
+def _node_mock(name):
+    """A node stand-in good enough for PlotWidget's constructor and apply_clicked()'s
+    sigStateChanged.emit(self.node) -- MagicMock's auto-created .name() would return a
+    MagicMock, not a str, which setWindowTitle() rejects."""
+    node = MagicMock()
+    node.name.return_value = name
+    return node
+
+
+def test_plot_widget_get_set_config(qapp):
+    """get_plot_config/set_plot_config (ami/mcp_server.py) via PlotWidget.handle_widget_request:
+    set_config changes only the given keys, rejects an unknown one with the valid names, and
+    never touches CSV references/annotations (unlike restoreState, which would wipe them)."""
+    from ami.flowchart.library.DisplayWidgets import ScatterWidget
+
+    widget = ScatterWidget(terms={"X": "a", "Y": "b"}, name="t", hutch="", node=_node_mock("ScatterPlot.0"))
+    widget.data_updated({"a": (1, 2, 3), "b": (4, 5, 6)})
+    widget.csv_references["ref1"] = "/tmp/foo.csv"
+
+    cfg = widget.handle_widget_request("get_config", {})
+    assert cfg["plot"]["Title"] == ""
+    assert cfg["plot"]["X Axis"]["Label"] == ""
+    assert "Screenshots" not in cfg["plot"]  # has its own purpose, not part of this API
+    assert list(cfg["traces"].keys()) == ["b vs a"]  # keyed by data name, not legend label
+
+    cfg = widget.handle_widget_request(
+        "set_config", {"settings": {"Title": "My Title", "X Axis": {"Label": "delta_t"}}}
+    )
+    assert cfg["plot"]["Title"] == "My Title"
+    assert cfg["plot"]["X Axis"]["Label"] == "delta_t"
+    assert cfg["plot"]["Show Grid"] is True  # untouched key kept its value
+    assert widget.csv_references == {"ref1": "/tmp/foo.csv"}  # not wiped
+
+    with pytest.raises(KeyError, match="Bogus"):
+        widget.handle_widget_request("set_config", {"settings": {"Bogus": 1}})
+    with pytest.raises(KeyError, match="Screenshots"):
+        widget.handle_widget_request("set_config", {"settings": {"Screenshots": {"Record Screenshots": True}}})
+
+
+def test_plot_widget_set_trace_style(qapp):
+    """set_trace_style (ami/mcp_server.py) via PlotWidget.handle_widget_request: looks a trace
+    up by its DATA NAME (not its current/changeable legend label), merges a partial style one
+    level deep so unspecified fields keep their value, and rejects an unknown trace or style key
+    with the valid names."""
+    from ami.flowchart.library.DisplayWidgets import ScatterWidget
+
+    widget = ScatterWidget(terms={"X": "a", "Y": "b"}, name="t", hutch="", node=_node_mock("ScatterPlot.0"))
+    widget.data_updated({"a": (1, 2, 3), "b": (4, 5, 6)})
+
+    cfg = widget.handle_widget_request(
+        "set_trace", {"trace": "b vs a", "label": "Laser Off", "style": {"Point": {"Brush": [255, 0, 0, 255]}}}
+    )
+    trace = cfg["traces"]["b vs a"]  # still keyed by data name after relabeling
+    assert trace["label"] == "Laser Off"
+    assert trace["style"]["Point"]["Brush"] == (255, 0, 0, 255)
+    assert trace["style"]["Point"]["symbol"] == "p"  # untouched field in the same group kept
+
+    # looking it up again by data name (not the new label "Laser Off") still works
+    cfg = widget.handle_widget_request("set_trace", {"trace": "b vs a", "label": "Laser Off (renamed)"})
+    assert cfg["traces"]["b vs a"]["label"] == "Laser Off (renamed)"
+
+    with pytest.raises(KeyError, match="Laser Off"):  # error lists data name -> current label
+        widget.handle_widget_request("set_trace", {"trace": "Laser Off (renamed)"})  # that's a label, not data name
+    with pytest.raises(KeyError, match="Bogus"):
+        widget.handle_widget_request("set_trace", {"trace": "b vs a", "style": {"Bogus": 1}})
+
+    # HistEditor's style has no groups (just a flat "Brush"), unlike TraceEditor's Point/Line
+    # above -- set_trace_style must work against either shape.
+    from ami.flowchart.library.DisplayWidgets import HistogramWidget
+
+    hist = HistogramWidget(terms={"Bins": "xb", "Counts": "yc"}, name="h", hutch="", node=_node_mock("Histogram.0"))
+    hist.data_updated({"xb": list(range(11)), "yc": list(range(10))})
+
+    cfg = hist.handle_widget_request("set_trace", {"trace": "yc", "style": {"Brush": [0, 255, 0, 255]}})
+    assert cfg["traces"]["yc"]["style"]["Brush"] == (0, 255, 0, 255)
+
+
+def test_plot_widget_request_widget_op_queues_until_next_update(qapp):
+    """request_widget_op (called from NodeProcess.handle_widget_request) queues the request to
+    run after the next data_updated -- same timing as request_screenshot -- so a brand-new plot
+    with no traces yet still answers get_config correctly once it has one, instead of racing it."""
+    from ami.flowchart.library.DisplayWidgets import ScatterWidget
+
+    widget = ScatterWidget(terms={"X": "a", "Y": "b"}, name="t", hutch="", node=_node_mock("ScatterPlot.0"))
+
+    results = []
+    widget.request_widget_op("get_config", {}, lambda result=None, error=None: results.append((result, error)))
+    assert len(widget._widget_request_queue) == 1
+    assert results == []  # not answered yet -- no data has arrived
+
+    widget.data_updated({"a": (1, 2, 3), "b": (4, 5, 6)})
+    # simulate what update() does after data_updated, without needing a real fetcher/process
+    pending, widget._widget_request_queue = widget._widget_request_queue, []
+    for op, args, callback in pending:
+        try:
+            callback(result=widget.handle_widget_request(op, args))
+        except Exception as e:
+            callback(error=str(e))
+
+    assert len(results) == 1
+    result, error = results[0]
+    assert error is None
+    assert list(result["traces"].keys()) == ["b vs a"]
 
 
 @pytest.mark.asyncio

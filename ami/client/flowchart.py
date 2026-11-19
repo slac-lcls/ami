@@ -386,6 +386,8 @@ class NodeProcess(QtCore.QObject):
                     self.widget.restoreState(msg.state)
             elif isinstance(msg, fcMsgs.NodeScreenshotRequest):
                 self.handle_screenshot_request(msg.request_id)
+            elif isinstance(msg, fcMsgs.NodeWidgetRequest):
+                self.handle_widget_request(msg.request_id, msg.op, msg.args)
             elif isinstance(msg, fcMsgs.CloseNode):
                 return
 
@@ -551,6 +553,32 @@ class NodeProcess(QtCore.QObject):
         await self.checkpoint.send_string(self.name + ZMQ_TOPIC_DELIM, zmq.SNDMORE)
         await self.checkpoint.send_pyobj(msg)
 
+    def handle_widget_request(self, request_id, op, args):
+        """Answer a NodeWidgetRequest (ami/mcp_server.py get_plot_config/set_plot_config/
+        set_trace_style) via the widget's own queued-request mechanism (see
+        PlotWidget.request_widget_op), answered after the next data update like
+        handle_screenshot_request.
+        """
+        if self.widget is None or not hasattr(self.widget, "request_widget_op"):
+            self._send_widget_reply(request_id, error=f"'{self.name}' does not support plot configuration")
+            return
+        try:
+            self.widget.request_widget_op(
+                op,
+                args,
+                lambda result=None, error=None: self._send_widget_reply(request_id, result=result, error=error),
+            )
+        except Exception as e:
+            self._send_widget_reply(request_id, error=str(e))
+
+    def _send_widget_reply(self, request_id, result=None, error=None):
+        asyncio.ensure_future(self._send_widget_reply_async(request_id, result, error))
+
+    async def _send_widget_reply_async(self, request_id, result, error):
+        msg = fcMsgs.NodeWidgetReply(self.name, request_id, result=result, error=error)
+        await self.checkpoint.send_string(self.name + ZMQ_TOPIC_DELIM, zmq.SNDMORE)
+        await self.checkpoint.send_pyobj(msg)
+
     def _install_widget_exception_hook(self):
         """Catch unhandled exceptions raised inside Qt slots -- this is where
         PlotWidget.update()/data_updated() and any pyqtgraph-internal callback it triggers run
@@ -588,6 +616,14 @@ class NodeProcess(QtCore.QObject):
         if callback is not None:
             self.widget._screenshot_callback = None
             callback(error=f"{exc_type.__name__}: {message}")
+
+        # same for any pending get_plot_config/set_plot_config/set_trace_style requests: the
+        # crash happened before update() could reach them in the queue
+        pending = getattr(self.widget, "_widget_request_queue", None)
+        if pending:
+            self.widget._widget_request_queue = []
+            for _op, _args, pending_callback in pending:
+                pending_callback(error=f"{exc_type.__name__}: {message}")
 
     async def _send_widget_error_async(self, message, exception_type, traceback_str):
         msg = fcMsgs.NodeWidgetError(self.name, message, exception_type, traceback_str)
@@ -750,7 +786,9 @@ class MessageBroker(object):
             # to restore a crashed window from — caching it would make monitor_processes replay
             # a stale screenshot reply as if it were the node's state. NodeWidgetError is the
             # same: a one-off report of a display-widget exception, not state to restore.
-            if not isinstance(msg, (fcMsgs.NodeScreenshotReply, fcMsgs.NodeWidgetError)):
+            # NodeWidgetReply (get_plot_config/set_plot_config/set_trace_style) is the same
+            # again: a one-off reply to a specific request.
+            if not isinstance(msg, (fcMsgs.NodeScreenshotReply, fcMsgs.NodeWidgetError, fcMsgs.NodeWidgetReply)):
                 async with self.lock:
                     self.checkpoints[topic] = msg
 
@@ -866,13 +904,15 @@ class MessageBroker(object):
                     fcMsgs.NodeReferencesUpdate,
                     fcMsgs.NodeWidgetStateUpdate,
                     fcMsgs.NodeScreenshotRequest,
+                    fcMsgs.NodeWidgetRequest,
                 ),
             ):
                 # Forward directly to the NodeProcess without caching — it's a
                 # transient update, not a "last state" message. If the window isn't running,
-                # a NodeScreenshotRequest is silently dropped; AmiCli only sends one once
-                # node.viewed is true, so this only matters if the window crashes mid-request —
-                # the MCP tool's own timeout surfaces that as an error instead of hanging.
+                # a NodeScreenshotRequest/NodeWidgetRequest is silently dropped; AmiCli only
+                # sends one once node.viewed is true, so this only matters if the window
+                # crashes mid-request — the MCP tool's own timeout surfaces that as an error
+                # instead of hanging.
                 async with self.lock:
                     running = topic in self.widget_procs
                 if running:

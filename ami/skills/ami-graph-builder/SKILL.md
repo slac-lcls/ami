@@ -392,6 +392,52 @@ it immediately — the box moves on screen even before `apply_graph()` runs. See
 
 Calculator and Filter nodes have dedicated tools (`set_calculator_expression`, `set_filter_conditions`) — use those instead for expression/condition changes.
 
+## Plot Configuration (`get_plot_config` / `set_plot_config` / `set_trace_style`)
+
+These change how a plot *looks* — title, axis labels/ranges/log scale, grid, and each trace's
+legend label and style (color, symbol, size, line width/style; a Histogram trace just has a
+fill color). They open the node's display window if it isn't already open (same as
+`render_plot`) and don't need `apply_graph()` — this is display state, not graph state.
+
+```
+get_plot_config("ScatterPlot.0")
+# {"plot": {"Title": "", "Font Size": 9, "Show Grid": true,
+#           "X Axis": {"Label": "", "Log Scale": false, "Auto Range": true, "Min": 0.0, "Max": 100.0},
+#           "Y Axis": {...}},
+#  "traces": {"Filter.1.Out.1 vs Filter.1.Out": {"label": "Filter.1.Out.1 vs Filter.1.Out",
+#                                                 "style": {"Point": {"symbol": "p", "Brush": [...], "Size": 14},
+#                                                           "Line": {"color": [...], "width": 1, "style": "None"}}}}}
+
+set_plot_config("ScatterPlot.0", {"Title": "Laser On/Off",
+                 "X Axis": {"Label": "delta_t"}, "Y Axis": {"Label": "sum(waveform2)"}})
+
+set_trace_style("ScatterPlot.0", "Filter.1.Out.1 vs Filter.1.Out",
+                 label="Laser Off", style={"Point": {"Brush": [255, 0, 0], "symbol": "o"}})
+set_trace_style("ScatterPlot.0", "Filter.1.Out.3 vs Filter.1.Out.2",
+                 label="Laser On", style={"Point": {"Brush": [0, 255, 0], "symbol": "star"}})
+```
+
+**`trace` must be the DATA NAME from `get_plot_config`'s `"traces"` keys** (e.g.
+`"Filter.1.Out.1 vs Filter.1.Out"` — `"<Y wire> vs <X wire>"` for ScatterPlot/LinePlot/TimePlot,
+just the wire name for WaveformViewer/ScalarPlot, the `Counts` wire for Histogram), **not the
+current legend label** — the label is just display text `set_trace_style` itself changes, and
+isn't guaranteed unique between traces. Call `get_plot_config` first if you don't already know
+the data name; `list_plot_traces` only covers LinePlot/WaveformViewer.
+
+- `set_plot_config` only changes the given keys, using the same names as the Configure panel;
+  an unknown key raises an error listing the valid ones for that node type (an ImageViewer, for
+  example, has no `"Auto Range"`/`"Min"`/`"Max"`).
+- `set_trace_style`'s `style` is merged into the trace's existing style, one level deep for
+  grouped fields — `{"Point": {"Brush": [255, 0, 0]}}` changes only that group's `Brush`,
+  leaving `Size`/`symbol`/`Line` alone. Colors accept an RGB/RGBA list or tuple, a `"#rrggbb"`
+  hex string, or a pyqtgraph color name.
+- Works on any PlotWidget-based display node: ScatterPlot, ScalarPlot, TimePlot, LinePlot,
+  WaveformViewer, Histogram, ImageViewer, MultiWaveformViewer. CSV references and annotations
+  on the plot are never touched by these calls.
+- A brand-new plot with no traces yet returns an empty `"traces"` dict from `get_plot_config`
+  rather than erroring; `set_trace_style` on a plot with no matching trace raises an error
+  listing the plot's actual trace data names (and current labels) so you can see what's wrong.
+
 ## Reference Traces
 
 Plot nodes (LinePlot, WaveformViewer, ScalarPlot, ScatterPlot, Histogram, ...) can overlay

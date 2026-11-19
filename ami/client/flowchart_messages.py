@@ -190,6 +190,37 @@ class NodeWidgetError(NodeMsg):
         return self.message
 
 
+class NodeWidgetRequest(NodeMsg):
+    """Ask a running NodeProcess window to run a plot-configuration operation
+    (get_config/set_config/set_trace) on its display widget.
+
+    Sent by AmiCli (get_plot_config/set_plot_config/set_trace_style) to a node whose window is
+    already open. Answered after the window's next data_updated (see
+    PlotWidget.request_widget_op), the same timing as NodeScreenshotRequest, so get_config/
+    set_trace reflect live state and a brand-new plot has had a chance to draw at least one
+    trace. request_id lets the GUI process match the reply to the caller waiting on it.
+    """
+
+    def __init__(self, name, request_id, op, args):
+        super().__init__(name)
+        self.request_id = request_id
+        self.op = op  # "get_config" | "set_config" | "set_trace"
+        self.args = args  # dict of op-specific arguments
+
+
+class NodeWidgetReply(NodeMsg):
+    """Reply to NodeWidgetRequest, sent on the checkpoint socket (not cached -- see
+    MessageBroker.handle_checkpoint) directly back to the GUI process, like
+    NodeScreenshotReply.
+    """
+
+    def __init__(self, name, request_id, result=None, error=None):
+        super().__init__(name)
+        self.request_id = request_id
+        self.result = result  # op's return value, or None on error
+        self.error = error  # error string, or None on success
+
+
 class NodeTermAdded(NodeMsg):
 
     def __init__(self, name, term, state):

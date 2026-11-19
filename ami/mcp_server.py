@@ -1370,6 +1370,23 @@ def _to_jpeg(png, max_bytes):
     return data, note
 
 
+def _dispatch_or_tool_error(fn):
+    """Run fn() on the Qt thread (same as _qt_dispatch), turning a *synchronous* exception --
+    e.g. AmiCli.open_view()'s KeyError (node not found), TypeError (node has no plot window),
+    or RuntimeError (unapplied upstream changes) raised while opening/dispatching to a node's
+    window, before any future is even created -- into a ToolError instead of letting it
+    escape raw as an opaque "Error executing tool ..." with no message.
+
+    Shared by render_plot and the get_plot_config/set_plot_config/set_trace_style family, all
+    of which start with "_qt_dispatch(lambda: _amicli.<open the window and return a pending
+    request's future>(node_name))".
+    """
+    try:
+        return _qt_dispatch(fn)
+    except Exception as e:
+        raise ToolError(str(e))
+
+
 @mcp.tool()
 def render_plot(
     node_name: str, timeout: float = 30, max_size: int = RENDER_PLOT_MAX_BYTES
@@ -1408,7 +1425,7 @@ def render_plot(
         raise ToolError("max_size must be positive")
     max_size = min(max_size, RENDER_PLOT_MAX_BYTES)
 
-    future = _qt_dispatch(lambda: _amicli.request_screenshot(node_name))
+    future = _dispatch_or_tool_error(lambda: _amicli.request_screenshot(node_name))
     try:
         png = future.result(timeout=timeout)
     except concurrent.futures.TimeoutError:
@@ -1430,6 +1447,119 @@ def render_plot(
         logger.info(f"render_plot('{node_name}'): {note}")
         return [Image(data=jpeg, format="jpeg"), note]
     return Image(data=jpeg, format="jpeg")
+
+
+def _widget_request_result(node_name, future, timeout, verb):
+    """Shared wait/error handling for get_plot_config/set_plot_config/set_trace_style, mirroring
+    render_plot's handling of request_screenshot's future."""
+    try:
+        return future.result(timeout=timeout)
+    except concurrent.futures.TimeoutError:
+        _qt_dispatch(lambda: _amicli.abandon_widget_request(future))
+        raise ToolError(f"No reply from '{node_name}' within {timeout}s; is its window open and receiving data?")
+    except Exception as e:
+        raise ToolError(f"Failed to {verb} '{node_name}': {e}")
+
+
+@mcp.tool()
+def get_plot_config(node_name: str, timeout: float = 30) -> str:
+    """
+    Get a plot node's configuration (title, axes, grid) and each trace's current label and
+    style, from its live display window.
+
+    Opens the window if it isn't already open (same as render_plot), and waits for its next
+    live update so the reported trace list/styles reflect real state -- a brand-new plot with
+    no traces yet returns an empty "traces" dict rather than erroring.
+
+    Works on any PlotWidget-based display node: ScatterPlot, ScalarPlot, TimePlot, LinePlot,
+    WaveformViewer, Histogram, ImageViewer, MultiWaveformViewer. Fails with a clear error on a
+    node with no such window (e.g. ObjectViewer, a source node).
+
+    Args:
+        node_name: Node name (e.g., 'ScatterPlot.0')
+        timeout: Max seconds to wait for the window to open and produce a reply (default 30)
+
+    Returns:
+        JSON with:
+        "plot": current plot-level settings, e.g. {"Title": "", "Font Size": 9, "Show Grid":
+            true, "X Axis": {"Label": "", "Log Scale": false, "Auto Range": true, "Min": 0.0,
+            "Max": 100.0}, "Y Axis": {...}} -- exact keys depend on the node type (e.g. an
+            ImageViewer has no "Auto Range"/"Min"/"Max")
+        "traces": {<data name>: {"label": <current legend text>, "style": {...}}}, keyed by
+            each trace's DATA NAME (e.g. "Filter.1.Out.1 vs Filter.1.Out" for a ScatterPlot, or
+            just a wire name for WaveformViewer/ScalarPlot) -- NOT its current legend label,
+            since that's just display text set_trace_style can change and isn't guaranteed
+            unique. Use the data name with set_trace_style's `trace` argument.
+    """
+    future = _dispatch_or_tool_error(lambda: _amicli.get_plot_config(node_name))
+    result = _widget_request_result(node_name, future, timeout, "get plot config from")
+    return json.dumps(result, default=str)
+
+
+@mcp.tool()
+def set_plot_config(node_name: str, settings: dict, timeout: float = 30) -> str:
+    """
+    Set a plot node's configuration (title, axes, grid). Only the given keys are changed; call
+    get_plot_config first to see the current values and the exact keys this node type accepts.
+
+    Example: set_plot_config("ScatterPlot.0", {"Title": "Laser On/Off",
+             "X Axis": {"Label": "delta_t"}, "Y Axis": {"Label": "sum(waveform2)"}})
+
+    Opens the window if it isn't already open. Does not require apply_graph() -- this changes
+    display settings, not the graph itself. CSV references and annotations on the plot are
+    never touched by this call.
+
+    Args:
+        node_name: Node name (e.g., 'ScatterPlot.0')
+        settings: Partial settings dict, same shape as get_plot_config's "plot" key
+        timeout: Max seconds to wait for the window to open and produce a reply (default 30)
+
+    Returns:
+        JSON with the plot's full updated config (same shape as get_plot_config), or an error
+        listing the valid setting names if an unknown key was given
+    """
+    future = _dispatch_or_tool_error(lambda: _amicli.set_plot_config(node_name, settings))
+    result = _widget_request_result(node_name, future, timeout, "set plot config on")
+    return json.dumps(result, default=str)
+
+
+@mcp.tool()
+def set_trace_style(node_name: str, trace: str, label: str = None, style: dict = None, timeout: float = 30) -> str:
+    """
+    Relabel and/or restyle one trace on a plot node, e.g. to tell apart a laser on/off split
+    with distinct colors and legend labels.
+
+    `trace` must be the trace's DATA NAME from get_plot_config's "traces" keys (e.g.
+    "Filter.1.Out.1 vs Filter.1.Out"), not its current legend label -- the label is just
+    display text this tool itself can change, and isn't guaranteed unique.
+
+    `style` is merged into the trace's existing style (call get_plot_config first for the
+    current style and valid keys for this node type -- e.g. a Histogram trace only has
+    {"Brush": ...}), one level deep for grouped fields -- e.g. {"Point": {"Brush": [255, 0,
+    0]}} changes only that group's Brush, leaving Size/symbol/Line alone. Colors accept an
+    RGB/RGBA list or tuple, a "#rrggbb" hex string, or a pyqtgraph color name.
+
+    Example: set_trace_style("ScatterPlot.0", "Filter.1.Out.1 vs Filter.1.Out",
+             label="Laser Off", style={"Point": {"Brush": [255, 0, 0], "symbol": "o"}})
+
+    Opens the window if it isn't already open. Does not require apply_graph().
+
+    Args:
+        node_name: Node name (e.g., 'ScatterPlot.0')
+        trace: The trace's data name (see get_plot_config's "traces" keys)
+        label: New legend label, or None to leave it unchanged
+        style: Partial style dict to merge into the trace's current style, or None to leave it
+            unchanged
+        timeout: Max seconds to wait for the window to open and produce a reply (default 30)
+
+    Returns:
+        JSON with the plot's full updated config, or an error listing the plot's actual trace
+        data names if `trace` didn't match one, or the valid style keys if an unknown one was
+        given
+    """
+    future = _dispatch_or_tool_error(lambda: _amicli.set_trace_style(node_name, trace, label=label, style=style))
+    result = _widget_request_result(node_name, future, timeout, "set trace style on")
+    return json.dumps(result, default=str)
 
 
 @mcp.resource("ami://graph/validation")

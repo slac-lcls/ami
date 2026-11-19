@@ -54,6 +54,12 @@ class AmiCli:
         # (also Qt thread, called from Flowchart.updateState on a NodeScreenshotReply).
         self._screenshot_requests = {}
         self._screenshot_request_counter = 0
+        # Pending get_plot_config/set_plot_config/set_trace_style requests: request_id ->
+        # concurrent.futures.Future. Populated by request_widget (Qt thread), resolved by
+        # resolve_widget_request (also Qt thread, called from Flowchart.updateState on a
+        # NodeWidgetReply).
+        self._widget_requests = {}
+        self._widget_request_counter = 0
 
     @property
     def graph(self):
@@ -658,6 +664,10 @@ class AmiCli:
         Raises:
             FileNotFoundError: If file doesn't exist
         """
+        import networkx as nx
+
+        from ami.client import flowchart_messages as fcMsgs
+
         try:
             if not os.path.exists(filename):
                 raise FileNotFoundError(f"File '{filename}' not found")
@@ -665,10 +675,24 @@ class AmiCli:
             with open(filename, "r") as f:
                 state = json.load(f)
 
-            # Clear existing nodes synchronously
+            # Clear existing nodes synchronously -- node.close()'s default emit=True only
+            # queues the async Flowchart.nodeClosed handler (self._graph.remove_node(name) +
+            # sending CloseNode to any open window) rather than running it immediately. The
+            # queued handler used to run *after* restoreState() below had already added nodes
+            # back under the same names, deleting those new nodes from self._graph and leaving
+            # restoreState's own queued edge-additions to recreate bare entries with no "node"
+            # attribute -- get_graph_state()/open_view()/applyClicked() then raised KeyError
+            # on them. Do the same synchronous steps Flowchart.clear() does instead of relying
+            # on that signal: close with emit=False and send CloseNode here, then install a
+            # fresh graph object. Also drop deleted_nodes -- any name queued for removal here
+            # is about to be recreated under the same name by restoreState, so submitting them
+            # to apply_graph() afterward would delete the newly loaded nodes from the workers.
             for name in list(self.graph.nodes()):
                 node = self.graph.nodes[name]["node"]
-                node.close()
+                self._publish_to_node(node, fcMsgs.CloseNode())
+                node.close(emit=False)
+            self.chart._graph = nx.MultiDiGraph()
+            self.chart.deleted_nodes = []
 
             # Restore state synchronously
             self.chart.restoreState(state)
@@ -1355,7 +1379,7 @@ class AmiCli:
         # same way (see FlowchartWidget.build_views' separate buffered-node branch).
         if not hasattr(node, "display") or not (node.viewable() or node.buffered()):
             raise TypeError(
-                f"Node '{node_name}' ({node_type(node)}) has no plot window to screenshot; "
+                f"Node '{node_name}' ({node_type(node)}) has no plot window; "
                 "use fetch_data, or connect a viewer node"
             )
         if node.viewed:
@@ -1364,6 +1388,29 @@ class AmiCli:
         if pending:
             raise RuntimeError(f"Pending changes for {', '.join(sorted(pending))}; call apply_graph() first")
         asyncio.ensure_future(self.chartWidget.build_views([node], ctrl=True))
+
+    def _send_request_when_viewed(self, node_name, future, make_msg):
+        """Open node_name's display window (if needed) and send make_msg(request_id) to it once
+        it's viewed, retrying every 50ms until then. Shared by request_screenshot/
+        request_widget -- both are a "send a request to an open window, resolve a Future from
+        its reply" pattern, differing only in the message type sent and where pending requests/
+        replies are tracked.
+
+        Must run in the Qt thread.
+        """
+        self.open_view(node_name)
+        node = self.graph.nodes[node_name]["node"]
+
+        def send_once_viewed():
+            # The window subscribes to its topic before setting viewed=True (NodeProcess.display,
+            # called synchronously from its message loop), so this can't race a dropped request.
+            if not future.done():
+                if node.viewed:
+                    self._publish_to_node(node, make_msg(future.request_id))
+                else:
+                    QtCore.QTimer.singleShot(50, send_once_viewed)
+
+        send_once_viewed()
 
     def request_screenshot(self, node_name):
         """Request a PNG screenshot of node_name's open display window.
@@ -1375,25 +1422,12 @@ class AmiCli:
         """
         from ami.client import flowchart_messages as fcMsgs
 
-        self.open_view(node_name)
-        node = self.graph.nodes[node_name]["node"]
-
         self._screenshot_request_counter += 1
         request_id = self._screenshot_request_counter
         future = concurrent.futures.Future()
         future.request_id = request_id  # so a timed-out caller can abandon_screenshot_request(future)
         self._screenshot_requests[request_id] = future
-
-        def send_once_viewed():
-            # The window subscribes to its topic before setting viewed=True (NodeProcess.display,
-            # called synchronously from its message loop), so this can't race a dropped request.
-            if not future.done():
-                if node.viewed:
-                    self._publish_to_node(node, fcMsgs.NodeScreenshotRequest(node_name, request_id))
-                else:
-                    QtCore.QTimer.singleShot(50, send_once_viewed)
-
-        send_once_viewed()
+        self._send_request_when_viewed(node_name, future, lambda rid: fcMsgs.NodeScreenshotRequest(node_name, rid))
         return future
 
     def abandon_screenshot_request(self, future):
@@ -1420,6 +1454,69 @@ class AmiCli:
             future.set_exception(Exception(error))
         else:
             future.set_result(png)
+
+    def request_widget(self, node_name, op, args=None):
+        """Run a get_plot_config/set_plot_config/set_trace_style operation on node_name's open
+        display window.
+
+        Must run in the Qt thread; opens the window first via open_view() if needed (see
+        request_screenshot). Returns a concurrent.futures.Future, resolved from
+        Flowchart.updateState when the window's reply arrives (or left pending forever if the
+        window never answers — callers must apply their own timeout via
+        future.result(timeout=...)).
+        """
+        from ami.client import flowchart_messages as fcMsgs
+
+        self._widget_request_counter += 1
+        request_id = self._widget_request_counter
+        future = concurrent.futures.Future()
+        future.request_id = request_id  # so a timed-out caller can abandon_widget_request(future)
+        self._widget_requests[request_id] = future
+        self._send_request_when_viewed(
+            node_name, future, lambda rid: fcMsgs.NodeWidgetRequest(node_name, rid, op, args or {})
+        )
+        return future
+
+    def abandon_widget_request(self, future):
+        """Drop a request_widget() future the caller gave up waiting on. See
+        abandon_screenshot_request; same reasoning, separate tracking dict."""
+        self._widget_requests.pop(getattr(future, "request_id", None), None)
+        future.cancel()
+
+    def resolve_widget_request(self, request_id, result=None, error=None):
+        """Complete the future from request_widget() with the window's reply.
+
+        Called from Flowchart.updateState on the Qt thread when a NodeWidgetReply arrives.
+        """
+        future = self._widget_requests.pop(request_id, None)
+        if future is None or future.done():
+            return  # already timed out and abandoned by the caller
+        if error is not None:
+            future.set_exception(Exception(error))
+        else:
+            future.set_result(result)
+
+    def get_plot_config(self, node_name):
+        """Return node_name's plot configuration (title/axes/grid) and each trace's current
+        label and style, from its live display window. Opens the window first if needed. See
+        request_widget for the Future this returns."""
+        return self.request_widget(node_name, "get_config")
+
+    def set_plot_config(self, node_name, settings):
+        """Update node_name's plot configuration (see get_plot_config for the current keys/
+        values). Only the given keys are changed. See request_widget for the Future this
+        returns, which resolves to the updated config, or an error for an unknown key."""
+        return self.request_widget(node_name, "set_config", {"settings": settings})
+
+    def set_trace_style(self, node_name, trace, label=None, style=None):
+        """Relabel and/or restyle one trace on node_name's plot, identified by its DATA NAME
+        (see get_plot_config's "traces" keys) -- not its current legend label, which is just
+        display text and isn't guaranteed unique. style is merged into the trace's existing
+        style, one level deep for grouped fields (e.g. {"Point": {"Brush": [255, 0, 0]}}
+        changes only the Point group's Brush). See request_widget for the Future this returns,
+        which resolves to the updated config, or an error if trace doesn't match any trace's
+        data name."""
+        return self.request_widget(node_name, "set_trace", {"trace": trace, "label": label, "style": style})
 
     # Plot node types that take_reference/compare_to_reference support, mapped to their (x, y) input terminals.
     # x is None when the plot draws y against its index.

@@ -36,6 +36,52 @@ symbols = ["o", "s", "t", "d", "+"]
 symbols_colors = list(it.product(symbols, colors))
 
 
+def _widget_group_schema(state_group):
+    """Return {group_name_or_None: {setting names in that group}} for a WidgetGroup, derived
+    from its own widgetList rather than a hardcoded list -- so validating a get_plot_config/
+    set_plot_config/set_trace_style request naturally matches whatever a particular
+    PlotWidget subclass's uiTemplate (or a TraceEditor/HistEditor's) actually exposes, which
+    differs between e.g. plain PlotWidget and ImageWidget.
+    """
+    schema = {}
+    if not state_group:
+        return schema
+    for n in state_group.widgetList.values():
+        name, group = n if isinstance(n, tuple) else (n, None)
+        schema.setdefault(group, set()).add(name)
+    return schema
+
+
+def _validate_against_schema(values, schema, label="setting"):
+    """Raise KeyError listing the valid names if values has a key (top-level or, for a grouped
+    key whose value is itself a dict, within that group) that schema doesn't recognize.
+    """
+    top_level = schema.get(None, set()) | {g for g in schema if g is not None}
+    unknown = set(values) - top_level
+    if unknown:
+        raise KeyError(f"Unknown {label}(s) {sorted(unknown)}; valid: {sorted(top_level)}")
+    for key, value in values.items():
+        if key in schema and isinstance(value, dict):
+            bad = set(value) - schema[key]
+            if bad:
+                raise KeyError(f"Unknown {key} {label}(s) {sorted(bad)}; valid: {sorted(schema[key])}")
+
+
+def _merge_style(current, update):
+    """Shallow-merge a partial trace style update into the current editor state, one level
+    deep for grouped keys (e.g. {"Point": {"Brush": [255, 0, 0]}}) so a caller can change just
+    one group's field (e.g. Point.Brush) without needing to resend the rest of that group
+    (e.g. Point.symbol/Size).
+    """
+    merged = dict(current)
+    for key, value in update.items():
+        if isinstance(value, dict) and isinstance(merged.get(key), dict):
+            merged[key] = {**merged[key], **value}
+        else:
+            merged[key] = value
+    return merged
+
+
 class AsyncFetcher(QtCore.QThread):
     sig = QtCore.Signal()
 
@@ -384,6 +430,13 @@ class PlotWidget(QtWidgets.QWidget):
         # from the next data_updated in update() so the image always has live data in it.
         # callback(png=..., error=...) — exactly one of the two is given.
         self._screenshot_callback = None
+
+        # Pending get_plot_config/set_plot_config/set_trace_style requests (ami/mcp_server.py
+        # via NodeWidgetRequest), answered from the next data_updated in update() -- same
+        # timing as the screenshot callback above, so a brand-new plot has had a chance to
+        # draw at least one trace before get_config/set_trace needs to find it. List of
+        # (op, args, callback); callback(result=..., error=...) -- exactly one is given.
+        self._widget_request_queue = []
 
         self.last_updated = QtWidgets.QLabel(parent=self)
         self.pixel_value = QtWidgets.QLabel(parent=self)
@@ -863,6 +916,16 @@ class PlotWidget(QtWidgets.QWidget):
                 except Exception as e:
                     callback(error=str(e))
 
+            # Answer any pending get_plot_config/set_plot_config/set_trace_style requests
+            # (ami/mcp_server.py) the same way.
+            if self._widget_request_queue:
+                pending, self._widget_request_queue = self._widget_request_queue, []
+                for op, args, callback in pending:
+                    try:
+                        callback(result=self.handle_widget_request(op, args))
+                    except Exception as e:
+                        callback(error=str(e))
+
             now = dt.datetime.now()
             now = now.strftime("%T")
             ru = resource.getrusage(resource.RUSAGE_SELF)
@@ -898,6 +961,88 @@ class PlotWidget(QtWidgets.QWidget):
         newer request replaces an older, not-yet-answered one.
         """
         self._screenshot_callback = callback
+
+    def request_widget_op(self, op, args, callback):
+        """Queue a get_plot_config/set_plot_config/set_trace_style request (ami/mcp_server.py)
+        to run after the next data_updated frame -- same timing as request_screenshot, so a
+        brand-new plot has had a chance to draw at least one trace first.
+
+        callback is invoked with either result=<...> or error=<str> (never both), from the Qt
+        thread.
+        """
+        self._widget_request_queue.append((op, args, callback))
+
+    def _config_schema(self):
+        """Valid plot-level setting names (and, for grouped ones like "X Axis", the valid
+        names within that group) for THIS widget instance's uiTemplate -- excludes the
+        per-trace legend-label entries (named by trace_ids's "trace.N" keys) that also live in
+        the same stateGroup, and the "Screenshots" group (screenshot_enabled/screenshot_dir
+        have their own purpose unrelated to plot appearance; not part of this API).
+        """
+        schema = _widget_group_schema(self.stateGroup)
+        schema.pop("Screenshots", None)
+        schema[None] = {n for n in schema.get(None, set()) if n not in self.trace_ids}
+        return schema
+
+    def handle_widget_request(self, op, args):
+        """Run one get_plot_config/set_plot_config/set_trace_style operation and return its
+        result, or raise (caught by the caller in update()/request_widget_op's queue).
+        """
+        if op == "get_config":
+            return self._get_plot_config()
+        elif op == "set_config":
+            return self._set_plot_config(args.get("settings") or {})
+        elif op == "set_trace":
+            return self._set_trace_style(args.get("trace"), args.get("label"), args.get("style"))
+        else:
+            raise ValueError(f"Unknown plot widget request op '{op}'")
+
+    def _get_plot_config(self):
+        schema = self._config_schema()
+        ctrl = self.stateGroup.state() if self.stateGroup else {}
+        plot_cfg = {}
+        for name in schema.get(None, set()):
+            if name in ctrl:
+                plot_cfg[name] = ctrl[name]
+        for group in schema:
+            if group is not None and group in ctrl:
+                plot_cfg[group] = dict(ctrl[group])
+
+        traces = {}
+        for idx, data_name in self.trace_ids.items():
+            label = self.ctrls[idx].text() if idx in self.ctrls else data_name
+            style = self.legend_editors[idx].saveState() if idx in self.legend_editors else {}
+            traces[data_name] = {"label": label, "style": style}
+
+        return {"plot": plot_cfg, "traces": traces}
+
+    def _set_plot_config(self, settings):
+        _validate_against_schema(settings, self._config_schema(), label="plot setting")
+        if self.stateGroup:
+            self.stateGroup.setState(settings)
+        self.apply_clicked()
+        return self._get_plot_config()
+
+    def _set_trace_style(self, trace, label, style):
+        idx = None
+        for i, data_name in self.trace_ids.items():
+            if data_name == trace:
+                idx = i
+                break
+        if idx is None:
+            available = {dn: self.ctrls[i].text() for i, dn in self.trace_ids.items() if i in self.ctrls}
+            raise KeyError(f"No trace named '{trace}' on this plot; available traces (data name: label): {available}")
+
+        if label is not None:
+            self.ctrls[idx].setText(label)
+
+        if style:
+            editor = self.legend_editors[idx]
+            _validate_against_schema(style, _widget_group_schema(editor.stateGroup), label="trace style")
+            editor.restoreState(_merge_style(editor.saveState(), style))
+
+        self.apply_clicked()
+        return self._get_plot_config()
 
     def _dump_screenshot(self):
         """

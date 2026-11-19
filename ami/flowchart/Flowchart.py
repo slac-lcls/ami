@@ -2735,6 +2735,10 @@ class Flowchart(QtCore.QObject):
                 self._handle_widget_error(msg)
                 continue
 
+            if isinstance(msg, fcMsgs.NodeWidgetReply):
+                self.widget().amicli.resolve_widget_request(msg.request_id, result=msg.result, error=msg.error)
+                continue
+
             node_name = msg.name
             new_node_state = msg.state
 
