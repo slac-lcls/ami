@@ -1533,6 +1533,21 @@ class AmiCli:
         x, y = widget.reference_traces[name].getData()
         return np.asarray(x, dtype=float), np.asarray(y, dtype=float)
 
+    def _ensure_node_widget(self, node):
+        """Create node's widget (ctrl editor) if it doesn't exist yet -- the same call `.fc`
+        loading already makes for every node (Flowchart.py's restoreState/pasteClipboard).
+
+        Without this, a value set via set_filter_conditions/set_calculator_expression/
+        set_python_code before the node's window was ever opened only updated node.values;
+        CtrlNode.saveState() persists these through self.widget.saveState() (common.py), so
+        the value was silently dropped on the next save, and reloading recreated the node with
+        its default (often broken) state. Regression case: Filter conditions set without ever
+        opening the window were lost on save, and to_operation() raised on reload. See
+        .opencode/plans/gui-core-extraction/ for the incident this was found in.
+        """
+        if node.widget is None and hasattr(node, "display"):
+            node.display(topics=None, terms=None, addr=None, win=None)
+
     def _plot_widget(self, node_name):
         """Return the flowchart-side plot widget of a node, creating it if needed.
 
@@ -1813,6 +1828,8 @@ class AmiCli:
         if node_type(node) != "Calculator":
             raise ValueError(f"Node '{node_name}' is not a Calculator (it's a {node_type(node)})")
 
+        self._ensure_node_widget(node)
+
         # Get available vars using built-in method
         input_vars = node.input_vars()
 
@@ -1825,6 +1842,11 @@ class AmiCli:
             node.widget.restoreState({"operation": expression})
 
         self.chart.sigNodeChanged.emit(node)
+
+        # Also reach an already-open editor window (if any), same as set_python_code.
+        from ami.client import flowchart_messages as fcMsgs
+
+        self._send_to_node_window(node, fcMsgs.NodeWidgetStateUpdate(node.name(), {"operation": expression}))
 
         return {
             "node": node_name,
@@ -1914,6 +1936,8 @@ class AmiCli:
                 f"on_event takes {nargs} argument(s) besides self, but the node has {len(inputs)} input(s): {inputs}"
             )
 
+        self._ensure_node_widget(node)
+
         node.values["text"] = code
         if node.widget is not None:
             node.widget.restoreState({"text": code})
@@ -1955,11 +1979,14 @@ class AmiCli:
         if node_type(node) != "Filter":
             raise ValueError(f"Node '{node_name}' is not a Filter (it's a {node_type(node)})")
 
+        self._ensure_node_widget(node)
+
         # Set the conditions
         node.values = collections.defaultdict(dict, conditions)
         node.changed = True
 
         # Update the widget if it exists
+        state = None
         if node.widget is not None:
             # Get current inputs and outputs
             inputs = node.input_vars()
@@ -1981,6 +2008,12 @@ class AmiCli:
             node.widget.restoreState(state)
 
         self.chart.sigNodeChanged.emit(node)
+
+        # Also reach an already-open editor window (if any), same as set_python_code.
+        if state is not None:
+            from ami.client import flowchart_messages as fcMsgs
+
+            self._send_to_node_window(node, fcMsgs.NodeWidgetStateUpdate(node.name(), state))
 
         return {
             "node": node_name,

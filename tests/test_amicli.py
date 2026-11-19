@@ -1127,6 +1127,237 @@ async def test_set_python_code_rejects_bad_code(amicli):
 
 
 @pytest.mark.asyncio
+async def test_set_python_code_creates_widget_before_window_opens(amicli):
+    """set_python_code must create the node's editor widget even if its window was never
+    opened -- CtrlNode.saveState() only persists values["text"] through widget.saveState()
+    (common.py:62-63), and the widget stays None until node.display() runs. Without this, the
+    code written here would be silently dropped on the next .fc save. See
+    .opencode/plans/gui-core-extraction/ for the incident this generalizes (found for Filter,
+    same root cause for Calculator/PythonEditor).
+    """
+    node = amicli.create_node("PythonEditor")
+    amicli.add_terminal("PythonEditor.0", "In", "in", "Array2d")
+    amicli.add_terminal("PythonEditor.0", "Out", "out", "float")
+    assert node.widget is None  # never opened
+
+    amicli.set_python_code("PythonEditor.0", GOOD_CODE)
+
+    assert node.widget is not None
+    assert node.saveState()["widget"]["text"] == GOOD_CODE
+
+
+@pytest.mark.asyncio
+async def test_set_calculator_expression(amicli):
+    """Test setting the math expression for a Calculator node."""
+    amicli.ensure_source("cspad")
+    node = amicli.create_node("Calculator")
+    amicli.connect_nodes("cspad", "Out", "Calculator.0", "In")
+    await asyncio.sleep(0.1)
+
+    result = amicli.set_calculator_expression("Calculator.0", "cspad.Out * 2")
+    assert result["node"] == "Calculator.0"
+    assert result["expression"] == "cspad.Out * 2"
+    assert node.values["operation"] == "cspad.Out * 2"
+    assert node.changed
+
+    amicli.create_node("Projection")
+    with pytest.raises(ValueError, match="not a Calculator"):
+        amicli.set_calculator_expression("Projection.0", "1")
+
+
+@pytest.mark.asyncio
+async def test_set_calculator_expression_creates_widget_before_window_opens(amicli):
+    """Same regression as test_set_python_code_creates_widget_before_window_opens, for
+    Calculator -- node.saveState()["widget"] must exist even if no window was ever opened.
+    """
+    amicli.ensure_source("cspad")
+    node = amicli.create_node("Calculator")
+    amicli.connect_nodes("cspad", "Out", "Calculator.0", "In")
+    await asyncio.sleep(0.1)
+    assert node.widget is None
+
+    amicli.set_calculator_expression("Calculator.0", "cspad.Out * 2")
+
+    assert node.widget is not None
+    assert node.saveState()["widget"]["operation"] == "cspad.Out * 2"
+
+
+@pytest.mark.asyncio
+async def test_set_calculator_expression_reaches_open_window(amicli, monkeypatch):
+    """Test that set_calculator_expression pushes a NodeWidgetStateUpdate so an open editor
+    window updates, same as set_python_code (test_set_python_code_reaches_open_editor_window).
+    """
+    amicli.ensure_source("cspad")
+    amicli.create_node("Calculator")
+    amicli.connect_nodes("cspad", "Out", "Calculator.0", "In")
+    await asyncio.sleep(0.1)
+
+    sent = []
+    monkeypatch.setattr(amicli, "_send_to_node_window", lambda node, msg: sent.append((node.name(), msg)))
+
+    amicli.set_calculator_expression("Calculator.0", "cspad.Out * 2")
+
+    assert len(sent) == 1
+    node_name, msg = sent[0]
+    assert node_name == "Calculator.0"
+    assert isinstance(msg, fcMsgs.NodeWidgetStateUpdate)
+    assert msg.state == {"operation": "cspad.Out * 2"}
+
+
+@pytest.mark.asyncio
+async def test_set_filter_conditions(amicli):
+    """Test setting If/Else conditions for a Filter node."""
+    amicli.ensure_source("cspad")
+    node = amicli.create_node("Filter")
+    amicli.connect_nodes("cspad", "Out", "Filter.0", "In")
+    await asyncio.sleep(0.1)
+
+    conditions = {
+        "If": {"condition": "cspad == 1", "Filter.0.Out": "cspad"},
+        "Else": {"Filter.0.Out": "None"},
+    }
+    result = amicli.set_filter_conditions("Filter.0", conditions)
+    assert result["node"] == "Filter.0"
+    assert result["conditions"] == conditions
+    assert dict(node.values) == conditions
+    assert node.changed
+
+    amicli.create_node("Projection")
+    with pytest.raises(ValueError, match="not a Filter"):
+        amicli.set_filter_conditions("Projection.0", conditions)
+
+
+@pytest.mark.asyncio
+async def test_set_filter_conditions_creates_widget_before_window_opens(amicli):
+    """Regression test for the Filter.3 incident: set_filter_conditions wrote node.values but
+    never created node.widget, so CtrlNode.saveState() wrote no "widget" key at all, and the
+    conditions were silently lost on the next .fc save (see
+    test_set_filter_conditions_save_load_round_trip for the full round trip).
+    """
+    amicli.ensure_source("cspad")
+    node = amicli.create_node("Filter")
+    amicli.connect_nodes("cspad", "Out", "Filter.0", "In")
+    await asyncio.sleep(0.1)
+    assert node.widget is None
+
+    conditions = {
+        "If": {"condition": "cspad == 1", "Filter.0.Out": "cspad"},
+        "Else": {"Filter.0.Out": "None"},
+    }
+    amicli.set_filter_conditions("Filter.0", conditions)
+
+    assert node.widget is not None
+    saved = node.saveState()
+    assert "widget" in saved
+    assert saved["widget"]["If"] == conditions["If"]
+    assert saved["widget"]["Else"] == conditions["Else"]
+
+
+@pytest.mark.asyncio
+async def test_set_filter_conditions_reaches_open_window(amicli, monkeypatch):
+    """Test that set_filter_conditions pushes a NodeWidgetStateUpdate so an open editor window
+    updates, same as set_python_code (test_set_python_code_reaches_open_editor_window).
+    """
+    amicli.ensure_source("cspad")
+    amicli.create_node("Filter")
+    amicli.connect_nodes("cspad", "Out", "Filter.0", "In")
+    await asyncio.sleep(0.1)
+
+    sent = []
+    monkeypatch.setattr(amicli, "_send_to_node_window", lambda node, msg: sent.append((node.name(), msg)))
+
+    conditions = {"If": {"condition": "cspad == 1", "Filter.0.Out": "cspad"}}
+    amicli.set_filter_conditions("Filter.0", conditions)
+
+    assert len(sent) == 1
+    node_name, msg = sent[0]
+    assert node_name == "Filter.0"
+    assert isinstance(msg, fcMsgs.NodeWidgetStateUpdate)
+    assert msg.state["If"] == conditions["If"]
+
+
+@pytest.mark.asyncio
+async def test_set_filter_conditions_removes_stale_else(amicli):
+    """Calling set_filter_conditions again without an "Else" block must remove the stale Else
+    row from the widget too -- FilterWidget.restoreState's cleanup loop only walks
+    condition_groups (If/Elif), which never contains "Else" (tracked separately in
+    self.else_condition), so the old Else silently stuck around and reappeared in the next
+    saveState()/.fc save, out of sync with node.values (which does drop it, since it's
+    replaced outright: `node.values = collections.defaultdict(dict, conditions)`).
+    """
+    amicli.ensure_source("cspad")
+    node = amicli.create_node("Filter")
+    amicli.connect_nodes("cspad", "Out", "Filter.0", "In")
+    await asyncio.sleep(0.1)
+
+    amicli.set_filter_conditions(
+        "Filter.0",
+        {
+            "If": {"condition": "cspad == 1", "Filter.0.Out": "cspad"},
+            "Else": {"Filter.0.Out": "None"},
+        },
+    )
+    assert node.widget.else_condition is not None
+    assert "Else" in node.widget.saveState()
+
+    amicli.set_filter_conditions("Filter.0", {"If": {"condition": "cspad == 1", "Filter.0.Out": "cspad"}})
+
+    assert "Else" not in node.values
+    assert node.widget.else_condition is None
+    assert "Else" not in node.widget.saveState()
+
+
+@pytest.mark.asyncio
+async def test_set_filter_conditions_save_load_round_trip(amicli, tmp_path):
+    """Regression test for the Filter.3 incident (gui-core-extraction/active/06): set
+    conditions via MCP without ever opening the Filter's window, then reload a fresh instance
+    the same way Flowchart.restoreState() reloads every node on `.fc` load -- display() first,
+    then restoreState() (Flowchart.py:2469-2472) -- and confirm to_operation() still succeeds.
+    Before the fix, the original node's saveState() had no "widget" key at all, so the reloaded
+    node's values stayed empty and to_operation() raised.
+
+    Deliberately exercises node.saveState()/display()/restoreState() directly rather than the
+    full amicli.save_graph()/load_graph() round trip: the latter also triggers chart-wide
+    library/source-kwargs updates unrelated to this bug (see gui-core-extraction's notes on
+    load_graph not matching the real loadFile) that can race on the shared graphCommHandler
+    socket when running the full test file -- a separate, pre-existing issue, not this one.
+    """
+    amicli.ensure_source("cspad")
+    node = amicli.create_node("Filter")
+    amicli.connect_nodes("cspad", "Out", "Filter.0", "In")
+    await asyncio.sleep(0.1)
+    assert node.widget is None  # never opened, same as the original incident
+
+    conditions = {
+        "If": {"condition": "cspad == 1", "Filter.0.Out": "cspad"},
+        "Else": {"Filter.0.Out": "None"},
+    }
+    amicli.set_filter_conditions("Filter.0", conditions)
+
+    saved_state = node.saveState()
+    assert "widget" in saved_state  # the bug: this key was missing entirely before the fix
+
+    # A fresh instance under the same name, restored the same order Flowchart.restoreState()
+    # uses for every node on load.
+    reloaded = amicli.chart.library.getNodeType("Filter")(node.name())
+    reloaded.blockSignals(True)
+    reloaded.display(topics=None, terms=None, addr=None, win=None)
+    reloaded.restoreState(saved_state)
+    reloaded.blockSignals(False)
+
+    assert dict(reloaded.values) == conditions
+
+    op = reloaded.to_operation(
+        inputs=node.input_vars(),
+        outputs=node.output_vars(),
+        parent=reloaded.name(),
+        latched=reloaded.latched,
+        reset_on_run=reloaded.reset_on_run,
+    )
+    assert op is not None
+
+
+@pytest.mark.asyncio
 async def test_take_and_compare_reference(amicli, tmp_path, monkeypatch):
     """Test take_reference / compare_to_reference with live data stubbed out."""
     import json

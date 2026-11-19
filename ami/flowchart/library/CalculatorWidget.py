@@ -707,6 +707,13 @@ class FilterWidget(QtWidgets.QWidget):
         for name in deletions:
             self.remove_condition(name)
 
+        # Else isn't tracked in condition_groups (it has its own self.else_condition), so the
+        # deletions loop above never sees it -- without this, a restoreState that drops "Else"
+        # (e.g. set_filter_conditions() called again without an Else block) would leave the old
+        # Else row on screen and in the next saveState(), out of sync with node.values.
+        if "Else" not in state and self.else_condition is not None:
+            self.remove_condition("Else")
+
 
 def _derive_input_variable(msg):
     """Return the internal variable name for a terminal connection message.
