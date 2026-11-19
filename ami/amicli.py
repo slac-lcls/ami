@@ -1449,7 +1449,9 @@ class AmiCli:
                 f"Node '{node_name}' ({node_type(node)}) is not supported; use one of {list(self.REFERENCE_PLOTS)}"
             )
         xterm, yterm = self.REFERENCE_PLOTS[node_type(node)]
-        input_vars = node.input_vars()
+        input_vars = {
+            term: (var.name if isinstance(var, modifiers.optional) else var) for term, var in node.input_vars().items()
+        }
         traces = {}
         # extra traces use terminals "Y.1"/"X.1", "In.1", ... (see Node.nextTerminalName)
         for term in input_vars:

@@ -2,6 +2,7 @@
 from collections import OrderedDict, defaultdict, deque
 from datetime import datetime
 
+from networkfox import modifiers
 from prometheus_client.metrics_core import GaugeMetricFamily
 from pyqtgraph import FileDialog
 from pyqtgraph import dockarea as dockarea
@@ -3755,14 +3756,18 @@ class FlowchartWidget(dockarea.DockArea):
                     await self.ctrl.features.discard(name)
 
                 new_plot = False
+                terms = {}
                 for term, in_var in node.input_vars().items():
+                    if isinstance(in_var, modifiers.optional):
+                        in_var = in_var.name
+                    terms[term] = in_var
                     new, topic = await self.ctrl.features.get(node.name(), in_var)
                     topics[in_var] = topic
                     if new:
                         views[in_var] = node.name()
                         new_plot = True
 
-                args["terms"] = node.input_vars()
+                args["terms"] = terms
                 args["topics"] = topics
 
                 if new_plot:
