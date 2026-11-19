@@ -1490,6 +1490,10 @@ def get_plot_config(node_name: str, timeout: float = 30) -> str:
             just a wire name for WaveformViewer/ScalarPlot) -- NOT its current legend label,
             since that's just display text set_trace_style can change and isn't guaranteed
             unique. Use the data name with set_trace_style's `trace` argument.
+        "annotations": {<id>: {"kind": "line"|"rect"|"circle", "label": <legend text>,
+            "points": {...}, "style": {...}}}, keyed by each annotation's id (e.g.
+            "LineEditor.0") -- see add_plot_annotation for what "points"/"style" contain for
+            each kind. Use the id with update_plot_annotation/remove_plot_annotation.
     """
     future = _dispatch_or_tool_error(lambda: _amicli.get_plot_config(node_name))
     result = _widget_request_result(node_name, future, timeout, "get plot config from")
@@ -1559,6 +1563,132 @@ def set_trace_style(node_name: str, trace: str, label: str = None, style: dict =
     """
     future = _dispatch_or_tool_error(lambda: _amicli.set_trace_style(node_name, trace, label=label, style=style))
     result = _widget_request_result(node_name, future, timeout, "set trace style on")
+    return json.dumps(result, default=str)
+
+
+# Each annotation kind's two position groups, in plot coordinates -- for add_plot_annotation's
+# `points` argument. "circle" has no true radius field: "Radius" is a point ON the circle's
+# edge (its distance from "Center" becomes the radius), not a distance value itself.
+ANNOTATION_POINT_GROUPS = {
+    "line": ("From", "To"),
+    "rect": ("Top Left", "Bottom Right"),
+    "circle": ("Center", "Radius"),
+}
+
+
+@mcp.tool()
+def add_plot_annotation(
+    node_name: str, kind: str, points: dict = None, label: str = None, style: dict = None, timeout: float = 30
+) -> str:
+    """
+    Add a line, rect, or circle annotation to a plot node -- e.g. a threshold line marking the
+    boundary between two populations, or a box around a cluster of interest.
+
+    `kind` is "line", "rect", or "circle". `points` gives its position, using that kind's two
+    group names (each {"X": ..., "Y": ...}, in plot/data coordinates):
+    - "line": {"From": {...}, "To": {...}} -- a line segment between the two points. For a
+      threshold spanning the whole plot, use endpoints far outside the visible range (e.g.
+      X +-1e9 for a horizontal threshold at a given Y) -- pyqtgraph clips it to the view.
+    - "rect": {"Top Left": {...}, "Bottom Right": {...}}
+    - "circle": {"Center": {...}, "Radius": {...}} -- "Radius" is a point ON the circle's
+      edge, not a distance; its distance from "Center" becomes the radius.
+    Any point omitted defaults to (0, 0) for a new annotation.
+
+    `style` covers appearance, grouped the same way as set_trace_style: "Point" (symbol/
+    Brush/Size, for the line/rect/circle's own vertices) and "Line" (color/width/style) always
+    apply; "rect" and "circle" also have "Fill" ({"Fill Annotation": bool, "Brush": ...}).
+
+    Example (laser on/off threshold + a box around the "on" cluster):
+    add_plot_annotation("Histogram.0", "line", points={"From": {"X": 103400, "Y": -1e9},
+                         "To": {"X": 103400, "Y": 1e9}}, label="Threshold",
+                         style={"Line": {"color": [255, 255, 0], "style": "Dash"}})
+    add_plot_annotation("ScatterPlot.0", "rect",
+                         points={"Top Left": {"X": 0, "Y": 104200},
+                                 "Bottom Right": {"X": 10, "Y": 104600}},
+                         label="On cluster", style={"Fill": {"Brush": [255, 0, 0, 60]}})
+
+    Opens the window if it isn't already open. Does not require apply_graph().
+
+    Args:
+        node_name: Node name (e.g., 'ScatterPlot.0')
+        kind: "line", "rect", or "circle"
+        points: Position dict using that kind's group names (see above); omitted points
+            default to (0, 0)
+        label: Legend text for the new annotation, or None for its id (e.g. "LineEditor.0")
+        style: Partial style dict (see above); omitted fields use the editor's defaults
+        timeout: Max seconds to wait for the window to open and produce a reply (default 30)
+
+    Returns:
+        JSON with the plot's full updated config (get_plot_config's shape) plus "id": the new
+        annotation's id (use it with update_plot_annotation/remove_plot_annotation), or an
+        error listing the valid kinds/point groups/style keys if an unknown one was given
+    """
+    args = {"kind": kind, "points": points, "label": label, "style": style}
+    future = _dispatch_or_tool_error(lambda: _amicli.add_plot_annotation(node_name, **args))
+    result = _widget_request_result(node_name, future, timeout, "add annotation to")
+    return json.dumps(result, default=str)
+
+
+@mcp.tool()
+def update_plot_annotation(
+    node_name: str,
+    annotation_id: str,
+    points: dict = None,
+    label: str = None,
+    style: dict = None,
+    timeout: float = 30,
+) -> str:
+    """
+    Change only the given points/label/style fields of an existing annotation on a plot node
+    -- e.g. to move a threshold line, or recolor a box -- without needing to resend the rest.
+
+    `annotation_id` must be one of get_plot_config's "annotations" keys (e.g. "LineEditor.0").
+    See add_plot_annotation for the shape of `points`/`style` for that annotation's kind.
+
+    Example: update_plot_annotation("Histogram.0", "LineEditor.0",
+             points={"From": {"X": 103600}, "To": {"X": 103600}})
+
+    Opens the window if it isn't already open. Does not require apply_graph().
+
+    Args:
+        node_name: Node name (e.g., 'ScatterPlot.0')
+        annotation_id: The annotation's id (see get_plot_config's "annotations" keys)
+        points: Partial position dict to apply; omitted fields keep their current value
+        label: New legend text, or None to leave it unchanged
+        style: Partial style dict to apply; omitted fields keep their current value
+        timeout: Max seconds to wait for the window to open and produce a reply (default 30)
+
+    Returns:
+        JSON with the plot's full updated config, or an error listing the plot's actual
+        annotation ids if annotation_id didn't match one, or the valid point/style keys for
+        that kind if an unknown one was given
+    """
+    args = {"annotation_id": annotation_id, "points": points, "label": label, "style": style}
+    future = _dispatch_or_tool_error(lambda: _amicli.update_plot_annotation(node_name, **args))
+    result = _widget_request_result(node_name, future, timeout, "update annotation on")
+    return json.dumps(result, default=str)
+
+
+@mcp.tool()
+def remove_plot_annotation(node_name: str, annotation_id: str, timeout: float = 30) -> str:
+    """
+    Remove an annotation from a plot node.
+
+    `annotation_id` must be one of get_plot_config's "annotations" keys (e.g. "LineEditor.0").
+
+    Opens the window if it isn't already open. Does not require apply_graph().
+
+    Args:
+        node_name: Node name (e.g., 'ScatterPlot.0')
+        annotation_id: The annotation's id (see get_plot_config's "annotations" keys)
+        timeout: Max seconds to wait for the window to open and produce a reply (default 30)
+
+    Returns:
+        JSON with the plot's full updated config, or an error listing the plot's actual
+        annotation ids if annotation_id didn't match one
+    """
+    future = _dispatch_or_tool_error(lambda: _amicli.remove_plot_annotation(node_name, annotation_id))
+    result = _widget_request_result(node_name, future, timeout, "remove annotation from")
     return json.dumps(result, default=str)
 
 

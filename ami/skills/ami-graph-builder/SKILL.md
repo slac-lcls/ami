@@ -406,7 +406,8 @@ get_plot_config("ScatterPlot.0")
 #           "Y Axis": {...}},
 #  "traces": {"Filter.1.Out.1 vs Filter.1.Out": {"label": "Filter.1.Out.1 vs Filter.1.Out",
 #                                                 "style": {"Point": {"symbol": "p", "Brush": [...], "Size": 14},
-#                                                           "Line": {"color": [...], "width": 1, "style": "None"}}}}}
+#                                                           "Line": {"color": [...], "width": 1, "style": "None"}}}},
+#  "annotations": {}}  # see "Plot Annotations" below for add_plot_annotation
 
 set_plot_config("ScatterPlot.0", {"Title": "Laser On/Off",
                  "X Axis": {"Label": "delta_t"}, "Y Axis": {"Label": "sum(waveform2)"}})
@@ -432,11 +433,55 @@ the data name; `list_plot_traces` only covers LinePlot/WaveformViewer.
   leaving `Size`/`symbol`/`Line` alone. Colors accept an RGB/RGBA list or tuple, a `"#rrggbb"`
   hex string, or a pyqtgraph color name.
 - Works on any PlotWidget-based display node: ScatterPlot, ScalarPlot, TimePlot, LinePlot,
-  WaveformViewer, Histogram, ImageViewer, MultiWaveformViewer. CSV references and annotations
-  on the plot are never touched by these calls.
+  WaveformViewer, Histogram, ImageViewer, MultiWaveformViewer. CSV references are never
+  touched by these calls; annotations have their own tools (see "Plot Annotations" below).
 - A brand-new plot with no traces yet returns an empty `"traces"` dict from `get_plot_config`
   rather than erroring; `set_trace_style` on a plot with no matching trace raises an error
   listing the plot's actual trace data names (and current labels) so you can see what's wrong.
+
+## Plot Annotations (`add_plot_annotation` / `update_plot_annotation` / `remove_plot_annotation`)
+
+Draw a line, rect, or circle on top of a plot — e.g. a threshold line between two populations,
+or a box around a cluster of interest. Same display-state-not-graph-state deal as Plot
+Configuration above: opens the window if needed, no `apply_graph()` required, and is saved in
+the `.fc` file.
+
+```
+add_plot_annotation("Histogram.0", "line",
+                     points={"From": {"X": 103400, "Y": -1e9}, "To": {"X": 103400, "Y": 1e9}},
+                     label="Threshold", style={"Line": {"color": [255, 255, 0], "style": "Dash"}})
+# {"plot": {...}, "traces": {...},
+#  "annotations": {"LineEditor.0": {"kind": "line", "label": "Threshold",
+#                                    "points": {"From": {...}, "To": {...}}, "style": {...}}},
+#  "id": "LineEditor.0"}  # save this -- it's what update_plot_annotation/remove_plot_annotation take
+
+add_plot_annotation("ScatterPlot.0", "rect",
+                     points={"Top Left": {"X": 0, "Y": 104200}, "Bottom Right": {"X": 10, "Y": 104600}},
+                     label="On cluster", style={"Fill": {"Fill Annotation": true, "Brush": [255, 0, 0, 60]}})
+
+update_plot_annotation("Histogram.0", "LineEditor.0", points={"From": {"X": 103600}, "To": {"X": 103600}})
+remove_plot_annotation("Histogram.0", "LineEditor.0")
+```
+
+- `kind` is `"line"`, `"rect"`, or `"circle"`. `points` gives its position using that kind's
+  two group names, each `{"X": ..., "Y": ...}` in plot/data coordinates:
+  - `"line"`: `"From"` / `"To"` — a segment between the two points. For a threshold spanning
+    the whole plot, use endpoints far outside the visible range (e.g. X ±1e9 for a horizontal
+    line at a fixed Y) — pyqtgraph clips it to the view, so it reads as full-width.
+  - `"rect"`: `"Top Left"` / `"Bottom Right"`
+  - `"circle"`: `"Center"` / `"Radius"` — `"Radius"` is a point ON the circle's edge, not a
+    distance; its distance from `"Center"` becomes the actual radius.
+  Any point omitted on `add_plot_annotation` defaults to `(0, 0)`.
+- `style`: `"Point"` (symbol/Brush/Size, for the line/rect/circle's own vertices) and `"Line"`
+  (color/width/style) always apply; `"rect"`/`"circle"` also have `"Fill"`
+  (`{"Fill Annotation": bool, "Brush": ...}`).
+- `update_plot_annotation` changes only the given points/label/style fields, merged the same
+  way as `set_trace_style` — e.g. `points={"From": {"X": 10}}` moves only that one coordinate.
+- Identify an annotation by its **id** (e.g. `"LineEditor.0"`, from `add_plot_annotation`'s
+  `"id"` or `get_plot_config`'s `"annotations"` keys) — ids aren't reused after a removal, so
+  an id from an earlier `get_plot_config` call stays valid until you remove it yourself.
+- An unknown `kind`, an unknown point-group/style key for that kind, or an unknown id all
+  raise an error listing the valid ones.
 
 ## Reference Traces
 

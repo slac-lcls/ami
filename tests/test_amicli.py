@@ -1804,6 +1804,49 @@ def test_get_set_plot_config_and_set_trace_style_tools(amicli, qapp, monkeypatch
         mcp_server.set_trace_style("ScatterPlot.0", "nope", label="x")
 
 
+def test_plot_annotation_tools(amicli, qapp, monkeypatch):
+    """add_plot_annotation/update_plot_annotation/remove_plot_annotation (ami/mcp_server.py)
+    return the amicli wrapper's result as JSON and surface an in-flight error (e.g. an unknown
+    kind/id) as a ToolError, same pattern as get_plot_config/set_trace_style above."""
+    from mcp.server.mcpserver.exceptions import ToolError
+
+    import ami.mcp_server as mcp_server
+
+    monkeypatch.setattr(mcp_server, "_amicli", amicli)
+    monkeypatch.setattr(mcp_server, "_qt_dispatch", lambda fn: fn())
+
+    added = {
+        "plot": {},
+        "traces": {},
+        "annotations": {"LineEditor.0": {"kind": "line", "label": "x", "points": {}, "style": {}}},
+        "id": "LineEditor.0",
+    }
+    monkeypatch.setattr(
+        amicli,
+        "add_plot_annotation",
+        lambda node_name, kind, points=None, label=None, style=None: _resolved_future(result=added),
+    )
+    assert json.loads(mcp_server.add_plot_annotation("ScatterPlot.0", "line")) == added
+
+    monkeypatch.setattr(
+        amicli,
+        "update_plot_annotation",
+        lambda node_name, annotation_id, points=None, label=None, style=None: _resolved_future(
+            error="No annotation named 'nope' on this plot; existing: ['LineEditor.0']"
+        ),
+    )
+    with pytest.raises(ToolError, match="No annotation named 'nope'"):
+        mcp_server.update_plot_annotation("ScatterPlot.0", "nope", label="y")
+
+    removed = {"plot": {}, "traces": {}, "annotations": {}}
+    monkeypatch.setattr(
+        amicli,
+        "remove_plot_annotation",
+        lambda node_name, annotation_id: _resolved_future(result=removed),
+    )
+    assert json.loads(mcp_server.remove_plot_annotation("ScatterPlot.0", "LineEditor.0")) == removed
+
+
 def test_broker_does_not_cache_screenshot_replies(broker_module):
     """Test MessageBroker.handle_checkpoint end to end over real ZMQ sockets: an ordinary
     checkpoint is cached (monitor_processes uses this to restore a crashed window), but a
@@ -2142,6 +2185,9 @@ def test_missing_or_non_plot_node_is_a_tool_error_not_opaque(amicli, qapp, monke
         lambda name: mcp_server.get_plot_config(name),
         lambda name: mcp_server.set_plot_config(name, {"Title": "x"}),
         lambda name: mcp_server.set_trace_style(name, "a vs b", label="x"),
+        lambda name: mcp_server.add_plot_annotation(name, "line"),
+        lambda name: mcp_server.update_plot_annotation(name, "LineEditor.0", label="x"),
+        lambda name: mcp_server.remove_plot_annotation(name, "LineEditor.0"),
     ):
         with pytest.raises(ToolError, match="not found"):
             call_tool("NoSuchNode.0")
@@ -2329,6 +2375,161 @@ def test_plot_widget_request_widget_op_queues_until_next_update(qapp):
     result, error = results[0]
     assert error is None
     assert list(result["traces"].keys()) == ["b vs a"]
+
+
+def test_plot_widget_add_update_remove_annotation(qapp):
+    """add_plot_annotation/update_plot_annotation/remove_plot_annotation (ami/mcp_server.py)
+    via PlotWidget.handle_widget_request: each of the three kinds (line/rect/circle) can be
+    added with partial points/label/style (unspecified fields use the editor's defaults),
+    updated with a partial merge (unspecified fields keep their current value), and removed;
+    an unknown kind/id/point-group/style key raises with the valid names, and a failed add
+    doesn't leak a half-created editor."""
+    from ami.flowchart.library.DisplayWidgets import ScatterWidget
+
+    widget = ScatterWidget(terms={"X": "a", "Y": "b"}, name="t", hutch="", node=_node_mock("ScatterPlot.0"))
+
+    cfg = widget.handle_widget_request(
+        "add_annotation",
+        {
+            "kind": "line",
+            "points": {"From": {"X": 1, "Y": 2}, "To": {"X": 3, "Y": 4}},
+            "label": "Threshold",
+            "style": {"Line": {"color": (255, 255, 0, 255), "style": "Dash"}},
+        },
+    )
+    line_id = cfg["id"]
+    assert line_id == "LineEditor.0"
+    ann = cfg["annotations"][line_id]
+    assert ann["kind"] == "line"
+    assert ann["label"] == "Threshold"
+    assert ann["points"] == {"From": {"X": 1, "Y": 2}, "To": {"X": 3, "Y": 4}}
+    assert ann["style"]["Line"]["style"] == "Dash"
+    assert ann["style"]["Line"]["color"] == (255, 255, 0, 255)
+    assert ann["style"]["Point"]["symbol"] == "o"  # untouched default kept
+
+    # partial update: only move "From"'s X, leave "From"'s Y/"To"/label/style alone
+    cfg = widget.handle_widget_request("set_annotation", {"id": line_id, "points": {"From": {"X": 10}}})
+    ann = cfg["annotations"][line_id]
+    assert ann["points"]["From"] == {"X": 10, "Y": 2}
+    assert ann["points"]["To"] == {"X": 3, "Y": 4}
+    assert ann["label"] == "Threshold"
+    assert ann["style"]["Line"]["style"] == "Dash"
+
+    # rect: "Top Left"/"Bottom Right" points, "Fill" style group (line/circle default symbol
+    # "None" since fill=True passes symbol="None", but Fill itself is still opt-in per field)
+    cfg = widget.handle_widget_request(
+        "add_annotation",
+        {
+            "kind": "rect",
+            "points": {"Top Left": {"X": 0, "Y": 10}, "Bottom Right": {"X": 10, "Y": 0}},
+            "style": {"Fill": {"Fill Annotation": True, "Brush": (255, 0, 0, 60)}},
+        },
+    )
+    rect_id = cfg["id"]
+    assert rect_id == "RectEditor.0"
+    ann = cfg["annotations"][rect_id]
+    assert ann["kind"] == "rect"
+    assert ann["points"] == {"Top Left": {"X": 0, "Y": 10}, "Bottom Right": {"X": 10, "Y": 0}}
+    assert ann["style"]["Fill"]["Brush"] == (255, 0, 0, 60)
+
+    # circle: "Center"/"Radius" points -- "Radius" is a point ON the edge, not a distance
+    cfg = widget.handle_widget_request(
+        "add_annotation", {"kind": "circle", "points": {"Center": {"X": 5, "Y": 5}, "Radius": {"X": 8, "Y": 5}}}
+    )
+    circle_id = cfg["id"]
+    assert circle_id == "CircleEditor.0"
+    ann = cfg["annotations"][circle_id]
+    assert ann["points"] == {"Center": {"X": 5, "Y": 5}, "Radius": {"X": 8, "Y": 5}}
+
+    cfg = widget.handle_widget_request("remove_annotation", {"id": rect_id})
+    assert set(cfg["annotations"]) == {line_id, circle_id}
+
+    with pytest.raises(KeyError, match="Unknown annotation kind"):
+        widget.handle_widget_request("add_annotation", {"kind": "triangle"})
+
+    before = set(widget.annotation_editors)
+    with pytest.raises(KeyError, match="Unknown annotation field"):
+        widget.handle_widget_request("add_annotation", {"kind": "line", "points": {"Bogus": {"X": 1}}})
+    assert set(widget.annotation_editors) == before  # rolled back, not leaked
+
+    with pytest.raises(KeyError, match="Unknown Line annotation field"):
+        widget.handle_widget_request("add_annotation", {"kind": "line", "style": {"Line": {"Bogus": 1}}})
+    assert set(widget.annotation_editors) == before
+
+    with pytest.raises(KeyError, match="No annotation named 'NoSuchId'"):
+        widget.handle_widget_request("set_annotation", {"id": "NoSuchId", "label": "x"})
+    with pytest.raises(KeyError, match="No annotation named 'NoSuchId'"):
+        widget.handle_widget_request("remove_annotation", {"id": "NoSuchId"})
+
+
+def test_plot_widget_annotation_id_not_reused_after_remove(qapp):
+    """Regression: add_annotation used to name a new annotation f"{cls}.{len(annotation_editors)}"
+    -- after removing an earlier one, that length-based index collides with a still-existing
+    later annotation's name, silently replacing it in annotation_editors (leaking its old
+    widget/trace) instead of getting a name that doesn't collide with anything still there."""
+    from ami.flowchart.library.DisplayWidgets import ScatterWidget
+
+    widget = ScatterWidget(terms={"X": "a", "Y": "b"}, name="t", hutch="", node=_node_mock("ScatterPlot.0"))
+
+    first = widget.handle_widget_request("add_annotation", {"kind": "line"})["id"]
+    second = widget.handle_widget_request("add_annotation", {"kind": "line"})["id"]
+    assert (first, second) == ("LineEditor.0", "LineEditor.1")
+    second_editor = widget.annotation_editors[second]
+
+    widget.handle_widget_request("remove_annotation", {"id": first})
+    # len(annotation_editors) is now 1 -- the old naming scheme would reuse "LineEditor.1"
+    third = widget.handle_widget_request("add_annotation", {"kind": "line"})["id"]
+    assert third == "LineEditor.2"
+    assert widget.annotation_editors[second] is second_editor  # untouched, not overwritten
+
+
+def test_plot_widget_remove_annotation_removes_from_layout(qapp):
+    """Regression: remove_annotation called self.annotation_layout.removeWidget(editor.ui) --
+    add_annotation added `editor` itself to the layout, not editor.ui, so that call was a
+    silent no-op that leaked the removed annotation's widget in the Annotations panel."""
+    from ami.flowchart.library.DisplayWidgets import ScatterWidget
+
+    widget = ScatterWidget(terms={"X": "a", "Y": "b"}, name="t", hutch="", node=_node_mock("ScatterPlot.0"))
+    before = widget.annotation_layout.count()
+
+    annotation_id = widget.handle_widget_request("add_annotation", {"kind": "line"})["id"]
+    assert widget.annotation_layout.count() == before + 1
+
+    widget.handle_widget_request("remove_annotation", {"id": annotation_id})
+    assert widget.annotation_layout.count() == before
+
+
+def test_plot_widget_restore_state_annotations_no_duplicates_or_leftovers(qapp):
+    """Regression: restoreState used to add the saved annotations on top of whatever the
+    widget already had (duplicate editors/traces for a shared name, stale ones left over for
+    anything removed since the state was saved), and with no saved annotations at all, only
+    cleared already-drawn ones (annotation_traces) -- an editor added but not yet drawn by
+    apply_clicked() survived. Restoring into an already-open window (NodeWidgetStateUpdate, see
+    ami/client/flowchart.py's NodeProcess) must end up with exactly the saved set."""
+    from ami.flowchart.library.DisplayWidgets import ScatterWidget
+
+    widget = ScatterWidget(terms={"X": "a", "Y": "b"}, name="t", hutch="", node=_node_mock("ScatterPlot.0"))
+    widget.handle_widget_request("add_annotation", {"kind": "line", "label": "Keep"})
+    saved = widget.saveState()
+
+    # Simulate the widget having drifted since this state was saved: an extra annotation not
+    # in the saved state, and a local edit to the one that is.
+    widget.handle_widget_request("add_annotation", {"kind": "rect", "label": "Stale"})
+    widget.handle_widget_request("set_annotation", {"id": "LineEditor.0", "label": "Changed locally, not saved"})
+    assert set(widget.annotation_editors) == {"LineEditor.0", "RectEditor.0"}
+
+    widget.restoreState(saved)
+
+    assert set(widget.annotation_editors) == {"LineEditor.0"}  # RectEditor.0 gone, no duplicate
+    assert widget.annotation_editors["LineEditor.0"].ctrls["name"].text() == "Keep"  # reverted
+
+    # Restoring a state with NO annotations key at all must remove everything, including an
+    # editor that was added but never drawn (apply_clicked() never ran for it, so it isn't in
+    # annotation_traces -- the old code's cleanup loop only walked that smaller dict).
+    widget.add_annotation(name="LineEditor.1", state={})
+    assert "LineEditor.1" not in widget.annotation_traces
+    widget.restoreState({"ctrl": saved["ctrl"]})
+    assert widget.annotation_editors == {}
 
 
 @pytest.mark.asyncio

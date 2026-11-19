@@ -1518,6 +1518,29 @@ class AmiCli:
         data name."""
         return self.request_widget(node_name, "set_trace", {"trace": trace, "label": label, "style": style})
 
+    def add_plot_annotation(self, node_name, kind, points=None, label=None, style=None):
+        """Add a line/rect/circle annotation to node_name's plot. See request_widget for the
+        Future this returns, which resolves to the updated config (with the new annotation's
+        id under "id") plus "annotations" in get_plot_config's shape, or an error for an
+        unknown kind or an unknown points/style key for that kind."""
+        args = {"kind": kind, "points": points, "label": label, "style": style}
+        return self.request_widget(node_name, "add_annotation", args)
+
+    def update_plot_annotation(self, node_name, annotation_id, points=None, label=None, style=None):
+        """Change only the given points/label/style fields of an existing annotation on
+        node_name's plot, identified by its id (see get_plot_config's "annotations" keys). See
+        request_widget for the Future this returns, which resolves to the updated config, or
+        an error if annotation_id doesn't match any annotation's id."""
+        args = {"id": annotation_id, "points": points, "label": label, "style": style}
+        return self.request_widget(node_name, "set_annotation", args)
+
+    def remove_plot_annotation(self, node_name, annotation_id):
+        """Remove an annotation from node_name's plot, identified by its id (see
+        get_plot_config's "annotations" keys). See request_widget for the Future this returns,
+        which resolves to the updated config, or an error if annotation_id doesn't match any
+        annotation's id."""
+        return self.request_widget(node_name, "remove_annotation", {"id": annotation_id})
+
     # Plot node types that take_reference/compare_to_reference support, mapped to their (x, y) input terminals.
     # x is None when the plot draws y against its index.
     REFERENCE_PLOTS = {"LinePlot": ("X", "Y"), "WaveformViewer": (None, "In")}

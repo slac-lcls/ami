@@ -35,6 +35,10 @@ colors = [(255, 0, 0), (0, 255, 0), (0, 0, 255), (255, 255, 255)]
 symbols = ["o", "s", "t", "d", "+"]
 symbols_colors = list(it.product(symbols, colors))
 
+# Annotation kinds offered by PlotWidget's "Annotations" group (add_annotation/add_plot_annotation),
+# keyed by the lowercase name used in the MCP add_plot_annotation/update_plot_annotation tools.
+ANNOTATION_KINDS = {"line": LineEditor, "rect": RectEditor, "circle": CircleEditor}
+
 
 def _widget_group_schema(state_group):
     """Return {group_name_or_None: {setting names in that group}} for a WidgetGroup, derived
@@ -80,6 +84,16 @@ def _merge_style(current, update):
         else:
             merged[key] = value
     return merged
+
+
+def _annotation_style_groups(editor):
+    """The subset of an AnnotationEditor's own setting groups that are appearance (style)
+    rather than position -- always some of "Point"/"Line"/"Fill", regardless of the editor's
+    position group names (which differ per kind: "From"/"To" for a line, "Top Left"/
+    "Bottom Right" for a rect, "Center"/"Radius" for a circle).
+    """
+    schema = _widget_group_schema(editor.stateGroup)
+    return {g for g in ("Point", "Line", "Fill") if g in schema}
 
 
 class AsyncFetcher(QtCore.QThread):
@@ -625,20 +639,36 @@ class PlotWidget(QtWidgets.QWidget):
 
         return self.ctrls[idx].text()
 
+    def _next_annotation_name(self, editor_class):
+        """A "<EditorClass>.<N>" name not already in annotation_editors, with N one past the
+        highest existing index for that class -- NOT len(annotation_editors), which reuses an
+        already-removed annotation's name (e.g. add "Line.0", remove it, add again: the next
+        one must be "Line.1", not a second "Line.0" that collides with -- and silently
+        replaces -- a *different* still-existing annotation of that name).
+        """
+        prefix = editor_class.__name__ + "."
+        existing = [
+            int(name[len(prefix) :])
+            for name in self.annotation_editors
+            if name.startswith(prefix) and name[len(prefix) :].isdigit()
+        ]
+        return f"{prefix}{max(existing, default=-1) + 1}"
+
     def add_annotation(self, name=None, state=None):
         if name:
-            editor_class, idx = name.split(".")
-            editor = eval(editor_class)(node=self.node, parent=self.annotation_groupbox, name=name)
+            editor_class_name, _, idx = name.partition(".")
+            editor_class = {cls.__name__: cls for cls in ANNOTATION_KINDS.values()}[editor_class_name]
+            editor = editor_class(node=self.node, parent=self.annotation_groupbox, name=name)
             editor.restoreState(state)
         else:
             editor_class = self.annotation_type.currentData()
-            idx = len(self.annotation_editors)
-            name = f"{editor_class.__name__}.{idx}"
+            name = self._next_annotation_name(editor_class)
             editor = editor_class(node=self.node, parent=self.annotation_groupbox, name=name)
 
         editor.sigRemoved.connect(self.remove_annotation)
         self.annotation_editors[name] = editor
         self.annotation_layout.addWidget(editor)
+        return name
 
     def remove_annotation(self, name):
         if name in self.annotation_traces:
@@ -648,7 +678,7 @@ class PlotWidget(QtWidgets.QWidget):
             del self.annotation_traces[name]
 
         editor = self.annotation_editors[name]
-        self.annotation_layout.removeWidget(editor.ui)
+        self.annotation_layout.removeWidget(editor)
         editor.deleteLater()
         del self.annotation_editors[name]
         if self.node:
@@ -761,9 +791,16 @@ class PlotWidget(QtWidgets.QWidget):
             pen = editor.attrs["pen"]
             point = editor.attrs["point"]
             if name not in self.annotation_traces:
-                self.annotation_traces[name] = self.plot_view.plot(
-                    x, y, pen=pen, name=editor.ctrls["name"].text(), **point
-                )
+                # addItem(ignoreBounds=True), not plot_view.plot() (which calls addItem with
+                # the default ignoreBounds=False) -- a threshold line/box is deliberately
+                # drawn far outside the data's own range (e.g. a threshold spanning the whole
+                # plot uses endpoints like X=+-1e9), and counting it in auto-range would blow
+                # the view out to that scale, hiding the actual data it's meant to annotate.
+                # PlotItem.addItem still adds it to the legend (via its own `name=` handling)
+                # same as plot_view.plot() did.
+                item = pg.PlotDataItem(x, y, pen=pen, name=editor.ctrls["name"].text(), **point)
+                self.plot_view.addItem(item, ignoreBounds=True)
+                self.annotation_traces[name] = item
             else:
                 item = self.annotation_traces[name]
                 item.setData(x, y, pen=pen, **point)
@@ -843,13 +880,17 @@ class PlotWidget(QtWidgets.QWidget):
                     data_name, name, editor_state = v
                     self.update_legend_layout(k, data_name, name, editor_state=editor_state, restore=True)
 
-            annotation_state = state.get("annotations", {})
-            if annotation_state:
-                for name, annotation in annotation_state.items():
-                    self.add_annotation(name, annotation)
-            else:
-                for name in list(self.annotation_traces.keys()):
-                    self.remove_annotation(name)
+            # Remove every existing annotation first -- restoring into a widget that already
+            # has annotations (e.g. a NodeWidgetStateUpdate pushed to an open window) must end
+            # up with exactly the saved set, not the saved set *added* to what's already there
+            # (duplicate editors/traces for shared names, stale ones for anything removed since
+            # this state was saved). Iterate annotation_editors, not the smaller
+            # annotation_traces (editors added but not yet drawn by apply_clicked() wouldn't be
+            # in there, and would survive this "clear everything" step).
+            for name in list(self.annotation_editors.keys()):
+                self.remove_annotation(name)
+            for name, annotation in state.get("annotations", {}).items():
+                self.add_annotation(name, annotation)
 
             self.apply_clicked()
 
@@ -985,8 +1026,9 @@ class PlotWidget(QtWidgets.QWidget):
         return schema
 
     def handle_widget_request(self, op, args):
-        """Run one get_plot_config/set_plot_config/set_trace_style operation and return its
-        result, or raise (caught by the caller in update()/request_widget_op's queue).
+        """Run one get_plot_config/set_plot_config/set_trace_style/add_plot_annotation/
+        update_plot_annotation/remove_plot_annotation operation and return its result, or
+        raise (caught by the caller in update()/request_widget_op's queue).
         """
         if op == "get_config":
             return self._get_plot_config()
@@ -994,6 +1036,12 @@ class PlotWidget(QtWidgets.QWidget):
             return self._set_plot_config(args.get("settings") or {})
         elif op == "set_trace":
             return self._set_trace_style(args.get("trace"), args.get("label"), args.get("style"))
+        elif op == "add_annotation":
+            return self._add_annotation_op(args.get("kind"), args.get("points"), args.get("label"), args.get("style"))
+        elif op == "set_annotation":
+            return self._set_annotation_op(args.get("id"), args.get("points"), args.get("label"), args.get("style"))
+        elif op == "remove_annotation":
+            return self._remove_annotation_op(args.get("id"))
         else:
             raise ValueError(f"Unknown plot widget request op '{op}'")
 
@@ -1014,7 +1062,7 @@ class PlotWidget(QtWidgets.QWidget):
             style = self.legend_editors[idx].saveState() if idx in self.legend_editors else {}
             traces[data_name] = {"label": label, "style": style}
 
-        return {"plot": plot_cfg, "traces": traces}
+        return {"plot": plot_cfg, "traces": traces, "annotations": self._annotations_config()}
 
     def _set_plot_config(self, settings):
         _validate_against_schema(settings, self._config_schema(), label="plot setting")
@@ -1042,6 +1090,73 @@ class PlotWidget(QtWidgets.QWidget):
             editor.restoreState(_merge_style(editor.saveState(), style))
 
         self.apply_clicked()
+        return self._get_plot_config()
+
+    def _annotation_config(self, name):
+        """{"kind", "label", "points", "style"} for one annotation -- "points" and "style" are
+        split out of its saved state (editor.saveState()'s flat {group: {field: value}, ...})
+        by group name: "Point"/"Line"/"Fill" are style, anything else (its two kind-specific
+        position groups, e.g. "From"/"To" for a line) is points. "label" is its ungrouped
+        "name" field (the legend text), not the dict key `name` (its id, e.g. "LineEditor.0").
+        """
+        editor = self.annotation_editors[name]
+        saved = editor.saveState()
+        style_groups = _annotation_style_groups(editor)
+        points = {g: v for g, v in saved.items() if isinstance(v, dict) and g not in style_groups}
+        style = {g: v for g, v in saved.items() if g in style_groups}
+        kind = next((k for k, cls in ANNOTATION_KINDS.items() if isinstance(editor, cls)), type(editor).__name__)
+        return {"kind": kind, "label": saved.get("name", name), "points": points, "style": style}
+
+    def _annotations_config(self):
+        return {name: self._annotation_config(name) for name in self.annotation_editors}
+
+    def _apply_annotation_fields(self, editor, points, label, style):
+        """Validate and apply a partial points/label/style update to an annotation editor
+        (shared by add_plot_annotation/update_plot_annotation) -- restoreState()/setState()
+        only touches the keys given, leaving the rest of the editor's current state (defaults
+        for a new annotation, its existing values for an update) alone.
+        """
+        fields = {}
+        if points:
+            fields.update(points)
+        if style:
+            fields.update(style)
+        if label is not None:
+            fields["name"] = label
+        if fields:
+            _validate_against_schema(fields, _widget_group_schema(editor.stateGroup), label="annotation field")
+            editor.restoreState(fields)
+
+    def _add_annotation_op(self, kind, points, label, style):
+        if not isinstance(kind, str) or kind.lower() not in ANNOTATION_KINDS:
+            raise KeyError(f"Unknown annotation kind '{kind}'; valid: {sorted(ANNOTATION_KINDS)}")
+        editor_class = ANNOTATION_KINDS[kind.lower()]
+        name = self._next_annotation_name(editor_class)
+        editor = editor_class(node=self.node, parent=self.annotation_groupbox, name=name)
+        editor.sigRemoved.connect(self.remove_annotation)
+        self.annotation_editors[name] = editor
+        self.annotation_layout.addWidget(editor)
+        try:
+            self._apply_annotation_fields(editor, points, label, style)
+        except Exception:
+            self.remove_annotation(name)
+            raise
+        self.apply_clicked()
+        result = self._get_plot_config()
+        result["id"] = name
+        return result
+
+    def _set_annotation_op(self, name, points, label, style):
+        if name not in self.annotation_editors:
+            raise KeyError(f"No annotation named '{name}' on this plot; existing: {sorted(self.annotation_editors)}")
+        self._apply_annotation_fields(self.annotation_editors[name], points, label, style)
+        self.apply_clicked()
+        return self._get_plot_config()
+
+    def _remove_annotation_op(self, name):
+        if name not in self.annotation_editors:
+            raise KeyError(f"No annotation named '{name}' on this plot; existing: {sorted(self.annotation_editors)}")
+        self.remove_annotation(name)
         return self._get_plot_config()
 
     def _dump_screenshot(self):
