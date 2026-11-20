@@ -117,7 +117,17 @@ def flowchart_module(ami_backend, broker_module, dmypy):
 
     state_task = asyncio.run_coroutine_threadsafe(_start_update_state(), broker_module._test_loop).result(timeout=10)
 
+    # Closing a node closes its (parentless) control widget; with no main window visible in a test
+    # run Qt treats that as "last window closed" and quits, stopping the event loop mid-test.
+    from qtpy import QtWidgets
+
+    app = QtWidgets.QApplication.instance()
+    quit_on_last_window = app.quitOnLastWindowClosed()
+    app.setQuitOnLastWindowClosed(False)
+
     yield fc
+
+    app.setQuitOnLastWindowClosed(quit_on_last_window)
 
     broker_module._test_loop.call_soon_threadsafe(state_task.cancel)
 
@@ -154,6 +164,22 @@ def amicli(flowchart_module):
         if node is not None:
             node.close(emit=False)
     cli.chart._graph = nx.MultiDiGraph()
+    # ...and tear down subgraphs the same way Flowchart.clear() does, otherwise a stale entry
+    # claims node names (e.g. "Roi2D.0") that later tests reuse and misroutes their connections.
+    cli.chart.viewManager().displayView(name="root")  # a deleted view must not be the current one
+    for sg_name, sg_data in list(cli.chart._subgraphs.items()):
+        cli.chart.viewManager().removeView(sg_name)
+        item = sg_data["placeholder"].graphicsItem()
+        if item.scene() is not None:
+            item.scene().removeItem(item)
+        sg_data["placeholder"]._subgraphInputs.close(emit=False)
+        sg_data["placeholder"]._subgraphOutputs.close(emit=False)
+        for bc in sg_data.get("boundary_connections", []):
+            for key in ("root_visual", "subgraph_visual"):
+                if bc.get(key) is not None and hasattr(bc[key], "close"):
+                    bc[key].close()
+    cli.chart._subgraphs.clear()
+    cli.chart.subgraph_library.clear()
     cli.chart.message_log.clear()
     cli.chart._apply_seq = cli.chart._message_seq
     return cli
@@ -825,13 +851,178 @@ async def test_validate_graph_ok(amicli):
 
 @pytest.mark.asyncio
 async def test_validate_graph_disconnected(amicli):
-    """Test validation reports disconnected required inputs."""
+    """Test validation reports disconnected inputs."""
     amicli.create_node("Roi2D")
 
     issues = amicli.validate_graph()
     assert len(issues) > 0
     # Should mention the disconnected terminal
     assert any("Roi2D.0" in issue for issue in issues)
+
+
+@pytest.mark.asyncio
+async def test_validate_graph_flags_unconnected_optional_input(amicli):
+    """An unconnected *optional* input is still a problem: Apply refuses to submit the graph.
+
+    "Optional" means the value may be absent on some events, not that the terminal may be left
+    unconnected -- Node.input_vars() only includes connected terminals, so an unconnected one is
+    dropped from the operation entirely. validate_graph must agree with Apply's own check.
+    """
+    amicli.create_node("Roi2D")
+    amicli.set_terminal_optional("Roi2D.0", "In", True)
+
+    issues = amicli.validate_graph()
+    assert any("Roi2D.0" in issue and "In" in issue for issue in issues)
+    assert not amicli.graph.nodes["Roi2D.0"]["node"].hasInput()  # Apply's guard says the same
+
+
+@pytest.mark.asyncio
+async def test_validate_graph_skips_disabled_nodes(amicli):
+    """Apply ignores disabled nodes, so validate_graph must too."""
+    amicli.create_node("Roi2D")
+    amicli.graph.nodes["Roi2D.0"]["node"].nodeEnabled(False)
+
+    assert amicli.validate_graph() == []
+
+
+async def _make_subgraph(amicli, name="sg"):
+    """Roi2D.0 -> [Projection.0 -> Binning.0] with Projection.0 the subgraph, so the subgraph has one
+    boundary input (from Roi2D.0, which is still at the origin) and one boundary output."""
+    amicli.create_node("Roi2D")
+    amicli.create_node("Projection")
+    amicli.create_node("Binning")
+    amicli.connect_nodes("Roi2D.0", "Out", "Projection.0", "In")
+    amicli.connect_nodes("Projection.0", "Out", "Binning.0", "In")
+    await asyncio.sleep(0.1)
+    amicli.create_subgraph(["Projection.0"], name, "test subgraph")
+    await asyncio.sleep(0.1)
+
+
+@pytest.mark.asyncio
+async def test_export_subgraph_with_filename_shows_no_dialog(amicli, tmp_path, monkeypatch):
+    """export_subgraph(name, filename) must not block on the GUI's name/description dialog."""
+    await _make_subgraph(amicli)
+
+    def no_dialog(*args, **kwargs):
+        raise AssertionError("export dialog shown for a call that supplied a filename")
+
+    monkeypatch.setattr(amicli.chart, "_showExportDialog", no_dialog)
+    path = tmp_path / "sg.fc"
+    amicli.export_subgraph("sg", str(path))
+
+    state = json.loads(path.read_text())
+    assert state["subgraph_metadata"]["name"] == "sg"
+    assert state["subgraph_metadata"]["description"] == "test subgraph"
+
+
+@pytest.mark.asyncio
+async def test_export_import_subgraph_round_trip(amicli, tmp_path, monkeypatch):
+    """An exported subgraph imports back as a new subgraph with its boundary terminals."""
+    await _make_subgraph(amicli)
+    monkeypatch.setattr(amicli.chart, "_showExportDialog", lambda *a, **k: pytest.fail("dialog shown"))
+    path = tmp_path / "sg.fc"
+    amicli.export_subgraph("sg", str(path))
+
+    result = amicli.import_subgraph(str(path))
+
+    assert result["name"] != "sg"
+    assert result["name"] in amicli.chart._subgraphs
+    terminals = amicli.list_subgraph_terminals(result["name"])
+    assert result["boundary_inputs"] == terminals["inputs"]
+    assert result["boundary_outputs"] == terminals["outputs"]
+    assert len(result["boundary_inputs"]) == 1 and len(result["boundary_outputs"]) == 1
+    # the imported node was restored (renamed to be unique) and is tracked by the new subgraph
+    assert len(amicli.chart._subgraphs[result["name"]]["nodes"]) == 1
+
+
+@pytest.mark.asyncio
+async def test_create_subgraph_with_boundary_when_external_node_is_at_origin(amicli):
+    """A QPointF at (0, 0) is falsy, so a boundary node sitting at the origin used to skip adding
+    the subgraph's input/output helper to the view, and the connection to it then crashed."""
+    await _make_subgraph(amicli)  # Roi2D.0 and Binning.0 have never been moved from (0, 0)
+    terminals = amicli.list_subgraph_terminals("sg")
+    assert len(terminals["inputs"]) == 1 and len(terminals["outputs"]) == 1
+
+
+@pytest.mark.asyncio
+async def test_deleting_last_node_of_displayed_subgraph_keeps_view_manager_usable(amicli):
+    """Deleting a subgraph's last node auto-removes the subgraph and its view. If that view was the
+    one on screen, the view manager must fall back to root instead of keeping a deleted widget as
+    its current view (every later displayView call raised "already deleted" and the editor was stuck).
+    """
+    await _make_subgraph(amicli)
+    vm = amicli.chart.viewManager()
+    assert vm.currentView is vm.views["sg"]  # creating a subgraph leaves it on screen
+
+    amicli.delete_node("Projection.0")
+    await asyncio.sleep(0.1)
+
+    assert "sg" not in amicli.chart._subgraphs and "sg" not in vm.views
+    assert vm.currentView is vm.views["root"]
+    assert vm._currentSubgraphName is None
+    vm.displayView(name="root")  # must not touch a deleted widget
+
+
+# ---------------------------------------------------------------------------------------------
+# Known bugs. Each test states the CORRECT behaviour and is marked strict-xfail: it shows up as
+# "xfailed" today, and fails the run (XPASS) as soon as the bug is fixed -- remove the marker then
+# and move the ledger entry to "Fixed". Ledger: .opencode/plans/gui-core-extraction/research/known-bugs.md
+# ---------------------------------------------------------------------------------------------
+
+
+@pytest.mark.xfail(strict=True, reason="known bug KB-01: SumN gets no terminals (onCreate skipped); see known-bugs.md")
+@pytest.mark.asyncio
+async def test_sumn_has_terminals_after_create(amicli):
+    node = amicli.create_node("SumN")
+    assert len(node.inputs()) >= 1 and len(node.outputs()) >= 1
+
+
+@pytest.mark.xfail(strict=True, reason="known bug KB-02: add_terminal on a grouped node adds no paired output")
+@pytest.mark.asyncio
+async def test_add_terminal_on_grouped_node_adds_paired_output(amicli):
+    node = amicli.create_node("Average")
+    amicli.add_terminal("Average.0", "In.1", "in", "Array1d")
+    assert len(node.inputs()) == len(node.outputs()) == 2
+
+
+@pytest.mark.xfail(strict=True, reason="known bug KB-03: disconnecting across a subgraph boundary leaves a stale edge")
+@pytest.mark.asyncio
+async def test_disconnect_boundary_output_removes_graph_edge(amicli):
+    await _make_subgraph(amicli)  # Roi2D.0 -> [Projection.0] -> Binning.0
+    assert amicli.graph.has_edge("Projection.0", "Binning.0")
+
+    amicli.disconnect_nodes("Projection.0", "Out", "Binning.0", "In")
+    await asyncio.sleep(0.1)
+
+    assert not amicli.graph.has_edge("Projection.0", "Binning.0")
+
+
+@pytest.mark.xfail(strict=True, reason="known bug KB-04: new nodes are registered into the subgraph that is on screen")
+@pytest.mark.asyncio
+async def test_create_node_while_subgraph_displayed_does_not_join_it(amicli):
+    await _make_subgraph(amicli)
+    amicli.chart.viewManager().displayView(name="sg")
+
+    amicli.create_node("Calculator")
+
+    assert "Calculator.0" not in amicli.chart._subgraphs["sg"]["nodes"]
+
+
+@pytest.mark.xfail(strict=True, reason="known bug KB-05: create_subgraph switches the operator's view")
+@pytest.mark.asyncio
+async def test_create_subgraph_does_not_switch_view(amicli):
+    vm = amicli.chart.viewManager()
+    vm.displayView(name="root")
+
+    await _make_subgraph(amicli)
+
+    assert vm._currentSubgraphName is None
+
+
+@pytest.mark.asyncio
+async def test_import_subgraph_missing_template(amicli):
+    with pytest.raises(KeyError):
+        amicli.import_subgraph("no-such-template")
 
 
 @pytest.mark.skipif(
@@ -1455,6 +1646,22 @@ async def test_take_and_compare_reference(amicli, tmp_path, monkeypatch):
     amicli.create_node("Projection")
     unsupported = json.loads(mcp_server.take_reference("Projection.0"))
     assert "not supported" in unsupported["error"]
+
+
+@pytest.mark.asyncio
+async def test_fetch_xy_sorts_by_x_and_drops_missing_points(amicli, monkeypatch):
+    """References are drawn from fetch_xy, so it must sort/filter the way the live LinePlot does.
+
+    LineWidget sorts by x and drops None points before drawing; a reference written from the raw
+    (arrival-order) buffer would otherwise zigzag when loaded back.
+    """
+    data = {"x": [3.0, 1.0, 4.0, 2.0, 5.0], "y": [30.0, 10.0, None, 20.0, 50.0]}
+    monkeypatch.setattr(amicli, "fetch_data", lambda feature: data[feature])
+
+    x, y = amicli.fetch_xy({"x": "x", "y": "y"})
+
+    assert list(x) == [1.0, 2.0, 3.0, 5.0]
+    assert list(y) == [10.0, 20.0, 30.0, 50.0]
 
 
 @pytest.mark.asyncio

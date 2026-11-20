@@ -330,6 +330,13 @@ class ViewManager(QtWidgets.QWidget):
         # Get the view widget
         view = self.views[name]
 
+        # Don't leave a view that is about to be deleted as the current one: displayView() hides
+        # self.currentView before switching, so a deleted widget there breaks every later switch.
+        if view is self.currentView:
+            self.displayView(name="root")
+        if view is self.previousView:
+            self.previousView = None
+
         # Remove from layout
         self.layout.removeWidget(view)
 

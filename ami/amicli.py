@@ -17,6 +17,7 @@ from networkfox import modifiers
 from qtpy import QtCore
 
 from ami.flowchart.library.common import SourceNode
+from ami.flowchart.library.DisplayWidgets import sorted_xy
 from ami.flowchart.Node import find_free_pos, find_nearest
 
 logger = logging.getLogger(__name__)
@@ -865,7 +866,11 @@ class AmiCli:
             return []
 
     def validate_graph(self):
-        """Check graph for issues (disconnected terminals, etc).
+        """Check graph for issues (disconnected terminals, etc), using the same rules as Apply.
+
+        Every input of an enabled node must be connected, whether or not it is marked optional
+        ("optional" means the value may be absent on some events, not that the terminal may be
+        left unconnected). Disabled nodes are skipped.
 
         Returns:
             List of issue descriptions (empty if no issues)
@@ -873,16 +878,17 @@ class AmiCli:
         issues = []
         try:
             for name, node in self.chart.nodes(data="node"):
-                if node is None or getattr(node, "is_visual_only", False):
+                if node is None or getattr(node, "is_visual_only", False) or not node.enabled():
                     continue
 
-                # Check for disconnected required inputs
+                # Same check Apply uses (Node.hasInput): every input of an enabled node must be
+                # connected, optional or not -- unconnected terminals are dropped from the operation.
+                if node.hasInput():
+                    continue
                 for term_name, term_ref in node.inputs().items():
                     term = term_ref() if callable(term_ref) else term_ref
-                    if term is None:
-                        continue
-                    if not term.optional() and len(term.connections()) == 0:
-                        issues.append(f"Node '{name}' has disconnected required input '{term_name}'")
+                    if term is not None and not term.isConnected():
+                        issues.append(f"Node '{name}' has disconnected input '{term_name}'")
 
             return issues
         except Exception as e:
@@ -901,6 +907,7 @@ class AmiCli:
 
         Raises:
             KeyError: If template not found
+            ValueError: If no nodes could be restored from the template
         """
         try:
             # Check if it's a file path
@@ -914,10 +921,14 @@ class AmiCli:
                     f"Available: {self.chart.subgraph_library.getNames()}"
                 )
 
+            if result is None:
+                raise ValueError(f"Failed to import subgraph '{template_name_or_path}' (no nodes could be restored)")
+
+            terminals = self.list_subgraph_terminals(result)
             return {
-                "name": result["name"],
-                "boundary_inputs": result.get("boundary_inputs", []),
-                "boundary_outputs": result.get("boundary_outputs", []),
+                "name": result,
+                "boundary_inputs": terminals["inputs"],
+                "boundary_outputs": terminals["outputs"],
             }
         except Exception as e:
             logger.error(f"Failed to import subgraph '{template_name_or_path}': {e}")
@@ -966,7 +977,7 @@ class AmiCli:
             if subgraph_name not in self.chart._subgraphs:
                 raise KeyError(f"Subgraph '{subgraph_name}' not found")
 
-            self.chart.exportSubgraph(subgraph_name, filename)
+            self.chart.writeSubgraphFile(subgraph_name, filename)
         except Exception as e:
             logger.error(f"Failed to export subgraph '{subgraph_name}': {e}")
             raise
@@ -1623,14 +1634,17 @@ class AmiCli:
         if y.ndim != 1:
             raise ValueError(f"'{features['y']}' is {y.ndim}D; references need 1D data")
         if features["x"] is None:
-            return np.arange(len(y), dtype=float), y
-        x = self.fetch_data(features["x"])
-        if x is None:
-            raise RuntimeError(f"No data for '{features['x']}' yet.")
-        x = np.asarray(x, dtype=float)
-        if x.shape != y.shape:
-            raise ValueError(f"X {x.shape} and Y {y.shape} have different shapes")
-        return x, y
+            x = np.arange(len(y), dtype=float)
+        else:
+            x = self.fetch_data(features["x"])
+            if x is None:
+                raise RuntimeError(f"No data for '{features['x']}' yet.")
+            x = np.asarray(x, dtype=float)
+            if x.shape != y.shape:
+                raise ValueError(f"X {x.shape} and Y {y.shape} have different shapes")
+        # same sort/filter the live plot applies (LineWidget), so a reference matches what is drawn
+        xs, ys = sorted_xy(x, y, drop_nan=True)
+        return np.array(xs, dtype=float), np.array(ys, dtype=float)
 
     def write_reference_csv(self, node_name, x, y, name=""):
         """Write x, y to a CSV in REFERENCE_DIR and return its path."""

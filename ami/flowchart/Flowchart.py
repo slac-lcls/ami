@@ -773,10 +773,10 @@ class Flowchart(QtCore.QObject):
             )
 
         # Position SubgraphInput/Output nodes in subgraph view FIRST
-        if inputs and input_pos:
+        if inputs and input_pos is not None:
             view.viewBox().addItem(subgraphNode.subgraphInputs.graphicsItem())
             subgraphNode.subgraphInputs.graphicsItem().moveBy(input_pos.x(), input_pos.y())
-        if outputs and output_pos:
+        if outputs and output_pos is not None:
             view.viewBox().addItem(subgraphNode.subgraphOutputs.graphicsItem())
             subgraphNode.subgraphOutputs.graphicsItem().moveBy(output_pos.x(), output_pos.y())
 
@@ -1361,6 +1361,23 @@ class Flowchart(QtCore.QObject):
             )
             if not fileName:
                 return
+
+        self.writeSubgraphFile(subgraph_name, fileName, name=name, desc=desc)
+
+    def writeSubgraphFile(self, subgraph_name, fileName, name=None, desc=None):
+        """Write a subgraph to a .fc file without showing any dialog.
+
+        Args:
+            subgraph_name: Name of the subgraph in self._subgraphs
+            fileName: Path to save file
+            name: Export name to embed in metadata (defaults to subgraph_name)
+            desc: Description to embed in metadata (defaults to the subgraph's description)
+
+        Raises:
+            KeyError: If the subgraph doesn't exist
+        """
+        if subgraph_name not in self._subgraphs:
+            raise KeyError(f"Subgraph '{subgraph_name}' not found")
 
         state = self._getSubgraphExportState(subgraph_name, name=name, desc=desc)
 

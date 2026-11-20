@@ -86,6 +86,34 @@ def _merge_style(current, update):
     return merged
 
 
+def sorted_xy(x, y, drop_nan=False):
+    """Pair up x and y, drop incomplete points, and sort by x -- what a line plot draws.
+
+    Buffered rows may contain None (e.g. a point whose paired series wasn't active that event, as
+    with TimePlot/LinePlot inputs marked optional); None can't be compared against a number, and a
+    hole would otherwise break the drawn line into disconnected segments. The sort is needed since
+    arrival order is not x order.
+
+    Args:
+        x: Sequence of x values
+        y: Sequence of y values, same length as x
+        drop_nan: Also drop points where x or y is NaN (a float array has no None, so a missing
+            value has already become NaN)
+
+    Returns:
+        (xs, ys) tuples sorted by x; both empty if nothing is left
+    """
+
+    def present(v):
+        return v is not None and not (drop_nan and v != v)
+
+    pairs = [(a, b) for a, b in zip(x, y) if present(a) and present(b)]
+    if not pairs:
+        return (), ()
+    xs, ys = zip(*sorted(pairs))
+    return xs, ys
+
+
 def _annotation_style_groups(editor):
     """The subset of an AnnotationEditor's own setting groups that are appearance (style)
     rather than position -- always some of "Point"/"Line"/"Fill", regardless of the editor's
@@ -1738,15 +1766,11 @@ class LineWidget(PlotWidget):
             if x not in data or y not in data:
                 continue
 
-            # buffered rows may contain None (e.g. a point whose paired series wasn't active
-            # that event, as with TimePlot/LinePlot inputs marked optional) -- drop those before
-            # sorting, since None can't be compared against a number, and a hole here would
-            # otherwise break the line into disconnected segments.
-            pairs = [(a, b) for a, b in zip(data[x], data[y]) if a is not None and b is not None]
-            if not pairs:
+            # drop None points and sort by x, otherwise the drawn line is broken or messed up
+            xs, ys = sorted_xy(data[x], data[y])
+            if not xs:
                 continue
-            # sort the data using the x-axis, otherwise the drawn line is messed up
-            x, y = zip(*sorted(pairs))
+            x, y = xs, ys
 
             if name not in self.plot:
                 _, color = symbols_colors[i]

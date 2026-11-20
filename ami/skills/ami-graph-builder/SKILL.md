@@ -22,7 +22,7 @@ After all nodes are connected, always run this sequence before responding to the
 ### 1. Structural check
 Call `validate_graph()`. It returns:
 - `{"ok": true, "issues": []}` → no problems, continue
-- `{"ok": false, "issues": ["Node 'X' has disconnected required input 'Y'"]}` → fix each issue, then call `validate_graph()` again
+- `{"ok": false, "issues": ["Node 'X' has disconnected input 'Y'"]}` → fix each issue, then call `validate_graph()` again
 
 ### 2. Submit to workers
 Call `apply_graph()`. This submits the graph to AMI workers for execution. It is fire-and-forget and returns `{"status": "applied"}`.
@@ -597,8 +597,9 @@ one of its inputs is actually present that heartbeat — e.g. a plain `Calculato
 combining several per-event signals, where a partial set of inputs would be meaningless.
 
 Only input terminals can be optional (`set_terminal_optional` raises `ValueError` on an output).
-`validate_graph()` never flags an unconnected *optional* input as an issue — only unconnected
-*required* ones. `get_node_inputs()` reports which of a node's terminals are currently optional
+"Optional" means the value may be absent on some heartbeats, not that the terminal may be left
+unconnected: `validate_graph()` (like Apply) flags every unconnected input on an enabled node,
+optional or not, and an unconnected terminal would be dropped from the operation. `get_node_inputs()` reports which of a node's terminals are currently optional
 in its `"optional_terminals"` field.
 
 ## Surviving a Loop Restart (`reset_on_run` / `latched`)
