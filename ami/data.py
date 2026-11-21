@@ -1113,6 +1113,7 @@ class PsanaSource(HierarchicalDataSource):
             "supervisor": lambda s: int(s),
             "use_calib_cache": lambda s: s if isinstance(s, bool) else s.lower() == "true",
             "cached_detectors": lambda s: s.split(";"),
+            "skip_calib_load": lambda s: s if s == "all" else s.split(";"),
         }
         for key, func in convert_kwargs.items():
             if key in ps_kwargs:
