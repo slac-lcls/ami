@@ -14,6 +14,7 @@ from ami.amicli import AmiCli
 from ami.asyncqt import asyncSlot
 from ami.client import flowchart_messages as fcMsgs
 from ami.comm import AsyncGraphCommHandler, GraphCommHandler
+from ami.flowchart.broker_send import send_to_broker
 from ami.flowchart.FlowchartGraphicsView import ViewManager
 from ami.flowchart.library import LIBRARY
 from ami.flowchart.library.common import CtrlNode, SourceNode
@@ -1787,6 +1788,14 @@ class Flowchart(QtCore.QObject):
 
             # Add to library
             self.subgraph_library.addSubgraph(sg_name, template)
+
+    def sendToBroker(self, topic, msg):
+        """Send ``msg`` to the node process (or the library channel) called ``topic``.
+
+        Synchronous, GUI thread only.  NOT YET USED: ``self.broker`` is still the asyncio socket until
+        step B of the editor-remove-asyncio plan, and this needs the plain ``zmq.PUB`` socket.
+        """
+        send_to_broker(self.broker, topic, msg)
 
     @asyncSlot(object)
     async def send_requested_data(self, requested_data):
