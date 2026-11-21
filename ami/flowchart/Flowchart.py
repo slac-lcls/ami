@@ -103,7 +103,9 @@ class Flowchart(QtCore.QObject):
         self.source_library = None
 
         self.ctx = zmq.asyncio.Context()
-        self.broker = self.ctx.socket(zmq.PUB)  # used to create new node processes
+        # Plain (non-asyncio) context and socket: sends never wait, so they are done synchronously.
+        self.sync_ctx = zmq.Context()
+        self.broker = self.sync_ctx.socket(zmq.PUB)  # used to create new node processes
         self.broker.connect(broker_addr)
         self.socks.append(self.broker)
 
@@ -153,6 +155,7 @@ class Flowchart(QtCore.QObject):
             if self._widget.amicli is not None:
                 self._widget.amicli.graphCommHandler.close()
         self.ctx.term()
+        self.sync_ctx.term()
 
     def start_prometheus(self, port):
         while True:
@@ -1792,8 +1795,7 @@ class Flowchart(QtCore.QObject):
     def sendToBroker(self, topic, msg):
         """Send ``msg`` to the node process (or the library channel) called ``topic``.
 
-        Synchronous, GUI thread only.  NOT YET USED: ``self.broker`` is still the asyncio socket until
-        step B of the editor-remove-asyncio plan, and this needs the plain ``zmq.PUB`` socket.
+        Synchronous, GUI thread only.
         """
         send_to_broker(self.broker, topic, msg)
 
@@ -1836,8 +1838,7 @@ class Flowchart(QtCore.QObject):
             return
 
         self._graph.remove_node(node.name())
-        await self.broker.send_string(node.name(), zmq.SNDMORE)
-        await self.broker.send_pyobj(fcMsgs.CloseNode())
+        self.sendToBroker(node.name(), fcMsgs.CloseNode())
         ctrl = self.widget()
         name = node.name()
 
@@ -1869,23 +1870,18 @@ class Flowchart(QtCore.QObject):
                     [input_vars["In"], input_vars["Timestamp"]], [node.values["alias"], "_timestamp"]
                 )
 
-    @asyncSlot(object, object)
-    async def nodeTermAdded(self, node, term):
+    def nodeTermAdded(self, node, term):
         name = node.name()
         state = term.saveState()
         msg = fcMsgs.NodeTermAdded(name, term.name(), state)
-        await self.broker.send_string(name, zmq.SNDMORE)
-        await self.broker.send_pyobj(msg)
+        self.sendToBroker(name, msg)
 
-    @asyncSlot(object, object)
-    async def nodeTermRemoved(self, node, term):
+    def nodeTermRemoved(self, node, term):
         name = node.name()
         msg = fcMsgs.NodeTermRemoved(name, term.name())
-        await self.broker.send_string(name, zmq.SNDMORE)
-        await self.broker.send_pyobj(msg)
+        self.sendToBroker(name, msg)
 
-    @asyncSlot(object, object)
-    async def nodeTermConnected(self, localTerm, remoteTerm):
+    def nodeTermConnected(self, localTerm, remoteTerm):
         # Handle case where remoteTerm is None (e.g., SubgraphInput without source)
         if not remoteTerm or not localTerm:
             return
@@ -1976,8 +1972,7 @@ class Flowchart(QtCore.QObject):
                             remoteNodeLabel=localTerm.node()._label,
                         )
                         internal_node.terminalConnected(msg)
-                        await self.broker.send_string(internal_node.name(), zmq.SNDMORE)
-                        await self.broker.send_pyobj(msg)
+                        self.sendToBroker(internal_node.name(), msg)
 
                         matched = True
                 if matched:
@@ -2028,8 +2023,7 @@ class Flowchart(QtCore.QObject):
             remoteNodeLabel=remoteTerm.node()._label,
         )
         localTerm.node().terminalConnected(msg)
-        await self.broker.send_string(localNode, zmq.SNDMORE)
-        await self.broker.send_pyobj(msg)
+        self.sendToBroker(localNode, msg)
 
         msg = fcMsgs.NodeTermConnected(
             remoteNode,
@@ -2043,13 +2037,11 @@ class Flowchart(QtCore.QObject):
             remoteNodeLabel=localTerm.node()._label,
         )
         remoteTerm.node().terminalConnected(msg)
-        await self.broker.send_string(remoteNode, zmq.SNDMORE)
-        await self.broker.send_pyobj(msg)
+        self.sendToBroker(remoteNode, msg)
 
         self.sigNodeChanged.emit(localTerm.node())
 
-    @asyncSlot(object, object)
-    async def nodeTermDisconnected(self, localTerm, remoteTerm):
+    def nodeTermDisconnected(self, localTerm, remoteTerm):
         if remoteTerm.isOutput():
             t = remoteTerm
             remoteTerm = localTerm
@@ -2169,8 +2161,7 @@ class Flowchart(QtCore.QObject):
                             localTerm.saveState(),
                         )
                         internal_node.terminalDisconnected(msg)
-                        await self.broker.send_string(internal_node.name(), zmq.SNDMORE)
-                        await self.broker.send_pyobj(msg)
+                        self.sendToBroker(internal_node.name(), msg)
 
                     terminal_name = remoteTerm.name()
                     sg_data["boundary_connections"] = [
@@ -2234,8 +2225,7 @@ class Flowchart(QtCore.QObject):
                 remoteTerm.saveState(),
             )
             localTerm.node().terminalDisconnected(msg)
-            await self.broker.send_string(localNode, zmq.SNDMORE)
-            await self.broker.send_pyobj(msg)
+            self.sendToBroker(localNode, msg)
 
             msg = fcMsgs.NodeTermDisconnected(
                 remoteNode,
@@ -2248,8 +2238,7 @@ class Flowchart(QtCore.QObject):
                 localTerm.saveState(),
             )
             remoteTerm.node().terminalDisconnected(msg)
-            await self.broker.send_string(remoteNode, zmq.SNDMORE)
-            await self.broker.send_pyobj(msg)
+            self.sendToBroker(remoteNode, msg)
 
         self.sigNodeChanged.emit(localTerm.node())
 
@@ -2282,8 +2271,7 @@ class Flowchart(QtCore.QObject):
                     term.display_name = f"{label}.{term_suffix}" if label else None
                     term.graphicsItem().updateLabel()
 
-    @asyncSlot(object, object)
-    async def nodeLabelChanged(self, node, label):
+    def nodeLabelChanged(self, node, label):
         """Handle label change events from nodes and forward to NodeProcess"""
         # Enforce label uniqueness
         unique_label = self._generate_unique_label(label, exclude_node=node)
@@ -2296,12 +2284,10 @@ class Flowchart(QtCore.QObject):
         self._update_boundary_display_names(node, label)
         name = node.name()
         msg = fcMsgs.NodeLabelChanged(name, label)
-        await self.broker.send_string(name, zmq.SNDMORE)
-        await self.broker.send_pyobj(msg)
+        self.sendToBroker(name, msg)
         # Forward label change to downstream NodeProcesses so they can update buttons
         for successor in self._graph.successors(name):
-            await self.broker.send_string(successor, zmq.SNDMORE)
-            await self.broker.send_pyobj(msg)
+            self.sendToBroker(successor, msg)
 
     @asyncSlot(object)
     async def nodeEnabled(self, root):
@@ -2687,8 +2673,7 @@ class Flowchart(QtCore.QObject):
             if node is None:
                 continue
 
-            await self.broker.send_string(name, zmq.SNDMORE)
-            await self.broker.send_pyobj(fcMsgs.CloseNode())
+            self.sendToBroker(name, fcMsgs.CloseNode())
             node.close(emit=False)
 
         self._graph = nx.MultiDiGraph()
@@ -3513,23 +3498,20 @@ class FlowchartCtrlWidget(QtWidgets.QWidget):
 
     @asyncSlot()
     async def libraryUpdated(self):
-        await self.chart.broker.send_string("library", zmq.SNDMORE)
-        await self.chart.broker.send_pyobj(fcMsgs.Library(name=self.graph_name, paths=self.libraryEditor.node_paths))
+        self.chart.sendToBroker("library", fcMsgs.Library(name=self.graph_name, paths=self.libraryEditor.node_paths))
         dirs = set(map(os.path.dirname, self.libraryEditor.node_paths))
         await self.graphCommHandler.updatePath(dirs)
 
         self.chartWidget.updateStatus("Loaded modules.")
 
-    @asyncSlot(object)
-    async def libraryReloaded(self, mods):
+    def libraryReloaded(self, mods):
         smods = set(map(lambda mod: mod.__name__, mods))
 
         for name, node in self.chart._graph.nodes(data="node"):
             if node is None or node.__module__ not in smods:
                 continue
 
-            await self.chart.broker.send_string(node.name(), zmq.SNDMORE)
-            await self.chart.broker.send_pyobj(fcMsgs.ReloadLibrary(name=node.name(), mods=smods))
+            self.chart.sendToBroker(node.name(), fcMsgs.ReloadLibrary(name=node.name(), mods=smods))
             self.chartWidget.updateStatus(f"Reloaded {node.name()}.")
 
     def _onSubgraphTreeContextMenu(self, pos):
@@ -3820,8 +3802,7 @@ class FlowchartWidget(dockarea.DockArea):
             if not node.created:
                 state = node.saveState()
                 msg = fcMsgs.CreateNode(node.name(), node.__class__.__name__, state=state)
-                await self.chart.broker.send_string(node.name(), zmq.SNDMORE)
-                await self.chart.broker.send_pyobj(msg)
+                self.chart.sendToBroker(node.name(), msg)
                 node.created = True
 
         if views:
@@ -3829,8 +3810,7 @@ class FlowchartWidget(dockarea.DockArea):
 
         for args in display_args:
             name = args["name"]
-            await self.chart.broker.send_string(name, zmq.SNDMORE)
-            await self.chart.broker.send_pyobj(fcMsgs.DisplayNode(**args))
+            self.chart.sendToBroker(name, fcMsgs.DisplayNode(**args))
 
         await self.ctrl.graphCommHandler.updatePlots(self.ctrl.features.plots)
 

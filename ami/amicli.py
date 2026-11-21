@@ -11,7 +11,6 @@ import time
 from typing import Any
 
 import numpy as np
-import zmq
 from amitypes import Array1d, Array2d, Array3d
 from networkfox import modifiers
 from qtpy import QtCore
@@ -1691,12 +1690,7 @@ class AmiCli:
         The MessageBroker only forwards it to a running NodeProcess (the display window); if
         none is running, it's silently dropped. Low-level: does not mark the node as changed.
         """
-
-        async def send():
-            await self.chart.broker.send_string(node.name(), zmq.SNDMORE)
-            await self.chart.broker.send_pyobj(msg)
-
-        asyncio.ensure_future(send())
+        self.chart.sendToBroker(node.name(), msg)
 
     def _send_to_node_window(self, node, msg):
         """Push msg to node's display window, if open, and refresh the state panel.

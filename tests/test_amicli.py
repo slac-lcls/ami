@@ -1926,14 +1926,19 @@ def test_broker_forwards_widget_and_screenshot_requests_to_open_window(broker_mo
     import zmq
     import zmq.asyncio
 
+    from ami.client.flowchart import ZMQ_TOPIC_DELIM
+
     async def run():
         ctx = zmq.asyncio.Context()
         # Stand in for AmiCli._publish_to_node: publishes on the broker's sub socket.
         fake_amicli = ctx.socket(zmq.PUB)
         fake_amicli.connect(broker_module.broker_sub_addr)
-        # Stand in for a NodeProcess window: subscribes to what the broker forwards.
+        # Stand in for a NodeProcess window: subscribes to its own node's topic, like a real window
+        # (name + ZMQ_TOPIC_DELIM). Not to "": the module-scoped broker also forwards and replays
+        # messages for other tests' node windows, which would arrive here first.
         fake_window = ctx.socket(zmq.SUB)
-        fake_window.setsockopt_string(zmq.SUBSCRIBE, "")
+        for node_name in ("RunningNode", "NotRunningNode"):
+            fake_window.setsockopt_string(zmq.SUBSCRIBE, node_name + ZMQ_TOPIC_DELIM)
         fake_window.connect(broker_module.broker_pub_addr)
         await asyncio.sleep(0.2)  # let PUB/SUB connections settle (slow joiner)
 

@@ -1,7 +1,6 @@
 import asyncio
 import logging
 
-import zmq
 from p4p.nt import NTScalar
 from p4p.server import Server, StaticProvider
 from p4p.server.asyncio import SharedPV
@@ -106,8 +105,7 @@ class _CtrlPutHandler:
         """
         try:
             msg = fcMsgs.NodeCtrlUpdate(self.node_name, params)
-            await self.chart.broker.send_string(self.node_name, zmq.SNDMORE)
-            await self.chart.broker.send_pyobj(msg)
+            self.chart.sendToBroker(self.node_name, msg)
         except Exception as e:
             logger.debug("PvCtrlServer NodeCtrlUpdate send error for %s: %s", self.node_name, e)
 
