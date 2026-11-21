@@ -1,7 +1,6 @@
 """AmiCli - Graph manipulation API for MCP server and QtConsole."""
 
 import ast
-import asyncio
 import collections
 import concurrent.futures
 import json
@@ -16,6 +15,7 @@ from networkfox import modifiers
 from qtpy import QtCore
 
 from ami.flowchart.library.common import SourceNode
+from ami.flowchart.manager_client import report_failed
 from ami.flowchart.Node import find_free_pos, find_nearest
 
 logger = logging.getLogger(__name__)
@@ -1386,7 +1386,7 @@ class AmiCli:
         pending = self._pending_upstream_changes(node_name)
         if pending:
             raise RuntimeError(f"Pending changes for {', '.join(sorted(pending))}; call apply_graph() first")
-        asyncio.ensure_future(self.chartWidget.build_views([node], ctrl=True))
+        self.chartWidget.build_views([node], ctrl=True).add_done_callback(report_failed)
 
     def _send_request_when_viewed(self, node_name, future, make_msg):
         """Open node_name's display window (if needed) and send make_msg(request_id) to it once

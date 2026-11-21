@@ -21,6 +21,7 @@ for tests that use a fake manager handler.
 import concurrent.futures
 import logging
 import queue
+import sys
 
 import zmq
 from qtpy import QtCore
@@ -42,6 +43,18 @@ def _report(on_done, on_error, result=None, exc=None):
             on_done(result)
     except Exception:
         logger.exception("Exception in ManagerClient callback")
+
+
+def report_failure(exc):
+    """Print a traceback for ``exc`` the way an unhandled exception in a Qt slot is printed
+    (``sys.excepthook``).  For callers that do not wait for a request and so have nobody to raise to."""
+    sys.excepthook(type(exc), exc, exc.__traceback__)
+
+
+def report_failed(future):
+    """Done-callback for a future nobody waits on: print its exception, if it has one."""
+    if not future.cancelled() and future.exception() is not None:
+        report_failure(future.exception())
 
 
 class _Request:

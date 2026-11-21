@@ -182,7 +182,9 @@ def run_editor_window(
 
         @asyncClose
         async def cleanup():
-            await fc.widget().graphCommHandler.destroy()
+            # through the manager queue, so it comes after any request still waiting there
+            await fc.widget().managerCall(lambda mgr: mgr.destroy())
+            fc.widget().manager.close()
 
         app.aboutToQuit.connect(cleanup)
 
