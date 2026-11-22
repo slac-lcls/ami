@@ -124,7 +124,7 @@ class _ApplyHandler:
         try:
             pv.post(0)
             op.done()
-            asyncio.ensure_future(self.ctrl_widget.applyClicked())
+            self.ctrl_widget.applyClicked()
         except Exception as e:
             logger.error("PvCtrlServer apply PUT error: %s", e)
             op.done(error=str(e))
@@ -132,7 +132,7 @@ class _ApplyHandler:
     def rpc(self, pv, op):
         try:
             op.done()
-            asyncio.ensure_future(self.ctrl_widget.applyClicked())
+            self.ctrl_widget.applyClicked()
         except Exception as e:
             logger.error("PvCtrlServer apply RPC error: %s", e)
             op.done(error=str(e))

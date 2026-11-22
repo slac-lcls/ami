@@ -57,6 +57,24 @@ def report_failed(future):
         report_failure(future.exception())
 
 
+class AwaitableFuture(concurrent.futures.Future):
+    """A ``Future`` that can also be ``await``-ed from asyncio code.  Until the editor stops using
+    asyncio (step E) tests and ``Flowchart.run`` await the Futures that apply/load/clear return.  It
+    resolves on the GUI thread; never wait for it there with ``result()``."""
+
+    def __await__(self):
+        import asyncio
+
+        return asyncio.wrap_future(self).__await__()
+
+
+def done_future(result=None):
+    """An already resolved ``AwaitableFuture``."""
+    future = AwaitableFuture()
+    future.set_result(result)
+    return future
+
+
 class _Request:
     __slots__ = ("fn", "on_done", "on_error", "future")
 
@@ -165,7 +183,7 @@ class ManagerClient(QtCore.QObject):
 
         If the client is closed the returned future is already cancelled and no callback is made.
         """
-        future = concurrent.futures.Future()
+        future = AwaitableFuture()
         if self._closed:
             future.cancel()
             return future
@@ -207,7 +225,7 @@ class InlineManagerClient:
         self._closed = False
 
     def submit(self, fn, on_done=None, on_error=None):
-        future = concurrent.futures.Future()
+        future = AwaitableFuture()
         if self._closed:
             future.cancel()
             return future

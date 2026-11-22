@@ -11,7 +11,6 @@ from qtpy import QtCore, QtGui, QtWidgets
 
 from ami import LogConfig
 from ami.amicli import AmiCli
-from ami.asyncqt import asyncSlot
 from ami.client import flowchart_messages as fcMsgs
 from ami.comm import AsyncGraphCommHandler, GraphCommHandler
 from ami.flowchart.broker_send import send_to_broker
@@ -19,7 +18,7 @@ from ami.flowchart.FlowchartGraphicsView import ViewManager
 from ami.flowchart.library import LIBRARY
 from ami.flowchart.library.common import CtrlNode, SourceNode
 from ami.flowchart.library.Editors import STYLE
-from ami.flowchart.manager_client import ManagerClient, report_failed, report_failure
+from ami.flowchart.manager_client import AwaitableFuture, ManagerClient, done_future, report_failed, report_failure
 from ami.flowchart.Node import Node, NodeGraphicsItem, find_free_pos, find_nearest
 from ami.flowchart.NodeLibrary import SourceLibrary
 from ami.flowchart.SourceConfiguration import SourceConfiguration
@@ -55,7 +54,6 @@ except ImportError:
 
 import asyncio
 import collections
-import concurrent.futures
 import itertools as it
 import json
 import logging
@@ -76,6 +74,19 @@ import zmq.asyncio
 import ami.flowchart.Editor as EditorTemplate
 
 logger = logging.getLogger(LogConfig.get_package_name(__name__))
+
+
+def _forward(src, dst, report=False, only_failure=False):
+    """Resolve Future ``dst`` like Future ``src``.  ``report`` prints a failure first (when nobody has);
+    ``only_failure`` leaves ``dst`` alone when ``src`` succeeded."""
+    if src.cancelled():
+        dst.cancel()
+    elif src.exception() is not None:
+        if report:
+            report_failure(src.exception())
+        dst.set_exception(src.exception())
+    elif not only_failure:
+        dst.set_result(src.result())
 
 
 class Flowchart(QtCore.QObject):
@@ -2301,8 +2312,9 @@ class Flowchart(QtCore.QObject):
         for successor in self._graph.successors(name):
             self.sendToBroker(successor, msg)
 
-    @asyncSlot(object)
-    async def nodeEnabled(self, root):
+    @QtCore.Slot(object)
+    def nodeEnabled(self, root):
+        """Returns a Future that resolves when the apply that follows has finished."""
         enabled = root._enabled
         ctrl = self.widget()
         views = []
@@ -2327,10 +2339,7 @@ class Flowchart(QtCore.QObject):
                                 views.append(in_var)
                 else:
                     node.changed = True
-            if views:
-                await ctrl.managerCall(lambda mgr: mgr.unview(views))
-            await ctrl.applyClicked()
-            return
+            return self._unviewThenApply(views)
 
         outputs = [n for n, d in self._graph.out_degree() if d == 0]
         sources_targets = list(it.product([root.name()], outputs))
@@ -2354,9 +2363,23 @@ class Flowchart(QtCore.QObject):
                     else:
                         node.changed = True
 
-        if views:
-            await ctrl.managerCall(lambda mgr: mgr.unview(views))
-        await ctrl.applyClicked()
+        return self._unviewThenApply(views)
+
+    def _unviewThenApply(self, views):
+        ctrl = self.widget()
+        if not views:
+            return ctrl.applyClicked()
+
+        done = AwaitableFuture()
+
+        def apply(_):
+            ctrl.applyClicked().add_done_callback(lambda f: _forward(f, done))
+
+        # a failed unview is printed and the apply is skipped
+        ctrl.submitToManager(lambda mgr: mgr.unview(views), on_done=apply).add_done_callback(
+            lambda f: _forward(f, done, only_failure=True)
+        )
+        return done
 
     def widget(self, parent=None):
         """
@@ -2612,34 +2635,52 @@ class Flowchart(QtCore.QObject):
                 if view_name in self.viewManager().views:
                     self.viewManager().views[view_name].viewBox().restoreState(view_state)
 
-    @asyncSlot(str)
-    async def loadFile(self, fileName=None):
+    @QtCore.Slot(str)
+    def loadFile(self, fileName=None):
         """
         Load a flowchart (*.fc) file.
+
+        Returns a Future that resolves when the graph is applied and its views are built.
         """
         if not os.path.exists(fileName):
             msg = QtWidgets.QMessageBox()
             msg.setText(f"File {fileName} does not exist!")
             msg.show()
-            return
+            return done_future()
 
         with open(fileName, "r") as f:
             state = json.load(f)
 
         ctrl = self.widget()
-        await ctrl.clear()
+        ctrl.clear()
         self.restoreState(state)
         self.viewBox().autoRange()
         self.sigFileLoaded.emit(fileName)
-        await ctrl.applyClicked(build_views=False)
+        done = AwaitableFuture()
 
-        nodes = []
-        for name, node in self.nodes(data="node"):
-            if node.viewed or node.exportable():
-                nodes.append(node)
-            node.blockSignals(False)
+        def applied(applied_future):
+            if applied_future.cancelled() or applied_future.exception() is not None:
+                # already printed by applyClicked
+                _forward(applied_future, done)
+                return
 
-        await asyncio.wrap_future(ctrl.chartWidget.build_views(nodes, ctrl=True, export=True))
+            try:
+                nodes = []
+                for name, node in self.nodes(data="node"):
+                    if node.viewed or node.exportable():
+                        nodes.append(node)
+                    node.blockSignals(False)
+
+                views = ctrl.chartWidget.build_views(nodes, ctrl=True, export=True)
+            except Exception as exc:
+                report_failure(exc)
+                done.set_exception(exc)
+                return
+
+            views.add_done_callback(lambda f: _forward(f, done, report=True))
+
+        ctrl._apply(build_views=False).add_done_callback(applied)
+        return done
 
     def saveFile(self, fileName=None, startDir=None, suggestedFileName="flowchart.fc"):
         """
@@ -2673,9 +2714,11 @@ class Flowchart(QtCore.QObject):
         ctrl.chartWidget.updateStatus(f"Saved graph to: {fileName}")
         self.sigFileSaved.emit(fileName)
 
-    async def clear(self):
+    def clear(self):
         """
         Remove all nodes from this flowchart except the original input/output nodes.
+
+        Returns an already resolved Future (the clear is local and happens at once).
         """
         # Switch to root view before clearing (in case we're on a subgraph view)
         self.viewManager().displayView(name="root")
@@ -2727,6 +2770,7 @@ class Flowchart(QtCore.QObject):
         # Clear the subgraph library (templates don't persist across New)
         self.subgraph_library.clear()
         self._updateSubgraphLibraryUI()
+        return done_future()
 
     async def updateState(self):
         while True:
@@ -3155,152 +3199,218 @@ class FlowchartCtrlWidget(QtWidgets.QWidget):
         awaits; an error is raised here instead of being printed."""
         return await asyncio.wrap_future(self.manager.submit(fn, on_error=lambda exc: None))
 
-    @asyncSlot()
-    async def applyClicked(self, build_views=True):
+    @QtCore.Slot()
+    def applyClicked(self):
+        """Apply the graph and redisplay changed views.  Takes no parameters on purpose: a slot connected
+        to a signal (``actionApply.triggered(bool)``) is handed the signal's arguments, which would land
+        in ``build_views``.  Returns the Future from ``_apply``."""
+        return self._apply(build_views=True)
+
+    def _apply(self, build_views):
+        """Submit the graph to the manager.
+
+        Returns a Future that resolves (with None) when the apply has finished, or holds the exception
+        if a request to the manager failed (it is printed as well).  The steps run one after the other,
+        each when the manager has answered the one before.  Two applies requested one after the other
+        are not serialized: their manager requests alternate in the order they were made.
+        """
+        done = AwaitableFuture()
         graph_nodes = []
         disconnectedNodes = []
         displays = set()
 
-        msg = QtWidgets.QMessageBox(parent=self)
-        msg.setText("Failed to submit graph! See status.")
+        def failedMessage():
+            # created only when needed: a widget kept alive by this chain's closures is destroyed at an
+            # arbitrary time by the cycle collector
+            msg = QtWidgets.QMessageBox(parent=self)
+            msg.setText("Failed to submit graph! See status.")
+            return msg
+
+        def fail(exc):
+            report_failure(exc)
+            done.set_exception(exc)
+
+        def step(fn):
+            """Make ``fn`` a manager callback whose exceptions end the apply."""
+
+            def run(result):
+                try:
+                    fn(result)
+                except Exception as exc:
+                    fail(exc)
+
+            return run
 
         # errors received before this apply are stale for AmiCli.get_graph_errors()
         self.chart._apply_seq = self.chart._message_seq
 
-        if self.chart.deleted_nodes:
-            deleted_nodes = list(self.chart.deleted_nodes)
-            await self.managerCall(lambda mgr: mgr.remove(deleted_nodes))
-            self.chart.deleted_nodes = []
+        deleted_nodes = list(self.chart.deleted_nodes)
 
-        # detect if the manager has no graph (e.g. from a purge on failure)
-        if await self.managerCall(lambda mgr: mgr.graphVersion) == 0:
-            # mark all the nodes as changed to force a resubmit of the whole graph
-            for name, node in self.chart._graph.nodes(data="node"):
-                if node is None:
-                    continue
-                node.changed = True
+        def remove_and_get_version(mgr):
+            if deleted_nodes:
+                mgr.remove(deleted_nodes)
+            return mgr.graphVersion
 
-            # reset reference counting on views
-            self.features.reset()
+        def build_and_add(version):
+            if deleted_nodes:
+                self.chart.deleted_nodes = []
 
-        changed_nodes = set()
-        failed_nodes = set()
-        seen = set()
+            # detect if the manager has no graph (e.g. from a purge on failure)
+            if version == 0:
+                # mark all the nodes as changed to force a resubmit of the whole graph
+                for name, node in self.chart._graph.nodes(data="node"):
+                    if node is None:
+                        continue
+                    node.changed = True
 
-        for name, gnode in self.chart._graph.nodes(data="node"):
-            if gnode is None or not gnode.enabled():
-                continue
+                # reset reference counting on views
+                self.features.reset()
 
-            if not gnode.hasInput():
-                disconnectedNodes.append(gnode)
-                continue
-            elif gnode.exception:
-                gnode.clearException()
-                gnode.recolor()
+            changed_nodes = set()
+            failed_nodes = set()
+            seen = set()
 
-            if gnode.changed and gnode not in changed_nodes:
-                changed_nodes.add(gnode)
-
-                if not hasattr(gnode, "to_operation"):
-                    if gnode.viewable() and gnode.viewed:
-                        displays.add(gnode)
-                    elif gnode.exportable():
-                        try:
-                            assert gnode.values["alias"]
-                        except AssertionError:
-                            gnode.setException("set alias!")
-                            self.chartWidget.updateStatus(f"{gnode.display_name()} set alias!", color="red")
-                            continue
-                        try:
-                            assert gnode.values["alias"] != gnode.input_vars()["In"]
-                        except AssertionError:
-                            gnode.setException("alias name cannot be same as input!")
-                            self.chartWidget.updateStatus(
-                                f"{gnode.display_name()} alias name cannot be same as input!", color="red"
-                            )
-                            continue
-                        displays.add(gnode)
-
+            for name, gnode in self.chart._graph.nodes(data="node"):
+                if gnode is None or not gnode.enabled():
                     continue
 
-                outputs = [name]
-                outputs.extend(nx.algorithms.dag.descendants(self.chart._graph, name))
+                if not gnode.hasInput():
+                    disconnectedNodes.append(gnode)
+                    continue
+                elif gnode.exception:
+                    gnode.clearException()
+                    gnode.recolor()
 
-                for output in outputs:
-                    gnode = self.chart._graph.nodes[output]
-                    node = gnode["node"]
+                if gnode.changed and gnode not in changed_nodes:
+                    changed_nodes.add(gnode)
 
-                    if hasattr(node, "to_operation") and node not in seen:
-                        try:
-                            nodes = node.to_operation(
-                                inputs=node.input_vars(),
-                                outputs=node.output_vars(),
-                                parent=node.name(),
-                                latched=node.latched,
-                                reset_on_run=node.reset_on_run,
-                            )
-                        except Exception as e:
-                            self.chartWidget.updateStatus(f"{node.display_name()} {e}!", color="red")
-                            printExc(f"{node.display_name()} raised exception! See console for stacktrace.")
-                            node.setException(str(e))
-                            failed_nodes.add(node)
-                            continue
+                    if not hasattr(gnode, "to_operation"):
+                        if gnode.viewable() and gnode.viewed:
+                            displays.add(gnode)
+                        elif gnode.exportable():
+                            try:
+                                assert gnode.values["alias"]
+                            except AssertionError:
+                                gnode.setException("set alias!")
+                                self.chartWidget.updateStatus(f"{gnode.display_name()} set alias!", color="red")
+                                continue
+                            try:
+                                assert gnode.values["alias"] != gnode.input_vars()["In"]
+                            except AssertionError:
+                                gnode.setException("alias name cannot be same as input!")
+                                self.chartWidget.updateStatus(
+                                    f"{gnode.display_name()} alias name cannot be same as input!", color="red"
+                                )
+                                continue
+                            displays.add(gnode)
 
-                        seen.add(node)
+                        continue
 
-                        if type(nodes) is list:
-                            graph_nodes.extend(nodes)
-                        else:
-                            graph_nodes.append(nodes)
+                    outputs = [name]
+                    outputs.extend(nx.algorithms.dag.descendants(self.chart._graph, name))
 
-                    if (node.viewable() or node.buffered()) and node.viewed:
-                        displays.add(node)
+                    for output in outputs:
+                        gnode = self.chart._graph.nodes[output]
+                        node = gnode["node"]
 
-        if disconnectedNodes:
-            for node in disconnectedNodes:
-                self.chartWidget.updateStatus(f"{node.display_name()} disconnected!", color="red")
-                node.setException("disconnected!")
-            msg.show()
-            return
+                        if hasattr(node, "to_operation") and node not in seen:
+                            try:
+                                nodes = node.to_operation(
+                                    inputs=node.input_vars(),
+                                    outputs=node.output_vars(),
+                                    parent=node.name(),
+                                    latched=node.latched,
+                                    reset_on_run=node.reset_on_run,
+                                )
+                            except Exception as e:
+                                self.chartWidget.updateStatus(f"{node.display_name()} {e}!", color="red")
+                                printExc(f"{node.display_name()} raised exception! See console for stacktrace.")
+                                node.setException(str(e))
+                                failed_nodes.add(node)
+                                continue
 
-        if failed_nodes:
-            self.chartWidget.updateStatus("failed to submit graph", color="red")
-            msg.exec()
-            return
+                            seen.add(node)
 
-        if graph_nodes:
-            await self.managerCall(lambda mgr: mgr.add(graph_nodes))
-            node_names = ", ".join(set(map(lambda node: node.parent, graph_nodes)))
-            self.chartWidget.updateStatus(f"Submitted {node_names}")
+                            if type(nodes) is list:
+                                graph_nodes.extend(nodes)
+                            else:
+                                graph_nodes.append(nodes)
 
-        node_names = ", ".join(set(map(lambda node: node.name(), displays)))
-        if displays and build_views:
-            self.chartWidget.updateStatus(f"Redisplaying {node_names}")
-            await asyncio.wrap_future(self.chartWidget.build_views(displays, export=True, redisplay=True))
+                        if (node.viewable() or node.buffered()) and node.viewed:
+                            displays.add(node)
 
-        for node in changed_nodes:
-            node.changed = False
+            if disconnectedNodes:
+                for node in disconnectedNodes:
+                    self.chartWidget.updateStatus(f"{node.display_name()} disconnected!", color="red")
+                    node.setException("disconnected!")
+                failedMessage().show()
+                done.set_result(None)
+                return
 
-        self.metadata = await self.managerCall(lambda mgr: mgr.metadata)
-        self.ui.setPendingClear()
-        version = str(await self.managerCall(lambda mgr: mgr.graphVersion))
-        state = self.chart.saveState()
-        self._topology_collector._cache = {
-            "nodes": state["nodes"],
-            "connects": state["connects"],
-        }
-        state = json.dumps(state, indent=2, separators=(",", ": "), sort_keys=False, cls=TypeEncoder)
+            if failed_nodes:
+                self.chartWidget.updateStatus("failed to submit graph", color="red")
+                failedMessage().exec()
+                done.set_result(None)
+                return
 
-        ts = datetime.now().strftime("%m%d%Y_%H%M%S")
-        with open(os.path.expanduser(f"~/.cache/ami/autosave_{ts}.fc"), "w") as f:
-            f.write(state)
-            f.write("\n")
+            def add(mgr):
+                if graph_nodes:
+                    mgr.add(graph_nodes)
 
-        self.graph_info.labels(self.chart.hutch, self.graph_name).info({"graph": state, "version": version})
-        self.graph_version.labels(self.chart.hutch, self.graph_name).set(version)
+            def added(_):
+                if graph_nodes:
+                    node_names = ", ".join(set(map(lambda node: node.parent, graph_nodes)))
+                    self.chartWidget.updateStatus(f"Submitted {node_names}")
 
-        if self.pvCtrlServer is not None:
-            self.pvCtrlServer.update_pvs(self.chart)
+                node_names = ", ".join(set(map(lambda node: node.name(), displays)))
+                if displays and build_views:
+                    self.chartWidget.updateStatus(f"Redisplaying {node_names}")
+                    views = self.chartWidget.build_views(displays, export=True, redisplay=True)
+                    views.add_done_callback(step(viewed))
+                    return
+
+                viewed(None)
+
+            def viewed(views):
+                if views is not None and views.exception() is not None:
+                    fail(views.exception())
+                    return
+
+                for node in changed_nodes:
+                    node.changed = False
+
+                self.manager.submit(lambda mgr: (mgr.metadata, mgr.graphVersion), on_done=step(finish), on_error=fail)
+
+            def finish(result):
+                self.metadata, version = result
+                version = str(version)
+                self.ui.setPendingClear()
+                state = self.chart.saveState()
+                self._topology_collector._cache = {
+                    "nodes": state["nodes"],
+                    "connects": state["connects"],
+                }
+                state = json.dumps(state, indent=2, separators=(",", ": "), sort_keys=False, cls=TypeEncoder)
+
+                ts = datetime.now().strftime("%m%d%Y_%H%M%S")
+                with open(os.path.expanduser(f"~/.cache/ami/autosave_{ts}.fc"), "w") as f:
+                    f.write(state)
+                    f.write("\n")
+
+                self.graph_info.labels(self.chart.hutch, self.graph_name).info({"graph": state, "version": version})
+                self.graph_version.labels(self.chart.hutch, self.graph_name).set(version)
+
+                if self.pvCtrlServer is not None:
+                    self.pvCtrlServer.update_pvs(self.chart)
+                done.set_result(None)
+
+            if graph_nodes:
+                self.manager.submit(add, on_done=step(added), on_error=fail)
+            else:
+                added(None)
+
+        self.manager.submit(remove_and_get_version, on_done=step(build_and_add), on_error=fail)
+        return done
 
     def openClicked(self):
         startDir = self.chart.filePath
@@ -3470,17 +3580,19 @@ class FlowchartCtrlWidget(QtWidgets.QWidget):
     def chartWidget(self):
         return self.chartWidget
 
-    @asyncSlot()
-    async def clear(self):
-        await self.managerCall(lambda mgr: mgr.destroy())
-        await self.chart.clear()
+    @QtCore.Slot()
+    def clear(self):
+        """Clear the editor at once and queue the manager's reset.  Returns a Future that resolves when
+        the manager has the empty plot list."""
+        self.submitToManager(lambda mgr: mgr.destroy())
+        self.chart.clear()
         self.chartWidget.clear()
         self.setCurrentFile(None)
         self.unsaved_changes = False
         self.chart.sigFileLoaded.emit(None)
         self.features = Features(self.graphCommHandler)
         plots = dict(self.features.plots)
-        await self.managerCall(lambda mgr: mgr.updatePlots(plots))
+        return self.submitToManager(lambda mgr: mgr.updatePlots(plots))
 
     def configureClicked(self):
         self.sourceConfigure.show()
@@ -3848,7 +3960,7 @@ class FlowchartWidget(dockarea.DockArea):
                 self.chart.sendToBroker(node.name(), msg)
                 node.created = True
 
-        done = concurrent.futures.Future()
+        done = AwaitableFuture()
 
         def fail(exc):
             done.set_exception(exc)
