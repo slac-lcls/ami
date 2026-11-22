@@ -1,12 +1,12 @@
-import asyncio
 import logging
 
 from p4p.nt import NTScalar
 from p4p.server import Server, StaticProvider
-from p4p.server.asyncio import SharedPV
+from p4p.server.thread import SharedPV
 
 from ami import LogConfig
 from ami.client import flowchart_messages as fcMsgs
+from ami.qt_dispatch import QtDispatcher
 
 logger = logging.getLogger(LogConfig.get_package_name(__name__))
 
@@ -27,19 +27,20 @@ _TYPE_TO_NT = {
 class _CtrlPutHandler:
     """PUT handler for a single node ctrl parameter PV.
 
-    p4p's asyncio SharedPV delivers put() via loop.call_soon_threadsafe() which,
-    in qasync, routes through a Qt signal back into the main thread.  We are
-    therefore always running in the Qt main thread and can call GUI APIs directly.
+    p4p's thread SharedPV runs put() on a p4p worker thread, NOT the Qt main thread.
+    put() only validates the value and answers the client; the GUI update is handed
+    to the main thread with the dispatcher.  The node is looked up by name when that
+    runs, so a node that was closed or replaced (File > Open) is never written to.
     """
 
-    def __init__(self, node, node_name, param, group, ptype, opts, chart):
-        self.node = node
+    def __init__(self, node_name, param, group, ptype, opts, chart, dispatcher):
         self.node_name = node_name
         self.param = param
         self.group = group
         self.ptype = ptype
         self.opts = opts
         self.chart = chart
+        self.dispatcher = dispatcher
 
     def put(self, pv, op):
         try:
@@ -49,10 +50,10 @@ class _CtrlPutHandler:
             # Post the new value so pvput/pvget see it before op.done() returns.
             pv.post(val)
             op.done()
-            # Direct GUI update — we are in the Qt main thread (see class docstring).
-            self._update_gui(val)
+            # The GUI update must run in the Qt main thread (see class docstring).
+            self.dispatcher.post(lambda: self._update_gui(val))
         except Exception as e:
-            logger.error("PvCtrlServer PUT error for %s.%s: %s", self.node.name(), self.param, e)
+            logger.error("PvCtrlServer PUT error for %s.%s: %s", self.node_name, self.param, e)
             op.done(error=str(e))
 
     def _validate(self, val):
@@ -77,7 +78,7 @@ class _CtrlPutHandler:
     def _update_gui(self, val):
         """Update the ctrl widget spinbox/checkbox/combo and mark the node changed.
 
-        Runs in the Qt main thread.  setState() fires sigStateChanged which triggers
+        Runs in the Qt main thread (posted by put()).  setState() fires sigStateChanged which triggers
         refreshStatePanel so the inspector panel updates automatically.  sigNodeChanged
         is emitted so the Apply button highlights green.
 
@@ -85,19 +86,33 @@ class _CtrlPutHandler:
         visible spinbox there stays in sync with the pvput value.
         """
         try:
+            node = self._find_node()
+            if node is None:
+                logger.warning("PvCtrlServer: node %s no longer exists, ignoring PUT to %s", self.node_name, self.param)
+                return
             state = {self.group: {self.param: val}} if self.group else {self.param: val}
             # setState calls setWidget → setValue, which fires valueChanged → sigChanged →
             # state_changed → update() (updates node.values) + sigStateChanged (updates panel).
-            self.node.stateGroup.setState(state)
-            if self.node.isChanged(True, False):
-                self.node.changed = True
-                self.chart.sigNodeChanged.emit(self.node)
+            node.stateGroup.setState(state)
+            if node.isChanged(True, False):
+                node.changed = True
+                self.chart.sigNodeChanged.emit(node)
             # Push to NodeProcess window if one is open for this node.
-            asyncio.ensure_future(self._push_to_node_process(state))
+            self._push_to_node_process(state)
         except Exception as e:
-            logger.error("PvCtrlServer GUI update error for %s.%s: %s", self.node.name(), self.param, e)
+            logger.error("PvCtrlServer GUI update error for %s.%s: %s", self.node_name, self.param, e)
 
-    async def _push_to_node_process(self, params):
+    def _find_node(self):
+        """The node currently in the graph under this name, or None."""
+        graph = self.chart._graph
+        if self.node_name not in graph:
+            return None
+        node = graph.nodes[self.node_name].get("node")
+        if node is None or getattr(node, "stateGroup", None) is None:
+            return None
+        return node
+
+    def _push_to_node_process(self, params):
         """Send NodeCtrlUpdate to a running NodeProcess so its ctrl window updates.
 
         The broker forwards the message only when a NodeProcess is alive for this node.
@@ -113,18 +128,20 @@ class _CtrlPutHandler:
 class _ApplyHandler:
     """PUT/RPC handler for the apply trigger PV.
 
-    Like _CtrlPutHandler, called in the Qt main thread via p4p asyncio → qasync.
-    asyncio.ensure_future() is safe here because the asyncio loop is running.
+    Like _CtrlPutHandler, called on a p4p worker thread.  The client is answered at
+    once; applyClicked() is posted to the Qt main thread (blocking here would hold up
+    every other PV, which share one p4p thread).
     """
 
-    def __init__(self, ctrl_widget):
+    def __init__(self, ctrl_widget, dispatcher):
         self.ctrl_widget = ctrl_widget
+        self.dispatcher = dispatcher
 
     def put(self, pv, op):
         try:
             pv.post(0)
             op.done()
-            self.ctrl_widget.applyClicked()
+            self.dispatcher.post(self.ctrl_widget.applyClicked)
         except Exception as e:
             logger.error("PvCtrlServer apply PUT error: %s", e)
             op.done(error=str(e))
@@ -132,7 +149,7 @@ class _ApplyHandler:
     def rpc(self, pv, op):
         try:
             op.done()
-            self.ctrl_widget.applyClicked()
+            self.dispatcher.post(self.ctrl_widget.applyClicked)
         except Exception as e:
             logger.error("PvCtrlServer apply RPC error: %s", e)
             op.done(error=str(e))
@@ -176,7 +193,8 @@ class PvCtrlServer:
        ``applyClicked()`` and push the new parameters to the running graph.
     """
 
-    def __init__(self, hutch, graph_name, ctrl_widget):
+    def __init__(self, hutch, graph_name, ctrl_widget, dispatcher=None):
+        self.dispatcher = dispatcher if dispatcher is not None else QtDispatcher()
         self.prefix = f"{hutch}:ami" if hutch else "ami"
         self.graph_name = graph_name
         self.ctrl_widget = ctrl_widget
@@ -245,7 +263,7 @@ class PvCtrlServer:
                 continue
             nt = NTScalar(_TYPE_TO_NT[ptype])
             if pv_name not in self.pvs:
-                handler = _CtrlPutHandler(node, node_name, param, group, ptype, opts, self.chart)
+                handler = _CtrlPutHandler(node_name, param, group, ptype, opts, self.chart, self.dispatcher)
                 pv = SharedPV(nt=nt, initial=cur_val, handler=_SharedPVHandler(put=handler.put))
                 self.provider.add(pv_name, pv)
                 self.pvs[pv_name] = pv
@@ -255,7 +273,7 @@ class PvCtrlServer:
 
         # Create the apply PV once any parameterised node exists
         if apply_name not in self.pvs and wanted:
-            apply_handler = _ApplyHandler(self.ctrl_widget)
+            apply_handler = _ApplyHandler(self.ctrl_widget, self.dispatcher)
             apply_pv = SharedPV(
                 nt=NTScalar("i"),
                 initial=0,

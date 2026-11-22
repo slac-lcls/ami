@@ -30,6 +30,10 @@ class QtDispatcher(QObject):
             logger.exception("Qt dispatcher exception")
             future.set_exception(e)
 
+    def post(self, fn):
+        """Call fn() in the Qt main thread without waiting. An exception is logged, not raised."""
+        self._execute.emit(fn, concurrent.futures.Future())
+
     def dispatch(self, fn, timeout=10):
         """
         Call fn() in Qt main thread. Blocks until complete.
