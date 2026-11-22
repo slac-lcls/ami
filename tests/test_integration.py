@@ -79,7 +79,7 @@ async def test_create_in_gui_save_execute_on_backend(qtbot, flowchart, start_ami
 
     # Step 4: Register Roi2D output for viewing on backend
     # This adds a Pick1 node to make the output available in features
-    await widget.graphCommHandler.view({"Roi2D.0.Out": "Roi2D.0"})
+    comm.view({"Roi2D.0.Out": "Roi2D.0"})
 
     # Step 5: Wait for graph to execute on backend
     start = time.time()

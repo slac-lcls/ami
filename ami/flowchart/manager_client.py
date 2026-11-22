@@ -59,7 +59,7 @@ def report_failed(future):
 
 class AwaitableFuture(concurrent.futures.Future):
     """A ``Future`` that can also be ``await``-ed from asyncio code.  Until the editor stops using
-    asyncio (step E) tests and ``Flowchart.run`` await the Futures that apply/load/clear return.  It
+    asyncio, the tests (still async until step E2) await the Futures that apply/load/clear return.  It
     resolves on the GUI thread; never wait for it there with ``result()``."""
 
     def __await__(self):
@@ -203,14 +203,17 @@ class ManagerClient(QtCore.QObject):
         elif not req.future.done():
             req.future.set_result(result)
 
-    def close(self, wait=True):
-        """Cancel the requests that have not started, let the running one finish (it is bounded by the
-        timeout) and stop the worker.  Safe to call more than once."""
+    def close(self, wait=True, cancel_pending=True):
+        """Stop the worker.  Requests that have not started are cancelled, unless ``cancel_pending`` is
+        false: then they still run, in order, before the worker stops (each is bounded by the timeout),
+        so a final request such as ``destroy`` can be queued behind the ones already waiting.  The running
+        request always finishes.  New submits are cancelled either way.  Safe to call more than once."""
         if self._closed:
             return
         self._closed = True
-        for req in self._worker.drain():
-            req.future.cancel()
+        if cancel_pending:
+            for req in self._worker.drain():
+                req.future.cancel()
         self._worker.put(_STOP)
         if wait:
             self._worker.wait()
@@ -241,5 +244,5 @@ class InlineManagerClient:
             future.set_result(result)
         return future
 
-    def close(self, wait=True):
+    def close(self, wait=True, cancel_pending=True):
         self._closed = True

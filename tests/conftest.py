@@ -601,7 +601,7 @@ async def flowchart(request, ami_backend, broker, dmypy):
         checkpoint_addr=broker.checkpoint_pub_addr,
     )
 
-    await fc.updateSources(init=True)
+    fc.receiveSources(timeout=30)
 
     yield (fc, broker)
 

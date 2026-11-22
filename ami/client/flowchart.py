@@ -20,7 +20,7 @@ from qtpy import QtCore, QtWidgets
 
 import ami.multiproc as mp
 from ami import LogConfig
-from ami.asyncqt import QEventLoop, asyncClose, asyncSlot
+from ami.asyncqt import QEventLoop, asyncSlot
 from ami.client import flowchart_messages as fcMsgs
 from ami.comm import ZMQ_TOPIC_DELIM
 from ami.flowchart.Flowchart import Flowchart
@@ -135,9 +135,6 @@ def run_editor_window(
     if THEME:
         _apply_theme(app, THEME)
 
-    loop = QEventLoop(app)
-    asyncio.set_event_loop(loop)
-
     win = EditorMainWindow()
     title = "AMI Client"
     if hutch:
@@ -171,25 +168,27 @@ def run_editor_window(
     fc.sigFileLoaded.connect(update_title)
     fc.sigFileSaved.connect(update_title)
 
-    with loop:
-        loop.run_until_complete(fc.updateSources(init=True))
+    # The first message from the manager lists the sources; the window needs them.
+    fc.receiveSources()
 
-        # Add flowchart control panel to the main window
-        win.setCentralWidget(fc.widget(win))
-        win.fc = fc  # Store reference for closeEvent
+    # Add flowchart control panel to the main window
+    win.setCentralWidget(fc.widget(win))
+    win.fc = fc  # Store reference for closeEvent
 
-        win.show()
+    win.show()
 
-        @asyncClose
-        async def cleanup():
-            # through the manager queue, so it comes after any request still waiting there
-            await fc.widget().managerCall(lambda mgr: mgr.destroy())
-            fc.widget().manager.close()
+    def cleanup():
+        fc.stopReceiving()
+        # through the manager queue, so it comes after any request still waiting there; close() waits
+        # for the queue to empty (each request is bounded by the manager timeout) and stops the worker
+        manager = fc.widget().manager
+        manager.submit(lambda mgr: mgr.destroy())
+        manager.close(cancel_pending=False)
 
-        app.aboutToQuit.connect(cleanup)
+    app.aboutToQuit.connect(cleanup)
 
-        loop.create_task(fc.run(load))
-        loop.run_forever()
+    fc.startReceiving(load)
+    app.exec()
 
     try:
         proc = subprocess.run(["dmypy", "--status-file", dmypy_file.name, "stop"])

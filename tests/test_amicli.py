@@ -93,7 +93,7 @@ def broker_module(ami_backend):
 
 
 @pytest.fixture(scope="module")
-def flowchart_module(ami_backend, broker_module, dmypy):
+def flowchart_module(qapp, ami_backend, broker_module, dmypy):
     """Module-scoped Flowchart - one for all tests in this file."""
     from ami.flowchart.Flowchart import Flowchart
 
@@ -105,21 +105,15 @@ def flowchart_module(ami_backend, broker_module, dmypy):
         checkpoint_addr=broker_module.checkpoint_pub_addr,
     )
 
-    # Run async updateSources in the broker's event loop
-    future = asyncio.run_coroutine_threadsafe(fc.updateSources(init=True), broker_module._test_loop)
-    future.result(timeout=10)
+    fc.receiveSources(timeout=30)
 
-    # updateState() receives checkpoints from NodeProcess subprocesses (ctrl/widget state,
+    # The checkpoint notifier receives checkpoints from NodeProcess subprocesses (ctrl/widget state,
     # render_plot screenshot replies); needed by any test that opens a node's display window.
-    # Must be created as a Task *on the broker loop* (not this thread), hence the wrapper.
-    async def _start_update_state():
-        return asyncio.ensure_future(fc.updateState())
-
-    state_task = asyncio.run_coroutine_threadsafe(_start_update_state(), broker_module._test_loop).result(timeout=10)
+    fc.startCheckpointNotifier()
 
     yield fc
 
-    broker_module._test_loop.call_soon_threadsafe(state_task.cancel)
+    fc.stopReceiving()
 
     # Unregister Prometheus metrics if the widget was created, otherwise they
     # leak into the global registry and cause "Duplicated timeseries" errors

@@ -12,7 +12,7 @@ from qtpy import QtCore, QtGui, QtWidgets
 from ami import LogConfig
 from ami.amicli import AmiCli
 from ami.client import flowchart_messages as fcMsgs
-from ami.comm import AsyncGraphCommHandler, GraphCommHandler
+from ami.comm import AutoView, GraphCommHandler
 from ami.flowchart.broker_send import send_to_broker
 from ami.flowchart.FlowchartGraphicsView import ViewManager
 from ami.flowchart.library import LIBRARY
@@ -52,12 +52,12 @@ try:
 except ImportError:
     HAS_PVCTRL = False
 
-import asyncio
 import collections
 import itertools as it
 import json
 import logging
 import os
+import pickle
 import re
 import socket
 import subprocess
@@ -69,7 +69,7 @@ import amitypes
 import networkx as nx
 import numpy as np
 import prometheus_client as pc
-import zmq.asyncio
+import zmq
 
 import ami.flowchart.Editor as EditorTemplate
 
@@ -115,19 +115,19 @@ class Flowchart(QtCore.QObject):
         self.graphmgr_addr = graphmgr_addr
         self.source_library = None
 
-        self.ctx = zmq.asyncio.Context()
-        # Plain (non-asyncio) context and socket: sends never wait, so they are done synchronously.
+        # Plain (non-asyncio) context: sends never wait, and receiving is driven by QSocketNotifiers
+        # (see startReceiving), so everything runs on the GUI thread.
         self.sync_ctx = zmq.Context()
         self.broker = self.sync_ctx.socket(zmq.PUB)  # used to create new node processes
         self.broker.connect(broker_addr)
         self.socks.append(self.broker)
 
-        self.graphinfo = self.ctx.socket(zmq.SUB)
+        self.graphinfo = self.sync_ctx.socket(zmq.SUB)
         self.graphinfo.setsockopt_string(zmq.SUBSCRIBE, "")
         self.graphinfo.connect(graphmgr_addr.info)
         self.socks.append(self.graphinfo)
 
-        self.checkpoint = self.ctx.socket(zmq.SUB)  # used to receive ctrlnode updates from processes
+        self.checkpoint = self.sync_ctx.socket(zmq.SUB)  # used to receive ctrlnode updates from processes
         self.checkpoint.setsockopt_string(zmq.SUBSCRIBE, "")
         self.checkpoint.connect(checkpoint_addr)
         self.socks.append(self.checkpoint)
@@ -154,6 +154,16 @@ class Flowchart(QtCore.QObject):
 
         self.configure = configure
 
+        self._notifiers = {}  # name -> QSocketNotifier, see startReceiving
+        self._draining = set()  # names of the sockets being drained right now
+        self._frames = {"checkpoint": [], "graphinfo": []}  # frames read but not yet a whole record
+        # event_rate bookkeeping (the number of workers comes from the manager)
+        self._num_workers = None
+        self._compiler_args_requested = False
+        self._events_this_round = None
+        self._total_events = None
+        self._last_round_time = None
+
     def __enter__(self):
         return self
 
@@ -161,14 +171,13 @@ class Flowchart(QtCore.QObject):
         self.close()
 
     def close(self):
+        self.stopReceiving()
         for sock in self.socks:
             sock.close(linger=0)
         if self._widget is not None:
             self._widget.manager.close()
-            self._widget.graphCommHandler.close()
             if self._widget.amicli is not None:
                 self._widget.amicli.graphCommHandler.close()
-        self.ctx.term()
         self.sync_ctx.term()
 
     def start_prometheus(self, port):
@@ -2772,135 +2781,168 @@ class Flowchart(QtCore.QObject):
         self._updateSubgraphLibraryUI()
         return done_future()
 
-    async def updateState(self):
+    def _processCheckpoint(self, msg):
+        """Handle one message from a node process (state, screenshot, widget reply or error)."""
+        if isinstance(msg, fcMsgs.NodeScreenshotReply):
+            self.widget().amicli.resolve_screenshot_request(msg.request_id, png=msg.png, error=msg.error)
+            return
+
+        if isinstance(msg, fcMsgs.NodeWidgetError):
+            self._handle_widget_error(msg)
+            return
+
+        if isinstance(msg, fcMsgs.NodeWidgetReply):
+            self.widget().amicli.resolve_widget_request(msg.request_id, result=msg.result, error=msg.error)
+            return
+
+        node_name = msg.name
+        new_node_state = msg.state
+
+        if node_name not in self._graph.nodes:
+            return
+
+        node = self._graph.nodes[node_name]["node"]
+        current_node_state = node.saveState()
+        restore_ctrl = False
+        restore_widget = False
+
+        if "ctrl" in new_node_state:
+            if current_node_state["ctrl"] != new_node_state["ctrl"]:
+                current_node_state["ctrl"] = new_node_state["ctrl"]
+                restore_ctrl = True
+
+        if "widget" in new_node_state:
+            if current_node_state["widget"] != new_node_state["widget"]:
+                restore_widget = True
+                current_node_state["widget"] = new_node_state["widget"]
+
+        if "geometry" in new_node_state:
+            node.geometry = QtCore.QByteArray.fromHex(bytes(new_node_state["geometry"], "ascii"))
+
+        if restore_ctrl or restore_widget:
+            node.blockSignals(True)
+            # geometry is managed separately above; exclude it here so that
+            # restoreState cannot overwrite the just-updated node.geometry
+            # with the stale value captured in current_node_state.
+            current_node_state.pop("geometry", None)
+            node.restoreState(current_node_state)
+            node.blockSignals(False)
+            if node.isChanged(restore_ctrl, restore_widget):
+                node.changed = True
+                self.sigNodeChanged.emit(node)
+
+        node.viewed = new_node_state["viewed"]
+
+        # Update state panel if this node is currently displayed
+        ctrl_widget = self.widget()
+        if ctrl_widget.chartWidget.current_displayed_node == node:
+            ctrl_widget.chartWidget.refreshStatePanel(node)
+
+    def _buildSourceLibrary(self, sources):
+        source_library = SourceLibrary()
+        for source, node_type in sources.items():
+            pth = []
+            if ":" in source:
+                for part in source.split(":")[:-1]:
+                    if pth:
+                        part = ":".join((pth[-1], part))
+                    pth.append(part)
+            elif "_" in source:
+                for part in source.split("_")[:-1]:
+                    if pth:
+                        part = "_".join((pth[-1], part))
+                    pth.append(part)
+            source_library.addNodeType(source, amitypes.loads(node_type), [pth])
+
+        self.source_library = source_library
+
+    def receiveSources(self, timeout=None):
+        """Block until the manager has sent the sources, and build the source library from them.
+
+        For start-up, before the window exists and before ``startReceiving``: the notifier and this must
+        not read the socket at the same time.  Other messages that arrive first (rates, warnings) are
+        dropped; nothing can show them yet and the workers send them again.  ``timeout`` is in seconds
+        (``None`` waits for ever); ``TimeoutError`` if the sources do not arrive.
+        """
+        deadline = None if timeout is None else time.time() + timeout
         while True:
-            await self.checkpoint.recv_string()
-            msg = await self.checkpoint.recv_pyobj()
-
-            if isinstance(msg, fcMsgs.NodeScreenshotReply):
-                self.widget().amicli.resolve_screenshot_request(msg.request_id, png=msg.png, error=msg.error)
+            wait = None if deadline is None else max(0, int((deadline - time.time()) * 1000))
+            record = self._takeRecord("graphinfo")
+            if record is None:
+                if not self.graphinfo.poll(wait, zmq.POLLIN):
+                    raise TimeoutError("the graph manager did not send the sources within %s s" % timeout)
+                self._frames["graphinfo"].extend(self.graphinfo.recv_multipart())
                 continue
-
-            if isinstance(msg, fcMsgs.NodeWidgetError):
-                self._handle_widget_error(msg)
+            try:
+                topic, _source, msg = self._decodeGraphinfo(record)
+            except Exception:
+                logger.exception("Failed to decode a graphinfo message")
                 continue
-
-            if isinstance(msg, fcMsgs.NodeWidgetReply):
-                self.widget().amicli.resolve_widget_request(msg.request_id, result=msg.result, error=msg.error)
-                continue
-
-            node_name = msg.name
-            new_node_state = msg.state
-
-            if node_name not in self._graph.nodes:
-                continue
-
-            node = self._graph.nodes[node_name]["node"]
-            current_node_state = node.saveState()
-            restore_ctrl = False
-            restore_widget = False
-
-            if "ctrl" in new_node_state:
-                if current_node_state["ctrl"] != new_node_state["ctrl"]:
-                    current_node_state["ctrl"] = new_node_state["ctrl"]
-                    restore_ctrl = True
-
-            if "widget" in new_node_state:
-                if current_node_state["widget"] != new_node_state["widget"]:
-                    restore_widget = True
-                    current_node_state["widget"] = new_node_state["widget"]
-
-            if "geometry" in new_node_state:
-                node.geometry = QtCore.QByteArray.fromHex(bytes(new_node_state["geometry"], "ascii"))
-
-            if restore_ctrl or restore_widget:
-                node.blockSignals(True)
-                # geometry is managed separately above; exclude it here so that
-                # restoreState cannot overwrite the just-updated node.geometry
-                # with the stale value captured in current_node_state.
-                current_node_state.pop("geometry", None)
-                node.restoreState(current_node_state)
-                node.blockSignals(False)
-                if node.isChanged(restore_ctrl, restore_widget):
-                    node.changed = True
-                    self.sigNodeChanged.emit(node)
-
-            node.viewed = new_node_state["viewed"]
-
-            # Update state panel if this node is currently displayed
-            ctrl_widget = self.widget()
-            if ctrl_widget.chartWidget.current_displayed_node == node:
-                ctrl_widget.chartWidget.refreshStatePanel(node)
-
-    async def updateSources(self, init=False):
-        num_workers = None
-
-        while True:
-            topic = await self.graphinfo.recv_string()
-            source = await self.graphinfo.recv_string()
-            msg = await self.graphinfo.recv_pyobj()
-
             if topic == "sources":
-                source_library = SourceLibrary()
-                for source, node_type in msg.items():
-                    pth = []
-                    if ":" in source:
-                        for part in source.split(":")[:-1]:
-                            if pth:
-                                part = ":".join((pth[-1], part))
-                            pth.append(part)
-                    elif "_" in source:
-                        for part in source.split("_")[:-1]:
-                            if pth:
-                                part = "_".join((pth[-1], part))
-                            pth.append(part)
-                    source_library.addNodeType(source, amitypes.loads(node_type), [pth])
+                self._buildSourceLibrary(msg)
+                return
 
-                self.source_library = source_library
+    def _processGraphinfo(self, topic, source, msg):
+        """Handle one message from the manager (sources, event rates, warnings, errors)."""
+        if topic == "sources":
+            self._buildSourceLibrary(msg)
 
-                if init:
-                    break
+            ctrl = self.widget()
+            tree = ctrl.ui.source_tree
+            ctrl.ui.clear_model(tree)
+            ctrl.ui.create_model(ctrl.ui.source_tree, self.source_library.getLabelTree(), typ="SourceTree")
 
-                ctrl = self.widget()
-                tree = ctrl.ui.source_tree
-                ctrl.ui.clear_model(tree)
-                ctrl.ui.create_model(ctrl.ui.source_tree, self.source_library.getLabelTree(), typ="SourceTree")
+            ctrl.chartWidget.updateStatus("Updated sources.")
 
-                ctrl.chartWidget.updateStatus("Updated sources.")
+        elif topic == "event_rate":
+            self._handleEventRate(source, msg)
+        elif topic in ("warning", "error"):
+            try:
+                self._handle_info_message(topic, source, msg)
+            except Exception:
+                # Never let one bad message stop the others (this socket also carries sources/rates)
+                logger.exception(f"Failed to handle {topic} message from {source}: {msg}")
 
-            elif topic == "event_rate":
-                if num_workers is None:
-                    ctrl = self.widget()
-                    compiler_args = await ctrl.managerCall(lambda mgr: mgr.compilerArgs)
-                    num_workers = compiler_args["num_workers"]
-                    events_this_round = [None] * num_workers
-                    total_events = [None] * num_workers
-                    last_round_time = time.time()
+    def _handleEventRate(self, source, msg):
+        ctrl = self.widget()
+        if self._num_workers is None:
+            # Rate messages are skipped until the manager has told us how many workers there are.
+            if not self._compiler_args_requested:
+                self._compiler_args_requested = True
+                ctrl.manager.submit(
+                    lambda mgr: mgr.compilerArgs,
+                    on_done=self._setNumWorkers,
+                    on_error=self._compilerArgsFailed,
+                )
+            return
 
-                if ctrl.graph_name not in msg:
-                    continue
-                time_per_event = msg[ctrl.graph_name]
-                worker = int(re.search(r"(\d)+", source).group())
-                events_this_round[worker] = len(time_per_event)
-                total_events[worker] = msg["num_events"]
+        if ctrl.graph_name not in msg:
+            return
+        time_per_event = msg[ctrl.graph_name]
+        worker = int(re.search(r"(\d)+", source).group())
+        self._events_this_round[worker] = len(time_per_event)
+        self._total_events[worker] = msg["num_events"]
 
-                if all(v is not None for v in events_this_round):
-                    now = time.time()
-                    elapsed = now - last_round_time
-                    total_events_this_round = sum(events_this_round)
-                    events_per_second = int(total_events_this_round / elapsed) if elapsed > 0 else 0
-                    total_num_events = int(np.sum(total_events))
-                    ctrl = self.widget()
-                    ctrl.ui.rateLbl.setText(f"Num Events: {total_num_events} Total Events/Sec: {events_per_second}")
-                    events_this_round = [None] * num_workers
-                    total_events = [None] * num_workers
-                    last_round_time = now
-            elif topic in ("warning", "error"):
-                try:
-                    self._handle_info_message(topic, source, msg)
-                except Exception:
-                    # Never let one bad message kill the info loop (it also carries sources/rates)
-                    logger.exception(f"Failed to handle {topic} message from {source}: {msg}")
+        if all(v is not None for v in self._events_this_round):
+            now = time.time()
+            elapsed = now - self._last_round_time
+            total_events_this_round = sum(self._events_this_round)
+            events_per_second = int(total_events_this_round / elapsed) if elapsed > 0 else 0
+            total_num_events = int(np.sum(self._total_events))
+            ctrl.ui.rateLbl.setText(f"Num Events: {total_num_events} Total Events/Sec: {events_per_second}")
+            self._events_this_round = [None] * self._num_workers
+            self._total_events = [None] * self._num_workers
+            self._last_round_time = now
+
+    def _setNumWorkers(self, compiler_args):
+        self._num_workers = compiler_args["num_workers"]
+        self._events_this_round = [None] * self._num_workers
+        self._total_events = [None] * self._num_workers
+        self._last_round_time = time.time()
+
+    def _compilerArgsFailed(self, exc):
+        logger.warning("Could not get the number of workers from the graph manager: %r", exc)
+        self._compiler_args_requested = False  # the next rate message asks again
 
     def _resolve_message_node(self, msg):
         """Map an exception's internal networkfox node_name to the GUI node, or None."""
@@ -3022,13 +3064,108 @@ class Flowchart(QtCore.QObject):
         ctrl.chartWidget.updateStatus(f"ERROR: {label}: {msg.message}", color="red")
         logger.error(f"{label}: {msg.message}")
 
-    async def run(self, load=None):
-        tasks = [asyncio.create_task(self.updateState()), asyncio.create_task(self.updateSources())]
+    @staticmethod
+    def _decodeCheckpoint(frames):
+        # [topic, pickled message]; the topic is only there for the PUB/SUB subscription
+        return pickle.loads(frames[-1])
 
+    @staticmethod
+    def _decodeGraphinfo(frames):
+        # [topic, source, pickled message]
+        topic, source, msg = frames
+        return topic.decode(), source.decode(), pickle.loads(msg)
+
+    # frames per record: [topic, pickled message] and [topic, source, pickled message]
+    _RECORD_FRAMES = {"checkpoint": 2, "graphinfo": 3}
+
+    def _takeRecord(self, name):
+        """The next whole record from the frames read so far, or None.
+
+        Records are cut from the stream of frames, whatever the message boundaries are: the manager sends
+        a graphinfo record as one multipart message, but the message broker republishes a checkpoint as
+        two single-frame messages (topic, then body), which the old ``recv_string`` + ``recv_pyobj`` read
+        in turn.  Reading by frames handles both, and keeps working if the broker starts to use SNDMORE.
+        """
+        frames = self._frames[name]
+        n = self._RECORD_FRAMES[name]
+        if len(frames) < n:
+            return None
+        record = frames[:n]
+        del frames[:n]
+        return record
+
+    def _drain(self, name, sock, process):
+        """Read every message that is waiting on ``sock`` and ``process(record)`` each whole record.
+
+        A zmq socket's file descriptor is edge-triggered: it signals once when the socket becomes readable,
+        not once per message, so all the waiting messages must be read now (``EVENTS`` is what re-arms it).
+        An exception in one record is logged and does not stop the others.  A nested event loop inside
+        ``process`` (a dialog) must not drain recursively; the outer loop picks up what arrived meanwhile.
+        """
+        if name in self._draining:
+            return
+        self._draining.add(name)
+        try:
+            while True:
+                record = self._takeRecord(name)
+                if record is None:
+                    if not sock.get(zmq.EVENTS) & zmq.POLLIN:
+                        break
+                    try:
+                        self._frames[name].extend(sock.recv_multipart(zmq.NOBLOCK))
+                    except zmq.Again:
+                        break
+                    continue
+                try:
+                    process(record)
+                except Exception:
+                    logger.exception("Failed to handle a %s message", name)
+        finally:
+            self._draining.discard(name)
+
+    def _handleCheckpoint(self):
+        # a slot of QSocketNotifier.activated: no parameters (see the slot rule in the plan)
+        self._drain(
+            "checkpoint", self.checkpoint, lambda frames: self._processCheckpoint(self._decodeCheckpoint(frames))
+        )
+
+    def _handleGraphinfo(self):
+        self._drain("graphinfo", self.graphinfo, lambda frames: self._processGraphinfo(*self._decodeGraphinfo(frames)))
+
+    def _armNotifier(self, name, sock, handler):
+        if name in self._notifiers:
+            return
+        notifier = QtCore.QSocketNotifier(sock.get(zmq.FD), QtCore.QSocketNotifier.Type.Read)
+        notifier.activated.connect(handler)
+        self._notifiers[name] = notifier
+        # messages that arrived before the notifier existed would never wake it
+        handler()
+
+    def startCheckpointNotifier(self):
+        """Handle the messages the node processes send back (state, screenshots, widget replies)."""
+        self._armNotifier("checkpoint", self.checkpoint, self._handleCheckpoint)
+
+    def startGraphinfoNotifier(self):
+        """Handle the manager's messages (new sources, event rates, warnings and errors)."""
+        self._armNotifier("graphinfo", self.graphinfo, self._handleGraphinfo)
+
+    def startReceiving(self, load=None):
+        """Start handling both sockets from the Qt event loop, then load ``load`` if given.
+        Replaces ``run`` (the asyncio tasks)."""
+        self.startCheckpointNotifier()
+        self.startGraphinfoNotifier()
         if load:
-            await self.loadFile(load)
+            try:
+                self.loadFile(load)
+            except Exception:
+                # as before, a file that cannot be loaded does not stop the editor
+                logger.exception("Failed to load %s", load)
 
-        await asyncio.gather(*tasks)
+    def stopReceiving(self):
+        """Stop the notifiers; must come before the sockets are closed."""
+        for notifier in self._notifiers.values():
+            notifier.setEnabled(False)
+        self._notifiers.clear()
 
 
 class GraphTopologyCollector:
@@ -3104,7 +3241,6 @@ class FlowchartCtrlWidget(QtWidgets.QWidget):
         super().__init__(parent)
 
         self.graphmgr_addr = graphmgr_addr
-        self.graphCommHandler = AsyncGraphCommHandler(graphmgr_addr.name, graphmgr_addr.comm, ctx=chart.ctx)
         # Every request to the graph manager goes through this one queue, in the order it was submitted.
         # No timeout: a request waits for the manager as long as it takes.
         self.manager = ManagerClient(lambda: GraphCommHandler(graphmgr_addr.name, graphmgr_addr.comm), timeout=None)
@@ -3124,7 +3260,7 @@ class FlowchartCtrlWidget(QtWidgets.QWidget):
         self.chart.sigNodeChanged.connect(self.ui.setPending)
         self.chart.sigNodeChanged.connect(self._markUnsaved)
 
-        self.features = Features(self.graphCommHandler)
+        self.features = Features()
 
         self.ui.actionNew.triggered.connect(self.clear)
         self.ui.actionOpen.triggered.connect(self.openClicked)
@@ -3193,11 +3329,6 @@ class FlowchartCtrlWidget(QtWidgets.QWidget):
         """Queue ``fn(handler)`` for the graph manager; ``on_done(result)`` runs later on the GUI thread.
         A failure prints its traceback (like an exception in a Qt slot)."""
         return self.manager.submit(fn, on_done=on_done, on_error=report_failure)
-
-    async def managerCall(self, fn):
-        """Queue ``fn(handler)`` for the graph manager and wait for its result.  For code that still
-        awaits; an error is raised here instead of being printed."""
-        return await asyncio.wrap_future(self.manager.submit(fn, on_error=lambda exc: None))
 
     @QtCore.Slot()
     def applyClicked(self):
@@ -3590,7 +3721,7 @@ class FlowchartCtrlWidget(QtWidgets.QWidget):
         self.setCurrentFile(None)
         self.unsaved_changes = False
         self.chart.sigFileLoaded.emit(None)
-        self.features = Features(self.graphCommHandler)
+        self.features = Features()
         plots = dict(self.features.plots)
         return self.submitToManager(lambda mgr: mgr.updatePlots(plots))
 
@@ -3851,8 +3982,7 @@ class FlowchartWidget(dockarea.DockArea):
 
         The node windows are told straight away; the manager requests (exports, views, plots) are queued.
         Returns a ``concurrent.futures.Future`` that resolves once the manager has the new plots.  It
-        resolves on the GUI thread, so never wait for it there; use ``asyncio.wrap_future`` or
-        ``add_done_callback``.
+        resolves on the GUI thread, so never wait for it there; use ``add_done_callback``.
         """
         views = {}
         display_args = []
@@ -4198,18 +4328,17 @@ class FlowchartWidget(dockarea.DockArea):
 
 class Features(object):
 
-    def __init__(self, graphCommHandler):
+    def __init__(self):
         self.features_count = collections.defaultdict(set)
         self.features = {}
         self.plots = {}
-        self.graphCommHandler = graphCommHandler
 
     def get(self, name, in_var):
         if in_var in self.features:
             topic = self.features[in_var]
             new = False
         else:
-            topic = self.graphCommHandler.auto(in_var)
+            topic = AutoView.mangle(in_var)
             self.features[in_var] = topic
             new = True
 

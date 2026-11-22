@@ -144,6 +144,44 @@ def test_close_cancels_pending_and_stops_thread(qtbot, made):
     c.close()  # idempotent
 
 
+def test_close_without_cancel_pending_runs_queued_requests_in_order(qtbot):
+    handlers = []
+
+    def factory():
+        handlers.append(FakeHandler())
+        return handlers[0]
+
+    c = ManagerClient(factory)
+    started = threading.Event()
+    release = threading.Event()
+
+    def slow(h):
+        started.set()
+        release.wait(5)
+        return "slow"
+
+    running = c.submit(slow)
+    queued = [c.submit(lambda h, i=i: h.work(i)) for i in range(3)]
+    assert started.wait(5)
+    threading.Timer(0.2, release.set).start()
+    c.close(cancel_pending=False)  # waits for the running one AND the queued ones
+    assert not c._worker.isRunning()
+    assert handlers[0].calls == [0, 1, 2]
+    assert not any(q.cancelled() for q in queued)
+    for f in [running] + queued:
+        qtbot.waitUntil(f.done, timeout=5000)
+    assert [q.result() for q in queued] == [0, 2, 4]
+    # still closed to new requests
+    assert c.submit(lambda h: h.work(9)).cancelled()
+    assert handlers[0].calls == [0, 1, 2]
+
+
+def test_inline_client_close_accepts_cancel_pending():
+    c = InlineManagerClient(FakeHandler())
+    c.close(cancel_pending=False)
+    assert c.submit(lambda h: h.work(1)).cancelled()
+
+
 def test_failing_handler_factory_is_reported_per_request(qtbot):
     attempts = []
 
