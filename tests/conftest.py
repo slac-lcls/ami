@@ -530,8 +530,9 @@ def broker(ami_backend):
 
         # Schedule the cancellation and wait for it to complete
         # This properly awaits all tasks instead of guessing with sleep()
-        future = asyncio.run_coroutine_threadsafe(cancel_all_tasks(), broker_loop)
-        future.result(timeout=2)  # Wait up to 2 seconds for graceful shutdown
+        # (cancelling mb.run() ends run_until_complete and stops the loop, so this future usually never
+        # resolves: wait for the thread, which ends as soon as the loop stops, not for the future)
+        asyncio.run_coroutine_threadsafe(cancel_all_tasks(), broker_loop)
 
         # Wait for the thread to finish (with timeout)
         broker_thread.join(timeout=2)
