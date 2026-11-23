@@ -13,7 +13,6 @@ import tempfile
 import dill
 import numpy as np
 import pytest
-import pytest_asyncio
 
 # Disable MCP server before any AMI imports. The MCP server thread leaks
 # across tests and can deadlock at interpreter shutdown (zmq context
@@ -606,8 +605,8 @@ def dmypy():
         subprocess.run(["dmypy", "--status-file", dmypy_file.name, "kill"])
 
 
-@pytest_asyncio.fixture(scope="function")
-async def flowchart(request, ami_backend, broker, dmypy):
+@pytest.fixture(scope="function")
+def flowchart(request, ami_backend, broker, dmypy):
     """
     Creates a new Flowchart instance for each test, connected to the
     session-scoped AMI backend.

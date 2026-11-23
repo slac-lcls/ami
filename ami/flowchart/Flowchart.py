@@ -18,7 +18,7 @@ from ami.flowchart.FlowchartGraphicsView import ViewManager
 from ami.flowchart.library import LIBRARY
 from ami.flowchart.library.common import CtrlNode, SourceNode
 from ami.flowchart.library.Editors import STYLE
-from ami.flowchart.manager_client import AwaitableFuture, ManagerClient, done_future, report_failed, report_failure
+from ami.flowchart.manager_client import ManagerClient, done_future, report_failed, report_failure
 from ami.flowchart.Node import Node, NodeGraphicsItem, find_free_pos, find_nearest
 from ami.flowchart.NodeLibrary import SourceLibrary
 from ami.flowchart.SourceConfiguration import SourceConfiguration
@@ -53,6 +53,7 @@ except ImportError:
     HAS_PVCTRL = False
 
 import collections
+import concurrent.futures
 import itertools as it
 import json
 import logging
@@ -2379,7 +2380,7 @@ class Flowchart(QtCore.QObject):
         if not views:
             return ctrl.applyClicked()
 
-        done = AwaitableFuture()
+        done = concurrent.futures.Future()
 
         def apply(_):
             ctrl.applyClicked().add_done_callback(lambda f: _forward(f, done))
@@ -2665,7 +2666,7 @@ class Flowchart(QtCore.QObject):
         self.restoreState(state)
         self.viewBox().autoRange()
         self.sigFileLoaded.emit(fileName)
-        done = AwaitableFuture()
+        done = concurrent.futures.Future()
 
         def applied(applied_future):
             if applied_future.cancelled() or applied_future.exception() is not None:
@@ -3345,7 +3346,7 @@ class FlowchartCtrlWidget(QtWidgets.QWidget):
         each when the manager has answered the one before.  Two applies requested one after the other
         are not serialized: their manager requests alternate in the order they were made.
         """
-        done = AwaitableFuture()
+        done = concurrent.futures.Future()
         graph_nodes = []
         disconnectedNodes = []
         displays = set()
@@ -4090,7 +4091,7 @@ class FlowchartWidget(dockarea.DockArea):
                 self.chart.sendToBroker(node.name(), msg)
                 node.created = True
 
-        done = AwaitableFuture()
+        done = concurrent.futures.Future()
 
         def fail(exc):
             done.set_exception(exc)

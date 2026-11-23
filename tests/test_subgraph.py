@@ -11,14 +11,11 @@ view yet. Tests also avoid operations that trigger ZMQ messaging (like close())
 as these can cause event loop issues in the test environment.
 """
 
-import asyncio
-
 import pytest
 
 
-@pytest.mark.asyncio
 @pytest.mark.parametrize("flowchart", ["static"], indirect=True)
-async def test_make_subgraph_from_selection(qtbot, flowchart):
+def test_make_subgraph_from_selection(qtbot, flowchart):
     """Test creating a visual-only subgraph from selected nodes (isolated node, no boundary connections)."""
     fc, _ = flowchart
     qtbot.addWidget(fc.widget())  # Ensure widget is created
@@ -32,13 +29,9 @@ async def test_make_subgraph_from_selection(qtbot, flowchart):
     roi_node = all_nodes[roi_nodes[-1]]
     roi_node_name = roi_node.name()
 
-    await asyncio.sleep(0.1)
-
     # Create subgraph from isolated Roi2D node (no boundary connections)
     subgraph_name = "test_subgraph"
     fc.makeSubgraphFromSelection(nodes=[roi_node], name=subgraph_name, description="Test subgraph")
-
-    await asyncio.sleep(0.1)
 
     # Verify subgraph metadata exists
     assert subgraph_name in fc._subgraphs
@@ -67,9 +60,8 @@ async def test_make_subgraph_from_selection(qtbot, flowchart):
     assert roi_node_name in fc._graph.nodes()
 
 
-@pytest.mark.asyncio
 @pytest.mark.parametrize("flowchart", ["static"], indirect=True)
-async def test_subgraph_metadata_structure(qtbot, flowchart):
+def test_subgraph_metadata_structure(qtbot, flowchart):
     """Test that subgraph metadata has the expected structure."""
     fc, _ = flowchart
     qtbot.addWidget(fc.widget())
@@ -81,13 +73,9 @@ async def test_subgraph_metadata_structure(qtbot, flowchart):
     roi_nodes = [n for n in all_nodes.keys() if n.startswith("Roi2D.")]
     roi_node = all_nodes[roi_nodes[-1]]
 
-    await asyncio.sleep(0.1)
-
     # Create subgraph
     subgraph_name = "test_subgraph"
     fc.makeSubgraphFromSelection(nodes=[roi_node], name=subgraph_name, description="Test description")
-
-    await asyncio.sleep(0.1)
 
     # Verify subgraph metadata structure
     sg_data = fc._subgraphs[subgraph_name]
@@ -108,9 +96,8 @@ async def test_subgraph_metadata_structure(qtbot, flowchart):
     assert sg_data["description"] == "Test description"
 
 
-@pytest.mark.asyncio
 @pytest.mark.parametrize("flowchart", ["static"], indirect=True)
-async def test_subgraph_placeholder_is_visual_only(qtbot, flowchart):
+def test_subgraph_placeholder_is_visual_only(qtbot, flowchart):
     """Test that subgraph placeholder is marked as visual-only and not added to computation graph."""
     fc, _ = flowchart
     qtbot.addWidget(fc.widget())
@@ -122,13 +109,9 @@ async def test_subgraph_placeholder_is_visual_only(qtbot, flowchart):
     roi_nodes = [n for n in all_nodes.keys() if n.startswith("Roi2D.")]
     roi_node = all_nodes[roi_nodes[-1]]
 
-    await asyncio.sleep(0.1)
-
     # Create subgraph
     subgraph_name = "test_subgraph"
     fc.makeSubgraphFromSelection(nodes=[roi_node], name=subgraph_name, description="Test")
-
-    await asyncio.sleep(0.1)
 
     sg_data = fc._subgraphs[subgraph_name]
     placeholder = sg_data["placeholder"]
@@ -145,9 +128,8 @@ async def test_subgraph_placeholder_is_visual_only(qtbot, flowchart):
     assert roi_node.name() in fc._graph.nodes()
 
 
-@pytest.mark.asyncio
 @pytest.mark.parametrize("flowchart", ["static"], indirect=True)
-async def test_subgraph_helper_nodes(qtbot, flowchart):
+def test_subgraph_helper_nodes(qtbot, flowchart):
     """Test that SubgraphInput and SubgraphOutput helper nodes are created correctly."""
     fc, _ = flowchart
     qtbot.addWidget(fc.widget())
@@ -159,13 +141,9 @@ async def test_subgraph_helper_nodes(qtbot, flowchart):
     roi_nodes = [n for n in all_nodes.keys() if n.startswith("Roi2D.")]
     roi_node = all_nodes[roi_nodes[-1]]
 
-    await asyncio.sleep(0.1)
-
     # Create subgraph
     subgraph_name = "test_subgraph"
     fc.makeSubgraphFromSelection(nodes=[roi_node], name=subgraph_name, description="Test")
-
-    await asyncio.sleep(0.1)
 
     sg_data = fc._subgraphs[subgraph_name]
     placeholder = sg_data["placeholder"]
@@ -187,9 +165,8 @@ async def test_subgraph_helper_nodes(qtbot, flowchart):
     assert sg_outputs.rootNode == placeholder
 
 
-@pytest.mark.asyncio
 @pytest.mark.parametrize("flowchart", ["static"], indirect=True)
-async def test_subgraph_with_multiple_nodes(qtbot, flowchart):
+def test_subgraph_with_multiple_nodes(qtbot, flowchart):
     """Test creating a subgraph with multiple internally-connected nodes."""
     fc, _ = flowchart
     qtbot.addWidget(fc.widget())
@@ -216,15 +193,11 @@ async def test_subgraph_with_multiple_nodes(qtbot, flowchart):
     bin_in = bin_node._inputs["In"]
     proj_out().connectTo(bin_in())
 
-    await asyncio.sleep(0.1)
-
     # Create subgraph with all three nodes
     subgraph_name = "test_subgraph"
     fc.makeSubgraphFromSelection(
         nodes=[roi_node, proj_node, bin_node], name=subgraph_name, description="Multi-node subgraph"
     )
-
-    await asyncio.sleep(0.1)
 
     # Verify subgraph contains all three nodes
     sg_data = fc._subgraphs[subgraph_name]
@@ -237,9 +210,8 @@ async def test_subgraph_with_multiple_nodes(qtbot, flowchart):
     assert len(sg_data["boundary_connections"]) == 0
 
 
-@pytest.mark.asyncio
 @pytest.mark.parametrize("flowchart", ["static"], indirect=True)
-async def test_import_subgraph(qtbot, flowchart):
+def test_import_subgraph(qtbot, flowchart):
     """Test importing a subgraph from exported state dict."""
     import json
     import os
@@ -356,13 +328,9 @@ async def test_import_subgraph(qtbot, flowchart):
             break
     assert has_nonzero_pos
 
-    # Final sleep to drain pending coroutines
-    await asyncio.sleep(0.2)
 
-
-@pytest.mark.asyncio
 @pytest.mark.parametrize("flowchart", ["static"], indirect=True)
-async def test_import_subgraph_unique_naming(qtbot, flowchart):
+def test_import_subgraph_unique_naming(qtbot, flowchart):
     """Test importing the same subgraph twice creates unique names."""
     import json
     import os
@@ -418,9 +386,6 @@ async def test_import_subgraph_unique_naming(qtbot, flowchart):
     # 4. Both subgraphs have 3 nodes each
     assert len(fc._subgraphs[sg_names[0]]["nodes"]) == 3
     assert len(fc._subgraphs[sg_names[1]]["nodes"]) == 3
-
-    # Final sleep to drain pending coroutines
-    await asyncio.sleep(0.2)
 
 
 # @pytest.mark.asyncio
@@ -497,9 +462,8 @@ async def test_import_subgraph_unique_naming(qtbot, flowchart):
 #     await asyncio.sleep(0.5)
 
 
-@pytest.mark.asyncio
 @pytest.mark.parametrize("flowchart", ["static"], indirect=True)
-async def test_export_import_roundtrip(qtbot, flowchart):
+def test_export_import_roundtrip(qtbot, flowchart):
     """Test exporting and importing a subgraph (manual construction to avoid dialog)."""
     fc, _ = flowchart
     qtbot.addWidget(fc.widget())
@@ -518,8 +482,6 @@ async def test_export_import_roundtrip(qtbot, flowchart):
     roi_out = roi_node._outputs["Out"]
     proj_in = proj_node._inputs["In"]
     roi_out().connectTo(proj_in())
-
-    await asyncio.sleep(0.1)
 
     # 3. Create subgraph
     fc.makeSubgraphFromSelection(nodes=[roi_node, proj_node], name="roundtrip_sg", description="Roundtrip test")
@@ -564,13 +526,9 @@ async def test_export_import_roundtrip(qtbot, flowchart):
     imported_sg_data = fc._subgraphs[imported_sg_names[0]]
     assert len(imported_sg_data["nodes"]) == 2
 
-    # Final sleep to drain pending coroutines (longer for import async operations)
-    await asyncio.sleep(0.5)
 
-
-@pytest.mark.asyncio
 @pytest.mark.parametrize("flowchart", ["static"], indirect=True)
-async def test_clear_clears_library(qtbot, flowchart):
+def test_clear_clears_library(qtbot, flowchart):
     """Test that clearing the flowchart also clears the subgraph library."""
     fc, _ = flowchart
     qtbot.addWidget(fc.widget())
@@ -588,11 +546,10 @@ async def test_clear_clears_library(qtbot, flowchart):
     assert fc.subgraph_library.hasSubgraph("test_lib_sg") is True
 
     # 3. Call clear
-    await fc.clear()
+    fc.clear()
 
     # Need to wait for Qt event processing after clear
     qtbot.wait(100)
-    await asyncio.sleep(0.1)
 
     # 4. Verify library is empty
     assert len(fc.subgraph_library.getNames()) == 0
@@ -600,13 +557,9 @@ async def test_clear_clears_library(qtbot, flowchart):
     # 5. Verify fc._subgraphs is empty
     assert len(fc._subgraphs) == 0
 
-    # Final sleep to drain pending coroutines (longer for clear async operations)
-    await asyncio.sleep(0.5)
 
-
-@pytest.mark.asyncio
 @pytest.mark.parametrize("flowchart", ["static"], indirect=True)
-async def test_add_node_to_subgraph_updates_tracking(qtbot, flowchart):
+def test_add_node_to_subgraph_updates_tracking(qtbot, flowchart):
     """Test that adding a node while in subgraph view updates tracking."""
     fc, _ = flowchart
     qtbot.addWidget(fc.widget())
@@ -649,6 +602,3 @@ async def test_add_node_to_subgraph_updates_tracking(qtbot, flowchart):
 
     # 11. Switch back
     fc.viewManager().displayView(name="root")
-
-    # Final sleep to drain pending coroutines
-    await asyncio.sleep(0.2)

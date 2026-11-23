@@ -1,4 +1,3 @@
-import asyncio
 import os
 import time
 
@@ -48,9 +47,8 @@ def test_broker_sub(broker):
     ctx.destroy()
 
 
-@pytest.mark.asyncio
 @pytest.mark.parametrize("flowchart", ["static"], indirect=True)
-async def test_sources(qtbot, flowchart):
+def test_sources(qtbot, flowchart):
     fc, _ = flowchart
     source_library = fc.source_library
 
@@ -80,20 +78,17 @@ async def test_sources(qtbot, flowchart):
         pass
 
 
-@pytest.mark.asyncio
 @pytest.mark.parametrize("flowchart", ["static"], indirect=True)
-async def test_create_single_node(qtbot, flowchart):
+def test_create_single_node(qtbot, flowchart):
     """Test creating a single node in GUI."""
     fc, _ = flowchart
     qtbot.addWidget(fc.widget())  # Ensure widget is created
     fc.createNode("Projection")
-    await asyncio.sleep(0.1)
     assert "Projection.0" in fc.nodes(data="node")
 
 
-@pytest.mark.asyncio
 @pytest.mark.parametrize("flowchart", ["static"], indirect=True)
-async def test_connect_nodes(qtbot, flowchart):
+def test_connect_nodes(qtbot, flowchart):
     """Test connecting two nodes via terminals."""
     fc, _ = flowchart
     qtbot.addWidget(fc.widget())  # Ensure widget is created
@@ -122,23 +117,18 @@ async def test_connect_nodes(qtbot, flowchart):
     roi_in = roi_node._inputs["In"]
     cspad_out().connectTo(roi_in())
 
-    # Wait for connection to register
-    await asyncio.sleep(0.1)
-
     # Verify a new edge was created
     assert len(fc._graph.edges()) == initial_edges + 1
 
 
-@pytest.mark.asyncio
 @pytest.mark.parametrize("flowchart", ["static"], indirect=True)
-async def test_save_flowchart(qtbot, flowchart, tmp_path):
+def test_save_flowchart(qtbot, flowchart, tmp_path):
     """Test saving flowchart to .fc file."""
     fc, _ = flowchart
     qtbot.addWidget(fc.widget())  # Ensure widget is created
 
     # Create a simple graph
     fc.createNode("Projection")
-    await asyncio.sleep(0.1)
 
     # Save to file
     widget = fc.widget()

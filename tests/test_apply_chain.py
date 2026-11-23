@@ -80,9 +80,8 @@ def chain(qtbot, flowchart):
     return fc, ctrl, fake
 
 
-@pytest.mark.asyncio
 @pytest.mark.parametrize("flowchart", ["static"], indirect=True)
-async def test_apply_request_order(chain):
+def test_apply_request_order(chain):
     fc, ctrl, fake = chain
     fc.deleted_nodes = ["Gone.0"]
 
@@ -92,12 +91,10 @@ async def test_apply_request_order(chain):
     assert fake.calls == ["remove", "graphVersion", "add", "metadata", "graphVersion"]
     assert fc.deleted_nodes == []
     assert not any(node.changed for _, node in fc.nodes(data="node"))
-    await future
 
 
-@pytest.mark.asyncio
 @pytest.mark.parametrize("flowchart", ["static"], indirect=True)
-async def test_apply_redisplays_viewed_nodes_before_reading_metadata(chain):
+def test_apply_redisplays_viewed_nodes_before_reading_metadata(chain):
     fc, ctrl, fake = chain
     fc.nodes(data="node")["cspad"].viewed = True
 
@@ -107,9 +104,8 @@ async def test_apply_redisplays_viewed_nodes_before_reading_metadata(chain):
     assert fake.calls == ["graphVersion", "add", "view", "updatePlots", "metadata", "graphVersion"]
 
 
-@pytest.mark.asyncio
 @pytest.mark.parametrize("flowchart", ["static"], indirect=True)
-async def test_apply_after_manager_lost_graph_resubmits_everything(chain):
+def test_apply_after_manager_lost_graph_resubmits_everything(chain):
     fc, ctrl, fake = chain
     ctrl.applyClicked()
     for _, node in fc.nodes(data="node"):
@@ -122,9 +118,8 @@ async def test_apply_after_manager_lost_graph_resubmits_everything(chain):
     assert fake.calls == ["graphVersion", "add", "metadata", "graphVersion"]
 
 
-@pytest.mark.asyncio
 @pytest.mark.parametrize("flowchart", ["static"], indirect=True)
-async def test_apply_with_disconnected_node_submits_nothing(chain, monkeypatch):
+def test_apply_with_disconnected_node_submits_nothing(chain, monkeypatch):
     fc, ctrl, fake = chain
     fc.createNode("Roi2D")  # Roi2D.1 has no input
     from qtpy import QtWidgets
@@ -138,9 +133,8 @@ async def test_apply_with_disconnected_node_submits_nothing(chain, monkeypatch):
     assert fc.nodes(data="node")["Roi2D.0"].changed  # still waiting for an apply
 
 
-@pytest.mark.asyncio
 @pytest.mark.parametrize("flowchart", ["static"], indirect=True)
-async def test_apply_stops_when_the_manager_fails(qtbot, chain):
+def test_apply_stops_when_the_manager_fails(qtbot, chain):
     fc, ctrl, fake = chain
     fake.fail_on = "add"
 
@@ -152,12 +146,11 @@ async def test_apply_stops_when_the_manager_fails(qtbot, chain):
     assert fake.calls == ["graphVersion", "add"]  # no metadata request
     assert fc.nodes(data="node")["Roi2D.0"].changed
     with pytest.raises(RuntimeError):
-        await future
+        future.result()
 
 
-@pytest.mark.asyncio
 @pytest.mark.parametrize("flowchart", ["static"], indirect=True)
-async def test_apply_action_redisplays_views(chain, monkeypatch):
+def test_apply_action_redisplays_views(chain, monkeypatch):
     """The toolbar action emits triggered(checked=False); that must not reach build_views."""
     fc, ctrl, fake = chain
     fc.nodes(data="node")["cspad"].viewed = True
@@ -167,9 +160,8 @@ async def test_apply_action_redisplays_views(chain, monkeypatch):
     assert fake.calls == ["graphVersion", "add", "view", "updatePlots", "metadata", "graphVersion"]
 
 
-@pytest.mark.asyncio
 @pytest.mark.parametrize("flowchart", ["static"], indirect=True)
-async def test_load_file_order_and_future(chain, tmp_path):
+def test_load_file_order_and_future(chain, tmp_path):
     fc, ctrl, fake = chain
     path = str(tmp_path / "g.fc")
     fc.saveFile(path)
@@ -190,12 +182,10 @@ async def test_load_file_order_and_future(chain, tmp_path):
         "updatePlots",
     ], fake.calls
     assert "Roi2D.0" in fc.nodes(data="node")
-    await future
 
 
-@pytest.mark.asyncio
 @pytest.mark.parametrize("flowchart", ["static"], indirect=True)
-async def test_load_missing_file_resolves_and_asks_nothing(chain, monkeypatch):
+def test_load_missing_file_resolves_and_asks_nothing(chain, monkeypatch):
     fc, ctrl, fake = chain
     from qtpy import QtWidgets
 
@@ -207,9 +197,8 @@ async def test_load_missing_file_resolves_and_asks_nothing(chain, monkeypatch):
     assert fake.calls == []
 
 
-@pytest.mark.asyncio
 @pytest.mark.parametrize("flowchart", ["static"], indirect=True)
-async def test_clear_empties_the_editor_at_once(chain):
+def test_clear_empties_the_editor_at_once(chain):
     fc, ctrl, fake = chain
     assert len(fc.nodes()) == 2
 
@@ -218,4 +207,3 @@ async def test_clear_empties_the_editor_at_once(chain):
     assert len(fc.nodes()) == 0
     assert future.done() and future.exception() is None
     assert fake.calls == ["destroy", "updatePlots"]
-    await future

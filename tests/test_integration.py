@@ -6,7 +6,6 @@ These tests verify complete user workflows:
 - Load .fc in GUI → Modify → Save
 """
 
-import asyncio
 import glob
 import json
 import time
@@ -18,10 +17,9 @@ import pytest
 from ami.flowchart.library.common import SourceNode
 
 
-@pytest.mark.asyncio
 @pytest.mark.parametrize("flowchart", ["static"], indirect=True)
 @pytest.mark.parametrize("start_ami", ["static"], indirect=True)
-async def test_create_in_gui_save_execute_on_backend(qtbot, flowchart, start_ami, tmp_path):
+def test_create_in_gui_save_execute_on_backend(qtbot, flowchart, start_ami, tmp_path):
     """
     Full workflow:
     1. Create graph in GUI
@@ -51,9 +49,6 @@ async def test_create_in_gui_save_execute_on_backend(qtbot, flowchart, start_ami
     roi_in = roi_node._inputs["In"]
     cspad_out().connectTo(roi_in())
 
-    # Wait for connection to register
-    await asyncio.sleep(0.1)
-
     # Verify graph was created
     assert len(fc._graph.edges()) == 1
 
@@ -74,8 +69,9 @@ async def test_create_in_gui_save_execute_on_backend(qtbot, flowchart, start_ami
         assert "Roi2D.0" in node_names
 
     # Step 3: Apply graph to backend (submits graph operations)
-    await widget.applyClicked()
-    await asyncio.sleep(0.2)  # Let apply complete
+    future = widget.applyClicked()
+    qtbot.waitUntil(future.done, timeout=10000)
+    future.result()  # raises if the apply failed
 
     # Step 4: Register Roi2D output for viewing on backend
     # This adds a Pick1 node to make the output available in features
@@ -84,7 +80,7 @@ async def test_create_in_gui_save_execute_on_backend(qtbot, flowchart, start_ami
     # Step 5: Wait for graph to execute on backend
     start = time.time()
     while comm.graphVersion != comm.featuresVersion:
-        await asyncio.sleep(0.1)
+        qtbot.wait(100)
         if time.time() - start > 10:
             pytest.fail("Timeout waiting for graph to execute on backend")
 
@@ -106,9 +102,8 @@ async def test_create_in_gui_save_execute_on_backend(qtbot, flowchart, start_ami
     print(f"✓ Graph executed successfully: Roi2D produced {roi_image.shape} output")
 
 
-@pytest.mark.asyncio
 @pytest.mark.parametrize("flowchart", ["static"], indirect=True)
-async def test_load_atm_crix_modify_save(qtbot, flowchart, tmp_path):
+def test_load_atm_crix_modify_save(qtbot, flowchart, tmp_path):
     """
     Workflow: Load ATM_crix_new.fc → Modify in GUI → Save
     """
@@ -117,8 +112,9 @@ async def test_load_atm_crix_modify_save(qtbot, flowchart, tmp_path):
 
     # Load the .fc file
     fc_path = "tests/graphs/ATM_crix_new.fc"
-    await fc.loadFile(fc_path)
-    await asyncio.sleep(0.2)
+    future = fc.loadFile(fc_path)
+    qtbot.waitUntil(future.done, timeout=30000)
+    future.result()  # raises if the load failed
 
     # Verify loaded correctly
     nodes = fc.nodes(data="node")
@@ -131,7 +127,6 @@ async def test_load_atm_crix_modify_save(qtbot, flowchart, tmp_path):
 
     # Modify: add a new node
     fc.createNode("Projection")
-    await asyncio.sleep(0.1)
 
     # Verify modification
     nodes = fc.nodes(data="node")
@@ -211,7 +206,6 @@ except ImportError:
     _xfail_files["Rousseau.fc"] = "psana not available"
 
 
-@pytest.mark.asyncio
 @pytest.mark.parametrize("flowchart", ["static"], indirect=True)
 @pytest.mark.parametrize("start_ami", ["static"], indirect=True)
 @pytest.mark.parametrize(
@@ -219,7 +213,7 @@ except ImportError:
     _fc_files,
     ids=lambda p: Path(p).stem,
 )
-async def test_fc_graph_smoke(qtbot, flowchart, start_ami, fc_file):
+def test_fc_graph_smoke(qtbot, flowchart, start_ami, fc_file):
     """Load each .fc graph, apply to backend, verify it executes and produces expected features."""
     if Path(fc_file).name in _xfail_files:
         pytest.xfail(f"{Path(fc_file).name}: {_xfail_files[Path(fc_file).name]}")
@@ -233,15 +227,14 @@ async def test_fc_graph_smoke(qtbot, flowchart, start_ami, fc_file):
     expected_features = extract_expected_features(fc_file)
 
     # Load and apply
-    await fc.loadFile(fc_file)
-
-    # Give views time to be registered
-    await asyncio.sleep(0.3)
+    future = fc.loadFile(fc_file)
+    qtbot.waitUntil(future.done, timeout=30000)  # the views are registered when this resolves
+    future.result()  # raises if the load failed
 
     # Wait for execution
     start = time.time()
     while comm.graphVersion != comm.featuresVersion:
-        await asyncio.sleep(0.1)
+        qtbot.wait(100)
         if time.time() - start > 15:
             pytest.fail(f"Timeout: {Path(fc_file).name} did not execute")
 

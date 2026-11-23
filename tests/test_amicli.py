@@ -153,24 +153,21 @@ def amicli(flowchart_module):
     return cli
 
 
-@pytest.mark.asyncio
-async def test_create_node(amicli):
+def test_create_node(amicli):
     """Test creating a node with auto-generated name."""
     node = amicli.create_node("Projection")
     assert node.name() == "Projection.0"
     assert "Projection.0" in amicli.graph.nodes()
 
 
-@pytest.mark.asyncio
-async def test_create_node_with_label(amicli):
+def test_create_node_with_label(amicli):
     """Test creating a node with a label preserves auto-generated name."""
     node = amicli.create_node("Projection", label="My Projection")
     assert node.name() == "Projection.0"
     assert node._label == "My Projection"
 
 
-@pytest.mark.asyncio
-async def test_ensure_source(amicli):
+def test_ensure_source(amicli):
     """Test ensuring a source node exists."""
     result = amicli.ensure_source("cspad")
     assert result == "cspad"
@@ -180,8 +177,7 @@ async def test_ensure_source(amicli):
     assert "Out" in node.terminals
 
 
-@pytest.mark.asyncio
-async def test_ensure_source_idempotent(amicli):
+def test_ensure_source_idempotent(amicli):
     """Test that calling ensure_source twice doesn't create duplicates."""
     amicli.ensure_source("cspad")
     amicli.ensure_source("cspad")
@@ -190,27 +186,23 @@ async def test_ensure_source_idempotent(amicli):
     assert len(cspad_nodes) == 1
 
 
-@pytest.mark.asyncio
-async def test_ensure_source_invalid(amicli):
+def test_ensure_source_invalid(amicli):
     """Test that ensure_source raises for non-existent source."""
     with pytest.raises(KeyError):
         amicli.ensure_source("nonexistent_source_xyz")
 
 
-@pytest.mark.asyncio
-async def test_connect_nodes(amicli):
+def test_connect_nodes(amicli):
     """Test connecting two nodes."""
     amicli.ensure_source("cspad")
     amicli.create_node("Roi2D")
 
     amicli.connect_nodes("cspad", "Out", "Roi2D.0", "In")
-    await asyncio.sleep(0.1)
 
     assert amicli.graph.has_edge("cspad", "Roi2D.0")
 
 
-@pytest.mark.asyncio
-async def test_connect_nodes_invalid_terminal(amicli):
+def test_connect_nodes_invalid_terminal(amicli):
     """Test that connecting with invalid terminal raises."""
     amicli.ensure_source("cspad")
     amicli.create_node("Roi2D")
@@ -219,24 +211,20 @@ async def test_connect_nodes_invalid_terminal(amicli):
         amicli.connect_nodes("cspad", "NonExistent", "Roi2D.0", "In")
 
 
-@pytest.mark.asyncio
-async def test_disconnect_nodes(amicli):
+def test_disconnect_nodes(amicli):
     """Test disconnecting two nodes."""
     amicli.ensure_source("cspad")
     amicli.create_node("Roi2D")
     amicli.connect_nodes("cspad", "Out", "Roi2D.0", "In")
-    await asyncio.sleep(0.1)
 
     assert amicli.graph.has_edge("cspad", "Roi2D.0")
 
     amicli.disconnect_nodes("cspad", "Out", "Roi2D.0", "In")
-    await asyncio.sleep(0.1)
 
     assert not amicli.graph.has_edge("cspad", "Roi2D.0")
 
 
-@pytest.mark.asyncio
-async def test_disconnect_nodes_stale_terminal_logs_warning_not_error(amicli, caplog):
+def test_disconnect_nodes_stale_terminal_logs_warning_not_error(amicli, caplog):
     """A terminal that's already been removed (e.g. by a prior remove_terminal call) is a
     normal, recoverable condition, not a bug -- regression test for a KeyError that used to
     surface as two stacked ERROR-level logs (one from amicli, one re-logged with a full
@@ -250,7 +238,6 @@ async def test_disconnect_nodes_stale_terminal_logs_warning_not_error(amicli, ca
     amicli.create_node("Calculator")
 
     amicli.connect_nodes("Calculator.0", "Out", "PythonEditor.0", "fbase")
-    await asyncio.sleep(0.1)
 
     amicli.remove_terminal("PythonEditor.0", "fbase")
 
@@ -262,8 +249,7 @@ async def test_disconnect_nodes_stale_terminal_logs_warning_not_error(amicli, ca
     assert not any(r.levelno == logging.ERROR for r in caplog.records)
 
 
-@pytest.mark.asyncio
-async def test_get_node_parameters(amicli):
+def test_get_node_parameters(amicli):
     """Test getting node parameters."""
     amicli.create_node("GaussianFilter1D")
 
@@ -275,8 +261,7 @@ async def test_get_node_parameters(amicli):
     assert params["mode"] == "reflect"
 
 
-@pytest.mark.asyncio
-async def test_set_node_parameters(amicli):
+def test_set_node_parameters(amicli):
     """Test setting node parameters."""
     amicli.create_node("GaussianFilter1D")
 
@@ -287,8 +272,7 @@ async def test_set_node_parameters(amicli):
     assert node.values["sigma"] == 3.5
 
 
-@pytest.mark.asyncio
-async def test_set_node_parameters_pushes_to_open_window(amicli, monkeypatch):
+def test_set_node_parameters_pushes_to_open_window(amicli, monkeypatch):
     """Test that set_node_parameters also pushes a NodeCtrlUpdate (so an open ROI/ctrl window
     reflects the change immediately, and doesn't later send a stale checkpoint reverting it).
     """
@@ -308,8 +292,7 @@ async def test_set_node_parameters_pushes_to_open_window(amicli, monkeypatch):
     assert msg.parameters == {"sigma": 3.5}
 
 
-@pytest.mark.asyncio
-async def test_set_node_parameters_combo(amicli):
+def test_set_node_parameters_combo(amicli):
     """Test setting a combo parameter value (regression for combo default bug)."""
     amicli.create_node("PeakFit")
 
@@ -325,8 +308,7 @@ async def test_set_node_parameters_combo(amicli):
     assert node.values["Model"] == "Lorentzian"
 
 
-@pytest.mark.asyncio
-async def test_get_set_node_flags(amicli):
+def test_get_set_node_flags(amicli):
     """Test get/set of latched/reset_on_run flags on a stateful (global_op) node."""
     amicli.create_node("MeanVsScan")
 
@@ -351,8 +333,7 @@ async def test_get_set_node_flags(amicli):
     assert flags == {"latched": True, "reset_on_run": False, "stateful": True}
 
 
-@pytest.mark.asyncio
-async def test_set_node_flags_rejects_non_stateful(amicli):
+def test_set_node_flags_rejects_non_stateful(amicli):
     """Test that set_node_flags raises a clear error on a non-stateful (non-global_op) node."""
     amicli.create_node("Filter")
 
@@ -363,8 +344,7 @@ async def test_set_node_flags_rejects_non_stateful(amicli):
         amicli.set_node_flags("Filter.0", reset_on_run=False)
 
 
-@pytest.mark.asyncio
-async def test_set_terminal_optional(amicli):
+def test_set_terminal_optional(amicli):
     """Test marking an input terminal optional and back to required, its error cases (bad
     node, bad terminal, an output terminal), and that get_node_inputs reports it correctly
     (including for a node with no ui controls, where node.values is None rather than a dict --
@@ -373,7 +353,6 @@ async def test_set_terminal_optional(amicli):
     amicli.ensure_source("cspad")
     amicli.create_node("Roi2D")
     amicli.connect_nodes("cspad", "Out", "Roi2D.0", "In")
-    await asyncio.sleep(0.1)
 
     term = amicli.graph.nodes["Roi2D.0"]["node"].terminals["In"]
     assert term.optional() is False
@@ -405,8 +384,7 @@ async def test_set_terminal_optional(amicli):
     assert amicli.get_node_inputs("WaveformViewer.0")["current_config"] == {}
 
 
-@pytest.mark.asyncio
-async def test_node_info(amicli):
+def test_node_info(amicli):
     """Test getting node info including inputs/outputs."""
     amicli.create_node("Roi2D")
 
@@ -417,27 +395,23 @@ async def test_node_info(amicli):
     assert "state" in info
 
 
-@pytest.mark.asyncio
-async def test_node_info_not_found(amicli):
+def test_node_info_not_found(amicli):
     """node_info raises KeyError (not a bare Exception) for an unknown node name."""
     with pytest.raises(KeyError, match="not found"):
         amicli.node_info("NoSuchNode.0")
 
 
-@pytest.mark.asyncio
-async def test_delete_node_not_found(amicli):
+def test_delete_node_not_found(amicli):
     """delete_node raises KeyError (not a bare Exception) for an unknown node name."""
     with pytest.raises(KeyError, match="not found"):
         amicli.delete_node("NoSuchNode.0")
 
 
-@pytest.mark.asyncio
-async def test_get_graph_state(amicli):
+def test_get_graph_state(amicli):
     """Test getting full graph state."""
     amicli.ensure_source("cspad")
     amicli.create_node("Roi2D")
     amicli.connect_nodes("cspad", "Out", "Roi2D.0", "In")
-    await asyncio.sleep(0.1)
 
     state = amicli.get_graph_state()
     assert "nodes" in state
@@ -454,15 +428,13 @@ async def test_get_graph_state(amicli):
     assert conn["to"] == "Roi2D.0"
 
 
-@pytest.mark.asyncio
-async def test_get_graph_errors_no_errors(amicli):
+def test_get_graph_errors_no_errors(amicli):
     """Test that get_graph_errors returns empty list when no errors."""
     errors = amicli.get_graph_errors()
     assert errors == []
 
 
-@pytest.mark.asyncio
-async def test_get_graph_errors_with_exception(amicli):
+def test_get_graph_errors_with_exception(amicli):
     """Test that get_graph_errors returns errors when nodes have exceptions."""
     amicli.create_node("Roi2D")
 
@@ -476,8 +448,7 @@ async def test_get_graph_errors_with_exception(amicli):
     assert errors[0]["exception_type"] == "str"
 
 
-@pytest.mark.asyncio
-async def test_widget_error_reaches_graph_errors(amicli):
+def test_widget_error_reaches_graph_errors(amicli):
     """A NodeWidgetError sent by a display-widget subprocess (see
     NodeProcess.report_widget_error) reaches get_graph_errors()/get_messages() the same way a
     worker-reported error does, with the *original* exception's type name reported (not
@@ -617,8 +588,7 @@ def _worker_exception(cls, text, ctrl, node_name=None, graph_name=None):
     return exc
 
 
-@pytest.mark.asyncio
-async def test_unattributed_worker_error_reaches_agent(amicli):
+def test_unattributed_worker_error_reaches_agent(amicli):
     """A worker error with no node_name (status bar: 'ERROR: worker000: ...') is visible to the agent."""
     ctrl = amicli.ctrl
     text = "The truth value of an empty array is ambiguous."
@@ -639,8 +609,7 @@ async def test_unattributed_worker_error_reaches_agent(amicli):
     assert result["last_seq"] == result["messages"][0]["seq"]
 
 
-@pytest.mark.asyncio
-async def test_string_error_without_graph_name_recorded(amicli):
+def test_string_error_without_graph_name_recorded(amicli):
     """Graph-update failures arrive as plain strings; they're logged but not marked purged."""
     amicli.chart._handle_info_message("error", "localCollector000", "Failure updating graph: boom")
 
@@ -652,8 +621,7 @@ async def test_string_error_without_graph_name_recorded(amicli):
     assert errors[0]["graph_purged"] is False
 
 
-@pytest.mark.asyncio
-async def test_attributed_worker_error_marks_node(amicli, monkeypatch):
+def test_attributed_worker_error_marks_node(amicli, monkeypatch):
     """An error whose node_name resolves via metadata marks the GUI node and is logged."""
     ctrl = amicli.ctrl
     amicli.create_node("Roi2D")
@@ -673,8 +641,7 @@ async def test_attributed_worker_error_marks_node(amicli, monkeypatch):
     assert amicli.get_messages()["messages"][0]["node"] == "Roi2D.0"
 
 
-@pytest.mark.asyncio
-async def test_unknown_node_name_does_not_crash(amicli, monkeypatch):
+def test_unknown_node_name_does_not_crash(amicli, monkeypatch):
     """A node_name missing from metadata used to raise KeyError and kill the info loop."""
     ctrl = amicli.ctrl
     monkeypatch.setattr(ctrl, "metadata", {}, raising=False)
@@ -688,8 +655,7 @@ async def test_unknown_node_name_does_not_crash(amicli, monkeypatch):
     assert errors[0]["error"] == "gone"
 
 
-@pytest.mark.asyncio
-async def test_error_for_other_graph_ignored(amicli):
+def test_error_for_other_graph_ignored(amicli):
     """Errors tagged with another client's graph_name are not recorded."""
     ctrl = amicli.ctrl
     exc = _worker_exception(ValueError, "not mine", ctrl, graph_name=ctrl.graph_name + "_other")
@@ -699,8 +665,7 @@ async def test_error_for_other_graph_ignored(amicli):
     assert amicli.get_messages()["messages"] == []
 
 
-@pytest.mark.asyncio
-async def test_get_messages_filters(amicli):
+def test_get_messages_filters(amicli):
     """since_seq and level filter the message history; old errors drop out of get_graph_errors after apply."""
     ctrl = amicli.ctrl
     chart = amicli.chart
@@ -729,8 +694,7 @@ async def test_get_messages_filters(amicli):
     assert len(amicli.get_messages()["messages"]) == 3
 
 
-@pytest.mark.asyncio
-async def test_message_log_is_bounded(amicli):
+def test_message_log_is_bounded(amicli):
     """The message history keeps only the most recent entries."""
     ctrl = amicli.ctrl
     maxlen = amicli.chart.message_log.maxlen
@@ -743,8 +707,7 @@ async def test_message_log_is_bounded(amicli):
     assert messages[-1]["message"] == f"e{maxlen + 4}"
 
 
-@pytest.mark.asyncio
-async def test_get_messages_traceback_opt_in(amicli):
+def test_get_messages_traceback_opt_in(amicli):
     """Tracebacks are omitted from get_messages unless requested."""
     ctrl = amicli.ctrl
     amicli.chart._handle_info_message("error", "worker000", _worker_exception(ValueError, "boom", ctrl))
@@ -754,8 +717,7 @@ async def test_get_messages_traceback_opt_in(amicli):
     assert "ValueError" in amicli.get_messages(include_traceback=True)["messages"][0]["traceback"]
 
 
-@pytest.mark.asyncio
-async def test_repeated_errors_from_workers_deduped(amicli):
+def test_repeated_errors_from_workers_deduped(amicli):
     """The same error from several workers is one entry with sources and count."""
     ctrl = amicli.ctrl
     for src in ("worker000", "worker001", "worker002"):
@@ -768,8 +730,7 @@ async def test_repeated_errors_from_workers_deduped(amicli):
     assert len(amicli.get_messages()["messages"]) == 1
 
 
-@pytest.mark.asyncio
-async def test_repeated_warnings_collapse_and_advance_seq(amicli, monkeypatch):
+def test_repeated_warnings_collapse_and_advance_seq(amicli, monkeypatch):
     """Warnings re-reported every heartbeat by every worker update one entry and bump its seq."""
     ctrl = amicli.ctrl
     amicli.create_node("Roi2D")
@@ -805,20 +766,17 @@ async def test_repeated_warnings_collapse_and_advance_seq(amicli, monkeypatch):
     assert amicli.get_messages()["messages"][-1]["count"] == 1
 
 
-@pytest.mark.asyncio
-async def test_validate_graph_ok(amicli):
+def test_validate_graph_ok(amicli):
     """Test validation passes for fully connected graph."""
     amicli.ensure_source("cspad")
     amicli.create_node("Roi2D")
     amicli.connect_nodes("cspad", "Out", "Roi2D.0", "In")
-    await asyncio.sleep(0.1)
 
     issues = amicli.validate_graph()
     assert issues == []
 
 
-@pytest.mark.asyncio
-async def test_validate_graph_disconnected(amicli):
+def test_validate_graph_disconnected(amicli):
     """Test validation reports disconnected required inputs."""
     amicli.create_node("Roi2D")
 
@@ -832,8 +790,7 @@ async def test_validate_graph_disconnected(amicli):
     sys.version_info < (3, 10),
     reason="asyncio.Lock binds to the event loop it was created on in Python 3.9",
 )
-@pytest.mark.asyncio
-async def test_save_load_graph(amicli, tmp_path):
+def test_save_load_graph(amicli, tmp_path):
     """Test saving and loading a graph preserves state.
 
     Reload happens with the saved nodes still live in the graph (the normal case -- that's
@@ -850,7 +807,6 @@ async def test_save_load_graph(amicli, tmp_path):
     amicli.ensure_source("cspad")
     amicli.create_node("Roi2D")
     amicli.connect_nodes("cspad", "Out", "Roi2D.0", "In")
-    await asyncio.sleep(0.1)
 
     filepath = str(tmp_path / "test_graph.fc")
     amicli.save_graph(filepath)
@@ -877,15 +833,13 @@ async def test_save_load_graph(amicli, tmp_path):
     assert amicli.chart.deleted_nodes == []
 
 
-@pytest.mark.asyncio
-async def test_load_graph_missing_file(amicli, tmp_path):
+def test_load_graph_missing_file(amicli, tmp_path):
     """load_graph raises FileNotFoundError (not a bare Exception) for a nonexistent path."""
     with pytest.raises(FileNotFoundError, match="not found"):
         amicli.load_graph(str(tmp_path / "does_not_exist.fc"))
 
 
-@pytest.mark.asyncio
-async def test_list_node_types(amicli, monkeypatch):
+def test_list_node_types(amicli, monkeypatch):
     """Test listing available node types, and that it creates no real node/graphics-item
     instances - regression test for a segfault where instantiating every node type (~90) just
     to read its terminals left temp nodes for Python's garbage collector to free on whatever
@@ -942,8 +896,7 @@ async def test_list_node_types(amicli, monkeypatch):
     assert export_to_worker["exportable"] is True
 
 
-@pytest.mark.asyncio
-async def test_describe_class_matches_real_instantiation(amicli):
+def test_describe_class_matches_real_instantiation(amicli):
     """Node.describe_class() (no instantiation) must agree with actually instantiating each
     library node type and reading its real terminals - regression test for the introspection
     approach replacing direct instantiation in list_node_types.
@@ -1001,8 +954,7 @@ async def test_describe_class_matches_real_instantiation(amicli):
     assert QtWidgets.QApplication.instance() is not None
 
 
-@pytest.mark.asyncio
-async def test_list_sources(amicli):
+def test_list_sources(amicli):
     """Test listing available data sources."""
     sources = amicli.list_sources()
     assert len(sources) > 0
@@ -1010,8 +962,7 @@ async def test_list_sources(amicli):
     assert "laser" in sources
 
 
-@pytest.mark.asyncio
-async def test_new_node_placed_next_to_connected_node(amicli):
+def test_new_node_placed_next_to_connected_node(amicli):
     """Test that connecting a new node places it right of its source without moving the source."""
     amicli.ensure_source("cspad")
     src_item = amicli.graph.nodes["cspad"]["node"].graphicsItem()
@@ -1026,8 +977,7 @@ async def test_new_node_placed_next_to_connected_node(amicli):
     assert dst_pos.x() > src_pos.x()
 
 
-@pytest.mark.asyncio
-async def test_existing_nodes_not_moved_on_connect(amicli):
+def test_existing_nodes_not_moved_on_connect(amicli):
     """Test that connecting two already placed nodes leaves both where they are."""
     amicli.ensure_source("cspad")
     amicli.create_node("Roi2D")
@@ -1041,8 +991,7 @@ async def test_existing_nodes_not_moved_on_connect(amicli):
     assert (item.pos().x(), item.pos().y()) == (2000, 0)
 
 
-@pytest.mark.asyncio
-async def test_set_remove_reference(amicli, tmp_path):
+def test_set_remove_reference(amicli, tmp_path):
     """Test adding, replacing, listing, and removing CSV references on a plot node."""
     csv = tmp_path / "good_spectrum.csv"
     csv.write_text("x,y\n0,1\n1,4\n2,9\n")
@@ -1070,8 +1019,7 @@ async def test_set_remove_reference(amicli, tmp_path):
         amicli.remove_reference("LinePlot.0", "good_spectrum")
 
 
-@pytest.mark.asyncio
-async def test_set_reference_errors(amicli, tmp_path):
+def test_set_reference_errors(amicli, tmp_path):
     """Test that set_reference rejects non-plot nodes and missing files."""
     amicli.create_node("Projection")
     amicli.create_node("LinePlot")
@@ -1109,8 +1057,7 @@ class EventProcessor():
 """
 
 
-@pytest.mark.asyncio
-async def test_set_get_python_code(amicli):
+def test_set_get_python_code(amicli):
     """Test setting and reading PythonEditor code."""
     node = amicli.create_node("PythonEditor")
     assert list(node.terminals) == []
@@ -1128,8 +1075,7 @@ async def test_set_get_python_code(amicli):
     assert amicli.get_python_code("PythonEditor.0")["code"] == GOOD_CODE
 
 
-@pytest.mark.asyncio
-async def test_set_python_code_reaches_open_editor_window(amicli, monkeypatch):
+def test_set_python_code_reaches_open_editor_window(amicli, monkeypatch):
     """Test that set_python_code pushes a NodeWidgetStateUpdate so an open editor window updates."""
     from ami.client import flowchart_messages as fcMsgs
 
@@ -1150,8 +1096,7 @@ async def test_set_python_code_reaches_open_editor_window(amicli, monkeypatch):
     assert msg.state == {"text": GOOD_CODE}
 
 
-@pytest.mark.asyncio
-async def test_set_python_code_rejects_bad_code(amicli):
+def test_set_python_code_rejects_bad_code(amicli):
     """Test that invalid PythonEditor code is rejected and the existing code kept."""
     node = amicli.create_node("PythonEditor")
     amicli.add_terminal("PythonEditor.0", "In", "in", "Array2d")
@@ -1179,8 +1124,7 @@ async def test_set_python_code_rejects_bad_code(amicli):
         amicli.set_python_code("Projection.0", GOOD_CODE)
 
 
-@pytest.mark.asyncio
-async def test_set_python_code_creates_widget_before_window_opens(amicli):
+def test_set_python_code_creates_widget_before_window_opens(amicli):
     """set_python_code must create the node's editor widget even if its window was never
     opened -- CtrlNode.saveState() only persists values["text"] through widget.saveState()
     (common.py:62-63), and the widget stays None until node.display() runs. Without this, the
@@ -1199,13 +1143,11 @@ async def test_set_python_code_creates_widget_before_window_opens(amicli):
     assert node.saveState()["widget"]["text"] == GOOD_CODE
 
 
-@pytest.mark.asyncio
-async def test_set_calculator_expression(amicli):
+def test_set_calculator_expression(amicli):
     """Test setting the math expression for a Calculator node."""
     amicli.ensure_source("cspad")
     node = amicli.create_node("Calculator")
     amicli.connect_nodes("cspad", "Out", "Calculator.0", "In")
-    await asyncio.sleep(0.1)
 
     result = amicli.set_calculator_expression("Calculator.0", "cspad.Out * 2")
     assert result["node"] == "Calculator.0"
@@ -1218,15 +1160,13 @@ async def test_set_calculator_expression(amicli):
         amicli.set_calculator_expression("Projection.0", "1")
 
 
-@pytest.mark.asyncio
-async def test_set_calculator_expression_creates_widget_before_window_opens(amicli):
+def test_set_calculator_expression_creates_widget_before_window_opens(amicli):
     """Same regression as test_set_python_code_creates_widget_before_window_opens, for
     Calculator -- node.saveState()["widget"] must exist even if no window was ever opened.
     """
     amicli.ensure_source("cspad")
     node = amicli.create_node("Calculator")
     amicli.connect_nodes("cspad", "Out", "Calculator.0", "In")
-    await asyncio.sleep(0.1)
     assert node.widget is None
 
     amicli.set_calculator_expression("Calculator.0", "cspad.Out * 2")
@@ -1235,15 +1175,13 @@ async def test_set_calculator_expression_creates_widget_before_window_opens(amic
     assert node.saveState()["widget"]["operation"] == "cspad.Out * 2"
 
 
-@pytest.mark.asyncio
-async def test_set_calculator_expression_reaches_open_window(amicli, monkeypatch):
+def test_set_calculator_expression_reaches_open_window(amicli, monkeypatch):
     """Test that set_calculator_expression pushes a NodeWidgetStateUpdate so an open editor
     window updates, same as set_python_code (test_set_python_code_reaches_open_editor_window).
     """
     amicli.ensure_source("cspad")
     amicli.create_node("Calculator")
     amicli.connect_nodes("cspad", "Out", "Calculator.0", "In")
-    await asyncio.sleep(0.1)
 
     sent = []
     monkeypatch.setattr(amicli, "_send_to_node_window", lambda node, msg: sent.append((node.name(), msg)))
@@ -1257,13 +1195,11 @@ async def test_set_calculator_expression_reaches_open_window(amicli, monkeypatch
     assert msg.state == {"operation": "cspad.Out * 2"}
 
 
-@pytest.mark.asyncio
-async def test_set_filter_conditions(amicli):
+def test_set_filter_conditions(amicli):
     """Test setting If/Else conditions for a Filter node."""
     amicli.ensure_source("cspad")
     node = amicli.create_node("Filter")
     amicli.connect_nodes("cspad", "Out", "Filter.0", "In")
-    await asyncio.sleep(0.1)
 
     conditions = {
         "If": {"condition": "cspad == 1", "Filter.0.Out": "cspad"},
@@ -1280,8 +1216,7 @@ async def test_set_filter_conditions(amicli):
         amicli.set_filter_conditions("Projection.0", conditions)
 
 
-@pytest.mark.asyncio
-async def test_set_filter_conditions_creates_widget_before_window_opens(amicli):
+def test_set_filter_conditions_creates_widget_before_window_opens(amicli):
     """Regression test for the Filter.3 incident: set_filter_conditions wrote node.values but
     never created node.widget, so CtrlNode.saveState() wrote no "widget" key at all, and the
     conditions were silently lost on the next .fc save (see
@@ -1290,7 +1225,6 @@ async def test_set_filter_conditions_creates_widget_before_window_opens(amicli):
     amicli.ensure_source("cspad")
     node = amicli.create_node("Filter")
     amicli.connect_nodes("cspad", "Out", "Filter.0", "In")
-    await asyncio.sleep(0.1)
     assert node.widget is None
 
     conditions = {
@@ -1306,15 +1240,13 @@ async def test_set_filter_conditions_creates_widget_before_window_opens(amicli):
     assert saved["widget"]["Else"] == conditions["Else"]
 
 
-@pytest.mark.asyncio
-async def test_set_filter_conditions_reaches_open_window(amicli, monkeypatch):
+def test_set_filter_conditions_reaches_open_window(amicli, monkeypatch):
     """Test that set_filter_conditions pushes a NodeWidgetStateUpdate so an open editor window
     updates, same as set_python_code (test_set_python_code_reaches_open_editor_window).
     """
     amicli.ensure_source("cspad")
     amicli.create_node("Filter")
     amicli.connect_nodes("cspad", "Out", "Filter.0", "In")
-    await asyncio.sleep(0.1)
 
     sent = []
     monkeypatch.setattr(amicli, "_send_to_node_window", lambda node, msg: sent.append((node.name(), msg)))
@@ -1329,8 +1261,7 @@ async def test_set_filter_conditions_reaches_open_window(amicli, monkeypatch):
     assert msg.state["If"] == conditions["If"]
 
 
-@pytest.mark.asyncio
-async def test_set_filter_conditions_removes_stale_else(amicli):
+def test_set_filter_conditions_removes_stale_else(amicli):
     """Calling set_filter_conditions again without an "Else" block must remove the stale Else
     row from the widget too -- FilterWidget.restoreState's cleanup loop only walks
     condition_groups (If/Elif), which never contains "Else" (tracked separately in
@@ -1341,7 +1272,6 @@ async def test_set_filter_conditions_removes_stale_else(amicli):
     amicli.ensure_source("cspad")
     node = amicli.create_node("Filter")
     amicli.connect_nodes("cspad", "Out", "Filter.0", "In")
-    await asyncio.sleep(0.1)
 
     amicli.set_filter_conditions(
         "Filter.0",
@@ -1360,8 +1290,7 @@ async def test_set_filter_conditions_removes_stale_else(amicli):
     assert "Else" not in node.widget.saveState()
 
 
-@pytest.mark.asyncio
-async def test_set_filter_conditions_save_load_round_trip(amicli, tmp_path):
+def test_set_filter_conditions_save_load_round_trip(amicli, tmp_path):
     """Regression test for the Filter.3 incident (gui-core-extraction/active/06): set
     conditions via MCP without ever opening the Filter's window, then reload a fresh instance
     the same way Flowchart.restoreState() reloads every node on `.fc` load -- display() first,
@@ -1378,7 +1307,6 @@ async def test_set_filter_conditions_save_load_round_trip(amicli, tmp_path):
     amicli.ensure_source("cspad")
     node = amicli.create_node("Filter")
     amicli.connect_nodes("cspad", "Out", "Filter.0", "In")
-    await asyncio.sleep(0.1)
     assert node.widget is None  # never opened, same as the original incident
 
     conditions = {
@@ -1410,8 +1338,7 @@ async def test_set_filter_conditions_save_load_round_trip(amicli, tmp_path):
     assert op is not None
 
 
-@pytest.mark.asyncio
-async def test_take_and_compare_reference(amicli, tmp_path, monkeypatch):
+def test_take_and_compare_reference(amicli, tmp_path, monkeypatch):
     """Test take_reference / compare_to_reference with live data stubbed out."""
     import json
 
@@ -1451,8 +1378,7 @@ async def test_take_and_compare_reference(amicli, tmp_path, monkeypatch):
     assert "not supported" in unsupported["error"]
 
 
-@pytest.mark.asyncio
-async def test_compare_to_reference_ignores_nan_in_reference(amicli, tmp_path, monkeypatch):
+def test_compare_to_reference_ignores_nan_in_reference(amicli, tmp_path, monkeypatch):
     """Test that NaN rows in the reference CSV don't propagate into the comparison (invalid JSON)."""
     import json
 
@@ -1510,8 +1436,7 @@ def test_summarize_data_detail():
     json.dumps(s)
 
 
-@pytest.mark.asyncio
-async def test_take_reference_multi_trace(amicli, tmp_path, monkeypatch):
+def test_take_reference_multi_trace(amicli, tmp_path, monkeypatch):
     """Test that multi-trace plots require an explicit trace, and the chosen trace is the one captured."""
     import json
 
@@ -1549,8 +1474,7 @@ async def test_take_reference_multi_trace(amicli, tmp_path, monkeypatch):
     assert "not found" in bad["error"]
 
 
-@pytest.mark.asyncio
-async def test_tools_on_source_node(amicli, monkeypatch):
+def test_tools_on_source_node(amicli, monkeypatch):
     """Test that tools given a source node (no nodeName) fail cleanly or treat it as a feature."""
     import concurrent.futures
     import json
@@ -1585,8 +1509,7 @@ async def test_tools_on_source_node(amicli, monkeypatch):
             call()
 
 
-@pytest.mark.asyncio
-async def test_open_view_errors(amicli):
+def test_open_view_errors(amicli):
     """Test open_view's error cases: missing node, no-plot node, pending upstream changes."""
     with pytest.raises(KeyError, match="not found"):
         amicli.open_view("NoSuchNode.0")
@@ -1597,7 +1520,6 @@ async def test_open_view_errors(amicli):
 
     amicli.create_node("WaveformViewer")
     amicli.connect_nodes("Calculator.0", "Out", "WaveformViewer.0", "In")
-    await asyncio.sleep(0.1)  # graph edge is added by an async Qt slot (nodeTermConnected)
     # Calculator.0 is freshly created (changed=True by default) and never applied
     with pytest.raises(RuntimeError, match="apply_graph"):
         amicli.open_view("WaveformViewer.0")
@@ -1606,8 +1528,7 @@ async def test_open_view_errors(amicli):
     assert amicli._pending_upstream_changes("WaveformViewer.0") == set()
 
 
-@pytest.mark.asyncio
-async def test_open_view_hints_ensure_source_for_unadded_source(amicli):
+def test_open_view_hints_ensure_source_for_unadded_source(amicli):
     """A render_plot/open_view call for a known source name that hasn't been added to the graph
     yet (ensure_source() not called) should hint at ensure_source(), not just "not found" -
     regression test for an agent calling render_plot("cspad") before ensure_source("cspad").
@@ -1617,8 +1538,7 @@ async def test_open_view_hints_ensure_source_for_unadded_source(amicli):
         amicli.open_view("cspad")
 
 
-@pytest.mark.asyncio
-async def test_open_view_accepts_buffered_nodes(amicli):
+def test_open_view_accepts_buffered_nodes(amicli):
     """Test that open_view accepts "buffered" display nodes (ScalarPlot, ScatterPlot, ...),
     not just "viewable" ones - regression test for a bug caught during manual testing where
     render_plot("ScalarPlot.0") raised "no display window" even though the GUI opens one.
@@ -1628,7 +1548,6 @@ async def test_open_view_accepts_buffered_nodes(amicli):
 
     amicli.create_node("Calculator")
     amicli.connect_nodes("Calculator.0", "Out", "ScalarPlot.0", "Y")
-    await asyncio.sleep(0.1)  # graph edge is added by an async Qt slot (nodeTermConnected)
     # Same pending-changes check as a viewable node: both nodes are freshly created, never applied
     # (ScalarPlot.0 has its own to_operation, buffering outputs, so it counts too, not just Calculator.0).
     with pytest.raises(RuntimeError, match="apply_graph"):
@@ -1640,8 +1559,7 @@ async def test_open_view_accepts_buffered_nodes(amicli):
     # before the open_view fix, since ScalarPlot.viewable() is False)
 
 
-@pytest.mark.asyncio
-async def test_resolve_screenshot_request(amicli):
+def test_resolve_screenshot_request(amicli):
     """Test that resolve_screenshot_request completes the right future and ignores stale ids."""
     import concurrent.futures
 
@@ -1659,8 +1577,7 @@ async def test_resolve_screenshot_request(amicli):
     amicli.resolve_screenshot_request(42, png=b"late")
 
 
-@pytest.mark.asyncio
-async def test_resolve_screenshot_request_error(amicli):
+def test_resolve_screenshot_request_error(amicli):
     """Test that an error reply sets the future's exception instead of its result."""
     import concurrent.futures
 
@@ -1673,8 +1590,7 @@ async def test_resolve_screenshot_request_error(amicli):
         future.result(timeout=0)
 
 
-@pytest.mark.asyncio
-async def test_abandon_screenshot_request(amicli):
+def test_abandon_screenshot_request(amicli):
     """Test that abandon_screenshot_request drops the pending entry and cancels the future, so
     a late reply is a no-op and request_screenshot's open-window poll stops rescheduling itself.
     """
@@ -1692,8 +1608,7 @@ async def test_abandon_screenshot_request(amicli):
     amicli.resolve_screenshot_request(5, png=b"late")  # no future to resolve; must not raise
 
 
-@pytest.mark.asyncio
-async def test_resolve_and_abandon_widget_request(amicli):
+def test_resolve_and_abandon_widget_request(amicli):
     """resolve_widget_request completes the right future and ignores stale ids, sets the
     future's exception instead of its result for an error reply, and abandon_widget_request
     drops the pending entry and cancels the future so a late reply is a no-op -- the
@@ -1735,8 +1650,7 @@ async def test_resolve_and_abandon_widget_request(amicli):
         amicli.request_widget("NoSuchNode.0", "get_config")
 
 
-@pytest.mark.asyncio
-async def test_get_set_plot_config_and_set_trace_style_wrappers(amicli, monkeypatch):
+def test_get_set_plot_config_and_set_trace_style_wrappers(amicli, monkeypatch):
     """get_plot_config/set_plot_config/set_trace_style (ami/amicli.py) are thin wrappers over
     request_widget; verify each shapes its op/args correctly rather than exercising the full
     request/reply round trip (covered by test_resolve_and_abandon_widget_request and the
@@ -2531,8 +2445,7 @@ def test_plot_widget_restore_state_annotations_no_duplicates_or_leftovers(qapp):
     assert widget.annotation_editors == {}
 
 
-@pytest.mark.asyncio
-async def test_request_screenshot_not_found(amicli):
+def test_request_screenshot_not_found(amicli):
     """Test that request_screenshot surfaces open_view's "not found" error synchronously."""
     with pytest.raises(KeyError, match="not found"):
         amicli.request_screenshot("NoSuchNode.0")
@@ -2556,8 +2469,7 @@ def _status_lines(amicli, monkeypatch):
     return lines
 
 
-@pytest.mark.asyncio
-async def test_status_shows_each_problem_once(amicli, monkeypatch):
+def test_status_shows_each_problem_once(amicli, monkeypatch):
     """Repeated warnings/errors (every worker, every heartbeat) give one status line per Apply."""
     ctrl = amicli.ctrl
     lines = _status_lines(amicli, monkeypatch)
@@ -2588,8 +2500,7 @@ async def test_status_shows_each_problem_once(amicli, monkeypatch):
     assert lines[-1] == "WARNING: worker001 Roi2D.0: fit failed"
 
 
-@pytest.mark.asyncio
-async def test_unattributed_warning_shown(amicli, monkeypatch):
+def test_unattributed_warning_shown(amicli, monkeypatch):
     """Warnings that can't be attributed to a node still reach the status log."""
     lines = _status_lines(amicli, monkeypatch)
     amicli.chart._handle_info_message("warning", "worker000", _worker_exception(UserWarning, "hmm", amicli.ctrl))
