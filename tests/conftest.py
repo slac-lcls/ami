@@ -1,4 +1,5 @@
 import asyncio
+import gc
 import itertools
 import json
 import os
@@ -406,6 +407,33 @@ def start_ami(request, workerjson, ami_backend, ipc_dir):
                 print("AMI psana backend exited with non-zero status code: %d" % ami.exitcode)
     else:
         pytest.fail(f"Unknown data source: {data_source}")
+
+
+def pytest_configure(config):
+    """Python's cyclic garbage collector only runs where the fixtures below call it, never by itself.
+
+    PySide6 can crash (segfault or abort) when the collector frees the garbage of closed nodes while a
+    QGraphicsObject is being constructed; test_amicli.py::test_describe_class_matches_real_instantiation, which
+    builds and closes about 90 nodes in a loop, hits it whenever a collection happens to start inside one of
+    those constructors.  Which earlier test makes that happen only depends on how many objects were allocated
+    before (the collector runs on allocation counts), so it came and went with unrelated changes to the tests.
+    See KB-16 in .opencode/plans/gui-core-extraction/research/known-bugs.md.
+    """
+    gc.disable()
+
+
+@pytest.fixture(autouse=True)
+def _collect_garbage_after_each_test():
+    yield
+    # With the collector off, everything the test allocated is still young, so this frees all of its garbage
+    # at little cost (a full collection takes about 0.3 s here because of the large heap: psana, scipy, ...).
+    gc.collect(1)
+
+
+@pytest.fixture(autouse=True, scope="module")
+def _collect_all_garbage_after_each_module():
+    yield
+    gc.collect()
 
 
 class QEventLoopPolicy(asyncio.DefaultEventLoopPolicy):
