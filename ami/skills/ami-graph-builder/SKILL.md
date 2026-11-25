@@ -12,8 +12,27 @@ You are building computation graphs for AMI (Analysis Monitoring Interface), the
 1. Read `ami://graph/sources` — see what data is available from the experiment
 2. Read `ami://subgraph-templates` (or call `list_subgraph_templates()`) — check if a template already does what's needed
 3. If template exists → `import_subgraph`, connect source to boundary inputs, done
-4. If not → build incrementally: `ensure_source` → `create_node` → `connect_nodes`
-5. Always finish with: `validate_graph` → `apply_graph` → `get_graph_errors`
+4. If not → call `list_node_types()` once to see what nodes exist (see **Discovering Nodes** below)
+5. Build incrementally: `ensure_source` → `create_node` → `connect_nodes`
+6. Always finish with: `validate_graph` → `apply_graph` → `get_graph_errors`
+
+## Discovering Nodes (query the MCP — do NOT read source)
+
+`list_node_types()` (or the `ami://node-types` resource) is the source of truth for what nodes
+exist. Never read `ami/flowchart/library/*.py` to find node names, terminals, or parameters.
+
+Each entry has: `type`, `description`, `inputs`/`outputs` (terminal name → type, plus `optional`
+for inputs), `parameters` (name, widget type, default/min/max), and the flags `viewable`,
+`buffered`, `global_op`, `exportable`, `can_add_inputs`, `can_add_outputs`.
+
+- It returns all ~87 types in one large blob. Call it once per session and reuse the result.
+- `parameters` lists what `set_node_parameters` accepts, so you rarely need to create a node just
+  to see its settings.
+- Empty `inputs`/`outputs` together with `can_add_inputs`/`can_add_outputs: true` (SumN,
+  PythonEditor, Calculator, Filter, Accumulator, ReduceByKey) means "add terminals yourself with
+  `add_node_terminal`", not "takes no input".
+- If the description isn't enough, `create_node` it and call `get_node_parameters` /
+  `get_node_inputs`.
 
 ## Verification (MANDATORY — never skip)
 
@@ -131,8 +150,8 @@ in the graph until you do), then either tell them to click it in the GUI or call
 | Per-event numpy/scipy logic no built-in node covers | PythonEditor | terminals you add (see PythonEditor section) |
 | Is a source producing data every heartbeat? | Monitor | terminals you add, one per source (see Looking at Data) |
 
-When unsure which node to use, call `list_node_types()` (or read `ami://node-types`) for the full
-list with terminal specs: `[{"type": "ScatterPlot", "inputs": ["X", "Y"], "outputs": []}, ...]`.
+This table is a shortcut. When unsure which node to use, or if it disagrees with the node list,
+trust `list_node_types()` (see **Discovering Nodes**).
 
 ## Display Nodes Are Self-Viewing
 
@@ -214,7 +233,7 @@ Use descriptive Title Case labels when creating nodes:
 
 ## Type Compatibility
 
-Check `ami://node-types` for terminal types before connecting. Common rules:
+Check the `inputs`/`outputs` types from `list_node_types()` (see **Discovering Nodes**) before connecting. Common rules:
 - float sources → float inputs (ScalarPlot.Y, Calculator.In, MeanVsScan.Value)
 - Array2d sources → Array2d inputs (Roi2D.In, ImageViewer.In, Projection.In)
 - Array1d → Array1d inputs (LinePlot.Y, FFT.In, Average1D.In)
